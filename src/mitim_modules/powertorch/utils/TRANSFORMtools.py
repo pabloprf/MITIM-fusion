@@ -259,7 +259,7 @@ def powerstate_to_gacode(
     Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", True)
     Ti_thermals = postprocess_input_gacode.get("Ti_thermals", True)
     ni_thermals = postprocess_input_gacode.get("ni_thermals", True)
-    recompute_ptot = postprocess_input_gacode.get("recompute_ptot", True)
+    recalculate_ptot = postprocess_input_gacode.get("recalculate_ptot", True)
     ensureMachNumber = postprocess_input_gacode.get("ensureMachNumber", None)
 
     # ------------------------------------------------------------------------------------------
@@ -334,10 +334,10 @@ def powerstate_to_gacode(
     # Recalculate and change ptot to make it consistent?
     # ------------------------------------------------------------------------------------------
 
-    if rederive or recompute_ptot:
+    if rederive or recalculate_ptot:
         profiles.derive_quantities(rederiveGeometry=False)
 
-    if recompute_ptot:
+    if recalculate_ptot:
         profiles.selfconsistentPTOT()
 
     if debugPlot:

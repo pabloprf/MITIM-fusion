@@ -55,7 +55,7 @@ for test in tests:
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
             portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-            portals_fun.INITparameters["removeFast"] = True
+            portals_fun.INITparameters["remove_fast"] = True
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti"]
             portals_fun.optimization_options["acquisition_options"]["optimizers"] = ["botorch"]
@@ -94,9 +94,9 @@ for test in tests:
             portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
             portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
             portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
-            portals_fun.INITparameters["removeFast"] = True
+            portals_fun.INITparameters["remove_fast"] = True
             portals_fun.INITparameters["quasineutrality"] = True
-            portals_fun.INITparameters["sameDensityGradients"] = True
+            portals_fun.INITparameters["enforce_same_aLn"] = True
             portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2
 
             portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
@@ -134,7 +134,7 @@ for test in tests:
         #     portals_fun = PORTALSmain.portals(folderWork)
         #     portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
         #     portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-        #     portals_fun.INITparameters["removeFast"] = True
+        #     portals_fun.INITparameters["remove_fast"] = True
 
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']
 

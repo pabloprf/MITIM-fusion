@@ -30,7 +30,7 @@ portals_fun.MODELparameters["transport_model"] = {
 	}
 
 # Plasma preparation: remove fast species, adjust quasineutrality
-portals_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["remove_fast"] = True
 portals_fun.INITparameters["quasineutrality"] = True
 
 # Stopping criterion 1: 100x improvement in residual

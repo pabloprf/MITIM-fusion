@@ -47,7 +47,7 @@ portals_namelist = {    "PORTALSparameters": {"launchEvaluationsAsSlurmJobs": Tr
                                             "ProfilesPredicted": ["te", "ti", "ne"],
                                             "Physics_options": {"TypeTarget": 3},
                                              "transport_model": {"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
-                        "INITparameters": {"FastIsThermal": True, "removeIons": [5,6], "quasineutrality": True},
+                        "INITparameters": {"thermalize_fast": True, "removeIons": [5,6], "quasineutrality": True},
                         "optimization_options": {
                             "convergence_options": {
                                 "maximum_iterations": 50,

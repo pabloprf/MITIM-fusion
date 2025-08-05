@@ -32,9 +32,9 @@ portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.MODELparameters['ProfilesPredicted'] = ["te", "ti", "ne", "nZ", 'w0'] 
 portals_fun.PORTALSparameters['ImpurityOfInterest'] = 'N'
 portals_fun.PORTALSparameters['surrogateForTurbExch'] = True
-portals_fun.INITparameters["removeFast"] = True
+portals_fun.INITparameters["remove_fast"] = True
 portals_fun.INITparameters["quasineutrality"] = True
-portals_fun.INITparameters["sameDensityGradients"] = True
+portals_fun.INITparameters["enforce_same_aLn"] = True
 portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2
 
 # Prepare run

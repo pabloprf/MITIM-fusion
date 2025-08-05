@@ -30,7 +30,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
         transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
         MODELparameters = transport_evaluator_options.get("MODELparameters",None)
-        includeFast = transport_evaluator_options.get("includeFastInQi",False)
+        Qi_includes_fast = transport_evaluator_options.get("Qi_includes_fast",False)
         launchMODELviaSlurm = transport_evaluator_options.get("launchMODELviaSlurm", False)
         cold_start = transport_evaluator_options.get("cold_start", False)
         provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
@@ -45,7 +45,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
         # tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
         # ------------------------------------------------------------------------------------------------------------------------
 
-        RadiisToRun = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tgyro = TGYROtools.TGYRO(cdf=dummyCDF(self.folder, self.folder))
         tgyro.prep(self.folder, profilesclass_custom=self.powerstate.profiles_transport)
@@ -59,7 +59,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
             subFolderTGYRO="tglf_neo_original",
             cold_start=cold_start,
             forceIfcold_start=True,
-            special_radii=RadiisToRun,
+            special_radii=rho_locations,
             iterations=0,
             PredictionSet=[
                 int("te" in self.powerstate.ProfilesPredicted),
@@ -92,12 +92,12 @@ class tgyro_model(TRANSPORTtools.power_transport):
         curateTGYROfiles(
             tgyro,
             "tglf_neo_original",
-            RadiisToRun,
+            rho_locations,
             self.powerstate.ProfilesPredicted,
             self.folder / "tglf_neo",
             percentError,
             impurityPosition=impurityPosition,
-            includeFast=includeFast,
+            Qi_includes_fast=Qi_includes_fast,
             provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
             cold_start=cold_start,
@@ -113,11 +113,11 @@ class tgyro_model(TRANSPORTtools.power_transport):
         # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
         # from mitim_tools.gacode_tools import TGLFtools
-        # tglf = TGLFtools.TGLF(rhos=RadiisToRun)
+        # tglf = TGLFtools.TGLF(rhos=rho_locations)
         # _ = tglf.prep(
         #     self.folder / 'stds',
         #     inputgacode=self.file_profs,
-        #     recalculatePTOT=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
+        #     recalculate_ptot=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
         #     cold_start=cold_start)
 
         # tglf.run(
@@ -141,7 +141,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
         transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
-        includeFast = transport_evaluator_options.get("includeFastInQi",False)
+        Qi_includes_fast = transport_evaluator_options.get("Qi_includes_fast",False)
         UseFineGridTargets = transport_evaluator_options.get("UseFineGridTargets", False)
         provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
         OriginalFimp = transport_evaluator_options.get("OriginalFimp", 1.0)
@@ -154,7 +154,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
         self.powerstate = tgyro_to_powerstate(
             tgyro.results[label],
             self.powerstate,
-            includeFast=includeFast,
+            Qi_includes_fast=Qi_includes_fast,
             impurityPosition=impurityPosition,
             UseFineGridTargets=UseFineGridTargets,
             OriginalFimp=OriginalFimp,
@@ -196,10 +196,10 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
 def tglf_scan_trick(
     tglf,
-    RadiisToRun, 
+    rho_locations, 
     ProfilesPredicted, 
     impurityPosition=1,
-    includeFast=False,  
+    Qi_includes_fast=False,  
     delta=0.02, 
     minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
     cold_start=False, 
@@ -237,10 +237,10 @@ def tglf_scan_trick(
 
     name = 'turb_drives'
 
-    tglf.rhos = RadiisToRun # To avoid the case in which TGYRO was run with an extra rho point
+    tglf.rhos = rho_locations # To avoid the case in which TGYRO was run with an extra rho point
 
     # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
-    num_cases = len(RadiisToRun) * len(variables_to_scan) * len(relative_scan)
+    num_cases = len(rho_locations) * len(variables_to_scan) * len(relative_scan)
     if cores_per_tglf_instance == 1:
         minutes = 10 * (num_cases / 60) # Ad-hoc formula
     else:
@@ -273,12 +273,13 @@ def tglf_scan_trick(
     if remove_folders_out:
         IOtools.shutil_rmtree(tglf.FolderGACODE)
 
-    Qe = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    Qi = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    Ge = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    GZ = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    Mt = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
-    S = np.zeros((len(RadiisToRun), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qifast = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    GZ = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    Mt = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    S = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
 
     cont = 0
     for vari in variables_to_scan:
@@ -286,11 +287,16 @@ def tglf_scan_trick(
 
         Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe']
         Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
+        Qifast[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qifast']
         Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
         GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
         Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt']
         S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S']
         cont += jump
+        
+    if Qi_includes_fast:
+        print(f"\t- Qi includes fast ions, adding their contribution")
+        Qi += Qifast
 
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
@@ -329,13 +335,13 @@ def tglf_scan_trick(
 def curateTGYROfiles(
     tgyroObject,
     label,
-    RadiisToRun,
+    rho_locations,
     ProfilesPredicted,
     folder,
     percentError,
     provideTurbulentExchange=False,
     impurityPosition=1,
-    includeFast=False,
+    Qi_includes_fast=False,
     use_tglf_scan_trick=None,
     cold_start=False,
     extra_name="",
@@ -351,7 +357,7 @@ def curateTGYROfiles(
 
     # Grab fluxes from TGYRO
     Qe = tgyro.Qe_sim_turb[0, 1:]
-    Qi = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
+    Qi = tgyro.QiIons_sim_turb[0, 1:] if Qi_includes_fast else tgyro.QiIons_sim_turb_thr[0, 1:]
     Ge = tgyro.Ge_sim_turb[0, 1:]
     GZ = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
     Mt = tgyro.Mt_sim_turb[0, 1:]
@@ -366,10 +372,10 @@ def curateTGYROfiles(
         # Run TGLF scan trick
         Flux_base, Flux_mean, Flux_std = tglf_scan_trick(
             tglfObject,
-            RadiisToRun, 
+            rho_locations, 
             ProfilesPredicted, 
             impurityPosition=impurityPosition, 
-            includeFast=includeFast, 
+            Qi_includes_fast=Qi_includes_fast, 
             delta = use_tglf_scan_trick,
             cold_start=cold_start,
             extra_name=extra_name,
@@ -386,7 +392,7 @@ def curateTGYROfiles(
 
         # Grab fluxes from TGYRO
         Qe_tgyro = tgyro.Qe_sim_turb[0, 1:]
-        Qi_tgyro = tgyro.QiIons_sim_turb[0, 1:] if includeFast else tgyro.QiIons_sim_turb_thr[0, 1:]
+        Qi_tgyro = tgyro.QiIons_sim_turb[0, 1:] if Qi_includes_fast else tgyro.QiIons_sim_turb_thr[0, 1:]
         Ge_tgyro = tgyro.Ge_sim_turb[0, 1:]
         GZ_tgyro = tgyro.Gi_sim_turb[impurityPosition, 0, 1:]
         Mt_tgyro = tgyro.Mt_sim_turb[0, 1:]
@@ -433,7 +439,7 @@ def curateTGYROfiles(
         # If simply a percentage error provided
         # --------------------------------------------------------------
 
-        relativeErrorTGLF = [percentError[0] / 100.0]*len(RadiisToRun)
+        relativeErrorTGLF = [percentError[0] / 100.0]*len(rho_locations)
     
         QeE = abs(Qe) * relativeErrorTGLF
         QiE = abs(Qi) * relativeErrorTGLF
@@ -447,7 +453,7 @@ def curateTGYROfiles(
     # **************************************************************************************************************************
 
     Qe_tr_neoc = tgyro.Qe_sim_neo[0, 1:]
-    if includeFast:
+    if Qi_includes_fast:
         Qi_tr_neoc = tgyro.QiIons_sim_neo[0, 1:]
     else:
         Qi_tr_neoc = tgyro.QiIons_sim_neo_thr[0, 1:]
@@ -456,7 +462,7 @@ def curateTGYROfiles(
     Mt_tr_neoc = tgyro.Mt_sim_neo[0, 1:]
 
     Qe_tr_neocE = abs(tgyro.Qe_sim_neo[0, 1:]) * relativeErrorNEO
-    if includeFast:
+    if Qi_includes_fast:
         Qi_tr_neocE = abs(tgyro.QiIons_sim_neo[0, 1:]) * relativeErrorNEO
     else:
         Qi_tr_neocE = abs(tgyro.QiIons_sim_neo_thr[0, 1:]) * relativeErrorNEO
@@ -889,7 +895,7 @@ def defineReferenceFluxes(
 def tgyro_to_powerstate(TGYROresults,
     powerstate,
     forceZeroParticleFlux=False,
-    includeFast=False,
+    Qi_includes_fast=False,
     impurityPosition=1,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
@@ -928,7 +934,7 @@ def tgyro_to_powerstate(TGYROresults,
     # *********** Ion Energy Fluxes
     # **********************************
 
-    if includeFast:
+    if Qi_includes_fast:
 
         powerstate.plasma["QiMWm2_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb[:, :nr]).to(powerstate.dfT)
         powerstate.plasma["QiMWm2_tr_neoc"] = torch.Tensor(TGYROresults.QiIons_sim_neo[:, :nr]).to(powerstate.dfT)

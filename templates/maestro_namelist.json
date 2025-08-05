@@ -75,7 +75,7 @@
                           }
                      },
                      "INITparameters": {
-                          "FastIsThermal": true,
+                          "thermalize_fast": true,
                           "quasineutrality": true
                      },
                      "exploration_ranges": {

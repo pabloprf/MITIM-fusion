@@ -1613,15 +1613,15 @@ class mitim_state:
         if name= T D LUMPED, and I want to eliminate D, removeIons = [2]
         """
 
-        recompute_ptot = options.get("recompute_ptot", True)  # Only done by default
+        recalculate_ptot = options.get("recalculate_ptot", True)  # Only done by default
         removeIons = options.get("removeIons", [])
-        removeFast = options.get("removeFast", False)
+        remove_fast = options.get("remove_fast", False)
         quasineutrality = options.get("quasineutrality", False)
-        sameDensityGradients = options.get("sameDensityGradients", False)
+        enforce_same_aLn = options.get("enforce_same_aLn", False)
         groupQIONE = options.get("groupQIONE", False)
-        ensurePostiveGamma = options.get("ensurePostiveGamma", False)
+        ensure_positive_Gamma = options.get("ensure_positive_Gamma", False)
         ensureMachNumber = options.get("ensureMachNumber", None)
-        FastIsThermal = options.get("FastIsThermal", False)
+        thermalize_fast = options.get("thermalize_fast", False)
 
         print("\t- Custom correction of input.gacode file has been requested")
 
@@ -1634,7 +1634,7 @@ class mitim_state:
             self.remove(removeIons)
 
         # Remove fast
-        if removeFast:
+        if remove_fast:
             ions_fast = []
             for sp in range(len(self.Species)):
                 if self.Species[sp]["S"] != "therm":
@@ -1645,7 +1645,7 @@ class mitim_state:
                 )
                 self.remove(ions_fast)
         # Fast as thermal
-        elif FastIsThermal:
+        elif thermalize_fast:
             self.make_fast_ions_thermal()
 
         # Correct LUMPED
@@ -1673,7 +1673,7 @@ class mitim_state:
             self.profiles["qione(MW/m^3)"] = self.profiles["qione(MW/m^3)"] * 0.0
 
         # Make all thermal ions have the same gradient as the electron density, by keeping volume average constant
-        if sameDensityGradients:
+        if enforce_same_aLn:
             self.enforce_same_density_gradients()
 
         # Enforce quasineutrality
@@ -1683,12 +1683,12 @@ class mitim_state:
         print(f"\t\t\t* Quasineutrality error = {self.derived['QN_Error']:.1e}")
 
         # Recompute ptot
-        if recompute_ptot:
+        if recalculate_ptot:
             self.derive_quantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
-        if ensurePostiveGamma:
+        if ensure_positive_Gamma:
             print("\t\t- Making particle flux always positive", typeMsg="i")
             self.profiles["qpar_beam(1/m^3/s)"] = self.profiles["qpar_beam(1/m^3/s)"].clip(0)
             self.profiles["qpar_wall(1/m^3/s)"] = self.profiles["qpar_wall(1/m^3/s)"].clip(0)

@@ -83,10 +83,10 @@ def initializeProblem(
 
     if (
         len(INITparameters["removeIons"]) > 0
-        or INITparameters["removeFast"]
+        or INITparameters["remove_fast"]
         or INITparameters["quasineutrality"]
-        or INITparameters["sameDensityGradients"]
-        or INITparameters["recompute_ptot"]
+        or INITparameters["enforce_same_aLn"]
+        or INITparameters["recalculate_ptot"]
     ):
         profiles.correct(options=INITparameters)
 
@@ -129,7 +129,7 @@ def initializeProblem(
     if transport_evaluator_options is None:
         transport_evaluator_options = {
             "launchMODELviaSlurm": portals_fun.PORTALSparameters["launchEvaluationsAsSlurmJobs"],
-            "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
+            "Qi_includes_fast": portals_fun.PORTALSparameters["Qi_includes_fast"],
             "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
             "profiles_postprocessing_fun": portals_fun.PORTALSparameters["profiles_postprocessing_fun"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],

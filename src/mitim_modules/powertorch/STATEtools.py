@@ -45,11 +45,13 @@ class powerstate:
 
         if evolution_options is None:
             evolution_options = {}
+            
         if transport_options is None:
             transport_options = {
             "transport_evaluator": None,
             "transport_evaluator_options": {}
             }
+            
         if target_options is None:
             target_options = {
             "target_evaluator": targets_analytic.analytical_model,
@@ -58,6 +60,7 @@ class powerstate:
                 "target_evaluator_method": "powerstate"
                 },
             }
+            
         if tensor_options is None:
             tensor_options = {
                 "dtype": torch.double,

@@ -28,9 +28,7 @@ def main():
     parser.add_argument("--gacode", required=False, type=str, default=None)
     parser.add_argument("--scan", required=False, type=str, default=None)
     parser.add_argument("--drives", required=False, default=False, action="store_true")
-    parser.add_argument(
-        "--cold_start", "-r", required=False, default=False, action="store_true"
-    )
+    parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
 
 
     args = parser.parse_args()

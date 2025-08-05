@@ -14041,13 +14041,13 @@ class transp_output:
         cold_startPreparation=False,
         plotCompare=True,
         extraflag="",
-        onlyThermal_TGYRO=False,
+        remove_fast=False,
         forceIfcold_start=True,
         **kwargs_TGLFrun,
     ):
         """
         Note: If this plasma had fast paricles but not at the time I'm running TGLF, then it will fail if I
-        set onlyThermal_TGYRO=False because at that time the particles are zero
+        set remove_fast=False because at that time the particles are zero
         """
 
         if time is None:
@@ -14078,7 +14078,7 @@ class transp_output:
         cdf = self.TGLFstd[nameF].prep(
             folderGACODE,
             cold_start=cold_startPreparation,
-            onlyThermal_TGYRO=onlyThermal_TGYRO,
+            remove_fast=remove_fast,
             cdf_open=self,
             forceIfcold_start=forceIfcold_start,
         )

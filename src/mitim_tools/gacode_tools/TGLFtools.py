@@ -217,8 +217,8 @@ class TGLF:
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
-        recalculatePTOT=True, # Recalculate PTOT in TGYRO
+        remove_fast=False,  # Ignore fast particles in TGYRO
+        recalculate_ptot=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
@@ -281,9 +281,7 @@ class TGLF:
                     inp = TGLFinput(fii)
                     exists = exists and not inp.onlyControl
                 else:
-                    print(
-                        f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}"
-                    )
+                    print(f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}")
                     exists = False
             if exists:
                 print(
@@ -303,8 +301,8 @@ class TGLF:
             self.tgyro_results = self.tgyro.run_tglf_scan(
                 rhos=self.rhos,
                 cold_start=not exists,
-                onlyThermal=onlyThermal_TGYRO,
-                recalculatePTOT=recalculatePTOT,
+                onlyThermal=remove_fast,
+                recalculate_ptot=recalculate_ptot,
                 donotrun=donotrun,
             )
 
@@ -362,8 +360,8 @@ class TGLF:
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        onlyThermal_TGYRO=False,  # Ignore fast particles in TGYRO
-        recalculatePTOT=True, # Recalculate PTOT in TGYRO
+        remove_fast=False,  # Ignore fast particles in TGYRO
+        recalculate_ptot=True, # Recalculate PTOT in TGYRO
         cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
         inputgacode=None,  # *NOTE BELOW*
         specificInputs=None,  # *NOTE BELOW*
@@ -412,7 +410,7 @@ class TGLF:
 
         self.profiles.derive_quantities(mi_ref=md_u)
 
-        self.profiles.correct(options={'recompute_ptot':recalculatePTOT,'removeFast':onlyThermal_TGYRO})
+        self.profiles.correct(options={'recalculate_ptot':recalculate_ptot,'remove_fast':remove_fast})
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize by preparing a tgyro class and running for -1 iterations
@@ -472,8 +470,6 @@ class TGLF:
         )
 
         return cdf
-
-
 
     def prep_from_tglf(
         self,
@@ -2415,6 +2411,7 @@ class TGLF:
         Qe_gb, Qi_gb, Ge_gb, Gi_gb, Mt_gb, S_gb = [],[],[],[],[],[]        
         ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[]
         etalow_g, etalow_f, etalow_k = [], [], []
+        Qifast, Qifast_gb = [],[]
         cont = 0
         for ikey in self.results:
             isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1])
@@ -2427,6 +2424,7 @@ class TGLF:
                 Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0, Mt_gb0, S_gb0 = [],[],[],[],[],[]
                 ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[]
                 etalow_g0, etalow_f0, etalow_k0 = [], [], []
+                Qifast0, Qifast_gb0 = [],[]
                 for irho_cont in range(len(self.rhos)):
                     irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
 
@@ -2434,6 +2432,7 @@ class TGLF:
                     x0.append(self.results[ikey]["parsed"][irho][variable])
                     Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
                     Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
+                    Qifast_gb0.append(self.results[ikey]["TGLFout"][irho].Qifast)
                     Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
                     Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
                     Mt_gb0.append(self.results[ikey]["TGLFout"][irho].Mt)
@@ -2453,6 +2452,7 @@ class TGLF:
                     if self.results[ikey]["TGLFout"][irho].unnormalization_successful:
                         Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
                         Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
+                        Qifast0.append(self.results[ikey]["TGLFout"][irho].Qifast_unn)
                         Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
                         Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
                         Mt0.append(self.results[ikey]["TGLFout"][irho].Mt_unn)
@@ -2463,9 +2463,11 @@ class TGLF:
                 x.append(x0)
                 Qe.append(Qe0)
                 Qi.append(Qi0)
+                Qifast.append(Qifast0)
                 Ge.append(Ge0)
                 Qe_gb.append(Qe_gb0)
                 Qi_gb.append(Qi_gb0)
+                Qifast_gb.append(Qifast_gb0)
                 Ge_gb.append(Ge_gb0)
                 Gi_gb.append(Gi_gb0)
                 Gi.append(Gi0)
@@ -2491,12 +2493,14 @@ class TGLF:
         self.scans[label]["xV"] = np.atleast_2d(np.transpose(x))
         self.scans[label]["Qe_gb"] = np.atleast_2d(np.transpose(Qe_gb))
         self.scans[label]["Qi_gb"] = np.atleast_2d(np.transpose(Qi_gb))
+        self.scans[label]["Qifast_gb"] = np.atleast_2d(np.transpose(Qifast_gb))
         self.scans[label]["Ge_gb"] = np.atleast_2d(np.transpose(Ge_gb))
         self.scans[label]["Gi_gb"] = np.atleast_2d(np.transpose(Gi_gb))
         self.scans[label]["Mt_gb"] = np.atleast_2d(np.transpose(Mt_gb))
         self.scans[label]["S_gb"] = np.atleast_2d(np.transpose(S_gb))
         self.scans[label]["Qe"] = np.atleast_2d(np.transpose(Qe))
         self.scans[label]["Qi"] = np.atleast_2d(np.transpose(Qi))
+        self.scans[label]["Qifast"] = np.atleast_2d(np.transpose(Qifast))
         self.scans[label]["Ge"] = np.atleast_2d(np.transpose(Ge))
         self.scans[label]["Gi"] = np.atleast_2d(np.transpose(Gi))
         self.scans[label]["Mt"] = np.atleast_2d(np.transpose(Mt))
@@ -3782,7 +3786,7 @@ def changeANDwrite_TGLF(
             if ApplyCorrections:
                 print("\t- Applying corrections")
                 inputTGLF_rho.removeLowDensitySpecie()
-                inputTGLF_rho.removeFast()
+                inputTGLF_rho.remove_fast()
 
             # Ensure that plasma to run is quasineutral
             if Quasineutral:
@@ -3910,6 +3914,7 @@ class TGLFinput:
             }
 
             thermal_indeces = [1, 2]
+            fast_indeces = []
             for i in range(len(self.species) - 2):
                 TiTe = self.species[3 + i]["TAUS"]
                 if TiTe < thrTemperatureRatio:
@@ -3917,17 +3922,17 @@ class TGLFinput:
                     thermal_indeces.append(3 + i)
                 else:
                     self.ions_info[3 + i] = {"type": "fast"}
+                    fast_indeces.append(3 + i)
 
             self.ions_info["thermal_list"] = thermal_indeces
-            self.ions_info["thermal_list_extras"] = thermal_indeces[
-                2:
-            ]  # remove electrons and mains
-
+            self.ions_info["thermal_list_extras"] = thermal_indeces[2:]  # remove electrons and mains
+            
+            self.ions_info["fast_list"] = fast_indeces
+            
             self.onlyControl = False
+            
         else:
-            print(
-                "\t- No species in this input.tglf (it is either a controls-only file or there was a problem generating it)"
-            )
+            print("\t- No species in this input.tglf (it is either a controls-only file or there was a problem generating it)")
             self.onlyControl = True
 
     def isThePlasmaDT(self):
@@ -3943,7 +3948,7 @@ class TGLFinput:
 
         return np.abs(mrat - 1.5) < 0.01
 
-    def removeFast(self):
+    def remove_fast(self):
         self.processSpecies()
         i = 1
         while i <= len(self.species):
@@ -4483,12 +4488,10 @@ class TGLFoutput:
         # Ions to include? e.g. IncludeExtraIonsInQi = [2,3,4] -> This will sum to ion 1
         # --------------------------------------------------------------------------------
 
-        IncludeExtraIonsInQi = (
-            [i - 1 for i in self.inputclass.ions_info["thermal_list_extras"]]
-            if self.inputclass is not None
-            else []
-        )
+        IncludeExtraIonsInQi = [i - 1 for i in self.inputclass.ions_info["thermal_list_extras"]] if self.inputclass is not None else []
         self.ions_included = (1,) + tuple(IncludeExtraIonsInQi)
+        
+        self.fast_included = tuple(self.inputclass.ions_info["fast_list"]) if self.inputclass is not None else ()
 
         # ------------------------------------------------------------------------
         # Fluxes
@@ -4515,6 +4518,13 @@ class TGLFoutput:
         print(f"\t\t- For Qi, summing contributions from ions {self.ions_included} (#0 is e-)",typeMsg="i",)
         self.Gi = data[0, self.ions_included].sum()
         self.Qi = data[1, self.ions_included].sum()
+       
+        if len(self.fast_included)>0:
+            print(f"\t\t- For Qifast, summing contributions from fast ions {self.fast_included} (#0 is e-)",typeMsg="i",)
+            self.Qifast = data[1, self.fast_included].sum()
+        else:
+            print(f"\t\t- No fast ions included",typeMsg="i",)
+            self.Qifast = 0.0
 
         signMt = - self.inputclass.plasma['SIGN_IT'] # Following tgyro_flux.f90
         print(f"\t\t- Sign of Mt given by toroidal current direction (SIGN_IT={-signMt}): {signMt}",typeMsg="i",)
@@ -4997,6 +5007,8 @@ class TGLFoutput:
 
             self.Qe_unn = self.Qe * q_gb[ir]
             self.Qi_unn = self.Qi * q_gb[ir]
+            self.Qifast_unn = self.Qifast * q_gb[ir]
+            self.QiAll_unn = self.QiAll * q_gb[ir]
             self.Ge_unn = self.Ge * g_gb[ir]
             self.GiAll_unn = self.GiAll * g_gb[ir]
 

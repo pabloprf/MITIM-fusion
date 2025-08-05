@@ -128,14 +128,14 @@ class portals(STRATEGYtools.opt_evaluator):
 		"""
 
         self.INITparameters = {
-            "recompute_ptot": True,  # Recompute PTOT to match kinetic profiles (after removals)
+            "recalculate_ptot": True,  # Recompute PTOT to match kinetic profiles (after removals)
             "quasineutrality": False,  # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
             "removeIons": [],  # Remove this ion from the input.gacode (if D,T,Z, eliminate T with [2])
-            "removeFast": False,  # Automatically detect which are fast ions and remove them
-            "FastIsThermal": False,  # Do not remove fast, keep their diluiton effect but make them thermal
-            "sameDensityGradients": False,  # Make all ion density gradients equal to electrons
+            "remove_fast": False,  # Automatically detect which are fast ions and remove them
+            "thermalize_fast": False,  # Do not remove fast, keep their diluiton effect but make them thermal
+            "enforce_same_aLn": False,  # Make all ion density gradients equal to electrons
             "groupQIONE": False,
-            "ensurePostiveGamma": False,
+            "ensure_positive_Gamma": False,
             "ensureMachNumber": None,
         }
 
@@ -166,7 +166,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "applyCorrections": {
                 "Ti_thermals": True,  # Keep all thermal ion temperatures equal to the main Ti
                 "ni_thermals": True,  # Adjust for quasineutrality by modifying the thermal ion densities together with ne
-                "recompute_ptot": True,  # Recompute PTOT to insert in input file each time
+                "recalculate_ptot": True,  # Recompute PTOT to insert in input file each time
                 "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
                 "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
             },
@@ -205,7 +205,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "target_evaluator": target_evaluator,
             "target_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
             "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
-            "includeFastInQi": False,  # If True, and fast ions have been included, in seprateNEO, sum fast
+            "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)
             "portals_transformation_variables": portals_transformation_variables,  # Physics-informed parameters to fit surrogates
             "portals_transformation_variables_trace": portals_transformation_variables_trace,  # Physics-informed parameters to fit surrogates for trace impurities
             "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable

@@ -159,7 +159,7 @@ class PORTALSanalyzer:
         self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.ProfilesPredicted else None
 
         self.runWithRotation = "w0" in self.ProfilesPredicted
-        self.includeFast = self.PORTALSparameters["includeFastInQi"]
+        self.includeFast = self.PORTALSparameters["Qi_includes_fast"]
         self.forceZeroParticleFlux = self.PORTALSparameters["forceZeroParticleFlux"]
 
         # Profiles and tgyro results
