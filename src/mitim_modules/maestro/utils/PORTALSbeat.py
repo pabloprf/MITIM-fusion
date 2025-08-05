@@ -126,7 +126,7 @@ class portals_beat(beat):
         _ = PORTALSoptimization.flux_match_surrogate(
             portals.step,
             p,
-            TargetOptions_use = self.mitim_bo.optimization_object.powerstate.TargetOptions,   # Use the TargetOptions of the new run, not the old one (which may be with fixed targets if soft)
+            target_options_use = self.mitim_bo.optimization_object.powerstate.target_options,   # Use the target_options of the new run, not the old one (which may be with fixed targets if soft)
             file_write_csv=folder_fm / 'optimization_data.csv'
             )
 

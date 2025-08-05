@@ -28,17 +28,17 @@ def calculator(
     if typeCalculation == 1:
         p = STATEtools.powerstate(
             profiles,
-            EvolutionOptions={
+            evolution_options={
                 "rhoPredicted": rho_vec,
                 'fineTargetsResolution': fineTargetsResolution,
             },
-            TargetOptions={
+            target_options={
                 "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
                     "targets_evaluator_method":  "tgyro"},
             },
-            TransportOptions={
+            transport_options={
                 "transport_evaluator": transport_tgyro.tgyro_model,
                 "ModelOptions": {
                     "cold_start": cold_start,
@@ -70,17 +70,17 @@ def calculator(
     elif typeCalculation == 2:
         p = STATEtools.powerstate(
             profiles,
-            EvolutionOptions={
+            evolution_options={
                 "rhoPredicted": rho_vec,
                 'fineTargetsResolution': fineTargetsResolution,
             },
-            TargetOptions={
+            target_options={
                 "targets_evaluator": targets_analytic.analytical_model,
                 "ModelOptions": {
                     "TypeTarget": TypeTarget,
                     "targets_evaluator_method":  "powerstate"},
             },
-            TransportOptions={
+            transport_options={
                 "transport_evaluator": None,
                 "ModelOptions": {}
             },

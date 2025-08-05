@@ -303,7 +303,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
             # Targets only if needed (for speed, GB doesn't need it)
             if recalculateTargets:
-                powerstate.TargetOptions["ModelOptions"]["targets_evaluator_method"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
+                powerstate.target_options["ModelOptions"]["targets_evaluator_method"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
 
     return powerstate

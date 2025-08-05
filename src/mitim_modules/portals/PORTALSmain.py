@@ -82,7 +82,7 @@ class portals(STRATEGYtools.opt_evaluator):
         self, 
         folder,                             # Folder where the PORTALS workflow will be run
         namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
-        tensor_opts = {
+        tensor_options = {
             "dtype": torch.double,
             "device": torch.device("cpu"),
         },
@@ -104,7 +104,7 @@ class portals(STRATEGYtools.opt_evaluator):
         super().__init__(
             folder,
             namelist=namelist,
-            tensor_opts=tensor_opts,
+            tensor_options=tensor_options,
             default_namelist_function=(
                 partial(default_namelist, CGYROrun=CGYROrun)
                 if (namelist is None)
@@ -308,7 +308,7 @@ class portals(STRATEGYtools.opt_evaluator):
             limitsAreRelative=limitsAreRelative,
             cold_start=cold_start,
             hardGradientLimits=hardGradientLimits,
-            tensor_opts = self.tensor_opts,
+            tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
             ModelOptions=ModelOptions,
@@ -551,10 +551,10 @@ class portals(STRATEGYtools.opt_evaluator):
 
                 self_copy = copy.deepcopy(self)
                 if reevaluateTargets == 1:
-                    self_copy.powerstate.TransportOptions["transport_evaluator"] = None
-                    self_copy.powerstate.TargetOptions["ModelOptions"]["TypeTarget"] = "powerstate"
+                    self_copy.powerstate.transport_options["transport_evaluator"] = None
+                    self_copy.powerstate.target_options["ModelOptions"]["TypeTarget"] = "powerstate"
                 else:
-                    self_copy.powerstate.TransportOptions["transport_evaluator"] = transport_tgyro.tgyro_model
+                    self_copy.powerstate.transport_options["transport_evaluator"] = transport_tgyro.tgyro_model
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,
@@ -623,7 +623,7 @@ def runModelEvaluator(
     # ---------------------------------------------------------------------------------------------------
 
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
-    powerstate.TransportOptions["ModelOptions"]["cold_start"] = cold_start
+    powerstate.transport_options["ModelOptions"]["cold_start"] = cold_start
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)

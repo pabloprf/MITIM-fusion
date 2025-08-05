@@ -32,7 +32,7 @@ class tglf_model(TRANSPORTtools.power_transport):
         # Grab options from powerstate
         # ------------------------------------------------------------------------------------------------------------------------
 
-        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+        ModelOptions = self.powerstate.transport_options["ModelOptions"]
 
         MODELparameters = ModelOptions.get("MODELparameters",None)
         includeFast = ModelOptions.get("includeFastInQi",False)
@@ -167,7 +167,7 @@ class tglf_model(TRANSPORTtools.power_transport):
 
     def _postprocess(self):
 
-        OriginalFimp =  self.powerstate.TransportOptions["ModelOptions"].get("OriginalFimp", 1.0)
+        OriginalFimp =  self.powerstate.transport_options["ModelOptions"].get("OriginalFimp", 1.0)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
@@ -217,8 +217,8 @@ class tglf_model(TRANSPORTtools.power_transport):
                 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "extra_params" in self.powerstate.transport_options["ModelOptions"] and "folder" in self.powerstate.transport_options["ModelOptions"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 

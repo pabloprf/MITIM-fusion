@@ -69,7 +69,7 @@ class opt_evaluator:
         folder,
         namelist=None,
         default_namelist_function=None,
-        tensor_opts = {
+        tensor_options = {
             "dtype": torch.double,
             "device": torch.device("cpu"),
         }
@@ -78,7 +78,7 @@ class opt_evaluator:
         Namelist file can be provided and will be copied to the folder
         """
 
-        self.tensor_opts = tensor_opts
+        self.tensor_options = tensor_options
 
         print("- Parent opt_evaluator function initialized")
 
@@ -123,8 +123,8 @@ class opt_evaluator:
         }
 
         # Determine type of tensors to work with
-        torch.set_default_dtype(self.tensor_opts["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
-        self.dfT = torch.randn( (2, 2), **tensor_opts)
+        torch.set_default_dtype(self.tensor_options["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
+        self.dfT = torch.randn( (2, 2), **tensor_options)
 
         # Name of calibrated objectives (e.g. QiRes1 to represent the objective from Qi1-QiT1)
         self.name_objectives = None

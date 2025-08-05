@@ -13,8 +13,8 @@ class diffusion_model(TRANSPORTtools.power_transport):
         super().__init__(powerstate, **kwargs)
 
         # Ensure that the provided diffusivities include the zero location
-        self.chi_e = self.powerstate.TransportOptions["ModelOptions"]["chi_e"]
-        self.chi_i = self.powerstate.TransportOptions["ModelOptions"]["chi_i"]
+        self.chi_e = self.powerstate.transport_options["ModelOptions"]["chi_e"]
+        self.chi_i = self.powerstate.transport_options["ModelOptions"]["chi_i"]
 
         if self.chi_e.shape[0] < self.powerstate.plasma['rho'].shape[-1]:
             self.chi_e = torch.cat((torch.zeros(1), self.chi_e))
@@ -73,7 +73,7 @@ class surrogate(TRANSPORTtools.power_transport):
         for prof in self.powerstate.ProfilesPredicted:
             X = torch.cat((X,self.powerstate.plasma['aL'+prof][:,1:]),axis=1)
 
-        _, Q, _, _ = self.powerstate.TransportOptions["ModelOptions"]["flux_fun"](X)
+        _, Q, _, _ = self.powerstate.transport_options["ModelOptions"]["flux_fun"](X)
 
         numeach = self.powerstate.plasma["rho"].shape[1] - 1
 

@@ -30,7 +30,7 @@ def initializeProblem(
     ModelOptions=None,
     seedInitial=None,
     checkForSpecies=True,
-    tensor_opts = {
+    tensor_options = {
         "dtype": torch.double,
         "device": torch.device("cpu"),
     }
@@ -43,7 +43,7 @@ def initializeProblem(
         - define_ranges_from_profiles must be PROFILES class
     """
 
-    dfT = torch.randn((2, 2), **tensor_opts)
+    dfT = torch.randn((2, 2), **tensor_options)
 
     if seedInitial is not None:
         torch.manual_seed(seed=seedInitial)
@@ -128,24 +128,18 @@ def initializeProblem(
 
     if ModelOptions is None:
         ModelOptions = {
-            "cold_start": False,
-            "launchMODELviaSlurm": portals_fun.PORTALSparameters[
-                "launchEvaluationsAsSlurmJobs"
-            ],
-            "MODELparameters": portals_fun.MODELparameters,
+            "launchMODELviaSlurm": portals_fun.PORTALSparameters["launchEvaluationsAsSlurmJobs"],
             "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
             "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
-            "profiles_postprocessing_fun": portals_fun.PORTALSparameters[
-                "profiles_postprocessing_fun"
-            ],
-            "impurityPosition": position_of_impurity,
+            "profiles_postprocessing_fun": portals_fun.PORTALSparameters["profiles_postprocessing_fun"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
-            "forceZeroParticleFlux": portals_fun.PORTALSparameters[
-                "forceZeroParticleFlux"
-            ],
+            "forceZeroParticleFlux": portals_fun.PORTALSparameters["forceZeroParticleFlux"],
             "percentError": portals_fun.PORTALSparameters["percentError"],
             "use_tglf_scan_trick": portals_fun.PORTALSparameters["use_tglf_scan_trick"],
+            "cold_start": False,
+            "MODELparameters": portals_fun.MODELparameters,
+            "impurityPosition": position_of_impurity,
         }
 
     if "extra_params" not in ModelOptions:
@@ -163,23 +157,23 @@ def initializeProblem(
 
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
-        EvolutionOptions={
+        evolution_options={
             "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
             "rhoPredicted": xCPs,
             "impurityPosition": position_of_impurity,
             "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
         },
-        TransportOptions={
+        transport_options={
                "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
                "ModelOptions": ModelOptions,
         },
-        TargetOptions={
+        target_options={
             "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
             "ModelOptions": {
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                 "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
         },
-        tensor_opts = tensor_opts
+        tensor_options = tensor_options
     )
 
     # After resolution and corrections, store.
@@ -218,19 +212,19 @@ def initializeProblem(
     if define_ranges_from_profiles is not None:  # If I want to define ranges from a different profile
         powerstate_extra = STATEtools.powerstate(
             define_ranges_from_profiles,
-            EvolutionOptions={
+            evolution_options={
                 "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
                 "rhoPredicted": xCPs,
                 "impurityPosition": position_of_impurity,
                 "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
-            TargetOptions={
+            target_options={
                 "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
                 "ModelOptions": {
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
                     "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
             },
-            tensor_opts = tensor_opts
+            tensor_options = tensor_options
         )
 
         dictCPs_base_extra = {}

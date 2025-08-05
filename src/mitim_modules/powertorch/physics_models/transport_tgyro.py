@@ -27,7 +27,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _evaluate_tglf_neo(self):
 
-        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+        ModelOptions = self.powerstate.transport_options["ModelOptions"]
 
         MODELparameters = ModelOptions.get("MODELparameters",None)
         includeFast = ModelOptions.get("includeFastInQi",False)
@@ -139,7 +139,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _postprocess_results(self, tgyro, label):
 
-        ModelOptions = self.powerstate.TransportOptions["ModelOptions"]
+        ModelOptions = self.powerstate.transport_options["ModelOptions"]
 
         includeFast = ModelOptions.get("includeFastInQi",False)
         UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
@@ -160,7 +160,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.TargetOptions['ModelOptions']['targets_evaluator_method'] == "tgyro",
+            provideTargets=self.powerstate.target_options['ModelOptions']['targets_evaluator_method'] == "tgyro",
         )
 
         tgyro.results["use"] = tgyro.results[label]
@@ -181,8 +181,8 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.TransportOptions["ModelOptions"] and "folder" in self.powerstate.TransportOptions["ModelOptions"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.TransportOptions["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "extra_params" in self.powerstate.transport_options["ModelOptions"] and "folder" in self.powerstate.transport_options["ModelOptions"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 

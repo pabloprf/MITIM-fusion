@@ -26,40 +26,40 @@ class powerstate:
         self,
         profiles_object,
         increase_profile_resol=True,
-        EvolutionOptions=None,
-        TransportOptions=None,
-        TargetOptions=None,
-        tensor_opts=None,
+        evolution_options=None,
+        transport_options=None,
+        target_options=None,
+        tensor_options=None,
     ):
         '''
         Inputs:
             - profiles_object: Object for gacode_state or others
-            - EvolutionOptions:
+            - evolution_options:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
                 - ProfilesPredicted: list of profiles to predict
                 - impurityPosition: int = position of the impurity in the ions set
                 - fineTargetsResolution: int = resolution of the fine targets
-            - TransportOptions: dictionary with transport_evaluator and ModelOptions
-            - TargetOptions: dictionary with targets_evaluator and ModelOptions
+            - transport_options: dictionary with transport_evaluator and ModelOptions
+            - target_options: dictionary with targets_evaluator and ModelOptions
         '''
 
-        if EvolutionOptions is None:
-            EvolutionOptions = {}
-        if TransportOptions is None:
-            TransportOptions = {
+        if evolution_options is None:
+            evolution_options = {}
+        if transport_options is None:
+            transport_options = {
             "transport_evaluator": None,
             "ModelOptions": {}
             }
-        if TargetOptions is None:
-            TargetOptions = {
+        if target_options is None:
+            target_options = {
             "targets_evaluator": targets_analytic.analytical_model,
             "ModelOptions": {
                 "TypeTarget": 3,
                 "targets_evaluator_method": "powerstate"
                 },
             }
-        if tensor_opts is None:
-            tensor_opts = {
+        if tensor_options is None:
+            tensor_options = {
                 "dtype": torch.double,
                 "device": torch.device("cpu"),
             }
@@ -70,16 +70,16 @@ class powerstate:
 
         print('>> Creating powerstate object...')
 
-        self.TransportOptions = TransportOptions
-        self.TargetOptions = TargetOptions
+        self.transport_options = transport_options
+        self.target_options = target_options
 
         # Default options
-        self.ProfilesPredicted = EvolutionOptions.get("ProfilePredicted", ["te", "ti", "ne"])
-        self.impurityPosition = EvolutionOptions.get("impurityPosition", 1)
+        self.ProfilesPredicted = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
+        self.impurityPosition = evolution_options.get("impurityPosition", 1)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
-        self.fineTargetsResolution = EvolutionOptions.get("fineTargetsResolution", None)
-        self.scaleIonDensities = EvolutionOptions.get("scaleIonDensities", True)
-        rho_vec = EvolutionOptions.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
+        self.fineTargetsResolution = evolution_options.get("fineTargetsResolution", None)
+        self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
+        rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         if rho_vec[0] == 0:
             raise ValueError("[MITIM] The radial grid must not contain the initial zero")
@@ -96,7 +96,7 @@ class powerstate:
         self.ProfilesPredicted = _ensure_ne_before_nz(self.ProfilesPredicted)
 
         # Default type and device tensor
-        self.dfT = torch.randn((2, 2), **tensor_opts)
+        self.dfT = torch.randn((2, 2), **tensor_options)
 
         '''
         Potential profiles to evolve (aLX) and their corresponding flux matching
@@ -227,7 +227,7 @@ class powerstate:
             pickle.dump(self, handle, protocol=4)
 
     def combine_states(self, states, includeTransport=True):
-        self.TransportOptions_set = [self.TransportOptions]
+        self.transport_options_set = [self.transport_options]
         self.profiles_stored_set = self.profiles_stored
 
         for state in states:
@@ -236,17 +236,17 @@ class powerstate:
                     self.plasma[key]
                 )
 
-            self.TransportOptions_set.append(state.TransportOptions)
+            self.transport_options_set.append(state.transport_options)
             self.profiles_stored_set += state.profiles_stored
 
             if includeTransport:
                 for key in ["chi_e", "chi_i"]:
-                    self.TransportOptions["ModelOptions"][key] = torch.cat(
+                    self.transport_options["ModelOptions"][key] = torch.cat(
                         (
-                            self.TransportOptions["ModelOptions"][key],
-                            state.TransportOptions["ModelOptions"][key],
+                            self.transport_options["ModelOptions"][key],
+                            state.transport_options["ModelOptions"][key],
                         )
-                    ).to(self.TransportOptions["ModelOptions"][key])
+                    ).to(self.transport_options["ModelOptions"][key])
 
     def copy_state(self):
 
@@ -294,7 +294,7 @@ class powerstate:
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks (populates components and Pe,Pi,...)
-        relative_error_assumed = self.TransportOptions["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
+        relative_error_assumed = self.transport_options["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
         self.calculateTargets(relative_error_assumed=relative_error_assumed)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
         # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
@@ -363,7 +363,7 @@ class powerstate:
 
             if folder_main is not None:
                 folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
-                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                if issubclass(self.transport_options["transport_evaluator"], TRANSPORTtools.power_transport):
                     (folder / "model_complete").mkdir(parents=True, exist_ok=True)
 
             # ***************************************************************************************************************
@@ -377,7 +377,7 @@ class powerstate:
 
             # Save state so that I can check initializations
             if folder_main is not None:
-                if issubclass(self.TransportOptions["transport_evaluator"], TRANSPORTtools.power_transport):
+                if issubclass(self.transport_options["transport_evaluator"], TRANSPORTtools.power_transport):
                     self.save(folder / "powerstate.pkl")
                     shutil.copy2(folder_run / "input.gacode", folder)
 
@@ -685,10 +685,10 @@ class powerstate:
         """
 
         # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
-        if (self.TargetOptions["targets_evaluator"] is None) or (self.TargetOptions["ModelOptions"]["targets_evaluator_method"] == "tgyro"):
+        if (self.target_options["targets_evaluator"] is None) or (self.target_options["ModelOptions"]["targets_evaluator_method"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
-            targets = self.TargetOptions["targets_evaluator"](self)
+            targets = self.target_options["targets_evaluator"](self)
 
         # [Optional] Calculate local targets and integrals on a fine grid
         if self.fineTargetsResolution is not None:
@@ -707,7 +707,7 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.TransportOptions["ModelOptions"].get("forceZeroParticleFlux", False))
+            forceZeroParticleFlux=self.transport_options["ModelOptions"].get("forceZeroParticleFlux", False))
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", evaluation_number=0):
@@ -717,10 +717,10 @@ class powerstate:
         folder = IOtools.expandPath(folder)
 
         # Select transport evaluator
-        if self.TransportOptions["transport_evaluator"] is None:
+        if self.transport_options["transport_evaluator"] is None:
             transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         else:
-            transport = self.TransportOptions["transport_evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
+            transport = self.transport_options["transport_evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         
         # Produce profile object (for certain transport evaluators, this is necessary)
         transport.produce_profiles()
