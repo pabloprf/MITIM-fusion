@@ -1059,8 +1059,8 @@ class mitim_state:
             self.derived["mi_ref"],
             self.derived["B_unit"]
             )
-        s_hat =  self.derived["r"]*self._deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
-        self.derived['s_q'] = (self.profiles["q(-)"] / self.derived['roa'])**2 * s_hat
+        self.derived['s_hat'] =  self.derived["r"]*self._deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
+        self.derived['s_q'] = (self.profiles["q(-)"] / self.derived['roa'])**2 * self.derived['s_hat']
         self.derived['s_q'][0] = 0.0 # infinite in first location
 
     # Derivate function
