@@ -211,7 +211,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
             "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
             "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
-            "surrogateForTurbExch": False,  # Run turbulent exchange as surrogate?
+            "turbulent_exchange_as_surrogate": False,  # Run turbulent exchange as surrogate?
             "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes
             "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
             "ImpurityOfInterest": None,  # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"

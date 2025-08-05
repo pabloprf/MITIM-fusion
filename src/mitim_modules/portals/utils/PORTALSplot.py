@@ -2011,10 +2011,10 @@ def PORTALSanalyzer_plotModelComparison(
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4 else 10))
+        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)+int(self.PORTALSparameters["turbulent_exchange_as_surrogate"]) < 4 else 10))
 
     if axs is None:
-        if len(self.ProfilesPredicted)+int(self.PORTALSparameters["surrogateForTurbExch"]) < 4:
+        if len(self.ProfilesPredicted)+int(self.PORTALSparameters["turbulent_exchange_as_surrogate"]) < 4:
             axs = fig.subplots(ncols=3)
         else:
             axs = fig.subplots(ncols=3, nrows=2)
@@ -2201,7 +2201,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    if self.PORTALSparameters["surrogateForTurbExch"]:
+    if self.PORTALSparameters["turbulent_exchange_as_surrogate"]:
         if UseTGLFfull_x is not None:
             raise Exception("Turbulent exchange plot not implemented yet")
         # Sexch

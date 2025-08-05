@@ -130,7 +130,7 @@ def initializeProblem(
         transport_evaluator_options = {
             "launchMODELviaSlurm": portals_fun.PORTALSparameters["launchEvaluationsAsSlurmJobs"],
             "Qi_includes_fast": portals_fun.PORTALSparameters["Qi_includes_fast"],
-            "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
+            "TurbulentExchange": portals_fun.PORTALSparameters["turbulent_exchange_as_surrogate"],
             "profiles_postprocessing_fun": portals_fun.PORTALSparameters["profiles_postprocessing_fun"],
             "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
             "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
@@ -292,7 +292,7 @@ def initializeProblem(
 
             name_objectives.append(f"{var}Res_{i+1}")
 
-    if portals_fun.PORTALSparameters["surrogateForTurbExch"]:
+    if portals_fun.PORTALSparameters["turbulent_exchange_as_surrogate"]:
         for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
             ofs.append(f"Qie_tr_turb_{i+1}")
 

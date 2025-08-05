@@ -139,7 +139,7 @@ for test in tests:
         #     portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne",'nZ','w0']
 
         #     portals_fun.PORTALSparameters["ImpurityOfInterest"] = 'W'
-        #     portals_fun.PORTALSparameters["surrogateForTurbExch"] = True
+        #     portals_fun.PORTALSparameters["turbulent_exchange_as_surrogate"] = True
 
         #     portals_fun.prep(inputgacode, folderWork)
         #     mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)

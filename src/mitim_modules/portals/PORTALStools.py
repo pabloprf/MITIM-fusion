@@ -399,7 +399,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if PORTALSparameters["surrogateForTurbExch"]:
+    if PORTALSparameters["turbulent_exchange_as_surrogate"]:
         QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
     else:
         QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
@@ -532,7 +532,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if PORTALSparameters["surrogateForTurbExch"]:
+    if PORTALSparameters["turbulent_exchange_as_surrogate"]:
         QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
         QieMWm3_tr_turb_integrated_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
     else:
