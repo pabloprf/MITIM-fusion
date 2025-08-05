@@ -92,8 +92,8 @@ class cgyro_model(transport_tgyro.tgyro_model):
         # **************************************************************************************************************************
 
         evaluateCGYRO(
-            self.powerstate.transport_options["ModelOptions"]["extra_params"]["PORTALSparameters"],
-            self.powerstate.transport_options["ModelOptions"]["extra_params"]["folder"],
+            self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["PORTALSparameters"],
+            self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"],
             self.evaluation_number,
             FolderEvaluation_TGYRO,
             self.file_profs,

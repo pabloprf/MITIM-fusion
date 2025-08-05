@@ -27,19 +27,19 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _evaluate_tglf_neo(self):
 
-        ModelOptions = self.powerstate.transport_options["ModelOptions"]
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
-        MODELparameters = ModelOptions.get("MODELparameters",None)
-        includeFast = ModelOptions.get("includeFastInQi",False)
-        launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
-        cold_start = ModelOptions.get("cold_start", False)
-        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
-        percentError = ModelOptions.get("percentError", [5, 1, 0.5])
-        use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
+        MODELparameters = transport_evaluator_options.get("MODELparameters",None)
+        includeFast = transport_evaluator_options.get("includeFastInQi",False)
+        launchMODELviaSlurm = transport_evaluator_options.get("launchMODELviaSlurm", False)
+        cold_start = transport_evaluator_options.get("cold_start", False)
+        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
+        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
+        use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
+        cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
-        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
+        impurityPosition = self.powerstate.impurityPosition_transport #transport_evaluator_options.get("impurityPosition", 1)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # tglf_neo_original: Run TGYRO workflow - TGLF + NEO in subfolder tglf_neo_original (original as in... without stds or merging)
@@ -139,13 +139,13 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _postprocess_results(self, tgyro, label):
 
-        ModelOptions = self.powerstate.transport_options["ModelOptions"]
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
-        includeFast = ModelOptions.get("includeFastInQi",False)
-        UseFineGridTargets = ModelOptions.get("UseFineGridTargets", False)
-        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
-        OriginalFimp = ModelOptions.get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = ModelOptions.get("forceZeroParticleFlux", False)
+        includeFast = transport_evaluator_options.get("includeFastInQi",False)
+        UseFineGridTargets = transport_evaluator_options.get("UseFineGridTargets", False)
+        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
+        OriginalFimp = transport_evaluator_options.get("OriginalFimp", 1.0)
+        forceZeroParticleFlux = transport_evaluator_options.get("forceZeroParticleFlux", False)
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
@@ -160,7 +160,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
             provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.target_options['ModelOptions']['targets_evaluator_method'] == "tgyro",
+            provideTargets=self.powerstate.target_options['target_evaluator_options']['target_evaluator_method'] == "tgyro",
         )
 
         tgyro.results["use"] = tgyro.results[label]
@@ -181,8 +181,8 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.transport_options["ModelOptions"] and "folder" in self.powerstate.transport_options["ModelOptions"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.transport_options["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "extra_params" in self.powerstate.transport_options["transport_evaluator_options"] and "folder" in self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 

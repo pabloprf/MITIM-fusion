@@ -27,7 +27,7 @@ def initializeProblem(
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
-    ModelOptions=None,
+    transport_evaluator_options=None,
     seedInitial=None,
     checkForSpecies=True,
     tensor_options = {
@@ -39,7 +39,7 @@ def initializeProblem(
     Notes:
         - Specification of points occur in rho coordinate, although internally the work is r/a
             cold_start = True if cold_start from beginning
-        - I can give ModelOptions directly (e.g. if I want chis or something)
+        - I can give transport_evaluator_options directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
 
@@ -126,8 +126,8 @@ def initializeProblem(
 
     xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
 
-    if ModelOptions is None:
-        ModelOptions = {
+    if transport_evaluator_options is None:
+        transport_evaluator_options = {
             "launchMODELviaSlurm": portals_fun.PORTALSparameters["launchEvaluationsAsSlurmJobs"],
             "includeFastInQi": portals_fun.PORTALSparameters["includeFastInQi"],
             "TurbulentExchange": portals_fun.PORTALSparameters["surrogateForTurbExch"],
@@ -142,8 +142,8 @@ def initializeProblem(
             "impurityPosition": position_of_impurity,
         }
 
-    if "extra_params" not in ModelOptions:
-        ModelOptions["extra_params"] = {
+    if "extra_params" not in transport_evaluator_options:
+        transport_evaluator_options["extra_params"] = {
             "PORTALSparameters": portals_fun.PORTALSparameters,
             "folder": portals_fun.folder,
         }
@@ -165,13 +165,13 @@ def initializeProblem(
         },
         transport_options={
                "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
-               "ModelOptions": ModelOptions,
+               "transport_evaluator_options": transport_evaluator_options,
         },
         target_options={
-            "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
-            "ModelOptions": {
+            "target_evaluator": portals_fun.PORTALSparameters["target_evaluator"],
+            "target_evaluator_options": {
                 "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
+                "target_evaluator_method": portals_fun.PORTALSparameters["target_evaluator_method"]},
         },
         tensor_options = tensor_options
     )
@@ -219,10 +219,10 @@ def initializeProblem(
                 "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
             },
             target_options={
-                "targets_evaluator": portals_fun.PORTALSparameters["targets_evaluator"],
-                "ModelOptions": {
+                "target_evaluator": portals_fun.PORTALSparameters["target_evaluator"],
+                "transport_evaluator_options": {
                     "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                    "targets_evaluator_method": portals_fun.PORTALSparameters["targets_evaluator_method"]},
+                    "target_evaluator_method": portals_fun.PORTALSparameters["target_evaluator_method"]},
             },
             tensor_options = tensor_options
         )

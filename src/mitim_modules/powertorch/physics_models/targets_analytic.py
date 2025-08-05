@@ -28,10 +28,10 @@ class analytical_model(TARGETStools.power_targets):
 
     def evaluate(self):
 
-        if self.powerstate.target_options["ModelOptions"]["TypeTarget"] >= 2:
+        if self.powerstate.target_options["target_evaluator_options"]["TypeTarget"] >= 2:
             self._evaluate_energy_exchange()
 
-        if self.powerstate.target_options["ModelOptions"]["TypeTarget"] == 3:
+        if self.powerstate.target_options["target_evaluator_options"]["TypeTarget"] == 3:
             self._evaluate_alpha_heating()
             self._evaluate_radiation()
 

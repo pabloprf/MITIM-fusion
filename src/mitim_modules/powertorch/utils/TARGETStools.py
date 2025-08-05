@@ -71,11 +71,11 @@ class power_targets:
         qe = self.powerstate.plasma["te"]*0.0
         qi = self.powerstate.plasma["te"]*0.0
         
-        if self.powerstate.target_options['ModelOptions']['TypeTarget'] >= 2:
+        if self.powerstate.target_options['target_evaluator_options']['TypeTarget'] >= 2:
             qe += -self.powerstate.plasma["qie"]
             qi +=  self.powerstate.plasma["qie"]
         
-        if self.powerstate.target_options['ModelOptions']['TypeTarget'] == 3:
+        if self.powerstate.target_options['target_evaluator_options']['TypeTarget'] == 3:
             qe +=  self.powerstate.plasma["qfuse"] - self.powerstate.plasma["qrad"]
             qi +=  self.powerstate.plasma["qfusi"]
 
@@ -89,11 +89,11 @@ class power_targets:
         # **************************************************************************************************
 
         # Interpolate results from fine to coarse (i.e. whole point is that it is better than integrate interpolated values)
-        if self.powerstate.target_options['ModelOptions']['TypeTarget'] >= 2:
+        if self.powerstate.target_options['target_evaluator_options']['TypeTarget'] >= 2:
             for i in ["qie"]:
                 self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
         
-        if self.powerstate.target_options['ModelOptions']['TypeTarget'] == 3:
+        if self.powerstate.target_options['target_evaluator_options']['TypeTarget'] == 3:
             for i in [
                 "qfuse",
                 "qfusi",

@@ -39,8 +39,8 @@ class powerstate:
                 - ProfilesPredicted: list of profiles to predict
                 - impurityPosition: int = position of the impurity in the ions set
                 - fineTargetsResolution: int = resolution of the fine targets
-            - transport_options: dictionary with transport_evaluator and ModelOptions
-            - target_options: dictionary with targets_evaluator and ModelOptions
+            - transport_options: dictionary with transport_evaluator and transport_evaluator_options
+            - target_options: dictionary with target_evaluator and target_evaluator_options
         '''
 
         if evolution_options is None:
@@ -48,14 +48,14 @@ class powerstate:
         if transport_options is None:
             transport_options = {
             "transport_evaluator": None,
-            "ModelOptions": {}
+            "transport_evaluator_options": {}
             }
         if target_options is None:
             target_options = {
-            "targets_evaluator": targets_analytic.analytical_model,
-            "ModelOptions": {
+            "target_evaluator": targets_analytic.analytical_model,
+            "target_evaluator_options": {
                 "TypeTarget": 3,
-                "targets_evaluator_method": "powerstate"
+                "target_evaluator_method": "powerstate"
                 },
             }
         if tensor_options is None:
@@ -241,12 +241,12 @@ class powerstate:
 
             if includeTransport:
                 for key in ["chi_e", "chi_i"]:
-                    self.transport_options["ModelOptions"][key] = torch.cat(
+                    self.transport_options["transport_evaluator_options"][key] = torch.cat(
                         (
-                            self.transport_options["ModelOptions"][key],
-                            state.transport_options["ModelOptions"][key],
+                            self.transport_options["transport_evaluator_options"][key],
+                            state.transport_options["transport_evaluator_options"][key],
                         )
-                    ).to(self.transport_options["ModelOptions"][key])
+                    ).to(self.transport_options["transport_evaluator_options"][key])
 
     def copy_state(self):
 
@@ -294,7 +294,7 @@ class powerstate:
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks (populates components and Pe,Pi,...)
-        relative_error_assumed = self.transport_options["ModelOptions"].get("percentError", [5, 1, 0.5])[-1]
+        relative_error_assumed = self.transport_options["transport_evaluator_options"].get("percentError", [5, 1, 0.5])[-1]
         self.calculateTargets(relative_error_assumed=relative_error_assumed)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
         # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
@@ -685,10 +685,10 @@ class powerstate:
         """
 
         # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
-        if (self.target_options["targets_evaluator"] is None) or (self.target_options["ModelOptions"]["targets_evaluator_method"] == "tgyro"):
+        if (self.target_options["target_evaluator"] is None) or (self.target_options["target_evaluator_options"]["target_evaluator_method"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
-            targets = self.target_options["targets_evaluator"](self)
+            targets = self.target_options["target_evaluator"](self)
 
         # [Optional] Calculate local targets and integrals on a fine grid
         if self.fineTargetsResolution is not None:
@@ -707,7 +707,7 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.transport_options["ModelOptions"].get("forceZeroParticleFlux", False))
+            forceZeroParticleFlux=self.transport_options["transport_evaluator_options"].get("forceZeroParticleFlux", False))
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", evaluation_number=0):

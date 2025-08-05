@@ -33,14 +33,14 @@ def calculator(
                 'fineTargetsResolution': fineTargetsResolution,
             },
             target_options={
-                "targets_evaluator": targets_analytic.analytical_model,
-                "ModelOptions": {
+                "target_evaluator": targets_analytic.analytical_model,
+                "target_evaluator_options": {
                     "TypeTarget": TypeTarget,
-                    "targets_evaluator_method":  "tgyro"},
+                    "target_evaluator_method":  "tgyro"},
             },
             transport_options={
                 "transport_evaluator": transport_tgyro.tgyro_model,
-                "ModelOptions": {
+                "transport_evaluator_options": {
                     "cold_start": cold_start,
                     "launchSlurm": True,
                     "MODELparameters": {
@@ -75,14 +75,14 @@ def calculator(
                 'fineTargetsResolution': fineTargetsResolution,
             },
             target_options={
-                "targets_evaluator": targets_analytic.analytical_model,
-                "ModelOptions": {
+                "target_evaluator": targets_analytic.analytical_model,
+                "target_evaluator_options": {
                     "TypeTarget": TypeTarget,
-                    "targets_evaluator_method":  "powerstate"},
+                    "target_evaluator_method":  "powerstate"},
             },
             transport_options={
                 "transport_evaluator": None,
-                "ModelOptions": {}
+                "transport_evaluator_options": {}
             },
         )
 

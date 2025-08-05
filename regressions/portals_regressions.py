@@ -61,9 +61,9 @@ for test in tests:
             portals_fun.optimization_options["acquisition_options"]["optimizers"] = ["botorch"]
 
             portals_fun.PORTALSparameters["transport_evaluator"] = TRANSPORTtools.diffusion_model
-            ModelOptions = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
+            transport_evaluator_options = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
 
-            portals_fun.prep(inputgacode, folderWork, ModelOptions=ModelOptions)
+            portals_fun.prep(inputgacode, folderWork, transport_evaluator_options=transport_evaluator_options)
             mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)
             mitim_bo.run()
 

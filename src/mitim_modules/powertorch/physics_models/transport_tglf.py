@@ -32,19 +32,19 @@ class tglf_model(TRANSPORTtools.power_transport):
         # Grab options from powerstate
         # ------------------------------------------------------------------------------------------------------------------------
 
-        ModelOptions = self.powerstate.transport_options["ModelOptions"]
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
-        MODELparameters = ModelOptions.get("MODELparameters",None)
-        includeFast = ModelOptions.get("includeFastInQi",False)
-        launchMODELviaSlurm = ModelOptions.get("launchMODELviaSlurm", False)
-        cold_start = ModelOptions.get("cold_start", False)
-        provideTurbulentExchange = ModelOptions.get("TurbulentExchange", False)
-        percentError = ModelOptions.get("percentError", [5, 1, 0.5])
-        use_tglf_scan_trick = ModelOptions.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = ModelOptions.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
+        MODELparameters = transport_evaluator_options.get("MODELparameters",None)
+        includeFast = transport_evaluator_options.get("includeFastInQi",False)
+        launchMODELviaSlurm = transport_evaluator_options.get("launchMODELviaSlurm", False)
+        cold_start = transport_evaluator_options.get("cold_start", False)
+        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
+        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
+        use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
+        cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
         
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
-        impurityPosition = self.powerstate.impurityPosition_transport #ModelOptions.get("impurityPosition", 1)
+        impurityPosition = self.powerstate.impurityPosition_transport #transport_evaluator_options.get("impurityPosition", 1)
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare TGLF object
@@ -167,7 +167,7 @@ class tglf_model(TRANSPORTtools.power_transport):
 
     def _postprocess(self):
 
-        OriginalFimp =  self.powerstate.transport_options["ModelOptions"].get("OriginalFimp", 1.0)
+        OriginalFimp =  self.powerstate.transport_options["transport_evaluator_options"].get("OriginalFimp", 1.0)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
@@ -217,8 +217,8 @@ class tglf_model(TRANSPORTtools.power_transport):
                 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.transport_options["ModelOptions"] and "folder" in self.powerstate.transport_options["ModelOptions"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.transport_options["ModelOptions"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "extra_params" in self.powerstate.transport_options["transport_evaluator_options"] and "folder" in self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 
