@@ -60,6 +60,7 @@ if plotYN:
         gp.localBehavior_scan(gpA.train_X[around, :], dimension_label=input_label,xrange=xrange, axs=axs, c=cols[i], label=input_label)
 
     axs[0].legend()
+    axs[0].set_title("Full behavior (untransformed space)")
 
     # gp.plot(plotFundamental=False)
     # gp.plotTraining()

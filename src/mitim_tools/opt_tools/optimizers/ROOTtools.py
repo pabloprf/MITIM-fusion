@@ -39,12 +39,11 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
         print("\t- Implementation of simple relaxation method")
         
         solver_options = {
-            "tol": optimization_params.get("tol",-1e-6),
             "tol_rel": optimization_params.get("relative_improvement_for_stopping",1e-4),
-            "maxiter": optimization_params.get("maxiter",2000),
+            "maxiter": optimization_params.get("maxiter",1000),
             "relax": optimization_params.get("relax",0.1),     
             "relax_dyn": optimization_params.get("relax_dyn",True),
-            "print_each": optimization_params.get("maxiter",2000)//20,
+            "print_each": optimization_params.get("maxiter",1000)//20,
         }
         solver_fun = optim.simple_relaxation
         numZ = 6
