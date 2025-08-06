@@ -68,7 +68,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
     seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
 
-    with IOtools.timer(name = "\n\t- Optimization", name_timer = '\t\t- Time: '):
+    with IOtools.timer(name = "\n\t- Optimization"):
         x_opt, _ = botorch.optim.optimize_acqf(
             acq_function=fun_opt,
             bounds=fun.bounds_mod,
