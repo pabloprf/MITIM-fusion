@@ -9,7 +9,7 @@ from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
-from mitim_tools.opt_tools.optimizers import optim
+from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_modules.powertorch.utils import TARGETStools, CALCtools, TRANSPORTtools
 from mitim_modules.powertorch.physics_models import targets_analytic
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -345,9 +345,9 @@ class powerstate:
         timeBeginning = datetime.datetime.now()
 
         if algorithm == "root":
-            solver_fun = optim.scipy_root
+            solver_fun = multivariate_tools.scipy_root
         elif algorithm == "simple_relax":
-            solver_fun = optim.simple_relaxation
+            solver_fun = multivariate_tools.simple_relaxation
         else:
             raise ValueError(f"[MITIM] Algorithm {algorithm} not recognized")
     
@@ -390,20 +390,15 @@ class powerstate:
 
             # Residual is the difference between the target and the transport
             yRes = (QTarget - QTransport).abs()
+            
             # Metric is the mean of the absolute value of the residual
-            yMetric = -yRes.mean(axis=-1)
-            # Best in batch
-            best_candidate = yMetric.argmax().item()
-            # Only pass the best candidate
-            yRes = yRes[best_candidate, :].detach()
-            yMetric = yMetric[best_candidate].detach()
-            Xpass = X[best_candidate, :].detach()
+            yMetric = -yRes.mean(axis=-1).detach()
 
             # Store values
             if y_history is not None:      
-                y_history.append(yRes)
+                y_history.append(yRes.detach())
             if x_history is not None:      
-                x_history.append(Xpass)
+                x_history.append(X.detach())
             if metric_history is not None: 
                 metric_history.append(yMetric)
 
@@ -418,10 +413,14 @@ class powerstate:
         x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
 
         # Optimize
-        _,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
+        x_best,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
 
         # For simplicity, return the trajectory of only the best candidate
-        self.FluxMatch_Yopt, self.FluxMatch_Xopt = Yopt, Xopt
+
+        idx_flat = metric_history.argmax()
+        index_best = divmod(idx_flat.item(), metric_history.shape[1])
+        
+        self.FluxMatch_Yopt, self.FluxMatch_Xopt = Yopt[:,index_best[1],:], Xopt[:,index_best[1],:]
 
         print("**********************************************************************************************")
         print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")

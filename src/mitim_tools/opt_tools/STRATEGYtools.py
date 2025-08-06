@@ -1583,11 +1583,16 @@ class MITIM_BO:
             # Plot acquisition evolution 
             for i in range(len(infoOPT)-1): #no cleanup stage
                 y_acq = infoOPT[i]['info']['acq_evaluated'].cpu().numpy()
-                ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]} (max of batch)')
+                
+                if len(y_acq.shape)>1:
+                    for j in range(y_acq.shape[1]):
+                        ax.plot(y_acq[:,j],'-o', c=colors[i], markersize=0.5, lw = 0.3, label=f'{infoOPT[i]["method"]} (candidate #{j})')
+                else:
+                    ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]}')
                 
                 # Plot max of guesses
                 if len(y_acq)>0:
-                    ax.axhline(y=y_acq[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
+                    ax.axhline(y=y_acq.max(axis=1)[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
 
             ax.set_title(f'BO Step #{step}')
             ax.set_ylabel('$f_{acq}$ (to max)')
@@ -1596,6 +1601,7 @@ class MITIM_BO:
                 ax.legend(loc='best', fontsize=6)
 
             GRAPHICStools.addDenseAxis(ax)
+
 
     def plotModelStatus(
         self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None

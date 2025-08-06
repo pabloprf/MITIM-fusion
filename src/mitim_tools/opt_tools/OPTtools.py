@@ -221,11 +221,11 @@ def acquire_next_points(
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
         if optimizer == "ga":           
-            from mitim_tools.opt_tools.optimizers.GAtools import optimize_function
+            from mitim_tools.opt_tools.optimizers.evolutionary import optimize_function
         elif optimizer == "botorch":    
-            from mitim_tools.opt_tools.optimizers.BOTORCHoptim import optimize_function
+            from mitim_tools.opt_tools.optimizers.botorch_tools import optimize_function
         elif optimizer == "root" or optimizer == "sr":      
-            from mitim_tools.opt_tools.optimizers.ROOTtools import optimize_function
+            from mitim_tools.opt_tools.optimizers.multivariate import optimize_function
             if optimizer == "root":
                 optimize_function = partial(optimize_function, method="scipy_root")
             elif optimizer == "sr" : 
