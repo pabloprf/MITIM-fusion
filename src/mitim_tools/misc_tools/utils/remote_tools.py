@@ -24,15 +24,15 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
             purge_tmp_files = True,
             only_folder_structure_with_files=only_folder_structure_with_files)
 
-    # Renaming
-    for i in range(len(folders)):
-        folder = IOtools.expandPath(folders[i])
-        folder_orig = IOtools.expandPath(folders_local[i])
-    
-        if folder_orig.exists():
-            IOtools.shutil_rmtree(folder_orig)
-            
-        os.rename(folder, folder_orig)
+        # Renaming
+        for i in range(len(folders)):
+            folder = IOtools.expandPath(folders[i])
+            folder_orig = IOtools.expandPath(folders_local[i])
         
+            if folder_orig.exists():
+                IOtools.shutil_rmtree(folder_orig)
+                
+            os.rename(folder, folder_orig)
+            
 
     return folders_local

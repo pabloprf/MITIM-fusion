@@ -1,6 +1,7 @@
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools import LOGtools, GRAPHICStools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
@@ -102,10 +103,10 @@ def plot_results(self, fn):
     maxPlot = 5
     if len(ps) > 0:
         # Plot profiles
-        figs = PROFILEStools.add_figures(fn,fnlab_pre = 'MAESTRO - ')
+        figs = state_plotting.add_figures(fn,fnlab_pre = 'MAESTRO - ')
         log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(log_file=log_file):
-            PROFILEStools.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
+            state_plotting.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
     for p,pl in zip(ps,ps_lab):
         p.printInfo(label = pl)
