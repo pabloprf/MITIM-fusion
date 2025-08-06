@@ -127,7 +127,7 @@ def main():
         if len(folders) > 1:
             MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
             if (m.folder_performance / 'timing.jsonl').exists():
-                x0, scripts0 = MAESTROplot.plot_timings(m.folder_performance / 'timing.jsonl', axs = axsTiming, label = f'Case #{i}', color=colors[i])
+                x0, scripts0 = IOtools.plot_timings(m.folder_performance / 'timing.jsonl', axs = axsTiming, label = f'Case #{i}', color=colors[i])
     
         # Only keep the longest
         if len(x0) > len(x):

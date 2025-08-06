@@ -2,7 +2,7 @@ import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.plasmastate_tools.utils import state_plotting
-from mitim_tools.misc_tools import LOGtools, GRAPHICStools
+from mitim_tools.misc_tools import LOGtools, GRAPHICStools, IOtools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -212,7 +212,7 @@ def plot_results(self, fn):
                                  A
                                  B
                                  """)
-        plot_timings(self.folder_performance / 'timing.jsonl', axs = axs)
+        IOtools.plot_timings(self.folder_performance / 'timing.jsonl', axs = axs)
     
     return ps, ps_lab
 
@@ -366,112 +366,4 @@ def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
     axs[3].plot(g.g['RHOVN'], g.g['PRES']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
     axs[4].plot(g.g['RHOVN'], g.g['QPSI'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
 
-# ---------------------------------------------------------------------------
-def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= ''):
-    """
-    Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
-    with vertical lines when the beat number changes.
 
-    Parameters
-    ----------
-    jsonl_path : str | Path
-        File with one JSON record per line.
-    unit : {"s", "min", "h"}
-        Unit for the y-axis.
-    """
-    multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
-
-    scripts, script_time, cumulative, beat_nums, script_restarts = [], [], [], [], []
-    running = 0.0
-    beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
-
-    # ── read the file ───────────────────────────────────────────────────────
-    with Path(jsonl_path).expanduser().open() as f:
-        for line in f:
-            if not line.strip():
-                continue
-            rec = json.loads(line)
-            
-            if rec["script"] not in scripts:
-            
-                scripts.append(rec["script"])
-                script_time.append(rec["duration_s"] * multiplier)
-                running += rec["duration_s"]* multiplier
-                cumulative.append(running)
-
-                m = beat_pat.search(rec["script"])
-                beat_nums.append(int(m.group(1)) if m else None)
-                
-                script_restarts.append(0.0)
-                
-            else:
-                # If the script is already in the list, it means it was restarted
-                idx = scripts.index(rec["script"])
-                script_restarts[idx] += rec["duration_s"] * multiplier
-
-    if not scripts:
-        raise ValueError(f"No records found in {jsonl_path}")
-
-    beat_nums = [0] + beat_nums  # Start with zero beat
-    scripts = ['ini'] + scripts  # Add initial beat
-    script_time = [0.0] + script_time  # Start with zero time
-    cumulative = [0.0] + cumulative  # Start with zero time
-    script_restarts = [0.0] + script_restarts  # Start with zero restarts
-
-    # ── plot ────────────────────────────────────────────────────────────────
-    x = list(range(len(scripts)))
-    
-    if axs is None:
-        plt.ion()
-        fig = plt.figure()
-        axs = fig.subplot_mosaic("""
-                                A
-                                B
-                                """)
-    
-    
-    ax = axs['A']
-    ax.plot(x, cumulative, "-s", markersize=8, color=color, label=label)
-    
-    # Add restarts as vertical lines
-    for i in range(len(script_restarts)):
-        if script_restarts[i] > 0:
-            ax.plot(
-                [x[i],x[i]],
-                [cumulative[i],cumulative[i]+script_restarts[i]],
-                "-.o", markersize=5, color=color)
-    
-    
-    for i in range(1, len(beat_nums)):
-        if beat_nums[i] != beat_nums[i - 1]:
-            ax.axvline(i - 0.5, color='k',linestyle="-.")
-
-    #ax.set_xlim(left=0)
-    ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.legend(loc='upper left', fontsize=8)
-
-
-    ax = axs['B']
-    for i in range(len(scripts)-1):
-        ax.plot([x[i], x[i+1]], [0, script_time[i+1]], "-s", markersize=8, color=color)
-
-    # Add restarts as vertical lines
-    for i in range(len(script_restarts)-1):
-        if script_restarts[i] > 0:
-            ax.plot(
-                [x[i+1],x[i+1]],
-                [script_time[i+1],script_time[i+1]+script_restarts[i+1]],
-                "-.o", markersize=5, color=color)
-
-    for i in range(1, len(beat_nums)):
-        if beat_nums[i] != beat_nums[i - 1]:
-            ax.axvline(i - 0.5, color='k',linestyle="-.")
-
-    #ax.set_xlim(left=0)
-    ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
-    GRAPHICStools.addDenseAxis(ax)
-    
-    return x, scripts

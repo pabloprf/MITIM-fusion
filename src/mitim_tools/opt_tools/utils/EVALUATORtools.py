@@ -37,7 +37,6 @@ def parallel_main(Params, cont):
         lock=lock,
     )
 
-
 def fun(
     optimization_object,
     x,

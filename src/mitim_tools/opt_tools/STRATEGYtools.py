@@ -1,3 +1,4 @@
+import sys
 import copy
 import datetime
 import array
@@ -10,6 +11,7 @@ import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
+from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -438,10 +440,11 @@ class MITIM_BO:
 			Grab variables
 			------------------------------------------------------------------------------
 			"""
+   
+            self.timings_file = self.folderOutputs / "timing.jsonl"
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs / "optimization_log.txt")
-            self.logFile.activate()
+            sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
 
             # Meta
             self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
@@ -733,47 +736,8 @@ class MITIM_BO:
 				---------------------------------------------------------------------------------------
 				"""
 
-                train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
+                self._step()
 
-                current_step = STEPtools.OPTstep(
-                    self.train_X,
-                    self.train_Y,
-                    train_Ystd,
-                    bounds=self.bounds,
-                    stepSettings=self.stepSettings,
-                    currentIteration=self.currentIteration,
-                    strategy_options=self.strategy_options_use,
-                    BOmetrics=self.BOmetrics,
-                    surrogate_parameters=self.surrogate_parameters,
-                )
-
-                # Incorporate strategy_options for later retrieving
-                current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
-
-                self.steps.append(current_step)
-
-                # Avoid points
-                avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
-                self.avoidPoints = np.unique([int(j) for j in avoidPoints])
-
-                # ***** Fit
-                self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
-
-                # ***** Define evaluators
-                self.steps[-1].defineFunctions(self.scalarized_objective)
-
-                # Store class with the model fitted and evaluators defined
-                if self.storeClass:
-                    self.save()
-
-                # ***** Optimize
-                if not self.hard_finish:
-                    self.steps[-1].optimize(
-                        position_best_so_far=self.BOmetrics["overall"]["indBest"],
-                        seed=self.seed,
-                    )
-                else:
-                    self.steps[-1].x_next = None
 
             # Pass the information about next step
             self.x_next = self.steps[-1].x_next
@@ -898,6 +862,74 @@ class MITIM_BO:
 
         return aux if provideFullClass else step
 
+    # Convenient helper methods to track timings of components
+
+    @mitim_timer(lambda self: f'Eval @ {self.currentIteration}', log_file=lambda self: self.timings_file)
+    def _evaluate(self):
+        
+        y_next, ystd_next, self.numEval = EVALUATORtools.fun(
+            self.optimization_object,
+            self.x_next,
+            self.folderExecution,
+            self.bounds,
+            self.outputs,
+            self.optimization_data,
+            parallel=self.parallel_evaluations,
+            cold_start=self.cold_start,
+            numEval=self.numEval,
+        )
+        
+        return y_next, ystd_next
+    
+    @mitim_timer(lambda self: f'Surr @ {self.currentIteration}', log_file=lambda self: self.timings_file)
+    def _step(self):
+        
+        train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
+        
+        current_step = STEPtools.OPTstep(
+            self.train_X,
+            self.train_Y,
+            train_Ystd,
+            bounds=self.bounds,
+            stepSettings=self.stepSettings,
+            currentIteration=self.currentIteration,
+            strategy_options=self.strategy_options_use,
+            BOmetrics=self.BOmetrics,
+            surrogate_parameters=self.surrogate_parameters,
+        )
+        
+
+        # Incorporate strategy_options for later retrieving
+        current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
+
+        self.steps.append(current_step)
+
+        # Avoid points
+        avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
+        self.avoidPoints = np.unique([int(j) for j in avoidPoints])
+
+        # ***** Fit
+        self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
+
+        # ***** Define evaluators
+        self.steps[-1].defineFunctions(self.scalarized_objective)
+
+        # Store class with the model fitted and evaluators defined
+        if self.storeClass:
+            self.save()
+
+        # ***** Optimize
+        if not self.hard_finish:
+            self.steps[-1].optimize(
+                position_best_so_far=self.BOmetrics["overall"]["indBest"],
+                seed=self.seed,
+            )
+        else:
+            self.steps[-1].x_next = None
+        
+    # ---------------------------------------------------------------------------------
+
+
     def updateSet(
         self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
     ):
@@ -941,17 +973,7 @@ class MITIM_BO:
 
         # --- Evaluation
         time1 = datetime.datetime.now()
-        y_next, ystd_next, self.numEval = EVALUATORtools.fun(
-            self.optimization_object,
-            self.x_next,
-            self.folderExecution,
-            self.bounds,
-            self.outputs,
-            self.optimization_data,
-            parallel=self.parallel_evaluations,
-            cold_start=self.cold_start,
-            numEval=self.numEval,
-        )
+        y_next, ystd_next = self._evaluate()
         txt_time = IOtools.getTimeDifference(time1)
         print(f"\t- Complete model update took {txt_time}")
         # ------------------
@@ -1054,6 +1076,7 @@ class MITIM_BO:
 
         return y_next, ystd_next
 
+    @mitim_timer(lambda self: f'Init', log_file=lambda self: self.timings_file)
     def initializeOptimization(self):
         print("\n")
         print("------------------------------------------------------------")
@@ -1097,10 +1120,7 @@ class MITIM_BO:
 
         if (not self.cold_start) and (self.optimization_data is not None):
             self.type_initialization = 3
-            print(
-                "--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
-                typeMsg="i",
-            )
+            print("--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",typeMsg="i",)
 
         if self.type_initialization == 3:
             print("--> Initialization by reading tabular data...")
@@ -1132,9 +1152,7 @@ class MITIM_BO:
         # cold_started run from previous. Grab DVs of initial set
         if readCasesFromTabular:
             try:
-                self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(
-                    points=np.arange(self.initial_training)
-                )
+                self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(points=np.arange(self.initial_training))
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
                 
@@ -1148,20 +1166,14 @@ class MITIM_BO:
                             self.avoidPoints_outside.append(i)
 
             except:
-                flagger = print(
-                    "Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",
-                    typeMsg="q",
-                )
+                flagger = print("Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",typeMsg="q",)
 
                 self.type_initialization = 1
                 self.cold_start = True
                 readCasesFromTabular = False
 
             if readCasesFromTabular and IOtools.isAnyNan(self.train_X):
-                flagger = print(
-                    " --> cold_start requires non-nan DVs, doing normal initialization",
-                    typeMsg="q",
-                )
+                flagger = print(" --> cold_start requires non-nan DVs, doing normal initialization",typeMsg="q",)
                 if not flagger:
                     embed()
 
@@ -1174,10 +1186,7 @@ class MITIM_BO:
         if not readCasesFromTabular:
             if self.type_initialization == 1 and self.optimization_options["problem_options"]["dvs_base"] is not None:
                 self.initial_training = self.initial_training - 1
-                print(
-                    f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",
-                    typeMsg="i",
-                )
+                print(f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",typeMsg="i",)
 
             """
 			Initialization
@@ -1528,12 +1537,8 @@ class MITIM_BO:
         if plotoptimization_results:
             # Most current state of the optimization_results.out
             self.optimization_results.read()
-            if "logFile" in self.__dict__.keys():
-                logFile = self.logFile
-            else:
-                logFile = None
             self.optimization_results.plot(
-                fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
+                fn=fn, doNotShow=True, log=self.timings_file, tab_color=tab_color
             )
 
         """

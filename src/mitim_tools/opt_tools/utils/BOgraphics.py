@@ -860,12 +860,7 @@ def retrieveResults(
     res.read()
 
     # ---------------- Read Logger
-    log = LogFile(folderWork / "Outputs" / "optimization_log.txt")
-    try:
-        log.interpret()
-    except:
-        print("Could not read log", typeMsg="w")
-        log = None
+    timings_file = folderWork / "Outputs" / "timings.json"
 
     # ---------------- Read Tabular
     if analysis_level >= 0:
@@ -886,7 +881,6 @@ def retrieveResults(
         # -------------------
 
         mitim_model.optimization_results = res
-        mitim_model.logFile = log
         if plotFN is not None:
             fn = mitim_model.plot(
                 doNotShow=doNotShow,
@@ -898,244 +892,10 @@ def retrieveResults(
     # If no pickle, plot only the contents of optimization_results
     else:
         if plotFN:
-            fn = res.plot(doNotShow=doNotShow, log=log, fn = plotFN)
+            fn = res.plot(doNotShow=doNotShow, log=timings_file, fn = plotFN)
         mitim_model = None
 
     return fn, res, mitim_model, log, data_df
-
-
-
-class LogFile:
-    def __init__(self, file):
-        self.file = file
-
-    def activate(self, writeAlsoTerminal=True):
-        sys.stdout = LOGtools.Logger(
-            logFile=self.file, writeAlsoTerminal=writeAlsoTerminal
-        )
-
-        branch, commit_hash = IOtools.get_git_info(__mitimroot__)
-        print(f"Log file from MITIM version {mitim_version} from {branch} branch and commit hash {commit_hash}")
-
-    def interpret(self):
-        with open(self.file, "r") as f:
-            lines = f.readlines()
-
-        self.steps = {}
-        for line in lines:
-            if "Starting MITIM Optimization" in line:
-                try:
-                    self.steps["start"] = IOtools.getTimeFromString(
-                        line.split(",")[0].strip()
-                    )
-                except:
-                    self.steps["start"] = IOtools.getTimeFromString(
-                        " ".join(line.split(",")[0].strip().split()[-2:])
-                    )
-                self.steps["steps"] = {}
-            if "MITIM Step" in line:
-                aft = line.split("Step")[-1]
-                ikey = int(aft.split()[0])
-                time_str = aft.split("(")[-1].split(")")[0]
-                self.steps["steps"][ikey] = {
-                    "start": IOtools.getTimeFromString(time_str),
-                    "optimization": {},
-                }
-            if "Posterior Optimization" in line:
-                time_str = line.split(",")[-1][:-2].strip()
-                self.steps["steps"][ikey]["optimization"] = {
-                    "start": IOtools.getTimeFromString(time_str),
-                    "steps": {},
-                }
-                cont = 0
-            if "Optimization stage " in line:
-                aft = line.split("Step")[-1]
-                time_str = aft.split("(")[-1].split(")")[0]
-                self.steps["steps"][ikey]["optimization"]["steps"][cont] = {
-                    "name": line.split()[4],
-                    "start": IOtools.getTimeFromString(time_str),
-                }
-                cont += 1
-
-        self.process()
-
-    def process(self):
-        for step in self.steps["steps"]:
-            time_start = self.steps["steps"][step]["start"]
-
-            if "start" not in self.steps["steps"][step]["optimization"]:
-                break
-            time_end = self.steps["steps"][step]["optimization"]["start"]
-            timeF = IOtools.getTimeDifference(
-                time_start, newTime=time_end, niceText=False
-            )
-            self.steps["steps"][step]["fitting"] = timeF
-
-            if step + 1 in self.steps["steps"]:
-                time_end = self.steps["steps"][step + 1]["start"]
-                time = IOtools.getTimeDifference(
-                    time_start, newTime=time_end, niceText=False
-                )
-                self.steps["steps"][step]["time_s"] = time
-
-            for opt_step in self.steps["steps"][step]["optimization"]["steps"]:
-                time_start = self.steps["steps"][step]["optimization"]["steps"][
-                    opt_step
-                ]["start"]
-
-                if opt_step + 1 in self.steps["steps"][step]["optimization"]["steps"]:
-                    time_end = self.steps["steps"][step]["optimization"]["steps"][
-                        opt_step + 1
-                    ]["start"]
-                    time = IOtools.getTimeDifference(
-                        time_start, newTime=time_end, niceText=False
-                    )
-                    self.steps["steps"][step]["optimization"]["steps"][opt_step][
-                        "time_s"
-                    ] = time
-                else:
-                    if step + 1 in self.steps["steps"]:
-                        time_end = time_end = self.steps["steps"][step + 1]["start"]
-                        time = IOtools.getTimeDifference(
-                            time_start, newTime=time_end, niceText=False
-                        )
-                        self.steps["steps"][step]["optimization"]["steps"][opt_step][
-                            "time_s"
-                        ] = time
-
-        self.points = [
-            0,
-            IOtools.getTimeDifference(
-                self.steps["start"],
-                newTime=self.steps["steps"][0]["start"],
-                niceText=False,
-            ),
-        ]
-        self.types = ["b"]
-
-        for step in self.steps["steps"]:
-            if "fitting" in self.steps["steps"][step]:
-                self.points.append(
-                    self.steps["steps"][step]["fitting"] + self.points[-1]
-                )
-                self.types.append("r")
-
-            if "steps" not in self.steps["steps"][step]["optimization"]:
-                break
-            for opt_step in self.steps["steps"][step]["optimization"]["steps"]:
-                if (
-                    "time_s"
-                    in self.steps["steps"][step]["optimization"]["steps"][opt_step]
-                ):
-                    self.points.append(
-                        self.steps["steps"][step]["optimization"]["steps"][opt_step][
-                            "time_s"
-                        ]
-                        + self.points[-1]
-                    )
-                    self.types.append("g")
-
-        self.points = np.array(self.points)
-
-        self.its = np.linspace(0, len(self.points) - 1, len(self.points))
-
-    def plot(
-        self,
-        axs=None,
-        factor=60.0,
-        fullCumulative=False,
-        ls="-",
-        lab="",
-        marker="o",
-        color="b",
-        ):
-        if axs is None:
-            plt.ion()
-            fig, axs = plt.subplots(ncols=2)
-
-        ax = axs[0]
-        subtractor = 0
-        totals = {"ini": 0.0, "fit": 0.0, "opt": 0.0}
-
-        for i in range(len(self.points) - 1):
-            if self.types[i] == "r":
-                ax.axvline(x=self.its[i], ls="--", c="k", lw=0.5)
-                if not fullCumulative:
-                    subtractor = self.points[i]
-
-            ps = [
-                (self.points[i] - subtractor) / factor,
-                (self.points[i + 1] - subtractor) / factor,
-            ]
-
-            if self.types[i] == "b":
-                totals["ini"] += ps[1] - ps[0]
-            if self.types[i] == "g":
-                totals["opt"] += ps[1] - ps[0]
-            if self.types[i] == "r":
-                totals["fit"] += ps[1] - ps[0]
-
-            if i == 0:
-                labb = lab
-            else:
-                labb = ""
-
-            ax.plot(
-                [self.its[i], self.its[i + 1]],
-                ps,
-                marker + ls,
-                c=self.types[i],
-                label=labb,
-            )
-
-        if factor == 60.0:
-            label = "minutes"
-            ax.axhline(y=60, ls="-.", lw=0.2)
-        elif factor == 3600.0:
-            label = "hours"
-            ax.axhline(y=1, ls="-.", lw=0.2)
-        else:
-            label = "seconds"
-
-        # ax.set_xlabel('Workflow Steps')
-        ax.set_ylabel(f"Cumulated Time ({label})")
-        # ax.set_xlim(left=0)
-        ax.set_ylim(bottom=0)
-
-        from matplotlib.lines import Line2D
-
-        custom_lines = [
-            Line2D([0], [0], color="b", lw=2),
-            Line2D([0], [0], color="r", lw=2),
-            Line2D([0], [0], color="g", lw=2),
-        ]
-
-        legs = [
-            "Initialization + Evaluation",
-            "Evaluation + Fitting",
-            "Optimization",
-            "Total",
-        ]
-        ax.legend(custom_lines, legs)
-
-        ax = axs[1]
-        ax.bar(
-            legs,
-            [
-                totals["ini"],
-                totals["fit"],
-                totals["opt"],
-                totals["ini"] + totals["fit"] + totals["opt"],
-            ],
-            1 / 3,
-            alpha=0.5,
-            label=lab,
-            color=color,
-        )  # , label=equil_names[i],color=colors[i],align='edge')
-
-        # ax.set_xlabel('Workflow')
-        ax.set_ylabel(f"Cumulated Time ({label})")
-
 
 class optimization_data:
     def __init__(
@@ -1661,7 +1421,7 @@ Workflow start time: {IOtools.getStringFromTime()}
         fig4 = self.fn.add_figure(label="Improvement", tab_color=tab_color)
         if log is not None:
             figTimes = self.fn.add_figure(label="Times", tab_color=tab_color)
-            grid = plt.GridSpec(1, 2, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 1, hspace=0.3, wspace=0.3)
             axsTimes = [figTimes.add_subplot(grid[0]), figTimes.add_subplot(grid[1])]
 
         _ = self.plotComplete(
@@ -1695,7 +1455,7 @@ Workflow start time: {IOtools.getStringFromTime()}
         _, _ = self.plotImprovement(axs=[ax0, ax1, ax2, ax3])
 
         if log is not None:
-            log.plot(axs=[axsTimes[0], axsTimes[1]])
+            IOtools.plot_timings(log, axs = [axsTimes[0], axsTimes[1]])
 
         return self.fn
 

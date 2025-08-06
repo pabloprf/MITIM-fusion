@@ -1515,3 +1515,4 @@ def animateFunction(
     Writer = animation.writers["ffmpeg"]
     writer = Writer(fps=framePS, metadata=dict(artist="PRF"), bitrate=BITrate)
     ani.save(writer=writer, filename=MovieFile, dpi=DPIs)
+

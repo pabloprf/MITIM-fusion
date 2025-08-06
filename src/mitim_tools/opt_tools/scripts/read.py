@@ -75,7 +75,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         )
         res.read()
 
-        log_class = BOgraphics.LogFile(folderWork / "Outputs" / "optimization_log.txt")
+        log_class = folderWork / "Outputs" / "timing.jsonl"
 
         try:
             log_class.interpret()
@@ -98,12 +98,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
         if log_class is not None:
-            log_class.plot(
-                axs=[ax2, ax3],
-                ls=types_ls[i],
-                lab=name,
-                marker=types_m[i],
-                color=colors[i],
+            IOtools.plot_timings(
+                folderWork / "Outputs" / "timing.jsonl", axs=[ax2, ax3], label=name, color=color
             )
 
         yCummMeans.append(yCummMean)
