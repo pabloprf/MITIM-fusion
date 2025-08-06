@@ -99,7 +99,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         label="TGYRO " + label,
         markersize=markersize,
     )
-    P = s.volume_integrate(stateQuantity, dim=2) * s.plasma["volp"]
+    P = s.from_density_to_flux(stateQuantity, dim=2) * s.plasma["volp"]
     ax.plot(
         s.plasma["rho"][0],
         P[0],
@@ -132,7 +132,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         label="TGYRO " + label,
         markersize=markersize,
     )
-    P = s.volume_integrate(stateQuantity, dim=2) * s.plasma["volp"]
+    P = s.from_density_to_flux(stateQuantity, dim=2) * s.plasma["volp"]
     ax.plot(
         s.plasma["rho"][0],
         P[0],

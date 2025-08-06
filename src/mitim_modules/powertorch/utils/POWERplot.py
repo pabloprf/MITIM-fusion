@@ -229,7 +229,7 @@ def plot_metrics_powerstates(axsM, powerstates, profiles=None, profiles_color='b
     x , y = [], []
     for h in range(len(powerstates)):
         x.append(h)
-        Pfus = powerstates[h].volume_integrate(
+        Pfus = powerstates[h].from_density_to_flux(
             (powerstates[h].plasma["qfuse"] + powerstates[h].plasma["qfusi"]) * 5.0
             ) * powerstates[h].plasma["volp"]
         y.append(Pfus[..., -1].item())

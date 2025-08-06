@@ -80,7 +80,7 @@ class power_targets:
             qi +=  self.powerstate.plasma["qfusi"]
 
         q = torch.cat((qe, qi)).to(qe)
-        self.P = self.powerstate.volume_integrate(q, force_dim=q.shape[0])
+        self.P = self.powerstate.from_density_to_flux(q, force_dim=q.shape[0])
 
     def coarse_grid(self):
 

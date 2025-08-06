@@ -752,7 +752,7 @@ class powerstate:
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]
         self.plasma["residual"] = self.plasma["S"].abs().mean(axis=1, keepdim=True)
 
-    def volume_integrate(self, var, force_dim=None):
+    def from_density_to_flux(self, var, force_dim=None):
         """
         If var in MW/m^3, this gives as output the MW/m^2 profile
         """

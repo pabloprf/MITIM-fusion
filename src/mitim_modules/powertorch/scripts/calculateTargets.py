@@ -101,13 +101,13 @@ def calculator(
     # ************************************
 
     p.plasma["Pfus"] = (
-        p.volume_integrate(
+        p.from_density_to_flux(
             (p.plasma["qfuse"] + p.plasma["qfusi"]) * 5.0
         )
         * p.plasma["volp"]
     )[..., -1]
     p.plasma["Prad"] = (
-        p.volume_integrate(p.plasma["qrad"]) * p.plasma["volp"]
+        p.from_density_to_flux(p.plasma["qrad"]) * p.plasma["volp"]
     )[..., -1]
 
     p.profiles.derive_quantities()

@@ -202,22 +202,22 @@ def computeTurbExchangeIndividual(QieMWm3_tr_turb, powerstate):
 	2. Integrate
 	------------------------------------------------------------------------
 		qExch is in MW/m^3
-		powerstate.volume_integrate produces in MW/m^2
+		powerstate.from_density_to_flux produces in MW/m^2
 	"""
 
     # Add zeros at zero
     qExch = torch.cat((torch.zeros(QieMWm3_tr_turb.shape).to(QieMWm3_tr_turb)[..., :1], QieMWm3_tr_turb), dim=-1)
 
-    QieMWm3_tr_turb_integrated = powerstate.volume_integrate(qExch, force_dim=qExch.shape[0])[..., 1:]
+    QieMWm2_tr_turb = powerstate.from_density_to_flux(qExch, force_dim=qExch.shape[0])[..., 1:]
 
     """
 	3. Go back to the original batching system
 	------------------------------------------------------------------------
 		E.g.: (batch1*batch2*batch3,dimR) -> (batch1,batch2,batch3,dimR) 
 	"""
-    QieMWm3_tr_turb_integrated = QieMWm3_tr_turb_integrated.view(tuple(shape_orig))
+    QieMWm2_tr_turb = QieMWm2_tr_turb.view(tuple(shape_orig))
 
-    return QieMWm3_tr_turb_integrated
+    return QieMWm2_tr_turb
 
 def GBfromXnorm(x, output, powerstate):
     # Decide, depending on the output here, which to use as normalization and at what location
@@ -400,9 +400,9 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["turbulent_exchange_as_surrogate"]:
-        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
+        QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
     else:
-        QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
+        QieMWm2_tr_turb = torch.zeros(dfT.shape).to(dfT)
 
     # ------------------------------------------------------------------------
     # Go through each profile that needs to be predicted, calculate components
@@ -438,9 +438,9 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}_tar"] + QieMWm3_tr_turb_integrated
+            cal0 = var_dict[f"{var}_tar"] + QieMWm2_tr_turb
         elif var == "Qi":
-            cal0 = var_dict[f"{var}_tar"] - QieMWm3_tr_turb_integrated
+            cal0 = var_dict[f"{var}_tar"] - QieMWm2_tr_turb
         else:
             cal0 = var_dict[f"{var}_tar"]
 
@@ -533,11 +533,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # -------------------------------------------------------------------------
 
     if PORTALSparameters["turbulent_exchange_as_surrogate"]:
-        QieMWm3_tr_turb_integrated = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
-        QieMWm3_tr_turb_integrated_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
+        QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
+        QieMWm2_tr_turb_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
     else:
-        QieMWm3_tr_turb_integrated = torch.zeros(dfT.shape).to(dfT)
-        QieMWm3_tr_turb_integrated_stds = torch.zeros(dfT.shape).to(dfT)
+        QieMWm2_tr_turb = torch.zeros(dfT.shape).to(dfT)
+        QieMWm2_tr_turb_stds = torch.zeros(dfT.shape).to(dfT)
 
     # ------------------------------------------------------------------------
     # Go through each profile that needs to be predicted, calculate components
@@ -571,11 +571,11 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 		-----------------------------------------------------------------------------------
 		"""
         if var == "Qe":
-            cal0 = var_dict[f"{var}_tar"] + QieMWm3_tr_turb_integrated
-            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm3_tr_turb_integrated_stds**2) ** 0.5
+            cal0 = var_dict[f"{var}_tar"] + QieMWm2_tr_turb
+            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm2_tr_turb_stds**2) ** 0.5
         elif var == "Qi":
-            cal0 = var_dict[f"{var}_tar"] - QieMWm3_tr_turb_integrated
-            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm3_tr_turb_integrated_stds**2) ** 0.5
+            cal0 = var_dict[f"{var}_tar"] - QieMWm2_tr_turb
+            cal0E = (var_dict[f"{var}_tar_stds"] ** 2 + QieMWm2_tr_turb_stds**2) ** 0.5
         else:
             cal0 = var_dict[f"{var}_tar"]
             cal0E = var_dict[f"{var}_tar_stds"]
