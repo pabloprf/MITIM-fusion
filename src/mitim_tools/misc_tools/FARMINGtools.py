@@ -1283,7 +1283,19 @@ def retrieve_files_from_remote(
         output_files.append(file0)
     for folder in folders_remote:
         folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
-        command += f'cp -r {folder} {machineSettings["folderWork"]}/{folder0}\n'
+        
+        folder_source = folder
+        folder_destination = f'{machineSettings["folderWork"]}/{folder0}'
+        if only_folder_structure_with_files is None:
+            # Normal full copy
+            command += f'cp -r {folder_source} {folder_destination}\n'
+        else:
+            retrieve_files = ''
+            for file in only_folder_structure_with_files:
+                retrieve_files += f'-f"+ {file}" '
+            # Only copy the folder structure with a few files
+            command += f'rsync -av -f"+ */" {retrieve_files}-f"- *" {folder_source}/ {folder_destination}/\n'
+            
         output_folders.append(folder0)
 
     # ------------------------------------------------

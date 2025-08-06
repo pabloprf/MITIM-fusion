@@ -1,7 +1,8 @@
 import argparse
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, FARMINGtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
+from mitim_tools.misc_tools.utils import remote_tools
 from pathlib import Path
 from IPython import embed
 
@@ -38,6 +39,8 @@ def main():
     # Standard options
     parser.add_argument("folders", type=str, nargs="*",
                         help="Paths to the folders to read.")
+    
+    # MAESTRO specific options
     parser.add_argument("--beats", type=int, required=False, default=2,
                         help="Number of beats to plot. If 0, it will not plot beat information.")
     parser.add_argument("--only", type=str, required=False, default=None,
@@ -53,48 +56,39 @@ def main():
     parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
                         help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
     parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
-                        help="If set, it will only retrieve the folder structure with a few files (input.gacode, input.gacode_final, initializer_geqdsk/input.gacode).")
+                        help="If set, it will only retrieve the folder structure with a few key files.")
     parser.add_argument('--fix', required=False, default=False, action='store_true',
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
 
-    remote = args.remote
-    folders = args.folders
-    fix = args.fix
+
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Retrieve from remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+
+    only_folder_structure_with_files = None
+    if args.remote_minimal:
+        only_folder_structure_with_files = ["Outputs/optimization_data.csv","Outputs/optimization_extra.pkl","Outputs/optimization_object.pkl","Outputs/optimization_results.out"]
+            
+    folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
+
+    
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Fix pkl optimization portals in remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+
+    if args.fix:
+        fix_maestro([Path(folder) for folder in folders])
+
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Actual interpreting and plotting
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+
     beats = args.beats
     only = args.only
     full = args.full
 
-    if args.remote_folder_parent is not None:
-        folders_remote = [args.remote_folder_parent + '/' + folder.split('/')[-1] for folder in folders]
-    elif args.remote_folders is not None:
-        folders_remote = args.remote_folders
-    else:
-        folders_remote = folders
-            
-
-    # Retrieve remote
-    if remote is not None:
-
-        only_folder_structure_with_files = None
-        if args.remote_minimal:
-            only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
-            
-            beats = 0
-            
-        _, folders = FARMINGtools.retrieve_files_from_remote(
-            IOtools.expandPath('./'),
-            remote,
-            folders_remote = folders_remote,
-            purge_tmp_files = True,
-            only_folder_structure_with_files=only_folder_structure_with_files)
-    
-    # Fix pkl optimization portals in remote
-    if fix:
-        fix_maestro([Path(folder) for folder in folders])
-
-    # -----
 
     folders = [IOtools.expandPath(folder) for folder in folders]
     

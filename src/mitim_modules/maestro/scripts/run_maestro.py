@@ -254,7 +254,8 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    IOtools.recursive_backup(folder / 'maestro_namelist.json')
+    if (folder / 'maestro_namelist.json').exists():
+        IOtools.recursive_backup(folder / 'maestro_namelist.json')
     
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
