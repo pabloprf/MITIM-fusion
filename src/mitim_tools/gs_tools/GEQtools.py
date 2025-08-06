@@ -6,7 +6,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
 from scipy.integrate import quad

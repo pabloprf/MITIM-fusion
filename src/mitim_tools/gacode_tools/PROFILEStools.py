@@ -1,5 +1,4 @@
 import copy
-from turtle import color
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -86,7 +85,11 @@ class gacode_state(MITIMstate.mitim_state):
         they also say that those units are wrong.
 
         """
+        
+        self._ensure_shaping_coeffs()
 
+    def _ensure_shaping_coeffs(self):
+        
         # Ensure that we also have the shape coefficients
         num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
         if "shape_cos0(-)" not in self.profiles:
@@ -176,6 +179,9 @@ class gacode_state(MITIMstate.mitim_state):
         super().derive_quantities_base(**kwargs)
 
     def _produce_shape_lists(self):
+        
+        self._ensure_shaping_coeffs()
+            
         self.shape_cos = [
             self.profiles["shape_cos0(-)"],  # tilt
             self.profiles["shape_cos1(-)"],
