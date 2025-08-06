@@ -195,7 +195,6 @@ class opt_evaluator:
                 self.fn,
                 self.res,
                 self.mitim_model,
-                self.log,
                 self.data,
             ) = BOgraphics.retrieveResults(
                 self.folder,
@@ -897,7 +896,6 @@ class MITIM_BO:
             BOmetrics=self.BOmetrics,
             surrogate_parameters=self.surrogate_parameters,
         )
-        
 
         # Incorporate strategy_options for later retrieving
         current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)

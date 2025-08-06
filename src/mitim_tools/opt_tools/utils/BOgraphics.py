@@ -895,7 +895,7 @@ def retrieveResults(
             fn = res.plot(doNotShow=doNotShow, log=timings_file, fn = plotFN)
         mitim_model = None
 
-    return fn, res, mitim_model, log, data_df
+    return fn, res, mitim_model, data_df
 
 class optimization_data:
     def __init__(
