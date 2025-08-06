@@ -915,6 +915,7 @@ def runTGLF(
     name="",
     launchSlurm=True,
     attempts_execution=1,
+    max_jobs_at_once=None,
 ):
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
@@ -1015,6 +1016,7 @@ def runTGLF(
 
         # Slurm setup
         array_list = None
+        job_array_limit = None
         shellPreCommands = None
         shellPostCommands = None
         ntasks = total_cores_required
@@ -1035,6 +1037,7 @@ def runTGLF(
             
             # Slurm setup
             array_list = None
+            job_array_limit = None
             shellPreCommands = None
             shellPostCommands = None
             ntasks = total_tglf_executions
@@ -1064,6 +1067,7 @@ def runTGLF(
             array_list = ",".join(array_list)
             ntasks = 1
             cpuspertask = cores_tglf
+            job_array_limit = max_jobs_at_once # Limit to this number at most running jobs at the same time
 
     # ---------------------------------------------
     # Execute
@@ -1079,6 +1083,7 @@ def runTGLF(
             "name": name,
             "cpuspertask": cpuspertask,
             "job_array": array_list,
+            "job_array_limit": job_array_limit,
             #"nodes": 1,
         },
     )

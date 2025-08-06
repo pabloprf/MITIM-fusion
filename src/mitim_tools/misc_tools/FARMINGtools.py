@@ -184,6 +184,7 @@ class mitim_job:
             self.folderExecution,
             modules_remote=self.machineSettings["modules"],
             job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
+            job_array_limit=self.slurm_settings["job_array_limit"] if "job_array_limit" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
@@ -1000,6 +1001,7 @@ def create_slurm_execution_files(
     cpuspertask=4,
     memory_req_by_job=None,
     job_array=None,
+    job_array_limit=None, # If job_array is not None, this is the limit of the array size at once
     nodes=None,
     label_log_files="",
     wait_until_sbatch=True,
@@ -1081,7 +1083,7 @@ def create_slurm_execution_files(
     commandSBATCH.append(f"#SBATCH --time {time_com}")
 
     if job_array is not None:
-        commandSBATCH.append(f"#SBATCH --array={job_array}")
+        commandSBATCH.append(f"#SBATCH --array={job_array}{f'%{job_array_limit} ' if job_array_limit is not None else ''}")
     elif request_exclusive_node:
         commandSBATCH.append("#SBATCH --exclusive")
 
