@@ -321,7 +321,7 @@ class eped_beat(beat):
         for key in eped_results:
             print(f'\t\t- {key}: {eped_results[key]}')
 
-        self.profiles_output.writeCurrentStatus(file=self.folder / 'input.gacode.eped')
+        self.profiles_output.write_state(file=self.folder / 'input.gacode.eped')
 
         return eped_results
 
@@ -365,7 +365,7 @@ class eped_beat(beat):
         
         self.profiles_output = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode.eped')
 
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine
@@ -560,12 +560,12 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
 
         # Calculate gradient in entire region
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
 
         # I'm only interested in core region, plus one ghost point with the same gradient
         aLy = torch.cat( (aLy[:ibc+1], aLy[ibc].unsqueeze(0)) )
 
-        y_mod = CALCtools.integrateGradient( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
+        y_mod = CALCtools.integration_Lx( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
         ynew[:ibc+2] = y_mod
 
 
@@ -583,11 +583,11 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
         ax.legend()
 
         ax = axs[1]
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(y) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
         ax.plot(x,aLy,'-o',color='b', label='old')
         ax.axvline(x=xp_old,color='b',ls='--')
 
-        aLy = CALCtools.produceGradient( torch.from_numpy(roa), torch.from_numpy(ynew) )
+        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(ynew) )
         ax.plot(x,aLy,'-o',color='r', label='new')
         ax.axvline(x=xp,color='r',ls='--')
 
@@ -671,6 +671,6 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
     # Re-derive
     # ---------------------------------
 
-    profiles_output.deriveQuantities(rederiveGeometry=False)
+    profiles_output.derive_quantities(rederiveGeometry=False)
 
     return profiles_output

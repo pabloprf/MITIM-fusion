@@ -119,7 +119,7 @@ class mitim_state:
         # Add data to profiles
         instance.profiles = profiles
 
-        instance.process(**kwargs_process)
+        instance.derive_quantities(**kwargs_process)
 
         return instance
 

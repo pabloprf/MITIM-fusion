@@ -35,7 +35,7 @@ class gacode_state(MITIMstate.mitim_state):
         self.titles_singleArr = ["masse","mass","ze","z","torfluxa(Wb/radian)","rcentr(m)","bcentr(T)","current(MA)"]
         self.titles_single = self.titles_singleNum + self.titles_singleArr
         
-        if self.files is not None:
+        if self.files[0] is not None:
 
             self._read_inputgacocde()
             
