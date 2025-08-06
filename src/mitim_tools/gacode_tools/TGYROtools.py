@@ -4338,7 +4338,7 @@ class TGYROoutput:
         axs.append(fig.add_subplot(grid[1, 1]))
         axs.append(fig.add_subplot(grid[1, 2]))
 
-        self.profiles_final.plotBalance(
+        self.profiles_final.plot_flows(
             axs=axs, limits=[self.roa[-1, 1], self.roa[-1, -1]]
         )
 
@@ -4411,20 +4411,12 @@ class TGYROoutput:
         )
 
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
-        GRAPHICStools.addLegendApart(
-            ax, ratio=0.9, withleg=False, extraPad=0, loc="center left", size=6
-        )
-        # GRAPHICStools.addLegendApart(ax2,ratio=0.9,withleg=False,extraPad=0,loc='center left',size=6)
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, withleg=False, extraPad=0, loc="center left", size=6)
 
         ax = ax10
-        colsE = (
-            GRAPHICStools.listColors()
-        )  # GRAPHICStools.colorTableFade(self.radii-1,startcolor='b',endcolor='b',alphalims=[0.3,1.0])
-        colsI = (
-            GRAPHICStools.listColors()
-        )  # GRAPHICStools.colorTableFade(self.radii-1,startcolor='r',endcolor='r',alphalims=[0.3,1.0])
+        colsE = GRAPHICStools.listColors()
+        colsI = GRAPHICStools.listColors() 
         for i in range(self.radii - 1):
             label = f"r/a={self.roa[0, i + 1]:.4f}"
 
@@ -4473,26 +4465,17 @@ class TGYROoutput:
         ax.set_xlim(left=0)
         ax.set_ylabel("Individual Residuals (GB)")
         ax.set_yscale("log")
-        # ax.legend(loc='best',prop={'size':5})
-        GRAPHICStools.addLegendApart(
-            ax, ratio=0.9, withleg=True, extraPad=0, loc="center left", size=6
-        )
-        # ax2 = GRAPHICStools.addXaxis(ax,self.iterations,self.calls_solver,label='Calls to transport solver',whichticks=whichticks)
-
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, withleg=True, extraPad=0, loc="center left", size=6)
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
         ax = ax01
-        ax.plot(
-            self.iterations, self.residual_manual_real, "-s", color="b", markersize=5
-        )
+        ax.plot(self.iterations, self.residual_manual_real, "-s", color="b", markersize=5)
         ax.set_xlabel("Iterations")
         ax.set_xlim(left=0)
         ax.set_ylabel("Residual (real)")
         ax.set_yscale("log")
 
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
         _ = GRAPHICStools.addXaxis(
             ax,
@@ -4536,11 +4519,7 @@ class TGYROoutput:
         ax.set_ylabel("Individual Residuals (real)")
         ax.set_yscale("log")
 
-        # ax2 = GRAPHICStools.addXaxis(ax,self.iterations,self.calls_solver,label='Calls to transport solver',whichticks=whichticks)
-
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
-
 
 def plotAll(TGYROoutputs, labels=None, fn=None):
     if fn is None:

@@ -1952,6 +1952,9 @@ class mitim_state:
     def plot_geometry(self, *args, **kwargs):
         pass
 
+    def plot_flows(self, *args, **kwargs):
+        return state_plotting.plot_flows(self, *args, **kwargs)
+
     def plotPeaking(
         self, ax, c="b", marker="*", label="", debugPlot=False, printVals=False
         ):
