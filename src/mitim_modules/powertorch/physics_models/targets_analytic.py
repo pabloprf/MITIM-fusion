@@ -96,9 +96,7 @@ class analytical_model(TARGETStools.power_targets):
         for i in range(self.powerstate.plasma["ni"].shape[2]):
             c_a += (self.powerstate.plasma["ni"][..., i] / self.powerstate.plasma["ne"]) * self.powerstate.plasma["ions_set_Zi"][:,i].unsqueeze(-1) ** 2 * (Aalpha / self.powerstate.plasma["ions_set_mi"][:,i].unsqueeze(-1))
 
-        W_crit = (self.powerstate.plasma["te"] * 1e3) * (4 * (Ae / Aalpha) ** 0.5 / (3 * pi**0.5 * c_a)) ** (
-            -2.0 / 3.0
-        )  # in eV
+        W_crit = (self.powerstate.plasma["te"] * 1e3) * (4 * (Ae / Aalpha) ** 0.5 / (3 * pi**0.5 * c_a)) ** (-2.0 / 3.0)  # in eV
 
         frac_ai = sivukhin(Ealpha / W_crit)  # This solves Eq 17 of Stix
 

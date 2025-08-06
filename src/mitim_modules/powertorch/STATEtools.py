@@ -756,15 +756,17 @@ class powerstate:
         """
         If var in MW/m^3, this gives as output the MW/m^2 profile
         """
+        
+        surface_used = self.plasma["volp"] # IMPORTANT Note: This is the GACODE definition, acknowledging that volp=dV/dr is not equal to the surface area
 
         if force_dim is None:
             return CALCtools.volume_integration(
                 var, self.plasma["rmin"], self.plasma["volp"]
-                ) / self.plasma["volp"]
+                ) / surface_used
         else:
             return CALCtools.volume_integration(
                 var, self.plasma["rmin"][0,:].repeat(force_dim,1), self.plasma["volp"][0,:].repeat(force_dim,1)
-                ) / self.plasma["volp"][0,:].repeat(force_dim,1)            
+                ) / surface_used[0,:].repeat(force_dim,1)            
 
 def add_axes_powerstate_plot(figMain, num_kp=3):
 

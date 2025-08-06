@@ -1685,9 +1685,7 @@ class MITIM_BO:
         info, boundsRaw = step.InfoOptimization, step.bounds
 
         bounds = torch.Tensor([boundsRaw[b] for b in boundsRaw])
-        boundsThis = (
-            info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
-        )
+        boundsThis = info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
 
         # ----------------------------------------------------------------------
         # Prep figures
