@@ -1,4 +1,3 @@
-import vmecpp
 import numpy as np
 from collections import OrderedDict
 import matplotlib.pyplot as plt
@@ -45,6 +44,8 @@ class vmec_state(MITIMstate.mitim_state):
 
     @IOtools.hook_method(after=MITIMstate.ensure_variables_existence)
     def _read_vmec(self):
+        
+        import vmecpp
 
         # Read VMEC file
         print("\t- Reading VMEC file")

@@ -8,7 +8,6 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
 from IPython import embed
-import quends as qnds
 import pandas as pd
 
 class CGYROlinear_scan:
@@ -581,6 +580,8 @@ def calculate_lcorr(phim, kx, nx, debug=False):
 
 
 def quends_analysis(t, S, debug = False):
+    
+    import quends as qnds
     
     time_dependent_data = {'time': t, 'signal': S}
     df = pd.DataFrame(time_dependent_data, index = pd.RangeIndex(len(t)))
