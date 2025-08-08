@@ -568,7 +568,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         if item.is_file():
             shutil.copy2(item, folderWork)
         elif item.is_dir():
-            shutil.copytree(item, folderWork / item.name)
+            shutil.copytree(item, folderWork / item.name, dirs_exist_ok=True)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 

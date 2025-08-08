@@ -599,7 +599,7 @@ def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
             print('--------------------------------------------------')
             print('Convergence criteria')
             print('--------------------------------------------------')
-            v = unprint_fun(*args,**kwargs)
+            v = unprint_fun(*args, **kwargs)
             print('--------------------------------------------------\n')
             return v
         optimization_options['convergence_options']['stopping_criteria'] = opt_crit
@@ -926,7 +926,7 @@ def getLocInfo(locFile, with_extension=False):
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, do_not_consider_files=None
     ):
     """
     Retrieves the file without folder and extension
@@ -937,6 +937,16 @@ def findFileByExtension(
     retpath = None
     if fpath.exists():
         allfiles = findExistingFiles(fpath, extension, agnostic_to_case = agnostic_to_case)
+
+        # Filter out files that contain any of the strings in do_not_consider_files
+        if do_not_consider_files is not None:
+            filtered_files = []
+            for file_path in allfiles:
+                file_name = file_path.name
+                should_exclude = any(exclude_str in file_name for exclude_str in do_not_consider_files)
+                if not should_exclude:
+                    filtered_files.append(file_path)
+            allfiles = filtered_files
 
         if len(allfiles) > 1:
             # print(allfiles)
