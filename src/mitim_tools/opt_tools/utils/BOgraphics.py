@@ -1422,7 +1422,9 @@ Workflow start time: {IOtools.getStringFromTime()}
         if log is not None:
             figTimes = self.fn.add_figure(label="Times", tab_color=tab_color)
             grid = plt.GridSpec(2, 1, hspace=0.3, wspace=0.3)
-            axsTimes = [figTimes.add_subplot(grid[0]), figTimes.add_subplot(grid[1])]
+            axx0 = figTimes.add_subplot(grid[0])
+            axx1 = figTimes.add_subplot(grid[1], sharex=axx0)
+            axsTimes = [axx0, axx1]
 
         _ = self.plotComplete(
             fig=fig1,

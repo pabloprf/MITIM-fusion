@@ -211,7 +211,7 @@ def plot_results(self, fn):
         axs = fig.subplot_mosaic("""
                                  A
                                  B
-                                 """)
+                                 """,sharex=True)
         IOtools.plot_timings(self.folder_performance / 'timing.jsonl', axs = axs, log=True)
     
     return ps, ps_lab

@@ -55,7 +55,7 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     ax0 = fig.add_subplot(grid[0, 0])
     ax1 = fig.add_subplot(grid[1, 0], sharex=ax0)
     ax2 = fig.add_subplot(grid[0, 1])
-    ax3 = fig.add_subplot(grid[1, 1])
+    ax3 = fig.add_subplot(grid[1, 1],sharex=ax2)
     ax1i = fig.add_subplot(grid[2, 0], sharex=ax0)
 
     types_ls = GRAPHICStools.listLS()

@@ -111,7 +111,7 @@ def main():
         axsTiming = fig.subplot_mosaic("""
                                        A
                                        B
-                                       """)
+                                       """,sharex=True)
         
         colors = GRAPHICStools.listColors()
             

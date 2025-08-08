@@ -1954,6 +1954,7 @@ def clean_state(folder):
             aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
 
         aux.folderOutputs = folder / "Outputs"
+        aux.timings_file = aux.folderOutputs / "timing.jsonl"
 
         aux.save()
 

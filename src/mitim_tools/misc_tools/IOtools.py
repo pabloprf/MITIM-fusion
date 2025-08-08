@@ -213,6 +213,10 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
                 # If the script is already in the list, it means it was restarted
                 idx = scripts.index(rec["script"])
                 script_restarts[idx] += rec["duration_s"] * multiplier
+                
+                cumulative[-1] += script_restarts[idx] 
+                running += script_restarts[idx] 
+                
 
     if not scripts:
         raise ValueError(f"No records found in {jsonl_path}")
@@ -247,7 +251,7 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
         if script_restarts[i] > 0:
             ax.plot(
                 [x[i],x[i]],
-                [cumulative[i],cumulative[i]+script_restarts[i]],
+                [cumulative[i],cumulative[i]-script_restarts[i]],
                 "-.o", markersize=5, color=color)
     
     
