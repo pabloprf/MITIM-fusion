@@ -4491,7 +4491,7 @@ class TGLFoutput:
         IncludeExtraIonsInQi = [i - 1 for i in self.inputclass.ions_info["thermal_list_extras"]] if self.inputclass is not None else []
         self.ions_included = (1,) + tuple(IncludeExtraIonsInQi)
         
-        self.fast_included = tuple(self.inputclass.ions_info["fast_list"]) if self.inputclass is not None else ()
+        self.fast_included = tuple([i-1 for i in self.inputclass.ions_info["fast_list"]]) if self.inputclass is not None else ()
 
         # ------------------------------------------------------------------------
         # Fluxes
