@@ -172,7 +172,7 @@ def mitim_timer(
     return decorator_timer
 
 # ---------------------------------------------------------------------------
-def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= ''):
+def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= '', log=False):
     """
     Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
     with vertical lines when the beat number changes.
@@ -282,6 +282,8 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
     ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
     ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
     GRAPHICStools.addDenseAxis(ax)
+    if log:
+        ax.set_yscale('log')
     
     return x, scripts
 

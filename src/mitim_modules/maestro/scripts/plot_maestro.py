@@ -69,7 +69,7 @@ def main():
 
     only_folder_structure_with_files = None
     if args.remote_minimal:
-        only_folder_structure_with_files = ["Outputs/optimization_data.csv","Outputs/optimization_extra.pkl","Outputs/optimization_object.pkl","Outputs/optimization_results.out"]
+       only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
             
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 
@@ -85,10 +85,9 @@ def main():
     # Actual interpreting and plotting
     # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    beats = args.beats
+    beats = args.beats if not args.remote_minimal else 0
     only = args.only
     full = args.full
-
 
     folders = [IOtools.expandPath(folder) for folder in folders]
     
