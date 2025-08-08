@@ -15443,7 +15443,7 @@ class transp_output:
         for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
             profiles[key] = profiles[key].clip(min=minimum)
 
-        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+        p = PROFILEStools.gacode_state.scratch(profiles)
 
         return p
 

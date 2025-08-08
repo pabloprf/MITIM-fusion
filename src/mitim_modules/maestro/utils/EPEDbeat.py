@@ -363,7 +363,7 @@ class eped_beat(beat):
         
     def finalize(self, **kwargs):
         
-        self.profiles_output = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode.eped')
+        self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
 
         self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
@@ -379,7 +379,7 @@ class eped_beat(beat):
 
             loaded_results =  np.load(self.folder_output / 'eped_results.npy', allow_pickle=True).item()
 
-            profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode') if isitfinished else None
+            profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode') if isitfinished else None
             
         else:
 
@@ -404,7 +404,7 @@ class eped_beat(beat):
 
         loaded_results, profiles = self.grab_output()
 
-        profiles_current = PROFILEStools.PROFILES_GACODE(self.folder / 'input.gacode')
+        profiles_current = PROFILEStools.gacode_state(self.folder / 'input.gacode')
 
         profiles_current.plotRelevant(axs = axs, color = 'b', label = 'orig')
         
