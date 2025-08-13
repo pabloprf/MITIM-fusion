@@ -119,6 +119,11 @@ def query_yes_no(question, extra=""):
     '''
     From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input 
     '''
+    # Fix suggested by chatGPT 4.1 to address failure bc of non-interactive terminal
+    if not sys.stdin.isatty():
+        printMsg(f"\t\t>> Non-interactive terminal detected, auto-confirming '{question}'")
+        return True
+
 
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
