@@ -29,6 +29,9 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
             folder = IOtools.expandPath(folders[i])
             folder_orig = IOtools.expandPath(folders_local[i])
         
+            if folder == folder_orig:
+                continue
+            
             if folder_orig.exists():
                 IOtools.shutil_rmtree(folder_orig)
                 
