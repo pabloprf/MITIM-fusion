@@ -2409,8 +2409,8 @@ class mitim_state:
         # Determine the mass reference
         mass_ref = 2.0
         
-        sign_it = -np.sign(self.profiles["current(MA)"][-1])
-        sign_bt = -np.sign(self.profiles["bcentr(T)"][-1])
+        sign_it = int(-np.sign(self.profiles["current(MA)"][-1]))
+        sign_bt = int(-np.sign(self.profiles["bcentr(T)"][-1]))
         
         s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
         s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])

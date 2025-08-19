@@ -1,5 +1,5 @@
 import os
-from mitim_tools.gacode_tools import NEOtools
+from mitim_tools.gacode_tools import NEOtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
 cold_start = True
@@ -12,5 +12,9 @@ input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
-neo = NEOtools.NEO()
-neo.prep_direct(folder, input_gacode)
+neo = NEOtools.NEO(
+    rhos=[0.55]
+)
+neo.prep_direct(PROFILEStools.gacode_state(input_gacode), folder, )
+
+neo.run('neo1')

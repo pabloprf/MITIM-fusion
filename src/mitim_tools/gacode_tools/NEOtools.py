@@ -1,6 +1,7 @@
+import os
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import FARMINGtools, IOtools
 from mitim_tools.gacode_tools.utils import GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -8,8 +9,12 @@ from IPython import embed
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
 class NEO:
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        rhos=[0.4, 0.6],  # rho locations of interest
+    ):
+        
+        self.rhos = rhos
 
     def prep(self, inputgacode, folder):
         self.inputgacode = inputgacode
@@ -58,33 +63,51 @@ class NEO:
 
     def run(
         self,
+        subfolder,
+        forceIfcold_start=False,
         ):
-        
-        pass
-        # tmp_folder = self.FolderGACODE / "tmp"
-        
-        # os.system(f'cp {self.FolderGACODE / f'input.neo_{rho:.4f}'}')
-        
-        # neo_job = FARMINGtools.mitim_job(self.FolderGACODE)
-        # neo_job.define_machine(
-        #     "neo",
-        #     f"mitim_neo"
-        # )
 
-        # neo_job.prep(
-        #     'neo -e .',
-        #     input_folders=[self.FolderGACODE],
-        #     output_folders=folders_red,
-        #     check_files_in_folder=check_files_in_folder,
-        #     shellPreCommands=shellPreCommands,
-        #     shellPostCommands=shellPostCommands,
-        # )
+        # Create this run folder 
+        
+        subfolder = Path(subfolder)
+        
+        FolderNEO = self.FolderGACODE / subfolder
+        IOtools.askNewFolder(FolderNEO, force=forceIfcold_start)
 
-        # neo_job.run(
-        #     removeScratchFolders=True,
-        #     attempts_execution=attempts_execution
-        #     )
+        folders, folders_red = [], []
+        for rho in self.rhos:
+            # Create subfolder for each rho
+            FolderNEO_rho = FolderNEO / f"rho_{rho:.4f}"
+            IOtools.askNewFolder(FolderNEO_rho, force=forceIfcold_start)
+            
+            # Copy the file
+            os.system(f"cp {self.FolderGACODE / f'input.neo_{rho:.4f}'} {FolderNEO_rho / 'input.neo'}")
 
+            folders.append(FolderNEO_rho)
+            folders_red.append(str(subfolder / f"rho_{rho:.4f}"))
+
+        # Run NEO
+        
+        neo_job = FARMINGtools.mitim_job(self.FolderGACODE)
+        neo_job.define_machine_quick("neo",f"mitim_neo")
+        
+        NEOcommand = ""
+
+        for folder in folders_red:
+            NEOcommand += f"neo -e {folder} -p {neo_job.folderExecution} &\n"
+        NEOcommand += "wait\n"
+        
+        neo_job.define_machine("neo",f"mitim_neo")
+
+        neo_job.prep(
+            NEOcommand,
+            input_folders=[FolderNEO],
+            output_folders=folders_red,
+        )
+
+        neo_job.run(
+            removeScratchFolders=True,
+            )
 
     def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
 
@@ -206,7 +229,7 @@ class NEOinput:
         with open(file, "w") as f:
             f.write("#-------------------------------------------------------------------------\n")
             f.write(f"# NEO input file modified by MITIM {mitim_version}\n")
-            f.write("#-------------------------------------------------------------------------")
+            f.write("#-------------------------------------------------------------------------\n")
 
             for ikey in self.all:
                 var = self.all[ikey]
