@@ -361,8 +361,6 @@ class TGLF:
         mitim_state,    # A MITIM state class
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        remove_fast=False,  # Ignore fast particles in TGYRO
-        recalculate_ptot=True, # Recalculate PTOT in TGYRO
         forceIfcold_start=False,  # Extra flag
         ):
 
@@ -380,8 +378,6 @@ class TGLF:
         self.profiles = mitim_state
 
         self.profiles.derive_quantities(mi_ref=md_u)
-
-        self.profiles.correct(options={'recalculate_ptot':recalculate_ptot,'remove_fast':remove_fast})
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize from state
