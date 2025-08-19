@@ -56,12 +56,12 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         tglf = TGLFtools.TGLF(rhos=rho_locations)
 
-        _ = tglf.prep_direct_tglf(
+        _ = tglf.prep_direct(
             self.folder,
+            self.powerstate.profiles_transport
             cold_start = cold_start,
             remove_fast = False, # Use what's in the input.gacode, the removal should happen at initialization
             recalculate_ptot = False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-            inputgacode=self.powerstate.profiles_transport,
             )
         
         # ------------------------------------------------------------------------------------------------------------------------

@@ -2197,10 +2197,16 @@ class mitim_state:
     # Code conversions
     # ************************************************************************************************************************************************
 
-    def to_tglf(self, rhos=[0.5], TGLFsettings=1):
+    def to_tglf(self, r=[0.5], TGLFsettings=1, r_is_rho = True):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Determine if the input radius is rho toroidal or r/a
+        if r_is_rho:
+            r_interpolation = self.profiles['rho(-)']
+        else:
+            r_interpolation = self.derived['roa']
 
         # Determine the number of species to use in TGLF
         max_species_tglf = 6  # TGLF only accepts up to 6 species  
@@ -2210,7 +2216,7 @@ class mitim_state:
         else:
             tglf_ions_num = len(self.Species)
 
-        # Determinte the mass reference
+        # Determine the mass reference
         mass_ref = 2.0 # TODO: This is the only way to make it consistent with TGYRO (derivations with mD_u but mass in tglf with 2.0... https://github.com/gafusion/gacode/issues/398
 
         # -----------------------------------------------------------------------
@@ -2262,14 +2268,14 @@ class mitim_state:
         # ---------------------------------------------------------------------------------------------------------------------------------------
 
         inputsTGLF = {}
-        for rho in rhos:
+        for rho in r:
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Define interpolator at this rho
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             def interpolator(y):
-                return interpolation_function(rho, self.profiles['rho(-)'],y).item()
+                return interpolation_function(rho, r_interpolation,y).item()
 
             TGLFinput, TGLFoptions, label = GACODEdefaults.addTGLFcontrol(TGLFsettings)
             
@@ -2327,6 +2333,7 @@ class mitim_state:
                 'BETAE': interpolator(self.derived['betae']),
                 }
 
+
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Geometry comes from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2357,10 +2364,10 @@ class mitim_state:
                     if int(ikey[-4]) > 6:
                         continue
                     
-                    key_mod = ikey.upper().split('(')[0]  # Remove any function call like 'shape_cos(1)'
+                    key_mod = ikey.upper().split('(')[0]
                     
                     parameters[key_mod] = self.profiles[ikey]
-                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.profiles[ikey]*0.0 #TODO
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
 
             geom = {}
             for k in parameters:

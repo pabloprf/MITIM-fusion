@@ -356,118 +356,54 @@ class TGLF:
 
         return cdf
 
-    def prep_direct_tglf(
+    def prep_direct(
         self,
+        mitim_state,    # A MITIM state class
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
         remove_fast=False,  # Ignore fast particles in TGYRO
         recalculate_ptot=True, # Recalculate PTOT in TGYRO
-        cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
-        inputgacode=None,  # *NOTE BELOW*
-        specificInputs=None,  # *NOTE BELOW*
-        tgyro_results=None,  # *NOTE BELOW*
         forceIfcold_start=False,  # Extra flag
         ):
-        """
-        * Note on inputgacode, specificInputs and tgyro_results:
-                If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
-                Optionally, I can give tgyro_results for further info in such a case
-        """
 
-        print("> Preparation of TGLF run")
+        print("> Preparation of TGLF run from input.gacode (direct conversion)")
 
-        # PROFILES class.
-
-        if inputgacode is not None:
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+        
+        if cold_start or not self.FolderGACODE.exists():
+            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
             
-            if isinstance(inputgacode, str) or isinstance(inputgacode, Path):
-                
-                from mitim_tools.gacode_tools import PROFILEStools
-                self.profiles = PROFILEStools.gacode_state(inputgacode)
-                
-            else:
-                
-                # If inputgacode is already a PROFILEStools object, just use it
-                self.profiles = inputgacode
-                
-        else:
-            
-            # TGYRO class. It checks existence and creates input.profiles/input.gacode
-
-            self.tgyro = TGYROtools.TGYRO(
-                cdf=self.LocationCDF, time=self.time, avTime=self.avTime
-            )
-            self.tgyro.prep(
-                FolderGACODE,
-                cold_start=cold_start,
-                remove_tmp=True,
-                subfolder="tmp_tgyro_prep",
-                profilesclass_custom=self.profiles,
-                forceIfcold_start=forceIfcold_start,
-            )
-
-            self.profiles = self.tgyro.profiles
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Prepare state
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        self.profiles = mitim_state
 
         self.profiles.derive_quantities(mi_ref=md_u)
 
         self.profiles.correct(options={'recalculate_ptot':recalculate_ptot,'remove_fast':remove_fast})
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by preparing a tgyro class and running for -1 iterations
+        # Initialize from state
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if specificInputs is None:
-
-            self.inputsTGLF = self.profiles.to_tglf(rhos=self.rhos)
-
-            for rho in self.inputsTGLF:
-                self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
-                
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by taking directly the inputs
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        else:
-            self.inputsTGLF = specificInputs
         
-        self.tgyro_results  = tgyro_results
-
-        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
-        
-        if cold_start or not self.FolderGACODE.exists():
-            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
+        self.inputsTGLF = self.profiles.to_tglf(r=self.rhos, r_is_rho = True)
 
         for rho in self.inputsTGLF:
+            
+            # Initialize class
+            self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
+                
+            # Write input.tglf file
             self.inputsTGLF[rho].file = self.FolderGACODE / f'input.tglf_{rho:.4f}'
             self.inputsTGLF[rho].write_state()
 
-        """
-		~~~~~ Create Normalizations ~~~~~
-			- Only input.gacode needed
-			- I can also give TRANSP CDF for complement. It is used in prep anyway, so good to store here
-				and have the values for plotting the experimental fluxes.
-			- I can also give TGYRO class for complement. It is used in prep anyway, so good to store here
-				for plotting and check grid conversions.
-
-		Note about the TGLF normalization:
-			What matters is what's the mass used to normalized the MASS_X.
-			If TGYRO was used to generate the input.tglf file, then the normalization mass is deuterium and all
-			must be normalized to deuterium
-		"""
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Definining normalizations
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         print("> Setting up normalizations")
-
-        print("\t- Using mass of deuterium to normalize things (not necesarily the first ion)",typeMsg="w",)
-        self.profiles.derive_quantities(mi_ref=md_u)
-
-        self.NormalizationSets, cdf = NORMtools.normalizations(
-            self.profiles,
-            LocationCDF=self.LocationCDF,
-            time=self.time,
-            avTime=self.avTime,
-            cdf_open=cdf_open,
-            tgyro=self.tgyro_results,
-        )
+        self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
 
         return cdf
 
@@ -4069,6 +4005,30 @@ class TGLFinput:
         if file is None:
             file = self.file
 
+        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
+        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
+        def _fmt_num(x):
+            import numpy as _np
+            if isinstance(x, (bool, _np.bool_)):
+                return "1" if x else "0"
+            if isinstance(x, (_np.floating, float)):
+                # 6 significant figures in exponential => 5 digits after decimal
+                return f"{float(x):.5E}"
+            if isinstance(x, (_np.integer, int)):
+                return f"{int(x)}"
+            return str(x)
+
+        def _fmt_value(val):
+            import numpy as _np
+            if isinstance(val, (list, tuple, _np.ndarray)):
+                # Flatten numpy arrays but keep ordering; join with spaces
+                if isinstance(val, _np.ndarray):
+                    flat = val.flatten().tolist()
+                else:
+                    flat = list(val)
+                return " ".join(_fmt_num(v) for v in flat)
+            return _fmt_num(val)
+
         with open(file, "w") as f:
             f.write("#-------------------------------------------------------------------------\n")
             f.write(f"# TGLF input file modified by MITIM {mitim_version}\n")
@@ -4078,13 +4038,13 @@ class TGLFinput:
             f.write("# ------------------\n\n")
             for ikey in self.controls:
                 var = self.controls[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
             f.write("\n\n# Geometry parameters\n")
             f.write("# ------------------\n\n")
             for ikey in self.geom:
                 var = self.geom[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
                 
             f.write("\n\n# Plasma parameters\n")
             f.write("# ------------------\n\n")
@@ -4095,7 +4055,7 @@ class TGLFinput:
                         print(f"\t- Maximum number of species in TGLF reached, not considering after {maxSpeciesTGLF} species",typeMsg="w",)
                 else:
                     var = self.plasma[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
             f.write("\n\n# Species\n")
             f.write("# -------\n")
@@ -4117,7 +4077,7 @@ class TGLFinput:
                 f.write(f"\n# Specie #{ikey}{extralab}\n")
                 for ivar in self.species[ikey]:
                     ikar = f"{ivar}_{ikey}"
-                    f.write(f"{ikar.ljust(12)} = {self.species[ikey][ivar]}\n")
+                    f.write(f"{ikar.ljust(12)} = {_fmt_value(self.species[ikey][ivar])}\n")
 
         print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
