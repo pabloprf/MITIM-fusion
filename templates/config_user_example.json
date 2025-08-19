@@ -6,6 +6,7 @@
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",
         "tglf":             "engaging",
+        "neo":              "engaging",
         "cgyro":            "engaging",
         "astra":            "engaging",
         "eq":               "mfews",
@@ -13,7 +14,8 @@
         "ntcc":             "mfews",
         "get_fbm":          "mfews",
         "transp":           "globus", 
-        "idl":              "mfews"
+        "idl":              "mfews",
+        "eped":             "engaging"
     },
     "local": {
         "machine":    "local",
