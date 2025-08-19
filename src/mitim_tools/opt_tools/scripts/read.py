@@ -65,7 +65,6 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     yCummMeans = []
     xes = []
     resS = []
-    logS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
         res = BOgraphics.optimization_results(
             folderWork / "Outputs" / "optimization_results.out"
@@ -74,14 +73,6 @@ def plotCompare(folders, plotMeanMax=[True, False]):
             STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
         )
         res.read()
-
-        log_class = folderWork / "Outputs" / "timing.jsonl"
-
-        try:
-            log_class.interpret()
-        except:
-            print("Could not read log", typeMsg="w")
-            log_class = None
 
         plotAllmembers = len(folderWorks) <= 3
         xe, yCummMean = res.plotImprovement(
@@ -97,22 +88,20 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         #compared = -yCummMean[0] * conv if conv < 0 else conv
         #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
-        if log_class is not None:
-            IOtools.plot_timings(
-                folderWork / "Outputs" / "timing.jsonl", axs=[ax2, ax3], label=name, color=color
-            )
+        IOtools.plot_timings(
+            folderWork / "Outputs" / "timing.jsonl", axs=[ax2, ax3], label=name, color=color
+        )
 
         yCummMeans.append(yCummMean)
         xes.append(xe)
         resS.append(res)
-        logS.append(log_class)
 
     ax0.set_xlim([0, maxEv])
 
     ax2.legend(prop={"size": 6})
     ax3.legend(prop={"size": 6})
 
-    return yCummMeans, xes, resS, logS, fig
+    return yCummMeans, xes, resS, fig
 
 
 def main():
@@ -202,7 +191,7 @@ def main():
             opt_funs.append(opt_fun)
 
     if analysis_level == -1:
-        yCummMeans, xes, resS, logS, fig = plotCompare(
+        yCummMeans, xes, resS, fig = plotCompare(
             folders_complete, plotMeanMax=[True, len(folders_complete) < 2]
         )
 
