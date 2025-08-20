@@ -207,7 +207,7 @@ class NEOinput:
         def _fmt_num(x):
             import numpy as _np
             if isinstance(x, (bool, _np.bool_)):
-                return "1" if x else "0"
+                return "True" if x else "False"
             if isinstance(x, (_np.floating, float)):
                 # 6 significant figures in exponential => 5 digits after decimal
                 return f"{float(x):.5E}"

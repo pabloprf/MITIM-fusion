@@ -19,6 +19,7 @@ tglf.run(
     subFolderTGLF="run1/",
     TGLFsettings=None,
     cold_start=cold_start,
+    runWaveForms  = [0.67, 10.0],
     forceIfcold_start=True,
     extraOptions={"USE_BPER": False, "USE_BPAR": False},
     slurm_setup={"cores": 4, "minutes": 1},

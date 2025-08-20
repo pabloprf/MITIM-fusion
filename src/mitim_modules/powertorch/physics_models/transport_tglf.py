@@ -79,7 +79,6 @@ class tglf_model(TRANSPORTtools.power_transport):
                     cold_start= cold_start,
                     forceIfcold_start=True,
                     extra_name= self.name,
-                    anticipate_problems=True,
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
                         "minutes": 2,

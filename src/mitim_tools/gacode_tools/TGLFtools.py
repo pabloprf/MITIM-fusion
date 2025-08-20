@@ -28,7 +28,7 @@ from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
-class TGLF:
+class TGLF(GACODErun.gacode_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -121,13 +121,18 @@ class TGLF:
             ** Modify the class as wish, and do run,read, etc **
             ** Because normalizations are stored in the prep phase, that's all ready **
         """
-        print(
-            "\n-----------------------------------------------------------------------------------------"
-        )
+
+        super().__init__(rhos=rhos)
+
+        self.run_specifications = {
+            'code': 'tglf',
+            'input_file': 'input.tglf',
+            'code_call': 'tglf -e',
+            'control_function': GACODEdefaults.addTGLFcontrol
+        }
+        print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t TGLF class module")
-        print(
-            "-----------------------------------------------------------------------------------------\n"
-        )
+        print("-----------------------------------------------------------------------------------------\n")
 
         if alreadyRun is not None:
             # For the case in which I have run TGLF somewhere else, not using to plot and modify the class
@@ -135,6 +140,11 @@ class TGLF:
             self.__dict__ = alreadyRun.__dict__
             print("* Readying previously-run TGLF class", typeMsg="i")
         else:
+            
+            self.ResultsFiles_minimal = [
+                "out.tglf.gbflux",
+            ]
+            
             self.ResultsFiles = [
                 "out.tglf.run",
                 "out.tglf.gbflux",
@@ -167,7 +177,6 @@ class TGLF:
             else:
                 self.nameRunid = "0"
             self.time, self.avTime = time, avTime
-            self.rhos = np.array(rhos)
 
             (
                 self.results,
@@ -461,7 +470,6 @@ class TGLF:
         cold_start=False,
         forceIfcold_start=False,
         extra_name="exe",
-        anticipate_problems=True,
         slurm_setup={
             "cores": 4,
             "minutes": 5,
@@ -476,7 +484,7 @@ class TGLF:
         # Prepare inputs
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
+        tglf_executor, tglf_executor_full, folderlast = self._prep(
             subFolderTGLF,
             tglf_executor={},
             tglf_executor_full={},
@@ -493,7 +501,6 @@ class TGLF:
             forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
             slurm_setup=slurm_setup,
-            anticipate_problems=anticipate_problems,
             attempts_execution=attempts_execution,
             only_minimal_files=only_minimal_files,
         )
@@ -520,6 +527,24 @@ class TGLF:
 
         self.FolderTGLFlast = folderlast
 
+    def _prep(
+        self,
+        subFolder,
+        tglf_executor={},
+        tglf_executor_full={},
+        TGLFsettings=None,
+        **kwargs
+    ):
+
+        return self._generic_prep(
+            subFolder,
+            code_executor=tglf_executor,
+            code_executor_full=tglf_executor_full,
+            code_settings=TGLFsettings,
+            addControlFunction=self.run_specifications['control_function'],
+            **kwargs
+        )
+
     def _run(
             self,
             tglf_executor,
@@ -532,28 +557,11 @@ class TGLF:
 
         print("\n> Run TGLF")
 
-        if kwargs_TGLFrun.get("only_minimal_files", False):
-            filesToRetrieve = ["out.tglf.gbflux"]
-        else:
-            filesToRetrieve = self.ResultsFiles
-
-        c = 0
-        for subFolderTGLF in tglf_executor:
-            c += len(tglf_executor[subFolderTGLF])
-
-        if c > 0:
-            GACODErun.runTGLF(
-                self.FolderGACODE,
-                tglf_executor,
-                filesToRetrieve=filesToRetrieve,
-                minutes=kwargs_TGLFrun.get("slurm_setup", {}).get("minutes", 5),
-                cores_tglf=kwargs_TGLFrun.get("slurm_setup", {}).get("cores", 4),
-                name=f"tglf_{self.nameRunid}{kwargs_TGLFrun.get('extra_name', '')}",
-                launchSlurm=kwargs_TGLFrun.get("launchSlurm", True),
-                attempts_execution=kwargs_TGLFrun.get("attempts_execution", 1),
-            )
-        else:
-            print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
+        self._generic_run(
+            tglf_executor,
+            self.run_specifications,
+            **kwargs_TGLFrun
+        )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Waveform if requested
@@ -562,107 +570,6 @@ class TGLF:
 
         if "runWaveForms" in kwargs_TGLFrun and kwargs_TGLFrun["runWaveForms"] is not None and len(kwargs_TGLFrun["runWaveForms"]) > 0:
             self._run_wf(kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun)
-
-    def _prepare_run_radii(
-        self,
-        subFolderTGLF,  # 'tglf1/',
-        rhos=None,
-        tglf_executor={},
-        tglf_executor_full={},
-        TGLFsettings=None,
-        extraOptions={},
-        multipliers={},
-        minimum_delta_abs={},
-        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
-        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
-        launchSlurm=True,
-        cold_start=False,
-        forceIfcold_start=False,
-        anticipate_problems=True,
-        slurm_setup={
-            "cores": 4,
-            "minutes": 5,
-        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-        only_minimal_files=False,
-        **kwargs):
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Prepare for run
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if rhos is None:
-            rhos = self.rhos
-
-        inputs = copy.deepcopy(self.inputsTGLF)
-        FolderTGLF = self.FolderGACODE / subFolderTGLF
-
-        ResultsFiles_new = []
-        for i in self.ResultsFiles:
-            if "mitim.out" not in i:
-                ResultsFiles_new.append(i)
-        self.ResultsFiles = ResultsFiles_new
-
-        if only_minimal_files:
-            filesToRetrieve = ["out.tglf.gbflux"]
-        else:
-            filesToRetrieve = self.ResultsFiles
-
-        # Do I need to run all radii?
-        rhosEvaluate = cold_start_checker(
-            rhos,
-            filesToRetrieve,
-            FolderTGLF,
-            cold_start=cold_start,
-        )
-
-        if len(rhosEvaluate) == len(rhos):
-            # All radii need to be evaluated
-            IOtools.askNewFolder(FolderTGLF, force=forceIfcold_start)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        (
-            latest_inputsFileTGLF,
-            latest_inputsFileTGLFDict,
-        ) = changeANDwrite_TGLF(
-            rhos,
-            inputs,
-            FolderTGLF,
-            TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-        )
-
-        tglf_executor_full[subFolderTGLF] = {}
-        tglf_executor[subFolderTGLF] = {}
-        for irho in self.rhos:
-            tglf_executor_full[subFolderTGLF][irho] = {
-                "folder": FolderTGLF,
-                "dictionary": latest_inputsFileTGLFDict[irho],
-                "inputs": latest_inputsFileTGLF[irho],
-                "extraOptions": extraOptions,
-                "multipliers": multipliers,
-            }
-            if irho in rhosEvaluate:
-                tglf_executor[subFolderTGLF][irho] = tglf_executor_full[subFolderTGLF][
-                    irho
-                ]
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Stop if I expect problems
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if anticipate_problems:
-            anticipate_problems_func(
-                latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
-            )
-
-        return tglf_executor, tglf_executor_full, FolderTGLF
 
     def _run_wf(self, kys, tglf_executor, **kwargs_TGLFrun):
         """
@@ -697,13 +604,10 @@ class TGLF:
 
                     ky_single_orig = copy.deepcopy(ky_single0)
 
-                    FolderTGLF_old = tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["folder"]
+                    FolderTGLF_old = tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]["folder"]
 
                     self.ky_single = None
-                    self.read(
-                        label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
+                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
                     self.ky_single = kys
 
                     self.FoldersTGLF_WF[f"ky{ky_single0}"][
@@ -713,37 +617,18 @@ class TGLF:
                     ky_singles = []
                     for i, ir in enumerate(self.rhos):
                         # -------- Get the closest unstable mode to the one requested
-                        if (
-                            kwargs_TGLFrun["forceClosestUnstableWF"]
-                            if "forceClosestUnstableWF" in kwargs_TGLFrun
-                            else True
-                        ):
+                        if kwargs_TGLFrun.get("forceClosestUnstableWF", True):
+
                             # Only unstable ones
                             kys_n = []
-                            for j in range(
-                                len(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky)
-                            ):
-                                if (
-                                    self.results[f"ky{ky_single0}"]["TGLFout"][i].g[
-                                        0, j
-                                    ]
-                                    > 0.0
-                                ):
-                                    kys_n.append(
-                                        self.results[f"ky{ky_single0}"]["TGLFout"][
-                                            i
-                                        ].ky[j]
-                                    )
+                            for j in range(len(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky)):
+                                if self.results[f"ky{ky_single0}"]["TGLFout"][i].g[0, j] > 0.0:
+                                    kys_n.append(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky[j])
                             kys_n = np.array(kys_n)
                             # ----
 
-                            closest_ky = kys_n[
-                                np.argmin(np.abs(kys_n - ky_single_orig))
-                            ]
-                            print(
-                                f"\t- rho = {ir:.3f}, requested ky={ky_single_orig:.3f}, & closest unstable ky based on previous run: ky={closest_ky:.3f}",
-                                typeMsg="i",
-                            )
+                            closest_ky = kys_n[np.argmin(np.abs(kys_n - ky_single_orig))]
+                            print(f"\t- rho = {ir:.3f}, requested ky={ky_single_orig:.3f}, & closest unstable ky based on previous run: ky={closest_ky:.3f}",typeMsg="i",)
                             ky_single = closest_ky
                         else:
                             ky_single = ky_single0
@@ -759,21 +644,15 @@ class TGLF:
                     else:
                         extraOptions_WF = {}
 
-                    extraOptions_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["extraOptions"])
-                    multipliers_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["multipliers"])
+                    extraOptions_WF = copy.deepcopy(tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]["extraOptions"])
+                    multipliers_WF = copy.deepcopy(tglf_executor[subFolderTGLF][list(tglf_executor[subFolderTGLF].keys())[0]]["multipliers"])
 
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
                     extraOptions_WF["KY"] = ky_singles
-                    extraOptions_WF["VEXB_SHEAR"] = (
-                        0.0  # See email from G. Staebler on 05/16/2021
-                    )
+                    extraOptions_WF["VEXB_SHEAR"] = 0.0  # See email from G. Staebler on 05/16/2021
 
-                    tglf_executorWF, _, _ = self._prepare_run_radii(
+                    tglf_executorWF, _, _ = self._prep(
                         (FolderTGLF_old / f"ky{ky_single0}").relative_to(FolderTGLF_old.parent),
                         tglf_executor=tglf_executorWF,
                         extraOptions=extraOptions_WF,
@@ -2306,7 +2185,7 @@ class TGLF:
                 "forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"]
             )
 
-            tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
+            tglf_executor, tglf_executor_full, folderlast = self._prep(
                 f"{self.subFolderTGLF_scan}_{name}",
                 tglf_executor=tglf_executor,
                 tglf_executor_full=tglf_executor_full,
@@ -3673,75 +3552,6 @@ def completeVariation(setVariations, species):
 
     return setVariations_new
 
-
-# ~~~~~~~~~ Input class
-
-
-def changeANDwrite_TGLF(
-    rhos,
-    inputs0,
-    FolderTGLF,
-    TGLFsettings=None,
-    extraOptions={},
-    multipliers={},
-    minimum_delta_abs={},
-    ApplyCorrections=True,
-    Quasineutral=False,
-):
-    """
-    Received inputs classes and gives text.
-    ApplyCorrections refer to removing ions with too low density and that are fast species
-    """
-
-    inputs = copy.deepcopy(inputs0)
-
-    modInputTGLF = {}
-    ns_max = []
-    for i, rho in enumerate(rhos):
-        print(f"\t- Changing input file for rho={rho:.4f}")
-        NS = inputs[rho].plasma["NS"]
-        inputTGLF_rho = GACODErun.modifyInputs(
-            inputs[rho],
-            Settings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            position_change=i,
-            addControlFunction=GACODEdefaults.addTGLFcontrol,
-            NS=NS,
-        )
-
-        newfile = FolderTGLF / f"input.tglf_{rho:.4f}"
-
-        if TGLFsettings is not None:
-            # Apply corrections
-            if ApplyCorrections:
-                print("\t- Applying corrections")
-                inputTGLF_rho.removeLowDensitySpecie()
-                inputTGLF_rho.remove_fast()
-
-            # Ensure that plasma to run is quasineutral
-            if Quasineutral:
-                inputTGLF_rho.ensureQuasineutrality()
-        else:
-            print('\t- Not applying corrections nor quasineutrality because "TGLFsettings" is None')
-
-        inputTGLF_rho.write_state(file=newfile)
-
-        modInputTGLF[rho] = inputTGLF_rho
-
-        ns_max.append(inputs[rho].plasma["NS"])
-        
-    # Convert back to a string because that's how runTGLFproduction operates
-    inputFileTGLF = inputToVariable(FolderTGLF, rhos)
-
-    if (np.diff(ns_max) > 0).any():
-        print("> Each radial location has its own number of species... probably because of removal of fast or low density...",typeMsg="w")
-        print("\t * Reading of TGLF results will fail... consider doing something before launching run",typeMsg="q")
-
-    return inputFileTGLF, modInputTGLF
-
-
 def reduceToControls(dict_all):
     controls, plasma, geom = {}, {}, {}
     for ikey in dict_all:
@@ -3866,6 +3676,21 @@ class TGLFinput:
         else:
             print("\t- No species in this input.tglf (it is either a controls-only file or there was a problem generating it)")
             self.onlyControl = True
+
+    def anticipate_problems(self):
+
+        threshold = 1e-10
+
+        minn = []
+        for cont, ip in enumerate(self.species):
+            if (cont <= self.num_recorded) and (
+                self.species[ip]["AS"] < threshold
+            ):
+                minn.append(ip)
+
+        if len(minn) > 0:
+            print(f"* Ions in positions {ip} have a relative density lower than {threshold}, which can cause problems",typeMsg="q")
+
 
     def isThePlasmaDT(self):
         """
@@ -4006,7 +3831,7 @@ class TGLFinput:
         def _fmt_num(x):
             import numpy as _np
             if isinstance(x, (bool, _np.bool_)):
-                return "1" if x else "0"
+                return "True" if x else "False"
             if isinstance(x, (_np.floating, float)):
                 # 6 significant figures in exponential => 5 digits after decimal
                 return f"{float(x):.5E}"
@@ -4336,25 +4161,6 @@ def identifySpecie(dict_species, dict_find):
             break
 
     return found_index
-
-
-# From file to dict
-
-
-def inputToVariable(finalFolder, rhos):
-    """
-    Entire text file to variable
-    """
-
-    inputFilesTGLF = {}
-    for cont, rho in enumerate(rhos):
-        fileN = finalFolder / f"input.tglf_{rho:.4f}"
-
-        with open(fileN, "r") as f:
-            lines = f.readlines()
-        inputFilesTGLF[rho] = "".join(lines)
-
-    return inputFilesTGLF
 
 
 # ~~~~~~~~~~~~~ Functions to handle results
@@ -6314,83 +6120,3 @@ def createCombinedRuns(tglfs=(), new_names=(), results_names=(), isItScan=False)
         normalizations[new_names[i]] = tglfs[i].NormalizationSets
 
     return tglf, normalizations
-
-
-def cold_start_checker(
-    rhos,
-    ResultsFiles,
-    FolderTGLF,
-    cold_start=False,
-    print_each_time=False,
-):
-    """
-    This function checks if the TGLF inputs are already in the folder. If they are, it returns True
-    """
-    cont_each = 0
-    if cold_start:
-        rhosEvaluate = rhos
-    else:
-        rhosEvaluate = []
-        for ir in rhos:
-            existsRho = True
-            for j in ResultsFiles:
-                ffi = FolderTGLF / f"{j}_{ir:.4f}"
-                existsThis = ffi.exists()
-                existsRho = existsRho and existsThis
-                if not existsThis:
-                    if print_each_time:
-                        print(f"\t* {ffi} does not exist")
-                    else:
-                        cont_each += 1
-            if not existsRho:
-                rhosEvaluate.append(ir)
-
-    if not print_each_time and cont_each > 0:
-        print(f'\t* {cont_each} files from expected set are missing')
-
-    if len(rhosEvaluate) < len(rhos) and len(rhosEvaluate) > 0:
-        print(
-            "~ Not all radii are found, but not removing folder and running only those that are needed",
-            typeMsg="i",
-        )
-
-    return rhosEvaluate
-
-
-def anticipate_problems_func(
-    latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
-):
-
-    # -----------------------------------
-    # ------ Check density for problems
-    # -----------------------------------
-
-    threshold = 1e-10
-
-    minn = []
-    for irho in latest_inputsFileTGLFDict:
-        for cont, ip in enumerate(latest_inputsFileTGLFDict[irho].species):
-            if (cont <= latest_inputsFileTGLFDict[irho].plasma["NS"]) and (
-                latest_inputsFileTGLFDict[irho].species[ip]["AS"] < threshold
-            ):
-                minn.append([irho, ip])
-
-    if len(minn) > 0:
-        print(
-            f"* Ions in positions [rho,pos] {minn} have a relative density lower than {threshold}, which can cause problems",
-            typeMsg="q",
-        )
-
-    # -----------------------------------
-    # ------ Check cores problem
-    # -----------------------------------
-
-    expected_allocated_cores = int(len(rhosEvaluate) * slurm_setup["cores"])
-
-    warning = 32 * 2
-
-    if launchSlurm:
-        print(
-            f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {slurm_setup["cores"]} cores/radius)',
-            typeMsg="" if expected_allocated_cores < warning else "q",
-        )
