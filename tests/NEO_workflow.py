@@ -21,10 +21,10 @@ neo.prep_direct(input_gacode, folder)
 neo.run('neo1/')
 neo.read('neo1')
 
-neo.run('neo2/', extraOptions={'N_XI': 17, 'N_THETA': 17})
-neo.read('neo2')
+neo.run('neo2/', extraOptions={'N_ENERGY':6,'N_XI': 17, 'N_THETA': 17})
+neo.read('neo_highres')
 
-neo.plot(labels=['neo1', 'neo2'])
+neo.plot(labels=['neo1', 'neo_highres'])
 
 neo.fn.show()
 neo.fn.close()

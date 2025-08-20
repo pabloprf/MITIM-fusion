@@ -52,7 +52,7 @@ class gacode_simulation:
         
         if isinstance(mitim_state, str) or isinstance(mitim_state, Path):
             # If a string, assume it's a path to input.gacode
-            mitim_state = PROFILEStools.gacode_state(mitim_state)
+            self.profiles = PROFILEStools.gacode_state(mitim_state)
         else:
             self.profiles = mitim_state
 
