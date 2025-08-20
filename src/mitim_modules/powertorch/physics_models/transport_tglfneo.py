@@ -213,11 +213,11 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["GZ1E20m2_tr_neoc"] = GZ
         self.powerstate.plasma["MtJm2_tr_neoc"] = Mt
         
-        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = Qe * percentError[1]/100.0
-        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = Qi * percentError[1]/100.0
-        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = Ge * percentError[1]/100.0
-        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = GZ * percentError[1]/100.0
-        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = Mt * percentError[1]/100.0
+        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = abs(Qe) * percentError[1]/100.0
+        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = abs(Qi) * percentError[1]/100.0
+        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = abs(Ge) * percentError[1]/100.0
+        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = abs(GZ) * percentError[1]/100.0
+        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = abs(Mt) * percentError[1]/100.0
 
         self.powerstate.plasma["QieMWm3_tr_neoc"] = Qe * 0.0
         self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = Qe * 0.0

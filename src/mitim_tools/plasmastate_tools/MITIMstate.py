@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
 from mitim_modules.powertorch.utils import CALCtools
-from mitim_tools.gacode_tools import NEOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -244,6 +243,7 @@ class mitim_state:
             profiles.changeResolution(rho_new=rhos)
             resol_changed = True
 
+        from mitim_tools.gacode_tools import NEOtools
         self.neo = NEOtools.NEO()
         self.neo.prep(profiles, folder)
         self.neo.run_vgen(subfolder=name, vgenOptions=vgenOptions, cold_start=cold_start)
