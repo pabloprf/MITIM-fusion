@@ -23,6 +23,8 @@ class gacode_simulation:
         self.ResultsFiles_minimal = []
         
         self.nameRunid = "0"
+        
+        self.results, self.scans = {}, {}
 
     def _prep_direct(
         self,
@@ -97,6 +99,7 @@ class gacode_simulation:
             "minutes": 5,
         },  # Cores per call (so, when running nR radii -> nR*4)
         addControlFunction=None,
+        controls_file='input.tglf.controls',
         **kwargs
         ):
 
@@ -155,7 +158,8 @@ class gacode_simulation:
             minimum_delta_abs=minimum_delta_abs,
             ApplyCorrections=ApplyCorrections,
             Quasineutral=Quasineutral,
-            addControlFunction=addControlFunction
+            addControlFunction=addControlFunction,
+            controls_file=controls_file,
         )
 
         code_executor_full[subfolder_simulation] = {}
@@ -229,6 +233,7 @@ def change_and_write_code(
     ApplyCorrections=True,
     Quasineutral=False,
     addControlFunction=None,
+    controls_file='input.tglf.controls',
 ):
     """
     Received inputs classes and gives text.
@@ -249,6 +254,7 @@ def change_and_write_code(
             minimum_delta_abs=minimum_delta_abs,
             position_change=i,
             addControlFunction=addControlFunction,
+            controls_file=controls_file,
             NS=inputs[rho].num_recorded,
         )
 
@@ -542,7 +548,7 @@ def run_gacode_simulation(
     )
 
     gacode_job.run(
-        removeScratchFolders=False,
+        removeScratchFolders=True,
         attempts_execution=attempts_execution
         )
 
@@ -675,13 +681,13 @@ def modifyInputs(
     minimum_delta_abs={},
     position_change=0,
     addControlFunction=None,
-    control_file = 'input.tglf.controls',
+    controls_file = 'input.tglf.controls',
     **kwargs_to_function,
 ):
 
     # Check that those are valid flags
-    GACODEdefaults.review_controls(extraOptions, control = control_file)
-    GACODEdefaults.review_controls(multipliers, control = control_file)
+    GACODEdefaults.review_controls(extraOptions, control = controls_file)
+    GACODEdefaults.review_controls(multipliers, control = controls_file)
     # -------------------------------------------
 
     if Settings is not None:

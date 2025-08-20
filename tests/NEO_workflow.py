@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from mitim_tools.gacode_tools import NEOtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
@@ -13,8 +14,17 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 neo = NEOtools.NEO(
-    rhos=[0.5, 0.6, 0.7]
+    rhos=np.linspace(0.1,0.95,20)
 )
 neo.prep_direct(PROFILEStools.gacode_state(input_gacode), folder, )
 
-neo.run('neo1')
+neo.run('neo1/')
+neo.read('neo1')
+
+neo.run('neo2/', extraOptions={'N_XI': 17, 'N_THETA': 17})
+neo.read('neo2')
+
+neo.plot(labels=['neo1', 'neo2'])
+
+neo.fn.show()
+neo.fn.close()

@@ -128,7 +128,8 @@ class TGLF(GACODErun.gacode_simulation):
             'code': 'tglf',
             'input_file': 'input.tglf',
             'code_call': 'tglf -e',
-            'control_function': GACODEdefaults.addTGLFcontrol
+            'control_function': GACODEdefaults.addTGLFcontrol,
+            'controls_file': 'input.tglf.controls'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -177,12 +178,7 @@ class TGLF(GACODErun.gacode_simulation):
                 _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
             self.time, self.avTime = time, avTime
 
-            (
-                self.results,
-                self.scans,
-                self.tgyro,
-                self.ky_single,
-            ) = ({}, {}, None, None)
+            self.tgyro,self.ky_single = None, None
 
             self.NormalizationSets = {
                 "TRANSP": None,
@@ -516,6 +512,7 @@ class TGLF(GACODErun.gacode_simulation):
             code_executor_full=tglf_executor_full,
             code_settings=TGLFsettings,
             addControlFunction=self.run_specifications['control_function'],
+            controls_file=self.run_specifications['controls_file'],
             **kwargs
         )
 

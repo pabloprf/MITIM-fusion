@@ -1,7 +1,8 @@
-import os
+import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
 from mitim_tools import __version__ as mitim_version
-from mitim_tools.misc_tools import FARMINGtools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -20,7 +21,8 @@ class NEO(GACODErun.gacode_simulation):
             'code': 'neo',
             'input_file': 'input.neo',
             'code_call': 'neo -e',
-            'control_function': GACODEdefaults.addNEOcontrol
+            'control_function': GACODEdefaults.addNEOcontrol,
+            'controls_file': 'input.neo.controls'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -67,8 +69,8 @@ class NEO(GACODErun.gacode_simulation):
         forceIfcold_start=False,
         extra_name="exe",
         slurm_setup={
-            "cores": 4,
-            "minutes": 5,
+            "cores": 1,
+            "minutes": 1,
         },  # Cores per NEO call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
@@ -136,6 +138,7 @@ class NEO(GACODErun.gacode_simulation):
             code_executor_full=neo_executor_full,
             code_settings=NEOsettings,
             addControlFunction=self.run_specifications['control_function'],
+            controls_file=self.run_specifications['controls_file'],
             **kwargs
         )
 
@@ -157,20 +160,75 @@ class NEO(GACODErun.gacode_simulation):
             **kwargs_NEOrun
         )
 
+    def read(
+        self,
+        label="neo1",
+        folder=None,  # If None, search in the previously run folder
+        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
+        require_all_files = True,   # If False, I only need the fluxes
+    ):
+        print("> Reading NEO results")
 
+        # If no specified folder, check the last one
+        if folder is None:
+            folder = self.FolderNEOlast
+            
+        self.results[label] = {'NEOout':[]}
+        for rho in self.rhos:
 
+            NEOout = NEOoutput(
+                folder,
+                suffix=f"_{rho:.4f}" if suffix is None else suffix,
+            )
 
+            self.results[label]['NEOout'].append(NEOout)
 
+        
+    def plot(
+        self,
+        fn=None,
+        labels=["neo1"],
+        extratitle="",
+        fn_color=None,
+        colors=None,
+        ):
+        
+        if fn is None:
+            self.fn = GUItools.FigureNotebook("NEO MITIM Notebook", geometry="1700x900", vertical=True)
+        else:
+            self.fn = fn
+            
+        fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
+        
+        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
 
+        if colors is None:
+            colors = GRAPHICStools.listColors()
 
+        axQe = fig1.add_subplot(grid[0, 0])
+        axQi = fig1.add_subplot(grid[0, 1])
+        axGe = fig1.add_subplot(grid[0, 2])
 
+        for i,label in enumerate(labels):
+            roa, QeGB, QiGB, GeGB = [], [], [], []
+            for irho in range(len(self.rhos)):
+                roa.append(self.results[label]['NEOout'][irho].roa)
+                QeGB.append(self.results[label]['NEOout'][irho].QeGB)
+                QiGB.append(self.results[label]['NEOout'][irho].QiGB)
+                GeGB.append(self.results[label]['NEOout'][irho].GeGB)
+                
+            axQe.plot(roa, QeGB, label=label, color=colors[i], marker='o', linestyle='-')
+            axQi.plot(roa, QiGB, label=label, color=colors[i], marker='o', linestyle='-')
+            axGe.plot(roa, GeGB, label=label, color=colors[i], marker='o', linestyle='-')
 
+        for ax in [axQe, axQi, axGe]:
+            ax.set_xlabel("$r/a$"); ax.set_xlim([0,1])
+            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
 
-
-
-
-
-
+        axQe.set_ylabel("$Q_e$ (GB)"); axQe.set_yscale('log')
+        axQi.set_ylabel("$Q_i$ (GB)"); axQi.set_yscale('log')
+        axGe.set_ylabel("$G_e$ (GB)"); #axGe.set_yscale('log')
 
     def prep(self, inputgacode, folder):
         self.inputgacode = inputgacode
@@ -243,7 +301,6 @@ def check_if_files_exist(folder, list_files):
     return True
 
 
-
 class NEOinput:
     def __init__(self, file=None):
         self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
@@ -266,7 +323,7 @@ class NEOinput:
 
     def process(self, input_dict):
         #TODO
-        self.all = input_dict
+        self.controls = input_dict
 
         self.num_recorded = 6
 
@@ -307,6 +364,45 @@ class NEOinput:
             f.write(f"# NEO input file modified by MITIM {mitim_version}\n")
             f.write("#-------------------------------------------------------------------------\n")
 
-            for ikey in self.all:
-                var = self.all[ikey]
+            for ikey in self.controls:
+                var = self.controls[ikey]
                 f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
+                
+                
+class NEOoutput:
+    def __init__(self, FolderGACODE, suffix=""):
+        self.FolderGACODE, self.suffix = FolderGACODE, suffix
+
+        if suffix == "":
+            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
+        else:
+            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}")
+
+        self.inputclass = NEOinput(file=self.FolderGACODE / f"input.neo{self.suffix}")
+
+        self.read()
+
+    def read(self):
+                
+        with open(self.FolderGACODE / ("out.neo.transport_flux" + self.suffix), "r") as f:
+            lines = f.readlines()
+            
+        for i in range(len(lines)):
+            if '# Z       pflux_tgyro   eflux_tgyro   mflux_tgyro' in lines[i]:
+                # Found the header line, now process the data
+                break
+        
+        line = lines[i+2]
+        self.GeGB, self.QeGB, self.MeGB = [float(x) for x in line.split()[1:]]
+        
+        self.GiAllGB, self.QiAllGB, self.MiAllGB = [], [], []
+        for i in range(i+3, len(lines)):
+            line = lines[i]
+            self.GiAllGB.append(float(line.split()[1]))
+            self.QiAllGB.append(float(line.split()[2]))
+            self.MiAllGB.append(float(line.split()[3]))
+
+        self.QiGB = np.sum(self.QiAllGB)
+        
+        self.roa = float(lines[0].split()[-1])
+
