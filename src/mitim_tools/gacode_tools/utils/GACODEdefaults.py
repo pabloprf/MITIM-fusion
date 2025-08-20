@@ -53,7 +53,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 
     return TGLFoptions
 
-def addNEOcontrol():
+def addNEOcontrol(*args, **kwargs):
 
     NEOoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
     

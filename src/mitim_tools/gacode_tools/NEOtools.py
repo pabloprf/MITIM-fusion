@@ -2,26 +2,32 @@ import os
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.misc_tools import FARMINGtools, IOtools
-from mitim_tools.gacode_tools.utils import GACODErun
+from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
-class NEO:
+class NEO(GACODErun.gacode_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
     ):
         
-        self.rhos = rhos
+        super().__init__(rhos=rhos)
 
-    def prep(self, inputgacode, folder):
-        self.inputgacode = inputgacode
-        self.folder = IOtools.expandPath(folder)
+        self.run_specifications = {
+            'code': 'neo',
+            'input_file': 'input.neo',
+            'code_call': 'neo -e',
+            'control_function': GACODEdefaults.addNEOcontrol
+        }
+        
+        print("\n-----------------------------------------------------------------------------------------")
+        print("\t\t\t NEO class module")
+        print("-----------------------------------------------------------------------------------------\n")
 
-        self.folder.mkdir(parents=True, exist_ok=True)
-
+        self.ResultsFiles = self.ResultsFiles_minimal = ['out.neo.transport_flux']
 
     def prep_direct(
         self,
@@ -31,83 +37,148 @@ class NEO:
         forceIfcold_start=False,  # Extra flag
         ):
 
-        print("> Preparation of NEO run from input.gacode (direct conversion)")
-
-        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+        print("> Preparation of TGLF run from input.gacode (direct conversion)")
         
-        if cold_start or not self.FolderGACODE.exists():
-            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
-            
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Prepare state
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        self.profiles = mitim_state
+        cdf = self._prep_direct(
+            mitim_state,
+            FolderGACODE,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            state_converter='to_neo',
+            input_class=NEOinput,
+            input_file='input.neo'
+        )
 
-        self.profiles.derive_quantities(mi_ref=md_u)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize from state
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        
-        self.inputsNEO = self.profiles.to_neo(r=self.rhos, r_is_rho = True)
-
-        for rho in self.inputsNEO:
-            
-            # Initialize class
-            self.inputsNEO[rho] = NEOinput.initialize_in_memory(self.inputsNEO[rho])
-                
-            # Write input.tglf file
-            self.inputsNEO[rho].file = self.FolderGACODE / f'input.neo_{rho:.4f}'
-            self.inputsNEO[rho].write_state()
+        return cdf
 
     def run(
         self,
-        subfolder,
+        subFolderNEO,  # 'neo1/',
+        NEOsettings=None,
+        extraOptions={},
+        multipliers={},
+        minimum_delta_abs={},
+        # runWaveForms=None,  # e.g. runWaveForms = [0.3,1.0]
+        # forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
+        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
+        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
+        launchSlurm=True,
+        cold_start=False,
         forceIfcold_start=False,
-        ):
+        extra_name="exe",
+        slurm_setup={
+            "cores": 4,
+            "minutes": 5,
+        },  # Cores per NEO call (so, when running nR radii -> nR*4)
+        attempts_execution=1,
+        only_minimal_files=False,
+    ):
 
-        # Create this run folder 
-        
-        subfolder = Path(subfolder)
-        
-        FolderNEO = self.FolderGACODE / subfolder
-        IOtools.askNewFolder(FolderNEO, force=forceIfcold_start)
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Prepare inputs
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        folders, folders_red = [], []
-        for rho in self.rhos:
-            # Create subfolder for each rho
-            FolderNEO_rho = FolderNEO / f"rho_{rho:.4f}"
-            IOtools.askNewFolder(FolderNEO_rho, force=forceIfcold_start)
-            
-            # Copy the file
-            os.system(f"cp {self.FolderGACODE / f'input.neo_{rho:.4f}'} {FolderNEO_rho / 'input.neo'}")
-
-            folders.append(FolderNEO_rho)
-            folders_red.append(str(subfolder / f"rho_{rho:.4f}"))
-
-        # Run NEO
-        
-        neo_job = FARMINGtools.mitim_job(self.FolderGACODE)
-        neo_job.define_machine_quick("neo",f"mitim_neo")
-        
-        NEOcommand = ""
-
-        for folder in folders_red:
-            NEOcommand += f"neo -e {folder} -p {neo_job.folderExecution} &\n"
-        NEOcommand += "wait\n"
-        
-        neo_job.define_machine("neo",f"mitim_neo")
-
-        neo_job.prep(
-            NEOcommand,
-            input_folders=[FolderNEO],
-            output_folders=folders_red,
+        neo_executor, neo_executor_full, folderlast = self.prep_run(
+            subFolderNEO,
+            neo_executor={},
+            neo_executor_full={},
+            NEOsettings=NEOsettings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
+            # runWaveForms=runWaveForms,
+            # forceClosestUnstableWF=forceClosestUnstableWF,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup,
+            attempts_execution=attempts_execution,
+            only_minimal_files=only_minimal_files,
         )
 
-        neo_job.run(
-            removeScratchFolders=True,
-            )
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Run NEO
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self._run(
+            neo_executor,
+            neo_executor_full=neo_executor_full,
+            NEOsettings=NEOsettings,
+            # runWaveForms=runWaveForms,
+            # forceClosestUnstableWF=forceClosestUnstableWF,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup,
+            only_minimal_files=only_minimal_files,
+        )
+
+        self.FolderNEOlast = folderlast
+
+    def prep_run(
+        self,
+        subFolder,
+        neo_executor={},
+        neo_executor_full={},
+        NEOsettings=None,
+        **kwargs
+    ):
+
+        return self._prep_run(
+            subFolder,
+            code_executor=neo_executor,
+            code_executor_full=neo_executor_full,
+            code_settings=NEOsettings,
+            addControlFunction=self.run_specifications['control_function'],
+            **kwargs
+        )
+
+    def _run(
+            self,
+            neo_executor,
+            neo_executor_full={},
+            **kwargs_NEOrun
+            ):
+        """
+        extraOptions and multipliers are not being grabbed from kwargs_NEOrun, but from neo_executor for WF
+        """
+
+        print("\n> Run NEO")
+
+        self._generic_run(
+            neo_executor,
+            self.run_specifications,
+            **kwargs_NEOrun
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def prep(self, inputgacode, folder):
+        self.inputgacode = inputgacode
+        self.folder = IOtools.expandPath(folder)
+
+        self.folder.mkdir(parents=True, exist_ok=True)
+
+
 
     def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
 
@@ -196,6 +267,11 @@ class NEOinput:
     def process(self, input_dict):
         #TODO
         self.all = input_dict
+
+        self.num_recorded = 6
+
+    def anticipate_problems(self):
+        pass
 
     def write_state(self, file=None):
         

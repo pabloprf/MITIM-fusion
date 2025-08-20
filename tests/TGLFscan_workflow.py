@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from mitim_tools.gacode_tools import TGLFtools
+from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
 cold_start = True
@@ -14,7 +14,7 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
-tglf.prep(folder, inputgacode=input_gacode, cold_start=cold_start)
+tglf.prep_direct(PROFILEStools.gacode_state(input_gacode),folder, cold_start=cold_start)
 
 tglf.runScan(	subFolderTGLF = 'scan1',
                 TGLFsettings  = None,

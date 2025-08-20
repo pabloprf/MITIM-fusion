@@ -4,11 +4,13 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from mitim_tools.gacode_tools.utils import GACODEdefaults
+from mitim_tools.gacode_tools.utils import GACODEdefaults, NORMtools
 from mitim_tools.transp_tools.utils import NTCCtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
+from mitim_tools.misc_tools.PLASMAtools import md_u
 
 class gacode_simulation:
     def __init__(
@@ -19,8 +21,62 @@ class gacode_simulation:
 
         self.ResultsFiles = []
         self.ResultsFiles_minimal = []
+        
+        self.nameRunid = "0"
 
-    def _generic_prep(
+    def _prep_direct(
+        self,
+        mitim_state,    # A MITIM state class
+        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
+        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
+        forceIfcold_start=False,  # Extra flag
+        state_converter='to_tglf',
+        input_class=None,
+        input_file='input.tglf'
+        ):
+
+        print("> Preparation run from input.gacode (direct conversion)")
+
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+        
+        if cold_start or not self.FolderGACODE.exists():
+            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
+            
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Prepare state
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        self.profiles = mitim_state
+
+        self.profiles.derive_quantities(mi_ref=md_u)
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Initialize from state
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        # Call the method dynamically based on state_converter
+        conversion_method = getattr(self.profiles, state_converter)
+        self.inputs_files = conversion_method(r=self.rhos, r_is_rho=True)
+
+        for rho in self.inputs_files:
+            
+            # Initialize class
+            self.inputs_files[rho] = input_class.initialize_in_memory(self.inputs_files[rho])
+                
+            # Write input.tglf file
+            self.inputs_files[rho].file = self.FolderGACODE / f'{input_file}_{rho:.4f}'
+            self.inputs_files[rho].write_state()
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Definining normalizations
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        print("> Setting up normalizations")
+        self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
+
+        return cdf
+
+    def _prep_run(
         self,
         subfolder_simulation,
         rhos=None,
@@ -39,7 +95,7 @@ class gacode_simulation:
         slurm_setup={
             "cores": 4,
             "minutes": 5,
-        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
+        },  # Cores per call (so, when running nR radii -> nR*4)
         addControlFunction=None,
         **kwargs
         ):
@@ -56,7 +112,7 @@ class gacode_simulation:
         if rhos is None:
             rhos = self.rhos
 
-        inputs = copy.deepcopy(self.inputsTGLF)
+        inputs = copy.deepcopy(self.inputs_files)
         Folder_sim = self.FolderGACODE / subfolder_simulation
 
         ResultsFiles_new = []
@@ -83,7 +139,7 @@ class gacode_simulation:
             IOtools.askNewFolder(Folder_sim, force=forceIfcold_start)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of TGLF
+        # Change this specific run
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         (
@@ -196,7 +252,9 @@ def change_and_write_code(
             NS=inputs[rho].num_recorded,
         )
 
-        newfile = Folder_sim / f"input.tglf_{rho:.4f}"
+        input_file = input_sim_rho.file.name.split('_')[0]
+
+        newfile = Folder_sim / f"{input_file}_{rho:.4f}"
 
         if code_settings is not None:
             # Apply corrections
@@ -217,8 +275,8 @@ def change_and_write_code(
 
         ns_max.append(inputs[rho].num_recorded)
         
-    # Convert back to a string because that's how runTGLFproduction operates
-    inputFile = inputToVariable(Folder_sim, rhos, file='input.tglf')
+    # Convert back to a string because that's how the run operates
+    inputFile = inputToVariable(Folder_sim, rhos, file=input_file)
 
     if (np.diff(ns_max) > 0).any():
         print("> Each radial location has its own number of species... probably because of removal of fast or low density...",typeMsg="w")

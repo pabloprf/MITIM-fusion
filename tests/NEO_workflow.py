@@ -13,7 +13,7 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 neo = NEOtools.NEO(
-    rhos=[0.55]
+    rhos=[0.5, 0.6, 0.7]
 )
 neo.prep_direct(PROFILEStools.gacode_state(input_gacode), folder, )
 
