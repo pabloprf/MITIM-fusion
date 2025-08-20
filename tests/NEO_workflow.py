@@ -16,7 +16,7 @@ if cold_start and folder.exists():
 neo = NEOtools.NEO(
     rhos=np.linspace(0.1,0.95,20)
 )
-neo.prep_direct(PROFILEStools.gacode_state(input_gacode), folder, )
+neo.prep_direct(input_gacode, folder)
 
 neo.run('neo1/')
 neo.read('neo1')

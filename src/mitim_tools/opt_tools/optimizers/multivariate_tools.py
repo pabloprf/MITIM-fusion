@@ -58,7 +58,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     # --------------------------------------------------------------------------------------------------------
 
     x_history, y_history, metric_history = [], [], []
-    def function_for_optimizer_prep_run(x, dimX=x_initial.shape[-1], flux_residual_evaluator=flux_residual_evaluator, bound_transform=bound_transform):
+    def function_for_optimizer_prep(x, dimX=x_initial.shape[-1], flux_residual_evaluator=flux_residual_evaluator, bound_transform=bound_transform):
         """
         Notes:
             - x comes extended, batch*dim

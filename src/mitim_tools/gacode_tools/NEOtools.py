@@ -180,6 +180,12 @@ class NEO(GACODErun.gacode_simulation):
                 folder,
                 suffix=f"_{rho:.4f}" if suffix is None else suffix,
             )
+            
+            # Unnormalize
+            NEOout.unnormalize(
+                self.NormalizationSets["SELECTED"],
+                rho=rho,
+            )
 
             self.results[label]['NEOout'].append(NEOout)
 
@@ -213,9 +219,9 @@ class NEO(GACODErun.gacode_simulation):
             roa, QeGB, QiGB, GeGB = [], [], [], []
             for irho in range(len(self.rhos)):
                 roa.append(self.results[label]['NEOout'][irho].roa)
-                QeGB.append(self.results[label]['NEOout'][irho].QeGB)
-                QiGB.append(self.results[label]['NEOout'][irho].QiGB)
-                GeGB.append(self.results[label]['NEOout'][irho].GeGB)
+                QeGB.append(self.results[label]['NEOout'][irho].Qe)
+                QiGB.append(self.results[label]['NEOout'][irho].Qi)
+                GeGB.append(self.results[label]['NEOout'][irho].Ge)
                 
             axQe.plot(roa, QeGB, label=label, color=colors[i], marker='o', linestyle='-')
             axQi.plot(roa, QiGB, label=label, color=colors[i], marker='o', linestyle='-')
@@ -226,9 +232,9 @@ class NEO(GACODErun.gacode_simulation):
             GRAPHICStools.addDenseAxis(ax)
             ax.legend(loc="best")
 
-        axQe.set_ylabel("$Q_e$ (GB)"); axQe.set_yscale('log')
-        axQi.set_ylabel("$Q_i$ (GB)"); axQi.set_yscale('log')
-        axGe.set_ylabel("$G_e$ (GB)"); #axGe.set_yscale('log')
+        axQe.set_ylabel("$Q_e$ ($MW/m^2$)"); axQe.set_yscale('log')
+        axQi.set_ylabel("$Q_i$ ($MW/m^2$)"); axQi.set_yscale('log')
+        axGe.set_ylabel("$G_e$ ($1E20/s/m^2$)"); #axGe.set_yscale('log')
 
     def prep(self, inputgacode, folder):
         self.inputgacode = inputgacode
@@ -393,16 +399,56 @@ class NEOoutput:
                 break
         
         line = lines[i+2]
-        self.GeGB, self.QeGB, self.MeGB = [float(x) for x in line.split()[1:]]
+        self.Ge, self.Qe, self.Me = [float(x) for x in line.split()[1:]]
         
-        self.GiAllGB, self.QiAllGB, self.MiAllGB = [], [], []
+        self.GiAll, self.QiAll, self.MiAll = [], [], []
         for i in range(i+3, len(lines)):
             line = lines[i]
-            self.GiAllGB.append(float(line.split()[1]))
-            self.QiAllGB.append(float(line.split()[2]))
-            self.MiAllGB.append(float(line.split()[3]))
+            self.GiAll.append(float(line.split()[1]))
+            self.QiAll.append(float(line.split()[2]))
+            self.MiAll.append(float(line.split()[3]))
 
-        self.QiGB = np.sum(self.QiAllGB)
+        self.GiAll = np.array(self.GiAll)
+        self.QiAll = np.array(self.QiAll)
+        self.MiAll = np.array(self.MiAll)
+
+        self.Qi = self.QiAll.sum()
+        self.Mt = self.Me + self.MiAll.sum()
         
         self.roa = float(lines[0].split()[-1])
 
+    def unnormalize(self, normalization, rho=None):
+        
+        if normalization is not None:
+            rho_x = normalization["rho"]
+            roa_x = normalization["roa"]
+            q_gb = normalization["q_gb"]
+            g_gb = normalization["g_gb"]
+            pi_gb = normalization["pi_gb"]
+            s_gb = normalization["s_gb"]
+            rho_s = normalization["rho_s"]
+            a = normalization["rmin"][-1]
+
+            # ------------------------------------
+            # Usage of normalization quantities
+            # ------------------------------------
+
+            if rho is None:
+                ir = np.argmin(np.abs(roa_x - self.roa))
+                rho_eval = rho_x[ir]
+            else:
+                ir = np.argmin(np.abs(rho_x - rho))
+                rho_eval = rho
+
+            self.Qe_unn = self.Qe * q_gb[ir]
+            self.Qi_unn = self.Qi * q_gb[ir]
+            self.QiAll_unn = self.QiAll * q_gb[ir]
+            self.Ge_unn = self.Ge * g_gb[ir]
+            self.GiAll_unn = self.GiAll * g_gb[ir]
+            self.MiAll_unn = self.MiAll * g_gb[ir]
+            self.Mt_unn = self.Mt * s_gb[ir]
+
+            self.unnormalization_successful = True
+
+        else:
+            self.unnormalization_successful = False

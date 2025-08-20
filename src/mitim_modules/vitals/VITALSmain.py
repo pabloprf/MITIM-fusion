@@ -287,7 +287,7 @@ def runTGLF(
 
     numSim = self.folder.name
 
-    variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
+    variation = TGLFtools.completeVariation(variation, tglf.inputs_files[tglf.rhos[0]])
 
     extraOptions = self.TGLFparameters["extraOptions"]
     multipliers = {}

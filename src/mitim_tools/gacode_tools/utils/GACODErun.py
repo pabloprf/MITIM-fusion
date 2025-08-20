@@ -2,8 +2,10 @@ import shutil
 import os
 import copy
 import numpy as np
+from pathlib import Path
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEdefaults, NORMtools
 from mitim_tools.transp_tools.utils import NTCCtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
@@ -48,7 +50,11 @@ class gacode_simulation:
         # Prepare state
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         
-        self.profiles = mitim_state
+        if isinstance(mitim_state, str) or isinstance(mitim_state, Path):
+            # If a string, assume it's a path to input.gacode
+            mitim_state = PROFILEStools.gacode_state(mitim_state)
+        else:
+            self.profiles = mitim_state
 
         self.profiles.derive_quantities(mi_ref=md_u)
 
