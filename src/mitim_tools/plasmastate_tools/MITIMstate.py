@@ -2416,6 +2416,9 @@ class mitim_state:
         s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
         s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
 
+        omega_rot = self.profiles["w0(rad/s)"] / self.derived['c_s'] * self.derived['a']
+        omega_rot_deriv = self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
+
         inputsNEO = {}
         for rho in r:
 
@@ -2436,21 +2439,9 @@ class mitim_state:
             # Species come from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
-            max_species_neo = 6     #TODO: True?
-
-            species = {
-                1: {
-                    'Z': -1.0,
-                    'MASS': 0.000272445,
-                    'DLNNDR': interpolator(self.derived['aLne']),
-                    'DLNTDR': interpolator(self.derived['aLTe']),
-                    'TEMP': 1.0,
-                    'DENS': 1.0,
-                }
-            }
-
-            for i in range(min(len(self.Species), max_species_neo-1)):
-                species[i+2] = {
+            species = {}
+            for i in range(len(self.Species)):
+                species[i+1] = {
                     'Z': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
                     'DLNNDR': interpolator(self.derived['aLni'][:,i]),
@@ -2459,19 +2450,30 @@ class mitim_state:
                     'DENS': interpolator(self.derived['fi'][:,i]),
                     }
 
+            ie = i+2
+
+            species[ie] = {
+                    'Z': -1.0,
+                    'MASS': 0.000272445,
+                    'DLNNDR': interpolator(self.derived['aLne']),
+                    'DLNTDR': interpolator(self.derived['aLTe']),
+                    'TEMP': 1.0,
+                    'DENS': 1.0,
+                }
+
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Plasma comes from profiles
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             #TODO  Does this work with no deuterium first ion?
-            factor_nu = species[2]['Z']**4 * species[2]['DENS'] * species[1]['MASS']**0.5 * species[2]['TEMP']**(-1.5)
+            factor_nu = species[1]['Z']**4 * species[1]['DENS'] * (species[ie]['MASS']/species[1]['MASS'])**0.5 * species[1]['TEMP']**(-1.5)
             
             plasma = {
                 'N_SPECIES': len(species),
                 'IPCCW': sign_bt,
                 'BTCCW': sign_it,
-                'OMEGA_ROT': 0.0, #TODO 
-                'OMEGA_ROT_DERIV': 0.0, #TODO 
+                'OMEGA_ROT': interpolator(omega_rot),
+                'OMEGA_ROT_DERIV': interpolator(omega_rot_deriv),
                 'NU_1': interpolator(self.derived['xnue'])* factor_nu,
                 'RHO_STAR': interpolator(self.derived["rho_sa"]),
                 }
