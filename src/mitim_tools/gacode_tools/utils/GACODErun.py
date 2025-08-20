@@ -296,6 +296,7 @@ def change_and_write_code(
 
     return inputFile, mod_input_file
 
+
 def inputToVariable(finalFolder, rhos, file='input.tglf'):
     """
     Entire text file to variable
@@ -761,26 +762,26 @@ def modifyInputs(
         print("\t\t- Variables change:")
     for ikey in multipliers:
         # is a specie one?
-        if ikey.split("_")[0] in input_class.species[1]:
+        if "species" in input_class.__dict__.keys() and key.split("_")[0] in input_class.species[1]:
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = input_class.species[specie][varK]
-            var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+            var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
             input_class.species[specie][varK] = var_new
         else:
             if ikey in input_class.controls:
                 var_orig = input_class.controls[ikey]
-                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.controls[ikey] = var_new
             
             elif ikey in input_class.geom:
                 var_orig = input_class.geom[ikey]
-                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.geom[ikey] = var_new
             
             elif ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
-                var_new = multiplier_tglf_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.plasma[ikey] = var_new
             
             else:
@@ -790,7 +791,7 @@ def modifyInputs(
 
     return input_class
 
-def multiplier_tglf_input(var_orig, multiplier, minimum_delta_abs = None):
+def multiplier_input(var_orig, multiplier, minimum_delta_abs = None):
 
     delta = var_orig * (multiplier - 1.0)
 

@@ -330,8 +330,7 @@ class NEOinput:
     def process(self, input_dict):
         #TODO
         self.controls = input_dict
-
-        self.num_recorded = 6
+        self.num_recorded = 100
 
     def anticipate_problems(self):
         pass
