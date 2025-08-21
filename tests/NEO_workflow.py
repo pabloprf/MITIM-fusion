@@ -20,15 +20,15 @@ neo = NEOtools.NEO(
 neo.prep_direct(input_gacode, folder)
 
 neo.run('neo1/')
-neo.read('NEO')
+neo.read('NEO default')
 
-neo.run('neo2/', extraOptions={'N_ENERGY':6,'N_XI': 17, 'N_THETA': 17})
-neo.read('NEO high res')
+neo.run('neo2/', extraOptions={'N_ENERGY':5,'N_XI': 11, 'N_THETA': 11})
+neo.read('NEO low res')
 
-neo.run('neo3/', extraOptions={'N_ENERGY':6,'N_XI': 17, 'N_THETA': 17}, multipliers={'DLNTDR_1': 1.25})
-neo.read('NEO high res + 25% aLTe')
+neo.run('neo3/', extraOptions={'N_ENERGY':5,'N_XI': 11, 'N_THETA': 11}, multipliers={'DLNTDR_1': 1.25})
+neo.read('NEO low res + 25% aLTe')
 
-neo.plot(labels=['NEO', 'NEO high res', 'NEO high res + 25% aLTe'])
+neo.plot(labels=['NEO default', 'NEO low res', 'NEO low res + 25% aLTe'])
 
 neo.fn.show()
 neo.fn.close()
