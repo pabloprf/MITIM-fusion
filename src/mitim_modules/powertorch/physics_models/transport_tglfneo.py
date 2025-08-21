@@ -56,7 +56,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         
         tglf = TGLFtools.TGLF(rhos=rho_locations)
 
-        _ = tglf.prep_direct(
+        _ = tglf.prep(
             self.powerstate.profiles_transport,
             self.folder,
             cold_start = cold_start,
@@ -189,7 +189,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         
         neo = NEOtools.NEO(rhos=rho_locations)
 
-        _ = neo.prep_direct(
+        _ = neo.prep(
             self.powerstate.profiles_transport,
             self.folder,
             cold_start = cold_start,

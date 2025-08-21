@@ -168,7 +168,7 @@ If you have a input.tglf file already, you can still use this script to run it.
     inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
+    tglf.prep_from_file( folder, inputtglf_file, input_gacode = inputgacode_file )
 
 The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plot()``.
 
@@ -190,7 +190,7 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
         tglf = TGLFtools.TGLF()
-        tglf.prep_from_tglf( folder, inputtglf_file )
+        tglf.prep_from_file( folder, inputtglf_file )
         tglf.read (folder = f'{folder}/', label = 'yes_em' )
         tglf.plot( labels = ['yes_em'] )
 

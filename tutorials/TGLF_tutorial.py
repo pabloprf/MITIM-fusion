@@ -10,7 +10,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "tglf_tut"
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 
 # Prepare the TGLF class
-cdf = tglf.prep(folder, inputgacode=inputgacode_file, cold_start=False)
+cdf = tglf.prep_using_tgyro(folder, inputgacode=inputgacode_file, cold_start=False)
 
 '''
 ***************************************************************************

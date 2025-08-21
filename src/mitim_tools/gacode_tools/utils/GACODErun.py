@@ -14,8 +14,6 @@ from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
-
-
 class gacode_simulation:
     '''
     Main class for running GACODE simulations.
@@ -32,19 +30,28 @@ class gacode_simulation:
         self.nameRunid = "0"
         
         self.results, self.scans = {}, {}
+        
+        self.run_specifications = None
 
-    def _prep_direct(
+    def prep(
         self,
         mitim_state,    # A MITIM state class
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
         forceIfcold_start=False,  # Extra flag
-        state_converter='to_tglf',
-        input_class=None,
-        input_file='input.tglf'
         ):
+        '''
+        This method prepares the GACODE run from a MITIM state class by setting up the necessary input files and directories.
+        '''
 
         print("> Preparation run from input.gacode (direct conversion)")
+
+        if self.run_specifications is None:
+            raise Exception("[MITIM] Simulation child class did not define run specifications")
+
+        state_converter = self.run_specifications['state_converter']    # e.g. to_tglf
+        input_class     = self.run_specifications['input_class']        # e.g. TGLFinput
+        input_file      = self.run_specifications['input_file']         # e.g. input.tglf
 
         self.FolderGACODE = IOtools.expandPath(FolderGACODE)
         
@@ -88,31 +95,117 @@ class gacode_simulation:
         self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
 
         return cdf
-
-    def _generic_run_prep(
+    
+    def run(
         self,
-        subfolder_simulation,
-        rhos=None,
-        code_executor=None,
-        code_executor_full=None,
+        subfolder,  # 'neo1/',
         code_settings=None,
         extraOptions={},
         multipliers={},
+        minimum_delta_abs={},
+        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
+        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
+        launchSlurm=True,
+        cold_start=False,
+        forceIfcold_start=False,
+        extra_name="exe",
+        slurm_setup={"cores": 1,"minutes": 1},  # Cores per call (so, when running nR radii -> nR*4)
+        attempts_execution=1,
+        only_minimal_files=False,
+    ):
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Prepare inputs
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        code_executor, code_executor_full = self._run_prepare(
+            #
+            subfolder,
+            code_executor={},
+            code_executor_full={},
+            #
+            code_settings=code_settings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            #
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            only_minimal_files=only_minimal_files,
+            #
+            launchSlurm=launchSlurm,
+            slurm_setup=slurm_setup,
+            #
+            ApplyCorrections=ApplyCorrections,
+            minimum_delta_abs=minimum_delta_abs,
+            Quasineutral=Quasineutral,
+        )
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Run NEO
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self._run(
+            code_executor,
+            code_executor_full=code_executor_full,
+            code_settings=code_settings,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup,
+            only_minimal_files=only_minimal_files,
+            attempts_execution=attempts_execution,
+        )
+        
+        return code_executor_full
+
+    def _run_prepare(
+        self,
+        # ********************************
+        # Required options
+        # ********************************
+        subfolder_simulation,
+        code_executor=None,
+        code_executor_full=None,
+        # ********************************
+        # Run settings
+        # ********************************
+        code_settings=None,
+        extraOptions={},
+        multipliers={},
+        # ********************************
+        # IO settings
+        # ********************************
         cold_start=False,
         forceIfcold_start=False,
         only_minimal_files=False,
-        minimum_delta_abs={},
-        ApplyCorrections=True, 
-        Quasineutral=False, 
+        # ********************************
+        # Slurm settings (for warnings)
+        # ********************************
         launchSlurm=True,
-        slurm_setup={
-            "cores": 4,
-            "minutes": 5,
-        },  # Cores per call (so, when running nR radii -> nR*4)
-        addControlFunction=None,
-        controls_file='input.tglf.controls',
-        **kwargs
+        slurm_setup=None, 
+        # ********************************
+        # Additional settings to correct/modify inputs
+        # ********************************
+        **kwargs_control
         ):
+
+        if slurm_setup is None:
+            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 5}
+
+        if self.run_specifications is None:
+            raise Exception("[MITIM] Simulation child class did not define run specifications")
+
+        # Because of historical relevance, I allow both TGLFsettings and code_settings #TODO #TOREMOVE
+        if "TGLFsettings" in kwargs_control:
+            if code_settings is not None:
+                raise Exception('[MITIM] Cannot use both TGLFsettings and code_settings')
+            else:
+                code_settings = kwargs_control["TGLFsettings"]
+                del kwargs_control["TGLFsettings"]
+        # ------------------------------------------------------------------------------------
 
         if code_executor is None:
             code_executor = {}
@@ -123,8 +216,7 @@ class gacode_simulation:
         # Prepare for run
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if rhos is None:
-            rhos = self.rhos
+        rhos = self.rhos
 
         inputs = copy.deepcopy(self.inputs_files)
         Folder_sim = self.FolderGACODE / subfolder_simulation
@@ -156,21 +248,16 @@ class gacode_simulation:
         # Change this specific run
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        (
-            latest_inputsFile,
-            latest_inputsFileDict,
-        ) = change_and_write_code(
+        latest_inputsFile, latest_inputsFileDict = change_and_write_code(
             rhos,
             inputs,
             Folder_sim,
             code_settings=code_settings,
             extraOptions=extraOptions,
             multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-            addControlFunction=addControlFunction,
-            controls_file=controls_file,
+            addControlFunction=self.run_specifications['control_function'],
+            controls_file=self.run_specifications['controls_file'],
+            **kwargs_control
         )
 
         code_executor_full[subfolder_simulation] = {}
@@ -184,30 +271,35 @@ class gacode_simulation:
                 "multipliers": multipliers,
             }
             if irho in rhosEvaluate:
-                code_executor[subfolder_simulation][irho] = code_executor_full[subfolder_simulation][
-                    irho
-                ]
+                code_executor[subfolder_simulation][irho] = code_executor_full[subfolder_simulation][irho]
 
         # Check input file problems
         for irho in latest_inputsFileDict:
             latest_inputsFileDict[irho].anticipate_problems()
 
         # Check cores problem
-        expected_allocated_cores = int(len(rhosEvaluate) * slurm_setup["cores"])
-        warning = 32 * 2
         if launchSlurm:
-            print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {slurm_setup["cores"]} cores/radius)',
-                typeMsg="" if expected_allocated_cores < warning else "q",)
-            
-        return code_executor, code_executor_full, Folder_sim
+            self._check_cores(rhosEvaluate, slurm_setup)
 
-    def _generic_run(
+        self.FolderSimLast = Folder_sim
+            
+        return code_executor, code_executor_full
+
+    def _check_cores(self, rhosEvaluate, slurm_setup, warning = 32 * 2):
+        expected_allocated_cores = int(len(rhosEvaluate) * slurm_setup["cores"])
+        
+        print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {slurm_setup["cores"]} cores/radius)',
+            typeMsg="" if expected_allocated_cores < warning else "q",)
+
+    def _run(
         self,
         code_executor,
-        run_specifications,
         **kwargs_run
     ):
-
+        """
+        extraOptions and multipliers are not being grabbed from kwargs_NEOrun, but from code_executor for WF
+        """
+        
         if kwargs_run.get("only_minimal_files", False):
             filesToRetrieve = self.ResultsFiles_minimal
         else:
@@ -221,16 +313,152 @@ class gacode_simulation:
             run_gacode_simulation(
                 self.FolderGACODE,
                 code_executor,
-                run_specifications=run_specifications,
+                run_specifications=self.run_specifications,
                 filesToRetrieve=filesToRetrieve,
                 minutes=kwargs_run.get("slurm_setup", {}).get("minutes", 5),
-                cores_simulation=kwargs_run.get("slurm_setup", {}).get("cores", 4),
-                name=f"{run_specifications['code']}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
+                cores_simulation=kwargs_run.get("slurm_setup", {}).get("cores", self.run_specifications['default_cores']),
+                name=f"{self.run_specifications['code']}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
                 launchSlurm=kwargs_run.get("launchSlurm", True),
                 attempts_execution=kwargs_run.get("attempts_execution", 1),
             )
         else:
-            print(f"\t- {run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
+            print(f"\t- {self.run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
+
+    def run_scan(
+        self,
+        subfolder,  # 'scan1',
+        multipliers={},
+        minimum_delta_abs={},
+        variable="RLTS_1",
+        varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
+        relativeChanges=True,
+        **kwargs_run,
+    ):
+
+        # -------------------------------------
+        # Add baseline
+        # -------------------------------------
+        if (1.0 not in varUpDown) and relativeChanges:
+            print("\n* Since variations vector did not include base case, I am adding it",typeMsg="i",)
+            varUpDown_new = []
+            added = False
+            for i in varUpDown:
+                if i > 1.0 and not added:
+                    varUpDown_new.append(1.0)
+                    added = True
+                varUpDown_new.append(i)
+        else:
+            varUpDown_new = varUpDown
+
+
+        code_executor, code_executor_full, folders, varUpDown_new = self._prepare_scan(
+            subfolder,
+            multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
+            variable=variable,
+            varUpDown=varUpDown_new,
+            variables_scanTogether=variables_scanTogether,
+            relativeChanges=relativeChanges,
+            **kwargs_run,
+        )
+
+        # Run them all
+        self._run(
+            code_executor,
+            code_executor_full=code_executor_full,
+            **kwargs_run,
+        )
+        
+        # Read results
+        for cont_mult, mult in enumerate(varUpDown_new):
+            name = f"{variable}_{mult}"
+            self.read(
+                label=f"{self.subFolder_scan}_{name}",
+                folder=folders[cont_mult],
+                cold_startWF = False,
+                require_all_files=not kwargs_run.get("only_minimal_files",False),
+            )
+
+        return code_executor_full
+
+    def _prepare_scan(
+        self,
+        subfolder,  # 'scan1',
+        multipliers={},
+        minimum_delta_abs={},
+        variable="RLTS_1",
+        varUpDown=[0.5, 1.0, 1.5],
+        variables_scanTogether=[],
+        relativeChanges=True,
+        **kwargs_run,
+    ):
+        """
+        Multipliers will be modified by adding the scaning variables, but I don't want to modify the original
+        multipliers, as they may be passed to the next scan
+
+        Set relativeChanges=False if varUpDown contains the exact values to change, not multipleiers
+        """
+        
+        completeVariation = self.run_specifications['complete_variation']
+        
+        multipliers_mod = copy.deepcopy(multipliers)
+
+        self.subFolder_scan = subfolder
+
+        if relativeChanges:
+            for i in range(len(varUpDown)):
+                varUpDown[i] = round(varUpDown[i], 6)
+
+        print(f"\n- Proceeding to scan {variable}{' together with '+', '.join(variables_scanTogether) if len(variables_scanTogether)>0 else ''}:")
+
+        code_executor = {}
+        code_executor_full = {}
+        folders = []
+        for cont_mult, mult in enumerate(varUpDown):
+            mult = round(mult, 6)
+
+            if relativeChanges:
+                print(f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------")
+            else:
+                print(f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------")
+
+            multipliers_mod[variable] = mult
+
+            for variable_scanTogether in variables_scanTogether:
+                multipliers_mod[variable_scanTogether] = mult
+
+            name = f"{variable}_{mult}"
+
+            species = self.inputs_files[self.rhos[0]]  # Any rho will do
+
+            if completeVariation is not None:
+                multipliers_mod = completeVariation(multipliers_mod, species)
+
+            if not relativeChanges:
+                for ikey in multipliers_mod:
+                    kwargs_run["extraOptions"][ikey] = multipliers_mod[ikey]
+                multipliers_mod = {}
+
+            # Force ensure quasineutrality if the
+            if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
+                kwargs_run["Quasineutral"] = True
+
+            # Only ask the cold_start in the first round
+            kwargs_run["forceIfcold_start"] = cont_mult > 0 or ("forceIfcold_start" in kwargs_run and kwargs_run["forceIfcold_start"])
+
+            code_executor, code_executor_full = self._run_prepare(
+                f"{self.subFolder_scan}_{name}",
+                code_executor=code_executor,
+                code_executor_full=code_executor_full,
+                multipliers=multipliers_mod,
+                minimum_delta_abs=minimum_delta_abs,
+                **kwargs_run,
+            )
+
+            folders.append(copy.deepcopy(self.FolderSimLast))
+
+        return code_executor, code_executor_full, folders, varUpDown
 
 
 def change_and_write_code(
@@ -245,6 +473,7 @@ def change_and_write_code(
     Quasineutral=False,
     addControlFunction=None,
     controls_file='input.tglf.controls',
+    **kwargs
 ):
     """
     Received inputs classes and gives text.
@@ -259,7 +488,7 @@ def change_and_write_code(
         print(f"\t- Changing input file for rho={rho:.4f}")
         input_sim_rho = modifyInputs(
             inputs[rho],
-            Settings=code_settings,
+            code_settings=code_settings,
             extraOptions=extraOptions,
             multipliers=multipliers,
             minimum_delta_abs=minimum_delta_abs,
@@ -369,6 +598,7 @@ def run_gacode_simulation(
     attempts_execution = 1,
     max_jobs_at_once = None,
 ):
+
     """
     launchSlurm = True -> Launch as a batch job in the machine chosen
     launchSlurm = False -> Launch locally as a bash script
@@ -687,7 +917,7 @@ def runTGYRO(
 
 def modifyInputs(
     input_class,
-    Settings=None,
+    code_settings=None,
     extraOptions={},
     multipliers={},
     minimum_delta_abs={},
@@ -702,15 +932,15 @@ def modifyInputs(
     GACODEdefaults.review_controls(multipliers, control = controls_file)
     # -------------------------------------------
 
-    if Settings is not None:
-        CodeOptions = addControlFunction(Settings, **kwargs_to_function)
+    if code_settings is not None:
+        CodeOptions = addControlFunction(code_settings, **kwargs_to_function)
 
         # ~~~~~~~~~~ Change with presets
-        print(f" \t- Using presets Settings = {Settings}", typeMsg="i")
+        print(f" \t- Using presets code_settings = {code_settings}", typeMsg="i")
         input_class.controls = CodeOptions
 
     else:
-        print("\t- Input file was not modified by Settings, using what was there before",typeMsg="i")
+        print("\t- Input file was not modified by code_settings, using what was there before",typeMsg="i")
 
     # Make all upper case
     extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}

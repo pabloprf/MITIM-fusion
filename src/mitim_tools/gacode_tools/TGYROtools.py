@@ -369,7 +369,7 @@ class TGYRO:
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = GACODErun.modifyInputs(
             inputclass_TGLF,
-            Settings=TGLFsettings,
+            code_settings=TGLFsettings,
             extraOptions=extraOptionsTGLF,
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
@@ -634,7 +634,7 @@ class TGYRO:
             inputsTGLF[rho] = inputclass
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        tglf.prep(
+        tglf.prep_using_tgyro(
             self.FolderGACODE / subfolder,
             specificInputs=inputsTGLF,
             inputgacode=self.FolderTGYRO / "input.gacode",

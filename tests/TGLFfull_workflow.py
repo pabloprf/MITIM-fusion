@@ -18,7 +18,7 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder}")
 
 tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0.8]))
-_ = tglf.prep(folder, cold_start=cold_start)
+_ = tglf.prep_using_tgyro(folder, cold_start=cold_start)
 
 tglf.run(
     subFolderTGLF="runSAT2",

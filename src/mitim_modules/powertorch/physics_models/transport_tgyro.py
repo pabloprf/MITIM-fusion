@@ -114,7 +114,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
         # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=rho_locations)
-        # _ = tglf.prep(
+        # _ = tglf.prep_using_tgyro(
         #     self.folder / 'stds',
         #     inputgacode=self.file_profs,
         #     recalculate_ptot=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does

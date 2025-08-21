@@ -45,7 +45,7 @@ def main():
 # ------------------------------------------------------------------------------
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf(folder, input_tglf, input_gacode=input_gacode)
+    tglf.prep_from_file(folder, input_tglf, input_gacode=input_gacode)
 
 # ------------------------------------------------------------------------------
 # Workflow

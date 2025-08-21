@@ -30,7 +30,7 @@ dvs_max = [1.3, 1.3, 1.3, 1.3, 1.3]
 # ********************************************************************************
 
 tglf = TGLFtools.TGLF(rhos=[rho])
-cdf = tglf.prep(folderWork, cold_start=cold_start, inputgacode=inputgacode)
+cdf = tglf.prep_using_tgyro(folderWork, cold_start=cold_start, inputgacode=inputgacode)
 tglf.run(subFolderTGLF="run_base/", TGLFsettings=TGLFsettings, cold_start=cold_start)
 
 # ********************************************************************************

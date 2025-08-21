@@ -119,7 +119,7 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     return TGLFoptions
 
 
-def addCGYROcontrol(Settings, rmin):
+def addCGYROcontrol(code_settings, rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
         __mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False
@@ -137,14 +137,14 @@ def addCGYROcontrol(Settings, rmin):
     ) as f:
         settings = json.load(f)
 
-    if str(Settings) in settings:
-        sett = settings[str(Settings)]
+    if str(code_settings) in settings:
+        sett = settings[str(code_settings)]
         label = sett["label"]
         for ikey in sett["controls"]:
             CGYROoptions[ikey] = sett["controls"][ikey]
     else:
         print(
-            "\t- Settings not found in input.cgyro.models.json, using defaults",
+            "\t- code_settings not found in input.cgyro.models.json, using defaults",
             typeMsg="w",
         )
         label = "unspecified"

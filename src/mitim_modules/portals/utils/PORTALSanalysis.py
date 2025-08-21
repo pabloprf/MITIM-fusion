@@ -594,7 +594,7 @@ class PORTALSanalyzer:
         p.write_state(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        _ = tglf.prep(folder, cold_start=cold_start, inputgacode=inputgacode)
+        _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
         extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
