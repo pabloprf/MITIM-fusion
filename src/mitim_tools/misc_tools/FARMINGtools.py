@@ -1059,12 +1059,8 @@ def create_slurm_execution_files(
     # ******* Basics
     commandSBATCH.append("#!/usr/bin/env bash")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
-    commandSBATCH.append(
-        f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat"
-    )
-    commandSBATCH.append(
-        f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat"
-    )
+    commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
+    commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
     if email is not None:
         commandSBATCH.append("#SBATCH --mail-user=" + email)
 
@@ -1103,21 +1099,11 @@ def create_slurm_execution_files(
 
     # ******* Commands
     commandSBATCH.append("")
-    commandSBATCH.append(
-        'echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"'
-    )
-    commandSBATCH.append(
-        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"'
-    )
-    commandSBATCH.append(
-        'echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"'
-    )
-    commandSBATCH.append(
-        'echo "***********************************************************************************************"'
-    )
-    commandSBATCH.append(
-        'echo ""'
-    )
+    commandSBATCH.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
+    commandSBATCH.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
+    commandSBATCH.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
+    commandSBATCH.append('echo "***********************************************************************************************"')
+    commandSBATCH.append('echo ""')
     commandSBATCH.append("")
 
     full_command = [modules_remote] if (modules_remote is not None) else []
