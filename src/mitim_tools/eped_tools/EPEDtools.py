@@ -132,15 +132,22 @@ class EPED:
         # -------------------------------------
         # Execute
         # -------------------------------------
-
-        # Command to execute by each job in the array
-        EPEDcommand  = f'cd {self.eped_job.folderExecution}/run"$SLURM_ARRAY_TASK_ID" && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf'
+        
+        # Submit as a slurm job array
+        if self.eped_job.launchSlurm:
+            EPEDcommand  = f'cd {self.eped_job.folderExecution}/run"$SLURM_ARRAY_TASK_ID" && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf' 
+        # Submit locally in parallel
+        else:
+            EPEDcommand = ""
+            for i in job_array.split(','):
+                EPEDcommand += f'cd {self.eped_job.folderExecution}/run{i} && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf & \n'
+            EPEDcommand += 'wait\n'
 
         # Prepare the job script
         self.eped_job.prep(EPEDcommand,input_folders=folder_cases,output_files=copy.deepcopy(output_files),shellPreCommands=shellPreCommands)
 
         # Run the job
-        self.eped_job.run() #removeScratchFolders=False)
+        self.eped_job.run()
 
         # -------------------------------------
         # Postprocessing

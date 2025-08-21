@@ -1,10 +1,11 @@
 import os
+import matplotlib.pyplot as plt
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools import __mitimroot__
 
 cold_start = True
 
-folder = __mitimroot__ / "tests" / "scratch" / "eped_test16"
+folder = __mitimroot__ / "tests" / "scratch" / "eped_test"
 
 if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
@@ -35,3 +36,4 @@ eped.run(
 eped.read(subfolder='case1')
 
 eped.plot(labels=['case1'])
+plt.show()
