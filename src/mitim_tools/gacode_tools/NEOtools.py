@@ -22,7 +22,9 @@ class NEO(GACODErun.gacode_simulation):
             'input_file': 'input.neo',
             'code_call': 'neo -e',
             'control_function': GACODEdefaults.addNEOcontrol,
-            'controls_file': 'input.neo.controls'
+            'controls_file': 'input.neo.controls',
+            'state_converter': 'to_neo',
+            'input_class': NEOinput,
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -33,22 +35,22 @@ class NEO(GACODErun.gacode_simulation):
 
     def prep_direct(
         self,
-        mitim_state,    # A MITIM state class
-        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        forceIfcold_start=False,  # Extra flag
+        mitim_state,                # A MITIM state class
+        FolderGACODE,               # Main folder where all caculations happen (runs will be in subfolders)
+        cold_start=False,           # If True, do not use what it potentially inside the folder, run again
+        forceIfcold_start=False,    # Extra flag
         ):
 
-        print("> Preparation of TGLF run from input.gacode (direct conversion)")
+        print("> Preparation of NEO run from input.gacode (direct conversion)")
         
         cdf = self._prep_direct(
             mitim_state,
             FolderGACODE,
             cold_start=cold_start,
             forceIfcold_start=forceIfcold_start,
-            state_converter='to_neo',
-            input_class=NEOinput,
-            input_file='input.neo'
+            state_converter=self.run_specifications['state_converter'],
+            input_class=self.run_specifications['input_class'],
+            input_file=self.run_specifications['input_file']
         )
 
         return cdf
@@ -132,7 +134,7 @@ class NEO(GACODErun.gacode_simulation):
         **kwargs
     ):
 
-        return self._prep_run(
+        return self._generic_run_prep(
             subFolder,
             code_executor=neo_executor,
             code_executor_full=neo_executor_full,
@@ -234,7 +236,7 @@ class NEO(GACODErun.gacode_simulation):
 
         axQe.set_ylabel("$Q_e$ ($MW/m^2$)"); axQe.set_yscale('log')
         axQi.set_ylabel("$Q_i$ ($MW/m^2$)"); axQi.set_yscale('log')
-        axGe.set_ylabel("$G_e$ ($1E20/s/m^2$)"); #axGe.set_yscale('log')
+        axGe.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)"); #axGe.set_yscale('log')
 
     def prep(self, inputgacode, folder):
         self.inputgacode = inputgacode

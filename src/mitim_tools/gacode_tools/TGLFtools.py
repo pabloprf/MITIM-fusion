@@ -129,7 +129,9 @@ class TGLF(GACODErun.gacode_simulation):
             'input_file': 'input.tglf',
             'code_call': 'tglf -e',
             'control_function': GACODEdefaults.addTGLFcontrol,
-            'controls_file': 'input.tglf.controls'
+            'controls_file': 'input.tglf.controls',
+            'state_converter': 'to_tglf',
+            'input_class': TGLFinput,
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -362,10 +364,10 @@ class TGLF(GACODErun.gacode_simulation):
 
     def prep_direct(
         self,
-        mitim_state,    # A MITIM state class
-        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        forceIfcold_start=False,  # Extra flag
+        mitim_state,                # A MITIM state class
+        FolderGACODE,               # Main folder where all caculations happen (runs will be in subfolders)
+        cold_start=False,           # If True, do not use what it potentially inside the folder, run again
+        forceIfcold_start=False,    # Extra flag
         ):
 
         print("> Preparation of TGLF run from input.gacode (direct conversion)")
@@ -375,9 +377,9 @@ class TGLF(GACODErun.gacode_simulation):
             FolderGACODE,
             cold_start=cold_start,
             forceIfcold_start=forceIfcold_start,
-            state_converter='to_tglf',
-            input_class=TGLFinput,
-            input_file='input.tglf'
+            state_converter=self.run_specifications['state_converter'],
+            input_class=self.run_specifications['input_class'],
+            input_file=self.run_specifications['input_file'],
         )
 
         return cdf
@@ -506,7 +508,7 @@ class TGLF(GACODErun.gacode_simulation):
         **kwargs
     ):
 
-        return self._prep_run(
+        return self._generic_run_prep(
             subFolder,
             code_executor=tglf_executor,
             code_executor_full=tglf_executor_full,

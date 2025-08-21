@@ -14,7 +14,12 @@ from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
+
+
 class gacode_simulation:
+    '''
+    Main class for running GACODE simulations.
+    '''
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -84,7 +89,7 @@ class gacode_simulation:
 
         return cdf
 
-    def _prep_run(
+    def _generic_run_prep(
         self,
         subfolder_simulation,
         rhos=None,
@@ -762,7 +767,7 @@ def modifyInputs(
         print("\t\t- Variables change:")
     for ikey in multipliers:
         # is a specie one?
-        if "species" in input_class.__dict__.keys() and key.split("_")[0] in input_class.species[1]:
+        if "species" in input_class.__dict__.keys() and ikey.split("_")[0] in input_class.species[1]:
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = input_class.species[specie][varK]
