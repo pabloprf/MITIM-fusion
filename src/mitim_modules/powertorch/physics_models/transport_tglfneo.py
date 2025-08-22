@@ -174,7 +174,11 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             cold_start = cold_start,
             )
         
-        neo.run('base_neo')
+        neo.run(
+            'base_neo',
+            cold_start=cold_start,
+            forceIfcold_start=True,
+        )
     
         neo.read(label='base')
         
