@@ -594,7 +594,7 @@ class PORTALSanalyzer:
         p.write_state(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        _ = tglf.prep(folder, cold_start=cold_start, inputgacode=inputgacode)
+        _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
 
         TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
         extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
@@ -639,7 +639,7 @@ class PORTALSanalyzer:
             if "extraOptions" not in kwargsTGLF_this:
                 kwargsTGLF_this["extraOptions"] = extraOptions
 
-            tglf.run(subFolderTGLF=f"tglf_{label}", cold_start=cold_start, **kwargsTGLF_this)
+            tglf.run(subfolder=f"tglf_{label}", cold_start=cold_start, **kwargsTGLF_this)
 
         # Read all previously run cases into a single class
         if tglf_object is None:

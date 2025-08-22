@@ -100,7 +100,7 @@ class CGYRO:
 
         inputCGYRO = GACODErun.modifyInputs(
             inputCGYRO,
-            Settings=CGYROsettings,
+            code_settings=CGYROsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
             addControlFunction=GACODEdefaults.addCGYROcontrol,
@@ -310,7 +310,7 @@ class CGYRO:
                 inputCGYRO = CGYROinput(file=input_cgyro_file_this)
                 input_cgyro_file_this = GACODErun.modifyInputs(
                     inputCGYRO,
-                    Settings=CGYROsettings,
+                    code_settings=CGYROsettings,
                     extraOptions=extraOptions_this,
                     multipliers=multipliers,
                     addControlFunction=GACODEdefaults.addCGYROcontrol,

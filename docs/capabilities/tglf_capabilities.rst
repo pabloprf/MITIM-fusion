@@ -83,14 +83,14 @@ For example, the following two commands will run TGLF with saturation rule numbe
 
 .. code-block:: python
 
-    tglf.run( subFolderTGLF = 'yes_em_folder', 
+    tglf.run( subfolder = 'yes_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {},
               cold_start       = False )
 
     tglf.read( label = 'yes_em' )
 
-    tglf.run( subFolderTGLF = 'no_em_folder', 
+    tglf.run( subfolder = 'no_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {'USE_BPER':False},
               cold_start       = False )
@@ -168,7 +168,7 @@ If you have a input.tglf file already, you can still use this script to run it.
     inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
+    tglf.prep_from_file( folder, inputtglf_file, input_gacode = inputgacode_file )
 
 The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plot()``.
 
@@ -190,7 +190,7 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
         tglf = TGLFtools.TGLF()
-        tglf.prep_from_tglf( folder, inputtglf_file )
+        tglf.prep_from_file( folder, inputtglf_file )
         tglf.read (folder = f'{folder}/', label = 'yes_em' )
         tglf.plot( labels = ['yes_em'] )
 

@@ -114,14 +114,14 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
         # from mitim_tools.gacode_tools import TGLFtools
         # tglf = TGLFtools.TGLF(rhos=rho_locations)
-        # _ = tglf.prep(
+        # _ = tglf.prep_using_tgyro(
         #     self.folder / 'stds',
         #     inputgacode=self.file_profs,
         #     recalculate_ptot=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
         #     cold_start=cold_start)
 
         # tglf.run(
-        #     subFolderTGLF="tglf_neo_original",
+        #     subfolder="tglf_neo_original",
         #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
         #     cold_start=cold_start,
         #     forceIfcold_start=True,
@@ -250,7 +250,7 @@ def tglf_scan_trick(
     minutes = max(2, minutes)
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = name,
+                    subfolder = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,
@@ -999,15 +999,15 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["CZ_raw_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
-    powerstate.plasma["CZ_raw_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["GZ1E20m2_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["GZ1E20m2_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
     
-    powerstate.plasma["CZ_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_raw_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["GZ1E20m2_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     if provideTargets:
-        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
-        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+        powerstate.plasma["GZ1E20m2"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
+        powerstate.plasma["GZ1E20m2_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
     powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
@@ -1042,7 +1042,7 @@ def tgyro_to_powerstate(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'CZ_raw']
+    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'GZ1E20m2']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neoc"]
     

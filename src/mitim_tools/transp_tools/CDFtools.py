@@ -14086,7 +14086,7 @@ class transp_output:
         labelTGLF = kwargs_TGLFrun.get("label", "tglf1")
 
         self.TGLFstd[nameF].run(
-            subFolderTGLF=labelTGLF,
+            subfolder=labelTGLF,
             forceIfcold_start=forceIfcold_start,
             **kwargs_TGLFrun,
         )
@@ -14144,7 +14144,7 @@ class transp_output:
 
         if typeAnalysis == "CHIPERT":
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="chi_per",
+                subfolder="chi_per",
                 label="chi_pert",
                 analysisType="e",
                 TGLFsettings=TGLFsettings,
@@ -14157,7 +14157,7 @@ class transp_output:
                 addTrace = [40, 173]
 
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="impurity",
+                subfolder="impurity",
                 label="impurity",
                 analysisType="Z",
                 TGLFsettings=TGLFsettings,
@@ -14173,7 +14173,7 @@ class transp_output:
 
         if "FLUC" in typeAnalysis:
             self.TGLFstd[int(time * 1000)].run(
-                subFolderTGLF="fluctuations",
+                subfolder="fluctuations",
                 TGLFsettings=TGLFsettings,
                 forceIfcold_start=True,
             )
@@ -14697,7 +14697,7 @@ class transp_output:
         self.ChiPert_tglf = TGLFtools.TGLF(cdf=self.LocationCDF, time=time, rhos=rhos)
         self.ChiPert_tglf.prep(self.FolderCDF / "chi_per_calc", cold_start=cold_start)
         self.ChiPert_tglf.runAnalysis(
-            subFolderTGLF="chi_per",
+            subfolder="chi_per",
             label="chi_pert",
             analysisType="e",
             TGLFsettings=TGLFsettings,

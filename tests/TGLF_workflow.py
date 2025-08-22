@@ -13,12 +13,13 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
 tglf = TGLFtools.TGLF()
-tglf.prep_from_tglf(folder, input_tglf)
+tglf.prep_from_file(folder, input_tglf)
 
 tglf.run(
-    subFolderTGLF="run1/",
-    TGLFsettings=None,
+    "run1/",
+    code_settings=None,
     cold_start=cold_start,
+    runWaveForms  = [0.67, 10.0],
     forceIfcold_start=True,
     extraOptions={"USE_BPER": False, "USE_BPAR": False},
     slurm_setup={"cores": 4, "minutes": 1},
@@ -27,8 +28,8 @@ tglf.run(
 tglf.read(label="ES")
 
 tglf.run(
-    subFolderTGLF="run2/",
-    TGLFsettings=None,
+    "run2/",
+    code_settings=None,
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},

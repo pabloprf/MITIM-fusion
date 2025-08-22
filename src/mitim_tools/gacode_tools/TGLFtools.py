@@ -28,7 +28,7 @@ from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
-class TGLF:
+class TGLF(GACODErun.gacode_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -71,11 +71,11 @@ class TGLF:
             tglf = TGLF(cdf='~/testTGLF/12345B12.CDF',time=1.45,avTime=0.1,rhos=[0.4,0.6])
 
             # Prepare TGLF (this will create input.tglf in the specified folder)
-            cdf = tglf.prep('~/testTGLF/')
+            cdf = tglf.prep_using_tgyro('~/testTGLF/')
 
             # Run standalone TGLF (this will find the input.tglf in the previous folder,
             # and then copy to this specify TGLF run, and run it there)
-            tglf.run(subFolderTGLF='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
+            tglf.run(subfolder='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
 
             # Read results
             tglf.read(label='run1',folder='~/testTGLF/tglf1/')
@@ -91,16 +91,16 @@ class TGLF:
             tglf = TGLF(cdf='~/testTGLF/12345B12.CDF',time=1.45,avTime=0.1,rhos=[0.4,0.6])
 
             # Prepare TGLF (this will create input.tglf in the specified folder)
-            cdf = tglf.prep('~/testTGLF/')
+            cdf = tglf.prep_using_tgyro('~/testTGLF/')
 
             # Run
-            tglf.runScan('scan1/',TGLFsettings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
+            tglf.run_scan('scan1/',TGLFsettings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
 
             # Read scan
-            tglf.readScan(label='scan1',variable='RLTS_2')
+            tglf.read_scan(label='scan1',variable='RLTS_2')
 
             # Plot
-            plt.ion(); tglf.plotScan(labels=['scan1'],variableLabel='RLTS_2')
+            plt.ion(); tglf.plot_scan(labels=['scan1'],variableLabel='RLTS_2')
 
         ****************************
         ***** Special analysis *****
@@ -121,13 +121,24 @@ class TGLF:
             ** Modify the class as wish, and do run,read, etc **
             ** Because normalizations are stored in the prep phase, that's all ready **
         """
-        print(
-            "\n-----------------------------------------------------------------------------------------"
-        )
+
+        super().__init__(rhos=rhos)
+
+        self.run_specifications = {
+            'code': 'tglf',
+            'input_file': 'input.tglf',
+            'code_call': 'tglf -e',
+            'control_function': GACODEdefaults.addTGLFcontrol,
+            'controls_file': 'input.tglf.controls',
+            'state_converter': 'to_tglf',
+            'input_class': TGLFinput,
+            'complete_variation': completeVariation_TGLF,
+            'default_cores': 4,  # Default cores to use in the simulation
+        }
+        
+        print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t TGLF class module")
-        print(
-            "-----------------------------------------------------------------------------------------\n"
-        )
+        print("-----------------------------------------------------------------------------------------\n")
 
         if alreadyRun is not None:
             # For the case in which I have run TGLF somewhere else, not using to plot and modify the class
@@ -135,9 +146,13 @@ class TGLF:
             self.__dict__ = alreadyRun.__dict__
             print("* Readying previously-run TGLF class", typeMsg="i")
         else:
-            self.ResultsFiles = [
-                "out.tglf.run",
+            
+            self.ResultsFiles_minimal = [
                 "out.tglf.gbflux",
+            ]
+            
+            self.ResultsFiles = self.ResultsFiles_minimal + [
+                "out.tglf.run",
                 "out.tglf.eigenvalue_spectrum",
                 "out.tglf.sum_flux_spectrum",
                 "out.tglf.ky_spectrum",
@@ -164,17 +179,9 @@ class TGLF:
             self.LocationCDF = cdf
             if self.LocationCDF is not None:
                 _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
-            else:
-                self.nameRunid = "0"
             self.time, self.avTime = time, avTime
-            self.rhos = np.array(rhos)
 
-            (
-                self.results,
-                self.scans,
-                self.tgyro,
-                self.ky_single,
-            ) = ({}, {}, None, None)
+            self.tgyro,self.ky_single = None, None
 
             self.NormalizationSets = {
                 "TRANSP": None,
@@ -184,6 +191,134 @@ class TGLF:
                 "input_gacode": None,
                 "SELECTED": None,
             }
+
+    def run(
+        self,
+        subfolder,
+        runWaveForms=None,              # e.g. runWaveForms = [0.3,1.0]
+        forceClosestUnstableWF=True,    # Look at the growth rate spectrum and run exactly the ky of the closest unstable
+        **kwargs_generic_run
+    ):
+        '''
+        I need to redefine the run method for the TGLF class because it has the option of producing WaveForms
+        '''
+        
+        code_executor_full = super().run(subfolder, **kwargs_generic_run)
+
+        kwargs_generic_run['runWaveForms'] = runWaveForms
+        kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
+        self._helper_wf(code_executor_full, **kwargs_generic_run)
+
+    def run_scan(
+        self,
+        subfolder,
+        **kwargs,
+    ):
+        
+        code_executor_full = super().run_scan(subfolder,**kwargs)
+    
+        self._helper_wf(code_executor_full, **kwargs)
+
+    def _run_wf(self, kys, code_executor, forceClosestUnstableWF=True, **kwargs_TGLFrun):
+        """
+        extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from code_executor
+        """
+
+        if kwargs_TGLFrun.get("only_minimal_files", False):
+            raise Exception('[MITIM] Option to run WF with only minimal files is not available yet')
+
+        if "runWaveForms" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["runWaveForms"]
+
+        # Grab these from code_executor
+        if "extraOptions" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["extraOptions"]
+        if "multipliers" in kwargs_TGLFrun:
+            del kwargs_TGLFrun["multipliers"]
+
+        self.ky_single = kys
+        ResultsFiles = copy.deepcopy(self.ResultsFiles)
+        self.ResultsFiles = copy.deepcopy(self.ResultsFiles_WF)
+
+        self.FoldersTGLF_WF = {}
+        if self.ky_single is not None:
+
+            code_executorWF = {}
+            for ky_single0 in self.ky_single:
+                print(f"> Running TGLF waveform analysis, ky~{ky_single0}")
+
+                self.FoldersTGLF_WF[f"ky{ky_single0}"] = {}
+                for subfolder in code_executor:
+
+                    ky_single_orig = copy.deepcopy(ky_single0)
+
+                    FolderTGLF_old = code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["folder"]
+
+                    self.ky_single = None
+                    self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
+                    self.ky_single = kys
+
+                    self.FoldersTGLF_WF[f"ky{ky_single0}"][
+                        FolderTGLF_old
+                    ] = FolderTGLF_old / f"ky{ky_single0}"
+
+                    ky_singles = []
+                    for i, ir in enumerate(self.rhos):
+                        # -------- Get the closest unstable mode to the one requested
+                        if forceClosestUnstableWF:
+
+                            # Only unstable ones
+                            kys_n = []
+                            for j in range(len(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky)):
+                                if self.results[f"ky{ky_single0}"]["TGLFout"][i].g[0, j] > 0.0:
+                                    kys_n.append(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky[j])
+                            kys_n = np.array(kys_n)
+                            # ----
+
+                            closest_ky = kys_n[np.argmin(np.abs(kys_n - ky_single_orig))]
+                            print(f"\t- rho = {ir:.3f}, requested ky={ky_single_orig:.3f}, & closest unstable ky based on previous run: ky={closest_ky:.3f}",typeMsg="i",)
+                            ky_single = closest_ky
+                        else:
+                            ky_single = ky_single0
+
+                        ky_singles.append(ky_single)
+                        # ------------------------------------------------------------
+
+                    kwargs_TGLFrun0 = copy.deepcopy(kwargs_TGLFrun)
+                    if "extraOptions" in kwargs_TGLFrun:
+                        extraOptions_WF = copy.deepcopy(kwargs_TGLFrun["extraOptions"])
+                        del kwargs_TGLFrun0["extraOptions"]
+
+                    else:
+                        extraOptions_WF = {}
+
+                    extraOptions_WF = copy.deepcopy(code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["extraOptions"])
+                    multipliers_WF = copy.deepcopy(code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["multipliers"])
+
+                    extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
+                    extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
+                    extraOptions_WF["KY"] = ky_singles
+                    extraOptions_WF["VEXB_SHEAR"] = 0.0  # See email from G. Staebler on 05/16/2021
+
+                    code_executorWF, _ = self._run_prepare(
+                        (FolderTGLF_old / f"ky{ky_single0}").relative_to(FolderTGLF_old.parent),
+                        code_executor=code_executorWF,
+                        extraOptions=extraOptions_WF,
+                        multipliers=multipliers_WF,
+                        **kwargs_TGLFrun0,
+                    )
+
+            # Run them all
+            self._run(
+                code_executorWF,
+                runWaveForms=[],
+                **kwargs_TGLFrun0,
+            )
+
+        # Recover previous stuff
+        self.ResultsFiles_WF = copy.deepcopy(self.ResultsFiles)
+        self.ResultsFiles = ResultsFiles
+        # -----------
 
     def prepare_for_save_TGLF(self):
         """
@@ -213,7 +348,7 @@ class TGLF:
         with open(file, "wb") as handle:
             pickle.dump(tglf_copy, handle, protocol=4)
 
-    def prep(
+    def prep_using_tgyro(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         cold_start=False,  # If True, do not use what it potentially inside the folder, run again
@@ -284,10 +419,7 @@ class TGLF:
                     print(f"\t\t- Running scans because it does not exist file {IOtools.clipstr(fii)}")
                     exists = False
             if exists:
-                print(
-                    "\t\t- All input files to TGLF exist, not running scans",
-                    typeMsg="i",
-                )
+                print("\t\t- All input files to TGLF exist, not running scans",typeMsg="i",)
 
             """
 			Sometimes, if I'm running TGLF only from input.tglf file, I may not need to run the entire TGYRO workflow
@@ -312,18 +444,18 @@ class TGLF:
 
             print("\t- Creating dictionary with all input files generated by TGLF_scans")
 
-            self.inputsTGLF = {}
+            self.inputs_files = {}
             for cont, rho in enumerate(self.rhos):
                 fileN = self.FolderGACODE / f"input.tglf_{rho:.4f}"
                 inputclass = TGLFinput(file=fileN)
-                self.inputsTGLF[rho] = inputclass
+                self.inputs_files[rho] = inputclass
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize by taking directly the inputs
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         else:
-            self.inputsTGLF = specificInputs
+            self.inputs_files = specificInputs
             self.tgyro_results = tgyro_results
 
         """
@@ -356,122 +488,7 @@ class TGLF:
 
         return cdf
 
-    def prep_direct_tglf(
-        self,
-        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        remove_fast=False,  # Ignore fast particles in TGYRO
-        recalculate_ptot=True, # Recalculate PTOT in TGYRO
-        cdf_open=None,  # Grab normalizations from CDF file that is open as transp_output class
-        inputgacode=None,  # *NOTE BELOW*
-        specificInputs=None,  # *NOTE BELOW*
-        tgyro_results=None,  # *NOTE BELOW*
-        forceIfcold_start=False,  # Extra flag
-        ):
-        """
-        * Note on inputgacode, specificInputs and tgyro_results:
-                If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
-                Optionally, I can give tgyro_results for further info in such a case
-        """
-
-        print("> Preparation of TGLF run")
-
-        # PROFILES class.
-
-        if inputgacode is not None:
-            
-            if isinstance(inputgacode, str) or isinstance(inputgacode, Path):
-                
-                from mitim_tools.gacode_tools import PROFILEStools
-                self.profiles = PROFILEStools.gacode_state(inputgacode)
-                
-            else:
-                
-                # If inputgacode is already a PROFILEStools object, just use it
-                self.profiles = inputgacode
-                
-        else:
-            
-            # TGYRO class. It checks existence and creates input.profiles/input.gacode
-
-            self.tgyro = TGYROtools.TGYRO(
-                cdf=self.LocationCDF, time=self.time, avTime=self.avTime
-            )
-            self.tgyro.prep(
-                FolderGACODE,
-                cold_start=cold_start,
-                remove_tmp=True,
-                subfolder="tmp_tgyro_prep",
-                profilesclass_custom=self.profiles,
-                forceIfcold_start=forceIfcold_start,
-            )
-
-            self.profiles = self.tgyro.profiles
-
-        self.profiles.derive_quantities(mi_ref=md_u)
-
-        self.profiles.correct(options={'recalculate_ptot':recalculate_ptot,'remove_fast':remove_fast})
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by preparing a tgyro class and running for -1 iterations
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if specificInputs is None:
-
-            self.inputsTGLF = self.profiles.to_tglf(rhos=self.rhos)
-
-            for rho in self.inputsTGLF:
-                self.inputsTGLF[rho] = TGLFinput.initialize_in_memory(self.inputsTGLF[rho])
-                
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Initialize by taking directly the inputs
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        else:
-            self.inputsTGLF = specificInputs
-        
-        self.tgyro_results  = tgyro_results
-
-        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
-        
-        if cold_start or not self.FolderGACODE.exists():
-            IOtools.askNewFolder(self.FolderGACODE, force=forceIfcold_start)
-
-        for rho in self.inputsTGLF:
-            self.inputsTGLF[rho].file = self.FolderGACODE / f'input.tglf_{rho:.4f}'
-            self.inputsTGLF[rho].write_state()
-
-        """
-		~~~~~ Create Normalizations ~~~~~
-			- Only input.gacode needed
-			- I can also give TRANSP CDF for complement. It is used in prep anyway, so good to store here
-				and have the values for plotting the experimental fluxes.
-			- I can also give TGYRO class for complement. It is used in prep anyway, so good to store here
-				for plotting and check grid conversions.
-
-		Note about the TGLF normalization:
-			What matters is what's the mass used to normalized the MASS_X.
-			If TGYRO was used to generate the input.tglf file, then the normalization mass is deuterium and all
-			must be normalized to deuterium
-		"""
-
-        print("> Setting up normalizations")
-
-        print("\t- Using mass of deuterium to normalize things (not necesarily the first ion)",typeMsg="w",)
-        self.profiles.derive_quantities(mi_ref=md_u)
-
-        self.NormalizationSets, cdf = NORMtools.normalizations(
-            self.profiles,
-            LocationCDF=self.LocationCDF,
-            time=self.time,
-            avTime=self.avTime,
-            cdf_open=cdf_open,
-            tgyro=self.tgyro_results,
-        )
-
-        return cdf
-
-    def prep_from_tglf(
+    def prep_from_file(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
         input_tglf_file,  # input.tglf file to start with
@@ -512,354 +529,8 @@ class TGLF:
 
         self.rhos = [rho]
 
-        self.inputsTGLF = {self.rhos[0]: inputclass}
+        self.inputs_files = {self.rhos[0]: inputclass}
 
-    def run(
-        self,
-        subFolderTGLF,  # 'tglf1/',
-        TGLFsettings=None,
-        extraOptions={},
-        multipliers={},
-        minimum_delta_abs={},
-        runWaveForms=None,  # e.g. runWaveForms = [0.3,1.0]
-        forceClosestUnstableWF=True,  # Look at the growth rate spectrum and run exactly the ky of the closest unstable
-        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
-        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
-        launchSlurm=True,
-        cold_start=False,
-        forceIfcold_start=False,
-        extra_name="exe",
-        anticipate_problems=True,
-        slurm_setup={
-            "cores": 4,
-            "minutes": 5,
-        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-        attempts_execution=1,
-        only_minimal_files=False,
-    ):
-
-        if runWaveForms is None: runWaveForms = []
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Prepare inputs
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
-            subFolderTGLF,
-            tglf_executor={},
-            tglf_executor_full={},
-            TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            runWaveForms=runWaveForms,
-            forceClosestUnstableWF=forceClosestUnstableWF,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-            launchSlurm=launchSlurm,
-            cold_start=cold_start,
-            forceIfcold_start=forceIfcold_start,
-            extra_name=extra_name,
-            slurm_setup=slurm_setup,
-            anticipate_problems=anticipate_problems,
-            attempts_execution=attempts_execution,
-            only_minimal_files=only_minimal_files,
-        )
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Run TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        self._run(
-            tglf_executor,
-            tglf_executor_full=tglf_executor_full,
-            TGLFsettings=TGLFsettings,
-            runWaveForms=runWaveForms,
-            forceClosestUnstableWF=forceClosestUnstableWF,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-            launchSlurm=launchSlurm,
-            cold_start=cold_start,
-            forceIfcold_start=forceIfcold_start,
-            extra_name=extra_name,
-            slurm_setup=slurm_setup,
-            only_minimal_files=only_minimal_files,
-        )
-
-        self.FolderTGLFlast = folderlast
-
-    def _run(
-            self,
-            tglf_executor,
-            tglf_executor_full={},
-            **kwargs_TGLFrun
-            ):
-        """
-        extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor for WF
-        """
-
-        print("\n> Run TGLF")
-
-        if kwargs_TGLFrun.get("only_minimal_files", False):
-            filesToRetrieve = ["out.tglf.gbflux"]
-        else:
-            filesToRetrieve = self.ResultsFiles
-
-        c = 0
-        for subFolderTGLF in tglf_executor:
-            c += len(tglf_executor[subFolderTGLF])
-
-        if c > 0:
-            GACODErun.runTGLF(
-                self.FolderGACODE,
-                tglf_executor,
-                filesToRetrieve=filesToRetrieve,
-                minutes=kwargs_TGLFrun.get("slurm_setup", {}).get("minutes", 5),
-                cores_tglf=kwargs_TGLFrun.get("slurm_setup", {}).get("cores", 4),
-                name=f"tglf_{self.nameRunid}{kwargs_TGLFrun.get('extra_name', '')}",
-                launchSlurm=kwargs_TGLFrun.get("launchSlurm", True),
-                attempts_execution=kwargs_TGLFrun.get("attempts_execution", 1),
-            )
-        else:
-            print("\t- TGLF not run because all results files found (please ensure consistency!)",typeMsg="i")
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Waveform if requested
-        #  Cannot be in parallel to the previous run, because it needs the results of unstable ky
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if "runWaveForms" in kwargs_TGLFrun and kwargs_TGLFrun["runWaveForms"] is not None and len(kwargs_TGLFrun["runWaveForms"]) > 0:
-            self._run_wf(kwargs_TGLFrun["runWaveForms"], tglf_executor_full, **kwargs_TGLFrun)
-
-    def _prepare_run_radii(
-        self,
-        subFolderTGLF,  # 'tglf1/',
-        rhos=None,
-        tglf_executor={},
-        tglf_executor_full={},
-        TGLFsettings=None,
-        extraOptions={},
-        multipliers={},
-        minimum_delta_abs={},
-        ApplyCorrections=True,  # Removing ions with too low density and that are fast species
-        Quasineutral=False,  # Ensures quasineutrality. By default is False because I may want to run the file directly
-        launchSlurm=True,
-        cold_start=False,
-        forceIfcold_start=False,
-        anticipate_problems=True,
-        slurm_setup={
-            "cores": 4,
-            "minutes": 5,
-        },  # Cores per TGLF call (so, when running nR radii -> nR*4)
-        only_minimal_files=False,
-        **kwargs):
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Prepare for run
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if rhos is None:
-            rhos = self.rhos
-
-        inputs = copy.deepcopy(self.inputsTGLF)
-        FolderTGLF = self.FolderGACODE / subFolderTGLF
-
-        ResultsFiles_new = []
-        for i in self.ResultsFiles:
-            if "mitim.out" not in i:
-                ResultsFiles_new.append(i)
-        self.ResultsFiles = ResultsFiles_new
-
-        if only_minimal_files:
-            filesToRetrieve = ["out.tglf.gbflux"]
-        else:
-            filesToRetrieve = self.ResultsFiles
-
-        # Do I need to run all radii?
-        rhosEvaluate = cold_start_checker(
-            rhos,
-            filesToRetrieve,
-            FolderTGLF,
-            cold_start=cold_start,
-        )
-
-        if len(rhosEvaluate) == len(rhos):
-            # All radii need to be evaluated
-            IOtools.askNewFolder(FolderTGLF, force=forceIfcold_start)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Change this specific run of TGLF
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        (
-            latest_inputsFileTGLF,
-            latest_inputsFileTGLFDict,
-        ) = changeANDwrite_TGLF(
-            rhos,
-            inputs,
-            FolderTGLF,
-            TGLFsettings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-        )
-
-        tglf_executor_full[subFolderTGLF] = {}
-        tglf_executor[subFolderTGLF] = {}
-        for irho in self.rhos:
-            tglf_executor_full[subFolderTGLF][irho] = {
-                "folder": FolderTGLF,
-                "dictionary": latest_inputsFileTGLFDict[irho],
-                "inputs": latest_inputsFileTGLF[irho],
-                "extraOptions": extraOptions,
-                "multipliers": multipliers,
-            }
-            if irho in rhosEvaluate:
-                tglf_executor[subFolderTGLF][irho] = tglf_executor_full[subFolderTGLF][
-                    irho
-                ]
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Stop if I expect problems
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        if anticipate_problems:
-            anticipate_problems_func(
-                latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
-            )
-
-        return tglf_executor, tglf_executor_full, FolderTGLF
-
-    def _run_wf(self, kys, tglf_executor, **kwargs_TGLFrun):
-        """
-        extraOptions and multipliers are not being grabbed from kwargs_TGLFrun, but from tglf_executor
-        """
-
-        if kwargs_TGLFrun.get("only_minimal_files", False):
-            raise Exception('[MITIM] Option to run WF with only minimal files is not available yet')
-
-        if "runWaveForms" in kwargs_TGLFrun:
-            del kwargs_TGLFrun["runWaveForms"]
-
-        # Grab these from tglf_executor
-        if "extraOptions" in kwargs_TGLFrun:
-            del kwargs_TGLFrun["extraOptions"]
-        if "multipliers" in kwargs_TGLFrun:
-            del kwargs_TGLFrun["multipliers"]
-
-        self.ky_single = kys
-        ResultsFiles = copy.deepcopy(self.ResultsFiles)
-        self.ResultsFiles = copy.deepcopy(self.ResultsFiles_WF)
-
-        self.FoldersTGLF_WF = {}
-        if self.ky_single is not None:
-
-            tglf_executorWF = {}
-            for ky_single0 in self.ky_single:
-                print(f"> Running TGLF waveform analysis, ky~{ky_single0}")
-
-                self.FoldersTGLF_WF[f"ky{ky_single0}"] = {}
-                for subFolderTGLF in tglf_executor:
-
-                    ky_single_orig = copy.deepcopy(ky_single0)
-
-                    FolderTGLF_old = tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["folder"]
-
-                    self.ky_single = None
-                    self.read(
-                        label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
-                    self.ky_single = kys
-
-                    self.FoldersTGLF_WF[f"ky{ky_single0}"][
-                        FolderTGLF_old
-                    ] = FolderTGLF_old / f"ky{ky_single0}"
-
-                    ky_singles = []
-                    for i, ir in enumerate(self.rhos):
-                        # -------- Get the closest unstable mode to the one requested
-                        if (
-                            kwargs_TGLFrun["forceClosestUnstableWF"]
-                            if "forceClosestUnstableWF" in kwargs_TGLFrun
-                            else True
-                        ):
-                            # Only unstable ones
-                            kys_n = []
-                            for j in range(
-                                len(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky)
-                            ):
-                                if (
-                                    self.results[f"ky{ky_single0}"]["TGLFout"][i].g[
-                                        0, j
-                                    ]
-                                    > 0.0
-                                ):
-                                    kys_n.append(
-                                        self.results[f"ky{ky_single0}"]["TGLFout"][
-                                            i
-                                        ].ky[j]
-                                    )
-                            kys_n = np.array(kys_n)
-                            # ----
-
-                            closest_ky = kys_n[
-                                np.argmin(np.abs(kys_n - ky_single_orig))
-                            ]
-                            print(
-                                f"\t- rho = {ir:.3f}, requested ky={ky_single_orig:.3f}, & closest unstable ky based on previous run: ky={closest_ky:.3f}",
-                                typeMsg="i",
-                            )
-                            ky_single = closest_ky
-                        else:
-                            ky_single = ky_single0
-
-                        ky_singles.append(ky_single)
-                        # ------------------------------------------------------------
-
-                    kwargs_TGLFrun0 = copy.deepcopy(kwargs_TGLFrun)
-                    if "extraOptions" in kwargs_TGLFrun:
-                        extraOptions_WF = copy.deepcopy(kwargs_TGLFrun["extraOptions"])
-                        del kwargs_TGLFrun0["extraOptions"]
-
-                    else:
-                        extraOptions_WF = {}
-
-                    extraOptions_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["extraOptions"])
-                    multipliers_WF = copy.deepcopy(tglf_executor[subFolderTGLF][
-                        list(tglf_executor[subFolderTGLF].keys())[0]
-                    ]["multipliers"])
-
-                    extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
-                    extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
-                    extraOptions_WF["KY"] = ky_singles
-                    extraOptions_WF["VEXB_SHEAR"] = (
-                        0.0  # See email from G. Staebler on 05/16/2021
-                    )
-
-                    tglf_executorWF, _, _ = self._prepare_run_radii(
-                        (FolderTGLF_old / f"ky{ky_single0}").relative_to(FolderTGLF_old.parent),
-                        tglf_executor=tglf_executorWF,
-                        extraOptions=extraOptions_WF,
-                        multipliers=multipliers_WF,
-                        **kwargs_TGLFrun0,
-                    )
-
-            # Run them all
-            self._run(
-                tglf_executorWF,
-                runWaveForms=[],
-                **kwargs_TGLFrun0,
-            )
-
-        # Recover previous stuff
-        self.ResultsFiles_WF = copy.deepcopy(self.ResultsFiles)
-        self.ResultsFiles = ResultsFiles
-        # -----------
 
     def read(
         self,
@@ -899,7 +570,7 @@ class TGLF:
 
         # If no specified folder, check the last one
         if folder is None:
-            folder = self.FolderTGLFlast
+            folder = self.FolderSimLast
 
 
         # -----------------------------------------
@@ -2253,279 +1924,104 @@ class TGLF:
                     legYN=contLab == 0,
                 )
 
-    # ~~~~~~~~~~~~~~ Scan options
-
-    def runScan(
+    def _helper_wf(
         self,
-        subFolderTGLF,  # 'scan1',
-        multipliers={},
-        minimum_delta_abs={},
-        variable="RLTS_1",
-        varUpDown=[0.5, 1.0, 1.5],
-        variables_scanTogether=[],
-        relativeChanges=True,
-        **kwargs_TGLFrun,
+        code_executor_full,
+        **kwargs
     ):
+        
+        runWaveForms = kwargs['runWaveForms'] if 'runWaveForms' in kwargs else None
+        forceClosestUnstableWF = kwargs['forceClosestUnstableWF'] if 'forceClosestUnstableWF' in kwargs else True
 
-        # -------------------------------------
-        # Add baseline
-        # -------------------------------------
-        if (1.0 not in varUpDown) and relativeChanges:
-            print("\n* Since variations vector did not include base case, I am adding it",typeMsg="i",)
-            varUpDown_new = []
-            added = False
-            for i in varUpDown:
-                if i > 1.0 and not added:
-                    varUpDown_new.append(1.0)
-                    added = True
-                varUpDown_new.append(i)
-        else:
-            varUpDown_new = varUpDown
+        if 'runWaveForms' in kwargs: 
+            del kwargs['runWaveForms']
+        if 'forceClosestUnstableWF' in kwargs: 
+            del kwargs['forceClosestUnstableWF']
 
+        # *********************************************************************************************
+        # Waveform if requested (not in parallel because it needs the results of unstable ky)
+        # *********************************************************************************************
 
-        tglf_executor, tglf_executor_full, folders, varUpDown_new = self._prepare_scan(
-            subFolderTGLF,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
+        if runWaveForms is not None and len(runWaveForms) > 0:
+
+            # Keep the same folder as before
+            self.keep_folder = copy.deepcopy(self.FolderSimLast)
+            
+            # Run WF
+            self._run_wf(runWaveForms, code_executor_full, forceClosestUnstableWF=forceClosestUnstableWF, **kwargs)
+            
+            # Get back to it
+            self.FolderSimLast = self.keep_folder
+
+    #TODO #TOREMOVE
+    def runScan(self,subfolder,**kwargs):
+        self.run_scan(subfolder, **kwargs)
+    def readScan(self, **kwargs):
+        self.read_scan(**kwargs)
+    def plotScan(self,**kwargs):      
+        self.plot_scan(**kwargs)
+        
+    def read_scan(
+        self,
+        label="scan1",
+        subfolder=None,
+        variable="RLTS_1",
+        positionIon=2
+    ):
+        
+        output_object = "TGLFout"
+
+        variable_mapping = {
+            'scanned_variable': ["parsed", variable, None],
+            'Qe_gb': [output_object, 'Qe', None],
+            'Qi_gb': [output_object, 'Qi', None],
+            'Ge_gb': [output_object, 'Ge', None],
+            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Mt_gb': [output_object, 'Mt', None],
+            'S_gb': [output_object, 'Se', None],
+            'ky': [output_object, 'ky', None],
+            'g': [output_object, 'g', None],
+            'f': [output_object, 'f', None],
+            'Qifast_gb': [output_object, 'Qifast', None],
+            'eta_ITGETG': [output_object, 'eta_ITGETG', None],
+            'eta_ITGTEM': [output_object, 'eta_ITGTEM', None],
+            'g_lowk_max': [output_object, 'g_lowk_max', None],
+            'f_lowk_max': [output_object, 'f_lowk_max', None],
+            'k_lowk_max': [output_object, 'k_lowk_max', None],
+            'g_ITG_max': [output_object, 'g_ITG_max', None],
+            'g_ETG_max': [output_object, 'g_ETG_max', None],
+            'g_TEM_max': [output_object, 'g_TEM_max', None],
+        }
+        
+        variable_mapping_unn = {
+            'Qe': [output_object, 'Qe_unn', None],
+            'Qi': [output_object, 'Qi_unn', None],
+            'Ge': [output_object, 'Ge_unn', None],
+            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Mt': [output_object, 'Mt_unn', None],
+            'S': [output_object, 'Se_unn', None],
+            'Qifast': [output_object, 'Qifast_unn', None],
+        }
+        
+        super().read_scan(
+            label=label,
+            subfolder=subfolder,
             variable=variable,
-            varUpDown=varUpDown_new,
-            variables_scanTogether=variables_scanTogether,
-            relativeChanges=relativeChanges,
-            **kwargs_TGLFrun,
+            positionIon=positionIon,
+            variable_mapping=variable_mapping,
+            variable_mapping_unn=variable_mapping_unn
         )
 
-        # Run them all
-        self._run(
-            tglf_executor,
-            tglf_executor_full=tglf_executor_full,
-            **kwargs_TGLFrun,
-        )
+        varS = ['ky', 'g', 'f']
+        for var in varS:
+            if len(self.scans[label][var].shape) == 3:
+                axes_swap = [1, 2, 0] # [rho, scan, ky]
+            elif len(self.scans[label][var].shape) == 4:
+                axes_swap = [2, 3, 1, 0] # [rho, scan, nmode, ky]
+                
+            self.scans[label][var] = np.transpose(self.scans[label][var], axes=axes_swap)
 
-        # Read results
-        for cont_mult, mult in enumerate(varUpDown_new):
-            name = f"{variable}_{mult}"
-            self.read(
-                label=f"{self.subFolderTGLF_scan}_{name}",
-                folder=folders[cont_mult],
-                cold_startWF = False,
-                require_all_files=not kwargs_TGLFrun.get("only_minimal_files",False),
-            )
-
-    def _prepare_scan(
-        self,
-        subFolderTGLF,  # 'scan1',
-        multipliers={},
-        minimum_delta_abs={},
-        variable="RLTS_1",
-        varUpDown=[0.5, 1.0, 1.5],
-        variables_scanTogether=[],
-        relativeChanges=True,
-        **kwargs_TGLFrun,
-    ):
-        """
-        Multipliers will be modified by adding the scaning variables, but I don't want to modify the original
-        multipliers, as they may be passed to the next scan
-
-        Set relativeChanges=False if varUpDown contains the exact values to change, not multipleiers
-        """
-        multipliers_mod = copy.deepcopy(multipliers)
-
-        self.subFolderTGLF_scan = subFolderTGLF
-
-        if relativeChanges:
-            for i in range(len(varUpDown)):
-                varUpDown[i] = round(varUpDown[i], 6)
-
-        print(f"\n- Proceeding to scan {variable}{' together with '+', '.join(variables_scanTogether) if len(variables_scanTogether)>0 else ''}:")
-
-        tglf_executor = {}
-        tglf_executor_full = {}
-        folders = []
-        for cont_mult, mult in enumerate(varUpDown):
-            mult = round(mult, 6)
-
-            if relativeChanges:
-                print(f"\n + Multiplier: {mult} -----------------------------------------------------------------------------------------------------------")
-            else:
-                print(f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------")
-
-            multipliers_mod[variable] = mult
-
-            for variable_scanTogether in variables_scanTogether:
-                multipliers_mod[variable_scanTogether] = mult
-
-            name = f"{variable}_{mult}"
-
-            species = self.inputsTGLF[self.rhos[0]]  # Any rho will do
-
-            multipliers_mod = completeVariation(multipliers_mod, species)
-
-            if not relativeChanges:
-                for ikey in multipliers_mod:
-                    kwargs_TGLFrun["extraOptions"][ikey] = multipliers_mod[ikey]
-                multipliers_mod = {}
-
-            # Force ensure quasineutrality if the
-            if variable in ["AS_3", "AS_4", "AS_5", "AS_6"]:
-                kwargs_TGLFrun["Quasineutral"] = True
-
-            # Only ask the cold_start in the first round
-            kwargs_TGLFrun["forceIfcold_start"] = cont_mult > 0 or (
-                "forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"]
-            )
-
-            tglf_executor, tglf_executor_full, folderlast = self._prepare_run_radii(
-                f"{self.subFolderTGLF_scan}_{name}",
-                tglf_executor=tglf_executor,
-                tglf_executor_full=tglf_executor_full,
-                multipliers=multipliers_mod,
-                minimum_delta_abs=minimum_delta_abs,
-                **kwargs_TGLFrun,
-            )
-
-            folders.append(copy.deepcopy(folderlast))
-
-        return tglf_executor, tglf_executor_full, folders, varUpDown
-
-    def readScan(
-        self, label="scan1", subFolderTGLF=None, variable="RLTS_1", positionIon=2
-    ):
-        '''
-        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
-        '''
-
-        if subFolderTGLF is None:
-            subFolderTGLF = self.subFolderTGLF_scan
-
-        self.scans[label] = {}
-        self.scans[label]["variable"] = variable
-        self.scans[label]["positionBase"] = None
-        self.scans[label]["unnormalization_successful"] = True
-        self.scans[label]["results_tags"] = []
-
-        self.positionIon_scan = positionIon
-
-        # ----
-        x = []
-        Qe, Qi, Ge, Gi, Mt, S = [],[],[],[],[],[]
-        Qe_gb, Qi_gb, Ge_gb, Gi_gb, Mt_gb, S_gb = [],[],[],[],[],[]        
-        ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[]
-        etalow_g, etalow_f, etalow_k = [], [], []
-        Qifast, Qifast_gb = [],[]
-        cont = 0
-        for ikey in self.results:
-            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1])
-
-            if isThisTheRightReadResults:
-
-                self.scans[label]["results_tags"].append(ikey)
-                x0 = []
-                Qe0, Qi0, Ge0, Gi0, Mt0, S0 = [],[],[],[],[],[]
-                Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0, Mt_gb0, S_gb0 = [],[],[],[],[],[]
-                ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[]
-                etalow_g0, etalow_f0, etalow_k0 = [], [], []
-                Qifast0, Qifast_gb0 = [],[]
-                for irho_cont in range(len(self.rhos)):
-                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
-
-                    # Unnormalized
-                    x0.append(self.results[ikey]["parsed"][irho][variable])
-                    Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
-                    Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
-                    Qifast_gb0.append(self.results[ikey]["TGLFout"][irho].Qifast)
-                    Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
-                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
-                    Mt_gb0.append(self.results[ikey]["TGLFout"][irho].Mt)
-                    S_gb0.append(self.results[ikey]["TGLFout"][irho].Se)
-                    ky0.append(self.results[ikey]["TGLFout"][irho].ky)
-                    g0.append(self.results[ikey]["TGLFout"][irho].g)
-                    f0.append(self.results[ikey]["TGLFout"][irho].f)
-                    eta10.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGTEM"])
-                    eta20.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGETG"])
-                    etalow_g0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["g_lowk_max"])
-                    etalow_k0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["k_lowk_max"])
-                    etalow_f0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["f_lowk_max"])
-                    itg0.append(self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"])
-                    tem0.append(self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"])
-                    etg0.append(self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"])
-
-                    if self.results[ikey]["TGLFout"][irho].unnormalization_successful:
-                        Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
-                        Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
-                        Qifast0.append(self.results[ikey]["TGLFout"][irho].Qifast_unn)
-                        Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
-                        Mt0.append(self.results[ikey]["TGLFout"][irho].Mt_unn)
-                        S0.append(self.results[ikey]["TGLFout"][irho].Se_unn)
-                    else:
-                        self.scans[label]["unnormalization_successful"] = False
-
-                x.append(x0)
-                Qe.append(Qe0)
-                Qi.append(Qi0)
-                Qifast.append(Qifast0)
-                Ge.append(Ge0)
-                Qe_gb.append(Qe_gb0)
-                Qi_gb.append(Qi_gb0)
-                Qifast_gb.append(Qifast_gb0)
-                Ge_gb.append(Ge_gb0)
-                Gi_gb.append(Gi_gb0)
-                Gi.append(Gi0)
-                Mt.append(Mt0)
-                S.append(S0)
-                ky.append(ky0)
-                g.append(g0)
-                f.append(f0)
-                eta1.append(eta10)
-                eta2.append(eta20)
-                etalow_g.append(etalow_g0)
-                etalow_f.append(etalow_f0)
-                etalow_k.append(etalow_k0)
-                itg.append(itg0)
-                tem.append(tem0)
-                etg.append(etg0)
-
-                if float(ikey.split('_')[-1]) == 1.0:
-                    self.scans[label]["positionBase"] = cont
-                cont += 1
-
-        self.scans[label]["x"] = np.array(self.rhos)
-        self.scans[label]["xV"] = np.atleast_2d(np.transpose(x))
-        self.scans[label]["Qe_gb"] = np.atleast_2d(np.transpose(Qe_gb))
-        self.scans[label]["Qi_gb"] = np.atleast_2d(np.transpose(Qi_gb))
-        self.scans[label]["Qifast_gb"] = np.atleast_2d(np.transpose(Qifast_gb))
-        self.scans[label]["Ge_gb"] = np.atleast_2d(np.transpose(Ge_gb))
-        self.scans[label]["Gi_gb"] = np.atleast_2d(np.transpose(Gi_gb))
-        self.scans[label]["Mt_gb"] = np.atleast_2d(np.transpose(Mt_gb))
-        self.scans[label]["S_gb"] = np.atleast_2d(np.transpose(S_gb))
-        self.scans[label]["Qe"] = np.atleast_2d(np.transpose(Qe))
-        self.scans[label]["Qi"] = np.atleast_2d(np.transpose(Qi))
-        self.scans[label]["Qifast"] = np.atleast_2d(np.transpose(Qifast))
-        self.scans[label]["Ge"] = np.atleast_2d(np.transpose(Ge))
-        self.scans[label]["Gi"] = np.atleast_2d(np.transpose(Gi))
-        self.scans[label]["Mt"] = np.atleast_2d(np.transpose(Mt))
-        self.scans[label]["S"] = np.atleast_2d(np.transpose(S))
-        self.scans[label]["eta1"] = np.atleast_2d(np.transpose(eta1))
-        self.scans[label]["eta2"] = np.atleast_2d(np.transpose(eta2))
-        self.scans[label]["itg"] = np.atleast_2d(np.transpose(itg))
-        self.scans[label]["tem"] = np.atleast_2d(np.transpose(tem))
-        self.scans[label]["etg"] = np.atleast_2d(np.transpose(etg))
-        self.scans[label]["g_lowk_max"] = np.atleast_2d(np.transpose(etalow_g))
-        self.scans[label]["f_lowk_max"] = np.atleast_2d(np.transpose(etalow_f))
-        self.scans[label]["k_lowk_max"] = np.atleast_2d(np.transpose(etalow_k))
-        self.scans[label]["ky"] = np.array(ky)
-        self.scans[label]["g"] = np.array(g)
-        self.scans[label]["f"] = np.array(f)
-        if len(self.scans[label]["ky"].shape) == 2:
-            self.scans[label]["ky"] = self.scans[label]["ky"].reshape((1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1]))
-            self.scans[label]["g"] = self.scans[label]["g"].reshape((1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1]))
-            self.scans[label]["f"] = self.scans[label]["f"].reshape((1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1]))
-        else:
-            self.scans[label]["ky"] = np.transpose(self.scans[label]["ky"], axes=[1, 0, 2])
-            self.scans[label]["g"] = np.transpose(self.scans[label]["g"], axes=[1, 0, 2, 3])
-            self.scans[label]["f"] = np.transpose(self.scans[label]["f"], axes=[1, 0, 2, 3])
-
-    def plotScan(
+    def plot_scan(
         self,
         labels=["scan1"],
         figs=None,
@@ -2536,17 +2032,13 @@ class TGLF:
         forceXposition=None,
         plotTGLFs=True,
     ):
+
         unnormalization_successful = True
         for label in labels:
-            unnormalization_successful = (
-                unnormalization_successful
-                and self.scans[label]["unnormalization_successful"]
-            )
+            unnormalization_successful = unnormalization_successful and self.scans[label]["unnormalization_successful"]
 
         if figs is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
-            )
+            self.fn = GUItools.FigureNotebook("TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True)
             if unnormalization_successful:
                 fig1 = self.fn.add_figure(label="Fluxes")
             fig1e = self.fn.add_figure(label="Fluxes (GB)")
@@ -2608,7 +2100,7 @@ class TGLF:
 
             positionBase = self.scans[label]["positionBase"]
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             if relativeX:
                 xbase = x[:, positionBase : positionBase + 1]
                 x = (x - xbase) / xbase * 100.0
@@ -2625,11 +2117,11 @@ class TGLF:
                 self.scans[label]["Ge_gb"],
                 self.scans[label]["Gi_gb"],
             )
-            eta1, eta2 = self.scans[label]["eta1"], self.scans[label]["eta2"]
+            eta1, eta2 = self.scans[label]["eta_ITGETG"], self.scans[label]["eta_ITGTEM"]
             itg, tem, etg = (
-                self.scans[label]["itg"],
-                self.scans[label]["tem"],
-                self.scans[label]["etg"],
+                self.scans[label]["g_ITG_max"],
+                self.scans[label]["g_TEM_max"],
+                self.scans[label]["g_ETG_max"],
             )
             ky, g, f = (
                 self.scans[label]["ky"],
@@ -3083,7 +2575,7 @@ class TGLF:
 
     def runScanTurbulenceDrives(
         self,
-        subFolderTGLF="drives1",
+        subfolder="drives1",
         varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
@@ -3114,14 +2606,14 @@ class TGLF:
         # Prepare all scans
         # ------------------------------------------
 
-        tglf_executor, tglf_executor_full, folders = {}, {}, []
+        code_executor, code_executor_full, folders = {}, {}, []
         for cont, variable in enumerate(self.variablesDrives):
             # Only ask the cold_start in the first round
             kwargs_TGLFrun["forceIfcold_start"] = cont > 0 or ("forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"])
 
-            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+            scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            tglf_executor0, tglf_executor_full0, folders0, _ = self._prepare_scan(
+            code_executor0, code_executor_full0, folders0, _ = self._prepare_scan(
                 scan_name,
                 variable=variable,
                 varUpDown=varUpDown_dict[variable],
@@ -3129,8 +2621,8 @@ class TGLF:
                 **kwargs_TGLFrun,
             )
 
-            tglf_executor = tglf_executor | tglf_executor0
-            tglf_executor_full = tglf_executor_full | tglf_executor_full0
+            code_executor = code_executor | code_executor0
+            code_executor_full = code_executor_full | code_executor_full0
             folders += folders0
 
         # ------------------------------------------
@@ -3138,8 +2630,8 @@ class TGLF:
         # ------------------------------------------
 
         self._run(
-            tglf_executor,
-            tglf_executor_full=tglf_executor_full,
+            code_executor,
+            code_executor_full=code_executor_full,
             **kwargs_TGLFrun,
         )
 
@@ -3152,16 +2644,16 @@ class TGLF:
             for mult in varUpDown_dict[variable]:
                 name = f"{variable}_{mult}"
                 self.read(
-                    label=f"{self.subFolderTGLF_scan}_{name}",
+                    label=f"{self.subfolder_scan}_{name}",
                     folder=folders[cont],
                     cold_startWF = False,
                     require_all_files=not kwargs_TGLFrun.get("only_minimal_files", False),
                 )
                 cont += 1
 
-            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+            scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.readScan(label=scan_name, variable=variable,positionIon=positionIon)
+            self.read_scan(label=scan_name, variable=variable,positionIon=positionIon)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
@@ -3193,7 +2685,7 @@ class TGLF:
 
         kwargs_TGLFscanPlot.pop("figs", None)
 
-        self.plotScan(
+        self.plot_scan(
             labels=labels,
             figs=figs1,
             variableLabel="X",
@@ -3202,13 +2694,13 @@ class TGLF:
         )
 
         kwargs_TGLFscanPlot["plotTGLFs"] = False
-        self.plotScan(
+        self.plot_scan(
             labels=labels, figs=figs2, variableLabel="X", **kwargs_TGLFscanPlot
         )
 
     def runAnalysis(
         self,
-        subFolderTGLF="analysis1",
+        subfolder="analysis1",
         label="analysis1",
         analysisType="chi_e",
         trace=[50.0, 174.0],
@@ -3245,14 +2737,14 @@ class TGLF:
                 np.linspace(1, 1 + variation / 2, 6)[1:],
             )
 
-            self.runScan(
-                subFolderTGLF,
+            self.run_scan(
+                subfolder,
                 varUpDown=varUpDown,
                 variable=self.variable,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=label, variable=self.variable)
+            self.read_scan(label=label, variable=self.variable)
 
             if analysisType == "chi_e":
                 Te_prof = self.NormalizationSets["SELECTED"]["Te_keV"]
@@ -3269,7 +2761,7 @@ class TGLF:
             rho = self.NormalizationSets["SELECTED"]["rho"]
             a = self.NormalizationSets["SELECTED"]["rmin"][-1]
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             yV = self.scans[label][self.variable_y]
 
             self.scans[label]["chi_inc"] = []
@@ -3314,27 +2806,27 @@ class TGLF:
 
             print(f"*** Running D and V analysis for trace ({fimp:.1e}) species with Z={trace[0]:.1f}, A={trace[1]:.1f}")
 
-            self.inputsTGLF_orig = copy.deepcopy(self.inputsTGLF)
+            self.inputs_files_orig = copy.deepcopy(self.inputs_files)
 
             # ------------------------
             # Add trace impurity
             # ------------------------
             
-            for irho in self.inputsTGLF:
-                position = self.inputsTGLF[irho].addTraceSpecie(Z, A, AS=fimp)
+            for irho in self.inputs_files:
+                position = self.inputs_files[irho].addTraceSpecie(Z, A, AS=fimp)
 
             self.variable = f"RLNS_{position}"
 
-            self.runScan(
-                subFolderTGLF,
+            self.run_scan(
+                subfolder,
                 varUpDown=varUpDown,
                 variable=self.variable,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=label, variable=self.variable, positionIon=position)
+            self.read_scan(label=label, variable=self.variable, positionIon=position)
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             yV = self.scans[label]["Gi"]
             self.variable_y = "Gi"
 
@@ -3366,7 +2858,7 @@ class TGLF:
                 self.scans[label]["VoD"].append(V / D)
 
             # Back to original (not trace)
-            self.inputsTGLF = self.inputsTGLF_orig
+            self.inputs_files = self.inputs_files_orig
 
     def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
         if figs is None:
@@ -3384,7 +2876,7 @@ class TGLF:
             variableLabel = "RLTS_2"
         elif analysisType == "Z":
             variableLabel = self.variable
-        self.plotScan(
+        self.plot_scan(
             labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel
         )
 
@@ -3426,11 +2918,11 @@ class TGLF:
                         )
                     )
 
-                    xV = self.scans[label]["xV"][irho]
+                    xV = self.scans[label]["scanned_variable"][irho]
                     Qe = self.scans[label][self.scans[label]["var_y"]][irho]
                     xgrid = self.scans[label]["x_grid"][irho]
                     ygrid = np.array(self.scans[label]["y_grid"][irho])
-                    xba = self.scans[label]["xV"][irho][
+                    xba = self.scans[label]["scanned_variable"][irho][
                         self.scans[label]["positionBase"]
                     ]
                     yba = np.interp(xba, xV, Qe)
@@ -3578,7 +3070,7 @@ class TGLF:
 
                     ax = ax00
                     ax.plot(
-                        self.scans[label]["xV"][irho],
+                        self.scans[label]["scanned_variable"][irho],
                         np.array(self.scans[label]["Gi"][irho]),
                         "o-",
                         c=col,
@@ -3591,7 +3083,7 @@ class TGLF:
                         lw=0.5,
                         c=col,
                     )
-                    # ax.axvline(x=self.scans[label]['xV'][irho][self.scans[label]['positionBase']],ls='--',c=col,lw=1.)
+                    # ax.axvline(x=self.scans[label]['scanned_variable'][irho][self.scans[label]['positionBase']],ls='--',c=col,lw=1.)
 
                     cont += 1
 
@@ -3702,7 +3194,7 @@ class TGLF:
             ) = GACODEdefaults.convolution_CECE(self.d_perp_dict, dRdx=self.DRMAJDX_LOC)
 
 
-def completeVariation(setVariations, species):
+def completeVariation_TGLF(setVariations, species):
     ions_info = species.ions_info
 
     setVariations_new = copy.deepcopy(setVariations)
@@ -3740,75 +3232,6 @@ def completeVariation(setVariations, species):
                 setVariations_new[f"VPAR_SHEAR_{i}"] = setVariations[variable]
 
     return setVariations_new
-
-
-# ~~~~~~~~~ Input class
-
-
-def changeANDwrite_TGLF(
-    rhos,
-    inputs0,
-    FolderTGLF,
-    TGLFsettings=None,
-    extraOptions={},
-    multipliers={},
-    minimum_delta_abs={},
-    ApplyCorrections=True,
-    Quasineutral=False,
-):
-    """
-    Received inputs classes and gives text.
-    ApplyCorrections refer to removing ions with too low density and that are fast species
-    """
-
-    inputs = copy.deepcopy(inputs0)
-
-    modInputTGLF = {}
-    ns_max = []
-    for i, rho in enumerate(rhos):
-        print(f"\t- Changing input file for rho={rho:.4f}")
-        NS = inputs[rho].plasma["NS"]
-        inputTGLF_rho = GACODErun.modifyInputs(
-            inputs[rho],
-            Settings=TGLFsettings,
-            extraOptions=extraOptions,
-            multipliers=multipliers,
-            minimum_delta_abs=minimum_delta_abs,
-            position_change=i,
-            addControlFunction=GACODEdefaults.addTGLFcontrol,
-            NS=NS,
-        )
-
-        newfile = FolderTGLF / f"input.tglf_{rho:.4f}"
-
-        if TGLFsettings is not None:
-            # Apply corrections
-            if ApplyCorrections:
-                print("\t- Applying corrections")
-                inputTGLF_rho.removeLowDensitySpecie()
-                inputTGLF_rho.remove_fast()
-
-            # Ensure that plasma to run is quasineutral
-            if Quasineutral:
-                inputTGLF_rho.ensureQuasineutrality()
-        else:
-            print('\t- Not applying corrections nor quasineutrality because "TGLFsettings" is None')
-
-        inputTGLF_rho.write_state(file=newfile)
-
-        modInputTGLF[rho] = inputTGLF_rho
-
-        ns_max.append(inputs[rho].plasma["NS"])
-        
-    # Convert back to a string because that's how runTGLFproduction operates
-    inputFileTGLF = inputToVariable(FolderTGLF, rhos)
-
-    if (np.diff(ns_max) > 0).any():
-        print("> Each radial location has its own number of species... probably because of removal of fast or low density...",typeMsg="w")
-        print("\t * Reading of TGLF results will fail... consider doing something before launching run",typeMsg="q")
-
-    return inputFileTGLF, modInputTGLF
-
 
 def reduceToControls(dict_all):
     controls, plasma, geom = {}, {}, {}
@@ -3934,6 +3357,21 @@ class TGLFinput:
         else:
             print("\t- No species in this input.tglf (it is either a controls-only file or there was a problem generating it)")
             self.onlyControl = True
+
+    def anticipate_problems(self):
+
+        threshold = 1e-10
+
+        minn = []
+        for cont, ip in enumerate(self.species):
+            if (cont <= self.num_recorded) and (
+                self.species[ip]["AS"] < threshold
+            ):
+                minn.append(ip)
+
+        if len(minn) > 0:
+            print(f"* Ions in positions {ip} have a relative density lower than {threshold}, which can cause problems",typeMsg="q")
+
 
     def isThePlasmaDT(self):
         """
@@ -4069,6 +3507,30 @@ class TGLFinput:
         if file is None:
             file = self.file
 
+        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
+        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
+        def _fmt_num(x):
+            import numpy as _np
+            if isinstance(x, (bool, _np.bool_)):
+                return "True" if x else "False"
+            if isinstance(x, (_np.floating, float)):
+                # 6 significant figures in exponential => 5 digits after decimal
+                return f"{float(x):.5E}"
+            if isinstance(x, (_np.integer, int)):
+                return f"{int(x)}"
+            return str(x)
+
+        def _fmt_value(val):
+            import numpy as _np
+            if isinstance(val, (list, tuple, _np.ndarray)):
+                # Flatten numpy arrays but keep ordering; join with spaces
+                if isinstance(val, _np.ndarray):
+                    flat = val.flatten().tolist()
+                else:
+                    flat = list(val)
+                return " ".join(_fmt_num(v) for v in flat)
+            return _fmt_num(val)
+
         with open(file, "w") as f:
             f.write("#-------------------------------------------------------------------------\n")
             f.write(f"# TGLF input file modified by MITIM {mitim_version}\n")
@@ -4078,13 +3540,13 @@ class TGLFinput:
             f.write("# ------------------\n\n")
             for ikey in self.controls:
                 var = self.controls[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
             f.write("\n\n# Geometry parameters\n")
             f.write("# ------------------\n\n")
             for ikey in self.geom:
                 var = self.geom[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
                 
             f.write("\n\n# Plasma parameters\n")
             f.write("# ------------------\n\n")
@@ -4095,7 +3557,7 @@ class TGLFinput:
                         print(f"\t- Maximum number of species in TGLF reached, not considering after {maxSpeciesTGLF} species",typeMsg="w",)
                 else:
                     var = self.plasma[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
             f.write("\n\n# Species\n")
             f.write("# -------\n")
@@ -4117,7 +3579,7 @@ class TGLFinput:
                 f.write(f"\n# Specie #{ikey}{extralab}\n")
                 for ivar in self.species[ikey]:
                     ikar = f"{ivar}_{ikey}"
-                    f.write(f"{ikar.ljust(12)} = {self.species[ikey][ivar]}\n")
+                    f.write(f"{ikar.ljust(12)} = {_fmt_value(self.species[ikey][ivar])}\n")
 
         print(f"\t\t~ File {IOtools.clipstr(file)} written")
 
@@ -4382,25 +3844,6 @@ def identifySpecie(dict_species, dict_find):
     return found_index
 
 
-# From file to dict
-
-
-def inputToVariable(finalFolder, rhos):
-    """
-    Entire text file to variable
-    """
-
-    inputFilesTGLF = {}
-    for cont, rho in enumerate(rhos):
-        fileN = finalFolder / f"input.tglf_{rho:.4f}"
-
-        with open(fileN, "r") as f:
-            lines = f.readlines()
-        inputFilesTGLF[rho] = "".join(lines)
-
-    return inputFilesTGLF
-
-
 # ~~~~~~~~~~~~~ Functions to handle results
 
 
@@ -4434,7 +3877,7 @@ def readTGLFresults(
         TGLFstd_TGLFout.append(TGLFout)
         inputclasses.append(TGLFout.inputclass)
 
-        parse = GACODErun.buildDictFromInput(TGLFout.inputFileTGLF)
+        parse = GACODErun.buildDictFromInput(TGLFout.inputFile)
         parsed.append(parse)
 
     results = {
@@ -4466,7 +3909,7 @@ class TGLFoutput:
 
     def postprocess(self):
         coeff, klow = 0.0, 0.8
-        self.etas = processGrowthRates(
+        etas = processGrowthRates(
             self.ky,
             self.g[0, :],
             self.f[0, :],
@@ -4475,6 +3918,16 @@ class TGLFoutput:
             klow=klow,
             coeff=coeff,
         )
+
+        self.eta_ITGETG = etas["metrics"]["eta_ITGETG"]
+        self.eta_ITGTEM = etas["metrics"]["eta_ITGTEM"]
+        self.g_lowk_max = etas["metrics"]["g_lowk_max"]
+        self.f_lowk_max = etas["metrics"]["f_lowk_max"]
+        self.k_lowk_max = etas["metrics"]["k_lowk_max"]
+
+        self.g_ITG_max = etas["ITG"]["g_max"]
+        self.g_TEM_max = etas["TEM"]["g_max"]
+        self.g_ETG_max = etas["ETG"]["g_max"]
 
         self.QeES = np.sum(self.SumFlux_Qe_phi)
         self.QeEM = np.sum(self.SumFlux_Qe_a)
@@ -4981,7 +4434,7 @@ class TGLFoutput:
 
         with open(self.FolderGACODE / ("input.tglf" + self.suffix), "r") as fi:
             lines = fi.readlines()
-        self.inputFileTGLF = "".join(lines)
+        self.inputFile = "".join(lines)
 
     def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):
         if normalization is not None:
@@ -5186,7 +4639,7 @@ class TGLFoutput:
 
         try:
             gammaExB = np.abs(
-                self.inputsTGLF[self.rhos[irho_cont]].plasma["VEXB_SHEAR"]
+                self.inputs_files[self.rhos[irho_cont]].plasma["VEXB_SHEAR"]
             )
             if gammaExB > 1e-5:
                 GRAPHICStools.drawLineWithTxt(
@@ -6358,83 +5811,3 @@ def createCombinedRuns(tglfs=(), new_names=(), results_names=(), isItScan=False)
         normalizations[new_names[i]] = tglfs[i].NormalizationSets
 
     return tglf, normalizations
-
-
-def cold_start_checker(
-    rhos,
-    ResultsFiles,
-    FolderTGLF,
-    cold_start=False,
-    print_each_time=False,
-):
-    """
-    This function checks if the TGLF inputs are already in the folder. If they are, it returns True
-    """
-    cont_each = 0
-    if cold_start:
-        rhosEvaluate = rhos
-    else:
-        rhosEvaluate = []
-        for ir in rhos:
-            existsRho = True
-            for j in ResultsFiles:
-                ffi = FolderTGLF / f"{j}_{ir:.4f}"
-                existsThis = ffi.exists()
-                existsRho = existsRho and existsThis
-                if not existsThis:
-                    if print_each_time:
-                        print(f"\t* {ffi} does not exist")
-                    else:
-                        cont_each += 1
-            if not existsRho:
-                rhosEvaluate.append(ir)
-
-    if not print_each_time and cont_each > 0:
-        print(f'\t* {cont_each} files from expected set are missing')
-
-    if len(rhosEvaluate) < len(rhos) and len(rhosEvaluate) > 0:
-        print(
-            "~ Not all radii are found, but not removing folder and running only those that are needed",
-            typeMsg="i",
-        )
-
-    return rhosEvaluate
-
-
-def anticipate_problems_func(
-    latest_inputsFileTGLFDict, rhosEvaluate, slurm_setup, launchSlurm
-):
-
-    # -----------------------------------
-    # ------ Check density for problems
-    # -----------------------------------
-
-    threshold = 1e-10
-
-    minn = []
-    for irho in latest_inputsFileTGLFDict:
-        for cont, ip in enumerate(latest_inputsFileTGLFDict[irho].species):
-            if (cont <= latest_inputsFileTGLFDict[irho].plasma["NS"]) and (
-                latest_inputsFileTGLFDict[irho].species[ip]["AS"] < threshold
-            ):
-                minn.append([irho, ip])
-
-    if len(minn) > 0:
-        print(
-            f"* Ions in positions [rho,pos] {minn} have a relative density lower than {threshold}, which can cause problems",
-            typeMsg="q",
-        )
-
-    # -----------------------------------
-    # ------ Check cores problem
-    # -----------------------------------
-
-    expected_allocated_cores = int(len(rhosEvaluate) * slurm_setup["cores"])
-
-    warning = 32 * 2
-
-    if launchSlurm:
-        print(
-            f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {slurm_setup["cores"]} cores/radius)',
-            typeMsg="" if expected_allocated_cores < warning else "q",
-        )

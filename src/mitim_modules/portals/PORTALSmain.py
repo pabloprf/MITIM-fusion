@@ -13,7 +13,6 @@ from mitim_modules.portals.utils import (
     PORTALSoptimization,
     PORTALSanalysis,
 )
-from mitim_modules.powertorch.physics_models import targets_analytic, transport_tgyro, transport_cgyro
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -193,11 +192,12 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Selection of model
         if CGYROrun:
-            transport_evaluator = transport_cgyro.cgyro_model
+            from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model as transport_evaluator
         else:
-            transport_evaluator = transport_tgyro.tgyro_model
-            
-        target_evaluator = targets_analytic.analytical_model
+            # from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model as transport_evaluator
+            from mitim_modules.powertorch.physics_models.transport_tglfneo import tglfneo_model as transport_evaluator
+
+        from mitim_modules.powertorch.physics_models.targets_analytic import analytical_model as target_evaluator
 
         self.PORTALSparameters = {
             "percentError": [5,10,1],  # (%) Error (std, in percent) of model evaluation [TGLF (treated as minimum if scan trick), NEO, TARGET]
@@ -467,7 +467,8 @@ class portals(STRATEGYtools.opt_evaluator):
                 print("\t- Requested fineTargetsResolution, so running powerstate target calculations",typeMsg="w")
                 self.PORTALSparameters["target_evaluator_method"] = "powerstate"
 
-        if not issubclass(self.PORTALSparameters["transport_evaluator"], transport_tgyro.tgyro_model) and (self.PORTALSparameters["target_evaluator_method"] == "tgyro"):
+        from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
+        if not issubclass(self.PORTALSparameters["transport_evaluator"], tgyro_model) and (self.PORTALSparameters["target_evaluator_method"] == "tgyro"):
             print("\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",typeMsg="w")
             self.PORTALSparameters["target_evaluator_method"] = "powerstate"
 
@@ -482,7 +483,7 @@ class portals(STRATEGYtools.opt_evaluator):
         if self.PORTALSparameters["target_evaluator_method"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
             print("\t- Requested custom modification of postprocessing function but targets from TGYRO... are you sure?",typeMsg="q")
 
-        if self.PORTALSparameters["target_evaluator_method"] == "tgyro" and self.PORTALSparameters['transport_evaluator'] != transport_tgyro.tgyro_model:
+        if self.PORTALSparameters["target_evaluator_method"] == "tgyro" and self.PORTALSparameters['transport_evaluator'] != tgyro_model:
             print("\t- Requested TGYRO targets but transport evaluator is not TGYRO... are you sure?",typeMsg="q")
 
         key_rhos = "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
@@ -554,7 +555,8 @@ class portals(STRATEGYtools.opt_evaluator):
                     self_copy.powerstate.transport_options["transport_evaluator"] = None
                     self_copy.powerstate.target_options["target_evaluator_options"]["TypeTarget"] = "powerstate"
                 else:
-                    self_copy.powerstate.transport_options["transport_evaluator"] = transport_tgyro.tgyro_model
+                    from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
+                    self_copy.powerstate.transport_options["transport_evaluator"] = tgyro_model
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,

@@ -3,12 +3,12 @@ import shutil
 import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools, PLASMAtools
-from mitim_tools.gacode_tools import TGLFtools
+from mitim_tools.gacode_tools import TGLFtools, NEOtools
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class tglf_model(TRANSPORTtools.power_transport):
+class tglfneo_model(TRANSPORTtools.power_transport):
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
 
@@ -56,12 +56,10 @@ class tglf_model(TRANSPORTtools.power_transport):
         
         tglf = TGLFtools.TGLF(rhos=rho_locations)
 
-        _ = tglf.prep_direct_tglf(
+        _ = tglf.prep(
+            self.powerstate.profiles_transport,
             self.folder,
             cold_start = cold_start,
-            remove_fast = False, # Use what's in the input.gacode, the removal should happen at initialization
-            recalculate_ptot = False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-            inputgacode=self.powerstate.profiles_transport,
             )
         
         # ------------------------------------------------------------------------------------------------------------------------
@@ -73,7 +71,7 @@ class tglf_model(TRANSPORTtools.power_transport):
                 # Just run TGLF once and apply an ad-hoc percent error to the results
             
                 tglf.run(
-                    'base',
+                    'base_tglf',
                     TGLFsettings=TGLFsettings,
                     extraOptions=extraOptions,
                     ApplyCorrections=False,
@@ -81,7 +79,6 @@ class tglf_model(TRANSPORTtools.power_transport):
                     cold_start= cold_start,
                     forceIfcold_start=True,
                     extra_name= self.name,
-                    anticipate_problems=True,
                     slurm_setup={
                         "cores": cores_per_tglf_instance,      
                         "minutes": 2,
@@ -132,7 +129,7 @@ class tglf_model(TRANSPORTtools.power_transport):
         for i in range(len(tglf.profiles.Species)):
             gacode_type = tglf.profiles.Species[i]['S']
             for rho in rho_locations:
-                tglf_type = tglf.inputsTGLF[0.25].ions_info[i+2]['type']
+                tglf_type = tglf.inputs_files[0.25].ions_info[i+2]['type']
                 
                 if gacode_type[:5] != tglf_type[:5]:
                     print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")
@@ -178,22 +175,54 @@ class tglf_model(TRANSPORTtools.power_transport):
 
     def _evaluate_neo(self):
         
-        self.powerstate.plasma["QeMWm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["QiMWm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["Ge1E20m2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["GZ1E20m2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["MtJm2_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        # Options
         
-        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
         
-        self.powerstate.plasma["QieMWm3_tr_neoc"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
-        self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = 0.0 * self.powerstate.plasma["QeMWm2_tr_turb"]
+        cold_start = transport_evaluator_options.get("cold_start", False)
+        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
+        impurityPosition = self.powerstate.impurityPosition_transport
+                
+        # Run
         
-        return None
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        
+        neo = NEOtools.NEO(rhos=rho_locations)
+
+        _ = neo.prep(
+            self.powerstate.profiles_transport,
+            self.folder,
+            cold_start = cold_start,
+            )
+        
+        neo.run(
+            'base_neo',
+        )
+    
+        neo.read(label='base')
+        
+        Qe = np.array([neo.results['base']['NEOout'][i].Qe_unn for i in range(len(rho_locations))])
+        Qi = np.array([neo.results['base']['NEOout'][i].Qi_unn for i in range(len(rho_locations))])
+        Ge = np.array([neo.results['base']['NEOout'][i].Ge_unn for i in range(len(rho_locations))])
+        GZ = np.array([neo.results['base']['NEOout'][i].GiAll_unn[impurityPosition] for i in range(len(rho_locations))])
+        Mt = np.array([neo.results['base']['NEOout'][i].Mt_unn for i in range(len(rho_locations))])
+        
+        self.powerstate.plasma["QeMWm2_tr_neoc"] = Qe
+        self.powerstate.plasma["QiMWm2_tr_neoc"] = Qi
+        self.powerstate.plasma["Ge1E20m2_tr_neoc"] = Ge
+        self.powerstate.plasma["GZ1E20m2_tr_neoc"] = GZ
+        self.powerstate.plasma["MtJm2_tr_neoc"] = Mt
+        
+        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = abs(Qe) * percentError[1]/100.0
+        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = abs(Qi) * percentError[1]/100.0
+        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = abs(Ge) * percentError[1]/100.0
+        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = abs(GZ) * percentError[1]/100.0
+        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = abs(Mt) * percentError[1]/100.0
+
+        self.powerstate.plasma["QieMWm3_tr_neoc"] = Qe * 0.0
+        self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = Qe * 0.0
+
+        return neo
 
     def _postprocess(self):
 
@@ -319,7 +348,7 @@ def _run_tglf_uncertainty_model(
     minutes = max(2, minutes)
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = name,
+                    subfolder = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,

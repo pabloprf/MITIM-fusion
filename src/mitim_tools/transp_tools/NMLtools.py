@@ -1335,10 +1335,8 @@ class transp_nml:
         self.contents_ptr_glf23 = "\n".join(lines) + "\n"
 
     def addTGLF(self):
-        TGLFoptions, label = GACODEdefaults.TGLFinTRANSP(self.TGLFsettings)
-        print(
-            f"\t- Adding TGLF control parameters with TGLFsettings = {self.TGLFsettings} ({label})"
-        )
+        TGLFoptions = GACODEdefaults.TGLFinTRANSP(self.TGLFsettings)
+        print(f"\t- Adding TGLF control parameters with TGLFsettings = {self.TGLFsettings}")
 
         lines = [
             "!------ TGLF namelist",

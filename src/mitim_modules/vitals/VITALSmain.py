@@ -287,7 +287,7 @@ def runTGLF(
 
     numSim = self.folder.name
 
-    variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
+    variation = TGLFtools.completeVariation(variation, tglf.inputs_files[tglf.rhos[0]])
 
     extraOptions = self.TGLFparameters["extraOptions"]
     multipliers = {}
@@ -302,7 +302,7 @@ def runTGLF(
         folder_label = label
 
     tglf.run(
-        subFolderTGLF=f"{folder_label}",
+        subfolder=f"{folder_label}",
         cold_start=cold_start,
         TGLFsettings=self.TGLFparameters["TGLFsettings"],
         forceIfcold_start=True,

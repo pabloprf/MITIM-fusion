@@ -369,7 +369,7 @@ class TGYRO:
         inputclass_TGLF = TGLFtools.TGLFinput()
         inputclass_TGLF = GACODErun.modifyInputs(
             inputclass_TGLF,
-            Settings=TGLFsettings,
+            code_settings=TGLFsettings,
             extraOptions=extraOptionsTGLF,
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
@@ -634,7 +634,7 @@ class TGYRO:
             inputsTGLF[rho] = inputclass
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        tglf.prep(
+        tglf.prep_using_tgyro(
             self.FolderGACODE / subfolder,
             specificInputs=inputsTGLF,
             inputgacode=self.FolderTGYRO / "input.gacode",
@@ -660,7 +660,7 @@ class TGYRO:
         label = f"{self.nameRuns_default}_tglf1"
 
         self.tglf[fromlabel].run(
-            subFolderTGLF=f"{label}",
+            subfolder=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,
@@ -689,7 +689,7 @@ class TGYRO:
         )
 
         self.tglf[fromlabel].runScanTurbulenceDrives(
-            subFolderTGLF=f"{self.nameRuns_default}_tglf",
+            subfolder=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,

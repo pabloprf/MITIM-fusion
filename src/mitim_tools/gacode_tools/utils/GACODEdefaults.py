@@ -31,9 +31,7 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 
     # Define every flag
     else:
-        TGLFoptions = IOtools.generateMITIMNamelist(
-            __mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False
-        )
+        TGLFoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False)
         TGLFoptions["NMODES"] = NS + 2
 
     """
@@ -48,29 +46,22 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 
     if str(TGLFsettings) in settings:
         sett = settings[str(TGLFsettings)]
-        label = sett["label"]
         for ikey in sett["controls"]:
             TGLFoptions[ikey] = sett["controls"][ikey]
     else:
         print("\t- TGLFsettings not found in input.tglf.models.json, using defaults",typeMsg="w",)
-        label = "unspecified"
 
-    # --------------------------------
-    # From dictionary to text
-    # --------------------------------
+    return TGLFoptions
 
-    TGLFinput = [""]
-    for ikey in TGLFoptions:
-        TGLFinput.append(f"{ikey} = {TGLFoptions[ikey]}")
-    TGLFinput.append("")
-    TGLFinput.append("# -- Begin overlay")
-    TGLFinput.append("")
+def addNEOcontrol(*args, **kwargs):
 
-    return TGLFinput, TGLFoptions, label
-
+    NEOoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
+    
+    return NEOoptions
 
 def TGLFinTRANSP(TGLFsettings, NS=3):
-    _, TGLFoptions, label = addTGLFcontrol(TGLFsettings, NS=NS)
+    
+    TGLFoptions = addTGLFcontrol(TGLFsettings, NS=NS)
 
     """
 	------------------------------------------------------------------------------------------------------
@@ -125,10 +116,10 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     # **** Other modifications
     TGLFoptions["UNITS"] = f"'{TGLFoptions['UNITS']}'"
 
-    return TGLFoptions, label
+    return TGLFoptions
 
 
-def addCGYROcontrol(Settings, rmin):
+def addCGYROcontrol(code_settings, rmin):
 
     CGYROoptions = IOtools.generateMITIMNamelist(
         __mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False
@@ -146,14 +137,14 @@ def addCGYROcontrol(Settings, rmin):
     ) as f:
         settings = json.load(f)
 
-    if str(Settings) in settings:
-        sett = settings[str(Settings)]
+    if str(code_settings) in settings:
+        sett = settings[str(code_settings)]
         label = sett["label"]
         for ikey in sett["controls"]:
             CGYROoptions[ikey] = sett["controls"][ikey]
     else:
         print(
-            "\t- Settings not found in input.cgyro.models.json, using defaults",
+            "\t- code_settings not found in input.cgyro.models.json, using defaults",
             typeMsg="w",
         )
         label = "unspecified"

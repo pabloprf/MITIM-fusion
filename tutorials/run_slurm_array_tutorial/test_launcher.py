@@ -10,7 +10,7 @@ partition = load_settings()['local']['slurm']['partition']
 print(f"Using partition: {partition}")
 
 
-# Settings for slurm job
+# code_settings for slurm job
 cpus = 2
 hours = 1
 memory = '100GB'
