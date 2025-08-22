@@ -145,6 +145,7 @@ def parse_maestro_nml(file_path):
                     if enforce_same_density_gradients:
                         p.enforce_same_density_gradients()
                     p.write_state(file=file_profs)
+                    return p
                 beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
 
         else:
