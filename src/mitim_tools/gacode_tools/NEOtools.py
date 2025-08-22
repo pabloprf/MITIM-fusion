@@ -48,7 +48,11 @@ class NEO(GACODErun.gacode_simulation):
         if folder is None:
             folder = self.FolderSimLast
             
-        self.results[label] = {'NEOout':[]}
+        self.results[label] = {
+            'NEOout':[],
+            'parsed': [],
+            "x": np.array(self.rhos),
+            }
         for rho in self.rhos:
 
             NEOout = NEOoutput(
@@ -64,6 +68,7 @@ class NEO(GACODErun.gacode_simulation):
 
             self.results[label]['NEOout'].append(NEOout)
 
+            self.results[label]['parsed'].append(GACODErun.buildDictFromInput(NEOout.inputFile))
         
     def plot(
         self,
@@ -110,6 +115,93 @@ class NEO(GACODErun.gacode_simulation):
         axQe.set_ylabel("$Q_e$ ($MW/m^2$)"); axQe.set_yscale('log')
         axQi.set_ylabel("$Q_i$ ($MW/m^2$)"); axQi.set_yscale('log')
         axGe.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)"); #axGe.set_yscale('log')
+
+
+    def read_scan(
+        self,
+        label="scan1",
+        subfolder=None,
+        variable="RLTS_1",
+        positionIon=2
+    ):
+
+        output_object = "NEOout"
+
+        variable_mapping = {
+            'scanned_variable': ["parsed", variable, None],
+            'Qe_gb': [output_object, 'Qe', None],
+            'Qi_gb': [output_object, 'Qi', None],
+            'Ge_gb': [output_object, 'Ge', None],
+            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Mt_gb': [output_object, 'Mt', None],
+        }
+        
+        variable_mapping_unn = {
+            'Qe': [output_object, 'Qe_unn', None],
+            'Qi': [output_object, 'Qi_unn', None],
+            'Ge': [output_object, 'Ge_unn', None],
+            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Mt': [output_object, 'Mt_unn', None],
+        }
+        
+        super().read_scan(
+            label=label,
+            subfolder=subfolder,
+            variable=variable,
+            positionIon=positionIon,
+            variable_mapping=variable_mapping,
+            variable_mapping_unn=variable_mapping_unn
+        )
+
+    def plot_scan(
+        self,
+        fn=None,
+        labels=["neo1"],
+        extratitle="",
+        fn_color=None,
+        colors=None,
+        ):
+        
+        if fn is None:
+            self.fn = GUItools.FigureNotebook("NEO Scan Notebook", geometry="1700x900", vertical=True)
+        else:
+            self.fn = fn
+            
+        fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
+        
+        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+
+        if colors is None:
+            colors = GRAPHICStools.listColors()
+
+        axQe = fig1.add_subplot(grid[0, 0])
+        axQi = fig1.add_subplot(grid[0, 1])
+        axGe = fig1.add_subplot(grid[0, 2])
+
+        cont = 0
+        for label in labels:
+            for irho in range(len(self.rhos)):
+                
+                x = self.scans[label]['scanned_variable'][irho]
+                
+                axQe.plot(x, self.scans[label]['Qe'][irho], label=f'{label}, {self.rhos[irho]}', color=colors[cont], marker='o', linestyle='-')
+                axQi.plot(x, self.scans[label]['Qi'][irho], label=f'{label}, {self.rhos[irho]}', color=colors[cont], marker='o', linestyle='-')
+                axGe.plot(x, self.scans[label]['Ge'][irho], label=f'{label}, {self.rhos[irho]}', color=colors[cont], marker='o', linestyle='-')
+
+                cont += 1
+
+        for ax in [axQe, axQi, axGe]:
+            ax.set_xlabel("Scanned variable")
+            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
+
+        axQe.set_ylabel("$Q_e$ ($MW/m^2$)"); 
+        axQi.set_ylabel("$Q_i$ ($MW/m^2$)"); 
+        axGe.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)")
+        
+        plt.tight_layout()
+
+
 
     # def prep(self, inputgacode, folder):
     #     self.inputgacode = inputgacode
@@ -291,6 +383,16 @@ class NEOoutput:
         
         self.roa = float(lines[0].split()[-1])
 
+
+        # ------------------------------------------------------------------------
+        # Input file
+        # ------------------------------------------------------------------------
+
+        with open(self.FolderGACODE / ("input.neo" + self.suffix), "r") as fi:
+            lines = fi.readlines()
+        self.inputFile = "".join(lines)
+        
+        
     def unnormalize(self, normalization, rho=None):
         
         if normalization is not None:

@@ -374,7 +374,7 @@ class gacode_simulation:
         for cont_mult, mult in enumerate(varUpDown_new):
             name = f"{variable}_{mult}"
             self.read(
-                label=f"{self.subFolder_scan}_{name}",
+                label=f"{self.subfolder_scan}_{name}",
                 folder=folders[cont_mult],
                 cold_startWF = False,
                 require_all_files=not kwargs_run.get("only_minimal_files",False),
@@ -404,7 +404,7 @@ class gacode_simulation:
         
         multipliers_mod = copy.deepcopy(multipliers)
 
-        self.subFolder_scan = subfolder
+        self.subfolder_scan = subfolder
 
         if relativeChanges:
             for i in range(len(varUpDown)):
@@ -448,7 +448,7 @@ class gacode_simulation:
             kwargs_run["forceIfcold_start"] = cont_mult > 0 or ("forceIfcold_start" in kwargs_run and kwargs_run["forceIfcold_start"])
 
             code_executor, code_executor_full = self._run_prepare(
-                f"{self.subFolder_scan}_{name}",
+                f"{self.subfolder_scan}_{name}",
                 code_executor=code_executor,
                 code_executor_full=code_executor_full,
                 multipliers=multipliers_mod,
@@ -459,6 +459,91 @@ class gacode_simulation:
             folders.append(copy.deepcopy(self.FolderSimLast))
 
         return code_executor, code_executor_full, folders, varUpDown
+
+    def read_scan(        
+        self,
+        label="scan1",
+        subfolder=None,
+        variable="RLTS_1",
+        positionIon=2,
+        variable_mapping=None,
+        variable_mapping_unn=None
+    ):
+        '''
+        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        '''
+
+        if subfolder is None:
+            subfolder = self.subfolder_scan
+
+        self.scans[label] = {}
+        self.scans[label]["variable"] = variable
+        self.scans[label]["positionBase"] = None
+        self.scans[label]["unnormalization_successful"] = True
+        self.scans[label]["results_tags"] = []
+
+        self.positionIon_scan = positionIon
+
+        # ----
+        
+        scan = {}
+        for ikey in variable_mapping | variable_mapping_unn:
+            scan[ikey] = []
+
+        cont = 0
+        for ikey in self.results:
+            isThisTheRightReadResults = (subfolder in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subfolder + "_")[-1])
+
+            if isThisTheRightReadResults:
+
+                self.scans[label]["results_tags"].append(ikey)
+                
+                # Initialize lists
+                scan0 = {}
+                for ikey2 in variable_mapping | variable_mapping_unn:
+                    scan0[ikey2] = []
+
+                # Loop over radii
+                for irho_cont in range(len(self.rhos)):
+                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
+
+                    for ikey2 in variable_mapping:
+                        
+                        obj = self.results[ikey][variable_mapping[ikey2][0]][irho]
+                        if not hasattr(obj, '__dict__'):
+                            obj_dict = obj
+                        else:
+                            obj_dict = obj.__dict__
+                        var0 = obj_dict[variable_mapping[ikey2][1]]
+                        scan0[ikey2].append(var0 if variable_mapping[ikey2][2] is None else var0[variable_mapping[ikey2][2]])
+
+                    # Unnormalized
+                    self.scans[label]["unnormalization_successful"] = True
+                    for ikey2 in variable_mapping_unn:
+                        obj = self.results[ikey][variable_mapping_unn[ikey2][0]][irho]
+                        if not hasattr(obj, '__dict__'):
+                            obj_dict = obj
+                        else:
+                            obj_dict = obj.__dict__
+                            
+                        if variable_mapping_unn[ikey2][1] not in obj_dict:
+                            self.scans[label]["unnormalization_successful"] = False
+                            break
+                        var0 = obj_dict[variable_mapping_unn[ikey2][1]]
+                        scan0[ikey2].append(var0 if variable_mapping_unn[ikey2][2] is None else var0[variable_mapping_unn[ikey2][2]])
+                
+                for ikey2 in variable_mapping | variable_mapping_unn:
+                    scan[ikey2].append(scan0[ikey2])
+
+                if float(ikey.split('_')[-1]) == 1.0:
+                    self.scans[label]["positionBase"] = cont
+                cont += 1
+
+        self.scans[label]["x"] = np.array(self.rhos)
+
+        for ikey2 in variable_mapping | variable_mapping_unn:
+            self.scans[label][ikey2] = np.atleast_2d(np.transpose(scan[ikey2]))
+
 
 
 def change_and_write_code(

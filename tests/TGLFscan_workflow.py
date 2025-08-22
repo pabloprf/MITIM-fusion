@@ -3,7 +3,7 @@ import numpy as np
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools import __mitimroot__
 
-cold_start = False
+cold_start = True
 
 (__mitimroot__ / 'tests' / 'scratch').mkdir(parents=True, exist_ok=True)
 
@@ -16,20 +16,20 @@ if cold_start and folder.exists():
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 tglf.prep(input_gacode,folder, cold_start=cold_start)
 
-tglf.runScan(	subFolderTGLF = 'scan1',
+tglf.run_scan(	subfolder = 'scan1',
                 TGLFsettings  = None,
                 cold_start       = cold_start,
                 runWaveForms  = [0.67, 10.0],
                 variable      = 'RLTS_1',
                 varUpDown 	  = np.linspace(0.5,1.5,4))
-tglf.readScan(label='scan1',variable = 'RLTS_1')
+tglf.read_scan(label='scan1',variable = 'RLTS_1')
 
-tglf.plotScan(labels=['scan1'])
+tglf.plot_scan(labels=['scan1'])
 tglf.fn.show()
 tglf.fn.close()
 
 tglf.runScanTurbulenceDrives(	
-                subFolderTGLF = 'turb_drives',
+                subfolder = 'turb_drives',
                 TGLFsettings  = None,
                 resolutionPoints=3,
                 cold_start       = cold_start)

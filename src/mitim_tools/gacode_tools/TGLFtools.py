@@ -75,7 +75,7 @@ class TGLF(GACODErun.gacode_simulation):
 
             # Run standalone TGLF (this will find the input.tglf in the previous folder,
             # and then copy to this specify TGLF run, and run it there)
-            tglf.run(subFolderTGLF='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
+            tglf.run(subfolder='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
 
             # Read results
             tglf.read(label='run1',folder='~/testTGLF/tglf1/')
@@ -94,13 +94,13 @@ class TGLF(GACODErun.gacode_simulation):
             cdf = tglf.prep_using_tgyro('~/testTGLF/')
 
             # Run
-            tglf.runScan('scan1/',TGLFsettings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
+            tglf.run_scan('scan1/',TGLFsettings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
 
             # Read scan
-            tglf.readScan(label='scan1',variable='RLTS_2')
+            tglf.read_scan(label='scan1',variable='RLTS_2')
 
             # Plot
-            plt.ion(); tglf.plotScan(labels=['scan1'],variableLabel='RLTS_2')
+            plt.ion(); tglf.plot_scan(labels=['scan1'],variableLabel='RLTS_2')
 
         ****************************
         ***** Special analysis *****
@@ -194,7 +194,7 @@ class TGLF(GACODErun.gacode_simulation):
 
     def run(
         self,
-        subFolderTGLF,
+        subfolder,
         runWaveForms=None,              # e.g. runWaveForms = [0.3,1.0]
         forceClosestUnstableWF=True,    # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         **kwargs_generic_run
@@ -203,7 +203,7 @@ class TGLF(GACODErun.gacode_simulation):
         I need to redefine the run method for the TGLF class because it has the option of producing WaveForms
         '''
         
-        code_executor_full = super().run(subFolderTGLF, **kwargs_generic_run)
+        code_executor_full = super().run(subfolder, **kwargs_generic_run)
 
         kwargs_generic_run['runWaveForms'] = runWaveForms
         kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
@@ -211,22 +211,13 @@ class TGLF(GACODErun.gacode_simulation):
 
     def run_scan(
         self,
-        subFolderTGLF,
+        subfolder,
         **kwargs,
     ):
         
-        code_executor_full = super().run_scan(subFolderTGLF,**kwargs)
+        code_executor_full = super().run_scan(subfolder,**kwargs)
     
         self._helper_wf(code_executor_full, **kwargs)
-
-    # TOREMOVE #TODO
-    def runScan(
-        self,
-        subFolderTGLF,
-        **kwargs,
-    ):
-
-        self.run_scan(subFolderTGLF, **kwargs)
 
     def _run_wf(self, kys, code_executor, forceClosestUnstableWF=True, **kwargs_TGLFrun):
         """
@@ -257,11 +248,11 @@ class TGLF(GACODErun.gacode_simulation):
                 print(f"> Running TGLF waveform analysis, ky~{ky_single0}")
 
                 self.FoldersTGLF_WF[f"ky{ky_single0}"] = {}
-                for subFolderTGLF in code_executor:
+                for subfolder in code_executor:
 
                     ky_single_orig = copy.deepcopy(ky_single0)
 
-                    FolderTGLF_old = code_executor[subFolderTGLF][list(code_executor[subFolderTGLF].keys())[0]]["folder"]
+                    FolderTGLF_old = code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["folder"]
 
                     self.ky_single = None
                     self.read(label=f"ky{ky_single0}", folder=FolderTGLF_old, cold_startWF = False)
@@ -301,8 +292,8 @@ class TGLF(GACODErun.gacode_simulation):
                     else:
                         extraOptions_WF = {}
 
-                    extraOptions_WF = copy.deepcopy(code_executor[subFolderTGLF][list(code_executor[subFolderTGLF].keys())[0]]["extraOptions"])
-                    multipliers_WF = copy.deepcopy(code_executor[subFolderTGLF][list(code_executor[subFolderTGLF].keys())[0]]["multipliers"])
+                    extraOptions_WF = copy.deepcopy(code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["extraOptions"])
+                    multipliers_WF = copy.deepcopy(code_executor[subfolder][list(code_executor[subfolder].keys())[0]]["multipliers"])
 
                     extraOptions_WF["USE_TRANSPORT_MODEL"] = "F"
                     extraOptions_WF["WRITE_WAVEFUNCTION_FLAG"] = 1
@@ -1961,150 +1952,76 @@ class TGLF(GACODErun.gacode_simulation):
             
             # Get back to it
             self.FolderSimLast = self.keep_folder
+
+    #TODO #TOREMOVE
+    def runScan(self,subfolder,**kwargs):
+        self.run_scan(subfolder, **kwargs)
+    def readScan(self, **kwargs):
+        self.read_scan(**kwargs)
+    def plotScan(self,**kwargs):      
+        self.plot_scan(**kwargs)
         
-    def readScan(
+    def read_scan(
         self,
         label="scan1",
-        subFolderTGLF=None,
+        subfolder=None,
         variable="RLTS_1",
         positionIon=2
     ):
-        '''
-        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
-        '''
+        
+        output_object = "TGLFout"
 
-        if subFolderTGLF is None:
-            subFolderTGLF = self.subFolder_scan
+        variable_mapping = {
+            'scanned_variable': ["parsed", variable, None],
+            'Qe_gb': [output_object, 'Qe', None],
+            'Qi_gb': [output_object, 'Qi', None],
+            'Ge_gb': [output_object, 'Ge', None],
+            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Mt_gb': [output_object, 'Mt', None],
+            'S_gb': [output_object, 'Se', None],
+            'ky': [output_object, 'ky', None],
+            'g': [output_object, 'g', None],
+            'f': [output_object, 'f', None],
+            'Qifast_gb': [output_object, 'Qifast', None],
+            'eta_ITGETG': [output_object, 'eta_ITGETG', None],
+            'eta_ITGTEM': [output_object, 'eta_ITGTEM', None],
+            'g_lowk_max': [output_object, 'g_lowk_max', None],
+            'f_lowk_max': [output_object, 'f_lowk_max', None],
+            'k_lowk_max': [output_object, 'k_lowk_max', None],
+            'g_ITG_max': [output_object, 'g_ITG_max', None],
+            'g_ETG_max': [output_object, 'g_ETG_max', None],
+            'g_TEM_max': [output_object, 'g_TEM_max', None],
+        }
+        
+        variable_mapping_unn = {
+            'Qe': [output_object, 'Qe_unn', None],
+            'Qi': [output_object, 'Qi_unn', None],
+            'Ge': [output_object, 'Ge_unn', None],
+            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Mt': [output_object, 'Mt_unn', None],
+            'S': [output_object, 'Se_unn', None],
+            'Qifast': [output_object, 'Qifast_unn', None],
+        }
+        
+        super().read_scan(
+            label=label,
+            subfolder=subfolder,
+            variable=variable,
+            positionIon=positionIon,
+            variable_mapping=variable_mapping,
+            variable_mapping_unn=variable_mapping_unn
+        )
 
-        self.scans[label] = {}
-        self.scans[label]["variable"] = variable
-        self.scans[label]["positionBase"] = None
-        self.scans[label]["unnormalization_successful"] = True
-        self.scans[label]["results_tags"] = []
+        varS = ['ky', 'g', 'f']
+        for var in varS:
+            if len(self.scans[label][var].shape) == 3:
+                axes_swap = [1, 2, 0] # [rho, scan, ky]
+            elif len(self.scans[label][var].shape) == 4:
+                axes_swap = [2, 3, 1, 0] # [rho, scan, nmode, ky]
+                
+            self.scans[label][var] = np.transpose(self.scans[label][var], axes=axes_swap)
 
-        self.positionIon_scan = positionIon
-
-        # ----
-        x = []
-        Qe, Qi, Ge, Gi, Mt, S = [],[],[],[],[],[]
-        Qe_gb, Qi_gb, Ge_gb, Gi_gb, Mt_gb, S_gb = [],[],[],[],[],[]        
-        ky, g, f, eta1, eta2, itg, tem, etg = [],[],[],[],[],[],[],[]
-        etalow_g, etalow_f, etalow_k = [], [], []
-        Qifast, Qifast_gb = [],[]
-        cont = 0
-        for ikey in self.results:
-            isThisTheRightReadResults = (subFolderTGLF in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subFolderTGLF + "_")[-1])
-
-            if isThisTheRightReadResults:
-
-                self.scans[label]["results_tags"].append(ikey)
-                x0 = []
-                Qe0, Qi0, Ge0, Gi0, Mt0, S0 = [],[],[],[],[],[]
-                Qe_gb0, Qi_gb0, Ge_gb0, Gi_gb0, Mt_gb0, S_gb0 = [],[],[],[],[],[]
-                ky0, g0, f0, eta10, eta20, itg0, tem0, etg0 = [],[],[],[],[],[],[],[]
-                etalow_g0, etalow_f0, etalow_k0 = [], [], []
-                Qifast0, Qifast_gb0 = [],[]
-                for irho_cont in range(len(self.rhos)):
-                    irho = np.where(self.results[ikey]["x"] == self.rhos[irho_cont])[0][0]
-
-                    # Unnormalized
-                    x0.append(self.results[ikey]["parsed"][irho][variable])
-                    Qe_gb0.append(self.results[ikey]["TGLFout"][irho].Qe)
-                    Qi_gb0.append(self.results[ikey]["TGLFout"][irho].Qi)
-                    Qifast_gb0.append(self.results[ikey]["TGLFout"][irho].Qifast)
-                    Ge_gb0.append(self.results[ikey]["TGLFout"][irho].Ge)
-                    Gi_gb0.append(self.results[ikey]["TGLFout"][irho].GiAll[self.positionIon_scan - 2])
-                    Mt_gb0.append(self.results[ikey]["TGLFout"][irho].Mt)
-                    S_gb0.append(self.results[ikey]["TGLFout"][irho].Se)
-                    ky0.append(self.results[ikey]["TGLFout"][irho].ky)
-                    g0.append(self.results[ikey]["TGLFout"][irho].g)
-                    f0.append(self.results[ikey]["TGLFout"][irho].f)
-                    eta10.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGTEM"])
-                    eta20.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["eta_ITGETG"])
-                    etalow_g0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["g_lowk_max"])
-                    etalow_k0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["k_lowk_max"])
-                    etalow_f0.append(self.results[ikey]["TGLFout"][irho].etas["metrics"]["f_lowk_max"])
-                    itg0.append(self.results[ikey]["TGLFout"][irho].etas["ITG"]["g_max"])
-                    tem0.append(self.results[ikey]["TGLFout"][irho].etas["TEM"]["g_max"])
-                    etg0.append(self.results[ikey]["TGLFout"][irho].etas["ETG"]["g_max"])
-
-                    if self.results[ikey]["TGLFout"][irho].unnormalization_successful:
-                        Qe0.append(self.results[ikey]["TGLFout"][irho].Qe_unn)
-                        Qi0.append(self.results[ikey]["TGLFout"][irho].Qi_unn)
-                        Qifast0.append(self.results[ikey]["TGLFout"][irho].Qifast_unn)
-                        Ge0.append(self.results[ikey]["TGLFout"][irho].Ge_unn)
-                        Gi0.append(self.results[ikey]["TGLFout"][irho].GiAll_unn[self.positionIon_scan - 2]) 
-                        Mt0.append(self.results[ikey]["TGLFout"][irho].Mt_unn)
-                        S0.append(self.results[ikey]["TGLFout"][irho].Se_unn)
-                    else:
-                        self.scans[label]["unnormalization_successful"] = False
-
-                x.append(x0)
-                Qe.append(Qe0)
-                Qi.append(Qi0)
-                Qifast.append(Qifast0)
-                Ge.append(Ge0)
-                Qe_gb.append(Qe_gb0)
-                Qi_gb.append(Qi_gb0)
-                Qifast_gb.append(Qifast_gb0)
-                Ge_gb.append(Ge_gb0)
-                Gi_gb.append(Gi_gb0)
-                Gi.append(Gi0)
-                Mt.append(Mt0)
-                S.append(S0)
-                ky.append(ky0)
-                g.append(g0)
-                f.append(f0)
-                eta1.append(eta10)
-                eta2.append(eta20)
-                etalow_g.append(etalow_g0)
-                etalow_f.append(etalow_f0)
-                etalow_k.append(etalow_k0)
-                itg.append(itg0)
-                tem.append(tem0)
-                etg.append(etg0)
-
-                if float(ikey.split('_')[-1]) == 1.0:
-                    self.scans[label]["positionBase"] = cont
-                cont += 1
-
-        self.scans[label]["x"] = np.array(self.rhos)
-        self.scans[label]["xV"] = np.atleast_2d(np.transpose(x))
-        self.scans[label]["Qe_gb"] = np.atleast_2d(np.transpose(Qe_gb))
-        self.scans[label]["Qi_gb"] = np.atleast_2d(np.transpose(Qi_gb))
-        self.scans[label]["Qifast_gb"] = np.atleast_2d(np.transpose(Qifast_gb))
-        self.scans[label]["Ge_gb"] = np.atleast_2d(np.transpose(Ge_gb))
-        self.scans[label]["Gi_gb"] = np.atleast_2d(np.transpose(Gi_gb))
-        self.scans[label]["Mt_gb"] = np.atleast_2d(np.transpose(Mt_gb))
-        self.scans[label]["S_gb"] = np.atleast_2d(np.transpose(S_gb))
-        self.scans[label]["Qe"] = np.atleast_2d(np.transpose(Qe))
-        self.scans[label]["Qi"] = np.atleast_2d(np.transpose(Qi))
-        self.scans[label]["Qifast"] = np.atleast_2d(np.transpose(Qifast))
-        self.scans[label]["Ge"] = np.atleast_2d(np.transpose(Ge))
-        self.scans[label]["Gi"] = np.atleast_2d(np.transpose(Gi))
-        self.scans[label]["Mt"] = np.atleast_2d(np.transpose(Mt))
-        self.scans[label]["S"] = np.atleast_2d(np.transpose(S))
-        self.scans[label]["eta1"] = np.atleast_2d(np.transpose(eta1))
-        self.scans[label]["eta2"] = np.atleast_2d(np.transpose(eta2))
-        self.scans[label]["itg"] = np.atleast_2d(np.transpose(itg))
-        self.scans[label]["tem"] = np.atleast_2d(np.transpose(tem))
-        self.scans[label]["etg"] = np.atleast_2d(np.transpose(etg))
-        self.scans[label]["g_lowk_max"] = np.atleast_2d(np.transpose(etalow_g))
-        self.scans[label]["f_lowk_max"] = np.atleast_2d(np.transpose(etalow_f))
-        self.scans[label]["k_lowk_max"] = np.atleast_2d(np.transpose(etalow_k))
-        self.scans[label]["ky"] = np.array(ky)
-        self.scans[label]["g"] = np.array(g)
-        self.scans[label]["f"] = np.array(f)
-        if len(self.scans[label]["ky"].shape) == 2:
-            self.scans[label]["ky"] = self.scans[label]["ky"].reshape((1, self.scans[label]["ky"].shape[0], self.scans[label]["ky"].shape[1]))
-            self.scans[label]["g"] = self.scans[label]["g"].reshape((1, self.scans[label]["g"].shape[0], self.scans[label]["g"].shape[1]))
-            self.scans[label]["f"] = self.scans[label]["f"].reshape((1, self.scans[label]["f"].shape[0], self.scans[label]["f"].shape[1]))
-        else:
-            self.scans[label]["ky"] = np.transpose(self.scans[label]["ky"], axes=[1, 0, 2])
-            self.scans[label]["g"] = np.transpose(self.scans[label]["g"], axes=[1, 0, 2, 3])
-            self.scans[label]["f"] = np.transpose(self.scans[label]["f"], axes=[1, 0, 2, 3])
-
-    def plotScan(
+    def plot_scan(
         self,
         labels=["scan1"],
         figs=None,
@@ -2118,15 +2035,10 @@ class TGLF(GACODErun.gacode_simulation):
 
         unnormalization_successful = True
         for label in labels:
-            unnormalization_successful = (
-                unnormalization_successful
-                and self.scans[label]["unnormalization_successful"]
-            )
+            unnormalization_successful = unnormalization_successful and self.scans[label]["unnormalization_successful"]
 
         if figs is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True
-            )
+            self.fn = GUItools.FigureNotebook("TGLF Scan MITIM Notebook", geometry="1500x900", vertical=True)
             if unnormalization_successful:
                 fig1 = self.fn.add_figure(label="Fluxes")
             fig1e = self.fn.add_figure(label="Fluxes (GB)")
@@ -2188,7 +2100,7 @@ class TGLF(GACODErun.gacode_simulation):
 
             positionBase = self.scans[label]["positionBase"]
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             if relativeX:
                 xbase = x[:, positionBase : positionBase + 1]
                 x = (x - xbase) / xbase * 100.0
@@ -2205,11 +2117,11 @@ class TGLF(GACODErun.gacode_simulation):
                 self.scans[label]["Ge_gb"],
                 self.scans[label]["Gi_gb"],
             )
-            eta1, eta2 = self.scans[label]["eta1"], self.scans[label]["eta2"]
+            eta1, eta2 = self.scans[label]["eta_ITGETG"], self.scans[label]["eta_ITGTEM"]
             itg, tem, etg = (
-                self.scans[label]["itg"],
-                self.scans[label]["tem"],
-                self.scans[label]["etg"],
+                self.scans[label]["g_ITG_max"],
+                self.scans[label]["g_TEM_max"],
+                self.scans[label]["g_ETG_max"],
             )
             ky, g, f = (
                 self.scans[label]["ky"],
@@ -2663,7 +2575,7 @@ class TGLF(GACODErun.gacode_simulation):
 
     def runScanTurbulenceDrives(
         self,
-        subFolderTGLF="drives1",
+        subfolder="drives1",
         varUpDown = None,           # This setting supercedes the resolutionPoints and variation
         resolutionPoints=5,
         variation=0.5,
@@ -2699,7 +2611,7 @@ class TGLF(GACODErun.gacode_simulation):
             # Only ask the cold_start in the first round
             kwargs_TGLFrun["forceIfcold_start"] = cont > 0 or ("forceIfcold_start" in kwargs_TGLFrun and kwargs_TGLFrun["forceIfcold_start"])
 
-            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+            scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
             code_executor0, code_executor_full0, folders0, _ = self._prepare_scan(
                 scan_name,
@@ -2732,16 +2644,16 @@ class TGLF(GACODErun.gacode_simulation):
             for mult in varUpDown_dict[variable]:
                 name = f"{variable}_{mult}"
                 self.read(
-                    label=f"{self.subFolder_scan}_{name}",
+                    label=f"{self.subfolder_scan}_{name}",
                     folder=folders[cont],
                     cold_startWF = False,
                     require_all_files=not kwargs_TGLFrun.get("only_minimal_files", False),
                 )
                 cont += 1
 
-            scan_name = f"{subFolderTGLF}_{variable}"  # e.g. turbDrives_RLTS_1
+            scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.readScan(label=scan_name, variable=variable,positionIon=positionIon)
+            self.read_scan(label=scan_name, variable=variable,positionIon=positionIon)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
@@ -2773,7 +2685,7 @@ class TGLF(GACODErun.gacode_simulation):
 
         kwargs_TGLFscanPlot.pop("figs", None)
 
-        self.plotScan(
+        self.plot_scan(
             labels=labels,
             figs=figs1,
             variableLabel="X",
@@ -2782,13 +2694,13 @@ class TGLF(GACODErun.gacode_simulation):
         )
 
         kwargs_TGLFscanPlot["plotTGLFs"] = False
-        self.plotScan(
+        self.plot_scan(
             labels=labels, figs=figs2, variableLabel="X", **kwargs_TGLFscanPlot
         )
 
     def runAnalysis(
         self,
-        subFolderTGLF="analysis1",
+        subfolder="analysis1",
         label="analysis1",
         analysisType="chi_e",
         trace=[50.0, 174.0],
@@ -2825,14 +2737,14 @@ class TGLF(GACODErun.gacode_simulation):
                 np.linspace(1, 1 + variation / 2, 6)[1:],
             )
 
-            self.runScan(
-                subFolderTGLF,
+            self.run_scan(
+                subfolder,
                 varUpDown=varUpDown,
                 variable=self.variable,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=label, variable=self.variable)
+            self.read_scan(label=label, variable=self.variable)
 
             if analysisType == "chi_e":
                 Te_prof = self.NormalizationSets["SELECTED"]["Te_keV"]
@@ -2849,7 +2761,7 @@ class TGLF(GACODErun.gacode_simulation):
             rho = self.NormalizationSets["SELECTED"]["rho"]
             a = self.NormalizationSets["SELECTED"]["rmin"][-1]
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             yV = self.scans[label][self.variable_y]
 
             self.scans[label]["chi_inc"] = []
@@ -2905,16 +2817,16 @@ class TGLF(GACODErun.gacode_simulation):
 
             self.variable = f"RLNS_{position}"
 
-            self.runScan(
-                subFolderTGLF,
+            self.run_scan(
+                subfolder,
                 varUpDown=varUpDown,
                 variable=self.variable,
                 **kwargs_TGLFrun,
             )
 
-            self.readScan(label=label, variable=self.variable, positionIon=position)
+            self.read_scan(label=label, variable=self.variable, positionIon=position)
 
-            x = self.scans[label]["xV"]
+            x = self.scans[label]["scanned_variable"]
             yV = self.scans[label]["Gi"]
             self.variable_y = "Gi"
 
@@ -2964,7 +2876,7 @@ class TGLF(GACODErun.gacode_simulation):
             variableLabel = "RLTS_2"
         elif analysisType == "Z":
             variableLabel = self.variable
-        self.plotScan(
+        self.plot_scan(
             labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel
         )
 
@@ -3006,11 +2918,11 @@ class TGLF(GACODErun.gacode_simulation):
                         )
                     )
 
-                    xV = self.scans[label]["xV"][irho]
+                    xV = self.scans[label]["scanned_variable"][irho]
                     Qe = self.scans[label][self.scans[label]["var_y"]][irho]
                     xgrid = self.scans[label]["x_grid"][irho]
                     ygrid = np.array(self.scans[label]["y_grid"][irho])
-                    xba = self.scans[label]["xV"][irho][
+                    xba = self.scans[label]["scanned_variable"][irho][
                         self.scans[label]["positionBase"]
                     ]
                     yba = np.interp(xba, xV, Qe)
@@ -3158,7 +3070,7 @@ class TGLF(GACODErun.gacode_simulation):
 
                     ax = ax00
                     ax.plot(
-                        self.scans[label]["xV"][irho],
+                        self.scans[label]["scanned_variable"][irho],
                         np.array(self.scans[label]["Gi"][irho]),
                         "o-",
                         c=col,
@@ -3171,7 +3083,7 @@ class TGLF(GACODErun.gacode_simulation):
                         lw=0.5,
                         c=col,
                     )
-                    # ax.axvline(x=self.scans[label]['xV'][irho][self.scans[label]['positionBase']],ls='--',c=col,lw=1.)
+                    # ax.axvline(x=self.scans[label]['scanned_variable'][irho][self.scans[label]['positionBase']],ls='--',c=col,lw=1.)
 
                     cont += 1
 
@@ -3965,7 +3877,7 @@ def readTGLFresults(
         TGLFstd_TGLFout.append(TGLFout)
         inputclasses.append(TGLFout.inputclass)
 
-        parse = GACODErun.buildDictFromInput(TGLFout.inputFileTGLF)
+        parse = GACODErun.buildDictFromInput(TGLFout.inputFile)
         parsed.append(parse)
 
     results = {
@@ -3997,7 +3909,7 @@ class TGLFoutput:
 
     def postprocess(self):
         coeff, klow = 0.0, 0.8
-        self.etas = processGrowthRates(
+        etas = processGrowthRates(
             self.ky,
             self.g[0, :],
             self.f[0, :],
@@ -4006,6 +3918,16 @@ class TGLFoutput:
             klow=klow,
             coeff=coeff,
         )
+
+        self.eta_ITGETG = etas["metrics"]["eta_ITGETG"]
+        self.eta_ITGTEM = etas["metrics"]["eta_ITGTEM"]
+        self.g_lowk_max = etas["metrics"]["g_lowk_max"]
+        self.f_lowk_max = etas["metrics"]["f_lowk_max"]
+        self.k_lowk_max = etas["metrics"]["k_lowk_max"]
+
+        self.g_ITG_max = etas["ITG"]["g_max"]
+        self.g_TEM_max = etas["TEM"]["g_max"]
+        self.g_ETG_max = etas["ETG"]["g_max"]
 
         self.QeES = np.sum(self.SumFlux_Qe_phi)
         self.QeEM = np.sum(self.SumFlux_Qe_a)
@@ -4512,7 +4434,7 @@ class TGLFoutput:
 
         with open(self.FolderGACODE / ("input.tglf" + self.suffix), "r") as fi:
             lines = fi.readlines()
-        self.inputFileTGLF = "".join(lines)
+        self.inputFile = "".join(lines)
 
     def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):
         if normalization is not None:
