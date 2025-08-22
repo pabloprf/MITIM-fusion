@@ -311,7 +311,6 @@ def runSINGULARITY(
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
     # ********** Standard run, from the beginning
-
     if not cold_startFromPrevious:
         # ------------------------------------------------------------
         # Copy UFILES and NML into a self-contained folder
@@ -369,25 +368,43 @@ export NCQL3D_NPROCS=0
         file = folderWork / "pre_mitim"
         inputFiles.append(file)
         with open(file, "w") as f:
-            f.write("00\nY\nLaunched by MITIM\nx\n")
+            
+            pre_mitim= '''
+; date: 06Aug2025 username: mgorelen
+;SETTOK:  ENTER TOKAMAK ID:$
+CMOD
+;PRETR:  Enter TRANSP run ID, "Q" or "S":$
+mpi
+;PRETR:  Enter TRANSP run ID, default MPI                 ,"Q" or "S":$
+12345Z99
+;PRETR:  enter SHOT YEAR CODE or "Y":$
+00
+;PRETR:  enter SHOT YEAR CODE or "Y":$
+y
+;REMTTY:  ENTER COMMENTS FOR OUTPUT FILE (max 90 CHARS/LINE):$
+comments
+x
+            '''
+            f.write(pre_mitim)
 
         # ---------------
         # Execution command
         # ---------------
-        pretrenv="--env ADASDIR=/opt/adas --env PREACTDIR=/opt/preact"
-        transpenv="--env LD_LIBRARY_PATH=/opt/json-fortran/jsonfortran-gnu-9.0.2/lib:/opt/call_py_fort/lib:/opt/ezcdf/lib:/opt/cql3d/lib:$LD_LIBRARY_PATH"
+        pretrenv="--env ADASDIR=/opt/adas --env PREACTDIR=/opt/preact --env CONFIGDIR=/opt/transp/v24.5.0/config"
+        trdatenv="--env ADASDIR=/opt/adas --env PREACTDIR=/opt/preact  --env CONFIGDIR=/opt/transp/v24.5.0/config"
+        transpenv="--env LD_LIBRARY_PATH=/opt/json-fortran/jsonfortran-gnu-9.0.2/lib:/opt/call_py_fort/lib:/opt/ezcdf/lib:/opt/cql3d/lib:$LD_LIBRARY_PATH --env ADASDIR=/opt/adas --env PREACTDIR=/opt/preact  --env CONFIGDIR=/opt/transp/v24.5.0/config"
 
         TRANSPcommand_prep = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
-apptainer exec {txt_bind} {pretrenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
+apptainer exec {txt_bind} {pretrenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr  < {transp_job.folderExecution}/pre_mitim
+apptainer exec {txt_bind} {trdatenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
 """
-
+#{tok}{txt} {runid}
 
         TRANSPcommand = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
 apptainer exec {txt_bind} {pretrenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/pretr {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-apptainer exec {txt_bind} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
+apptainer exec {txt_bind} {trdatenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/trdat {tok} {runid} w q |& tee {runid}tr_dat.log
 apptainer exec {txt_bind} $TRANSP_SINGULARITY /bin/link {runid}
 apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/exe/transp {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
 """
@@ -406,7 +423,7 @@ apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/ex
     # ------------------
     # Execute pre-checks
     # ------------------
-
+    print("executing pre-checks")
     if TRANSPcommand_prep is not None:
         (folderWork / f'{runid}tr_dat.log').unlink(missing_ok=True)
 
@@ -436,7 +453,7 @@ apptainer exec {txt_bind} {transpenv} $TRANSP_SINGULARITY /opt/transp/v24.5.0/ex
         inputFiles = inputFiles[:-2]  # Because in SLURMcomplete they are added
         (folderWork / 'tmp_inputs' / 'mitim_bash.src').unlink(missing_ok=True)
         (folderWork / 'tmp_inputs' / 'mitim_shell_executor.sh').unlink(missing_ok=True)
-
+    print("pre-checks done")
     # ---------------
     # Execute Full
     # ---------------
