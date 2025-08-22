@@ -129,7 +129,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         for i in range(len(tglf.profiles.Species)):
             gacode_type = tglf.profiles.Species[i]['S']
             for rho in rho_locations:
-                tglf_type = tglf.inputs_files[0.25].ions_info[i+2]['type']
+                tglf_type = tglf.inputs_files[rho].ions_info[i+2]['type']
                 
                 if gacode_type[:5] != tglf_type[:5]:
                     print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")
@@ -137,13 +137,13 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                     if tglf_type == 'fast':
         
                         if Qi_includes_fast:
-                            print(f"\t\t\t* The fast ion considered by TGLF was summed into the Qi", typeMsg="i")
+                            print("\t\t\t* The fast ion considered by TGLF was summed into the Qi", typeMsg="i")
                         else:
-                            print(f"\t\t\t* The fast ion considered by TGLF was NOT summed into the Qi", typeMsg="i")
+                            print("\t\t\t* The fast ion considered by TGLF was NOT summed into the Qi", typeMsg="i")
                             
                     else:
                         
-                        print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
+                        print("\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information to POWERSTATE
