@@ -1,13 +1,10 @@
 import numpy as np
-from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-
-from mitim_tools.misc_tools.PLASMAtools import md_u
 
 class NEO(GACODErun.gacode_simulation):
     def __init__(
@@ -17,10 +14,13 @@ class NEO(GACODErun.gacode_simulation):
         
         super().__init__(rhos=rhos)
 
+        def code_call(folder, n, p, additional_command="", **kwargs):
+            return f"    neo -e {folder} -n {n} -p {p} {additional_command} &\n"
+
         self.run_specifications = {
             'code': 'neo',
             'input_file': 'input.neo',
-            'code_call': 'neo -e',
+            'code_call': code_call,
             'control_function': GACODEdefaults.addNEOcontrol,
             'controls_file': 'input.neo.controls',
             'state_converter': 'to_neo',
@@ -273,21 +273,10 @@ def check_if_files_exist(folder, list_files):
 
     return True
 
-
-class NEOinput:
+class NEOinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
-
-        if self.file is not None and self.file.exists():
-            with open(self.file, "r") as f:
-                lines = f.readlines()
-            file_txt = "".join(lines)
-        else:
-            file_txt = ""
-        input_dict = GACODErun.buildDictFromInput(file_txt)
-
-        self.process(input_dict)
-
+        super().__init__(file=file)
+        
     @classmethod
     def initialize_in_memory(cls, input_dict):
         instance = cls()
@@ -298,9 +287,6 @@ class NEOinput:
         #TODO
         self.controls = input_dict
         self.num_recorded = 100
-
-    def anticipate_problems(self):
-        pass
 
     def write_state(self, file=None):
         

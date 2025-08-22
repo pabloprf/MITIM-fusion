@@ -68,6 +68,9 @@ class gacode_simulation:
         else:
             self.profiles = mitim_state
 
+        # Keep a copy of the file
+        self.profiles.write_state(file=self.FolderGACODE / "input.gacode")
+
         self.profiles.derive_quantities(mi_ref=md_u)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -691,7 +694,7 @@ def run_gacode_simulation(
     
     code = run_specifications.get('code', 'tglf')
     input_file = run_specifications.get('input_file', 'input.tglf')
-    code_call = run_specifications.get('code_call', 'tglf -e')
+    code_call = run_specifications.get('code_call', None)
 
     tmpFolder = FolderGACODE / f"tmp_{code}"
     IOtools.askNewFolder(tmpFolder, force=True)
@@ -780,7 +783,7 @@ def run_gacode_simulation(
 
         # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
         GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
-        GACODEcommand += f"    {code_call} \"$folder\" -n {cores_simulation} -p {gacode_job.folderExecution} &\n"
+        GACODEcommand += code_call(folder = '\"$folder\"', n = cores_simulation, p = gacode_job.folderExecution)
         GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
         GACODEcommand += "done\n\n"
         GACODEcommand += "wait\n"
@@ -803,7 +806,7 @@ def run_gacode_simulation(
             # Code launches
             GACODEcommand = ""
             for folder in folders_red:
-                GACODEcommand += f"{code_call} {folder} -n {cores_simulation} -p {gacode_job.folderExecution} &\n"
+                GACODEcommand += code_call(folder = folder, n = cores_simulation, p = gacode_job.folderExecution)
             GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
             
             # Slurm setup
@@ -832,7 +835,11 @@ def run_gacode_simulation(
 
             # Code launches
             indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-            GACODEcommand = f'{code_call} {indexed_folder} -n {cores_simulation} -p {gacode_job.folderExecution} 1> {gacode_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {gacode_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
+            GACODEcommand = code_call(
+                folder = indexed_folder,
+                n = cores_simulation,
+                p = gacode_job.folderExecution,
+                additional_command = f'1> {gacode_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {gacode_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
 
             # Slurm setup
             array_list = ",".join(array_list)
@@ -1068,7 +1075,7 @@ def modifyInputs(
                 input_class.plasma[ikey] = var_new
             else:
                 # If the variable in extraOptions wasn't in there, consider it a control param
-                print("\t\t- Variable to change did not exist previously, creating now",typeMsg="i")
+                print(f"\t\t- Variable {ikey} to change did not exist previously, creating now",typeMsg="i")
                 var_orig = None
                 var_new = value_to_change_to
                 input_class.controls[ikey] = var_new
@@ -1809,3 +1816,33 @@ def defineNewGrid(
         plt.show()
 
     return x[imin:imax], y[imin:imax]
+
+class GACODEinput:
+    def __init__(self, file=None):
+        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
+
+        if self.file is not None and self.file.exists():
+            with open(self.file, "r") as f:
+                lines = f.readlines()
+            file_txt = "".join(lines)
+        else:
+            file_txt = ""
+        input_dict = buildDictFromInput(file_txt)
+
+        self.process(input_dict)
+
+    @classmethod
+    def initialize_in_memory(cls, input_dict):
+        instance = cls()
+        instance.process(input_dict)
+        return instance
+
+    def anticipate_problems(self):
+        pass
+
+    def remove_fast(self):
+        pass
+
+    def removeLowDensitySpecie(self, *args):
+        pass
+    

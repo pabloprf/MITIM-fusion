@@ -13,7 +13,7 @@ input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
-neo = NEOtools.NEO(rhos=np.linspace(0.1,0.95,10))
+neo = NEOtools.NEO(rhos=np.linspace(0.1,0.95,5))
 neo.prep(input_gacode, folder)
 
 neo.run('neo1/', cold_start=cold_start)

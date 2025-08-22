@@ -124,10 +124,13 @@ class TGLF(GACODErun.gacode_simulation):
 
         super().__init__(rhos=rhos)
 
+        def code_call(folder, p, n = 1, additional_command="", **kwargs):
+            return f"    tglf -e {folder} -n {n} -p {p} {additional_command} &\n"
+
         self.run_specifications = {
             'code': 'tglf',
             'input_file': 'input.tglf',
-            'code_call': 'tglf -e',
+            'code_call': code_call,
             'control_function': GACODEdefaults.addTGLFcontrol,
             'controls_file': 'input.tglf.controls',
             'state_converter': 'to_tglf',
@@ -192,6 +195,7 @@ class TGLF(GACODErun.gacode_simulation):
                 "SELECTED": None,
             }
 
+    # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run(
         self,
         subfolder,
@@ -199,9 +203,6 @@ class TGLF(GACODErun.gacode_simulation):
         forceClosestUnstableWF=True,    # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         **kwargs_generic_run
     ):
-        '''
-        I need to redefine the run method for the TGLF class because it has the option of producing WaveForms
-        '''
         
         code_executor_full = super().run(subfolder, **kwargs_generic_run)
 
@@ -209,6 +210,7 @@ class TGLF(GACODErun.gacode_simulation):
         kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
         self._helper_wf(code_executor_full, **kwargs_generic_run)
 
+    # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run_scan(
         self,
         subfolder,
@@ -3258,25 +3260,9 @@ def reduceToControls(dict_all):
     return controls, plasma, geom
 
 
-class TGLFinput:
+class TGLFinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
-
-        if self.file is not None and self.file.exists():
-            with open(self.file, "r") as f:
-                lines = f.readlines()
-            file_txt = "".join(lines)
-        else:
-            file_txt = ""
-        input_dict = GACODErun.buildDictFromInput(file_txt)
-
-        self.process(input_dict)
-
-    @classmethod
-    def initialize_in_memory(cls, input_dict):
-        instance = cls()
-        instance.process(input_dict)
-        return instance
+        super().__init__(file=file)
 
     def process(self, input_dict):
 
@@ -3443,19 +3429,11 @@ class TGLFinput:
 
         diff = self.calcualteQuasineutralityError()
         print(f"\t- Oiriginal quasineutrality error: {diff:.1e}", typeMsg="i")
-        print(
-            f"\t- Modifying species {speciesMod} to ensure quasineutrality",
-            typeMsg="i",
-        )
+        print(f"\t- Modifying species {speciesMod} to ensure quasineutrality", typeMsg="i")
         for i in speciesMod:
             self.species[i]["AS"] -= diff / self.species[i]["ZS"] / len(speciesMod)
         self.processSpecies()
-        print(
-            "\t- New quasineutrality error: {0:.1e}".format(
-                self.calcualteQuasineutralityError()
-            ),
-            typeMsg="i",
-        )
+        print("\t- New quasineutrality error: {0:.1e}".format(self.calcualteQuasineutralityError()), typeMsg="i")
 
     def calcualteQuasineutralityError(self):
         fiZi = 0
