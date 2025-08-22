@@ -15,11 +15,12 @@ class tgyro_model(TRANSPORTtools.power_transport):
     def produce_profiles(self):
         self._produce_profiles()
 
+    # TGYRO model is historical (#TODO #TOREMOVE) and therefore I'm not using the same evaluate as the rest, just keep it separate
     def evaluate(self):
 
         tgyro = self._evaluate_tglf_neo()
 
-        self._postprocess_results(tgyro, "tglf_neo")
+        self._postprocess(tgyro, "tglf_neo")
 
     # ************************************************************************************
     # Private functions for TGLF and NEO evaluations
@@ -137,7 +138,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
         return tgyro
 
-    def _postprocess_results(self, tgyro, label):
+    def _postprocess(self, tgyro, label):
 
         transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 

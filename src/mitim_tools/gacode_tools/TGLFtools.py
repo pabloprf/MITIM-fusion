@@ -54,7 +54,7 @@ class TGLF(GACODErun.gacode_simulation):
         dictionaries. Plotting then can happen with more than one label of the same category.
 
         *Note*
-        The 'run' command uses input.tglf from the specified folder, but one can change the TGLFsettings presets,
+        The 'run' command uses input.tglf from the specified folder, but one can change the Settings presets,
         extraOptions and multipliers. The modified inputs is not rewritten in the actual folder, it is only written
         in the tmp folder on which the simulation takes place.
 
@@ -75,7 +75,7 @@ class TGLF(GACODErun.gacode_simulation):
 
             # Run standalone TGLF (this will find the input.tglf in the previous folder,
             # and then copy to this specify TGLF run, and run it there)
-            tglf.run(subfolder='tglf1/',TGLFsettings=1,extraOptions={'NS':3})
+            tglf.run(subfolder='tglf1/',Settings=1,extraOptions={'NS':3})
 
             # Read results
             tglf.read(label='run1',folder='~/testTGLF/tglf1/')
@@ -94,7 +94,7 @@ class TGLF(GACODErun.gacode_simulation):
             cdf = tglf.prep_using_tgyro('~/testTGLF/')
 
             # Run
-            tglf.run_scan('scan1/',TGLFsettings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
+            tglf.run_scan('scan1/',Settings=1,varUpDown=np.linspace(0.5,2.0,20),variable='RLTS_2')
 
             # Read scan
             tglf.read_scan(label='scan1',variable='RLTS_2')

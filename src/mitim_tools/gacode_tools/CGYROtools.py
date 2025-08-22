@@ -71,7 +71,8 @@ class CGYRO:
         self.folder.mkdir(parents=True, exist_ok=True)
 
         self.inputgacode_file = self.folder / "input.gacode"
-        shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
+        if IOtools.expandPath(inputgacode_file) != self.inputgacode_file:
+            shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
 
     def _prerun(
         self,
@@ -105,7 +106,7 @@ class CGYRO:
             multipliers=multipliers,
             addControlFunction=GACODEdefaults.addCGYROcontrol,
             rmin=roa,
-            control_file = 'input.cgyro.controls'
+            controls_file = 'input.cgyro.controls'
         )
 
         inputCGYRO.writeCurrentStatus()

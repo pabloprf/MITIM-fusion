@@ -1,6 +1,8 @@
+import torch
+import numpy as np
 import copy
 import shutil
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -115,17 +117,116 @@ class power_transport:
             print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
+    def evaluate(self):
+
+        neoclassical = self.evaluate_neoclassical()
+        turbulence = self.evaluate_turbulence()
+        
+        self._postprocess()
+
+    def _postprocess(self):
+
+        OriginalFimp =  self.powerstate.transport_options["transport_evaluator_options"].get("OriginalFimp", 1.0)
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
+        # ------------------------------------------------------------------------------------------------------------------------
+        
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
+
+        for variable in variables:
+            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
+
+                # Make them tensors and add a batch dimension
+                self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
+ 
+                # Pad with zeros at rho=0.0
+                self.powerstate.plasma[f"{variable}{suffix}"] = torch.cat((
+                    torch.zeros((1, 1)),
+                    self.powerstate.plasma[f"{variable}{suffix}"],
+                ), dim=1)
+
+        # -----------------------------------------------------------
+        # Sum the turbulent and neoclassical contributions
+        # -----------------------------------------------------------
+        
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
+        
+        for variable in variables:
+            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
+
+        # -----------------------------------------------------------
+        # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
+        # -----------------------------------------------------------
+        
+        mapper_convective = {
+            'Ce': 'Ge1E20m2',
+            'CZ': 'GZ1E20m2',
+        }
+        
+        for key in mapper_convective.keys():
+            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
+                
+                mult = 1.0 if key == 'Ce' else 1/OriginalFimp
+                
+                self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
+                    self.powerstate.plasma["te"],
+                    self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
+                ) * mult
+
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
-    def evaluate(self):
+    def evaluate_turbulence(self):
         '''
-        This needs to populate the following in self.powerstate.plasma
-            - QeMWm2, QeMWm2_tr, QeMWm2_tr_turb, QeMWm2_tr_neoc
-        Same for QiMWm2, Ce, CZ, MtJm2
-        and their respective standard deviations
+        This needs to populate the following np.arrays in self.powerstate.plasma, with dimensions of rho:
+            - QeMWm2_tr_turb
+            - QiMWm2_tr_turb
+            - Ge1E20m2_tr_turb
+            - GZ1E20m2_tr_turb
+            - MtJm2_tr_turb
+            - QieMWm3_tr_turb (turbulence exchange)
+        and their respective standard deviations, e.g. QeMWm2_tr_turb_stds
         '''
 
-        print(">> No transport fluxes to evaluate", typeMsg="w")
-        pass
+        print(">> No turbulent fluxes to evaluate", typeMsg="w")
 
+        dim = self.powerstate.plasma['rho'].shape[-1]-1
+        
+        for var in [
+            'QeMWm2',
+            'QiMWm2',
+            'Ge1E20m2',
+            'GZ1E20m2',
+            'MtJm2',
+            'QieMWm3'
+        ]:
+
+            self.powerstate.plasma[f"{var}_tr_turb"] = np.zeros(dim)
+            self.powerstate.plasma[f"{var}_tr_turb_stds"] = np.zeros(dim)
+        
+    def evaluate_neoclassical(self):
+        '''
+        This needs to populate the following np.arrays in self.powerstate.plasma:
+            - QeMWm2_tr_neoc
+            - QiMWm2_tr_neoc
+            - Ge1E20m2_tr_neoc
+            - GZ1E20m2_tr_neoc
+            - MtJm2_tr_neoc
+        and their respective standard deviations, e.g. QeMWm2_tr_neoc_stds
+        '''
+
+        print(">> No neoclassical fluxes to evaluate", typeMsg="w")
+        
+        dim = self.powerstate.plasma['rho'].shape[-1]-1
+        
+        for var in [
+            'QeMWm2',
+            'QiMWm2',
+            'Ge1E20m2',
+            'GZ1E20m2',
+            'MtJm2',
+        ]:
+
+            self.powerstate.plasma[f"{var}_tr_neoc"] = np.zeros(dim)
+            self.powerstate.plasma[f"{var}_tr_neoc_stds"] = np.zeros(dim)

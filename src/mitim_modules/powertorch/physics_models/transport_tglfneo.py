@@ -1,8 +1,7 @@
 
 import shutil
-import torch
 import numpy as np
-from mitim_tools.misc_tools import IOtools, PLASMAtools
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGLFtools, NEOtools
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -14,19 +13,12 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 
     def produce_profiles(self):
         self._produce_profiles()
-
-    def evaluate(self):
-
-        tglf = self._evaluate_tglf()
-        neo = self._evaluate_neo()
-        
-        self._postprocess()
         
     # ************************************************************************************
     # Private functions for the evaluation
     # ************************************************************************************
 
-    def _evaluate_tglf(self):
+    def evaluate_turbulence(self):
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
@@ -68,11 +60,13 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         
         if use_tglf_scan_trick is None:
             
+                # *******************************************************************
                 # Just run TGLF once and apply an ad-hoc percent error to the results
+                # *******************************************************************
             
                 tglf.run(
                     'base_tglf',
-                    TGLFsettings=TGLFsettings,
+                    Settings=TGLFsettings,
                     extraOptions=extraOptions,
                     ApplyCorrections=False,
                     launchSlurm= launchMODELviaSlurm,
@@ -109,7 +103,9 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 
         else:
             
+            # *******************************************************************
             # Run TGLF with scans to estimate the uncertainty
+            # *******************************************************************
             
             Flux_base, Flux_mean, Flux_std = _run_tglf_uncertainty_model(
                 tglf,
@@ -125,26 +121,9 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 launchMODELviaSlurm=launchMODELviaSlurm,
                 Qi_includes_fast=Qi_includes_fast,
                 )
-            
-        for i in range(len(tglf.profiles.Species)):
-            gacode_type = tglf.profiles.Species[i]['S']
-            for rho in rho_locations:
-                tglf_type = tglf.inputs_files[0.25].ions_info[i+2]['type']
-                
-                if gacode_type[:5] != tglf_type[:5]:
-                    print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")
-        
-                    if tglf_type == 'fast':
-        
-                        if Qi_includes_fast:
-                            print(f"\t\t\t* The fast ion considered by TGLF was summed into the Qi", typeMsg="i")
-                        else:
-                            print(f"\t\t\t* The fast ion considered by TGLF was NOT summed into the Qi", typeMsg="i")
-                            
-                    else:
-                        
-                        print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
-        
+
+        self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information to POWERSTATE
         # ------------------------------------------------------------------------------------------------------------------------
@@ -173,7 +152,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 
         return tglf
 
-    def _evaluate_neo(self):
+    def evaluate_neoclassical(self):
         
         # Options
         
@@ -195,9 +174,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             cold_start = cold_start,
             )
         
-        neo.run(
-            'base_neo',
-        )
+        neo.run('base_neo')
     
         neo.read(label='base')
         
@@ -223,56 +200,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = Qe * 0.0
 
         return neo
-
-    def _postprocess(self):
-
-        OriginalFimp =  self.powerstate.transport_options["transport_evaluator_options"].get("OriginalFimp", 1.0)
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
-        # ------------------------------------------------------------------------------------------------------------------------
-        
-        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
-
-        for variable in variables:
-            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
-
-                # Make them tensors and add a batch dimension
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
- 
-                # Pad with zeros at rho=0.0
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.cat((
-                    torch.zeros((1, 1)),
-                    self.powerstate.plasma[f"{variable}{suffix}"],
-                ), dim=1)
-
-        # -----------------------------------------------------------
-        # Sum the turbulent and neoclassical contributions
-        # -----------------------------------------------------------
-        
-        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
-        
-        for variable in variables:
-            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
-
-        # -----------------------------------------------------------
-        # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
-        # -----------------------------------------------------------
-        
-        mapper_convective = {
-            'Ce': 'Ge1E20m2',
-            'CZ': 'GZ1E20m2',
-        }
-        
-        for key in mapper_convective.keys():
-            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
-                
-                mult = 1.0 if key == 'Ce' else 1/OriginalFimp
-                
-                self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
-                    self.powerstate.plasma["te"],
-                    self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
-                ) * mult
                 
     def _profiles_to_store(self):
 
@@ -287,6 +214,26 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
         else:
             print("\t- Could not move files", typeMsg="w")
+
+    def _raise_warnings(self, tglf, rho_locations, Qi_includes_fast):
+
+        for i in range(len(tglf.profiles.Species)):
+            gacode_type = tglf.profiles.Species[i]['S']
+            for rho in rho_locations:
+                tglf_type = tglf.inputs_files[0.25].ions_info[i+2]['type']
+                
+                if gacode_type[:5] != tglf_type[:5]:
+                    print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")
+        
+                    if tglf_type == 'fast':
+        
+                        if Qi_includes_fast:
+                            print(f"\t\t\t* The fast ion considered by TGLF was summed into the Qi", typeMsg="i")
+                        else:
+                            print(f"\t\t\t* The fast ion considered by TGLF was NOT summed into the Qi", typeMsg="i")
+                            
+                    else:
+                        print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
 
 
 def _run_tglf_uncertainty_model(

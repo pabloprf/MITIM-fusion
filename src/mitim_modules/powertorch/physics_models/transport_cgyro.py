@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools, TGYROtools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_modules.powertorch.physics_models import transport_tgyro
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -21,7 +22,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
         powerstate_orig = self._trick_cgyro(tgyro)
 
         # Process results
-        self._postprocess_results(tgyro, "cgyro_neo")
+        self._postprocess(tgyro, "cgyro_neo")
 
         # Some checks
         print("\t- Checking model modifications:")
@@ -170,7 +171,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     Qi_criterion_stable = PORTALSparameters["Qi_criterion_stable"]
 
     try:
-        impurityPosition = PROFILEStools.impurity_location(PROFILEStools.gacode_state(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
+        impurityPosition = MITIMstate.impurity_location(PROFILEStools.gacode_state(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
     except ValueError:
         if 'nZ' in ProfilesPredicted:
             raise ValueError(f"Impurity {PORTALSparameters['ImpurityOfInterest']} not found in the profiles and needed for CGYRO evaluation")
