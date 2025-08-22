@@ -999,15 +999,15 @@ def tgyro_to_powerstate(TGYROresults,
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["CZ_raw_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
-    powerstate.plasma["CZ_raw_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["GZ1E20m2_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    powerstate.plasma["GZ1E20m2_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
     
-    powerstate.plasma["CZ_raw_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_raw_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["GZ1E20m2_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+    powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     if provideTargets:
-        powerstate.plasma["CZ_raw"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
-        powerstate.plasma["CZ_raw_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
+        powerstate.plasma["GZ1E20m2"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
+        powerstate.plasma["GZ1E20m2_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
 
     powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
     powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
@@ -1042,7 +1042,7 @@ def tgyro_to_powerstate(TGYROresults,
     # Sum here turbulence and neoclassical, after modifications
     # ------------------------------------------------------------------------------------------------------------------------
 
-    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'CZ_raw']
+    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'GZ1E20m2']
     for ikey in quantities:
         powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neoc"]
     
