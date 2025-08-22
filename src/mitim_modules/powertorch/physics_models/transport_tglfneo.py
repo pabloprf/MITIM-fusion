@@ -348,7 +348,7 @@ def _run_tglf_uncertainty_model(
     minutes = max(2, minutes)
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = name,
+                    subfolder = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,

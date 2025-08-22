@@ -121,7 +121,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
         #     cold_start=cold_start)
 
         # tglf.run(
-        #     subFolderTGLF="tglf_neo_original",
+        #     subfolder="tglf_neo_original",
         #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
         #     cold_start=cold_start,
         #     forceIfcold_start=True,
@@ -250,7 +250,7 @@ def tglf_scan_trick(
     minutes = max(2, minutes)
 
     tglf.runScanTurbulenceDrives(	
-                    subFolderTGLF = name,
+                    subfolder = name,
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,

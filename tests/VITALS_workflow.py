@@ -31,7 +31,7 @@ dvs_max = [1.3, 1.3, 1.3, 1.3, 1.3]
 
 tglf = TGLFtools.TGLF(rhos=[rho])
 cdf = tglf.prep_using_tgyro(folderWork, cold_start=cold_start, inputgacode=inputgacode)
-tglf.run(subFolderTGLF="run_base/", TGLFsettings=TGLFsettings, cold_start=cold_start)
+tglf.run(subfolder="run_base/", TGLFsettings=TGLFsettings, cold_start=cold_start)
 
 # ********************************************************************************
 # Then, add experimental data of fluctuation information and error bars

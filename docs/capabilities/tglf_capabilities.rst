@@ -83,14 +83,14 @@ For example, the following two commands will run TGLF with saturation rule numbe
 
 .. code-block:: python
 
-    tglf.run( subFolderTGLF = 'yes_em_folder', 
+    tglf.run( subfolder = 'yes_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {},
               cold_start       = False )
 
     tglf.read( label = 'yes_em' )
 
-    tglf.run( subFolderTGLF = 'no_em_folder', 
+    tglf.run( subfolder = 'no_em_folder', 
               TGLFsettings  = 5,
               extraOptions  = {'USE_BPER':False},
               cold_start       = False )

@@ -660,7 +660,7 @@ class TGYRO:
         label = f"{self.nameRuns_default}_tglf1"
 
         self.tglf[fromlabel].run(
-            subFolderTGLF=f"{label}",
+            subfolder=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,
@@ -689,7 +689,7 @@ class TGYRO:
         )
 
         self.tglf[fromlabel].runScanTurbulenceDrives(
-            subFolderTGLF=f"{self.nameRuns_default}_tglf",
+            subfolder=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,

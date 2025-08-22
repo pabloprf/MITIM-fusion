@@ -51,7 +51,7 @@ if not drives:
     labels = []
     for param in params:
         tglf.runScan(
-            subFolderTGLF="scan",
+            subfolder="scan",
             variable=param,
             varUpDown=varUpDown,
             TGLFsettings=TGLFsettings,
@@ -69,7 +69,7 @@ if not drives:
 
 else:
     tglf.runScanTurbulenceDrives(
-        subFolderTGLF="turb",
+        subfolder="turb",
         resolutionPoints=5,
         variation=var,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],

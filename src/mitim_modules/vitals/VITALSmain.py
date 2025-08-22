@@ -302,7 +302,7 @@ def runTGLF(
         folder_label = label
 
     tglf.run(
-        subFolderTGLF=f"{folder_label}",
+        subfolder=f"{folder_label}",
         cold_start=cold_start,
         TGLFsettings=self.TGLFparameters["TGLFsettings"],
         forceIfcold_start=True,

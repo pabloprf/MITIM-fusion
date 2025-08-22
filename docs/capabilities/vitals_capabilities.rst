@@ -39,7 +39,7 @@ As a starting point of VITALS, you need to prepare and run TGLF for the base cas
 	
 	tglf = TGLFtools.TGLF( rhos = [ rho ] )
 	cdf = tglf.prep( folder, inputgacode = inputgacode_file)
-	tglf.run( subFolderTGLF = 'run_base', TGLFsettings = 5)
+	tglf.run( subfolder = 'run_base', TGLFsettings = 5)
 	tglf.read( label = 'run_base' )
 
 
