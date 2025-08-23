@@ -2308,7 +2308,7 @@ class mitim_state:
                     'ZS': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
                     'RLNS': interpolator(self.derived['aLni'][:,i]),
-                    'RLTS': interpolator(self.derived['aLTi'][:,0] if self.Species[i]['S'] == 'therm' else self.derived["aLTi"][:,i]),
+                    'RLTS': interpolator(self.derived["aLTi"][:,i]),
                     'TAUS': interpolator(self.derived["tite_all"][:,i]),
                     'AS': interpolator(self.derived['fi'][:,i]),
                     'VPAR': interpolator(vpar),
@@ -2416,8 +2416,18 @@ class mitim_state:
         s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
         s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
 
-        omega_rot = self.profiles["w0(rad/s)"] / self.derived['c_s'] * self.derived['a']
-        omega_rot_deriv = self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
+        # Rotations
+        rmaj = self.derived['Rmajoa']
+        cs = self.derived['c_s']
+        a = self.derived['a']
+        mach = self.profiles["w0(rad/s)"] * (self.derived['Rmajoa']*a)
+        gamma_p = self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.derived['Rmajoa']*a)
+
+        # NEO definition: 'OMEGA_ROT=',mach_loc/rmaj_loc/cs_loc
+        omega_rot = mach / rmaj / cs        # Equivalent to: self.profiles["w0(rad/s)"] / self.derived['c_s'] * a
+        
+        # NEO definition: 'OMEGA_ROT_DERIV=',-gamma_p_loc*a/cs_loc/rmaj_loc
+        omega_rot_deriv = gamma_p * a / cs / rmaj # Equivalent to: self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
 
         inputsNEO = {}
         for rho in r:
@@ -2445,7 +2455,7 @@ class mitim_state:
                     'Z': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
                     'DLNNDR': interpolator(self.derived['aLni'][:,i]),
-                    'DLNTDR': interpolator(self.derived['aLTi'][:,0] if self.Species[i]['S'] == 'therm' else self.derived["aLTi"][:,i]),
+                    'DLNTDR': interpolator(self.derived["aLTi"][:,i]),
                     'TEMP': interpolator(self.derived["tite_all"][:,i]),
                     'DENS': interpolator(self.derived['fi'][:,i]),
                     }
@@ -2530,6 +2540,165 @@ class mitim_state:
             inputsNEO[rho] = input_dict
 
         return inputsNEO
+
+    def to_cgyro(self, r=[0.5], r_is_rho = True):
+
+        # <> Function to interpolate a curve <> 
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Determine if the input radius is rho toroidal or r/a
+        if r_is_rho:
+            r_interpolation = self.profiles['rho(-)']
+        else:
+            r_interpolation = self.derived['roa']
+            
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+        # Prepare the inputs
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+
+        # Determine the mass reference
+        mass_ref = 2.0
+        
+        sign_it = int(-np.sign(self.profiles["current(MA)"][-1]))
+        sign_bt = int(-np.sign(self.profiles["bcentr(T)"][-1]))
+        
+        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
+        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
+        s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
+
+        # Rotations
+        cs = self.derived['c_s']
+        a = self.derived['a']
+        mach = self.profiles["w0(rad/s)"] * (self.derived['Rmajoa']*a)
+        gamma_p = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.derived['Rmajoa']*a)
+        gamma_e = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.profiles['rmin(m)'] / self.profiles['q(-)'])
+
+        # CGYRO definition: 'MACH=',mach_loc/cs_loc
+        mach = mach / cs
+
+        # CGYRO definition: 'GAMMA_P=',gamma_p_loc*a/cs_loc
+        gamma_p = gamma_p * a / cs
+
+        # CGYRO definition: 'GAMMA_E=',gamma_e_loc*a/cs_loc
+        gamma_e = gamma_e * a / cs
+            
+        
+        # Because in MITIMstate I keep Bunit always positive, but CGYRO routines may need it negative? #TODO
+        sign_Bunit = np.sign(self.profiles['torfluxa(Wb/radian)'][0])
+            
+            
+        inputsCGYRO = {}
+        for rho in r:
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Define interpolator at this rho
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            def interpolator(y):
+                return interpolation_function(rho, r_interpolation,y).item()
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Controls come from options
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            
+            controls = GACODEdefaults.addCGYROcontrol(0)
+            controls['PROFILE_MODEL'] = 1
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Species come from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            species = {}
+            for i in range(len(self.Species)):
+                species[i+1] = {
+                    'Z': self.Species[i]['Z'],
+                    'MASS': self.Species[i]['A']/mass_ref,
+                    'DLNNDR': interpolator(self.derived['aLni'][:,i]),
+                    'DLNTDR': interpolator(self.derived["aLTi"][:,i]),
+                    'TEMP': interpolator(self.derived["tite_all"][:,i]),
+                    'DENS': interpolator(self.derived['fi'][:,i]),
+                    }
+
+            ie = i+2
+
+            species[ie] = {
+                    'Z': -1.0,
+                    'MASS': 0.000272445,
+                    'DLNNDR': interpolator(self.derived['aLne']),
+                    'DLNTDR': interpolator(self.derived['aLTe']),
+                    'TEMP': 1.0,
+                    'DENS': 1.0,
+                }
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Plasma comes from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            plasma = {
+                'N_SPECIES': len(species),
+                'IPCCW': sign_bt,
+                'BTCCW': sign_it,
+                'MACH': interpolator(mach),
+                'GAMMA_E': interpolator(gamma_e),
+                'GAMMA_P': interpolator(gamma_p),
+                'NU_EE': interpolator(self.derived['xnue']),
+                'BETAE_UNIT': interpolator(self.derived['betae']),
+                'LAMBDA_STAR': interpolator(self.derived['debye']) * sign_Bunit,
+                }
+
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Geometry comes from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            parameters = {
+                'RMIN':     self.derived['roa'],
+                'RMAJ':     self.derived['Rmajoa'],
+                'SHIFT':    self._deriv_gacode(self.profiles["rmaj(m)"]),
+                'ZMAG':     self.derived["Zmagoa"],
+                'DZMAG':    self._deriv_gacode(self.profiles["zmag(m)"]),
+                'Q':        np.abs(self.profiles["q(-)"]),
+                'S':        self.derived["s_hat"],
+                'KAPPA':    self.profiles["kappa(-)"],
+                'S_KAPPA':  s_kappa,
+                'DELTA':    self.profiles["delta(-)"],
+                'S_DELTA':  s_delta,
+                'ZETA':     self.profiles["zeta(-)"],
+                'S_ZETA':   s_zeta,
+            }
+            
+            # Add MXH and derivatives
+            for ikey in self.profiles:
+                if 'shape_cos' in ikey or 'shape_sin' in ikey:
+                    
+                    # TGLF only accepts 6, as of July 2025
+                    if int(ikey[-4]) > 6:
+                        continue
+                    
+                    key_mod = ikey.upper().split('(')[0]
+                    
+                    parameters[key_mod] = self.profiles[ikey]
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
+
+            geom = {}
+            for k in parameters:
+                par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
+                geom[k] = interpolator(par)
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Merging
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            input_dict = {**controls, **plasma, **geom}
+
+            for i in range(len(species)):
+                for k in species[i+1]:
+                    input_dict[f'{k}_{i+1}'] = species[i+1][k]
+
+            inputsCGYRO[rho] = input_dict
+
+        return inputsCGYRO
+
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):
 

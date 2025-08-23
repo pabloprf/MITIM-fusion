@@ -27,6 +27,8 @@ class NEO(GACODErun.gacode_simulation):
             'input_class': NEOinput,
             'complete_variation': None,
             'default_cores': 1,  # Default cores to use in the simulation
+            'output_class': NEOoutput,
+            'output_store': 'NEOout'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -34,41 +36,6 @@ class NEO(GACODErun.gacode_simulation):
         print("-----------------------------------------------------------------------------------------\n")
 
         self.ResultsFiles = self.ResultsFiles_minimal = ['out.neo.transport_flux']
-
-    def read(
-        self,
-        label="neo1",
-        folder=None,  # If None, search in the previously run folder
-        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
-        **kwargs
-    ):
-        print("> Reading NEO results")
-
-        # If no specified folder, check the last one
-        if folder is None:
-            folder = self.FolderSimLast
-            
-        self.results[label] = {
-            'NEOout':[],
-            'parsed': [],
-            "x": np.array(self.rhos),
-            }
-        for rho in self.rhos:
-
-            NEOout = NEOoutput(
-                folder,
-                suffix=f"_{rho:.4f}" if suffix is None else suffix,
-            )
-            
-            # Unnormalize
-            NEOout.unnormalize(
-                self.NormalizationSets["SELECTED"],
-                rho=rho,
-            )
-
-            self.results[label]['NEOout'].append(NEOout)
-
-            self.results[label]['parsed'].append(GACODErun.buildDictFromInput(NEOout.inputFile))
         
     def plot(
         self,
@@ -285,7 +252,9 @@ class NEOinput(GACODErun.GACODEinput):
 
     def process(self, input_dict):
         #TODO
-        self.controls = input_dict
+        self.plasma = input_dict
+        self.controls = {}
+        self.geom = {}
         self.num_recorded = 100
 
     def write_state(self, file=None):
@@ -322,13 +291,15 @@ class NEOinput(GACODErun.GACODEinput):
             f.write(f"# NEO input file modified by MITIM {mitim_version}\n")
             f.write("#-------------------------------------------------------------------------\n")
 
-            for ikey in self.controls:
-                var = self.controls[ikey]
+            for ikey in self.plasma:
+                var = self.plasma[ikey]
                 f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
                 
                 
-class NEOoutput:
+class NEOoutput(GACODErun.GACODEoutput):
     def __init__(self, FolderGACODE, suffix=""):
+        super().__init__()
+        
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
         if suffix == "":

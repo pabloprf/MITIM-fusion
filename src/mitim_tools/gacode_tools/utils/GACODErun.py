@@ -112,10 +112,13 @@ class gacode_simulation:
         cold_start=False,
         forceIfcold_start=False,
         extra_name="exe",
-        slurm_setup={"cores": 1,"minutes": 1},  # Cores per call (so, when running nR radii -> nR*4)
+        slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
     ):
+        
+        if slurm_setup is None:
+            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 5}
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare inputs
@@ -463,6 +466,44 @@ class gacode_simulation:
 
         return code_executor, code_executor_full, folders, varUpDown
 
+    def read(
+        self,
+        label="run1",
+        folder=None,  # If None, search in the previously run folder
+        suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
+        **kwargs_to_class_output
+    ):
+        print("> Reading simulation results")
+
+        class_output = [self.run_specifications['output_class'], self.run_specifications['output_store']]
+
+        # If no specified folder, check the last one
+        if folder is None:
+            folder = self.FolderSimLast
+            
+        self.results[label] = {
+            class_output[1]:[],
+            'parsed': [],
+            "x": np.array(self.rhos),
+            }
+        for rho in self.rhos:
+
+            SIMout = class_output[0](
+                folder,
+                suffix=f"_{rho:.4f}" if suffix is None else suffix,
+                **kwargs_to_class_output
+            )
+            
+            # Unnormalize
+            SIMout.unnormalize(
+                self.NormalizationSets["SELECTED"],
+                rho=rho,
+            )
+
+            self.results[label][class_output[1]].append(SIMout)
+
+            self.results[label]['parsed'].append(buildDictFromInput(SIMout.inputFile) if SIMout.inputFile else None)
+
     def read_scan(        
         self,
         label="scan1",
@@ -619,14 +660,14 @@ def change_and_write_code(
     return inputFile, mod_input_file
 
 
-def inputToVariable(finalFolder, rhos, file='input.tglf'):
+def inputToVariable(folder, rhos, file='input.tglf'):
     """
     Entire text file to variable
     """
 
     inputFilesTGLF = {}
-    for cont, rho in enumerate(rhos):
-        fileN = finalFolder / f"{file}_{rho:.4f}"
+    for rho in rhos:
+        fileN = folder / f"{file}_{rho:.4f}"
 
         with open(fileN, "r") as f:
             lines = f.readlines()
@@ -766,6 +807,10 @@ def run_gacode_simulation(
     # Simply bash, no slurm
     if not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
 
+        if cores_simulation > max_cores_per_node:
+            print(f"\t - Detected {cores_simulation} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+            max_cores_per_node = cores_simulation
+        
         max_parallel_execution = max_cores_per_node // cores_simulation # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
 
         print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {cores_simulation}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
@@ -1817,9 +1862,18 @@ def defineNewGrid(
 
     return x[imin:imax], y[imin:imax]
 
+class GACODEoutput:
+    def __init__(self, *args, **kwargs):
+        self.inputFile = None
+
+    def unnormalize(self, *args, **kwargs):
+        print("No unnormalization implemented.")
+
 class GACODEinput:
-    def __init__(self, file=None):
+    def __init__(self, file=None, controls_file=None):
         self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
+        
+        self.controls_file = controls_file
 
         if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
@@ -1830,12 +1884,29 @@ class GACODEinput:
         input_dict = buildDictFromInput(file_txt)
 
         self.process(input_dict)
+    
 
     @classmethod
     def initialize_in_memory(cls, input_dict):
         instance = cls()
         instance.process(input_dict)
         return instance
+
+    def _process(self, input_dict):
+
+        if self.controls_file is not None:
+            options_check = [key for key in IOtools.generateMITIMNamelist(self.controls_file, caseInsensitive=False).keys()]
+        else:
+            options_check = []
+
+        self.controls, self.plasma, self.geom = {}, {}, {}
+        for key in input_dict.keys():
+            if key in options_check:
+                self.controls[key] = input_dict[key]
+            else:
+                self.plasma[key] = input_dict[key]
+
+        self.num_recorded = 100
 
     def anticipate_problems(self):
         pass

@@ -17,10 +17,9 @@
 NONLINEAR_FLAG=1
 
 #Radius used for simulation
-RMIN=0.55
 
-#Use Experimental or Specified Inputs
-PROFILE_MODEL=2
+#Data source
+PROFILE_MODEL=1 # 1: Use inputs in this file; 2: Useinput.gacode (indicate RMIN=<r/a value>)
 
 #Geometry type (1=s-alpha,2=MXH)
 EQUILIBRIUM_MODEL=2
@@ -128,16 +127,9 @@ BETAE_UNIT_SCALE=1.0
 BETA_STAR_SCALE=1.0
 LAMBDA_STAR_SCALE=1.0
 
-
-#==============================
-#Species Specification
-#==============================
-
-#Number of gyrokinetic species
-N_SPECIES=2
-
 EXCH_FLAG=1
 
+# Gradient scalings
 DLNTDR_SCALE_1 = 1.0
 DLNTDR_SCALE_2 = 1.0
 DLNTDR_SCALE_3 = 1.0

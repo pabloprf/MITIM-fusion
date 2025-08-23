@@ -137,6 +137,8 @@ class TGLF(GACODErun.gacode_simulation):
             'input_class': TGLFinput,
             'complete_variation': completeVariation_TGLF,
             'default_cores': 4,  # Default cores to use in the simulation
+            'output_class': TGLFoutput,
+            'output_store': 'TGLFout'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -3541,12 +3543,7 @@ class TGLFinput(GACODErun.GACODEinput):
             f.write("# -------\n")
             for ikey in self.species:
                 if ikey > maxSpeciesTGLF:
-                    print(
-                        "\t- Maximum number of species in TGLF reached, not considering after {0} species".format(
-                            maxSpeciesTGLF
-                        ),
-                        typeMsg="w",
-                    )
+                    print(f"\t- Maximum number of species in TGLF reached, not considering after {maxSpeciesTGLF} species",typeMsg="w",)
                     break
                 if ikey == 1:
                     extralab = " (electrons)"
@@ -3868,14 +3865,16 @@ def readTGLFresults(
     return results
 
 
-class TGLFoutput:
-    def __init__(self, FolderGACODE, suffix="",require_all_files=True):
+class TGLFoutput(GACODErun.GACODEoutput):
+    def __init__(self, FolderGACODE, suffix="", require_all_files=True):
+        super().__init__()
+        
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
-        if suffix == "":
+        if self.suffix == "":
             print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
         else:
-            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {suffix}")
+            print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {self.suffix}")
 
         self.inputclass = TGLFinput(file=self.FolderGACODE / f"input.tglf{self.suffix}")
         self.roa = self.inputclass.geom["RMIN_LOC"]
@@ -3914,6 +3913,7 @@ class TGLFoutput:
         self.GeES = np.sum(self.SumFlux_Ge_phi)
         self.GeEM = np.sum(self.SumFlux_Ge_a)
 
+    # Redefined because of very specific TGLF stuff
     def read(self,require_all_files=True):
         # --------------------------------------------------------------------------------
         # Ions to include? e.g. IncludeExtraIonsInQi = [2,3,4] -> This will sum to ion 1

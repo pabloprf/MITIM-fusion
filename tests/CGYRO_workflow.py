@@ -12,26 +12,28 @@ if cold_start and folder.exists():
 
 folder.mkdir(parents=True, exist_ok=True)
 
-cgyro = CGYROtools.CGYRO()
+cgyro = CGYROtools.CGYRO(rhos = [0.5, 0.7])
 
-cgyro.prep(folder,gacode_file)
+cgyro.prep(
+    gacode_file,
+    folder)
 
 cgyro.run(
     'linear',
-    roa = 0.55,
-    CGYROsettings=0,
+    code_settings=0,
     extraOptions={
         'KY':0.3,
-        'MAX_TIME': 1E1, # Short, I just want to test the run
+        'MAX_TIME': 10.0, # Short, I just want to test the run
     },
-    submit_via_qsub=False # NERSC: True #TODO change this
+    slurm_setup={'cores':4}
+    #submit_via_qsub=False # NERSC: True #TODO change this
     )
 
-cgyro.check(every_n_minutes=1)
-cgyro.fetch()
-cgyro.delete()
+# cgyro.check(every_n_minutes=1)
+# cgyro.fetch()
+# cgyro.delete()
 
 cgyro.read(label="cgyro1")
 
-cgyro.plot(labels=["cgyro1"])
+cgyro.plot(labels=["cgyro1_0.5","cgyro1_0.7"])
 cgyro.fn.show()

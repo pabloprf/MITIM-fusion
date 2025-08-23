@@ -59,6 +59,30 @@ def addNEOcontrol(*args, **kwargs):
     
     return NEOoptions
 
+def addCGYROcontrol(code_settings, rmin=None, **kwargs):
+
+    CGYROoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
+
+    """
+	********************************************************************************
+	Standard sets of TGLF control parameters
+	  (rest of parameters are as defaults)
+	********************************************************************************
+	"""
+
+    with open(__mitimroot__ / "templates" / "input.cgyro.models.json", "r") as f:
+        settings = json.load(f)
+
+    if str(code_settings) in settings:
+        sett = settings[str(code_settings)]
+        for ikey in sett["controls"]:
+            CGYROoptions[ikey] = sett["controls"][ikey]
+    else:
+        print("\t- code_settings not found in input.cgyro.models.json, using defaults",typeMsg="w")
+
+    return CGYROoptions
+
+
 def TGLFinTRANSP(TGLFsettings, NS=3):
     
     TGLFoptions = addTGLFcontrol(TGLFsettings, NS=NS)
@@ -94,74 +118,21 @@ def TGLFinTRANSP(TGLFsettings, NS=3):
     # **** New ones that are TRANSP-specific
 
     TGLFoptions["TGLFMOD"] = 1
-    TGLFoptions["NSPEC"] = (
-        NS  # Number of species used in tglf model (maximum 10 species allowed)
-    )
+    TGLFoptions["NSPEC"] = NS  # Number of species used in tglf model (maximum 10 species allowed)
     TGLFoptions["NLGRAD"] = False  # Output flux gradients
     TGLFoptions["ALPHA_N"] = 0.0  # Scaling factor for vn shear
     TGLFoptions["ALPHA_T"] = 0.0  # Scaling factor for vt shear
     # TGLFoptions['ALPHA_DIA'] 		= 0.0 	# Scaling factor for diamagnetic terms to exb shear
     TGLFoptions["CBETAE"] = 1.0  # Betae multiplier (needed for e-m calcs)
     TGLFoptions["CXNU"] = 1.0  # Collisionality multiplier
-    TGLFoptions["EM_STAB"] = (
-        0.0  # EM factor for the ion temperature gradient 	--- Is this the right default?
-    )
-    TGLFoptions["PEVOLVING"] = (
-        0  # Evolving temperature and its gradients 	   	--- Is this the right default?
-    )
-    TGLFoptions["kinetic_fast_ion"] = (
-        0  # Fast ion species model in TGLF			   	--- Is this the right default?
-    )
+    TGLFoptions["EM_STAB"] = 0.0  # EM factor for the ion temperature gradient 	--- Is this the right default?
+    TGLFoptions["PEVOLVING"] = 0  # Evolving temperature and its gradients 	   	--- Is this the right default?
+    TGLFoptions["kinetic_fast_ion"] = 0  # Fast ion species model in TGLF			   	--- Is this the right default?
 
     # **** Other modifications
     TGLFoptions["UNITS"] = f"'{TGLFoptions['UNITS']}'"
 
     return TGLFoptions
-
-
-def addCGYROcontrol(code_settings, rmin):
-
-    CGYROoptions = IOtools.generateMITIMNamelist(
-        __mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False
-    )
-
-    """
-	********************************************************************************
-	Standard sets of TGLF control parameters
-	  (rest of parameters are as defaults)
-	********************************************************************************
-	"""
-
-    with open(
-        __mitimroot__ / "templates" / "input.cgyro.models.json", "r"
-    ) as f:
-        settings = json.load(f)
-
-    if str(code_settings) in settings:
-        sett = settings[str(code_settings)]
-        label = sett["label"]
-        for ikey in sett["controls"]:
-            CGYROoptions[ikey] = sett["controls"][ikey]
-    else:
-        print(
-            "\t- code_settings not found in input.cgyro.models.json, using defaults",
-            typeMsg="w",
-        )
-        label = "unspecified"
-
-    CGYROoptions["RMIN"] = rmin
-
-    # --------------------------------
-    # From dictionary to text
-    # --------------------------------
-
-    CGYROinput = [""]
-    for ikey in CGYROoptions:
-        CGYROinput.append(f"{ikey} = {CGYROoptions[ikey]}")
-    CGYROinput.append("")
-
-    return CGYROinput, CGYROoptions, label
-
 
 def addTGYROcontrol(
     num_it=0,
@@ -228,74 +199,42 @@ def addTGYROcontrol(
         f"{int(cold_start)}"  # 0: Start from beginning, 1: Continue from last iteration
     )
     TGYROoptions["TGYRO_RELAX_ITERATIONS"] = f"{num_it}"  # Number of iterations
-    TGYROoptions["TGYRO_WRITE_PROFILES_FLAG"] = (
-        "1"  # 1: Create new input.profiles at end, 0: Nothing, -1: At all iterations
-    )
+    TGYROoptions["TGYRO_WRITE_PROFILES_FLAG"] = "1"  # 1: Create new input.profiles at end, 0: Nothing, -1: At all iterations
 
     # ----------- Optimization
 
-    TGYROoptions["LOC_RESIDUAL_METHOD"] = (
-        f"{solver_options['res_method']}"  # 2: |F|, 3: |F|^2
-    )
-    TGYROoptions["TGYRO_ITERATION_METHOD"] = (
-        f"{solver_options['tgyro_method']}"  # 1: Standard local residual, 2 3 4 5 6
-    )
-    TGYROoptions["LOC_DX"] = (
-        f"{solver_options['step_jac']}"  # Step length for Jacobian calculation (df: 0.1), units of a/Lx
-    )
-    TGYROoptions["LOC_DX_MAX"] = (
-        f"{solver_options['step_max']}"  # Max length for any Newton step (df: 1.0)
-    )
-    TGYROoptions["LOC_RELAX"] = (
-        f"{solver_options['relax_param']}"  # Parameter 𝐶𝜂 controlling shrinkage of relaxation parameter
-    )
+    TGYROoptions["LOC_RESIDUAL_METHOD"] = f"{solver_options['res_method']}"  # 2: |F|, 3: |F|^2
+    TGYROoptions["TGYRO_ITERATION_METHOD"] = f"{solver_options['tgyro_method']}"  # 1: Standard local residual, 2 3 4 5 6
+    TGYROoptions["LOC_DX"] = f"{solver_options['step_jac']}"  # Step length for Jacobian calculation (df: 0.1), units of a/Lx
+    TGYROoptions["LOC_DX_MAX"] = f"{solver_options['step_max']}"  # Max length for any Newton step (df: 1.0)
+    TGYROoptions["LOC_RELAX"] = f"{solver_options['relax_param']}"  # Parameter 𝐶𝜂 controlling shrinkage of relaxation parameter
 
     # ----------- Prediction Options
-    TGYROoptions["LOC_SCENARIO"] = (
-        f"{physics_options['TypeTarget']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
-    )
+    TGYROoptions["LOC_SCENARIO"] = f"{physics_options['TypeTarget']}"  # 1: Static targets, 2: dynamic exchange, 3: alpha, rad, exchange change
     TGYROoptions["LOC_TI_FEEDBACK_FLAG"] = f"{Tipred}"  # Evolve Ti?
     TGYROoptions["LOC_TE_FEEDBACK_FLAG"] = f"{Tepred}"  # Evolve Te?
     TGYROoptions["LOC_ER_FEEDBACK_FLAG"] = f"{Erpred}"  # Evolve Er?
     TGYROoptions["TGYRO_DEN_METHOD0"] = f"{nepred}"  # Evolve ne?
-    TGYROoptions["LOC_PFLUX_METHOD"] = (
-        f"{physics_options['ParticleFlux']}"  # Particle flux method. 1 = zero target flux, 2 = beam, 3 = beam+wall
-    )
+    TGYROoptions["LOC_PFLUX_METHOD"] = f"{physics_options['ParticleFlux']}"  # Particle flux method. 1 = zero target flux, 2 = beam, 3 = beam+wall
     TGYROoptions["TGYRO_RMIN"] = f"{fromRho}"
     TGYROoptions["TGYRO_RMAX"] = f"{ToRho}"
-    TGYROoptions["TGYRO_USE_RHO"] = (
-        f"{solver_options['UseRho']}"  # 1: Grid provided in input.tgyro is for rho values
-    )
+    TGYROoptions["TGYRO_USE_RHO"] = f"{solver_options['UseRho']}"  # 1: Grid provided in input.tgyro is for rho values
 
     # ----------- Physics
     TGYROoptions["TGYRO_ROTATION_FLAG"] = "1"  # Trigger rotation physics?
-    TGYROoptions["TGYRO_NEO_METHOD"] = (
-        f"{physics_options['neoclassical']}"  # 0: None, 1: H&H, 2: NEO
-    )
-    TGYROoptions["TGYRO_TGLF_REVISION"] = (
-        "0"  # 0: Use input.tglf in folders, instead of GA defaults.
-    )
-    TGYROoptions["TGYRO_EXPWD_FLAG"] = (
-        f"{physics_options['TurbulentExchange']}"  # Add turbulent exchange to exchange powers in targets?
-    )
+    TGYROoptions["TGYRO_NEO_METHOD"] = f"{physics_options['neoclassical']}"  # 0: None, 1: H&H, 2: NEO
+    TGYROoptions["TGYRO_TGLF_REVISION"] = "0"  # 0: Use input.tglf in folders, instead of GA defaults.
+    TGYROoptions["TGYRO_EXPWD_FLAG"] = f"{physics_options['TurbulentExchange']}"  # Add turbulent exchange to exchange powers in targets?
     # TGYROoptions['TGYRO_ZEFF_FLAG'] 			= '1'													# 1: Use Zeff from input.gacode
 
     # ----------- Assumptions
     for i in physics_options["quasineutrality"]:
-        TGYROoptions[f"TGYRO_DEN_METHOD{i}"] = (
-            "-1"  # Species used to ensure quasineutrality
-        )
+        TGYROoptions[f"TGYRO_DEN_METHOD{i}"] = "-1"  # Species used to ensure quasineutrality
     # TGYROoptions['LOC_NUM_EQUIL_FLAG'] 			= f"{physics_options['usingINPUTgeo']}"		# 0: Use Miller, 1: Use numerical equilibrium (not valid for TGLF_scans)	#DEPRECATED IN LATEST VERSIONS
-    TGYROoptions["LOC_LOCK_PROFILE_FLAG"] = (
-        f"{physics_options['InputType']}"  # 0: Re-compute profiles from coarse gradients grid, 	 1: Use exact profiles (only valid at first iteration)
-    )
-    TGYROoptions["TGYRO_CONSISTENT_FLAG"] = (
-        f"{physics_options['GradientsType']}"  # 0: Finite-difference gradients used from input.gacode, 1: Gradients from coarse profiles?
-    )
+    TGYROoptions["LOC_LOCK_PROFILE_FLAG"] = f"{physics_options['InputType']}"  # 0: Re-compute profiles from coarse gradients grid, 	 1: Use exact profiles (only valid at first iteration)
+    TGYROoptions["TGYRO_CONSISTENT_FLAG"] = f"{physics_options['GradientsType']}"  # 0: Finite-difference gradients used from input.gacode, 1: Gradients from coarse profiles?
     TGYROoptions["LOC_EVOLVE_GRAD_ONLY_FLAG"] = "0"  # 1: Do not change absolute values
-    TGYROoptions["TGYRO_PTOT_FLAG"] = (
-        f"{physics_options['PtotType']}"  # 0: Compute pressure from profiles, 1: correct from input.gacode PTOT profile
-    )
+    TGYROoptions["TGYRO_PTOT_FLAG"] = f"{physics_options['PtotType']}"  # 0: Compute pressure from profiles, 1: correct from input.gacode PTOT profile
 
     # ----------- Radii
 
@@ -407,12 +346,12 @@ def convolution_CECE(d_perp_dict, dRdx=1.0):
 
 def review_controls(TGLFoptions, control = "input.tglf.controls"):
 
-    TGLFoptions_check = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / control, caseInsensitive=False)
+    options_check = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / control, caseInsensitive=False)
 
     # Add plasma too
     potential_flags = ['NS', 'SIGN_BT', 'SIGN_IT', 'VEXB', 'VEXB_SHEAR', 'BETAE', 'XNUE', 'ZEFF', 'DEBYE']
     for flag in potential_flags:
-        TGLFoptions_check[flag] = None
+        options_check[flag] = None
 
     for option in TGLFoptions:
 
@@ -421,5 +360,5 @@ def review_controls(TGLFoptions, control = "input.tglf.controls"):
         # Do not fail with e.g. P_PRIME_LOC
         isGeometry = option.split('_')[-1] in ['LOC']
         
-        if (not isSpecie) and (not isGeometry) and (option not in TGLFoptions_check):
+        if (not isSpecie) and (not isGeometry) and (option not in options_check):
             print(f"\t- Option {option} not in {control}, prone to errors", typeMsg="q")

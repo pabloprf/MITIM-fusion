@@ -4,6 +4,7 @@ import numpy as np
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
+from mitim_tools.gacode_tools.utils import GACODErun
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
@@ -48,27 +49,15 @@ class CGYROlinear_scan:
         self.Qe_mean = np.array(self.Qe_mean)
         self.Qi_mean = np.array(self.Qi_mean)
 
-class CGYROout:
-    def __init__(self, folder, tmin=0.0, minimal=False, last_tmin_for_linear=True):
-
-        original_dir = os.getcwd()
+class CGYROout(GACODErun.GACODEoutput):
+    def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
+        
+        super().__init__()
 
         self.folder = folder
         self.tmin = tmin
 
-        try:
-            print(f"\t- Reading CGYRO data from {self.folder.resolve()}")
-            self.cgyrodata = cgyrodata_plot(f"{self.folder.resolve()}{os.sep}")
-        except FileNotFoundError:
-            raise Exception(f"[MITIM] Could not find CGYRO data in {self.folder.resolve()}. Please check the folder path or run CGYRO first.")
-        except Exception as e:
-            print(f"\t- Error reading CGYRO data: {e}")
-            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.chdir(self.folder)
-                os.system("cgyro -t")
-            self.cgyrodata = cgyrodata_plot(f"{self.folder.resolve()}{os.sep}")
-
-        os.chdir(original_dir)
+        self.cgyrodata = self.read_using_cgyroplot(self.folder, suffix)
             
         # --------------------------------------------------------------
         # Read inputs
@@ -139,7 +128,10 @@ class CGYROout:
             self.cgyrodata.getbigfield()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:
-                self._process_fluctuations()
+                try:
+                    self._process_fluctuations()
+                except ValueError as e:
+                    print(f'\t- Error processing fluctuations: {e}', typeMsg='w')
             else:
                 print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         else:
@@ -147,6 +139,61 @@ class CGYROout:
             
         self._process_fluxes()        
         self._saturate_signals()
+        
+        self.remove_symlinks()
+
+    def read_using_cgyroplot(self, folder, suffix):
+        
+        original_dir = os.getcwd()
+        
+        # Handle files with suffix by creating temporary symbolic links
+        self.temp_links = []
+        if suffix:
+            import glob
+            
+            # Find all files with the suffix pattern
+            pattern = f"{folder.resolve()}{os.sep}*{suffix}"
+            suffixed_files = glob.glob(pattern)
+            
+            for suffixed_file in suffixed_files:
+                # Create expected filename without suffix
+                original_name = suffixed_file.replace(suffix, '')
+                
+                # Only create symlink if the original doesn't exist and the suffixed file does
+                if not os.path.exists(original_name) and os.path.exists(suffixed_file):
+                    try:
+                        os.symlink(suffixed_file, original_name)
+                        self.temp_links.append(original_name)
+                        print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {os.path.basename(suffixed_file)}")
+                    except (OSError, FileExistsError) as e:
+                        print(f"\t- Warning: Could not create symlink for {os.path.basename(suffixed_file)}: {e}", typeMsg='w')
+        
+        try:
+            print(f"\t- Reading CGYRO data from {folder.resolve()}")
+            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+        except FileNotFoundError:
+            raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
+        except Exception as e:
+            print(f"\t- Error reading CGYRO data: {e}")
+            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
+                os.chdir(folder)
+                os.system("cgyro -t")
+            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+        finally:
+
+            os.chdir(original_dir)
+                        
+        return cgyrodata
+
+    def remove_symlinks(self):
+        # Remove temporary symbolic links
+        for temp_link in self.temp_links:
+            try:
+                if os.path.islink(temp_link):
+                    os.unlink(temp_link)
+                    print(f"\t- Removed temporary link: {os.path.basename(temp_link)}")
+            except OSError as e:
+                print(f"\t- Warning: Could not remove temporary link {os.path.basename(temp_link)}: {e}", typeMsg='w')
 
     def _process_linear(self):
 
@@ -220,20 +267,33 @@ class CGYROout:
                 self.__dict__[var] = self.__dict__[var] * self.artificial_rhos_factor
                 # ********************************************************************
 
+                # Case with dimensions: (nradial,ntoroidal,time)
+                if len(self.__dict__[var].shape) == 3:
+                    axis_radial = 0
+                    axis_toroidal = 1
+                    var_ntor0 = self.__dict__[var][:,0,:]
+                    var_ntorn = self.__dict__[var][:,1:,:]
+                # Case with dimensions: (nradial,ntoroidal,nions,time)
+                elif len(self.__dict__[var].shape) == 4:
+                    axis_radial = 0
+                    axis_toroidal = 2
+                    var_ntor0 = self.__dict__[var][:,:,0,:]
+                    var_ntorn = self.__dict__[var][:,:,1:,:]
+
                 # Sum over radial modes
-                self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0))**0.5                # (ntoroidal, time)
-                 
+                self.__dict__[var+'_rms_sumnr'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(axis_radial))**0.5                          # (ntoroidal, time) or (nions, ntoroidal, time)
+
                 # Sum over radial modes AND separate n=0 and n>0 (sum) modes
-                self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=0)**0.5               # (time)
-                self.__dict__[var+'_rms_sumnr_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(0,1))**0.5    # (time)
-                
+                self.__dict__[var+'_rms_sumnr_n0'] = (abs(self.__dict__[var][:,0,:])**2).sum(axis=axis_radial)**0.5                        # (time) or (nions, time)
+                self.__dict__[var+'_rms_sumnr_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(axis_radial,axis_toroidal))**0.5    # (time) or (nions, time)
+
                 # Sum over radial modes and toroidal modes
-                self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(0,1))**0.5         # (time)
-               
+                self.__dict__[var+'_rms_sumnr_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(axis_radial,axis_toroidal))**0.5      # (time) or (nions, time)
+
                 # Separate n=0, n>0 (sum) modes, and all n (sum) modes
-                self.__dict__[var+'_rms_n0'] = (abs(self.__dict__[var][:,0,:])**2)**0.5                         # (nradial,time) 
-                self.__dict__[var+'_rms_sumn1'] = (abs(self.__dict__[var][:,1:,:])**2).sum(axis=(1))**0.5       # (nradial,time)
-                self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var][:,:,:])**2).sum(axis=(1))**0.5         # (nradial,time)
+                self.__dict__[var+'_rms_n0'] = (abs(var_ntor0)**2)**0.5                                                    # (nradial,time) 
+                self.__dict__[var+'_rms_sumn1'] = (abs(var_ntorn)**2).sum(axis=(axis_toroidal))**0.5       # (nradial,time)
+                self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var])**2).sum(axis=(axis_toroidal))**0.5         # (nradial,time)
 
         # Cross-phases
         self.neTe = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)

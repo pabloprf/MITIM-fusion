@@ -1,31 +1,48 @@
-import os
 import shutil
 import datetime
 import time
+import copy
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+from mitim_tools import __version__ as mitim_version
+from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class CGYRO:
-    def __init__(self):
+class CGYRO(GACODErun.gacode_simulation):
+    def __init__(
+        self,
+        rhos=[0.4, 0.6],  # rho locations of interest
+    ):
+        
+        super().__init__(rhos=rhos)
 
-        self.output_files_test = [
-            "out.cgyro.equilibrium",
-            "out.cgyro.info",
-            "out.cgyro.mpi",
-            "input.cgyro.gen",
-            "out.cgyro.egrid",
-            "out.cgyro.grids",
-            "out.cgyro.memory",
-            "out.cgyro.rotation",
-        ]
+        def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
+            return f"    cgyro -e {folder} -n {n} -nomp {nomp} {additional_command} -p {p} &\n"
 
-        self.output_files = [
+        self.run_specifications = {
+            'code': 'cgyro',
+            'input_file': 'input.cgyro',
+            'code_call': code_call,
+            'control_function': GACODEdefaults.addCGYROcontrol,
+            'controls_file': 'input.cgyro.controls',
+            'state_converter': 'to_cgyro',
+            'input_class': CGYROinput,
+            'complete_variation': None,
+            'default_cores': 16,  # Default cores to use in the simulation
+            'output_class': CGYROutils.CGYROout,
+            'output_store': 'CGYROout'
+        }
+        
+        print("\n-----------------------------------------------------------------------------------------")
+        print("\t\t\t CGYRO class module")
+        print("-----------------------------------------------------------------------------------------\n")
+
+        self.ResultsFiles = self.ResultsFiles_minimal = [
             "bin.cgyro.geo",
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
@@ -36,14 +53,12 @@ class CGYRO:
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
             "bin.cgyro.phib",
+            "bin.cgyro.aparb",
+            "bin.cgyro.bparb",
             "bin.cgyro.restart",
-            "bin.cgyro.restart.old",
             "input.cgyro",
             "input.cgyro.gen",
-            "input.gacode",
             "mitim.out",
-            "mitim_bash.src",
-            "mitim_shell_executor.sh",
             "out.cgyro.egrid",
             "out.cgyro.equilibrium",
             "out.cgyro.freq",
@@ -61,43 +76,52 @@ class CGYRO:
             "out.cgyro.version",
         ]
 
-        self.results = {}
+        self.output_files_test = [
+            "out.cgyro.equilibrium",
+            "out.cgyro.info",
+            "out.cgyro.mpi",
+            "input.cgyro.gen",
+            "out.cgyro.egrid",
+            "out.cgyro.grids",
+            "out.cgyro.memory",
+            "out.cgyro.rotation",
+        ]
 
-    def prep(self, folder, inputgacode_file):
+    # def prep(self, folder, inputgacode_file):
 
-        # Prepare main folder with input.gacode
-        self.folder = IOtools.expandPath(folder)
+    #     # Prepare main folder with input.gacode
+    #     self.folder = IOtools.expandPath(folder)
 
-        self.folder.mkdir(parents=True, exist_ok=True)
+    #     self.folder.mkdir(parents=True, exist_ok=True)
 
-        self.inputgacode_file = self.folder / "input.gacode"
-        if IOtools.expandPath(inputgacode_file) != self.inputgacode_file:
-            shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
+    #     self.inputgacode_file = self.folder / "input.gacode"
+    #     if IOtools.expandPath(inputgacode_file) != self.inputgacode_file:
+    #         shutil.copy2(IOtools.expandPath(inputgacode_file), self.inputgacode_file)
 
     def _prerun(
         self,
-        subFolderCGYRO,
+        subfolder,
         roa=0.55,
         CGYROsettings=None,
         extraOptions={},
         multipliers={},
     ):
 
-        self.folderCGYRO = self.folder / Path(subFolderCGYRO)
+        self.folder = self.FolderGACODE / Path(subfolder)
 
-        self.folderCGYRO.mkdir(parents=True, exist_ok=True)
+        self.folder.mkdir(parents=True, exist_ok=True)
 
-        input_cgyro_file = self.folderCGYRO / "input.cgyro"
+        input_cgyro_file = self.folder / "input.cgyro"
         inputCGYRO = CGYROinput(file=input_cgyro_file)
 
-        inputgacode_file_this = self.folderCGYRO / "input.gacode"
-        shutil.copy2(self.inputgacode_file, inputgacode_file_this)
+        inputgacode_file_this = self.folder / "input.gacode"
+        self.profiles.write_state(inputgacode_file_this)
 
         ResultsFiles_new = []
-        for i in self.output_files:
+        for i in self.ResultsFiles:
             if "mitim.out" not in i:
                 ResultsFiles_new.append(i)
-        self.output_files = ResultsFiles_new
+        self.ResultsFiles = ResultsFiles_new
 
         inputCGYRO = GACODErun.modifyInputs(
             inputCGYRO,
@@ -109,13 +133,14 @@ class CGYRO:
             controls_file = 'input.cgyro.controls'
         )
 
-        inputCGYRO.writeCurrentStatus()
+        inputCGYRO.write_state()
 
         return input_cgyro_file, inputgacode_file_this
 
+
     def run_test(
         self,
-        subFolderCGYRO,
+        subfolder,
         roa=0.55,
         CGYROsettings=None,
         extraOptions={},
@@ -127,16 +152,16 @@ class CGYRO:
             print("\t- Cannot run CGYRO tests with scan_param, running just the base",typeMsg="i")
         
         input_cgyro_file, inputgacode_file_this = self._prerun(
-            subFolderCGYRO,
+            subfolder,
             roa=roa,
             CGYROsettings=CGYROsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
         )
 
-        self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
+        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
 
-        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}_test'
+        name = f'mitim_cgyro_{subfolder}_{roa:.6f}_test'
 
         self.cgyro_job.define_machine(
             "cgyro",
@@ -159,16 +184,16 @@ class CGYRO:
 
         self.cgyro_job.run()
 
-    def run(self,subFolderCGYRO,test_run=False,**kwargs):
+    def run1(self,subfolder,test_run=False,**kwargs):
 
         if test_run:
-            self.run_test(subFolderCGYRO,**kwargs)
+            self.run_test(subfolder,**kwargs)
         else:
-            self.run_full(subFolderCGYRO,**kwargs)
+            self.run_full(subfolder,**kwargs)
 
     def run_full(
         self,
-        subFolderCGYRO,
+        subfolder,
         roa=0.55,
         CGYROsettings=None,
         extraOptions={},
@@ -187,16 +212,16 @@ class CGYRO:
     ):
         
         input_cgyro_file, inputgacode_file_this = self._prerun(
-            subFolderCGYRO,
+            subfolder,
             roa=roa,
             CGYROsettings=CGYROsettings,
             extraOptions=extraOptions,
             multipliers=multipliers,
         )
 
-        self.cgyro_job = FARMINGtools.mitim_job(self.folderCGYRO)
+        self.cgyro_job = FARMINGtools.mitim_job(self.folder)
 
-        name = f'mitim_cgyro_{subFolderCGYRO}_{roa:.6f}'
+        name = f'mitim_cgyro_{subfolder}_{roa:.6f}'
 
         if scan_param is not None and submit_via_qsub:
             raise Exception(" <MITIM> Cannot use scan_param with submit_via_qsub=True, because it requires a different job for each value of the scan parameter.")
@@ -223,7 +248,7 @@ class CGYRO:
             self.slurm_output = "batch.out"
 
             # ---
-            folder_run = self.folderCGYRO / subfolder
+            folder_run = self.folder / subfolder
             folder_run.mkdir(parents=True, exist_ok=True)
 
             # Copy the input.cgyro in the subfolder
@@ -290,7 +315,7 @@ class CGYRO:
             output_folders = []
             for i,value in enumerate(scan_param['values']):
                 subfolder = f"scan{i}"
-                folder_run = self.folderCGYRO / subfolder
+                folder_run = self.folder / subfolder
                 folder_run.mkdir(parents=True, exist_ok=True)
 
                 # Copy the input.cgyro in the subfolder
@@ -319,7 +344,7 @@ class CGYRO:
                     control_file = 'input.cgyro.controls'
                 )
 
-                input_cgyro_file_this.writeCurrentStatus()
+                input_cgyro_file_this.write_state()
 
                 # Copy the input.gacode file in the subfolder
                 inputgacode_file_this = folder_run / "input.gacode"
@@ -398,13 +423,32 @@ class CGYRO:
 
         self.cgyro_job.run()
 
-    # ---------------------------------------------------------------------------------------------------------
-    # Reading and plotting
-    # ---------------------------------------------------------------------------------------------------------
+    # Re-defined to make specific arguments explicit
+    def read(
+        self,
+        tmin = 0.0, 
+        minimal = False, 
+        last_tmin_for_linear = True,
+        **kwargs
+    ):
+    
+        super().read(
+            tmin = tmin,
+            minimal = minimal,
+            last_tmin_for_linear = last_tmin_for_linear,
+            **kwargs)
+        
+        results = copy.deepcopy(self.results)
+        
+        #TODO accept more than one radii
+        self.results = {}
+        for label in results:
+            for i,rho in enumerate(self.rhos):
+                self.results[label+f'_{rho}'] = results[label]['CGYROout'][i]
 
-    def read(self, label="cgyro1", folder=None, tmin = 0.0, minimal = False, last_tmin_for_linear = True):
+    def read1(self, label="cgyro1", folder=None, tmin = 0.0, minimal = False, last_tmin_for_linear = True):
 
-        folder = IOtools.expandPath(folder) if folder is not None else self.folderCGYRO
+        folder = IOtools.expandPath(folder) if folder is not None else self.folder
 
         folders = sorted(list((folder).glob("scan*")), key=lambda f: int(''.join(filter(str.isdigit, f.name))))
         
@@ -1626,7 +1670,10 @@ class CGYRO:
             
             number_times = len(axs)//3 if axs is not None else 4
 
-            times = [self.results[label].t[-1-i*10] for i in range(number_times)]
+            try:
+                times = [self.results[label].t[-1-i*10] for i in range(number_times)]
+            except IndexError:
+                 times = [self.results[label].t[-1-i*1] for i in range(number_times)]
 
         if axs is None:
 
@@ -1865,42 +1912,66 @@ class CGYRO:
         ax.set_xlim(left=0)
 
 
-
-class CGYROinput:
+class CGYROinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
+        super().__init__(file=file, controls_file= __mitimroot__ / "templates" / "input.cgyro.controls")
+        
+    def process(self, input_dict):
 
-        if self.file is not None and self.file.exists():
-            with open(self.file, "r") as f:
-                lines = f.readlines()
-            self.file_txt = "".join(lines)
-        else:
-            self.file_txt = ""
-
-        self.controls = GACODErun.buildDictFromInput(self.file_txt)
-
-    def writeCurrentStatus(self, file=None):
-        print("\t- Writting CGYRO input file")
-
+        # Use standard processing
+        self._process(input_dict)
+        
+        # Get number of recorded species
+        self.num_recorded = 0
+        if "N_SPECIES" in input_dict:
+            self.num_recorded = int(input_dict["N_SPECIES"])
+        
+    def write_state(self, file=None):
+        
         if file is None:
             file = self.file
 
+        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
+        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
+        def _fmt_num(x):
+            import numpy as _np
+            if isinstance(x, (bool, _np.bool_)):
+                return "True" if x else "False"
+            if isinstance(x, (_np.floating, float)):
+                # 6 significant figures in exponential => 5 digits after decimal
+                return f"{float(x):.5E}"
+            if isinstance(x, (_np.integer, int)):
+                return f"{int(x)}"
+            return str(x)
+
+        def _fmt_value(val):
+            import numpy as _np
+            if isinstance(val, (list, tuple, _np.ndarray)):
+                # Flatten numpy arrays but keep ordering; join with spaces
+                if isinstance(val, _np.ndarray):
+                    flat = val.flatten().tolist()
+                else:
+                    flat = list(val)
+                return " ".join(_fmt_num(v) for v in flat)
+            return _fmt_num(val)
+
         with open(file, "w") as f:
-            f.write(
-                "#-------------------------------------------------------------------------\n"
-            )
-            f.write(
-                "# CGYRO input file modified by MITIM framework (Rodriguez-Fernandez, 2020)\n"
-            )
-            f.write(
-                "#-------------------------------------------------------------------------"
-            )
+            f.write("#-------------------------------------------------------------------------\n")
+            f.write(f"# CGYRO input file modified by MITIM {mitim_version}\n")
+            f.write("#-------------------------------------------------------------------------\n")
 
             f.write("\n\n# Control parameters\n")
             f.write("# ------------------\n\n")
             for ikey in self.controls:
                 var = self.controls[ikey]
-                f.write(f"{ikey.ljust(23)} = {var}\n")
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
+
+            f.write("\n\n# Plasma/Geometry parameters\n")
+            f.write("# ------------------\n\n")
+            params = self.plasma | self.geom
+            for ikey in params:
+                var = params[ikey]
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
 
 def _2D_mosaic(n_times):
