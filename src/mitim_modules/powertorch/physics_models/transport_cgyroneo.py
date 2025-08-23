@@ -9,36 +9,44 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
     def evaluate_turbulence(self):
 
-        pass
-        # # ------------------------------------------------------------------------------------------------------------------------
-        # # Prepare CGYRO object
-        # # ------------------------------------------------------------------------------------------------------------------------
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         
-        # rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
         
-        # tglf = TGLFtools.CGYRO(rhos=rho_locations)
+        cold_start = transport_evaluator_options.get("cold_start", False)
 
-        # _ = tglf.prep(
-        #     self.powerstate.profiles_transport,
-        #     self.folder,
-        #     cold_start = cold_start,
-        #     )
-
-
-        # cgyro = CGYROtools.CGYRO()
-
-        # cgyro.prep(
-        #     self.folder,
-        #     self.powerstate.profiles_transport.files[0],
-        #     )
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Prepare CGYRO object
+        # ------------------------------------------------------------------------------------------------------------------------
         
-        # cgyro.run(
-        #     'base_cgyro',
-        #     roa = 0.55,
-        #     CGYROsettings=0,
-        #     submit_run=False
-        #     )
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        
+        cgyro = CGYROtools.CGYRO(rhos=rho_locations)
+
+        _ = cgyro.prep(
+            self.powerstate.profiles_transport,
+            self.folder,
+            )
+
+        cgyro = CGYROtools.CGYRO(
+            rhos = rho_locations
+        )
+
+        cgyro.prep(
+            self.powerstate.profiles_transport.files[0],
+            self.folder,
+            )
+        
+        _ = cgyro.run(
+            'base_cgyro',
+            full_submission=False,
+            code_settings=1,
+            cold_start=cold_start,
+            forceIfcold_start=True,
+            )
     
-        # embed()
-        # #cgyro.read(label='base')
+        # cgyro.read(
+        #     label='base_cgyro'
+        #     )
         
+        embed()

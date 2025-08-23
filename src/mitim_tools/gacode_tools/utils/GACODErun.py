@@ -115,6 +115,7 @@ class gacode_simulation:
         slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
+        full_submission=True # Flag to submit the job or just prepare everything but do not submit via MITIM
     ):
         
         if slurm_setup is None:
@@ -163,6 +164,7 @@ class gacode_simulation:
             slurm_setup=slurm_setup,
             only_minimal_files=only_minimal_files,
             attempts_execution=attempts_execution,
+            full_submission=full_submission
         )
         
         return code_executor_full
@@ -300,6 +302,7 @@ class gacode_simulation:
     def _run(
         self,
         code_executor,
+        full_submission=True,
         **kwargs_run
     ):
         """
@@ -326,6 +329,7 @@ class gacode_simulation:
                 name=f"{self.run_specifications['code']}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
                 launchSlurm=kwargs_run.get("launchSlurm", True),
                 attempts_execution=kwargs_run.get("attempts_execution", 1),
+                full_submission=full_submission,
             )
         else:
             print(f"\t- {self.run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
@@ -729,6 +733,7 @@ def run_gacode_simulation(
     launchSlurm = True,
     attempts_execution = 1,
     max_jobs_at_once = None,
+    full_submission = True,
 ):
 
     """
@@ -929,43 +934,45 @@ def run_gacode_simulation(
         shellPostCommands=shellPostCommands,
     )
 
-    gacode_job.run(
-        removeScratchFolders=True,
-        attempts_execution=attempts_execution
-        )
+    if full_submission:
+        
+        gacode_job.run(
+            removeScratchFolders=True,
+            attempts_execution=attempts_execution
+            )
 
-    # ---------------------------------------------
-    # Organize
-    # ---------------------------------------------
+        # ---------------------------------------------
+        # Organize
+        # ---------------------------------------------
 
-    print("\t- Retrieving files and changing names for storing")
-    fineall = True
-    for subfolder_sim in code_executor:
+        print("\t- Retrieving files and changing names for storing")
+        fineall = True
+        for subfolder_sim in code_executor:
 
-        for i, rho in enumerate(code_executor[subfolder_sim].keys()):
-            for file in filesToRetrieve:
-                original_file = f"{file}_{rho:.4f}{extraFlag}"
-                final_destination = (
-                    code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
-                )
-                final_destination.unlink(missing_ok=True)
+            for i, rho in enumerate(code_executor[subfolder_sim].keys()):
+                for file in filesToRetrieve:
+                    original_file = f"{file}_{rho:.4f}{extraFlag}"
+                    final_destination = (
+                        code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+                    )
+                    final_destination.unlink(missing_ok=True)
 
-                temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
-                temp_file.replace(final_destination)
+                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                    temp_file.replace(final_destination)
 
-                fineall = fineall and final_destination.exists()
+                    fineall = fineall and final_destination.exists()
 
-                if not final_destination.exists():
-                    print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+                    if not final_destination.exists():
+                        print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
 
-    if fineall:
-        print("\t\t- All files were successfully retrieved")
+        if fineall:
+            print("\t\t- All files were successfully retrieved")
 
-        # Remove temporary folder
-        shutil.rmtree(tmpFolder)
+            # Remove temporary folder
+            shutil.rmtree(tmpFolder)
 
-    else:
-        print("\t\t- Some files were not retrieved", typeMsg="w")
+        else:
+            print("\t\t- Some files were not retrieved", typeMsg="w")
 
 
 

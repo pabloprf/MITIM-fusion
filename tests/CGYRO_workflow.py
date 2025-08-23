@@ -29,7 +29,9 @@ cgyro.run(
     },
     slurm_setup={
         'cores':8
-        }
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
     )
 cgyro.read(label="cgyro1")
 cgyro.plot(labels=["cgyro1"])
@@ -48,7 +50,9 @@ cgyro.run_scan(
     varUpDown=[0.3,0.4],
     slurm_setup={
         'cores':4
-        }
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
     )
 
 cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
