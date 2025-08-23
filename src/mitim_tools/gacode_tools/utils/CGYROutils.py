@@ -1,6 +1,7 @@
 import os
 import scipy
 import numpy as np
+from pathlib import Path
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
@@ -56,6 +57,9 @@ class CGYROout(GACODErun.GACODEoutput):
 
         self.folder = folder
         self.tmin = tmin
+        
+        if isinstance(self.folder, str):
+            self.folder = Path(self.folder)
 
         self.cgyrodata = self.read_using_cgyroplot(self.folder, suffix)
             
@@ -143,7 +147,7 @@ class CGYROout(GACODErun.GACODEoutput):
         self.remove_symlinks()
 
     def read_using_cgyroplot(self, folder, suffix):
-        
+
         original_dir = os.getcwd()
         
         # Handle files with suffix by creating temporary symbolic links

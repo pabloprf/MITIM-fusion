@@ -495,10 +495,13 @@ class gacode_simulation:
             )
             
             # Unnormalize
-            SIMout.unnormalize(
-                self.NormalizationSets["SELECTED"],
-                rho=rho,
-            )
+            if 'NormalizationSets' in self.__dict__:
+                SIMout.unnormalize(
+                    self.NormalizationSets["SELECTED"],
+                    rho=rho,
+                )
+            else:
+                print("No normalization sets found.")
 
             self.results[label][class_output[1]].append(SIMout)
 

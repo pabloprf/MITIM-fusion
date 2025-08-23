@@ -14,26 +14,46 @@ folder.mkdir(parents=True, exist_ok=True)
 
 cgyro = CGYROtools.CGYRO(rhos = [0.5, 0.7])
 
-cgyro.prep(
-    gacode_file,
-    folder)
+cgyro.prep(gacode_file,folder)
+
+# ---------------
+# Standalone run
+# ---------------
 
 cgyro.run(
     'linear',
     code_settings=0,
     extraOptions={
-        'KY':0.3,
+        'KY':0.5,
         'MAX_TIME': 10.0, # Short, I just want to test the run
     },
-    slurm_setup={'cores':4}
-    #submit_via_qsub=False # NERSC: True #TODO change this
+    slurm_setup={
+        'cores':8
+        }
+    )
+cgyro.read(label="cgyro1")
+cgyro.plot(labels=["cgyro1"])
+
+# ---------------
+# Scan of KY
+# ---------------
+
+cgyro.run_scan(
+    'scan1',
+    cold_start=cold_start,
+    extraOptions={
+        'MAX_TIME': 10.0,
+    },
+    variable='KY',
+    varUpDown=[0.3,0.4],
+    slurm_setup={
+        'cores':4
+        }
     )
 
-# cgyro.check(every_n_minutes=1)
-# cgyro.fetch()
-# cgyro.delete()
+cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
 
-cgyro.read(label="cgyro1")
+fig = cgyro.fn.add_figure(label="Quick linear")
+cgyro.plot_quick_linear(labels=["scan1_KY_0.3","scan1_KY_0.4"], fig = fig)
 
-cgyro.plot(labels=["cgyro1_0.5","cgyro1_0.7"])
 cgyro.fn.show()
