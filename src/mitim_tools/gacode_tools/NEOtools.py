@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools import __version__ as mitim_version
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -244,60 +243,12 @@ class NEOinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
         super().__init__(file=file)
         
-    @classmethod
-    def initialize_in_memory(cls, input_dict):
-        instance = cls()
-        instance.process(input_dict)
-        return instance
+        self.code = 'NEO'
+        self.n_species = 'N_SPECIES'
 
-    def process(self, input_dict):
-        #TODO
-        self.plasma = input_dict
-        self.controls = {}
-        self.geom = {}
-        self.num_recorded = 100
-
-    def write_state(self, file=None):
-        
-        if file is None:
-            file = self.file
-
-        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
-        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
-        def _fmt_num(x):
-            import numpy as _np
-            if isinstance(x, (bool, _np.bool_)):
-                return "True" if x else "False"
-            if isinstance(x, (_np.floating, float)):
-                # 6 significant figures in exponential => 5 digits after decimal
-                return f"{float(x):.5E}"
-            if isinstance(x, (_np.integer, int)):
-                return f"{int(x)}"
-            return str(x)
-
-        def _fmt_value(val):
-            import numpy as _np
-            if isinstance(val, (list, tuple, _np.ndarray)):
-                # Flatten numpy arrays but keep ordering; join with spaces
-                if isinstance(val, _np.ndarray):
-                    flat = val.flatten().tolist()
-                else:
-                    flat = list(val)
-                return " ".join(_fmt_num(v) for v in flat)
-            return _fmt_num(val)
-        
-        with open(file, "w") as f:
-            f.write("#-------------------------------------------------------------------------\n")
-            f.write(f"# NEO input file modified by MITIM {mitim_version}\n")
-            f.write("#-------------------------------------------------------------------------\n")
-
-            for ikey in self.plasma:
-                var = self.plasma[ikey]
-                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
-                
                 
 class NEOoutput(GACODErun.GACODEoutput):
-    def __init__(self, FolderGACODE, suffix=""):
+    def __init__(self, FolderGACODE, suffix="", **kwargs):
         super().__init__()
         
         self.FolderGACODE, self.suffix = FolderGACODE, suffix

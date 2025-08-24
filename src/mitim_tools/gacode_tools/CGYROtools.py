@@ -5,7 +5,6 @@ import copy
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools import __version__ as mitim_version
 from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
@@ -1969,68 +1968,12 @@ class CGYRO(GACODErun.gacode_simulation):
         if attach_name:
             self.results[label] = CGYROutils.CGYROlinear_scan(labels, data)
 
-
-
 class CGYROinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
         super().__init__(file=file, controls_file= __mitimroot__ / "templates" / "input.cgyro.controls")
         
-    def process(self, input_dict):
-
-        # Use standard processing
-        self._process(input_dict)
-        
-        # Get number of recorded species
-        self.num_recorded = 0
-        if "N_SPECIES" in input_dict:
-            self.num_recorded = int(input_dict["N_SPECIES"])
-        
-    def write_state(self, file=None):
-        
-        if file is None:
-            file = self.file
-
-        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
-        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
-        def _fmt_num(x):
-            import numpy as _np
-            if isinstance(x, (bool, _np.bool_)):
-                return "True" if x else "False"
-            if isinstance(x, (_np.floating, float)):
-                # 6 significant figures in exponential => 5 digits after decimal
-                return f"{float(x):.5E}"
-            if isinstance(x, (_np.integer, int)):
-                return f"{int(x)}"
-            return str(x)
-
-        def _fmt_value(val):
-            import numpy as _np
-            if isinstance(val, (list, tuple, _np.ndarray)):
-                # Flatten numpy arrays but keep ordering; join with spaces
-                if isinstance(val, _np.ndarray):
-                    flat = val.flatten().tolist()
-                else:
-                    flat = list(val)
-                return " ".join(_fmt_num(v) for v in flat)
-            return _fmt_num(val)
-
-        with open(file, "w") as f:
-            f.write("#-------------------------------------------------------------------------\n")
-            f.write(f"# CGYRO input file modified by MITIM {mitim_version}\n")
-            f.write("#-------------------------------------------------------------------------\n")
-
-            f.write("\n\n# Control parameters\n")
-            f.write("# ------------------\n\n")
-            for ikey in self.controls:
-                var = self.controls[ikey]
-                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
-
-            f.write("\n\n# Plasma/Geometry parameters\n")
-            f.write("# ------------------\n\n")
-            params = self.plasma | self.geom
-            for ikey in params:
-                var = params[ikey]
-                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
+        self.code = "CGYRO"
+        self.n_species = 'N_SPECIES'
 
 
 def _2D_mosaic(n_times):

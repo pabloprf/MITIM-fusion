@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from mitim_tools import __version__ as mitim_version
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEdefaults, NORMtools
 from mitim_tools.transp_tools.utils import NTCCtools
@@ -1102,29 +1103,26 @@ def modifyInputs(
             value_to_change_to = extraOptions[ikey][position_change]
         else:
             value_to_change_to = extraOptions[ikey]
-
-        # is a specie one?
+            
         try:
             isspecie = ikey.split("_")[0] in input_class.species[1]
         except:
             isspecie = False
 
+        # is a species parameter?
         if isspecie:
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = input_class.species[specie][varK]
             var_new = value_to_change_to
             input_class.species[specie][varK] = var_new
+        # is a another parameter?
         else:
             if ikey in input_class.controls:
                 var_orig = input_class.controls[ikey]
                 var_new = value_to_change_to
                 input_class.controls[ikey] = var_new
-            elif 'geom' in input_class.__dict__ and ikey in input_class.geom:
-                var_orig = input_class.geom[ikey]
-                var_new = value_to_change_to
-                input_class.geom[ikey] = var_new
-            elif 'plasma' in input_class.__dict__ and ikey in input_class.plasma:
+            elif ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
                 var_new = value_to_change_to
                 input_class.plasma[ikey] = var_new
@@ -1155,11 +1153,6 @@ def modifyInputs(
                 var_orig = input_class.controls[ikey]
                 var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.controls[ikey] = var_new
-            
-            elif ikey in input_class.geom:
-                var_orig = input_class.geom[ikey]
-                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
-                input_class.geom[ikey] = var_new
             
             elif ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
@@ -1894,29 +1887,81 @@ class GACODEinput:
         input_dict = buildDictFromInput(file_txt)
 
         self.process(input_dict)
+        
+        self.code = ''
+        self.n_species = None
     
-
     @classmethod
     def initialize_in_memory(cls, input_dict):
         instance = cls()
         instance.process(input_dict)
         return instance
 
-    def _process(self, input_dict):
+    def process(self, input_dict):
 
         if self.controls_file is not None:
             options_check = [key for key in IOtools.generateMITIMNamelist(self.controls_file, caseInsensitive=False).keys()]
         else:
             options_check = []
 
-        self.controls, self.plasma, self.geom = {}, {}, {}
+        self.controls, self.plasma = {}, {}
         for key in input_dict.keys():
             if key in options_check:
                 self.controls[key] = input_dict[key]
             else:
                 self.plasma[key] = input_dict[key]
 
-        self.num_recorded = 100
+        # Get number of recorded species
+        if self.n_species is not None and self.n_species in input_dict:
+            self.num_recorded = int(input_dict[self.n_species])
+        else:
+            self.num_recorded = 100
+
+    def write_state(self, file=None):
+        
+        if file is None:
+            file = self.file
+
+        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
+        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
+        def _fmt_num(x):
+            import numpy as _np
+            if isinstance(x, (bool, _np.bool_)):
+                return "True" if x else "False"
+            if isinstance(x, (_np.floating, float)):
+                # 6 significant figures in exponential => 5 digits after decimal
+                return f"{float(x):.5E}"
+            if isinstance(x, (_np.integer, int)):
+                return f"{int(x)}"
+            return str(x)
+
+        def _fmt_value(val):
+            import numpy as _np
+            if isinstance(val, (list, tuple, _np.ndarray)):
+                # Flatten numpy arrays but keep ordering; join with spaces
+                if isinstance(val, _np.ndarray):
+                    flat = val.flatten().tolist()
+                else:
+                    flat = list(val)
+                return " ".join(_fmt_num(v) for v in flat)
+            return _fmt_num(val)
+
+        with open(file, "w") as f:
+            f.write("#-------------------------------------------------------------------------\n")
+            f.write(f"# {self.code} input file modified by MITIM {mitim_version}\n")
+            f.write("#-------------------------------------------------------------------------\n")
+
+            f.write("\n\n# Control parameters\n")
+            f.write("# ------------------\n\n")
+            for ikey in self.controls:
+                var = self.controls[ikey]
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
+
+            f.write("\n\n# Plasma/Geometry parameters\n")
+            f.write("# ------------------\n\n")
+            for ikey in self.plasma:
+                var = self.plasma[ikey]
+                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
     def anticipate_problems(self):
         pass

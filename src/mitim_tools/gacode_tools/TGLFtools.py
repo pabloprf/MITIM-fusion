@@ -514,7 +514,7 @@ class TGLF(GACODErun.gacode_simulation):
         # input_tglf_file
         inputclass = TGLFinput(file=input_tglf_file)
 
-        roa = inputclass.geom["RMIN_LOC"]
+        roa = inputclass.plasma["RMIN_LOC"]
         print(f"\t- This file correspond to r/a={roa} according to RMIN_LOC")
 
         if self.NormalizationSets["input_gacode"] is not None:
@@ -3179,10 +3179,8 @@ class TGLF(GACODErun.gacode_simulation):
             )
         else:
             for i in self.latest_inputsFileTGLFDict:
-                if "DRMAJDX_LOC" in self.latest_inputsFileTGLFDict[i].geom:
-                    self.DRMAJDX_LOC[i] = self.latest_inputsFileTGLFDict[i].geom[
-                        "DRMAJDX_LOC"
-                    ]
+                if "DRMAJDX_LOC" in self.latest_inputsFileTGLFDict[i].plasma:
+                    self.DRMAJDX_LOC[i] = self.latest_inputsFileTGLFDict[i].plasma["DRMAJDX_LOC"]
                 else:
                     self.DRMAJDX_LOC[i] = 0.0
                     print(
@@ -3238,8 +3236,10 @@ def completeVariation_TGLF(setVariations, species):
     return setVariations_new
 
 def reduceToControls(dict_all):
-    controls, plasma, geom = {}, {}, {}
+    controls, plasma = {}, {}
     for ikey in dict_all:
+        
+        # Plasma
         if ikey in [
             "VEXB",
             "VEXB_SHEAR",
@@ -3253,25 +3253,29 @@ def reduceToControls(dict_all):
         ]:
             plasma[ikey] = dict_all[ikey]
 
+        # Geometry
         elif (len(ikey.split("_")) > 1) and ( (ikey.split("_")[-1] in ["SA", "LOC"]) or (ikey.split("_")[0] in ["SHAPE"]) ):
-            geom[ikey] = dict_all[ikey]
+            plasma[ikey] = dict_all[ikey]
 
+        # Controls
         else:
             controls[ikey] = dict_all[ikey]
 
-    return controls, plasma, geom
+    return controls, plasma
 
 
 class TGLFinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
         super().__init__(file=file)
 
+        self.code = 'TGLF'
+        self.n_species = "NS"
+
     def process(self, input_dict):
 
         # Get number of recorded species
-        self.num_recorded = 0
-        if "NS" in input_dict:
-            self.num_recorded = int(input_dict["NS"])
+        if self.n_species in input_dict:
+            self.num_recorded = int(input_dict[self.n_species])
 
         # Species -----------
         self.species = {}
@@ -3300,7 +3304,7 @@ class TGLFinput(GACODErun.GACODEinput):
                     specie[var] = 0.0
             self.species[i + 1] = specie
 
-        self.controls, self.plasma, self.geom = reduceToControls(controls_all)
+        self.controls, self.plasma = reduceToControls(controls_all)
         self.processSpecies()
 
     def processSpecies(self, MinMultiplierToBeFast=2.0):
@@ -3480,7 +3484,6 @@ class TGLFinput(GACODErun.GACODEinput):
         return position
 
     def write_state(self, file=None):
-        print("\t- Writting TGLF input file")
 
         maxSpeciesTGLF = 6  # TGLF cannot handle more than 6 species
 
@@ -3513,7 +3516,7 @@ class TGLFinput(GACODErun.GACODEinput):
 
         with open(file, "w") as f:
             f.write("#-------------------------------------------------------------------------\n")
-            f.write(f"# TGLF input file modified by MITIM {mitim_version}\n")
+            f.write(f"# {self.code} input file modified by MITIM {mitim_version}\n")
             f.write("#-------------------------------------------------------------------------")
 
             f.write("\n\n# Control parameters\n")
@@ -3522,16 +3525,10 @@ class TGLFinput(GACODErun.GACODEinput):
                 var = self.controls[ikey]
                 f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
 
-            f.write("\n\n# Geometry parameters\n")
-            f.write("# ------------------\n\n")
-            for ikey in self.geom:
-                var = self.geom[ikey]
-                f.write(f"{ikey.ljust(23)} = {_fmt_value(var)}\n")
-                
-            f.write("\n\n# Plasma parameters\n")
+            f.write("\n\n# Plasma/Geometry parameters\n")
             f.write("# ------------------\n\n")
             for ikey in self.plasma:
-                if ikey == "NS":
+                if ikey == self.n_species:
                     var = np.min([self.plasma[ikey], maxSpeciesTGLF])
                     if var < self.plasma[ikey]:
                         print(f"\t- Maximum number of species in TGLF reached, not considering after {maxSpeciesTGLF} species",typeMsg="w",)
@@ -3739,19 +3736,8 @@ class TGLFinput(GACODErun.GACODEinput):
         ax.plot(x, y, "-o", lw=1, color=color)
         ax.set_xticks(x)
         ax.set_xticklabels(x, rotation=90, fontsize=6)
-        ax.set_ylabel("PLASMA")
+        ax.set_ylabel("PLASMA & GEOMETRY")
 
-        ax = axs[1]
-
-        x, y = [], []
-        for i in self.geom:
-            x.append(i)
-            y.append(self.geom[i])
-        x, y = np.array(x), np.array(y)
-        ax.plot(x, y, "-o", lw=1, color=color)
-        ax.set_xticks(x)
-        ax.set_xticklabels(x, rotation=90, fontsize=6)
-        ax.set_ylabel("GEOMETRY")
 
     def plotControls(self, axs=None, color="b", markersize=5):
         if axs is None:
@@ -3766,7 +3752,7 @@ class TGLFinput(GACODErun.GACODEinput):
         cont = 0
         x, y = x1, y1
 
-        dicts = [self.controls]  # ,self.geom,self.plasma]
+        dicts = [self.controls]
 
         for dictT in dicts:
             for i in dictT:
@@ -3877,7 +3863,7 @@ class TGLFoutput(GACODErun.GACODEoutput):
             print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} with suffix {self.suffix}")
 
         self.inputclass = TGLFinput(file=self.FolderGACODE / f"input.tglf{self.suffix}")
-        self.roa = self.inputclass.geom["RMIN_LOC"]
+        self.roa = self.inputclass.plasma["RMIN_LOC"]
 
         self.read(require_all_files=require_all_files)
         self.postprocess()
