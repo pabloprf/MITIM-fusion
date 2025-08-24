@@ -7,7 +7,7 @@ from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
-def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
+def addTGLFcontrol(code_settings, NS=2, minimal=False):
     """
     ********************************************************************************
     Define dictionary to start with
@@ -15,8 +15,8 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     """
 
     # Minimum working set
-    if minimal or TGLFsettings == 0:
-        TGLFoptions = {
+    if minimal or code_settings == 0:
+        options = {
             "USE_MHD_RULE": True,
             "USE_BPER": False,
             "USE_BPAR": False,
@@ -31,8 +31,8 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 
     # Define every flag
     else:
-        TGLFoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False)
-        TGLFoptions["NMODES"] = NS + 2
+        options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.tglf.controls", caseInsensitive=False)
+        options["NMODES"] = NS + 2
 
     """
 	********************************************************************************
@@ -44,34 +44,51 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
     with open(__mitimroot__ / "templates" / "input.tglf.models.json", "r") as f:
         settings = json.load(f)
 
-    if str(TGLFsettings) in settings:
-        sett = settings[str(TGLFsettings)]
+    if str(code_settings) in settings:
+        sett = settings[str(code_settings)]
         for ikey in sett["controls"]:
-            TGLFoptions[ikey] = sett["controls"][ikey]
+            options[ikey] = sett["controls"][ikey]
     else:
-        print("\t- TGLFsettings not found in input.tglf.models.json, using defaults",typeMsg="w",)
+        print(f"\t- {code_settings = } not found in input.tglf.models.json, using defaults",typeMsg="w",)
 
-    return TGLFoptions
+    return options
 
-def addNEOcontrol(*args, **kwargs):
+def addNEOcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
     
     return options
 
-def addGXcontrol(*args, **kwargs):
+def addGXcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
+    
+    """
+	********************************************************************************
+	Standard sets of control parameters
+	  (rest of parameters are as defaults)
+	********************************************************************************
+	"""
+
+    with open(__mitimroot__ / "templates" / "input.gx.models.json", "r") as f:
+        settings = json.load(f)
+
+    if str(code_settings) in settings:
+        sett = settings[str(code_settings)]
+        for ikey in sett["controls"]:
+            options[ikey] = sett["controls"][ikey]
+    else:
+        print("\t- code_settings not found in input.cgyro.models.json, using defaults",typeMsg="w")
     
     return options
 
 def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 
-    CGYROoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
+    options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
 
     """
 	********************************************************************************
-	Standard sets of TGLF control parameters
+	Standard sets of control parameters
 	  (rest of parameters are as defaults)
 	********************************************************************************
 	"""
@@ -82,11 +99,11 @@ def addCGYROcontrol(code_settings, rmin=None, **kwargs):
     if str(code_settings) in settings:
         sett = settings[str(code_settings)]
         for ikey in sett["controls"]:
-            CGYROoptions[ikey] = sett["controls"][ikey]
+            options[ikey] = sett["controls"][ikey]
     else:
         print("\t- code_settings not found in input.cgyro.models.json, using defaults",typeMsg="w")
 
-    return CGYROoptions
+    return options
 
 
 def TGLFinTRANSP(TGLFsettings, NS=3):

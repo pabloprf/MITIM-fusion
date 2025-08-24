@@ -2276,14 +2276,12 @@ class mitim_state:
 
             def interpolator(y):
                 return interpolation_function(rho, r_interpolation,y).item()
-
-            TGLFoptions = GACODEdefaults.addTGLFcontrol(TGLFsettings)
             
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = TGLFoptions
+            controls = GACODEdefaults.addTGLFcontrol(TGLFsettings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles
@@ -2442,7 +2440,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addNEOcontrol()
+            controls = GACODEdefaults.addNEOcontrol(0)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles
@@ -2735,7 +2733,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addGXcontrol()
+            controls = GACODEdefaults.addGXcontrol(0)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles

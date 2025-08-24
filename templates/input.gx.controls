@@ -2,6 +2,8 @@
 # GX example
 #=============================================================
 
+ debug = false
+
 [Dimensions]
  ntheta = 24                     # number of points along field line (theta) per 2pi segment    
  nperiod = 1                     # number of 2pi segments along field line is 2*nperiod-1
@@ -17,7 +19,7 @@
  boundary = "linked"             # use twist-shift boundary conditions along field line
 
 [Physics]
- nonlinear_mode = false           # this is a linear calculation
+ nonlinear_mode = true           # this is a linear calculation
  ei_colls = false                # turn off electron-ion collisions
 
 [Time]
@@ -48,11 +50,11 @@
 [Restart]
  restart = false
  save_for_restart = true
-
+ nsave                   = 100
+ 
 [Diagnostics]
  nwrite = 1000                   # write diagnostics every nwrite timesteps
+ nsave = 1000                    # save restart file every nsave timesteps
  omega = true                    # compute and write linear growth rate and frequency
  fluxes = true                   # compute and write heat and particle fluxes
  fields = true                   # compute and write electric and magnetic fields
-
-[species]

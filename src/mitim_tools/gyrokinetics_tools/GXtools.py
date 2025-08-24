@@ -1,4 +1,3 @@
-import numpy as np
 import netCDF4
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
@@ -17,7 +16,7 @@ class GX(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"    gx {folder}/gxplasma.in  &\n"
+            return f"    gx {folder}/gxplasma.in > {folder}/gxplasma.mitim.log  &\n"
 
         self.run_specifications = {
             'code': 'gx',
@@ -43,7 +42,8 @@ class GX(GACODErun.gacode_simulation):
             'gxplasma.gx_geo.log',
             'gxplasma.restart.nc',
             'gxplasma.big.nc',
-            'gxplasma.out.nc'
+            'gxplasma.out.nc',
+            'gxplasma.mitim.log'
             ]
 
     def plot(
@@ -59,16 +59,60 @@ class GX(GACODErun.gacode_simulation):
             self.fn = GUItools.FigureNotebook("GX MITIM Notebook", geometry="1700x900", vertical=True)
         else:
             self.fn = fn
-            
-        fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
-        
-        grid = plt.GridSpec(1, 2, hspace=0.7, wspace=0.2)
 
         if colors is None:
             colors = GRAPHICStools.listColors()
 
-        ax1 = fig1.add_subplot(grid[0, 0])
-        ax2 = fig1.add_subplot(grid[0, 1])
+        # Fluxes
+        fig = self.fn.add_figure(label=f"{extratitle}Fluxes", tab_color=fn_color)
+
+        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+
+        ax1 = fig.add_subplot(grid[0, 0])
+        ax2 = fig.add_subplot(grid[0, 1])
+        ax3 = fig.add_subplot(grid[0, 2])
+
+        i = 0
+        for label in labels:
+            for irho in range(len(self.rhos)):
+                c = self.results[label]['GXout'][irho]
+                
+                typeLs = '-' if c.t.shape[0]>20 else '-s'
+                
+                ax1.plot(c.t, c.Qe, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                ax2.plot(c.t, c.Qi, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                ax3.plot(c.t, c.Ge, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+
+                i += 1
+
+        for ax in [ax1, ax2, ax3]:
+            ax.set_xlabel("Time ($L_{ref}/c_s$)")
+            ax.set_xlim(left=0)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax1.set_title('Electron heat flux')
+        ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
+        ax1.legend(loc='best', prop={'size': 8})
+
+        ax2.set_title('Ion heat flux')
+        ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
+        ax2.legend(loc='best', prop={'size': 8})
+
+        ax3.set_title('Electron particle flux')
+        ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
+        ax3.legend(loc='best', prop={'size': 8})
+        
+        plt.tight_layout()
+
+            
+        # Linear stability
+        fig = self.fn.add_figure(label=f"{extratitle}Linear stability", tab_color=fn_color)
+        
+        grid = plt.GridSpec(2, 2, hspace=0.7, wspace=0.2)
+
+
+        ax1 = fig.add_subplot(grid[0, 0])
+        ax2 = fig.add_subplot(grid[1, 0])
         
         i = 0
         for label in labels:
@@ -80,13 +124,37 @@ class GX(GACODErun.gacode_simulation):
                     i += 1
                     
         for ax in [ax1, ax2]:
-            ax.set_xlabel("Time")
+            ax.set_xlabel("Time ($L_{ref}/c_s$)")
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
         ax1.set_ylabel("Real frequency")
         ax1.legend(loc='best', prop={'size': 4})
-        
         ax2.set_ylabel("Growth rate")
+
+
+
+        ax3 = fig.add_subplot(grid[0, 1])
+        ax4 = fig.add_subplot(grid[1, 1])
+
+        i = 0
+        for label in labels:
+            for irho in range(len(self.rhos)):
+                c = self.results[label]['GXout'][irho]
+                ax3.plot(c.ky, c.w[-1, :], label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                ax4.plot(c.ky, c.g[-1, :], label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                i += 1
+
+        for ax in [ax3, ax4]:
+            ax.set_xlabel("$k_\\theta\\rho_s$")
+            ax.set_xlim(left=0)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax3.set_ylabel("Real frequency")
+        ax3.legend(loc='best', prop={'size': 4})
+        ax4.set_ylabel("Growth rate")
+
+        plt.tight_layout()
+
 
 class GXinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
@@ -111,34 +179,80 @@ class GXinput(GACODErun.GACODEinput):
 
             # title: [controls], [plasma]
             blocks = {
-                'Dimensions': 
+                '': 
+                    [ ['debug'], [] ],
+                '[Dimensions]': 
                     [ ['ntheta', 'nperiod', 'ny', 'nx', 'nhermite', 'nlaguerre', 'nspecies'], [] ],
-                'Domain':
+                '[Domain]':
                     [ ['y0', 'boundary'], [] ],
-                'Physics': 
+                '[Physics]': 
                     [ ['nonlinear_mode', 'ei_colls'], ['beta'] ],
-                'Time':
+                '[Time]':
                     [ ['t_max', 'scheme'], [] ],
-                'Initialization':
+                '[Initialization]':
                     [ ['ikpar_init', 'init_field', 'init_amp', 'gaussian_init'], [] ],
-                'Geometry':
+                '[Geometry]':
                     [ 
                        ['geo_option'],
                        ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim']
                     ],
-                'Dissipation':
+                '[Dissipation]':
                     [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper'], [] ],
-                'Restart':
-                    [ ['restart', 'save_for_restart'], [] ],
-                'Diagnostics':
+                '[Restart]':
+                    [ ['restart', 'save_for_restart', 'nsave'], [] ],
+                '[Diagnostics]':
                     [ ['nwrite', 'omega', 'fluxes', 'fields'], [] ]
             }
 
             param_written = []
             for block_name, params in blocks.items():
-                param_written = self._write_block(f, f"[{block_name}]", params, param_written)
+                param_written = self._write_block(f, f"{block_name}", params, param_written)
                 
             param_written = self._write_block_species(f, param_written)
+
+        # Check that parameters were all considerd in the blocks
+        for param in self.controls | self.plasma:
+            if param not in param_written:
+                print(f"Warning: {param} not written to file", typeMsg="q")
+
+    def _write_block(self,f,name, param, param_written):
+
+        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
+        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
+        def _fmt_num(x):
+            import numpy as _np
+            if isinstance(x, (bool, _np.bool_)):
+                return "true" if x else "false"
+            if isinstance(x, (_np.floating, float)):
+                # 6 significant figures in exponential => 5 digits after decimal
+                return f"{float(x):.5E}"
+            if isinstance(x, (_np.integer, int)):
+                return f"{int(x)}"
+            return str(x)
+
+        def _fmt_value(val):
+            import numpy as _np
+            if isinstance(val, (list, tuple, _np.ndarray)):
+                # Flatten numpy arrays but keep ordering; join with spaces
+                if isinstance(val, _np.ndarray):
+                    flat = val.flatten().tolist()
+                else:
+                    flat = list(val)
+                return " ".join(_fmt_num(v) for v in flat)
+            return _fmt_num(val)
+
+        f.write(f'{name}\n')
+        for p in param[0]:
+            if p in self.controls:
+                f.write(f" {p.ljust(23)} = {_fmt_value(self.controls[p])}\n")
+                param_written.append(p)
+        for p in param[1]:
+            if p in self.plasma:
+                f.write(f" {p.ljust(23)} = {_fmt_value(self.plasma[p])}\n")
+                param_written.append(p)
+        f.write(f'\n')
+
+        return param_written
 
     def _write_block_species(self, f, param_written):
 
@@ -206,44 +320,6 @@ class GXinput(GACODErun.GACODEinput):
 
         return param_written
 
-    def _write_block(self,f,name, param, param_written):
-
-        # Local formatter: floats -> 6 significant figures in exponential (uppercase),
-        # ints stay as ints, bools as 0/1, sequences space-separated with same rule.
-        def _fmt_num(x):
-            import numpy as _np
-            if isinstance(x, (bool, _np.bool_)):
-                return "true" if x else "false"
-            if isinstance(x, (_np.floating, float)):
-                # 6 significant figures in exponential => 5 digits after decimal
-                return f"{float(x):.5E}"
-            if isinstance(x, (_np.integer, int)):
-                return f"{int(x)}"
-            return str(x)
-
-        def _fmt_value(val):
-            import numpy as _np
-            if isinstance(val, (list, tuple, _np.ndarray)):
-                # Flatten numpy arrays but keep ordering; join with spaces
-                if isinstance(val, _np.ndarray):
-                    flat = val.flatten().tolist()
-                else:
-                    flat = list(val)
-                return " ".join(_fmt_num(v) for v in flat)
-            return _fmt_num(val)
-
-        f.write(f'{name}\n')
-        for p in param[0]:
-            f.write(f" {p.ljust(23)} = {_fmt_value(self.controls[p])}\n")
-            param_written.append(p)
-        for p in param[1]:
-            f.write(f" {p.ljust(23)} = {_fmt_value(self.plasma[p])}\n")
-            param_written.append(p)
-        f.write(f'\n')
-
-        return param_written
-
-
 class GXoutput(GACODErun.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", **kwargs):
         super().__init__()
@@ -271,9 +347,15 @@ class GXoutput(GACODErun.GACODEoutput):
         self.w = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,0]    # (time, ky)
         self.g = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,1]      # (time, ky)
 
-        # get fluxes
-        # Qi = data.groups['Fluxes'].variables['qflux'][:,1]
-        # Qe = data.groups['Fluxes'].variables['qflux'][:,0]
-        # Ge = data.groups['Fluxes'].variables['pflux'][:,0]
-        
+        # Fluxes
+        Q = data.groups['Diagnostics'].variables['HeatFlux_st']     # (time, species)
+        G = data.groups['Diagnostics'].variables['ParticleFlux_st'] # (time, species)
+
+        # Assume electrons are always last
+        self.Qe = Q[:,-1]
+        self.QiAll = Q[:,:-1]
+        self.Qi = self.QiAll.sum(axis=1)
+        self.Ge = G[:,-1]
+        self.GiAll = G[:,:-1]
+        self.Gi = self.GiAll.sum(axis=1)
 

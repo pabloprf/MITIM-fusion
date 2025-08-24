@@ -17,7 +17,7 @@ tglf.prep_from_file(folder, input_tglf)
 
 tglf.run(
     "run1/",
-    code_settings=None,
+    code_settings=0,
     cold_start=cold_start,
     runWaveForms  = [0.67, 10.0],
     forceIfcold_start=True,
@@ -25,20 +25,31 @@ tglf.run(
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="ES")
+tglf.read(label="ES (0)")
 
 tglf.run(
     "run2/",
-    code_settings=None,
+    code_settings=0,
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="EM")
+tglf.read(label="EM (0)")
 
-tglf.plot(labels=["EM","ES"])
+tglf.run(
+    "run3/",
+    code_settings=6,
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    extraOptions={"USE_BPER": True, "USE_BPAR": True},
+    slurm_setup={"cores": 4, "minutes": 1},
+)
+
+tglf.read(label="EM (6)")
+
+tglf.plot(labels=["EM (0)","ES (0)", "EM (6)"])
 
 # Required if running in non-interactive mode
 tglf.fn.show()

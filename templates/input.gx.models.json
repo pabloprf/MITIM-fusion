@@ -1,0 +1,16 @@
+{
+    "0": {
+        "label": "Linear with 10 ky modes",
+        "controls": {
+            "nonlinear_mode": false,
+            "nx": 1,
+            "ny": 28
+        }
+    },
+    "1": {
+        "label": "Nonlinear",
+        "controls": {
+            "nonlinear_mode": true
+        }
+    }
+}
