@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
 
 class NEO(GACODErun.gacode_simulation):
@@ -241,11 +242,12 @@ def check_if_files_exist(folder, list_files):
 
 class NEOinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        super().__init__(file=file)
-        
-        self.code = 'NEO'
-        self.n_species = 'N_SPECIES'
-
+        super().__init__(
+            file=file,
+            controls_file= __mitimroot__ / "templates" / "input.neo.controls",
+            code='NEO',
+            n_species='N_SPECIES'
+            )
                 
 class NEOoutput(GACODErun.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", **kwargs):

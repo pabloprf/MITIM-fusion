@@ -2267,7 +2267,7 @@ class mitim_state:
         # Prepare the inputs for TGLF
         # ---------------------------------------------------------------------------------------------------------------------------------------
 
-        inputsTGLF = {}
+        input_parameters = {}
         for rho in r:
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2369,27 +2369,26 @@ class mitim_state:
                     parameters[key_mod] = self.profiles[ikey]
                     parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
 
-            geom = {}
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
-                geom[k] = interpolator(par)
+                plasma[k] = interpolator(par)
 
-            geom['BETA_LOC'] = 0.0
-            geom['KX0_LOC'] = 0.0
+            plasma['BETA_LOC'] = 0.0
+            plasma['KX0_LOC'] = 0.0
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Merging
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
-            input_dict = {**controls, **plasma, **geom}
+            input_dict = controls | plasma
 
             for i in range(len(species)):
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            inputsTGLF[rho] = input_dict
+            input_parameters[rho] = input_dict
             
-        return inputsTGLF
+        return input_parameters
 
     def to_neo(self, r=[0.5], r_is_rho = True):
 
@@ -2429,7 +2428,7 @@ class mitim_state:
         # NEO definition: 'OMEGA_ROT_DERIV=',-gamma_p_loc*a/cs_loc/rmaj_loc
         omega_rot_deriv = gamma_p * a / cs / rmaj # Equivalent to: self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
 
-        inputsNEO = {}
+        input_parameters = {}
         for rho in r:
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2461,7 +2460,6 @@ class mitim_state:
                     }
 
             ie = i+2
-
             species[ie] = {
                     'Z': -1.0,
                     'MASS': 0.000272445,
@@ -2522,24 +2520,23 @@ class mitim_state:
                     parameters[key_mod] = self.profiles[ikey]
                     parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
 
-            geom = {}
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
-                geom[k] = interpolator(par)
+                plasma[k] = interpolator(par)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Merging
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
-            input_dict = {**controls, **plasma, **geom}
+            input_dict = controls | plasma
 
             for i in range(len(species)):
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            inputsNEO[rho] = input_dict
+            input_parameters[rho] = input_dict
 
-        return inputsNEO
+        return input_parameters
 
     def to_cgyro(self, r=[0.5], r_is_rho = True):
 
@@ -2582,12 +2579,10 @@ class mitim_state:
         # CGYRO definition: 'GAMMA_E=',gamma_e_loc*a/cs_loc
         gamma_e = gamma_e * a / cs
             
-        
         # Because in MITIMstate I keep Bunit always positive, but CGYRO routines may need it negative? #TODO
         sign_Bunit = np.sign(self.profiles['torfluxa(Wb/radian)'][0])
             
-            
-        inputsCGYRO = {}
+        input_parameters = {}
         for rho in r:
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2620,7 +2615,6 @@ class mitim_state:
                     }
 
             ie = i+2
-
             species[ie] = {
                     'Z': -1.0,
                     'MASS': 0.000272445,
@@ -2680,25 +2674,145 @@ class mitim_state:
                     parameters[key_mod] = self.profiles[ikey]
                     parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
 
-            geom = {}
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
-                geom[k] = interpolator(par)
+                plasma[k] = interpolator(par)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Merging
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
-            input_dict = {**controls, **plasma, **geom}
+            input_dict = controls | plasma
 
             for i in range(len(species)):
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            inputsCGYRO[rho] = input_dict
+            input_parameters[rho] = input_dict
 
-        return inputsCGYRO
+        return input_parameters
 
+    def to_gx(self, r=[0.5], r_is_rho = True):
+
+        # <> Function to interpolate a curve <> 
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        # Determine if the input radius is rho toroidal or r/a
+        if r_is_rho:
+            r_interpolation = self.profiles['rho(-)']
+        else:
+            r_interpolation = self.derived['roa']
+            
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+        # Prepare the inputs
+        # ---------------------------------------------------------------------------------------------------------------------------------------
+          
+        # Determine the mass reference
+        mass_ref = 2.0
+            
+
+        import scipy.constants as const
+        p_normalized = self.profiles['ptot(Pa)'] / (8*np.pi) * (2*const.mu_0)
+        betaprim = -(8*np.pi / self.derived['B_unit']**2) * np.gradient(p_normalized, self.derived['roa'])
+        
+        #TODO #to check
+        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
+        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
+
+
+            
+        input_parameters = {}
+        for rho in r:
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Define interpolator at this rho
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            def interpolator(y):
+                return interpolation_function(rho, r_interpolation,y).item()
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Controls come from options
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            
+            controls = GACODEdefaults.addGXcontrol()
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Species come from profiles
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            species = {}
+
+            # Ions
+            for i in range(len(self.Species)):
+
+                nu_ii = self.derived['xnue'] * (self.Species[i]['Z']/self.profiles['ze'][0])**4 * (self.profiles['ni(10^19/m^3)'][:,0]/self.profiles['ne(10^19/m^3)']) * (self.profiles['mass'][i]/self.profiles['masse'][0])**-0.5 * (self.profiles['ti(keV)'][:,0]/self.profiles['te(keV)'])**-1.5
+
+                species[i+1] = {
+                    'z': self.Species[i]['Z'],
+                    'mass': self.Species[i]['A']/mass_ref,
+                    'temp': interpolator(self.derived["tite_all"][:,i]),
+                    'dens': interpolator(self.derived['fi'][:,i]),
+                    'fprim': interpolator(self.derived['aLni'][:,i]),
+                    'tprim': interpolator(self.derived["aLTi"][:,i]),
+                    'vnewk': interpolator(nu_ii),
+                    'type': 'ion',
+                    }
+                
+            # Electrons
+            ie = i+2
+            species[ie] = {
+                    'z': -1.0,
+                    'mass': 0.000272445,
+                    'temp': 1.0,
+                    'dens': 1.0,
+                    'fprim': interpolator(self.derived['aLne']),
+                    'tprim': interpolator(self.derived['aLTe']),
+                    'vnewk': interpolator(self.derived['xnue']),
+                    'type': 'electron'
+                }
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Plasma and geometry
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            plasma = {
+                'nspecies': len(species)-1  # do not count electrons}
+            } 
+
+            parameters = {
+                'beta':     self.derived['betae'],
+                'rhoc':     self.derived['roa'],
+                'Rmaj':     self.derived['Rmajoa'],
+                'R_geo':    self.derived['Rmajoa'] / abs(self.derived['B_unit'] / self.derived['B0']),
+                'shift':    self._deriv_gacode(self.profiles["rmaj(m)"]),
+                'qinp':     np.abs(self.profiles["q(-)"]),
+                'shat':     self.derived["s_hat"],
+                'akappa':    self.profiles["kappa(-)"],
+                'akappri':  s_kappa,
+                'tri':    self.profiles["delta(-)"],
+                'tripri':   s_delta,
+                'betaprim':    betaprim,
+            }
+            
+            for k in parameters:
+                par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
+                plasma[k] = interpolator(par)
+
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+            # Merging
+            # ---------------------------------------------------------------------------------------------------------------------------------------
+
+            input_dict = controls | plasma
+
+            for i in range(len(species)):
+                for k in species[i+1]:
+                    input_dict[f'{k}_{i+1}'] = species[i+1][k]
+
+            input_parameters[rho] = input_dict
+
+        return input_parameters
+    
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):
 

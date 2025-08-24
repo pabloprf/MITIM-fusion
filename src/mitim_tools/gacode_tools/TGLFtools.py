@@ -5,7 +5,7 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from mitim_tools import __version__ as mitim_version
-
+from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools import TGYROtools
 from mitim_tools.misc_tools import (
     IOtools,
@@ -3263,13 +3263,14 @@ def reduceToControls(dict_all):
 
     return controls, plasma
 
-
 class TGLFinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        super().__init__(file=file)
-
-        self.code = 'TGLF'
-        self.n_species = "NS"
+        super().__init__(
+            file=file,
+            controls_file= __mitimroot__ / "templates" / "input.tglf.controls",
+            code = 'TGLF',
+            n_species = 'NS'
+        )
 
     def process(self, input_dict):
 

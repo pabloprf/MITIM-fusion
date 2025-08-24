@@ -1091,7 +1091,7 @@ def modifyInputs(
         print("\t- Input file was not modified by code_settings, using what was there before",typeMsg="i")
 
     # Make all upper case
-    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
+    #extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Change with external options -> Input directly, not as multiplier
@@ -1873,10 +1873,12 @@ class GACODEoutput:
         print("No unnormalization implemented.")
 
 class GACODEinput:
-    def __init__(self, file=None, controls_file=None):
+    def __init__(self, file=None, controls_file=None, code='', n_species=None):
         self.file = IOtools.expandPath(file) if isinstance(file, (str, Path)) else None
         
         self.controls_file = controls_file
+        self.code = code
+        self.n_species = n_species
 
         if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
@@ -1887,10 +1889,7 @@ class GACODEinput:
         input_dict = buildDictFromInput(file_txt)
 
         self.process(input_dict)
-        
-        self.code = ''
-        self.n_species = None
-    
+
     @classmethod
     def initialize_in_memory(cls, input_dict):
         instance = cls()

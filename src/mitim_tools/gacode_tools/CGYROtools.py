@@ -1970,11 +1970,12 @@ class CGYRO(GACODErun.gacode_simulation):
 
 class CGYROinput(GACODErun.GACODEinput):
     def __init__(self, file=None):
-        super().__init__(file=file, controls_file= __mitimroot__ / "templates" / "input.cgyro.controls")
-        
-        self.code = "CGYRO"
-        self.n_species = 'N_SPECIES'
-
+        super().__init__(
+            file=file,
+            controls_file= __mitimroot__ / "templates" / "input.cgyro.controls",
+            code="CGYRO",
+            n_species='N_SPECIES',
+        )
 
 def _2D_mosaic(n_times):
 

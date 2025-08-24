@@ -1106,7 +1106,9 @@ def create_slurm_execution_files(
     commandSBATCH.append('echo ""')
     commandSBATCH.append("")
 
-    full_command = [modules_remote] if (modules_remote is not None) else []
+    # If modules, add them, but also make sure I expand the potential aliases that they may have!
+    full_command = ["shopt -s expand_aliases",modules_remote] if (modules_remote is not None) else []
+    
     full_command.extend(command)
     for c in full_command:
         commandSBATCH.append(c)

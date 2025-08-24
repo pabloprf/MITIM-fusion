@@ -55,9 +55,15 @@ def addTGLFcontrol(TGLFsettings, NS=2, minimal=False):
 
 def addNEOcontrol(*args, **kwargs):
 
-    NEOoptions = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
+    options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
     
-    return NEOoptions
+    return options
+
+def addGXcontrol(*args, **kwargs):
+
+    options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
+    
+    return options
 
 def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 
