@@ -92,15 +92,15 @@ class GX(GACODErun.gacode_simulation):
 
         ax1.set_title('Electron heat flux')
         ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
-        ax1.legend(loc='best', prop={'size': 8})
+        ax1.legend(loc='best', prop={'size': 12})
 
         ax2.set_title('Ion heat flux')
         ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
-        ax2.legend(loc='best', prop={'size': 8})
+        ax2.legend(loc='best', prop={'size': 12})
 
         ax3.set_title('Electron particle flux')
         ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
-        ax3.legend(loc='best', prop={'size': 8})
+        ax3.legend(loc='best', prop={'size': 12})
         
         plt.tight_layout()
 
@@ -118,9 +118,12 @@ class GX(GACODErun.gacode_simulation):
         for label in labels:
             for irho in range(len(self.rhos)):
                 c = self.results[label]['GXout'][irho]
+                
+                typeLs = '-' if c.t.shape[0]>20 else '-s'
+                
                 for iky in range(len(c.ky)):
-                    ax1.plot(c.t, c.w[:, iky], label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
-                    ax2.plot(c.t, c.g[:, iky], label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
+                    ax1.plot(c.t, c.w[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
+                    ax2.plot(c.t, c.g[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
                     i += 1
                     
         for ax in [ax1, ax2]:
@@ -140,8 +143,8 @@ class GX(GACODErun.gacode_simulation):
         for label in labels:
             for irho in range(len(self.rhos)):
                 c = self.results[label]['GXout'][irho]
-                ax3.plot(c.ky, c.w[-1, :], label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                ax4.plot(c.ky, c.g[-1, :], label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                ax3.plot(c.ky, c.w[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                ax4.plot(c.ky, c.g[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
                 i += 1
 
         for ax in [ax3, ax4]:
@@ -150,8 +153,10 @@ class GX(GACODErun.gacode_simulation):
             GRAPHICStools.addDenseAxis(ax)
 
         ax3.set_ylabel("Real frequency")
-        ax3.legend(loc='best', prop={'size': 4})
+        ax3.legend(loc='best', prop={'size': 12})
+        ax3.axhline(y=0, color='k', linestyle='--', linewidth=1)
         ax4.set_ylabel("Growth rate")
+        ax4.set_ylim(bottom=0)
 
         plt.tight_layout()
 
@@ -182,13 +187,13 @@ class GXinput(GACODErun.GACODEinput):
                 '': 
                     [ ['debug'], [] ],
                 '[Dimensions]': 
-                    [ ['ntheta', 'nperiod', 'ny', 'nx', 'nhermite', 'nlaguerre', 'nspecies'], [] ],
+                    [ ['ntheta', 'nperiod', 'ny', 'nx', 'nhermite', 'nlaguerre'], ['nspecies'] ],
                 '[Domain]':
                     [ ['y0', 'boundary'], [] ],
                 '[Physics]': 
                     [ ['nonlinear_mode', 'ei_colls'], ['beta'] ],
                 '[Time]':
-                    [ ['t_max', 'scheme'], [] ],
+                    [ ['t_max', 'scheme', 'dt', 'nstep'], [] ],
                 '[Initialization]':
                     [ ['ikpar_init', 'init_field', 'init_amp', 'gaussian_init'], [] ],
                 '[Geometry]':
@@ -244,11 +249,13 @@ class GXinput(GACODErun.GACODEinput):
         f.write(f'{name}\n')
         for p in param[0]:
             if p in self.controls:
-                f.write(f" {p.ljust(23)} = {_fmt_value(self.controls[p])}\n")
+                if self.controls[p] is not None:
+                    f.write(f" {p.ljust(23)} = {_fmt_value(self.controls[p])}\n")
                 param_written.append(p)
         for p in param[1]:
             if p in self.plasma:
-                f.write(f" {p.ljust(23)} = {_fmt_value(self.plasma[p])}\n")
+                if self.plasma[p] is not None:
+                    f.write(f" {p.ljust(23)} = {_fmt_value(self.plasma[p])}\n")
                 param_written.append(p)
         f.write(f'\n')
 
@@ -281,41 +288,41 @@ class GXinput(GACODErun.GACODEinput):
             return _fmt_num(val)
 
         self.num_recorded = 0
-        for i in range(100):
+        for i in range(1000):
             if f"z_{i+1}" in self.plasma:
                 self.num_recorded += 1
             else:
                 break
 
-        z, dens, temp, mass, fprim, tprim, vnewk, typeS = '[ ', '[ ', '[ ', '[ ', '[ ', '[ ', '[ ', '[ '
+        z, dens, temp, mass, fprim, tprim, vnewk, typeS = '[  ', '[  ', '[  ', '[  ', '[  ', '[  ', '[  ', '[  '
         for i in range(self.num_recorded):
-            typeS += f'"{_fmt_value(self.plasma[f"type_{i+1}"])}", '
-            z += f'{_fmt_value(self.plasma[f"z_{i+1}"])}, '
-            mass += f'{_fmt_value(self.plasma[f"mass_{i+1}"])}, '
-            dens += f'{_fmt_value(self.plasma[f"dens_{i+1}"])}, '
-            temp += f'{_fmt_value(self.plasma[f"temp_{i+1}"])}, '
-            fprim += f'{_fmt_value(self.plasma[f"fprim_{i+1}"])}, '
-            tprim += f'{_fmt_value(self.plasma[f"tprim_{i+1}"])}, '
-            vnewk += f'{_fmt_value(self.plasma[f"vnewk_{i+1}"])}, '
+            typeS += f'"{_fmt_value(self.plasma[f"type_{i+1}"])}",   '
+            z += f'{_fmt_value(self.plasma[f"z_{i+1}"])},   '
+            mass += f'{_fmt_value(self.plasma[f"mass_{i+1}"])},   '
+            dens += f'{_fmt_value(self.plasma[f"dens_{i+1}"])},   '
+            temp += f'{_fmt_value(self.plasma[f"temp_{i+1}"])},   '
+            fprim += f'{_fmt_value(self.plasma[f"fprim_{i+1}"])},   '
+            tprim += f'{_fmt_value(self.plasma[f"tprim_{i+1}"])},   '
+            vnewk += f'{_fmt_value(self.plasma[f"vnewk_{i+1}"])},   '
             
             param_written.append(f"type_{i+1}")
             param_written.append(f"z_{i+1}")
+            param_written.append(f"mass_{i+1}")
             param_written.append(f"dens_{i+1}")
             param_written.append(f"temp_{i+1}")
-            param_written.append(f"mass_{i+1}")
             param_written.append(f"fprim_{i+1}")
             param_written.append(f"tprim_{i+1}")
             param_written.append(f"vnewk_{i+1}")
 
         f.write("[species]\n")
-        f.write(f" z     = {z[:-2]} ]\n")
-        f.write(f" dens  = {dens[:-2]} ]\n")
-        f.write(f" temp  = {temp[:-2]} ]\n")
-        f.write(f" mass  = {mass[:-2]} ]\n")
-        f.write(f" fprim = {fprim[:-2]} ]\n")
-        f.write(f" tprim = {tprim[:-2]} ]\n")
-        f.write(f" vnewk = {vnewk[:-2]} ]\n")
-        f.write(f" type  = {typeS[:-2]} ]\n")
+        f.write(f" z     = {z[:-4]}  ]\n")
+        f.write(f" dens  = {dens[:-4]}  ]\n")
+        f.write(f" temp  = {temp[:-4]}  ]\n")
+        f.write(f" mass  = {mass[:-4]}  ]\n")
+        f.write(f" fprim = {fprim[:-4]}  ]\n")
+        f.write(f" tprim = {tprim[:-4]}  ]\n")
+        f.write(f" vnewk = {vnewk[:-4]}  ]\n")
+        f.write(f" type  = {typeS[:-4]}  ]\n")
         f.write("\n")
 
         return param_written
