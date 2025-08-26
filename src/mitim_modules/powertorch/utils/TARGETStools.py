@@ -119,7 +119,7 @@ class power_targets:
         self.powerstate.plasma["QeMWm2"] = self.powerstate.plasma["QeMWm2_fixedtargets"] + self.P[: self.P.shape[0]//2, :] # MW/m^2
         self.powerstate.plasma["QiMWm2"] = self.powerstate.plasma["QiMWm2_fixedtargets"] + self.P[self.P.shape[0]//2 :, :] # MW/m^2
         self.powerstate.plasma["Ge1E20m2"] = self.powerstate.plasma["Ge_fixedtargets"]    # 1E20/s/m^2
-        self.powerstate.plasma["CZ_raw"] = self.powerstate.plasma["GZ_fixedtargets"]    # 1E20/s/m^2
+        self.powerstate.plasma["GZ1E20m2"] = self.powerstate.plasma["GZ_fixedtargets"]    # 1E20/s/m^2
         self.powerstate.plasma["MtJm2"]     = self.powerstate.plasma["MtJm2_fixedtargets"]    # J/m^2
 
         if forceZeroParticleFlux:
@@ -127,13 +127,13 @@ class power_targets:
 
         # Convective fluxes
         self.powerstate.plasma["Ce"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["Ge1E20m2"])  # MW/m^2
-        self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["CZ_raw"])  # MW/m^2
+        self.powerstate.plasma["CZ"] = PLASMAtools.convective_flux(self.powerstate.plasma["te"], self.powerstate.plasma["GZ1E20m2"])  # MW/m^2
 
         # **************************************************************************************************
         # Error
         # **************************************************************************************************
 
-        variables_to_error = ["QeMWm2", "QiMWm2", "Ce", "CZ", "MtJm2", "Ge1E20m2", "CZ_raw"]
+        variables_to_error = ["QeMWm2", "QiMWm2", "Ce", "CZ", "MtJm2", "Ge1E20m2", "GZ1E20m2"]
 
         for i in variables_to_error:
             self.powerstate.plasma[i + "_stds"] = abs(self.powerstate.plasma[i]) * relative_error_assumed / 100 

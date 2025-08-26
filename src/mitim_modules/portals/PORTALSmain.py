@@ -192,8 +192,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Selection of model
         if CGYROrun:
-            # from mitim_modules.powertorch.physics_models.transport_cgyroneo import cgyroneo_model as transport_evaluator
-            from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model as transport_evaluator
+            from mitim_modules.powertorch.physics_models.transport_cgyroneo import cgyroneo_model as transport_evaluator
         else:
             from mitim_modules.powertorch.physics_models.transport_tglfneo import tglfneo_model as transport_evaluator
 

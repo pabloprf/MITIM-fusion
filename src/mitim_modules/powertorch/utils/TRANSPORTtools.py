@@ -16,7 +16,7 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     containing the simulation results. JSON should look like:
     
     {
-        'r/a': ...
+        
         'fluxes_mean': 
             {
                 'QeMWm2': ...
@@ -35,13 +35,13 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                 'MtJm2': ...
                 'QieMWm3': ...
             },
-        'additional': ...
+        'additional_info': {
+                'rho': rho.tolist(),
+            }
     }
     '''
     
     with open(self.folder / file_name, 'w') as f:
-
-        rho = self.powerstate.plasma["rho"][0, 1:].cpu().numpy()
 
         fluxes_mean = {}
         fluxes_stds = {}
@@ -51,10 +51,11 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
             fluxes_stds[var] = self.__dict__[f"{var}_tr_{suffix}_stds"].tolist()
 
         json_dict = {
-            'r/a': rho.tolist(),
             'fluxes_mean': fluxes_mean,
             'fluxes_stds': fluxes_stds,
-            'additional': {
+            'additional_info': {
+                'rho': self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist(),
+                'roa': self.powerstate.plasma["roa"][0, 1:].cpu().numpy().tolist(),
             }
         }
 

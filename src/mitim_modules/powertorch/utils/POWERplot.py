@@ -51,9 +51,9 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     if "nZ" in self.ProfilesPredicted:
 
         # If this model provides the raw particle flux, go for it
-        if 'CZ_raw_tr' in self.plasma:
+        if 'GZ1E20m2_tr' in self.plasma:
             set_plots.append(
-                [   'nZ', 'aLnZ', 'CZ_raw_tr', 'CZ_raw',
+                [   'nZ', 'aLnZ', 'GZ1E20m2_tr', 'GZ1E20m2',
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:

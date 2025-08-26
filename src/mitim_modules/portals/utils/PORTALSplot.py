@@ -256,7 +256,7 @@ def PORTALSanalyzer_plotMetrics(
             if axnZ_f is not None:
 
                 axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
-                axnZ_f.plot(rho, power.plasma['CZ_raw'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
@@ -3013,7 +3013,7 @@ def plotFluxComparison(
     Qe_tar = power.plasma['QeMWm2'].cpu().numpy()[0][ixF:]
     Qi_tar = power.plasma['QiMWm2'].cpu().numpy()[0][ixF:]
     Ge_tar = power.plasma['Ge1E20m2'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
-    GZ_tar = power.plasma['CZ_raw'].cpu().numpy()[0][ixF:]
+    GZ_tar = power.plasma['GZ1E20m2'].cpu().numpy()[0][ixF:]
     Mt_tar = power.plasma['MtJm2'].cpu().numpy()[0][ixF:]
 
     # Plot ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
