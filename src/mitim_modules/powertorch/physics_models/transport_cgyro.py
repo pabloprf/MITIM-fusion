@@ -22,7 +22,7 @@ class cgyro_model(transport_tgyro.tgyro_model):
         powerstate_orig = self._trick_cgyro(tgyro)
 
         # Process results
-        self._postprocess(tgyro, "cgyro_neo")
+        self._postprocess_tgyro(tgyro, "cgyro_neo")
 
         # Some checks
         print("\t- Checking model modifications:")
