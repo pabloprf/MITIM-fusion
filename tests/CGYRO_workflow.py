@@ -25,7 +25,7 @@ cgyro.run(
     code_settings=0,
     extraOptions={
         'KY':0.5,
-        'MAX_TIME': 10.0, # Short, I just want to test the run
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
     },
     slurm_setup={
         'cores':8
@@ -42,9 +42,8 @@ cgyro.plot(labels=["cgyro1"])
 
 cgyro.run_scan(
     'scan1',
-    cold_start=cold_start,
     extraOptions={
-        'MAX_TIME': 10.0,
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
     },
     variable='KY',
     varUpDown=[0.3,0.4],

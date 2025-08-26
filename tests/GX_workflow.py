@@ -12,13 +12,13 @@ input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 # Reduce the ion species to just 1
 p = gacode_state(input_gacode)
-p.lumpSpecies(ions_list=[1,2,3,4])
-#
+p.lumpIons()
+# --------------------------------
 
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
 
-gx = GXtools.GX(rhos=[0.5,0.7])
+gx = GXtools.GX(rhos=[0.5, 0.6])
 gx.prep(p, folder)
 
 gx.run(
@@ -26,10 +26,9 @@ gx.run(
     cold_start=cold_start,
     code_settings=0, # Linear
     extraOptions={
-        't_max':500.0,
-        # 'dt': 1.0,  # timestep size (in units of L_ref/vt_ref)
-        # 'nstep': 10,
-        # 'nwrite': 1,
+        't_max':10.0,   # Run up to 50.0 a/c_s
+        'y0' :5.0,     # kymin = 1/y0 = 0.2
+        'ny': 34,       # nky = 1 + (ny-1)/3 = 12 -> ky_range = 0.2 - 2.4
     },
     )
 gx.read('gx1')

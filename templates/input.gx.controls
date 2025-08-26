@@ -6,7 +6,7 @@
 
 [Dimensions]
  ntheta = 32                     # number of points along field line (theta) per 2pi segment    
- nperiod = 2                     # number of 2pi segments along field line is 2*nperiod-1
+ nperiod = 1                     # number of 2pi segments along field line is 2*nperiod-1
  ny = 106                        # number of real-space grid-points in y, nky = 1 +   (ny-1)/3 --> 36 ky modes
  nx = 382                        # number of real-space grid-points in x, nkx = 1 + 2*(nx-1)/3 --> 255 kx modes
 
@@ -23,7 +23,7 @@
 
 [Time]
  t_max = 1000.0                  # end time (in units of L_ref/vt_ref)
- scheme = "rk4"                  # use RK3 timestepping scheme (with adaptive timestepping)
+ scheme = "rk3"                  # use RK3 timestepping scheme (with adaptive timestepping)
 
 [Initialization]
  gaussian_init = true            # initial perturbation is a gaussian in theta
@@ -37,22 +37,27 @@
 [Dissipation]
  closure_model = "none"          # no closure assumptions (just truncation)
  hypercollisions = true          # use hypercollision model
- nu_hyper_m = 0.1                # coefficient of hermite hypercollisions
- p_hyper_m = 6                   # exponent of hermite hypercollisions
- nu_hyper_l = 0.1                # coefficient of laguerre hypercollisions
- p_hyper_l = 6                   # exponent of laguerre hypercollisions
-
  hyper = true                    # use hyperdiffusion
- D_hyper = 0.05                  # coefficient of hyperdiffusion
+ HB_hyper = false                # use Hammett-Belli hyperdiffusivity model
+
+ nu_hyper_m = 0.5                # coefficient of hermite hypercollisions
+ nu_hyper_l = 0.5                # coefficient of laguerre hypercollisions
+ D_hyper = 0.5                   # coefficient of hyperdiffusion
+ p_hyper_m = 6                   # exponent of hermite hypercollisions
+ p_hyper_l = 6                   # exponent of laguerre hypercollisions
  p_hyper = 2                     # exponent of hyperdiffusion is 2*p_hyper = 4
+ D_H = 0.5                       # coefficient of H-B hyperdiffusion
+ w_osc = 0.0                     # frequency parameter in the H-B model
+ p_HB = 2                        # exponent for the H-B model
 
 [Restart]
  restart = false
  save_for_restart = true
- nsave                   = 100   # save restart file every nsave timesteps
+ nsave = 100                     # save restart file every nsave timesteps
 
 [Diagnostics]
- nwrite = 1000                   # write diagnostics every nwrite timesteps
+ nwrite = 100                    # write diagnostics every nwrite timesteps (this is NOT a/c_s) (=1 doesn't work)
  omega = true                    # compute and write linear growth rate and frequency
  fluxes = true                   # compute and write heat and particle fluxes
  fields = true                   # compute and write electric and magnetic fields
+ moments = true                  # write moments on the grid
