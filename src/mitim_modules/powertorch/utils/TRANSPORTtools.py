@@ -1,11 +1,66 @@
+import json
+from matplotlib.pylab import f
 import torch
 import numpy as np
+from functools import partial
 import copy
 import shutil
 from mitim_tools.misc_tools import IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
+def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
+    '''
+    For tracking and reproducibility (e.g. external runs), we want to write a json file
+    containing the simulation results. JSON should look like:
+    
+    {
+        'r/a': ...
+        'fluxes_mean': 
+            {
+                'QeMWm2': ...
+                'QiMWm2': ...
+                'Ge1E20m2': ...
+                'GZ1E20m2': ...
+                'MtJm2': ...
+                'QieMWm3': ...
+            },
+        'fluxes_stds': 
+            {
+                'QeMWm2': ...
+                'QiMWm2': ...
+                'Ge1E20m2': ...
+                'GZ1E20m2': ...
+                'MtJm2': ...
+                'QieMWm3': ...
+            },
+        'additional': ...
+    }
+    '''
+    
+    with open(self.folder / file_name, 'w') as f:
+
+        rho = self.powerstate.plasma["rho"][0, 1:].cpu().numpy()
+
+        fluxes_mean = {}
+        fluxes_stds = {}
+
+        for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
+            fluxes_mean[var] = self.__dict__[f"{var}_tr_{suffix}"].tolist()
+            fluxes_stds[var] = self.__dict__[f"{var}_tr_{suffix}_stds"].tolist()
+
+        json_dict = {
+            'r/a': rho.tolist(),
+            'fluxes_mean': fluxes_mean,
+            'fluxes_stds': fluxes_stds,
+            'additional': {
+            }
+        }
+
+        json.dump(json_dict, f, indent=4)
+
+    print(f"\t* Written JSON with {suffix} information to {self.folder / file_name}")
 
 class power_transport:
     '''
@@ -119,9 +174,28 @@ class power_transport:
 
     def evaluate(self):
 
+        '''
+        ******************************************************************************************************
+        Evaluate neoclassical and turbulent transport. 
+        These functions use a hook to write the .json files to communicate the results to powerstate.plasma
+        ******************************************************************************************************
+        '''
         neoclassical = self.evaluate_neoclassical()
         turbulence = self.evaluate_turbulence()
         
+        '''
+        ******************************************************************************************************
+        From the json to powerstate.plasma
+        ******************************************************************************************************
+        '''
+        self._populate_from_json(file_name = 'fluxes_turb.json', suffix= 'turb')
+        self._populate_from_json(file_name = 'fluxes_neoc.json', suffix= 'neoc')
+
+        '''
+        ******************************************************************************************************
+        Post-process the data: add turb and neoc, tensorize and transformations
+        ******************************************************************************************************
+        '''
         self._postprocess()
 
     def _postprocess(self):
@@ -174,12 +248,28 @@ class power_transport:
                     self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
                 ) * mult
 
+    def _populate_from_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
+        
+        '''
+        Populate the powerstate.plasma with the results from the json file
+        '''
+
+        with open(self.folder / file_name, 'r') as f:
+            json_dict = json.load(f)
+
+        for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
+            self.powerstate.plasma[f"{var}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var])
+            self.powerstate.plasma[f"{var}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var])
+
+        print(f"\t* Populated powerstate.plasma with JSON data from {self.folder / file_name}")
+        
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
+    @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
         '''
-        This needs to populate the following np.arrays in self.powerstate.plasma, with dimensions of rho:
+        This needs to populate the following np.arrays in self., with dimensions of rho:
             - QeMWm2_tr_turb
             - QiMWm2_tr_turb
             - Ge1E20m2_tr_turb
@@ -202,12 +292,13 @@ class power_transport:
             'QieMWm3'
         ]:
 
-            self.powerstate.plasma[f"{var}_tr_turb"] = np.zeros(dim)
-            self.powerstate.plasma[f"{var}_tr_turb_stds"] = np.zeros(dim)
-        
+            self.__dict__[f"{var}_tr_turb"] = np.zeros(dim)
+            self.__dict__[f"{var}_tr_turb_stds"] = np.zeros(dim)
+    
+    @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))    
     def evaluate_neoclassical(self):
         '''
-        This needs to populate the following np.arrays in self.powerstate.plasma:
+        This needs to populate the following np.arrays in self.:
             - QeMWm2_tr_neoc
             - QiMWm2_tr_neoc
             - Ge1E20m2_tr_neoc
@@ -228,5 +319,5 @@ class power_transport:
             'MtJm2',
         ]:
 
-            self.powerstate.plasma[f"{var}_tr_neoc"] = np.zeros(dim)
-            self.powerstate.plasma[f"{var}_tr_neoc_stds"] = np.zeros(dim)
+            self.__dict__[f"{var}_tr_neoc"] = np.zeros(dim)
+            self.__dict__[f"{var}_tr_neoc_stds"] = np.zeros(dim)

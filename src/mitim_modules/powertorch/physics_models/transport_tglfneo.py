@@ -2,6 +2,7 @@
 import shutil
 import numpy as np
 from mitim_tools.misc_tools import IOtools
+from functools import partial
 from mitim_tools.gacode_tools import TGLFtools, NEOtools
 from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -17,7 +18,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     # ************************************************************************************
     # Private functions for the evaluation
     # ************************************************************************************
-
+    @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -125,33 +126,34 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
 
         # ------------------------------------------------------------------------------------------------------------------------
-        # Pass the information to POWERSTATE
+        # Pass the information
         # ------------------------------------------------------------------------------------------------------------------------
         
-        self.powerstate.plasma["QeMWm2_tr_turb"] = Flux_mean[0]
-        self.powerstate.plasma["QeMWm2_tr_turb_stds"] = Flux_std[0]
+        self.QeMWm2_tr_turb = Flux_mean[0]
+        self.QeMWm2_tr_turb_stds = Flux_std[0]
                 
-        self.powerstate.plasma["QiMWm2_tr_turb"] = Flux_mean[1]
-        self.powerstate.plasma["QiMWm2_tr_turb_stds"] = Flux_std[1]
+        self.QiMWm2_tr_turb = Flux_mean[1]
+        self.QiMWm2_tr_turb_stds = Flux_std[1]
                 
-        self.powerstate.plasma["Ge1E20m2_tr_turb"] = Flux_mean[2]
-        self.powerstate.plasma["Ge1E20m2_tr_turb_stds"] = Flux_std[2]        
+        self.Ge1E20m2_tr_turb = Flux_mean[2]
+        self.Ge1E20m2_tr_turb_stds = Flux_std[2]        
         
-        self.powerstate.plasma["GZ1E20m2_tr_turb"] = Flux_mean[3]           
-        self.powerstate.plasma["GZ1E20m2_tr_turb_stds"] = Flux_std[3]       
+        self.GZ1E20m2_tr_turb = Flux_mean[3]           
+        self.GZ1E20m2_tr_turb_stds = Flux_std[3]       
 
-        self.powerstate.plasma["MtJm2_tr_turb"] = Flux_mean[4]
-        self.powerstate.plasma["MtJm2_tr_turb_stds"] = Flux_std[4] 
+        self.MtJm2_tr_turb = Flux_mean[4]
+        self.MtJm2_tr_turb_stds = Flux_std[4] 
 
         if provideTurbulentExchange:
-            self.powerstate.plasma["QieMWm3_tr_turb"] = Flux_mean[5]
-            self.powerstate.plasma["QieMWm3_tr_turb_stds"] = Flux_std[5]
+            self.QieMWm3_tr_turb = Flux_mean[5]
+            self.QieMWm3_tr_turb_stds = Flux_std[5]
         else:
-            self.powerstate.plasma["QieMWm3_tr_turb"] = Flux_mean[5] * 0.0
-            self.powerstate.plasma["QieMWm3_tr_turb_stds"] = Flux_std[5] * 0.0
+            self.QieMWm3_tr_turb = Flux_mean[5] * 0.0
+            self.QieMWm3_tr_turb_stds = Flux_std[5] * 0.0
 
         return tglf
 
+    @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         
         # Options
@@ -188,20 +190,24 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         GZ = np.array([neo.results['base']['NEOout'][i].GiAll_unn[impurityPosition] for i in range(len(rho_locations))])
         Mt = np.array([neo.results['base']['NEOout'][i].Mt_unn for i in range(len(rho_locations))])
         
-        self.powerstate.plasma["QeMWm2_tr_neoc"] = Qe
-        self.powerstate.plasma["QiMWm2_tr_neoc"] = Qi
-        self.powerstate.plasma["Ge1E20m2_tr_neoc"] = Ge
-        self.powerstate.plasma["GZ1E20m2_tr_neoc"] = GZ
-        self.powerstate.plasma["MtJm2_tr_neoc"] = Mt
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Pass the information
+        # ------------------------------------------------------------------------------------------------------------------------
         
-        self.powerstate.plasma["QeMWm2_tr_neoc_stds"] = abs(Qe) * percentError[1]/100.0
-        self.powerstate.plasma["QiMWm2_tr_neoc_stds"] = abs(Qi) * percentError[1]/100.0
-        self.powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = abs(Ge) * percentError[1]/100.0
-        self.powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = abs(GZ) * percentError[1]/100.0
-        self.powerstate.plasma["MtJm2_tr_neoc_stds"] = abs(Mt) * percentError[1]/100.0
+        self.QeMWm2_tr_neoc = Qe
+        self.QiMWm2_tr_neoc = Qi
+        self.Ge1E20m2_tr_neoc = Ge
+        self.GZ1E20m2_tr_neoc = GZ
+        self.MtJm2_tr_neoc = Mt
+        
+        self.QeMWm2_tr_neoc_stds = abs(Qe) * percentError[1]/100.0
+        self.QiMWm2_tr_neoc_stds = abs(Qi) * percentError[1]/100.0
+        self.Ge1E20m2_tr_neoc_stds = abs(Ge) * percentError[1]/100.0
+        self.GZ1E20m2_tr_neoc_stds = abs(GZ) * percentError[1]/100.0
+        self.MtJm2_tr_neoc_stds = abs(Mt) * percentError[1]/100.0
 
-        self.powerstate.plasma["QieMWm3_tr_neoc"] = Qe * 0.0
-        self.powerstate.plasma["QieMWm3_tr_neoc_stds"] = Qe * 0.0
+        self.QieMWm3_tr_neoc = Qe * 0.0
+        self.QieMWm3_tr_neoc_stds = Qe * 0.0
 
         return neo
                 
