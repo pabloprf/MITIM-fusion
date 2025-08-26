@@ -67,7 +67,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             
                 tglf.run(
                     'base_tglf',
-                    Settings=TGLFsettings,
+                    code_settings=TGLFsettings,
                     extraOptions=extraOptions,
                     ApplyCorrections=False,
                     launchSlurm= launchMODELviaSlurm,
@@ -187,7 +187,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         Qe = np.array([neo.results['base']['NEOout'][i].Qe_unn for i in range(len(rho_locations))])
         Qi = np.array([neo.results['base']['NEOout'][i].Qi_unn for i in range(len(rho_locations))])
         Ge = np.array([neo.results['base']['NEOout'][i].Ge_unn for i in range(len(rho_locations))])
-        GZ = np.array([neo.results['base']['NEOout'][i].GiAll_unn[impurityPosition] for i in range(len(rho_locations))])
+        GZ = np.array([neo.results['base']['NEOout'][i].GiAll_unn[impurityPosition-1] for i in range(len(rho_locations))])
         Mt = np.array([neo.results['base']['NEOout'][i].Mt_unn for i in range(len(rho_locations))])
         
         # ------------------------------------------------------------------------------------------------------------------------
