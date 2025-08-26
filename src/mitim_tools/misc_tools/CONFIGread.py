@@ -125,6 +125,7 @@ def machineSettings(
         "folderWork": scratch,
         "slurm": {},
         "cores_per_node": s[machine].get("cores_per_node", None),
+        "gpus_per_node": s[machine].get("gpus_per_node", 0),
         "isTunnelSameMachine": (
             bool(s[machine]["isTunnelSameMachine"])
             if "isTunnelSameMachine" in s[machine]

@@ -23,7 +23,8 @@
         "username":   "exampleusername",
         "scratch":    "/Users/exampleusername/scratch/",
         "modules":    "",
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
     },
     "perlmutter": {
         "machine":          "perlmutter.nersc.gov", 
@@ -38,7 +39,8 @@
             "exclusive":    false,
             "email":      "optional@email"
         },
-        "cores_per_node":  32
+        "cores_per_node":  32,
+        "gpus_per_node": 0
     },
     "engaging": {
         "machine":          "eofe7.mit.edu", 
@@ -49,7 +51,8 @@
         },
         "scratch":          "/nobackup1/exampleusername/",
         "modules":    "",
-        "cores_per_node":  32
+        "cores_per_node":  32,
+        "gpus_per_node": 0
     },
     "mfews": {
         "machine":    "mfews02.psfc.mit.edu", 
@@ -57,7 +60,8 @@
         "port":            9224,
         "scratch":    "/home/exampleusername/scratch/",
         "modules":    "",
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
     },
     "globus": {
         "username":   "exampleusername",
@@ -78,6 +82,7 @@
             "email":      "optional@email",
             "exclude":      "node584"
         },
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
     }
 }
