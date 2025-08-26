@@ -15,16 +15,22 @@ class tgyro_model(TRANSPORTtools.power_transport):
     def produce_profiles(self):
         self._produce_profiles()
 
-    # TGYRO model is historical (#TODO #TOREMOVE) and therefore I'm not using the same evaluate as the rest, just keep it separate
-    def evaluate(self):
-
-        tgyro = self._evaluate_tglf_neo()
-
-        self._postprocess(tgyro, "tglf_neo")
-
     # ************************************************************************************
     # Private functions for TGLF and NEO evaluations
     # ************************************************************************************
+
+    # Do nothing here
+    def evaluate_neoclassical(self):
+        pass
+
+    # Evaluate both
+    def evaluate_turbulence(self):
+        
+        tgyro = self._evaluate_tglf_neo()
+        self._postprocess(tgyro, "tglf_neo")
+        
+        TRANSPORTtools.write_json(self, file_name = 'fluxes_neoc.json', suffix= 'neoc')
+        TRANSPORTtools.write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
 
     def _evaluate_tglf_neo(self):
 
