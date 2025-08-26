@@ -1417,6 +1417,10 @@ class mitim_state:
 
         self.lumpSpecies(ions_list=self.ion_list_impurities)
 
+    def lumpIons(self):
+
+        self.lumpSpecies(ions_list=self.ion_list_main+self.ion_list_impurities)
+
     def lumpDT(self):
 
         if self.DTplasmaBool:
@@ -2775,7 +2779,7 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             plasma = {
-                'nspecies': len(species)-1  # do not count electrons}
+                'nspecies': len(species)
             } 
 
             parameters = {
