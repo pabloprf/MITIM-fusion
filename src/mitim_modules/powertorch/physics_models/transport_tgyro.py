@@ -27,7 +27,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
     def evaluate_turbulence(self):
         
         tgyro = self._evaluate_tglf_neo()
-        self._postprocess(tgyro, "tglf_neo")
+        self._postprocess_tgyro(tgyro, "tglf_neo")
         
         TRANSPORTtools.write_json(self, file_name = 'fluxes_neoc.json', suffix= 'neoc')
         TRANSPORTtools.write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
@@ -144,7 +144,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
         return tgyro
 
-    def _postprocess(self, tgyro, label):
+    def _postprocess_tgyro(self, tgyro, label):
 
         transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
 
@@ -158,9 +158,9 @@ class tgyro_model(TRANSPORTtools.power_transport):
         impurityPosition = self.powerstate.impurityPosition_transport
 
         # Produce right quantities (TGYRO -> powerstate.plasma)
-        self.powerstate = tgyro_to_powerstate(
+        tgyro_to_powerstate(
+            self,
             tgyro.results[label],
-            self.powerstate,
             Qi_includes_fast=Qi_includes_fast,
             impurityPosition=impurityPosition,
             UseFineGridTargets=UseFineGridTargets,
@@ -899,8 +899,9 @@ def defineReferenceFluxes(
 # This is where the definitions for the summation variables happen for mitim and PORTALSplot
 # ------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def tgyro_to_powerstate(TGYROresults,
-    powerstate,
+def tgyro_to_powerstate(
+    self,
+    TGYROresults,
     forceZeroParticleFlux=False,
     Qi_includes_fast=False,
     impurityPosition=1,
@@ -919,23 +920,19 @@ def tgyro_to_powerstate(TGYROresults,
     if UseFineGridTargets:
         TGYROresults.useFineGridTargets(impurityPosition=impurityPosition)
 
-    nr = powerstate.plasma['rho'].shape[-1]
-    if powerstate.plasma['rho'].shape[-1] != TGYROresults.rho.shape[-1]:
+    nr = self.powerstate.plasma['rho'].shape[-1]
+    if self.powerstate.plasma['rho'].shape[-1] != TGYROresults.rho.shape[-1]:
         print('\t- TGYRO was run with an extra point in the grid, treating it carefully now')
 
     # **********************************
     # *********** Electron Energy Fluxes
     # **********************************
 
-    powerstate.plasma["QeMWm2_tr_turb"] = torch.Tensor(TGYROresults.Qe_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["QeMWm2_tr_neoc"] = torch.Tensor(TGYROresults.Qe_sim_neo[:, :nr]).to(powerstate.dfT)
+    self.QeMWm2_tr_turb = TGYROresults.Qe_sim_turb[0, 1:nr]
+    self.QeMWm2_tr_neoc = TGYROresults.Qe_sim_neo[0, 1:nr]
 
-    powerstate.plasma["QeMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Qe_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["QeMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Qe_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    
-    if provideTargets:
-        powerstate.plasma["QeMWm2"] = torch.Tensor(TGYROresults.Qe_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QeMWm2_stds"] = torch.Tensor(TGYROresults.Qe_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    self.QeMWm2_tr_turb_stds = TGYROresults.Qe_sim_turb_stds[0, 1:nr]
+    self.QeMWm2_tr_neoc_stds = TGYROresults.Qe_sim_neo_stds[0, 1:nr]
 
     # **********************************
     # *********** Ion Energy Fluxes
@@ -943,116 +940,87 @@ def tgyro_to_powerstate(TGYROresults,
 
     if Qi_includes_fast:
 
-        powerstate.plasma["QiMWm2_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QiMWm2_tr_neoc"] = torch.Tensor(TGYROresults.QiIons_sim_neo[:, :nr]).to(powerstate.dfT)
+        self.QiMWm2_tr_turb = TGYROresults.QiIons_sim_turb[0, 1:nr]
+        self.QiMWm2_tr_neoc = TGYROresults.QiIons_sim_neo[0, 1:nr]
         
-        powerstate.plasma["QiMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["QiMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.QiMWm2_tr_turb_stds = TGYROresults.QiIons_sim_turb_stds[0, 1:nr]
+        self.QiMWm2_tr_neoc_stds = TGYROresults.QiIons_sim_neo_stds[0, 1:nr]
 
     else:
 
-        powerstate.plasma["QiMWm2_tr_turb"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QiMWm2_tr_neoc"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr[:, :nr]).to(powerstate.dfT)
+        self.QiMWm2_tr_turb = TGYROresults.QiIons_sim_turb_thr[0, 1:nr]
+        self.QiMWm2_tr_neoc = TGYROresults.QiIons_sim_neo_thr[0, 1:nr]
 
-        powerstate.plasma["QiMWm2_tr_turb_stds"] = torch.Tensor(TGYROresults.QiIons_sim_turb_thr_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-        powerstate.plasma["QiMWm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.QiIons_sim_neo_thr_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-
-    if provideTargets:
-        powerstate.plasma["QiMWm2"] = torch.Tensor(TGYROresults.Qi_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QiMWm2_stds"] = torch.Tensor(TGYROresults.Qi_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.QiMWm2_tr_turb_stds = TGYROresults.QiIons_sim_turb_thr_stds[0, 1:nr]
+        self.QiMWm2_tr_neoc_stds = TGYROresults.QiIons_sim_neo_thr_stds[0, 1:nr]
 
     # **********************************
     # *********** Momentum Fluxes
     # **********************************
 
-    powerstate.plasma["MtJm2_tr_turb"] = torch.Tensor(TGYROresults.Mt_sim_turb[:, :nr]).to(powerstate.dfT) # So far, let's include fast in momentum
-    powerstate.plasma["MtJm2_tr_neoc"] = torch.Tensor(TGYROresults.Mt_sim_neo[:, :nr]).to(powerstate.dfT)
+    self.MtJm2_tr_turb = TGYROresults.Mt_sim_turb[0, 1:nr] # So far, let's include fast in momentum
+    self.MtJm2_tr_neoc = TGYROresults.Mt_sim_neo[0, 1:nr]
 
-    powerstate.plasma["MtJm2_tr_turb_stds"] = torch.Tensor(TGYROresults.Mt_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["MtJm2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Mt_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+    self.MtJm2_tr_turb_stds = TGYROresults.Mt_sim_turb_stds[0, 1:nr]
+    self.MtJm2_tr_neoc_stds = TGYROresults.Mt_sim_neo_stds[0, 1:nr]
     
-    if provideTargets:
-        powerstate.plasma["MtJm2"] = torch.Tensor(TGYROresults.Mt_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["MtJm2_stds"] = torch.Tensor(TGYROresults.Mt_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-
     # **********************************
     # *********** Particle Fluxes
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["Ge1E20m2_tr_turb"] = torch.Tensor(TGYROresults.Ge_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ge1E20m2_tr_neoc"] = torch.Tensor(TGYROresults.Ge_sim_neo[:, :nr]).to(powerstate.dfT)
+    self.Ge1E20m2_tr_turb = TGYROresults.Ge_sim_turb[0, 1:nr]
+    self.Ge1E20m2_tr_neoc = TGYROresults.Ge_sim_neo[0, 1:nr]
 
-    powerstate.plasma["Ge1E20m2_tr_turb_stds"] = torch.Tensor(TGYROresults.Ge_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ge1E20m2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ge_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    
-    if provideTargets:
-        powerstate.plasma["Ge1E20m2"] = torch.Tensor(TGYROresults.Ge_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ge1E20m2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-
-
-    powerstate.plasma["Ce_tr_turb"] = torch.Tensor(TGYROresults.Ce_sim_turb[:, :nr]).to(powerstate.dfT)
-    powerstate.plasma["Ce_tr_neoc"] = torch.Tensor(TGYROresults.Ce_sim_neo[:, :nr]).to(powerstate.dfT)
-
-    powerstate.plasma["Ce_tr_turb_stds"] = torch.Tensor(TGYROresults.Ce_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    powerstate.plasma["Ce_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ce_sim_neo_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-    
-    if provideTargets:
-        powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["Ce_stds"] = torch.Tensor(TGYROresults.Ce_tar_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
-
+    self.Ge1E20m2_tr_turb_stds = TGYROresults.Ge_sim_turb_stds[0, 1:nr]
+    self.Ge1E20m2_tr_neoc_stds = TGYROresults.Ge_sim_neo_stds[0, 1:nr]
+        
     # **********************************
     # *********** Impurity Fluxes
     # **********************************
 
     # Store raw fluxes for better plotting later
-    powerstate.plasma["GZ1E20m2_tr_turb"] = torch.Tensor(TGYROresults.Gi_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) 
-    powerstate.plasma["GZ1E20m2_tr_neoc"] = torch.Tensor(TGYROresults.Gi_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) 
+    self.GZ1E20m2_tr_turb = TGYROresults.Gi_sim_turb[impurityPosition, 0, 1:nr]
+    self.GZ1E20m2_tr_neoc = TGYROresults.Gi_sim_neo[impurityPosition, 0, 1:nr]
     
-    powerstate.plasma["GZ1E20m2_tr_turb_stds"] = torch.Tensor(TGYROresults.Gi_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-    powerstate.plasma["GZ1E20m2_tr_neoc_stds"] = torch.Tensor(TGYROresults.Gi_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-
-    if provideTargets:
-        powerstate.plasma["GZ1E20m2"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, :, :nr]).to(powerstate.dfT) 
-        powerstate.plasma["GZ1E20m2_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT)  if TGYROresults.tgyro_stds else None
-
-    powerstate.plasma["CZ_tr_turb"] = torch.Tensor(TGYROresults.Ci_sim_turb[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-    powerstate.plasma["CZ_tr_neoc"] = torch.Tensor(TGYROresults.Ci_sim_neo[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-
-    powerstate.plasma["CZ_tr_turb_stds"] = torch.Tensor(TGYROresults.Ci_sim_turb_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-    powerstate.plasma["CZ_tr_neoc_stds"] = torch.Tensor(TGYROresults.Ci_sim_neo_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
-    
-    if provideTargets:
-        powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp
-        powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Ci_tar_stds[impurityPosition, :, :nr]).to(powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
+    self.GZ1E20m2_tr_turb_stds = TGYROresults.Gi_sim_turb_stds[impurityPosition, 0, 1:nr]
+    self.GZ1E20m2_tr_neoc_stds = TGYROresults.Gi_sim_neo_stds[impurityPosition, 0, 1:nr]
 
     # **********************************
     # *********** Energy Exchange
     # **********************************
 
     if provideTurbulentExchange:
-        powerstate.plasma["QieMWm3_tr_turb"] = torch.Tensor(TGYROresults.EXe_sim_turb[:, :nr]).to(powerstate.dfT)
-        powerstate.plasma["QieMWm3_tr_turb_stds"] = torch.Tensor(TGYROresults.EXe_sim_turb_stds[:, :nr]).to(powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.QieMWm3_tr_turb = TGYROresults.EXe_sim_turb[0, 1:nr]
+        self.QieMWm3_tr_turb_stds = TGYROresults.EXe_sim_turb_stds[0, 1:nr]
     else:
-        powerstate.plasma["QieMWm3_tr_turb"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
-        powerstate.plasma["QieMWm3_tr_turb_stds"] = powerstate.plasma["QeMWm2_tr_turb"] * 0.0
+        self.QieMWm3_tr_turb = self.QeMWm2_tr_turb * 0.0
+        self.QieMWm3_tr_turb_stds = self.QeMWm2_tr_turb * 0.0
+
+    self.QieMWm3_tr_neoc = self.QeMWm2_tr_turb * 0.0
+    self.QieMWm3_tr_neoc_stds = self.QeMWm2_tr_turb_stds * 0.0
 
     # **********************************
-    # *********** Traget extra
-    # **********************************
+    # *********** Targets
+    # ***********************************
 
-    if forceZeroParticleFlux and provideTargets:
-        powerstate.plasma["Ce"] = powerstate.plasma["Ce"] * 0.0
-        powerstate.plasma["Ce_stds"] = powerstate.plasma["Ce_stds"] * 0.0
+    if provideTargets:
+        self.powerstate.plasma["QeMWm2"] = torch.Tensor(TGYROresults.Qe_tar[0, 1:nr]).to(self.powerstate.dfT)
+        self.powerstate.plasma["QeMWm2_stds"] = torch.Tensor(TGYROresults.Qe_tar_stds[0, 1:nr]).to(self.powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["QiMWm2"] = torch.Tensor(TGYROresults.Qi_tar[0, 1:nr]).to(self.powerstate.dfT)
+        self.powerstate.plasma["QiMWm2_stds"] = torch.Tensor(TGYROresults.Qi_tar_stds[0, 1:nr]).to(self.powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["MtJm2"] = torch.Tensor(TGYROresults.Mt_tar[0, 1:nr]).to(self.powerstate.dfT)
+        self.powerstate.plasma["MtJm2_stds"] = torch.Tensor(TGYROresults.Mt_tar_stds[0, 1:nr]).to(self.powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["Ge1E20m2"] = torch.Tensor(TGYROresults.Ge_tar[0, 1:nr]).to(self.powerstate.dfT)
+        self.powerstate.plasma["Ge1E20m2_stds"] = torch.Tensor(TGYROresults.Ge_tar_stds[0, 1:nr]).to(self.powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["Ce"] = torch.Tensor(TGYROresults.Ce_tar[0, 1:nr]).to(self.powerstate.dfT)
+        self.powerstate.plasma["Ce_stds"] = torch.Tensor(TGYROresults.Ce_tar_stds[0, 1:nr]).to(self.powerstate.dfT) if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["GZ1E20m2"] = torch.Tensor(TGYROresults.Gi_tar[impurityPosition, 0, 1:nr]).to(self.powerstate.dfT) 
+        self.powerstate.plasma["GZ1E20m2_stds"] = torch.Tensor(TGYROresults.Gi_tar_stds[impurityPosition, 0, 1:nr]).to(self.powerstate.dfT)  if TGYROresults.tgyro_stds else None
+        self.powerstate.plasma["CZ"] = torch.Tensor(TGYROresults.Ci_tar[impurityPosition, 0, 1:nr]).to(self.powerstate.dfT) / OriginalFimp
+        self.powerstate.plasma["CZ_stds"] = torch.Tensor(TGYROresults.Ci_tar_stds[impurityPosition, 0, 1:nr]).to(self.powerstate.dfT) / OriginalFimp if TGYROresults.tgyro_stds else None
 
-    # ------------------------------------------------------------------------------------------------------------------------
-    # Sum here turbulence and neoclassical, after modifications
-    # ------------------------------------------------------------------------------------------------------------------------
-
-    quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2', 'Ge1E20m2', 'GZ1E20m2']
-    for ikey in quantities:
-        powerstate.plasma[ikey+"_tr"] = powerstate.plasma[ikey+"_tr_turb"] + powerstate.plasma[ikey+"_tr_neoc"]
-    
-    return powerstate
-
+        if forceZeroParticleFlux:
+            self.powerstate.plasma["Ce"] = self.powerstate.plasma["Ce"] * 0.0
+            self.powerstate.plasma["Ce_stds"] = self.powerstate.plasma["Ce_stds"] * 0.0
 
