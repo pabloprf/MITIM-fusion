@@ -120,7 +120,7 @@ class gacode_simulation:
     ):
         
         if slurm_setup is None:
-            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 5}
+            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 10}
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare inputs
@@ -287,8 +287,8 @@ class gacode_simulation:
             latest_inputsFileDict[irho].anticipate_problems()
 
         # Check cores problem
-        if launchSlurm:
-            self._check_cores(rhosEvaluate, slurm_setup)
+        # if launchSlurm:
+        #     self._check_cores(rhosEvaluate, slurm_setup)
 
         self.FolderSimLast = Folder_sim
             
@@ -319,21 +319,252 @@ class gacode_simulation:
         for subfolder_simulation in code_executor:
             c += len(code_executor[subfolder_simulation])
 
-        if c > 0:
-            run_gacode_simulation(
-                self.FolderGACODE,
-                code_executor,
-                run_specifications=self.run_specifications,
-                filesToRetrieve=filesToRetrieve,
-                minutes=kwargs_run.get("slurm_setup", {}).get("minutes", 5),
-                cores_simulation=kwargs_run.get("slurm_setup", {}).get("cores", self.run_specifications['default_cores']),
-                name=f"{self.run_specifications['code']}_{self.nameRunid}{kwargs_run.get('extra_name', '')}",
-                launchSlurm=kwargs_run.get("launchSlurm", True),
-                attempts_execution=kwargs_run.get("attempts_execution", 1),
-                full_submission=full_submission,
-            )
-        else:
+        if c == 0:
+            
             print(f"\t- {self.run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
+        
+        else:
+            
+            # ----------------------------------------------------------------------------------------------------------------
+            # Run simulation
+            # ----------------------------------------------------------------------------------------------------------------
+            """
+            launchSlurm = True -> Launch as a batch job in the machine chosen
+            launchSlurm = False -> Launch locally as a bash script
+            """
+
+            # Get code info
+            code = self.run_specifications.get('code', 'tglf')
+            input_file = self.run_specifications.get('input_file', 'input.tglf')
+            code_call = self.run_specifications.get('code_call', None)  
+            code_slurm_settings = self.run_specifications.get('code_slurm_settings', None)  
+        
+            # Get execution info
+            minutes = kwargs_run.get("slurm_setup", {}).get("minutes", 5)
+            cores_per_code_call = kwargs_run.get("slurm_setup", {}).get("cores", self.run_specifications['default_cores'])
+            launchSlurm = kwargs_run.get("launchSlurm", True)
+            
+            extraFlag = kwargs_run.get('extra_name', '')
+            name = f"{self.run_specifications['code']}_{self.nameRunid}{extraFlag}"
+            
+            attempts_execution = kwargs_run.get("attempts_execution", 1)
+            
+            tmpFolder = self.FolderGACODE / f"tmp_{code}"
+            IOtools.askNewFolder(tmpFolder, force=True)
+
+            gacode_job = FARMINGtools.mitim_job(tmpFolder)
+
+            gacode_job.define_machine_quick(code,f"mitim_{name}")
+
+            folders, folders_red = [], []
+            for subfolder_sim in code_executor:
+
+                rhos = list(code_executor[subfolder_sim].keys())
+
+                # ---------------------------------------------
+                # Prepare files and folders
+                # ---------------------------------------------
+
+                for i, rho in enumerate(rhos):
+                    print(f"\t- Preparing {code.upper()} execution ({subfolder_sim}) at rho={rho:.4f}")
+
+                    folder_sim_this = tmpFolder / subfolder_sim / f"rho_{rho:.4f}"
+                    folders.append(folder_sim_this)
+
+                    folder_sim_this_rel = folder_sim_this.relative_to(tmpFolder)
+                    folders_red.append(folder_sim_this_rel.as_posix() if gacode_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
+
+                    folder_sim_this.mkdir(parents=True, exist_ok=True)
+
+                    input_file_sim = folder_sim_this / input_file
+                    with open(input_file_sim, "w") as f:
+                        f.write(code_executor[subfolder_sim][rho]["inputs"])
+                        
+            # ---------------------------------------------
+            # Prepare command
+            # ---------------------------------------------
+
+            # Grab machine local limits -------------------------------------------------
+            max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings(code)["cores_per_node"]
+
+            # If the run is local and not slurm, let's check the number of cores
+            if (FARMINGtools.mitim_job.grab_machine_settings(code)["machine"] == "local") and not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
+                
+                cores_in_machine = int(os.cpu_count())
+                cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
+
+                if cores_allocated is not None:
+                    if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
+                        print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        max_cores_per_node = cores_allocated
+                elif cores_in_machine is not None:
+                    if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
+                        print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        max_cores_per_node = cores_in_machine
+                else:
+                    # Default to just 16 just in case
+                    if max_cores_per_node is None: 
+                        max_cores_per_node = 16
+            else:
+                # For remote execution, default to just 16 just in case
+                if max_cores_per_node is None: 
+                    max_cores_per_node = 16
+            # ---------------------------------------------------------------------------
+
+            # Grab the total number of cores of this job --------------------------------
+            total_simulation_executions = len(rhos) * len(code_executor)
+            total_cores_required = int(cores_per_code_call) * total_simulation_executions
+            # ---------------------------------------------------------------------------
+
+            if not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
+                type_of_submission = "bash"
+            elif total_cores_required < max_cores_per_node:
+                type_of_submission = "slurm_standard"
+            elif total_cores_required >= max_cores_per_node:
+                type_of_submission = "slurm_array"
+
+            shellPreCommands = None
+            shellPostCommands = None
+
+            # Simply bash, no slurm
+            if type_of_submission == "bash":
+
+                if cores_per_code_call > max_cores_per_node:
+                    print(f"\t - Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                    max_cores_per_node = cores_per_code_call
+                
+                max_parallel_execution = max_cores_per_node // cores_per_code_call # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
+
+                print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {cores_per_code_call}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
+
+                # Build the bash script with job control enabled and a loop to limit parallel jobs
+                GACODEcommand = "#!/usr/bin/env bash\n"
+                GACODEcommand += "set -m\n"  # Enable job control even in non-interactive mode
+                GACODEcommand += f"max_parallel_execution={max_parallel_execution}\n\n"  # Set the maximum number of parallel processes
+
+                # Create a bash array of folders
+                GACODEcommand += "folders=(\n"
+                for folder in folders_red:
+                    GACODEcommand += f'    "{folder}"\n'
+                GACODEcommand += ")\n\n"
+
+                # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
+                GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
+                GACODEcommand += code_call(folder = '\"$folder\"', n = cores_per_code_call, p = gacode_job.folderExecution)
+                GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
+                GACODEcommand += "done\n\n"
+                GACODEcommand += "wait\n"
+
+            # Standard job
+            elif type_of_submission == "slurm_standard":
+
+                print(f"\t- {code.upper()} will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
+
+                # Code launches
+                GACODEcommand = ""
+                for folder in folders_red:
+                    GACODEcommand += code_call(folder = folder, n = cores_per_code_call, p = gacode_job.folderExecution)
+                GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
+            
+            # Job array 
+            elif type_of_submission == "slurm_array":
+
+                print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
+
+                # As a pre-command, organize all folders in a simpler way
+                shellPreCommands = []
+                shellPostCommands = []
+                array_list = []
+                for i, folder in enumerate(folders_red):
+                    array_list.append(f"{i}")
+                    folder_temp_array = f"run{i}"
+                    folder_actual = folder
+                    shellPreCommands.append(f"mkdir {gacode_job.folderExecution}/{folder_temp_array}; cp {gacode_job.folderExecution}/{folder_actual}/*  {gacode_job.folderExecution}/{folder_temp_array}/.")
+                    shellPostCommands.append(f"cp {gacode_job.folderExecution}/{folder_temp_array}/* {gacode_job.folderExecution}/{folder_actual}/.; rm -r {gacode_job.folderExecution}/{folder_temp_array}")
+
+                # Code launches
+                indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
+                GACODEcommand = code_call(
+                    folder = indexed_folder,
+                    n = cores_per_code_call,
+                    p = gacode_job.folderExecution,
+                    additional_command = f'1> {gacode_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {gacode_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
+
+            # ---------------------------------------------
+            # Execute
+            # ---------------------------------------------
+
+            slurm_settings = code_slurm_settings(
+                name=code,
+                minutes=minutes,
+                total_cores_required=total_cores_required,
+                cores_per_code_call=cores_per_code_call,
+                type_of_submission=type_of_submission,
+                array_list=array_list if type_of_submission == "slurm_array" else None
+            )
+
+            gacode_job.define_machine(
+                code,
+                f"mitim_{name}",
+                launchSlurm=launchSlurm,
+                slurm_settings=slurm_settings,
+            )
+            
+            # I would like the mitim_job to check if the retrieved folders were complete
+            check_files_in_folder = {}
+            for folder in folders_red:
+                check_files_in_folder[folder] = filesToRetrieve
+            # ---------------------------------------------
+
+            gacode_job.prep(
+                GACODEcommand,
+                input_folders=folders,
+                output_folders=folders_red,
+                check_files_in_folder=check_files_in_folder,
+                shellPreCommands=shellPreCommands,
+                shellPostCommands=shellPostCommands,
+            )
+
+            if full_submission:
+                
+                gacode_job.run(
+                    removeScratchFolders=True,
+                    attempts_execution=attempts_execution
+                    )
+
+                # ---------------------------------------------
+                # Organize
+                # ---------------------------------------------
+
+                print("\t- Retrieving files and changing names for storing")
+                fineall = True
+                for subfolder_sim in code_executor:
+
+                    for i, rho in enumerate(code_executor[subfolder_sim].keys()):
+                        for file in filesToRetrieve:
+                            original_file = f"{file}_{rho:.4f}"
+                            final_destination = (
+                                code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+                            )
+                            final_destination.unlink(missing_ok=True)
+
+                            temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                            temp_file.replace(final_destination)
+
+                            fineall = fineall and final_destination.exists()
+
+                            if not final_destination.exists():
+                                print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+
+                if fineall:
+                    print("\t\t- All files were successfully retrieved")
+
+                    # Remove temporary folder
+                    shutil.rmtree(tmpFolder)
+
+                else:
+                    print("\t\t- Some files were not retrieved", typeMsg="w")
+
 
     def run_scan(
         self,
@@ -720,262 +951,6 @@ def cold_start_checker(
         print("~ Not all radii are found, but not removing folder and running only those that are needed",typeMsg="i",)
 
     return rhosEvaluate
-
-
-def run_gacode_simulation(
-    FolderGACODE,
-    code_executor,
-    run_specifications = None,
-    minutes = 5,
-    cores_simulation = 4,
-    extraFlag = "",
-    filesToRetrieve = None,
-    name = "",
-    launchSlurm = True,
-    attempts_execution = 1,
-    max_jobs_at_once = None,
-    full_submission = True,
-):
-
-    """
-    launchSlurm = True -> Launch as a batch job in the machine chosen
-    launchSlurm = False -> Launch locally as a bash script
-    """
-    
-    code = run_specifications.get('code', 'tglf')
-    input_file = run_specifications.get('input_file', 'input.tglf')
-    code_call = run_specifications.get('code_call', None)
-
-    tmpFolder = FolderGACODE / f"tmp_{code}"
-    IOtools.askNewFolder(tmpFolder, force=True)
-
-    gacode_job = FARMINGtools.mitim_job(tmpFolder)
-
-    gacode_job.define_machine_quick(code,f"mitim_{name}")
-
-    folders, folders_red = [], []
-    for subfolder_sim in code_executor:
-
-        rhos = list(code_executor[subfolder_sim].keys())
-
-        # ---------------------------------------------
-        # Prepare files and folders
-        # ---------------------------------------------
-
-        for i, rho in enumerate(rhos):
-            print(f"\t- Preparing {code.upper()} execution ({subfolder_sim}) at rho={rho:.4f}")
-
-            folder_sim_this = tmpFolder / subfolder_sim / f"rho_{rho:.4f}"
-            folders.append(folder_sim_this)
-
-            folder_sim_this_rel = folder_sim_this.relative_to(tmpFolder)
-            folders_red.append(folder_sim_this_rel.as_posix() if gacode_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
-
-            folder_sim_this.mkdir(parents=True, exist_ok=True)
-
-            input_file_sim = folder_sim_this / input_file
-            with open(input_file_sim, "w") as f:
-                f.write(code_executor[subfolder_sim][rho]["inputs"])
-                
-    # ---------------------------------------------
-    # Prepare command
-    # ---------------------------------------------
-
-    # Grab machine local limits -------------------------------------------------
-    max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings(code)["cores_per_node"]
-
-    # If the run is local and not slurm, let's check the number of cores
-    if (FARMINGtools.mitim_job.grab_machine_settings(code)["machine"] == "local") and not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
-        
-        cores_in_machine = int(os.cpu_count())
-        cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
-
-        if cores_allocated is not None:
-            if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
-                print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
-                max_cores_per_node = cores_allocated
-        elif cores_in_machine is not None:
-            if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
-                print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
-                max_cores_per_node = cores_in_machine
-        else:
-            # Default to just 16 just in case
-            if max_cores_per_node is None: 
-                max_cores_per_node = 16
-    else:
-        # For remote execution, default to just 16 just in case
-        if max_cores_per_node is None: 
-            max_cores_per_node = 16
-    # ---------------------------------------------------------------------------
-
-    # Grab the total number of cores of this job --------------------------------
-    total_simulation_executions = len(rhos) * len(code_executor)
-    total_cores_required = int(cores_simulation) * total_simulation_executions
-    # ---------------------------------------------------------------------------
-
-    # Simply bash, no slurm
-    if not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
-
-        if cores_simulation > max_cores_per_node:
-            print(f"\t - Detected {cores_simulation} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
-            max_cores_per_node = cores_simulation
-        
-        max_parallel_execution = max_cores_per_node // cores_simulation # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
-
-        print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {cores_simulation}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
-
-        # Build the bash script with job control enabled and a loop to limit parallel jobs
-        GACODEcommand = "#!/usr/bin/env bash\n"
-        GACODEcommand += "set -m\n"  # Enable job control even in non-interactive mode
-        GACODEcommand += f"max_parallel_execution={max_parallel_execution}\n\n"  # Set the maximum number of parallel processes
-
-        # Create a bash array of folders
-        GACODEcommand += "folders=(\n"
-        for folder in folders_red:
-            GACODEcommand += f'    "{folder}"\n'
-        GACODEcommand += ")\n\n"
-
-        # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
-        GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
-        GACODEcommand += code_call(folder = '\"$folder\"', n = cores_simulation, p = gacode_job.folderExecution)
-        GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
-        GACODEcommand += "done\n\n"
-        GACODEcommand += "wait\n"
-
-        # Slurm setup
-        array_list = None
-        job_array_limit = None
-        shellPreCommands = None
-        shellPostCommands = None
-        ntasks = total_cores_required
-        cpuspertask = cores_simulation
-
-    else:
-
-        # Standard job
-        if total_cores_required < max_cores_per_node:
-
-            print(f"\t- {code.upper()} will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
-
-            # Code launches
-            GACODEcommand = ""
-            for folder in folders_red:
-                GACODEcommand += code_call(folder = folder, n = cores_simulation, p = gacode_job.folderExecution)
-            GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
-            
-            # Slurm setup
-            array_list = None
-            job_array_limit = None
-            shellPreCommands = None
-            shellPostCommands = None
-            ntasks = total_simulation_executions
-            cpuspertask = cores_simulation
-
-        # Job array 
-        else:
-
-            print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
-
-            # As a pre-command, organize all folders in a simpler way
-            shellPreCommands = []
-            shellPostCommands = []
-            array_list = []
-            for i, folder in enumerate(folders_red):
-                array_list.append(f"{i}")
-                folder_temp_array = f"run{i}"
-                folder_actual = folder
-                shellPreCommands.append(f"mkdir {gacode_job.folderExecution}/{folder_temp_array}; cp {gacode_job.folderExecution}/{folder_actual}/*  {gacode_job.folderExecution}/{folder_temp_array}/.")
-                shellPostCommands.append(f"cp {gacode_job.folderExecution}/{folder_temp_array}/* {gacode_job.folderExecution}/{folder_actual}/.; rm -r {gacode_job.folderExecution}/{folder_temp_array}")
-
-            # Code launches
-            indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-            GACODEcommand = code_call(
-                folder = indexed_folder,
-                n = cores_simulation,
-                p = gacode_job.folderExecution,
-                additional_command = f'1> {gacode_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {gacode_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
-
-            # Slurm setup
-            array_list = ",".join(array_list)
-            ntasks = 1
-            cpuspertask = cores_simulation
-            job_array_limit = max_jobs_at_once # Limit to this number at most running jobs at the same time
-
-    # ---------------------------------------------
-    # Execute
-    # ---------------------------------------------
-
-    gacode_job.define_machine(
-        code,
-        f"mitim_{name}",
-        launchSlurm=launchSlurm,
-        slurm_settings={
-            "minutes": minutes,
-            "ntasks": ntasks,
-            "name": name,
-            "cpuspertask": cpuspertask,
-            "job_array": array_list,
-            "job_array_limit": job_array_limit,
-            #"nodes": 1,
-        },
-    )
-
-    # I would like the mitim_job to check if the retrieved folders were complete
-    check_files_in_folder = {}
-    for folder in folders_red:
-        check_files_in_folder[folder] = filesToRetrieve
-    # ---------------------------------------------
-
-    gacode_job.prep(
-        GACODEcommand,
-        input_folders=folders,
-        output_folders=folders_red,
-        check_files_in_folder=check_files_in_folder,
-        shellPreCommands=shellPreCommands,
-        shellPostCommands=shellPostCommands,
-    )
-
-    if full_submission:
-        
-        gacode_job.run(
-            removeScratchFolders=True,
-            attempts_execution=attempts_execution
-            )
-
-        # ---------------------------------------------
-        # Organize
-        # ---------------------------------------------
-
-        print("\t- Retrieving files and changing names for storing")
-        fineall = True
-        for subfolder_sim in code_executor:
-
-            for i, rho in enumerate(code_executor[subfolder_sim].keys()):
-                for file in filesToRetrieve:
-                    original_file = f"{file}_{rho:.4f}{extraFlag}"
-                    final_destination = (
-                        code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
-                    )
-                    final_destination.unlink(missing_ok=True)
-
-                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
-                    temp_file.replace(final_destination)
-
-                    fineall = fineall and final_destination.exists()
-
-                    if not final_destination.exists():
-                        print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
-
-        if fineall:
-            print("\t\t- All files were successfully retrieved")
-
-            # Remove temporary folder
-            shutil.rmtree(tmpFolder)
-
-        else:
-            print("\t\t- Some files were not retrieved", typeMsg="w")
-
-
 
 
 def runTGYRO(
@@ -1879,6 +1854,8 @@ class GACODEinput:
         self.controls_file = controls_file
         self.code = code
         self.n_species = n_species
+        
+        self.num_recorded = 100
 
         if self.file is not None and self.file.exists():
             with open(self.file, "r") as f:
@@ -1913,8 +1890,6 @@ class GACODEinput:
         # Get number of recorded species
         if self.n_species is not None and self.n_species in input_dict:
             self.num_recorded = int(input_dict[self.n_species])
-        else:
-            self.num_recorded = 100
 
     def write_state(self, file=None):
         

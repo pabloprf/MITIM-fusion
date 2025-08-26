@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -23,10 +23,41 @@ class CGYRO(GACODErun.gacode_simulation):
         def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
             return f"    cgyro -e {folder} -n {n} -nomp {nomp} {additional_command} -p {p} &\n"
 
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+
+            slurm_settings = {
+                "name": name,
+                "minutes": minutes,
+            }
+
+            # Gather if this is a GPU enabled machine
+            machineSettings = CONFIGread.machineSettings(code='cgyro')
+
+            if type_of_submission == "slurm_standard":
+                
+                slurm_settings['ntasks'] = total_cores_required
+                
+                if machineSettings['gpus_per_node'] > 0:
+                    slurm_settings['gpuspertask'] = cores_per_code_call
+                else:
+                    slurm_settings['cpuspertask'] = cores_per_code_call
+
+            elif type_of_submission == "slurm_array":
+
+                slurm_settings['ntasks'] = 1
+                if machineSettings['gpus_per_node'] > 0:
+                    slurm_settings['gpuspertask'] = cores_per_code_call
+                else:
+                    slurm_settings['cpuspertask'] = cores_per_code_call
+                slurm_settings['job_array'] = ",".join(array_list)
+
+            return slurm_settings
+
         self.run_specifications = {
             'code': 'cgyro',
             'input_file': 'input.cgyro',
             'code_call': code_call,
+            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addCGYROcontrol,
             'controls_file': 'input.cgyro.controls',
             'state_converter': 'to_cgyro',

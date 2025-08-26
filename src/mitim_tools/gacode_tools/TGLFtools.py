@@ -127,10 +127,32 @@ class TGLF(GACODErun.gacode_simulation):
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
             return f"    tglf -e {folder} -n {n} -p {p} {additional_command} &\n"
 
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+
+            slurm_settings = {
+                "name": name,
+                "minutes": minutes,
+                'job_array_limit': None,    # Limit to this number at most running jobs at the same time?
+            }
+
+            if type_of_submission == "slurm_standard":
+                
+                slurm_settings['ntasks'] = total_cores_required
+                slurm_settings['cpuspertask'] = cores_per_code_call
+
+            elif type_of_submission == "slurm_array":
+
+                slurm_settings['ntasks'] = 1
+                slurm_settings['cpuspertask'] = cores_per_code_call
+                slurm_settings['job_array'] = ",".join(array_list)
+
+            return slurm_settings
+
         self.run_specifications = {
             'code': 'tglf',
             'input_file': 'input.tglf',
             'code_call': code_call,
+            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addTGLFcontrol,
             'controls_file': 'input.tglf.controls',
             'state_converter': 'to_tglf',

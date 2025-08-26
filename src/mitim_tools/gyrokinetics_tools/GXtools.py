@@ -1,6 +1,6 @@
 import netCDF4
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
@@ -16,12 +16,40 @@ class GX(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"    gx {folder}/gxplasma.in > {folder}/gxplasma.mitim.log  &\n"
+            return f"    gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log  &\n"
+
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+
+            slurm_settings = {
+                "name": name,
+                "minutes": minutes,
+            }
+
+            # Gather if this is a GPU enabled machine
+            machineSettings = CONFIGread.machineSettings(code='gx')
+            
+            if machineSettings['gpus_per_node'] == 0:
+                raise Exception("[MITIM] GX needs GPUs to run, but the selected machine does not have any GPU configured. Please select another machine in the config file with gpus_per_node>0.")
+            
+            if type_of_submission == "slurm_standard":
+                
+                slurm_settings['ntasks'] = total_cores_required
+                slurm_settings['gpuspertask'] = cores_per_code_call
+                slurm_settings['job_array'] = None
+
+            elif type_of_submission == "slurm_array":
+
+                slurm_settings['ntasks'] = 1
+                slurm_settings['gpuspertask'] = cores_per_code_call
+                slurm_settings['job_array'] = ",".join(array_list)
+
+            return slurm_settings
 
         self.run_specifications = {
             'code': 'gx',
             'input_file': 'gxplasma.in',
             'code_call': code_call,
+            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addGXcontrol,
             'controls_file': 'input.gx.controls',
             'state_converter': 'to_gx',
@@ -202,11 +230,11 @@ class GXinput(GACODErun.GACODEinput):
                        ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim']
                     ],
                 '[Dissipation]':
-                    [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper'], [] ],
+                    [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper', 'D_H', 'w_osc', 'p_HB', 'HB_hyper'], [] ],
                 '[Restart]':
                     [ ['restart', 'save_for_restart', 'nsave'], [] ],
                 '[Diagnostics]':
-                    [ ['nwrite', 'omega', 'fluxes', 'fields'], [] ]
+                    [ ['nwrite', 'omega', 'fluxes', 'fields', 'moments'], [] ]
             }
 
             param_written = []
@@ -315,14 +343,15 @@ class GXinput(GACODErun.GACODEinput):
             param_written.append(f"vnewk_{i+1}")
 
         f.write("[species]\n")
+        f.write(f" type  = {typeS[:-4]}  ]\n")
         f.write(f" z     = {z[:-4]}  ]\n")
+        f.write(f" mass  = {mass[:-4]}  ]\n")
         f.write(f" dens  = {dens[:-4]}  ]\n")
         f.write(f" temp  = {temp[:-4]}  ]\n")
-        f.write(f" mass  = {mass[:-4]}  ]\n")
         f.write(f" fprim = {fprim[:-4]}  ]\n")
         f.write(f" tprim = {tprim[:-4]}  ]\n")
         f.write(f" vnewk = {vnewk[:-4]}  ]\n")
-        f.write(f" type  = {typeS[:-4]}  ]\n")
+        
         f.write("\n")
 
         return param_written
