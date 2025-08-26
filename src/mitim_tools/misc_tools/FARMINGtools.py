@@ -67,7 +67,7 @@ class mitim_job:
         code,
         nameScratch,
         launchSlurm=True,
-        slurm_settings={},
+        slurm_settings=None,
     ):
         # Separated in case I need to quickly grab the machine settings
         self.define_machine_quick(code, nameScratch, slurm_settings=slurm_settings)
@@ -81,7 +81,7 @@ class mitim_job:
         # Print Slurm info
         if self.launchSlurm:
             print("\t- Slurm Settings:")
-            print("\t\t- Job settings:")
+            print("\t\t- Job settings (different than MITIM default):")
             for key in self.slurm_settings:
                 if self.slurm_settings[key] is not None:
                     print(f"\t\t\t- {key}: {self.slurm_settings[key]}")
@@ -91,20 +91,13 @@ class mitim_job:
             for key in self.machineSettings["slurm"]:
                 print(f'\t\t\t- {key}: {self.machineSettings["slurm"][key]}')
 
-    def define_machine_quick(self, code, nameScratch, slurm_settings={}):
-        self.slurm_settings = slurm_settings
+    def define_machine_quick(self, code, nameScratch, slurm_settings=None):
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Defaults for slurm
+        self.slurm_settings = slurm_settings if slurm_settings is not None else {}
+        
+        # In case there's no name, I need it
         self.slurm_settings.setdefault("name", "mitim_job")
-        self.slurm_settings.setdefault("minutes", 10)
-        self.slurm_settings.setdefault("cpuspertask", 1)
-        self.slurm_settings.setdefault("ntasks", 1)
-        self.slurm_settings.setdefault("nodes", None)
-        self.slurm_settings.setdefault("job_array", None)
-        self.slurm_settings.setdefault("mem", None)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+        
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
@@ -183,21 +176,14 @@ class mitim_job:
             command_str_mod,
             self.folderExecution,
             modules_remote=self.machineSettings["modules"],
-            job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
-            job_array_limit=self.slurm_settings["job_array_limit"] if "job_array_limit" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            nameJob=self.slurm_settings["name"] if "name" in self.slurm_settings else "test",
-            minutes=self.slurm_settings["minutes"] if "minutes" in self.slurm_settings else 5,
-            nodes=self.slurm_settings["nodes"] if "nodes" in self.slurm_settings else None,
-            ntasks=self.slurm_settings["ntasks"] if "ntasks" in self.slurm_settings else 1,
-            cpuspertask=self.slurm_settings["cpuspertask"] if "cpuspertask" in self.slurm_settings else 4,
-            slurm=self.machineSettings["slurm"],
-            memory_req_by_job=self.slurm_settings["mem"] if "mem" in self.slurm_settings else None,
-            launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
+            slurm=self.machineSettings["slurm"],
+            launchSlurm=self.launchSlurm,
+            slurm_settings=self.slurm_settings,
         )
         # ******************************************************
 
@@ -988,40 +974,43 @@ def SerialProcedure(Function, Params, howmany):
 
 def create_slurm_execution_files(
     command,
-    folder_remote,
+    folderExecution,
     modules_remote=None,
-    slurm={},
     folder_local=None,
     shellPreCommands=None,
     shellPostCommands=None,
-    launchSlurm=True,
-    nameJob="test",
-    minutes=5,
-    ntasks=1,
-    cpuspertask=4,
-    memory_req_by_job=None,
-    job_array=None,
-    job_array_limit=None, # If job_array is not None, this is the limit of the array size at once
-    nodes=None,
     label_log_files="",
     wait_until_sbatch=True,
+    slurm={},
+    launchSlurm=True,
+    slurm_settings = None
 ):
-    if isinstance(command, str):
-        command = [command]
-
-    if shellPostCommands is None:
-        shellPostCommands = []
-
-    if shellPreCommands is None:
-        shellPreCommands = []
-
-    folderExecution = folder_remote
+    
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
     fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
+    
+    # ---------------------------------------------------
+    # slurm_settings indicate the job resource allocation   
+    #  ---------------------------------------------------
 
-    minutes = int(minutes)
+    nameJob = slurm_settings.setdefault("name", "mitim_job")
+    minutes = int(slurm_settings.setdefault("minutes", 10))
+    memory_req_by_job = slurm_settings.setdefault("mem", None)
 
+    nodes = slurm_settings.setdefault("nodes", None)
+    ntasks = slurm_settings.setdefault("ntasks", 1)
+    cpuspertask = slurm_settings.setdefault("cpuspertask", 1)
+    ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
+    gpuspertask = slurm_settings.setdefault("gpuspertask", None)
+
+    job_array = slurm_settings.setdefault("job_array", None)
+    job_array_limit = slurm_settings.setdefault("job_array_limit", None)
+
+    # ---------------------------------------------------
+    # slurm indicate the machine specifications as given by the config instead of individual job
+    # ---------------------------------------------------
+    
     partition = slurm.setdefault("partition", None)
     email = slurm.setdefault("email", None)
     exclude = slurm.setdefault("exclude", None)
@@ -1029,7 +1018,7 @@ def create_slurm_execution_files(
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
     request_exclusive_node = slurm.setdefault("exclusive", False)
-
+    
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
@@ -1040,13 +1029,7 @@ def create_slurm_execution_files(
         if memory_req_by_config is not None:
             print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
-
-    """
-	********************************************************************************************
-	Write mitim_bash.src file to execute
-	********************************************************************************************
-	"""
-
+    
     if minutes >= 60:
         hours = minutes // 60
         minutes = minutes - hours * 60
@@ -1054,51 +1037,57 @@ def create_slurm_execution_files(
     else:
         time_com = f"{str(minutes).zfill(2)}:00"
 
+    """
+	********************************************************************************************
+	Write mitim_bash.src file to execute
+	********************************************************************************************
+	"""
+
+    command = [command] if isinstance(command, str) else command
+    shellPreCommands = [] if shellPreCommands is None else shellPreCommands
+    shellPostCommands = [] if shellPostCommands is None else shellPostCommands
+
+    # ~~~~ Construct SLURM header ~~~~~~~~~~~~~~~
     commandSBATCH = []
 
-    # ******* Basics
     commandSBATCH.append("#!/usr/bin/env bash")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
     commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
     commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
+    commandSBATCH.append(f"#SBATCH --time {time_com}")
     if email is not None:
         commandSBATCH.append("#SBATCH --mail-user=" + email)
-
-    # ******* Partition / Billing
     if partition is not None:
         commandSBATCH.append(f"#SBATCH --partition {partition}")
-
     if account is not None:
         commandSBATCH.append(f"#SBATCH --account {account}")
     if constraint is not None:
         commandSBATCH.append(f"#SBATCH --constraint {constraint}")
-
     if memory_req is not None:
         commandSBATCH.append(f"#SBATCH --mem {memory_req}")
-
-    commandSBATCH.append(f"#SBATCH --time {time_com}")
-
     if job_array is not None:
         commandSBATCH.append(f"#SBATCH --array={job_array}{f'%{job_array_limit} ' if job_array_limit is not None else ''}")
     elif request_exclusive_node:
         commandSBATCH.append("#SBATCH --exclusive")
-
-    # ******* CPU setup
     if nodes is not None:
         commandSBATCH.append(f"#SBATCH --nodes {nodes}")
-    commandSBATCH.append(f"#SBATCH --ntasks {ntasks}")
-    commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
-
+    if ntasks is not None:
+        commandSBATCH.append(f"#SBATCH --ntasks {ntasks}")
+    if ntaskspernode is not None:
+        commandSBATCH.append(f"#SBATCH --ntasks-per-node {ntaskspernode}")
+    if cpuspertask is not None:
+        commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
+    if gpuspertask is not None:
+        commandSBATCH.append(f"#SBATCH --gpus-per-task {gpuspertask}")
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
 
     commandSBATCH.append("#SBATCH --profile=all")
-    
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-    commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
-
-    # ******* Commands
+    # ~~~~ Commands ~~~~~~~~~~~~~~~
     commandSBATCH.append("")
+    commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
     commandSBATCH.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
     commandSBATCH.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
     commandSBATCH.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
@@ -1114,6 +1103,7 @@ def create_slurm_execution_files(
         commandSBATCH.append(c)
 
     commandSBATCH.append("")
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
     wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
@@ -1154,7 +1144,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
+    comm = f"cd {folderExecution} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBATCH.resolve(), fileSHELL.resolve()
 

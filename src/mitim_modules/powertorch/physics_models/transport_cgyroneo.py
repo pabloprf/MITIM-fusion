@@ -11,6 +11,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
         
+    # Do not hook here
     def evaluate_turbulence(self):
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]

@@ -3,7 +3,7 @@ import copy
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.powertorch.physics import TRANSPORTtools
+from mitim_modules.powertorch.physics_models import transport_analytic
 from mitim_tools import __mitimroot__
 
 # Inputs
@@ -14,7 +14,7 @@ s = STATEtools.powerstate(inputgacode,
     evolution_options = { 'ProfilePredicted': ['te', 'ti'],
                          'rhoPredicted': rho
                         },
-    transport_options = { 'transport_evaluator': TRANSPORTtools.diffusion_model,
+    transport_options = { 'transport_evaluator': transport_analytic.diffusion_model,
                          'transport_evaluator_options': {
                             'chi_e': torch.ones(rho.shape[0]).to(rho)*0.8,
                             'chi_i': torch.ones(rho.shape[0]).to(rho)*1.2
