@@ -18,9 +18,14 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     # ************************************************************************************
     # Private functions for the evaluation
     # ************************************************************************************
+    
     @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
-    def evaluate_turbulence(self):
+    def evaluate_turbulence(self):        
+        self._evaluate_tglf()
 
+    # Have it separate such that I can call it from the CGYRO class but not with the decorator
+    def _evaluate_tglf(self):
+        
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
         # ------------------------------------------------------------------------------------------------------------------------

@@ -1,15 +1,4 @@
-#=============================================================
-#CGYRO ion-scale input file 
-#=============================================================
-# 
-#Simulation notes: ITER Baseline Scenario  ~134 x 118 rho_s_D box ;
-#0.053 < k_theta rhos_D <1.2. Focused on r/a=0.55
-#ExB shear on and new profiles set at 430 acs
-#Startup phase starts with ExB shear on.  Profiles adopted from
-#Holland JPP 2023 and Mantica PPCF 2020
-#-------------------------------------------------------------
-
-#============================
+#========================
 #Basic Simulation Parameters
 #============================
 

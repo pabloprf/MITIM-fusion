@@ -12,6 +12,11 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
     # Do not hook here
     def evaluate_turbulence(self):
+        
+        # Run base TGLF always, to keep track of discrepancies! --------------------------------------
+        self.powerstate.transport_options["transport_evaluator_options"]["use_tglf_scan_trick"] = None
+        self._evaluate_tglf()
+        # --------------------------------------------------------------------------------------------
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         
@@ -31,15 +36,6 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
 
         _ = cgyro.prep(
             self.powerstate.profiles_transport,
-            self.folder,
-            )
-
-        cgyro = CGYROtools.CGYRO(
-            rhos = rho_locations
-        )
-
-        cgyro.prep(
-            self.powerstate.profiles_transport.files[0],
             self.folder,
             )
 
