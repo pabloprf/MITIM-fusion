@@ -66,48 +66,52 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         # Run TGLF
         # ------------------------------------------------------------------------------------------------------------------------
         
+        # Run base
+        tglf.run(
+            'base_tglf',
+            code_settings=TGLFsettings,
+            extraOptions=extraOptions,
+            ApplyCorrections=False,
+            launchSlurm= launchMODELviaSlurm,
+            cold_start= cold_start,
+            forceIfcold_start=True,
+            extra_name= self.name,
+            slurm_setup={
+                "cores": cores_per_tglf_instance,      
+                "minutes": 2,
+                },
+            attempts_execution=2,
+            only_minimal_files=keep_tglf_files in ['minimal']
+        )
+    
+        tglf.read(label='base',require_all_files=False)
+        
+        # Grab values
+        Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
+        Qi = np.array([tglf.results['base']['TGLFout'][i].Qi for i in range(len(rho_locations))])
+        Ge = np.array([tglf.results['base']['TGLFout'][i].Ge for i in range(len(rho_locations))])
+        GZ = np.array([tglf.results['base']['TGLFout'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
+        Mt = np.array([tglf.results['base']['TGLFout'][i].Mt for i in range(len(rho_locations))])
+        S = np.array([tglf.results['base']['TGLFout'][i].Se for i in range(len(rho_locations))])
+
+        if Qi_includes_fast:
+            
+            Qifast = [tglf.results['base']['TGLFout'][i].Qifast for i in range(len(rho_locations))]
+            
+            if Qifast.sum() != 0.0:
+                print(f"\t- Qi includes fast ions, adding their contribution")
+                Qi += Qifast
+                
+        Flux_base = np.array([Qe, Qi, Ge, GZ, Mt, S])
+                
         if use_tglf_scan_trick is None:
             
-                # *******************************************************************
-                # Just run TGLF once and apply an ad-hoc percent error to the results
-                # *******************************************************************
+            # *******************************************************************
+            # Just apply an ad-hoc percent error to the results
+            # *******************************************************************
             
-                tglf.run(
-                    'base_tglf',
-                    code_settings=TGLFsettings,
-                    extraOptions=extraOptions,
-                    ApplyCorrections=False,
-                    launchSlurm= launchMODELviaSlurm,
-                    cold_start= cold_start,
-                    forceIfcold_start=True,
-                    extra_name= self.name,
-                    slurm_setup={
-                        "cores": cores_per_tglf_instance,      
-                        "minutes": 2,
-                        },
-                    attempts_execution=2,
-                    only_minimal_files=keep_tglf_files in ['minimal']
-                )
-            
-                tglf.read(label='base',require_all_files=False)
-                
-                Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
-                Qi = np.array([tglf.results['base']['TGLFout'][i].Qi for i in range(len(rho_locations))])
-                Ge = np.array([tglf.results['base']['TGLFout'][i].Ge for i in range(len(rho_locations))])
-                GZ = np.array([tglf.results['base']['TGLFout'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
-                Mt = np.array([tglf.results['base']['TGLFout'][i].Mt for i in range(len(rho_locations))])
-                S = np.array([tglf.results['base']['TGLFout'][i].Se for i in range(len(rho_locations))])
-
-                if Qi_includes_fast:
-                    
-                    Qifast = [tglf.results['base']['TGLFout'][i].Qifast for i in range(len(rho_locations))]
-                    
-                    if Qifast.sum() != 0.0:
-                        print(f"\t- Qi includes fast ions, adding their contribution")
-                        Qi += Qifast
-                
-                Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
-                Flux_std = abs(Flux_mean)*percentError[0]/100.0
+            Flux_mean = Flux_base
+            Flux_std = abs(Flux_mean)*percentError[0]/100.0
 
         else:
             
@@ -115,10 +119,11 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             # Run TGLF with scans to estimate the uncertainty
             # *******************************************************************
             
-            Flux_base, Flux_mean, Flux_std = _run_tglf_uncertainty_model(
+            Flux_mean, Flux_std = _run_tglf_uncertainty_model(
                 tglf,
                 rho_locations, 
                 self.powerstate.ProfilesPredicted, 
+                Flux_base = Flux_base,
                 TGLFsettings=TGLFsettings,
                 extraOptionsTGLF=extraOptions,
                 impurityPosition=impurityPosition, 
@@ -258,6 +263,7 @@ def _run_tglf_uncertainty_model(
     tglf,
     rho_locations, 
     ProfilesPredicted, 
+    Flux_base = None,
     TGLFsettings=None,
     extraOptionsTGLF=None,
     impurityPosition=1,
@@ -321,7 +327,7 @@ def _run_tglf_uncertainty_model(
                     TGLFsettings = TGLFsettings,
                     extraOptions = extraOptionsTGLF,
                     ApplyCorrections = False,
-                    add_baseline_to = 'first',
+                    add_baseline_to = 'none',
                     cold_start=cold_start,
                     forceIfcold_start=True,
                     slurm_setup={
@@ -364,6 +370,15 @@ def _run_tglf_uncertainty_model(
         print(f"\t- Qi includes fast ions, adding their contribution")
         Qi += Qifast
 
+    # Add the base that was calculated earlier
+    if Flux_base is not None:
+        Qe = np.append(np.atleast_2d(Flux_base[0]).T, Qe, axis=1)
+        Qi = np.append(np.atleast_2d(Flux_base[1]).T, Qi, axis=1)
+        Ge = np.append(np.atleast_2d(Flux_base[2]).T, Ge, axis=1)
+        GZ = np.append(np.atleast_2d(Flux_base[3]).T, GZ, axis=1)
+        Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
+        S = np.append(np.atleast_2d(Flux_base[5]).T, S, axis=1)
+
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
     def calculate_mean_std(Q):
@@ -388,9 +403,7 @@ def _run_tglf_uncertainty_model(
     S_point, S_std = calculate_mean_std(S)
 
     #TODO: Careful with fast particles
-
-    Flux_base = [Qe[:,0], Qi[:,0], Ge[:,0], GZ[:,0], Mt[:,0], S[:,0]]
     Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, S_point]
     Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
 
-    return Flux_base, Flux_mean, Flux_std
+    return Flux_mean, Flux_std
