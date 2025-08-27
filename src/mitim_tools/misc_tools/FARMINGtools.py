@@ -999,8 +999,8 @@ def create_slurm_execution_files(
     memory_req_by_job = slurm_settings.setdefault("mem", None)
 
     nodes = slurm_settings.setdefault("nodes", None)
-    ntasks = slurm_settings.setdefault("ntasks", 1)
-    cpuspertask = slurm_settings.setdefault("cpuspertask", 1)
+    ntasks = slurm_settings.setdefault("ntasks", None)
+    cpuspertask = slurm_settings.setdefault("cpuspertask", None)
     ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
     gpuspertask = slurm_settings.setdefault("gpuspertask", None)
 

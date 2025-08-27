@@ -15,7 +15,7 @@ class NEO(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"    neo -e {folder} -n {n} -p {p} {additional_command} &\n"
+            return f"neo -e {folder} -n {n} -p {p} {additional_command}"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
 

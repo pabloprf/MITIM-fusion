@@ -24,12 +24,16 @@ gx.prep(p, folder)
 gx.run(
     'gx1/',
     cold_start=cold_start,
-    code_settings=0, # Linear
+    code_settings=0,    # Linear
     extraOptions={
-        't_max':1.0,   # Run up to 1 a/c_s
-        'y0' :5.0,     # kymin = 1/y0 = 0.2
+        't_max':5.0,    # Run up to 5 a/c_s (should take ~2min using 8 A100s)
+        'y0' :5.0,      # kymin = 1/y0 = 0.2
         'ny': 34,       # nky = 1 + (ny-1)/3 = 12 -> ky_range = 0.2 - 2.4
     },
+    slurm_setup = {
+        "cores": 4,    # Each of the two radius with 4 GPUs each
+        "minutes": 10
+        }
     )
 gx.read('gx1')
 

@@ -16,7 +16,7 @@ class GX(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"    gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log  &\n"
+            return f"gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
 
@@ -34,13 +34,13 @@ class GX(GACODErun.gacode_simulation):
             if type_of_submission == "slurm_standard":
                 
                 slurm_settings['ntasks'] = total_cores_required
-                slurm_settings['gpuspertask'] = cores_per_code_call
+                slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
                 slurm_settings['job_array'] = None
 
             elif type_of_submission == "slurm_array":
 
-                slurm_settings['ntasks'] = 1
-                slurm_settings['gpuspertask'] = cores_per_code_call
+                slurm_settings['ntasks'] = cores_per_code_call
+                slurm_settings['gpuspertask'] = 1
                 slurm_settings['job_array'] = ",".join(array_list)
 
             return slurm_settings

@@ -385,10 +385,12 @@ class gacode_simulation:
             # ---------------------------------------------
 
             # Grab machine local limits -------------------------------------------------
-            max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings(code)["cores_per_node"]
+            machineSettings = FARMINGtools.mitim_job.grab_machine_settings(code)
+            max_cores_per_node = machineSettings["cores_per_node"]
 
             # If the run is local and not slurm, let's check the number of cores
-            if (FARMINGtools.mitim_job.grab_machine_settings(code)["machine"] == "local") and not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
+            if (machineSettings["machine"] == "local") and \
+                not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
                 
                 cores_in_machine = int(os.cpu_count())
                 cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
@@ -416,21 +418,27 @@ class gacode_simulation:
             total_cores_required = int(cores_per_code_call) * total_simulation_executions
             # ---------------------------------------------------------------------------
 
+            # If it's GPUS enable machine, do the comparison based on it
+            if machineSettings['gpus_per_node'] == 0:
+                max_cores_per_node_compare = max_cores_per_node
+            else:
+                print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-arra execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                max_cores_per_node_compare = machineSettings['gpus_per_node']
+
             if not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
                 type_of_submission = "bash"
-            elif total_cores_required < max_cores_per_node:
+            elif total_cores_required < max_cores_per_node_compare:
                 type_of_submission = "slurm_standard"
-            elif total_cores_required >= max_cores_per_node:
+            elif total_cores_required >= max_cores_per_node_compare:
                 type_of_submission = "slurm_array"
 
-            shellPreCommands = None
-            shellPostCommands = None
+            shellPreCommands, shellPostCommands = None, None
 
             # Simply bash, no slurm
             if type_of_submission == "bash":
 
                 if cores_per_code_call > max_cores_per_node:
-                    print(f"\t - Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
                     max_cores_per_node = cores_per_code_call
                 
                 max_parallel_execution = max_cores_per_node // cores_per_code_call # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
@@ -450,7 +458,7 @@ class gacode_simulation:
 
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
-                GACODEcommand += code_call(folder = '\"$folder\"', n = cores_per_code_call, p = gacode_job.folderExecution)
+                GACODEcommand += f'    {code_call(folder = '\"$folder\"', n = cores_per_code_call, p = gacode_job.folderExecution)}\n'
                 GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
@@ -463,7 +471,7 @@ class gacode_simulation:
                 # Code launches
                 GACODEcommand = ""
                 for folder in folders_red:
-                    GACODEcommand += code_call(folder = folder, n = cores_per_code_call, p = gacode_job.folderExecution)
+                    GACODEcommand += f'    {code_call(folder = folder, n = cores_per_code_call, p = gacode_job.folderExecution)}  &\n'
                 GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
             
             # Job array 

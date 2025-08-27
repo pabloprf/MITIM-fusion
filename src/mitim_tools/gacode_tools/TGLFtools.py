@@ -125,7 +125,7 @@ class TGLF(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
-            return f"    tglf -e {folder} -n {n} -p {p} {additional_command} &\n"
+            return f"tglf -e {folder} -n {n} -p {p} {additional_command}"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
 

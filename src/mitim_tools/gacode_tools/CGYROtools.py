@@ -21,7 +21,7 @@ class CGYRO(GACODErun.gacode_simulation):
         super().__init__(rhos=rhos)
 
         def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
-            return f"    cgyro -e {folder} -n {n} -nomp {nomp} {additional_command} -p {p} &\n"
+            return f"cgyro -e {folder} -n {n} -nomp {nomp} {additional_command} -p {p}"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
 
