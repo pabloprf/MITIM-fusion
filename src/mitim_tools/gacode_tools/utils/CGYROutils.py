@@ -5,7 +5,7 @@ from pathlib import Path
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.gacode_tools.utils import GACODErun
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pygacode.cgyro.data_plot import cgyrodata_plot
 from pygacode import gacodefuncs
@@ -50,7 +50,7 @@ class CGYROlinear_scan:
         self.Qe_mean = np.array(self.Qe_mean)
         self.Qi_mean = np.array(self.Qi_mean)
 
-class CGYROout(GACODErun.GACODEoutput):
+class CGYROout(SIMtools.GACODEoutput):
     def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
         
         super().__init__()

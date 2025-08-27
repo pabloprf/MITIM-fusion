@@ -1,6 +1,6 @@
 import os
 from mitim_tools.gacode_tools.PROFILEStools import gacode_state
-from mitim_tools.gyrokinetics_tools import GXtools
+from mitim_tools.simulation_tools.physics import GXtools
 from mitim_tools import __mitimroot__
 
 cold_start = True

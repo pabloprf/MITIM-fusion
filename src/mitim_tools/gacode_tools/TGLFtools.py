@@ -21,6 +21,7 @@ from mitim_tools.gacode_tools.utils import (
     GACODEplotting,
     GACODErun,
 )
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -28,7 +29,7 @@ from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
-class TGLF(GACODErun.gacode_simulation):
+class TGLF(SIMtools.mitim_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -3285,7 +3286,7 @@ def reduceToControls(dict_all):
 
     return controls, plasma
 
-class TGLFinput(GACODErun.GACODEinput):
+class TGLFinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
         super().__init__(
             file=file,
@@ -3861,7 +3862,7 @@ def readTGLFresults(
         TGLFstd_TGLFout.append(TGLFout)
         inputclasses.append(TGLFout.inputclass)
 
-        parse = GACODErun.buildDictFromInput(TGLFout.inputFile)
+        parse = SIMtools.buildDictFromInput(TGLFout.inputFile)
         parsed.append(parse)
 
     results = {
@@ -3874,7 +3875,7 @@ def readTGLFresults(
     return results
 
 
-class TGLFoutput(GACODErun.GACODEoutput):
+class TGLFoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", require_all_files=True):
         super().__init__()
         

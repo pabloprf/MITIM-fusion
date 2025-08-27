@@ -2,11 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
 
-class NEO(GACODErun.gacode_simulation):
+class NEO(SIMtools.mitim_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -262,7 +263,7 @@ def check_if_files_exist(folder, list_files):
 
     return True
 
-class NEOinput(GACODErun.GACODEinput):
+class NEOinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
         super().__init__(
             file=file,
@@ -271,7 +272,7 @@ class NEOinput(GACODErun.GACODEinput):
             n_species='N_SPECIES'
             )
                 
-class NEOoutput(GACODErun.GACODEoutput):
+class NEOoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", **kwargs):
         super().__init__()
         

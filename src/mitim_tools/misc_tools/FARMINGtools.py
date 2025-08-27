@@ -620,7 +620,7 @@ class mitim_job:
             if received:
                 print("\t\t- All correct", typeMsg="i")
             else:
-                print("\t* Not all received, trying once again", typeMsg="w")
+                print("\t* Not all received, trying once again", typeMsg="i")
                 time.sleep(10)
                 _ = self.retrieve(check_if_files_received=False)
                 received = self.check_all_received(check_files_in_folder=check_files_in_folder)

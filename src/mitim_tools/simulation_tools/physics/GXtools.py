@@ -2,12 +2,13 @@ import netCDF4
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from mitim_tools import __version__ as mitim_version
 from IPython import embed
 
-class GX(GACODErun.gacode_simulation):
+class GX(SIMtools.mitim_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -189,7 +190,7 @@ class GX(GACODErun.gacode_simulation):
         plt.tight_layout()
 
 
-class GXinput(GACODErun.GACODEinput):
+class GXinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
         super().__init__(
             file=file,
@@ -356,7 +357,7 @@ class GXinput(GACODErun.GACODEinput):
 
         return param_written
 
-class GXoutput(GACODErun.GACODEoutput):
+class GXoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", **kwargs):
         super().__init__()
         

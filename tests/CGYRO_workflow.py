@@ -49,24 +49,26 @@ cgyro.plot(labels=["cgyro1"])
 # Scan of KY
 # ---------------
 
-# cgyro.run_scan(
-#     'scan1',
-#     extraOptions={
-#         'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
-#     },
-#     variable='KY',
-#     varUpDown=[0.3,0.4],
-#     slurm_setup={
-#         'cores':4
-#         },
-#     cold_start=cold_start,
-#     forceIfcold_start=True,
-#     run_type='normal'
-#     )
+run_type = 'normal'
 
-# cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
+cgyro.run_scan(
+    'scan1',
+    extraOptions={
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
+    },
+    variable='KY',
+    varUpDown=[0.3,0.4],
+    slurm_setup={
+        'cores':4
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    run_type=run_type
+    )
 
-# fig = cgyro.fn.add_figure(label="Quick linear")
-# cgyro.plot_quick_linear(labels=["scan1_KY_0.3","scan1_KY_0.4"], fig = fig)
+cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
+
+fig = cgyro.fn.add_figure(label="Quick linear")
+cgyro.plot_quick_linear(labels=["scan1_KY_0.3","scan1_KY_0.4"], fig = fig)
 
 cgyro.fn.show()

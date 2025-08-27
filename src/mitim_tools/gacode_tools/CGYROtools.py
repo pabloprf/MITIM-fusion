@@ -1,18 +1,15 @@
-import shutil
-import datetime
-import time
 import copy
-from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools import __mitimroot__
-from mitim_tools.gacode_tools.utils import GACODEdefaults, GACODErun, CGYROutils
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, FARMINGtools, CONFIGread
+from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
+from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.misc_tools import GRAPHICStools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class CGYRO(GACODErun.gacode_simulation):
+class CGYRO(SIMtools.mitim_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -1630,7 +1627,7 @@ class CGYRO(GACODErun.gacode_simulation):
 
         return labels
 
-class CGYROinput(GACODErun.GACODEinput):
+class CGYROinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
         super().__init__(
             file=file,
