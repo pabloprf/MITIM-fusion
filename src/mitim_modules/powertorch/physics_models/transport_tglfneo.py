@@ -43,7 +43,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
         
-        only_minimal_files_TGLF = transport_evaluator_options.get("only_minimal_files_TGLF", True)
+        keep_tglf_files = transport_evaluator_options.get("keep_tglf_files", "minimal")
         
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
@@ -86,7 +86,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                         "minutes": 2,
                         },
                     attempts_execution=2,
-                    only_minimal_files=only_minimal_files_TGLF,
+                    only_minimal_files=keep_tglf_files in ['minimal']
                 )
             
                 tglf.read(label='base',require_all_files=False)
@@ -128,6 +128,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 cores_per_tglf_instance=cores_per_tglf_instance,
                 launchMODELviaSlurm=launchMODELviaSlurm,
                 Qi_includes_fast=Qi_includes_fast,
+                only_minimal_files=keep_tglf_files in ['minimal', 'base']
                 )
 
         self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
@@ -268,6 +269,7 @@ def _run_tglf_uncertainty_model(
     cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
     launchMODELviaSlurm=False,
     Qi_includes_fast=False,
+    only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -329,7 +331,7 @@ def _run_tglf_uncertainty_model(
                     extra_name = f'{extra_name}_{name}',
                     positionIon=impurityPosition+2,
                     attempts_execution=2, 
-                    only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
+                    only_minimal_files=only_minimal_files,
                     launchSlurm=launchMODELviaSlurm,
                     )
 

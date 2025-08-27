@@ -222,7 +222,7 @@ class portals(STRATEGYtools.opt_evaluator):
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
             "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
-            "only_minimal_files_TGLF": True, # If True, only retrieve the minimal set of files from TGLF runs, to avoid large folders
+            "keep_tglf_files": "base", # minimal: only retrieve minimal files always; base: retrieve all files when running TGLF base; none: always minimal files
             "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
         }
 
