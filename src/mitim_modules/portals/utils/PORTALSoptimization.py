@@ -78,10 +78,10 @@ def initialization_simple_relax(self):
         newname = f"{namingConvention}_{i}"
 
         # Delte destination first
-        if (ff / "model_complete").exists():
-            IOtools.shutil_rmtree(ff / "model_complete")
+        if (ff / "transport_simulation_folder").exists():
+            IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
-        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete") #### delete first
+        shutil.copytree(MainFolder / newname / "transport_simulation_folder", ff / "transport_simulation_folder") #### delete first
 
     return Xopt.cpu().numpy()
 

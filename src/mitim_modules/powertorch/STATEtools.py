@@ -367,13 +367,13 @@ class powerstate:
             if folder_main is not None:
                 folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
                 if issubclass(self.transport_options["transport_evaluator"], TRANSPORTtools.power_transport):
-                    (folder / "model_complete").mkdir(parents=True, exist_ok=True)
+                    (folder / "transport_simulation_folder").mkdir(parents=True, exist_ok=True)
 
             # ***************************************************************************************************************
             # Calculate
             # ***************************************************************************************************************
 
-            folder_run = folder / "model_complete" if folder_main is not None else IOtools.expandPath('~/scratch/')
+            folder_run = folder / "transport_simulation_folder" if folder_main is not None else IOtools.expandPath('~/scratch/')
             QTransport, QTarget, _, _ = self.calculate(X, nameRun=nameRun, folder=folder_run, evaluation_number=cont)
 
             cont += 1

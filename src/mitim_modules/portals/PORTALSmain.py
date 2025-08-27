@@ -601,7 +601,7 @@ def runModelEvaluator(
     # Prep run
     # ---------------------------------------------------------------------------------------------------
 
-    folder_model = FolderEvaluation / "model_complete"
+    folder_model = FolderEvaluation / "transport_simulation_folder"
     folder_model.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------------------------------------------

@@ -554,7 +554,7 @@ def dummyCDF(GeneralFolder, FolderEvaluation):
     This routine creates path to a dummy CDF file in FolderEvaluation, with the name "simulation_evaluation.CDF"
 
     GeneralFolder, e.g.    ~/runs_portals/run10/
-    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0/model_complete/
+    FolderEvaluation, e.g. ~/runs_portals/run10000/Execution/Evaluation.0/transport_simulation_folder/
     """
 
     # ------- Name construction for scratch folders in parallel ----------------
