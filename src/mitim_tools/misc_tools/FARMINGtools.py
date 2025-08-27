@@ -2,6 +2,7 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
+from math import log
 from tqdm import tqdm
 import os
 import shutil
@@ -56,11 +57,17 @@ New handling of jobs in remote or local clusters. Example use:
 """
 
 class mitim_job:
-    def __init__(self, folder_local):
+    def __init__(
+            self,
+            folder_local,
+            log_simulation_file = None # If not None, log information of how the simulation went to this file
+            ):
+        
         if not isinstance(folder_local, (str, Path)):
             raise TypeError('MITIM job folder must be a valid string or pathlib.Path object to a local directory')
         self.folder_local = IOtools.expandPath(folder_local)
         self.jobid = None
+        self.log_simulation_file = log_simulation_file
 
     def define_machine(
         self,
@@ -266,6 +273,7 @@ class mitim_job:
                 wait_for_all_commands=wait_for_all_commands,
                 printYN=True,
                 timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+                log_file=self.log_simulation_file
             )
 
             # ~~~~~~ Retrieve
@@ -463,9 +471,7 @@ class mitim_job:
         return output, error
 
     def send(self):
-        print(
-            f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:'
-        )
+        print(f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the local directory
         print("\t\t- Tarballing (local side)")
@@ -512,12 +518,87 @@ class mitim_job:
         print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
-    def execute(self, command_str, **kwargs):
+    def execute(self, command_str, log_file=None, **kwargs):
 
         if self.ssh is not None:
-            return self.execute_remote(command_str, **kwargs)
+            output, error = self.execute_remote(command_str, **kwargs)
         else:
-            return self.execute_local(command_str, **kwargs)
+            output, error = self.execute_local(command_str, **kwargs)
+
+        # Write information file about where and how the run took place
+        if log_file is not None:
+            self.write_information_file(command_str, output, error, file=log_file)
+
+        return output, error
+
+    def write_information_file(self, command, output, error, file = 'mitim_simulation.log'):
+        """
+        Write a log file with information about where the simulation happened (local/remote),
+        user, host, ssh settings if remote, and head/tail of output and error.
+        """
+        import getpass
+        import platform
+        from datetime import datetime
+
+        # Prepare context info
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        is_remote = self.ssh is not None
+        lines = []
+        lines.append("==================== MITIM Simulation Execution Log ====================\n")
+        lines.append(f"Date (finished): {now}")
+        lines.append(f"Execution Type: {'Remote' if is_remote else 'Local'}\n")
+        lines.append("--- Execution Details ---")
+        if is_remote:
+            lines.append(f"SSH User: {getattr(self, 'target_user', 'N/A')}")
+            lines.append(f"SSH Host: {getattr(self, 'target_host', 'N/A')}")
+            lines.append(f"Remote Folder: {self.folderExecution}")
+        else:
+            lines.append(f"User: {getpass.getuser()}")
+            lines.append(f"Host: {platform.node()}")
+        lines.append(f"Folder: {self.folderExecution}")
+        lines.append("")
+
+        def get_head_tail(data, n=20):
+            try:
+                text = data.decode("utf-8", errors="replace")
+            except Exception:
+                text = str(data)
+            lines_ = text.splitlines()
+            head = lines_[:n]
+            tail = lines_[-n:] if len(lines_) > n else []
+            return head, tail
+
+        out_head, out_tail = get_head_tail(output)
+        err_head, err_tail = get_head_tail(error)
+
+        lines.append("--- Output (Head) ---")
+        lines.extend(out_head if out_head else ["<no output>"])
+        lines.append("")
+        lines.append("--- Output (Tail) ---")
+        lines.extend(out_tail if out_tail else ["<no output>"])
+        lines.append("")
+        lines.append("--- Error (Head) ---")
+        lines.extend(err_head if err_head else ["<no error>"])
+        lines.append("")
+        lines.append("--- Error (Tail) ---")
+        lines.extend(err_tail if err_tail else ["<no error>"])
+        lines.append("")
+        lines.append(f"--- Command ---")
+        lines.append(f"{command}")
+        lines.append(f"\n--- Input Files ---")
+        lines.extend([str(file) for file in self.input_files])
+        lines.append(f"\n--- Input Folders ---")
+        lines.extend([str(folder) for folder in self.input_folders])
+        lines.append(f"\n--- Output Files ---")
+        lines.extend([str(file) for file in self.output_files])
+        lines.append(f"\n--- Output Folders ---")
+        lines.extend([str(folder) for folder in self.output_folders])
+        lines.append("\n=======================================================================\n")
+
+        # Write to file (file can be Path or str)
+        file_path = file if isinstance(file, (str, Path)) else str(file)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     def execute_remote(
         self,

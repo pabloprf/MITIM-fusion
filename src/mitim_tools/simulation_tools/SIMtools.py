@@ -353,7 +353,9 @@ class mitim_simulation:
             tmpFolder = self.FolderGACODE / f"tmp_{code}"
             IOtools.askNewFolder(tmpFolder, force=True)
 
-            self.simulation_job = FARMINGtools.mitim_job(tmpFolder)
+            kkeys = [keys for keys in code_executor.keys()]
+            log_simulation_file=self.FolderGACODE / f"mitim_simulation_{kkeys[0]}.log" # Refer with the first folder
+            self.simulation_job = FARMINGtools.mitim_job(tmpFolder, log_simulation_file=log_simulation_file)
 
             self.simulation_job.define_machine_quick(code,f"mitim_{name}")
 
@@ -633,12 +635,11 @@ class mitim_simulation:
         fineall = True
         for subfolder_sim in code_executor:
 
-            for i, rho in enumerate(code_executor[subfolder_sim].keys()):
+            for rho in code_executor[subfolder_sim].keys():
                 for file in filesToRetrieve:
                     original_file = f"{file}_{rho:.4f}"
-                    final_destination = (
-                        code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
-                    )
+                    final_destination = code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+
                     final_destination.unlink(missing_ok=True)
 
                     temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
@@ -657,7 +658,6 @@ class mitim_simulation:
 
         else:
             print("\t\t- Some files were not retrieved", typeMsg="w")
-
 
     def run_scan(
         self,
