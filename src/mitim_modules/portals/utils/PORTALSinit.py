@@ -137,6 +137,7 @@ def initializeProblem(
             "forceZeroParticleFlux": portals_fun.PORTALSparameters["forceZeroParticleFlux"],
             "percentError": portals_fun.PORTALSparameters["percentError"],
             "use_tglf_scan_trick": portals_fun.PORTALSparameters["use_tglf_scan_trick"],
+            "only_minimal_files_TGLF": portals_fun.PORTALSparameters["only_minimal_files_TGLF"],
             "cold_start": False,
             "MODELparameters": portals_fun.MODELparameters,
             "impurityPosition": position_of_impurity,

@@ -43,6 +43,8 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
         
+        only_minimal_files_TGLF = transport_evaluator_options.get("only_minimal_files_TGLF", True)
+        
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
         
@@ -84,7 +86,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                         "minutes": 2,
                         },
                     attempts_execution=2,
-                    only_minimal_files=True,
+                    only_minimal_files=only_minimal_files_TGLF,
                 )
             
                 tglf.read(label='base',require_all_files=False)
