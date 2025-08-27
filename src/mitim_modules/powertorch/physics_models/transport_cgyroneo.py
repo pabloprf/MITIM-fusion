@@ -117,7 +117,6 @@ def logic_to_wait(folder):
     while not print(f"**** When you have done that, please say yes", typeMsg='q'):
         pass
 
-
 def post_checks(self, rtol = 1e-3):
     
     with open(self.folder / 'fluxes_turb.json', 'r') as f:
