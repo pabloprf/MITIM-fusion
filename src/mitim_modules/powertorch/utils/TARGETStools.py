@@ -144,6 +144,8 @@ class power_targets:
 
         self.powerstate.plasma["QeGB"] = self.powerstate.plasma["QeMWm2"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["QiGB"] = self.powerstate.plasma["QiMWm2"] / self.powerstate.plasma["Qgb"]
+        self.powerstate.plasma["GeGB"] = self.powerstate.plasma["Ge1E20m2"] / self.powerstate.plasma["Ggb"]
+        self.powerstate.plasma["GZGB"] = self.powerstate.plasma["GZ1E20m2"] / self.powerstate.plasma["Ggb"]
         self.powerstate.plasma["CeGB"] = self.powerstate.plasma["Ce"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["CZGB"] = self.powerstate.plasma["CZ"] / self.powerstate.plasma["Qgb"]
         self.powerstate.plasma["MtGB"] = self.powerstate.plasma["MtJm2"] / self.powerstate.plasma["Pgb"]

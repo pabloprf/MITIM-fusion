@@ -928,11 +928,11 @@ def tgyro_to_powerstate(
     # *********** Electron Energy Fluxes
     # **********************************
 
-    self.QeMWm2_tr_turb = TGYROresults.Qe_sim_turb[0, 1:nr]
-    self.QeMWm2_tr_neoc = TGYROresults.Qe_sim_neo[0, 1:nr]
+    self.QeGB_turb = TGYROresults.QeGB_sim_turb[0, 1:nr]
+    self.QeGB_neoc = TGYROresults.QeGB_sim_neo[0, 1:nr]
 
-    self.QeMWm2_tr_turb_stds = TGYROresults.Qe_sim_turb_stds[0, 1:nr]
-    self.QeMWm2_tr_neoc_stds = TGYROresults.Qe_sim_neo_stds[0, 1:nr]
+    self.QeGB_turb_stds = TGYROresults.QeGB_sim_turb_stds[0, 1:nr]
+    self.QeGB_neoc_stds = TGYROresults.QeGB_sim_neo_stds[0, 1:nr]
 
     # **********************************
     # *********** Ion Energy Fluxes
@@ -940,65 +940,65 @@ def tgyro_to_powerstate(
 
     if Qi_includes_fast:
 
-        self.QiMWm2_tr_turb = TGYROresults.QiIons_sim_turb[0, 1:nr]
-        self.QiMWm2_tr_neoc = TGYROresults.QiIons_sim_neo[0, 1:nr]
+        self.QiGB_turb = TGYROresults.QiIons_sim_turb[0, 1:nr]
+        self.QiGB_neoc = TGYROresults.QiIons_sim_neo[0, 1:nr]
         
-        self.QiMWm2_tr_turb_stds = TGYROresults.QiIons_sim_turb_stds[0, 1:nr]
-        self.QiMWm2_tr_neoc_stds = TGYROresults.QiIons_sim_neo_stds[0, 1:nr]
+        self.QiGB_turb_stds = TGYROresults.QiGBIons_sim_turb_stds[0, 1:nr]
+        self.QiGB_neoc_stds = TGYROresults.QiGBIons_sim_neo_stds[0, 1:nr]
 
     else:
 
-        self.QiMWm2_tr_turb = TGYROresults.QiIons_sim_turb_thr[0, 1:nr]
-        self.QiMWm2_tr_neoc = TGYROresults.QiIons_sim_neo_thr[0, 1:nr]
+        self.QiGB_turb = TGYROresults.QiGBIons_sim_turb_thr[0, 1:nr]
+        self.QiGB_neoc = TGYROresults.QiGBIons_sim_neo_thr[0, 1:nr]
 
-        self.QiMWm2_tr_turb_stds = TGYROresults.QiIons_sim_turb_thr_stds[0, 1:nr]
-        self.QiMWm2_tr_neoc_stds = TGYROresults.QiIons_sim_neo_thr_stds[0, 1:nr]
+        self.QiGB_turb_stds = TGYROresults.QiGBIons_sim_turb_thr_stds[0, 1:nr]
+        self.QiGB_neoc_stds = TGYROresults.QiGBIons_sim_neo_thr_stds[0, 1:nr]
 
     # **********************************
     # *********** Momentum Fluxes
     # **********************************
 
-    self.MtJm2_tr_turb = TGYROresults.Mt_sim_turb[0, 1:nr] # So far, let's include fast in momentum
-    self.MtJm2_tr_neoc = TGYROresults.Mt_sim_neo[0, 1:nr]
+    self.MtGB_turb = TGYROresults.MtGB_sim_turb[0, 1:nr] # So far, let's include fast in momentum
+    self.MtGB_neoc = TGYROresults.MtGB_sim_neo[0, 1:nr]
 
-    self.MtJm2_tr_turb_stds = TGYROresults.Mt_sim_turb_stds[0, 1:nr]
-    self.MtJm2_tr_neoc_stds = TGYROresults.Mt_sim_neo_stds[0, 1:nr]
+    self.MtGB_turb_stds = TGYROresults.MtGB_sim_turb_stds[0, 1:nr]
+    self.MtGB_neoc_stds = TGYROresults.MtGB_sim_neo_stds[0, 1:nr]
     
     # **********************************
     # *********** Particle Fluxes
     # **********************************
 
     # Store raw fluxes for better plotting later
-    self.Ge1E20m2_tr_turb = TGYROresults.Ge_sim_turb[0, 1:nr]
-    self.Ge1E20m2_tr_neoc = TGYROresults.Ge_sim_neo[0, 1:nr]
+    self.GeGB_turb = TGYROresults.GeGB_sim_turb[0, 1:nr]
+    self.GeGB_neoc = TGYROresults.GeGB_sim_neo[0, 1:nr]
 
-    self.Ge1E20m2_tr_turb_stds = TGYROresults.Ge_sim_turb_stds[0, 1:nr]
-    self.Ge1E20m2_tr_neoc_stds = TGYROresults.Ge_sim_neo_stds[0, 1:nr]
+    self.GeGB_turb_stds = TGYROresults.GeGB_sim_turb_stds[0, 1:nr]
+    self.GeGB_neoc_stds = TGYROresults.GeGB_sim_neo_stds[0, 1:nr]
         
     # **********************************
     # *********** Impurity Fluxes
     # **********************************
 
     # Store raw fluxes for better plotting later
-    self.GZ1E20m2_tr_turb = TGYROresults.Gi_sim_turb[impurityPosition, 0, 1:nr]
-    self.GZ1E20m2_tr_neoc = TGYROresults.Gi_sim_neo[impurityPosition, 0, 1:nr]
+    self.GZGB_turb = TGYROresults.GiGB_sim_turb[impurityPosition, 0, 1:nr]
+    self.GZGB_neoc = TGYROresults.GiGB_sim_neo[impurityPosition, 0, 1:nr]
     
-    self.GZ1E20m2_tr_turb_stds = TGYROresults.Gi_sim_turb_stds[impurityPosition, 0, 1:nr]
-    self.GZ1E20m2_tr_neoc_stds = TGYROresults.Gi_sim_neo_stds[impurityPosition, 0, 1:nr]
+    self.GZGB_turb_stds = TGYROresults.GiGB_sim_turb_stds[impurityPosition, 0, 1:nr]
+    self.GZGB_neoc_stds = TGYROresults.GiGB_sim_neo_stds[impurityPosition, 0, 1:nr]
 
     # **********************************
     # *********** Energy Exchange
     # **********************************
 
     if provideTurbulentExchange:
-        self.QieMWm3_tr_turb = TGYROresults.EXe_sim_turb[0, 1:nr]
-        self.QieMWm3_tr_turb_stds = TGYROresults.EXe_sim_turb_stds[0, 1:nr]
+        self.QieGB_turb = TGYROresults.EXeGB_sim_turb[0, 1:nr]
+        self.QieGB_turb_stds = TGYROresults.EXeGB_sim_turb_stds[0, 1:nr]
     else:
-        self.QieMWm3_tr_turb = self.QeMWm2_tr_turb * 0.0
-        self.QieMWm3_tr_turb_stds = self.QeMWm2_tr_turb * 0.0
+        self.QieGB_turb = self.QeGB_turb * 0.0
+        self.QieGB_turb_stds = self.QeGB_turb * 0.0
 
-    self.QieMWm3_tr_neoc = self.QeMWm2_tr_turb * 0.0
-    self.QieMWm3_tr_neoc_stds = self.QeMWm2_tr_turb_stds * 0.0
+    self.QieGB_neoc = self.QeGB_turb * 0.0
+    self.QieGB_neoc_stds = self.QeGB_turb_stds * 0.0
 
     # **********************************
     # *********** Targets

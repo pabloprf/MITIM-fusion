@@ -19,21 +19,21 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
         
         'fluxes_mean': 
             {
-                'QeMWm2': ...
-                'QiMWm2': ...
-                'Ge1E20m2': ...
-                'GZ1E20m2': ...
-                'MtJm2': ...
-                'QieMWm3': ...
+                'QeGB': ...
+                'QiGB': ...
+                'GeGB': ...
+                'GZGB': ...
+                'MtGB': ...
+                'QieGB': ...
             },
         'fluxes_stds': 
             {
-                'QeMWm2': ...
-                'QiMWm2': ...
-                'Ge1E20m2': ...
-                'GZ1E20m2': ...
-                'MtJm2': ...
-                'QieMWm3': ...
+                'QeGB': ...
+                'QiGB': ...
+                'GeGB': ...
+                'GZGB': ...
+                'MtGB': ...
+                'QieGB': ...
             },
         'additional_info': {
                 'rho': rho.tolist(),
@@ -46,9 +46,9 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
         fluxes_mean = {}
         fluxes_stds = {}
 
-        for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
-            fluxes_mean[var] = self.__dict__[f"{var}_tr_{suffix}"].tolist()
-            fluxes_stds[var] = self.__dict__[f"{var}_tr_{suffix}_stds"].tolist()
+        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
+            fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
+            fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
 
         json_dict = {
             'fluxes_mean': fluxes_mean,
@@ -56,6 +56,10 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
             'additional_info': {
                 'rho': self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist(),
                 'roa': self.powerstate.plasma["roa"][0, 1:].cpu().numpy().tolist(),
+                'Qgb': self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy().tolist(),
+                'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
+                'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
+                'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
             }
         }
 
@@ -254,16 +258,69 @@ class power_transport:
         '''
         Populate the powerstate.plasma with the results from the json file
         '''
+        
+        print(f"\t* Populating powerstate.plasma with JSON data from {self.folder / file_name}")
 
         with open(self.folder / file_name, 'r') as f:
             json_dict = json.load(f)
-
-        for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
-            self.powerstate.plasma[f"{var}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var])
-            self.powerstate.plasma[f"{var}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var])
-
-        print(f"\t* Populated powerstate.plasma with JSON data from {self.folder / file_name}")
         
+        # See if the file has GB or real units
+        units_GB, units_real = False, False
+        if 'QeGB' in json_dict['fluxes_mean']:
+            units_GB = True
+        if 'QeMWm2' in json_dict['fluxes_mean']:
+            units_real = True
+
+        units = 'both' if (units_GB and units_real) else 'GB' if units_GB else 'real' if units_real else 'none'
+
+        if units == 'real':
+            
+            print("\t\t- File has fluxes in real units... populating powerstate directly")
+
+            for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
+                self.powerstate.plasma[f"{var}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var])
+                self.powerstate.plasma[f"{var}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var])
+
+        elif units == 'GB' or units == 'both':
+
+            mapper = {
+                'QeGB': ['Qgb', 'QeMWm2'],
+                'QiGB': ['Qgb', 'QiMWm2'],
+                'GeGB': ['Ggb', 'Ge1E20m2'],
+                'GZGB': ['Ggb', 'GZ1E20m2'],
+                'MtGB': ['Pgb', 'MtJm2'],
+                'QieGB': ['Sgb', 'QieMWm3'],
+            }
+
+            dum = {}
+            for var in mapper:
+                gb = self.powerstate.plasma[f"{mapper[var][0]}"][0,1:].cpu().numpy()
+                dum[f"{mapper[var][1]}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var]) * gb
+                dum[f"{mapper[var][1]}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var]) * gb
+
+            if units == 'GB':
+                
+                print("\t\t- File has fluxes in GB units... using GB units from powerstate to convert to real units")
+
+                for var in mapper:
+                    self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"] = dum[f"{mapper[var][1]}_tr_{suffix}"]
+                    self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds"] = dum[f"{mapper[var][1]}_tr_{suffix}_stds"]
+
+            elif units == 'both':
+                
+                print("\t\t- File has fluxes in both GB and real units... using real units and checking consistency")
+
+                for var in mapper:
+                    if not np.allclose(self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"], dum[f"{mapper[var][1]}_tr_{suffix}"]):
+                        print(f"\t\t\t- Inconsistent values found for {mapper[var][1]}_tr_{suffix}")
+
+                for var in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']:
+                    self.powerstate.plasma[f"{var}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var])
+                    self.powerstate.plasma[f"{var}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var])
+
+        else:
+            raise ValueError("[MITIM] Unknown units in JSON file")
+
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
@@ -271,13 +328,13 @@ class power_transport:
     def evaluate_turbulence(self):
         '''
         This needs to populate the following np.arrays in self., with dimensions of rho:
-            - QeMWm2_tr_turb
-            - QiMWm2_tr_turb
-            - Ge1E20m2_tr_turb
-            - GZ1E20m2_tr_turb
-            - MtJm2_tr_turb
-            - QieMWm3_tr_turb (turbulence exchange)
-        and their respective standard deviations, e.g. QeMWm2_tr_turb_stds
+            - QeGB_turb
+            - QiGB_turb
+            - GeGB_turb
+            - GZGB_turb
+            - MtGB_turb
+            - QieGB_turb (turbulence exchange)
+        and their respective standard deviations, e.g. QeGB_turb_stds
         '''
 
         print(">> No turbulent fluxes to evaluate", typeMsg="w")
@@ -300,12 +357,12 @@ class power_transport:
     def evaluate_neoclassical(self):
         '''
         This needs to populate the following np.arrays in self.:
-            - QeMWm2_tr_neoc
-            - QiMWm2_tr_neoc
-            - Ge1E20m2_tr_neoc
-            - GZ1E20m2_tr_neoc
-            - MtJm2_tr_neoc
-        and their respective standard deviations, e.g. QeMWm2_tr_neoc_stds
+            - QeGB_neoc
+            - QiGB_neoc
+            - GeGB_tr_neoc
+            - GZGB_tr_neoc
+            - MtGB_tr_neoc
+        and their respective standard deviations, e.g. QeGB_tr_neoc_stds
         '''
 
         print(">> No neoclassical fluxes to evaluate", typeMsg="w")
@@ -322,3 +379,4 @@ class power_transport:
 
             self.__dict__[f"{var}_tr_neoc"] = np.zeros(dim)
             self.__dict__[f"{var}_tr_neoc_stds"] = np.zeros(dim)
+            

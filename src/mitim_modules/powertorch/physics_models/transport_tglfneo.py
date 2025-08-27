@@ -84,16 +84,16 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             
                 tglf.read(label='base',require_all_files=False)
                 
-                Qe = np.array([tglf.results['base']['TGLFout'][i].Qe_unn for i in range(len(rho_locations))])
-                Qi = np.array([tglf.results['base']['TGLFout'][i].Qi_unn for i in range(len(rho_locations))])
-                Ge = np.array([tglf.results['base']['TGLFout'][i].Ge_unn for i in range(len(rho_locations))])
-                GZ = np.array([tglf.results['base']['TGLFout'][i].GiAll_unn[impurityPosition] for i in range(len(rho_locations))])
-                Mt = np.array([tglf.results['base']['TGLFout'][i].Mt_unn for i in range(len(rho_locations))])
-                S = np.array([tglf.results['base']['TGLFout'][i].Se_unn for i in range(len(rho_locations))])
+                Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
+                Qi = np.array([tglf.results['base']['TGLFout'][i].Qi for i in range(len(rho_locations))])
+                Ge = np.array([tglf.results['base']['TGLFout'][i].Ge for i in range(len(rho_locations))])
+                GZ = np.array([tglf.results['base']['TGLFout'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
+                Mt = np.array([tglf.results['base']['TGLFout'][i].Mt for i in range(len(rho_locations))])
+                S = np.array([tglf.results['base']['TGLFout'][i].Se for i in range(len(rho_locations))])
 
                 if Qi_includes_fast:
                     
-                    Qifast = [tglf.results['base']['TGLFout'][i].Qifast_unn for i in range(len(rho_locations))]
+                    Qifast = [tglf.results['base']['TGLFout'][i].Qifast for i in range(len(rho_locations))]
                     
                     if Qifast.sum() != 0.0:
                         print(f"\t- Qi includes fast ions, adding their contribution")
@@ -129,27 +129,27 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         # Pass the information
         # ------------------------------------------------------------------------------------------------------------------------
         
-        self.QeMWm2_tr_turb = Flux_mean[0]
-        self.QeMWm2_tr_turb_stds = Flux_std[0]
+        self.QeGB_turb = Flux_mean[0]
+        self.QeGB_turb_stds = Flux_std[0]
                 
-        self.QiMWm2_tr_turb = Flux_mean[1]
-        self.QiMWm2_tr_turb_stds = Flux_std[1]
+        self.QiGB_turb = Flux_mean[1]
+        self.QiGB_turb_stds = Flux_std[1]
                 
-        self.Ge1E20m2_tr_turb = Flux_mean[2]
-        self.Ge1E20m2_tr_turb_stds = Flux_std[2]        
+        self.GeGB_turb = Flux_mean[2]
+        self.GeGB_turb_stds = Flux_std[2]        
         
-        self.GZ1E20m2_tr_turb = Flux_mean[3]           
-        self.GZ1E20m2_tr_turb_stds = Flux_std[3]       
+        self.GZGB_turb = Flux_mean[3]           
+        self.GZGB_turb_stds = Flux_std[3]       
 
-        self.MtJm2_tr_turb = Flux_mean[4]
-        self.MtJm2_tr_turb_stds = Flux_std[4] 
+        self.MtGB_turb = Flux_mean[4]
+        self.MtGB_turb_stds = Flux_std[4] 
 
         if provideTurbulentExchange:
-            self.QieMWm3_tr_turb = Flux_mean[5]
-            self.QieMWm3_tr_turb_stds = Flux_std[5]
+            self.QieGB_turb = Flux_mean[5]
+            self.QieGB_turb_stds = Flux_std[5]
         else:
-            self.QieMWm3_tr_turb = Flux_mean[5] * 0.0
-            self.QieMWm3_tr_turb_stds = Flux_std[5] * 0.0
+            self.QieGB_turb = Flux_mean[5] * 0.0
+            self.QieGB_turb_stds = Flux_std[5] * 0.0
 
         return tglf
 
@@ -184,30 +184,30 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     
         neo.read(label='base')
         
-        Qe = np.array([neo.results['base']['NEOout'][i].Qe_unn for i in range(len(rho_locations))])
-        Qi = np.array([neo.results['base']['NEOout'][i].Qi_unn for i in range(len(rho_locations))])
-        Ge = np.array([neo.results['base']['NEOout'][i].Ge_unn for i in range(len(rho_locations))])
-        GZ = np.array([neo.results['base']['NEOout'][i].GiAll_unn[impurityPosition-1] for i in range(len(rho_locations))])
-        Mt = np.array([neo.results['base']['NEOout'][i].Mt_unn for i in range(len(rho_locations))])
+        Qe = np.array([neo.results['base']['NEOout'][i].Qe for i in range(len(rho_locations))])
+        Qi = np.array([neo.results['base']['NEOout'][i].Qi for i in range(len(rho_locations))])
+        Ge = np.array([neo.results['base']['NEOout'][i].Ge for i in range(len(rho_locations))])
+        GZ = np.array([neo.results['base']['NEOout'][i].GiAll[impurityPosition-1] for i in range(len(rho_locations))])
+        Mt = np.array([neo.results['base']['NEOout'][i].Mt for i in range(len(rho_locations))])
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information
         # ------------------------------------------------------------------------------------------------------------------------
         
-        self.QeMWm2_tr_neoc = Qe
-        self.QiMWm2_tr_neoc = Qi
-        self.Ge1E20m2_tr_neoc = Ge
-        self.GZ1E20m2_tr_neoc = GZ
-        self.MtJm2_tr_neoc = Mt
+        self.QeGB_neoc = Qe
+        self.QiGB_neoc = Qi
+        self.GeGB_neoc = Ge
+        self.GZGB_neoc = GZ
+        self.MtGB_neoc = Mt
         
-        self.QeMWm2_tr_neoc_stds = abs(Qe) * percentError[1]/100.0
-        self.QiMWm2_tr_neoc_stds = abs(Qi) * percentError[1]/100.0
-        self.Ge1E20m2_tr_neoc_stds = abs(Ge) * percentError[1]/100.0
-        self.GZ1E20m2_tr_neoc_stds = abs(GZ) * percentError[1]/100.0
-        self.MtJm2_tr_neoc_stds = abs(Mt) * percentError[1]/100.0
+        self.QeGB_neoc_stds = abs(Qe) * percentError[1]/100.0
+        self.QiGB_neoc_stds = abs(Qi) * percentError[1]/100.0
+        self.GeGB_neoc_stds = abs(Ge) * percentError[1]/100.0
+        self.GZGB_neoc_stds = abs(GZ) * percentError[1]/100.0
+        self.MtGB_neoc_stds = abs(Mt) * percentError[1]/100.0
 
-        self.QieMWm3_tr_neoc = Qe * 0.0
-        self.QieMWm3_tr_neoc_stds = Qe * 0.0
+        self.QieGB_neoc = Qe * 0.0
+        self.QieGB_neoc_stds = Qe * 0.0
 
         return neo
                 
@@ -342,13 +342,13 @@ def _run_tglf_uncertainty_model(
     for vari in variables_to_scan:
         jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
 
-        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe']
-        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi']
-        Qifast[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qifast']
-        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge']
-        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi']
-        Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt']
-        S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S']
+        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe_gb']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi_gb']
+        Qifast[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qifast_gb']
+        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge_gb']
+        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi_gb']
+        Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt_gb']
+        S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S_gb']
         cont += jump
         
     if Qi_includes_fast:
