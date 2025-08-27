@@ -322,6 +322,8 @@ class mitim_simulation:
             
             print(f"\t- {self.run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
         
+            self.simulation_job = None
+        
         else:
             
             # ----------------------------------------------------------------------------------------------------------------
@@ -565,6 +567,10 @@ class mitim_simulation:
 
     def check(self, every_n_minutes=None):
 
+        if self.simulation_job is None:
+            print("- Not checking status because simulation job is not defined (not run)", typeMsg="i")
+            return
+
         if self.simulation_job.launchSlurm:
             print("- Checker job status")
 
@@ -587,6 +593,10 @@ class mitim_simulation:
         """
         For a job that has been submitted but not waited for, once it is done, get the results
         """
+
+        if self.simulation_job is None:
+            print("- Not fetching because simulation job is not defined (not run)", typeMsg="i")
+            return
 
         print("\n\n\t- Fetching results")
 

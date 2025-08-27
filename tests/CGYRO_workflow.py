@@ -30,7 +30,7 @@ cgyro.run(
         'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
     },
     slurm_setup={
-        'cores':8,
+        'cores':16, # Each CGYRO instance (each radius will have this number of cores or gpus)
         'minutes': 10,
         },
     cold_start=cold_start,
@@ -59,7 +59,7 @@ cgyro.run_scan(
     variable='KY',
     varUpDown=[0.3,0.4],
     slurm_setup={
-        'cores':4
+        'cores':16
         },
     cold_start=cold_start,
     forceIfcold_start=True,
