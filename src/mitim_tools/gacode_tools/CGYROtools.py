@@ -32,7 +32,7 @@ class CGYRO(SIMtools.mitim_simulation):
 
             if type_of_submission == "slurm_standard":
                 
-                slurm_settings['ntasks'] = total_cores_required
+                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
                 
                 if machineSettings['gpus_per_node'] > 0:
                     slurm_settings['gpuspertask'] = cores_per_code_call

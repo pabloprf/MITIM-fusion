@@ -10,6 +10,7 @@ from mitim_tools.misc_tools import (
 )
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -367,7 +368,7 @@ class TGYRO:
             f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
-        inputclass_TGLF = GACODErun.modifyInputs(
+        inputclass_TGLF = SIMtools.modifyInputs(
             inputclass_TGLF,
             code_settings=TGLFsettings,
             extraOptions=extraOptionsTGLF,
@@ -4547,7 +4548,7 @@ class TGYROinput:
         else:
             self.file_txt = ""
 
-        self.input_dict = GACODErun.buildDictFromInput(self.file_txt)
+        self.input_dict = SIMtools.buildDictFromInput(self.file_txt)
 
         # Species
         self.species = input_profiles.Species

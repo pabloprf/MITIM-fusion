@@ -138,7 +138,7 @@ class TGLF(SIMtools.mitim_simulation):
 
             if type_of_submission == "slurm_standard":
                 
-                slurm_settings['ntasks'] = total_cores_required
+                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
                 slurm_settings['cpuspertask'] = cores_per_code_call
 
             elif type_of_submission == "slurm_array":

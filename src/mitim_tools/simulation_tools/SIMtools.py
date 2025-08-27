@@ -35,16 +35,16 @@ class mitim_simulation:
 
     def prep(
         self,
-        mitim_state,    # A MITIM state class
-        FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
-        cold_start=False,  # If True, do not use what it potentially inside the folder, run again
-        forceIfcold_start=False,  # Extra flag
+        mitim_state,                # A MITIM state class
+        FolderGACODE,               # Main folder where all caculations happen (runs will be in subfolders)
+        cold_start=False,           # If True, do not use what it potentially inside the folder, run again
+        forceIfcold_start=False,    # Extra flag
         ):
         '''
         This method prepares the GACODE run from a MITIM state class by setting up the necessary input files and directories.
         '''
 
-        print("> Preparation run from input.gacode (direct conversion)")
+        print("> Preparation run from MITIM state class (direct conversion)")
 
         if self.run_specifications is None:
             raise Exception("[MITIM] Simulation child class did not define run specifications")
