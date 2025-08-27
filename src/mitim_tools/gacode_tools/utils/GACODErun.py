@@ -1,4 +1,6 @@
 import shutil
+import datetime
+import time
 import os
 import copy
 import numpy as np
@@ -116,7 +118,7 @@ class gacode_simulation:
         slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
-        full_submission=True # Flag to submit the job or just prepare everything but do not submit via MITIM
+        run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
     ):
         
         if slurm_setup is None:
@@ -165,7 +167,7 @@ class gacode_simulation:
             slurm_setup=slurm_setup,
             only_minimal_files=only_minimal_files,
             attempts_execution=attempts_execution,
-            full_submission=full_submission
+            run_type=run_type
         )
         
         return code_executor_full
@@ -303,7 +305,7 @@ class gacode_simulation:
     def _run(
         self,
         code_executor,
-        full_submission=True,
+        run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
         **kwargs_run
     ):
         """
@@ -352,9 +354,9 @@ class gacode_simulation:
             tmpFolder = self.FolderGACODE / f"tmp_{code}"
             IOtools.askNewFolder(tmpFolder, force=True)
 
-            gacode_job = FARMINGtools.mitim_job(tmpFolder)
+            self.simulation_job = FARMINGtools.mitim_job(tmpFolder)
 
-            gacode_job.define_machine_quick(code,f"mitim_{name}")
+            self.simulation_job.define_machine_quick(code,f"mitim_{name}")
 
             folders, folders_red = [], []
             for subfolder_sim in code_executor:
@@ -372,7 +374,7 @@ class gacode_simulation:
                     folders.append(folder_sim_this)
 
                     folder_sim_this_rel = folder_sim_this.relative_to(tmpFolder)
-                    folders_red.append(folder_sim_this_rel.as_posix() if gacode_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
+                    folders_red.append(folder_sim_this_rel.as_posix() if self.simulation_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
 
                     folder_sim_this.mkdir(parents=True, exist_ok=True)
 
@@ -390,7 +392,7 @@ class gacode_simulation:
 
             # If the run is local and not slurm, let's check the number of cores
             if (machineSettings["machine"] == "local") and \
-                not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
+                not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
                 
                 cores_in_machine = int(os.cpu_count())
                 cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
@@ -425,7 +427,7 @@ class gacode_simulation:
                 print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-arra execution (vs {max_cores_per_node} specified)",typeMsg="i")
                 max_cores_per_node_compare = machineSettings['gpus_per_node']
 
-            if not (launchSlurm and ("partition" in gacode_job.machineSettings["slurm"])):
+            if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
                 type_of_submission = "bash"
             elif total_cores_required < max_cores_per_node_compare:
                 type_of_submission = "slurm_standard"
@@ -458,7 +460,7 @@ class gacode_simulation:
 
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
-                GACODEcommand += f'    {code_call(folder = '\"$folder\"', n = cores_per_code_call, p = gacode_job.folderExecution)}\n'
+                GACODEcommand += f'    {code_call(folder = '\"$folder\"', n = cores_per_code_call, p = self.simulation_job.folderExecution)}\n'
                 GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
@@ -471,7 +473,7 @@ class gacode_simulation:
                 # Code launches
                 GACODEcommand = ""
                 for folder in folders_red:
-                    GACODEcommand += f'    {code_call(folder = folder, n = cores_per_code_call, p = gacode_job.folderExecution)}  &\n'
+                    GACODEcommand += f'    {code_call(folder = folder, n = cores_per_code_call, p = self.simulation_job.folderExecution)}  &\n'
                 GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
             
             # Job array 
@@ -487,16 +489,16 @@ class gacode_simulation:
                     array_list.append(f"{i}")
                     folder_temp_array = f"run{i}"
                     folder_actual = folder
-                    shellPreCommands.append(f"mkdir {gacode_job.folderExecution}/{folder_temp_array}; cp {gacode_job.folderExecution}/{folder_actual}/*  {gacode_job.folderExecution}/{folder_temp_array}/.")
-                    shellPostCommands.append(f"cp {gacode_job.folderExecution}/{folder_temp_array}/* {gacode_job.folderExecution}/{folder_actual}/.; rm -r {gacode_job.folderExecution}/{folder_temp_array}")
+                    shellPreCommands.append(f"mkdir {self.simulation_job.folderExecution}/{folder_temp_array}; cp {self.simulation_job.folderExecution}/{folder_actual}/*  {self.simulation_job.folderExecution}/{folder_temp_array}/.")
+                    shellPostCommands.append(f"cp {self.simulation_job.folderExecution}/{folder_temp_array}/* {self.simulation_job.folderExecution}/{folder_actual}/.; rm -r {self.simulation_job.folderExecution}/{folder_temp_array}")
 
                 # Code launches
                 indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
                 GACODEcommand = code_call(
                     folder = indexed_folder,
                     n = cores_per_code_call,
-                    p = gacode_job.folderExecution,
-                    additional_command = f'1> {gacode_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {gacode_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
+                    p = self.simulation_job.folderExecution,
+                    additional_command = f'1> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
 
             # ---------------------------------------------
             # Execute
@@ -511,7 +513,7 @@ class gacode_simulation:
                 array_list=array_list if type_of_submission == "slurm_array" else None
             )
 
-            gacode_job.define_machine(
+            self.simulation_job.define_machine(
                 code,
                 f"mitim_{name}",
                 launchSlurm=launchSlurm,
@@ -524,7 +526,7 @@ class gacode_simulation:
                 check_files_in_folder[folder] = filesToRetrieve
             # ---------------------------------------------
 
-            gacode_job.prep(
+            self.simulation_job.prep(
                 GACODEcommand,
                 input_folders=folders,
                 output_folders=folders_red,
@@ -533,45 +535,121 @@ class gacode_simulation:
                 shellPostCommands=shellPostCommands,
             )
 
-            if full_submission:
-                
-                gacode_job.run(
+            # Submit run and wait
+            if run_type == 'normal':
+            
+                self.simulation_job.run(
                     removeScratchFolders=True,
                     attempts_execution=attempts_execution
                     )
+                    
+                self._organize_results(code_executor, tmpFolder, filesToRetrieve)
 
-                # ---------------------------------------------
-                # Organize
-                # ---------------------------------------------
+            # Submit run but do not wait; the user should do checks and fetch results
+            elif run_type == 'submit':
+                self.simulation_job.run(
+                    waitYN=False,
+                    check_if_files_received=False,
+                    removeScratchFolders=False,
+                    removeScratchFolders_goingIn=kwargs_run.get("cold_start", False),
+                )
 
-                print("\t- Retrieving files and changing names for storing")
-                fineall = True
-                for subfolder_sim in code_executor:
+                self.kwargs_organize = {
+                    "code_executor": code_executor,
+                    "tmpFolder": tmpFolder,
+                    "filesToRetrieve": filesToRetrieve
+                }
 
-                    for i, rho in enumerate(code_executor[subfolder_sim].keys()):
-                        for file in filesToRetrieve:
-                            original_file = f"{file}_{rho:.4f}"
-                            final_destination = (
-                                code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
-                            )
-                            final_destination.unlink(missing_ok=True)
+                self.slurm_output = "slurm_output.dat"
 
-                            temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
-                            temp_file.replace(final_destination)
+                # Prepare how to search for the job without waiting for it
+                self.simulation_job.launchSlurm = True
+                self.simulation_job.slurm_settings['name'] = Path(self.simulation_job.folderExecution).name
 
-                            fineall = fineall and final_destination.exists()
+    def check(self, every_n_minutes=None):
 
-                            if not final_destination.exists():
-                                print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+        if self.simulation_job.launchSlurm:
+            print("- Checker job status")
 
-                if fineall:
-                    print("\t\t- All files were successfully retrieved")
-
-                    # Remove temporary folder
-                    shutil.rmtree(tmpFolder)
-
+            while True:
+                self.simulation_job.check(file_output = self.slurm_output)
+                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({self.simulation_job.infoSLURM["STATE"]})')
+                if self.simulation_job.status == 2:
+                    print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
+                    break
+                elif every_n_minutes is None:
+                    print("\n\t* Job not finished yet")
+                    break
                 else:
-                    print("\t\t- Some files were not retrieved", typeMsg="w")
+                    print(f"\n\t* Waiting {every_n_minutes} minutes")
+                    time.sleep(every_n_minutes * 60)
+        else:
+            print("- Not checking status because this was run command line (not slurm)")
+
+    def fetch(self):
+        """
+        For a job that has been submitted but not waited for, once it is done, get the results
+        """
+
+        print("\n\n\t- Fetching results")
+
+        if self.simulation_job.launchSlurm:
+            self.simulation_job.connect()
+            self.simulation_job.retrieve()
+            self.simulation_job.close()
+
+            self._organize_results(**self.kwargs_organize)
+
+        else:
+            print("- Not retrieving results because this was run command line (not slurm)")
+
+    def delete(self):
+
+        print("\n\n\t- Deleting job")
+
+        self.simulation_job.launchSlurm = False
+
+        self.simulation_job.prep(
+            f"scancel -n {self.simulation_job.slurm_settings['name']}",
+            label_log_files="_finish",
+        )
+
+        self.simulation_job.run()
+
+    def _organize_results(self, code_executor, tmpFolder, filesToRetrieve):
+    
+        # ---------------------------------------------
+        # Organize
+        # ---------------------------------------------
+
+        print("\t- Retrieving files and changing names for storing")
+        fineall = True
+        for subfolder_sim in code_executor:
+
+            for i, rho in enumerate(code_executor[subfolder_sim].keys()):
+                for file in filesToRetrieve:
+                    original_file = f"{file}_{rho:.4f}"
+                    final_destination = (
+                        code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+                    )
+                    final_destination.unlink(missing_ok=True)
+
+                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                    temp_file.replace(final_destination)
+
+                    fineall = fineall and final_destination.exists()
+
+                    if not final_destination.exists():
+                        print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+
+        if fineall:
+            print("\t\t- All files were successfully retrieved")
+
+            # Remove temporary folder
+            shutil.rmtree(tmpFolder)
+
+        else:
+            print("\t\t- Some files were not retrieved", typeMsg="w")
 
 
     def run_scan(
@@ -1279,60 +1357,6 @@ def CDFtoTRXPLoutput(
             nameOutputs=nameOutputs,
             grids=grids,
         )
-
-
-def executeCGYRO(
-    FolderCGYRO,
-    linesCGYRO,
-    fileProfiles,
-    outputFiles=["out.cgyro.run"],
-    name="",
-    numcores=32,
-):
-    FolderCGYRO.mkdir(parents=True, exist_ok=True)
-
-    cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
-
-    cgyro_job.define_machine(
-        "cgyro",
-        f"mitim_cgyro_{name}",
-        slurm_settings={
-            "minutes": 60,
-            "ntasks": numcores,
-            "name": name,
-        },
-    )
-
-    # ---------------
-    # Prepare files
-    # ---------------
-
-    fileCGYRO = FolderCGYRO / f"input.cgyro"
-    with open(fileCGYRO, "w") as f:
-        f.write("\n".join(linesCGYRO))
-
-    # ---------------
-    # Execution command
-    # ---------------
-
-    folderExecution = cgyro_job.machineSettings["folderWork"]
-    CGYROcommand = f"cgyro -e . -n {numcores} -p {folderExecution}"
-
-    shellPreCommands = []
-
-    # ---------------
-    # Execute
-    # ---------------
-
-    cgyro_job.prep(
-        CGYROcommand,
-        input_files=[fileProfiles, fileCGYRO],
-        output_files=outputFiles,
-        shellPreCommands=shellPreCommands,
-    )
-
-    cgyro_job.run()
-
 
 def runTRXPL(
     FolderTRXPL,

@@ -19,7 +19,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
         cold_start = transport_evaluator_options.get("cold_start", False)
         
-        automatic_run = False
+        run_type = 'prep'
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare CGYRO object
@@ -42,29 +42,27 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
             self.powerstate.profiles_transport.files[0],
             self.folder,
             )
-        
-        # Just prepare everything but do not submit (full_submission=False)
-        _ = cgyro.run(
-            'base_cgyro',
-            full_submission=automatic_run,
-            code_settings=1,
-            cold_start=cold_start,
-            forceIfcold_start=True,
-            )
-    
-        
-        # Full run here
-        if automatic_run:
-            raise Exception("[MITIM] automatic_run not implemented yet")
-        
+
+        if run_type in ['normal', 'submit']:
+            raise Exception("[MITIM] Automatic submission or full run not implemented")
+
             # cgyro.read(
             #     label='base_cgyro'
             #     )
             
             # TRANSPORTtools.write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
-        
-        # Wait until the user has placed the json file in the right folder
-        else:
+            
+        elif run_type == 'prep':
+
+            _ = cgyro.run(
+                'base_cgyro',
+                run_type = run_type,
+                code_settings=1,
+                cold_start=cold_start,
+                forceIfcold_start=True,
+                )
+    
+            # Wait until the user has placed the json file in the right folder
             
             pre_checks(self)
 
