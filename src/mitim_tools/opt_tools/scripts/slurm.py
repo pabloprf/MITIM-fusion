@@ -44,14 +44,16 @@ def run_slurm(
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
             command,
-            folder_remote=folder,
+            folder,
             folder_local=folder,
-            nameJob=nameJob,
             slurm={"partition": partition, 'exclude': exclude},
-            minutes=int(60 * hours),
-            ntasks=1,
-            cpuspertask=n,
-            memory_req_by_job=mem,
+            slurm_settings = {
+                'nameJob': nameJob,
+                'minutes': int(60 * hours),
+                'ntasks': 1,
+                'cpuspertask': n,
+                'memory_req_by_job': mem,
+            }
         )
 
         command_execution = f"sbatch {fileSBATCH}"

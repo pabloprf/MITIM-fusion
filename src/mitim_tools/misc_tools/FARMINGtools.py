@@ -1075,6 +1075,9 @@ def create_slurm_execution_files(
     # slurm_settings indicate the job resource allocation   
     #  ---------------------------------------------------
 
+    if slurm_settings is None:
+        slurm_settings = {}
+
     nameJob = slurm_settings.setdefault("name", "mitim_job")
     minutes = int(slurm_settings.setdefault("minutes", 10))
     memory_req_by_job = slurm_settings.setdefault("mem", None)
