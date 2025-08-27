@@ -23,7 +23,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     def evaluate_turbulence(self):        
         self._evaluate_tglf()
 
-    # Have it separate such that I can call it from the CGYRO class but not with the decorator
+    # Have it separate such that I can call it from the CGYRO class but without the decorator
     def _evaluate_tglf(self):
         
         # ------------------------------------------------------------------------------------------------------------------------
@@ -42,7 +42,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
         use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
         cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
-        
         keep_tglf_files = transport_evaluator_options.get("keep_tglf_files", "minimal")
         
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
@@ -63,10 +62,9 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             )
         
         # ------------------------------------------------------------------------------------------------------------------------
-        # Run TGLF
+        # Run TGLF (base)
         # ------------------------------------------------------------------------------------------------------------------------
-        
-        # Run base
+
         tglf.run(
             'base_tglf',
             code_settings=TGLFsettings,
@@ -103,6 +101,10 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 Qi += Qifast
                 
         Flux_base = np.array([Qe, Qi, Ge, GZ, Mt, S])
+              
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Evaluate TGLF uncertainty
+        # ------------------------------------------------------------------------------------------------------------------------
                 
         if use_tglf_scan_trick is None:
             
@@ -139,7 +141,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
 
         # ------------------------------------------------------------------------------------------------------------------------
-        # Pass the information
+        # Pass the information to what power_transport expects
         # ------------------------------------------------------------------------------------------------------------------------
         
         self.QeGB_turb = Flux_mean[0]
@@ -157,27 +159,27 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.MtGB_turb = Flux_mean[4]
         self.MtGB_turb_stds = Flux_std[4] 
 
-        if provideTurbulentExchange:
-            self.QieGB_turb = Flux_mean[5]
-            self.QieGB_turb_stds = Flux_std[5]
-        else:
-            self.QieGB_turb = Flux_mean[5] * 0.0
-            self.QieGB_turb_stds = Flux_std[5] * 0.0
+        self.QieGB_turb = Flux_mean[5] if provideTurbulentExchange else Flux_mean[5]*0.0
+        self.QieGB_turb_stds = Flux_std[5] if provideTurbulentExchange else Flux_std[5]*0.0
 
         return tglf
 
     @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         
-        # Options
-        
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Grab options from powerstate
+        # ------------------------------------------------------------------------------------------------------------------------
+
         transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
         
         cold_start = transport_evaluator_options.get("cold_start", False)
         percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
         impurityPosition = self.powerstate.impurityPosition_transport
                 
+        # ------------------------------------------------------------------------------------------------------------------------        
         # Run
+        # ------------------------------------------------------------------------------------------------------------------------
         
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         
@@ -204,7 +206,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         Mt = np.array([neo.results['base']['NEOout'][i].Mt for i in range(len(rho_locations))])
         
         # ------------------------------------------------------------------------------------------------------------------------
-        # Pass the information
+        # Pass the information to what power_transport expects
         # ------------------------------------------------------------------------------------------------------------------------
         
         self.QeGB_neoc = Qe
@@ -213,12 +215,14 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.GZGB_neoc = GZ
         self.MtGB_neoc = Mt
         
+        # Uncertainties is just a percent of the value
         self.QeGB_neoc_stds = abs(Qe) * percentError[1]/100.0
         self.QiGB_neoc_stds = abs(Qi) * percentError[1]/100.0
         self.GeGB_neoc_stds = abs(Ge) * percentError[1]/100.0
         self.GZGB_neoc_stds = abs(GZ) * percentError[1]/100.0
         self.MtGB_neoc_stds = abs(Mt) * percentError[1]/100.0
 
+        # No neoclassical exchange
         self.QieGB_neoc = Qe * 0.0
         self.QieGB_neoc_stds = Qe * 0.0
 

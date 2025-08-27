@@ -24,7 +24,11 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
         cold_start = transport_evaluator_options.get("cold_start", False)
         
-        run_type = 'prep'
+        run_type = transport_evaluator_options["MODELparameters"]["transport_model"]["run_type"]
+        CGYROsettings = transport_evaluator_options["MODELparameters"]["transport_model"]["CGYROsettings"]
+        extraOptionsCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["extraOptionsCGYRO"]
+        every_n_minutesCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["every_n_minutesCGYRO"]
+        tminCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["tminCGYRO"]
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare CGYRO object
@@ -39,25 +43,53 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
             self.folder,
             )
 
+        _ = cgyro.run(
+            'base_cgyro',
+            run_type = run_type,
+            code_settings=CGYROsettings,
+            extraOptions=extraOptionsCGYRO,
+            cold_start=cold_start,
+            forceIfcold_start=True,
+            )
+        
         if run_type in ['normal', 'submit']:
-            raise Exception("[MITIM] Automatic submission or full run not implemented")
-
-            # cgyro.read(
-            #     label='base_cgyro'
-            #     )
             
-            # TRANSPORTtools.write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
-            
-        elif run_type == 'prep':
+            if run_type in ['submit']:
+                cgyro.check(every_n_minutes=every_n_minutesCGYRO)
+                cgyro.fetch()
 
-            _ = cgyro.run(
-                'base_cgyro',
-                run_type = run_type,
-                code_settings=1,
-                cold_start=cold_start,
-                forceIfcold_start=True,
+            cgyro.read(
+                label='base_cgyro',
+                tmin = tminCGYRO
                 )
-    
+        
+            # ------------------------------------------------------------------------------------------------------------------------
+            # Pass the information to what power_transport expects
+            # ------------------------------------------------------------------------------------------------------------------------
+            
+            self.QeGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qe_mean for i in range(len(rho_locations))])
+            self.QeGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qe_std for i in range(len(rho_locations))])
+                    
+            self.QiGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qi_mean for i in range(len(rho_locations))])
+            self.QiGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qi_std for i in range(len(rho_locations))])
+                    
+            self.GeGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Ge_mean for i in range(len(rho_locations))])
+            self.GeGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Ge_std for i in range(len(rho_locations))]) 
+            
+            self.GZGB_turb = self.QeGB_turb*0.0 #TODO     
+            self.GZGB_turb_stds = self.QeGB_turb*0.0 #TODO          
+
+            self.MtGB_turb = self.QeGB_turb*0.0 #TODO     
+            self.MtGB_turb_stds = self.QeGB_turb*0.0 #TODO     
+
+            self.QieGB_turb = self.QeGB_turb*0.0 #TODO     
+            self.QieGB_turb_stds = self.QeGB_turb*0.0 #TODO     
+        
+            from mitim_modules.powertorch.utils.TRANSPORTtools import write_json
+            write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
+
+        elif run_type == 'prep':
+            
             # Wait until the user has placed the json file in the right folder
             
             pre_checks(self)
@@ -78,6 +110,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
 
                 if file_path.exists():
                     all_good = post_checks(self)
+
 
 def pre_checks(self):
     

@@ -548,6 +548,10 @@ class mitim_simulation:
 
             # Submit run but do not wait; the user should do checks and fetch results
             elif run_type == 'submit':
+            
+                if type_of_submission == "slurm_array":
+                    raise Exception("[MITIM] run_type='submit' with slurm_array not implemented yet because of issues about folders being moved around, TBD")
+            
                 self.simulation_job.run(
                     waitYN=False,
                     check_if_files_received=False,
