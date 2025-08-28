@@ -44,6 +44,9 @@ def calculator(
     nameRun="test"
     folder=IOtools.expandPath(folder)
 
+    if not folder.exists():
+        folder.mkdir(parents=True)
+
     # ************************************
     # Calculate state
     # ************************************
@@ -80,19 +83,14 @@ def calculator(
         rederive_profiles=False,
     )
 
-    p.plasma["QiMWm2n"] = (
-        (p.plasma["Paux_e"] + p.plasma["Paux_i"]) * p.plasma["volp"]
-    )[..., -1]
-    p.plasma["Q"] = p.plasma["Pfus"] / p.plasma["Pin"]
+    p.plasma["Q"] = p.profiles.derived["Q"]
+    p.plasma['Prad'] = p.profiles.derived['Prad']
 
     # ************************************
     # Print Info
     # ************************************
 
-    print(
-        f"Q = {p.plasma['Q'].item():.2f} (Pfus = {p.plasma['Pfus'].item():.2f}MW, Pin = {p.plasma['Pin'].item():.2f}MW)"
-    )
-
+    print(f"Q = {p.plasma['Q'].item():.2f}")
     print(f"Prad = {p.plasma['Prad'].item():.2f}MW")
 
     return p
@@ -100,5 +98,6 @@ def calculator(
 
 if __name__ == "__main__":
     input_gacode = IOtools.expandPath(sys.argv[1])
+    folder = IOtools.expandPath(sys.argv[2])
 
-    calculator(input_gacode)
+    calculator(input_gacode, folder=folder)

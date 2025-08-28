@@ -46,9 +46,17 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
         fluxes_mean = {}
         fluxes_stds = {}
 
-        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
+        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB']:
             fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
             fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
+
+        try:
+            var = 'QieGB'
+            fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
+            fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
+        except KeyError:
+            # NEO file may not have it
+            pass
 
         json_dict = {
             'fluxes_mean': fluxes_mean,
@@ -357,16 +365,16 @@ class power_transport:
         dim = self.powerstate.plasma['rho'].shape[-1]-1
         
         for var in [
-            'QeMWm2',
-            'QiMWm2',
-            'Ge1E20m2',
-            'GZ1E20m2',
-            'MtJm2',
-            'QieMWm3'
+            'QeGB',
+            'QiGB',
+            'GeGB',
+            'GZGB',
+            'MtGB',
+            'QieGB'
         ]:
 
-            self.__dict__[f"{var}_tr_turb"] = np.zeros(dim)
-            self.__dict__[f"{var}_tr_turb_stds"] = np.zeros(dim)
+            self.__dict__[f"{var}_turb"] = np.zeros(dim)
+            self.__dict__[f"{var}_turb_stds"] = np.zeros(dim)
     
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))    
     def evaluate_neoclassical(self):
@@ -385,13 +393,14 @@ class power_transport:
         dim = self.powerstate.plasma['rho'].shape[-1]-1
         
         for var in [
-            'QeMWm2',
-            'QiMWm2',
-            'Ge1E20m2',
-            'GZ1E20m2',
-            'MtJm2',
+            'QeGB',
+            'QiGB',
+            'GeGB',
+            'GZGB',
+            'MtGB',
+            'QieGB'
         ]:
 
-            self.__dict__[f"{var}_tr_neoc"] = np.zeros(dim)
-            self.__dict__[f"{var}_tr_neoc_stds"] = np.zeros(dim)
+            self.__dict__[f"{var}_neoc"] = np.zeros(dim)
+            self.__dict__[f"{var}_neoc_stds"] = np.zeros(dim)
             

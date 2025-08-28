@@ -225,12 +225,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.GZGB_neoc_stds = abs(GZ) * percent_error/100.0
         self.MtGB_neoc_stds = abs(Mt) * percent_error/100.0
 
-        # No neoclassical exchange
-        self.QieGB_neoc = Qe * 0.0
-        self.QieGB_neoc_stds = Qe * 0.0
-
         return neo
-
 
     def _raise_warnings(self, tglf, rho_locations, Qi_includes_fast):
 

@@ -57,9 +57,11 @@ class powerstate:
             "options": {
                 "TypeTarget": 3,
                 "target_evaluator_method": "powerstate",
-                "forceZeroParticleFlux": False
                 },
             }
+            
+        target_options["options"].setdefault("forceZeroParticleFlux", False)
+        target_options["options"].setdefault("percent_error", 1.0)
 
         if tensor_options is None:
             tensor_options = {
@@ -687,7 +689,7 @@ class powerstate:
         Update the targets of the current state
         """
 
-        # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
+        # If no targets evaluator is given or the targets will come from previous calculations (from transport), assume them as zero
         if (self.target_options["evaluator"] is None) or (self.target_options["options"]["target_evaluator_method"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
@@ -710,7 +712,8 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.target_options["options"]["forceZeroParticleFlux"])
+            forceZeroParticleFlux=self.target_options["options"]["forceZeroParticleFlux"]
+            )
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", evaluation_number=0):

@@ -87,6 +87,8 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
             
             # Wait until the user has placed the json file in the right folder
             
+            self.powerstate.profiles_transport.write_state(self.folder / "base_cgyro" / "input.gacode")
+            
             pre_checks(self)
 
             file_path = self.folder / 'fluxes_turb.json'
