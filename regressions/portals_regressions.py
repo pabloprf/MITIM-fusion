@@ -55,12 +55,12 @@ for test in tests:
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
             portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-            portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
+            portals_fun.portals_parameters["initialization"]["remove_fast"] = True
 
-            portals_fun.portals_parameters["model_parameters"]["predicted_channels"] = ["te", "ti"]
+            portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti"]
             portals_fun.optimization_options["acquisition_options"]["optimizers"] = ["botorch"]
 
-            portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator"] = TRANSPORTtools.diffusion_model
+            portals_fun.portals_parameters["transport"]["evaluator"] = TRANSPORTtools.diffusion_model
             transport_evaluator_options = {'chi_e': torch.ones(5)*0.5,'chi_i':  torch.ones(5)*2.0}
 
             portals_fun.prep(inputgacode, folderWork, transport_evaluator_options=transport_evaluator_options)
@@ -93,13 +93,13 @@ for test in tests:
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
             portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-            portals_fun.portals_parameters["model_parameters"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
-            portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
-            portals_fun.portals_parameters["initialization_parameters"]["quasineutrality"] = True
-            portals_fun.portals_parameters["initialization_parameters"]["enforce_same_aLn"] = True
-            portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["TGLFsettings"] = 2
+            portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
+            portals_fun.portals_parameters["initialization"]["remove_fast"] = True
+            portals_fun.portals_parameters["initialization"]["quasineutrality"] = True
+            portals_fun.portals_parameters["initialization"]["enforce_same_aLn"] = True
+            portals_fun.portals_parameters["transport"]["options"]["TGLFsettings"] = 2
 
-            portals_fun.portals_parameters["model_parameters"]["predicted_channels"] = ["te", "ti", "ne"]
+            portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne"]
 
             portals_fun.prep(inputgacode, folderWork)
             mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)
@@ -134,12 +134,12 @@ for test in tests:
         #     portals_fun = PORTALSmain.portals(folderWork)
         #     portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
         #     portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-        #     portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
+        #     portals_fun.portals_parameters["initialization"]["remove_fast"] = True
 
-        #     portals_fun.portals_parameters["model_parameters"]["predicted_channels"] = ["te", "ti", "ne",'nZ','w0']
+        #     portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne",'nZ','w0']
 
-        #     portals_fun.portals_parameters["model_parameters"]["ImpurityOfInterest"] = 'W'
-        #     portals_fun.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"] = True
+        #     portals_fun.portals_parameters["solution"]["trace_impurity"] = 'W'
+        #     portals_fun.portals_parameters["solution"]["turbulent_exchange_as_surrogate"] = True
 
         #     portals_fun.prep(inputgacode, folderWork)
         #     mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=False, askQuestions=False)

@@ -47,14 +47,14 @@ class powerstate:
             
         if transport_options is None:
             transport_options = {
-            "transport_evaluator": None,
-            "transport_evaluator_options": {}
+            "evaluator": None,
+            "options": {}
             }
             
         if target_options is None:
             target_options = {
-            "target_evaluator": targets_analytic.analytical_model,
-            "target_evaluator_options": {
+            "evaluator": targets_analytic.analytical_model,
+            "options": {
                 "TypeTarget": 3,
                 "target_evaluator_method": "powerstate",
                 "forceZeroParticleFlux": False
@@ -244,12 +244,12 @@ class powerstate:
 
             if includeTransport:
                 for key in ["chi_e", "chi_i"]:
-                    self.transport_options["transport_evaluator_options"][key] = torch.cat(
+                    self.transport_options["options"][key] = torch.cat(
                         (
-                            self.transport_options["transport_evaluator_options"][key],
-                            state.transport_options["transport_evaluator_options"][key],
+                            self.transport_options["options"][key],
+                            state.transport_options["options"][key],
                         )
-                    ).to(self.transport_options["transport_evaluator_options"][key])
+                    ).to(self.transport_options["options"][key])
 
     def copy_state(self):
 
@@ -297,7 +297,7 @@ class powerstate:
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks (populates components and Pe,Pi,...)
-        relative_error_assumed = self.target_options["target_evaluator_options"]["percent_error"]
+        relative_error_assumed = self.target_options["options"]["percent_error"]
         self.calculateTargets(relative_error_assumed=relative_error_assumed)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
         # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
@@ -366,7 +366,7 @@ class powerstate:
 
             if folder_main is not None:
                 folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
-                if issubclass(self.transport_options["transport_evaluator"], TRANSPORTtools.power_transport):
+                if issubclass(self.transport_options["evaluator"], TRANSPORTtools.power_transport):
                     (folder / "transport_simulation_folder").mkdir(parents=True, exist_ok=True)
 
             # ***************************************************************************************************************
@@ -380,7 +380,7 @@ class powerstate:
 
             # Save state so that I can check initializations
             if folder_main is not None:
-                if issubclass(self.transport_options["transport_evaluator"], TRANSPORTtools.power_transport):
+                if issubclass(self.transport_options["evaluator"], TRANSPORTtools.power_transport):
                     self.save(folder / "powerstate.pkl")
                     shutil.copy2(folder_run / "input.gacode", folder)
 
@@ -687,10 +687,10 @@ class powerstate:
         """
 
         # If no targets evaluator is given or the targets will come from TGYRO, assume them as zero
-        if (self.target_options["target_evaluator"] is None) or (self.target_options["target_evaluator_options"]["target_evaluator_method"] == "tgyro"):
+        if (self.target_options["evaluator"] is None) or (self.target_options["options"]["target_evaluator_method"] == "tgyro"):
             targets = TARGETStools.power_targets(self)
         else:
-            targets = self.target_options["target_evaluator"](self)
+            targets = self.target_options["evaluator"](self)
 
         # [Optional] Calculate local targets and integrals on a fine grid
         if self.fineTargetsResolution is not None:
@@ -709,7 +709,7 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.target_options["target_evaluator_options"]["forceZeroParticleFlux"])
+            forceZeroParticleFlux=self.target_options["options"]["forceZeroParticleFlux"])
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", evaluation_number=0):
@@ -719,10 +719,10 @@ class powerstate:
         folder = IOtools.expandPath(folder)
 
         # Select transport evaluator
-        if self.transport_options["transport_evaluator"] is None:
+        if self.transport_options["evaluator"] is None:
             transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         else:
-            transport = self.transport_options["transport_evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
+            transport = self.transport_options["evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         
         # Produce profile object (for certain transport evaluators, this is necessary)
         transport.produce_profiles()

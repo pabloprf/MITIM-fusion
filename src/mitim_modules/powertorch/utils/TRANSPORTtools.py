@@ -205,7 +205,7 @@ class power_transport:
 
     def _postprocess(self):
 
-        OriginalFimp =  self.powerstate.transport_options["transport_evaluator_options"].get("OriginalFimp", 1.0)
+        OriginalFimp =  self.powerstate.transport_options["options"].get("OriginalFimp", 1.0)
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)

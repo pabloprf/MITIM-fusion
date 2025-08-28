@@ -13,7 +13,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
     # Do not hook here
     def evaluate_turbulence(self):
 
-        transport_evaluator_options  = self.powerstate.transport_options["transport_evaluator_options"]
+        transport_evaluator_options  = self.powerstate.transport_options["options"]
         cold_start                   = self.powerstate.transport_options["cold_start"]
 
         # Run base TGLF always, to keep track of discrepancies! --------------------------------------

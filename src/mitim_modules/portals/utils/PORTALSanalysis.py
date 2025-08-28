@@ -153,12 +153,12 @@ class PORTALSanalyzer:
         self.portals_parameters = self.opt_fun.mitim_model.optimization_object.portals_parameters
 
         # Useful flags
-        self.predicted_channels = self.portals_parameters["model_parameters"]["predicted_channels"]
+        self.predicted_channels = self.portals_parameters["solution"]["predicted_channels"]
 
         self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.predicted_channels else None
 
         self.runWithRotation = "w0" in self.predicted_channels
-        self.forceZeroParticleFlux = self.portals_parameters["model_parameters"]["target_parameters"]["target_evaluator_options"]["forceZeroParticleFlux"]
+        self.forceZeroParticleFlux = self.portals_parameters["target"]["options"]["forceZeroParticleFlux"]
 
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
@@ -237,7 +237,7 @@ class PORTALSanalyzer:
             GZ_resR = np.zeros(self.rhos.shape[0])
             Mt_resR = np.zeros(self.rhos.shape[0])
             cont = 0
-            for prof in self.portals_parameters["model_parameters"]["predicted_channels"]:
+            for prof in self.portals_parameters["solution"]["predicted_channels"]:
                 for ix in range(self.rhos.shape[0]):
                     if prof == "te":
                         Qe_resR[ix] = source[0, cont].abs()
@@ -328,14 +328,14 @@ class PORTALSanalyzer:
 
         self.resCheck = (
             self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.portals_parameters["model_parameters"]["predicted_channels"])
+        ) / len(self.portals_parameters["solution"]["predicted_channels"])
 
         # ---------------------------------------------------------------------------------------------------------------------
         # Jacobian
         # ---------------------------------------------------------------------------------------------------------------------
 
         DeltaQ1 = []
-        for i in self.portals_parameters["model_parameters"]["predicted_channels"]:
+        for i in self.portals_parameters["solution"]["predicted_channels"]:
             if i == "te":
                 DeltaQ1.append(-self.resTe)
             if i == "ti":
@@ -544,12 +544,12 @@ class PORTALSanalyzer:
             folder, profilesclass_custom=profiles, cold_start=cold_start, forceIfcold_start=True
         )
 
-        TGLFsettings = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["TGLFsettings"]
-        extraOptionsTGLF = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["extraOptionsTGLF"]
+        TGLFsettings = self.portals_parameters["transport"]["options"]["TGLFsettings"]
+        extraOptionsTGLF = self.portals_parameters["transport"]["options"]["extraOptionsTGLF"]
         PredictionSet = [
-            int("te" in self.portals_parameters["model_parameters"]["predicted_channels"]),
-            int("ti" in self.portals_parameters["model_parameters"]["predicted_channels"]),
-            int("ne" in self.portals_parameters["model_parameters"]["predicted_channels"]),
+            int("te" in self.portals_parameters["solution"]["predicted_channels"]),
+            int("ti" in self.portals_parameters["solution"]["predicted_channels"]),
+            int("ne" in self.portals_parameters["solution"]["predicted_channels"]),
         ]
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
@@ -563,12 +563,12 @@ class PORTALSanalyzer:
         """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
-            1. self.portals_parameters["model_parameters"]["predicted_rho"] -> the ones PORTALS sent to TGYRO
+            1. self.portals_parameters["solution"]["predicted_rho"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         #TODO: This should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable
         """
-        rhos_considered = self.portals_parameters["model_parameters"]["predicted_rho"]
+        rhos_considered = self.portals_parameters["solution"]["predicted_rho"]
 
         if positions is None:
             rhos = rhos_considered
@@ -593,8 +593,8 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
 
-        TGLFsettings = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["TGLFsettings"]
-        extraOptions = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["extraOptionsTGLF"]
+        TGLFsettings = self.portals_parameters["transport"]["options"]["TGLFsettings"]
+        extraOptions = self.portals_parameters["transport"]["options"]["extraOptionsTGLF"]
 
         return tglf, TGLFsettings, extraOptions
 

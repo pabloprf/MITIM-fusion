@@ -8,7 +8,7 @@ from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def surrogate_selection_portals(output, surrogate_options, CGYROrun=False):
+def surrogate_selection_portals(output, surrogate_options):
 
     print(f'\t- Selecting surrogate options for "{output}" to be run')
 
@@ -250,7 +250,7 @@ def ImpurityGammaTrick(x, surrogate_parameters, output, powerstate):
 
     pos = int(output.split("_")[-1])
 
-    if ("GZ" in output) and surrogate_parameters["applyImpurityGammaTrick"]:
+    if ("GZ" in output) and surrogate_parameters["impurity_trick"]:
         factor = powerstate.plasma["ni"][: x.shape[0],powerstate.indexes_simulation[pos],powerstate.impurityPosition].unsqueeze(-1)
 
     else:
@@ -303,7 +303,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
             # Targets only if needed (for speed, GB doesn't need it)
             if recalculateTargets:
-                powerstate.target_options["target_evaluator_options"]["target_evaluator_method"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
+                powerstate.target_options["options"]["target_evaluator_method"] = "powerstate"  # For surrogate evaluation, always powerstate, logically.
                 powerstate.calculateTargets()
 
     return powerstate
@@ -399,7 +399,7 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
+    if portals_parameters["solution"]["turbulent_exchange_as_surrogate"]:
         QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
     else:
         QieMWm2_tr_turb = torch.zeros(dfT.shape).to(dfT)
@@ -452,28 +452,28 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
 
         if var == "Qe":
             of0, cal0 = (
-                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][0],
-                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][0],
+                of0 * portals_parameters["solution"]["Pseudo_multipliers"][0],
+                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][0],
             )
         elif var == "Qi":
             of0, cal0 = (
-                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][1],
-                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][1],
+                of0 * portals_parameters["solution"]["Pseudo_multipliers"][1],
+                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][1],
             )
         elif var == "Ge":
             of0, cal0 = (
-                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][2],
-                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][2],
+                of0 * portals_parameters["solution"]["Pseudo_multipliers"][2],
+                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][2],
             )
         elif var == "GZ":
             of0, cal0 = (
-                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][3],
-                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][3],
+                of0 * portals_parameters["solution"]["Pseudo_multipliers"][3],
+                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][3],
             )
         elif var == "MtJm2":
             of0, cal0 = (
-                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][4],
-                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][4],
+                of0 * portals_parameters["solution"]["Pseudo_multipliers"][4],
+                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][4],
             )
 
         of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
@@ -532,7 +532,7 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
+    if portals_parameters["solution"]["turbulent_exchange_as_surrogate"]:
         QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
         QieMWm2_tr_turb_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
     else:

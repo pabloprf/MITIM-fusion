@@ -1207,7 +1207,7 @@ def PORTALSanalyzer_plotExpected(
 
     rho = p.profiles["rho(-)"]
     roa = p.derived["roa"]
-    rhoVals = self.portals_parameters["model_parameters"]["predicted_rho"]
+    rhoVals = self.portals_parameters["solution"]["predicted_rho"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
@@ -1395,7 +1395,7 @@ def PORTALSanalyzer_plotExpected(
             
 
             rho = self.profiles_next_new.profiles["rho(-)"]
-            rhoVals = self.portals_parameters["model_parameters"]["predicted_rho"]
+            rhoVals = self.portals_parameters["solution"]["predicted_rho"]
             roaVals = np.interp(rhoVals, rho, roa)
 
             p0 = self.powerstates[plotPoints[0]].profiles
@@ -1892,10 +1892,10 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             axs4,
             color=colors[i],
             label=label,
-            lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
+            lastRho=self.portals_parameters["solution"]["predicted_rho"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.portals_parameters["model_parameters"]["predicted_rho"],
+            RhoLocationsPlot=self.portals_parameters["solution"]["predicted_rho"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
             autoscale=i == 3,
@@ -1959,7 +1959,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="b",
-        lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
+        lastRho=self.portals_parameters["solution"]["predicted_rho"][-1],
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
@@ -1976,7 +1976,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         p.plot_gradients(
             axsR,
             color="r",
-            lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
+            lastRho=self.portals_parameters["solution"]["predicted_rho"][-1],
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
@@ -1988,7 +1988,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="g",
-        lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
+        lastRho=self.portals_parameters["solution"]["predicted_rho"][-1],
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
@@ -2011,10 +2011,10 @@ def PORTALSanalyzer_plotModelComparison(
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure(figsize=(15, 6 if len(self.predicted_channels)+int(self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]) < 4 else 10))
+        fig = plt.figure(figsize=(15, 6 if len(self.predicted_channels)+int(self.portals_parameters["solution"]["turbulent_exchange_as_surrogate"]) < 4 else 10))
 
     if axs is None:
-        if len(self.predicted_channels)+int(self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]) < 4:
+        if len(self.predicted_channels)+int(self.portals_parameters["solution"]["turbulent_exchange_as_surrogate"]) < 4:
             axs = fig.subplots(ncols=3)
         else:
             axs = fig.subplots(ncols=3, nrows=2)
@@ -2201,7 +2201,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    if self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
+    if self.portals_parameters["solution"]["turbulent_exchange_as_surrogate"]:
         if UseTGLFfull_x is not None:
             raise Exception("Turbulent exchange plot not implemented yet")
         # Sexch
@@ -2419,8 +2419,8 @@ def varToReal(y, mitim_model):
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in mitim_model.optimization_object.portals_parameters["model_parameters"]["predicted_channels"]:
-        for rad in mitim_model.optimization_object.portals_parameters["model_parameters"]["predicted_rho"]:
+    for prof in mitim_model.optimization_object.portals_parameters["solution"]["predicted_channels"]:
+        for rad in mitim_model.optimization_object.portals_parameters["solution"]["predicted_rho"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2493,7 +2493,7 @@ def plotVars(
             .plasma["roa"][0, 1:]
             .cpu()
             .cpu().numpy()
-        )  # mitim_model.optimization_object.portals_parameters["model_parameters"]['predicted_rho']
+        ) 
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
@@ -3254,7 +3254,7 @@ def plotFluxComparison(
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
 ):
-    rhos = np.append([0], self_complete.portals_parameters["model_parameters"]["predicted_rho"])
+    rhos = np.append([0], self_complete.portals_parameters["solution"]["predicted_rho"])
     aLTe, aLTi, aLne, aLnZ, aLw0 = (
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
@@ -3275,19 +3275,19 @@ def produceInfoRanges(
         if f"aLw0_{i+1}" in bounds:
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
-    X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["model_parameters"]["predicted_channels"]), 2))
+    X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["solution"]["predicted_channels"]), 2))
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
 
     cont = 0
-    if "ne" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
-    if "nZ" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
         cont += 1
-    if "w0" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "w0" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
@@ -3338,7 +3338,7 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3361,7 +3361,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "nZ" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3384,7 +3384,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "w0" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
+    if "w0" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],

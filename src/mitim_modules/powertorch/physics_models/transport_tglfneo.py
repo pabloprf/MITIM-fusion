@@ -26,7 +26,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     # Have it separate such that I can call it from the CGYRO class but without the decorator
     def _evaluate_tglf(self):
         
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        transport_evaluator_options = self.powerstate.transport_options["options"]
         
         cold_start = self.powerstate.transport_options["cold_start"]
         
@@ -167,7 +167,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        transport_evaluator_options = self.powerstate.transport_options["options"]
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
@@ -235,7 +235,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 
     def _profiles_to_store(self):
 
-        if "folder" in self.powerstate.transport_options["transport_evaluator_options"]:
+        if "folder" in self.powerstate.transport_options["options"]:
             whereFolder = IOtools.expandPath(self.powerstate.transport_options["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
