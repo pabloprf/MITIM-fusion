@@ -629,7 +629,7 @@ def runModelEvaluator(
     # ---------------------------------------------------------------------------------------------------
 
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
-    powerstate.transport_options["options"]["cold_start"] = cold_start
+    powerstate.transport_options["cold_start"] = cold_start
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)

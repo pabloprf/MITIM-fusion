@@ -179,6 +179,9 @@ class power_transport:
 
     def evaluate(self):
 
+        # Copy the input.gacode files to the output folder
+        self._profiles_to_store()
+
         '''
         ******************************************************************************************************
         Evaluate neoclassical and turbulent transport. 
@@ -250,6 +253,20 @@ class power_transport:
                     self.powerstate.plasma["te"],
                     self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
                 ) * mult
+               
+    def _profiles_to_store(self):
+
+        if "folder" in self.powerstate.transport_options:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["folder"] / "Outputs" / "portals_profiles")
+            if not whereFolder.exists():
+                IOtools.askNewFolder(whereFolder)
+
+            fil = whereFolder / f"input.gacode.{self.evaluation_number}"
+            shutil.copy2(self.file_profs, fil)
+            shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
+            print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
+        else:
+            print("\t- Could not move files", typeMsg="w")
                 
     def _populate_from_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
         

@@ -27,7 +27,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     def _evaluate_tglf(self):
         
         transport_evaluator_options = self.powerstate.transport_options["options"]
-        
         cold_start = self.powerstate.transport_options["cold_start"]
         
         # ------------------------------------------------------------------------------------------------------------------------
@@ -168,6 +167,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     def evaluate_neoclassical(self):
         
         transport_evaluator_options = self.powerstate.transport_options["options"]
+        cold_start = self.powerstate.transport_options["cold_start"]
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
@@ -175,8 +175,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         
         simulation_options_neo = transport_evaluator_options["neo"]
         percent_error = simulation_options_neo["percent_error"]
-        cold_start = transport_evaluator_options.get("cold_start", False)
-        
         impurityPosition = self.powerstate.impurityPosition_transport
                 
         # ------------------------------------------------------------------------------------------------------------------------        
@@ -232,20 +230,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.QieGB_neoc_stds = Qe * 0.0
 
         return neo
-                
-    def _profiles_to_store(self):
 
-        if "folder" in self.powerstate.transport_options["options"]:
-            whereFolder = IOtools.expandPath(self.powerstate.transport_options["folder"] / "Outputs" / "portals_profiles")
-            if not whereFolder.exists():
-                IOtools.askNewFolder(whereFolder)
-
-            fil = whereFolder / f"input.gacode.{self.evaluation_number}"
-            shutil.copy2(self.file_profs, fil)
-            shutil.copy2(self.file_profs_unmod, fil.parent / f"{fil.name}_unmodified")
-            print(f"\t- Copied profiles to {IOtools.clipstr(fil)}")
-        else:
-            print("\t- Could not move files", typeMsg="w")
 
     def _raise_warnings(self, tglf, rho_locations, Qi_includes_fast):
 
