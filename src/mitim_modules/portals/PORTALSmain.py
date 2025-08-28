@@ -577,9 +577,6 @@ class portals(STRATEGYtools.opt_evaluator):
                 if reevaluateTargets == 1:
                     self_copy.powerstate.transport_options["transport_evaluator"] = None
                     self_copy.powerstate.target_options["target_evaluator_options"]["TypeTarget"] = "powerstate"
-                else:
-                    from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
-                    self_copy.powerstate.transport_options["transport_evaluator"] = tgyro_model
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,
