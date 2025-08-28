@@ -93,16 +93,16 @@ def initialization_simple_relax(self):
 
 
 def flux_match_surrogate(
-            step,
-            profiles,
-            plot_results=False,
-            fn = None,
-            file_write_csv=None,
-            algorithm = None,
-            solver_options = None,
-            keep_within_bounds = True,
-            target_options_use = None,
-            ):
+        step,
+        profiles,
+        plot_results=False,
+        fn = None,
+        file_write_csv=None,
+        algorithm = None,
+        solver_options = None,
+        keep_within_bounds = True,
+        target_options_use = None,
+        ):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
@@ -139,7 +139,7 @@ def flux_match_surrogate(
     transport_options = copy.deepcopy(step.surrogate_parameters["powerstate"].transport_options)
 
     # Define transport calculation function as a surrogate model
-    transport_options['transport_evaluator'] = transport_analytic.surrogate
+    transport_options['evaluator'] = transport_analytic.surrogate
     transport_options["options"] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
 
     # Create powerstate with the same options as the original portals but with the new profiles
@@ -149,13 +149,13 @@ def flux_match_surrogate(
             "ProfilePredicted": step.surrogate_parameters["powerstate"].predicted_channels,
             "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
             "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
-            "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
         },
         transport_options=transport_options,
         target_options= step.surrogate_parameters["powerstate"].target_options if target_options_use is None else target_options_use,
         tensor_options = {
             "dtype": step.surrogate_parameters["powerstate"].dfT.dtype,
-            "device": step.surrogate_parameters["powerstate"].dfT.device},
+            "device": step.surrogate_parameters["powerstate"].dfT.device
+            },
     )
 
     # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles

@@ -31,17 +31,17 @@ portals_fun.optimization_options["initialization_options"]["initial_training"] =
 
 portals_fun.portals_parameters["solution"]['turbulent_exchange_as_surrogate'] = True
 
-portals_fun.portals_parameters["initialization"]["remove_fast"] = True
-portals_fun.portals_parameters["initialization"]["quasineutrality"] = True
-portals_fun.portals_parameters["initialization"]["enforce_same_aLn"] = True
-
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", 'w0'] 
 portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = 2
 
+# Prepare case to run
+plasma_state = PROFILEStools.gacode_state(inputgacode)
+plasma_state.correct(options={"recalculate_ptot": True, "remove_fast": True, "quasineutrality": True, "enforce_same_aLn": True})
+
 # Prepare run
-portals_fun.prep(inputgacode)
+portals_fun.prep(plasma_state)
 
 # --------------------------------------------------------------------------------------------
 # Run

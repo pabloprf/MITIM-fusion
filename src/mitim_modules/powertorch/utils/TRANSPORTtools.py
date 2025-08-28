@@ -205,8 +205,6 @@ class power_transport:
 
     def _postprocess(self):
 
-        OriginalFimp =  self.powerstate.transport_options["options"].get("OriginalFimp", 1.0)
-
         # ------------------------------------------------------------------------------------------------------------------------
         # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
         # ------------------------------------------------------------------------------------------------------------------------
@@ -234,9 +232,9 @@ class power_transport:
         for variable in variables:
             self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
 
-        # -----------------------------------------------------------
+        # ---------------------------------------------------------------------------------
         # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
-        # -----------------------------------------------------------
+        # ---------------------------------------------------------------------------------
         
         mapper_convective = {
             'Ce': 'Ge1E20m2',
@@ -246,13 +244,13 @@ class power_transport:
         for key in mapper_convective.keys():
             for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
                 
-                mult = 1.0 if key == 'Ce' else 1/OriginalFimp
+                mult = 1/self.powerstate.fImp_orig if key == 'CZ' else 1.0
                 
                 self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
                     self.powerstate.plasma["te"],
                     self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
                 ) * mult
-
+                
     def _populate_from_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
         
         '''

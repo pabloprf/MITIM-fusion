@@ -82,6 +82,7 @@ class powerstate:
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
         self.fineTargetsResolution = target_options.get("fineTargetsResolution", None)
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
+        self.fImp_orig = evolution_options.get("fImp_orig", 1.0)
         rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
         if rho_vec[0] == 0:

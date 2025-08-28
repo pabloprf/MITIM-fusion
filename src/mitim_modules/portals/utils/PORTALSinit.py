@@ -18,7 +18,6 @@ def initializeProblem(
     portals_fun,
     folderWork,
     fileStart,
-    portals_parameters,
     RelVar_y_max,
     RelVar_y_min,
     limitsAreRelative=True,
@@ -58,8 +57,10 @@ def initializeProblem(
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     # ---- Copy the file of interest to initialization folder
-
-    shutil.copy2(fileStart, FolderInitialization / "input.gacode")
+    if isinstance(fileStart, MITIMstate.mitim_state):
+        fileStart.write_state(file=FolderInitialization / "input.gacode")
+    else:
+        shutil.copy2(fileStart, FolderInitialization / "input.gacode")
 
     # ---- Make another copy to preserve the original state
 
@@ -79,14 +80,8 @@ def initializeProblem(
         print(f"\t\t rho = {rho}")
         portals_fun.portals_parameters["solution"]["predicted_rho"] = rho
 
-    if (
-        len(portals_parameters["initialization"]["removeIons"]) > 0
-        or portals_parameters["initialization"]["remove_fast"]
-        or portals_parameters["initialization"]["quasineutrality"]
-        or portals_parameters["initialization"]["enforce_same_aLn"]
-        or portals_parameters["initialization"]["recalculate_ptot"]
-    ):
-        profiles.correct(options=portals_parameters["initialization"])
+    # Good approach to ensure this consistency
+    profiles.correct(options={"recalculate_ptot": True})
 
     if portals_fun.portals_parameters["solution"]["trace_impurity"] is not None:
         position_of_impurity = MITIMstate.impurity_location(profiles, portals_fun.portals_parameters["solution"]["trace_impurity"])
@@ -134,7 +129,6 @@ def initializeProblem(
     
     # Add folder and cold_start to the simulation options
     transport_options = transport_parameters | {"folder": portals_fun.folder, "cold_start": False}
-
     target_options = portals_fun.portals_parameters["target"]
 
     portals_fun.powerstate = STATEtools.powerstate(
@@ -143,6 +137,7 @@ def initializeProblem(
             "ProfilePredicted": portals_fun.portals_parameters["solution"]["predicted_channels"],
             "rhoPredicted": xCPs,
             "impurityPosition": position_of_impurity,
+            "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"]
         },
         transport_options=transport_options,
         target_options=target_options,
@@ -189,17 +184,9 @@ def initializeProblem(
                 "ProfilePredicted": portals_fun.portals_parameters["solution"]["predicted_channels"],
                 "rhoPredicted": xCPs,
                 "impurityPosition": position_of_impurity,
-                "fineTargetsResolution": portals_fun.portals_parameters["target"]["fineTargetsResolution"],
+                "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"]
             },
-            target_options={
-                "evaluator": portals_fun.portals_parameters["target"]["evaluator"],
-                "options": {
-                    "TypeTarget": portals_fun.portals_parameters["target"]["TypeTarget"],
-                    "target_evaluator_method": portals_fun.portals_parameters["target"]["target_evaluator_method"],
-                    "forceZeroParticleFlux": portals_fun.portals_parameters["target"]["options"]["forceZeroParticleFlux"],
-                    "percent_error": portals_fun.portals_parameters["target"]["percent_error"]
-                    },
-            },
+            target_options=portals_fun.portals_parameters["target"],
             tensor_options = tensor_options
         )
 

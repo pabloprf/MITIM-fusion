@@ -148,32 +148,11 @@ class portals(STRATEGYtools.opt_evaluator):
             "portals_transformation_variables_trace": portals_transformation_variables_trace,   # Physics-informed parameters to fit surrogates for trace impurities
             "turbulent_exchange_as_surrogate": False,                                           # Run turbulent exchange as surrogate?
             "Pseudo_multipliers": [1.0]*5,                                                      # [Qe,Qi,Ge] multipliers to calculate pseudo
-            "impurity_trick": True,                                                    # If True, fit model to GZ/nZ, valid on the trace limit
-            "fZ0_as_weight": 1.0,                                    # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+            "impurity_trick": True,                                                             # If True, fit model to GZ/nZ, valid on the trace limit
+            "fZ0_as_weight": 1.0,                                                               # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
             "fImp_orig": 1.0,
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "keep_full_model_folder": True,                                                     # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
-        }
-
-        """
-		Parameters to initialize files
-		------------------------------
-			These parameters are used to initialize the input.gacode to work with, before any PORTALS workflow
-			( passed directly to profiles.correct() )
-            Bear in mind that this is not necessary, you provide an already ready-to-go input.gacode without the need
-            to run these corrections.
-		"""
-
-        self.portals_parameters["initialization"] = {
-            "recalculate_ptot": True,   # Recompute PTOT to match kinetic profiles (after removals)
-            "quasineutrality": False,   # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
-            "removeIons": [],           # Remove this ion from the input.gacode (if D,T,Z, eliminate T with [2])
-            "remove_fast": False,       # Automatically detect which are fast ions and remove them
-            "thermalize_fast": False,   # Do not remove fast, keep their diluiton effect but make them thermal
-            "enforce_same_aLn": False,  # Make all ion density gradients equal to electrons
-            "groupQIONE": False,
-            "ensure_positive_Gamma": False,
-            "ensureMachNumber": None,
         }
 
         '''
@@ -200,6 +179,8 @@ class portals(STRATEGYtools.opt_evaluator):
             # Simulation kwargs to be passed directly to run and read commands
             
             "options": {
+                
+                # Defaults for TGLF simulation
                 "tglf": {
                     "run": {
                         "code_settings": 6,
@@ -213,11 +194,15 @@ class portals(STRATEGYtools.opt_evaluator):
                     "percent_error": 5, # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
                     "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)                
                 },
+                
+                # Defaults for NEO simulation
                 "neo": {
                     "run": {},
                     "read": {},
                     "percent_error": 10 # (%) Error (std, in percent) of model evaluation
                     },
+                
+                # Defaults for CGYRO simulation
                 "cgyro": {
                     "run": {
                         "code_settings": 1,
@@ -342,7 +327,6 @@ class portals(STRATEGYtools.opt_evaluator):
             self,
             self.folder,
             fileGACODE,
-            self.portals_parameters,
             ymax_rel,
             ymin_rel,
             start_from_folder=start_from_folder,

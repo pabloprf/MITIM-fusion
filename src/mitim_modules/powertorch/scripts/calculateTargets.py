@@ -1,5 +1,5 @@
 """
-calculateTargets.py input.gacode 1
+calculateTargets.py input.gacode
 """
 
 import sys
@@ -12,7 +12,6 @@ from IPython import embed
 
 def calculator(
     input_gacode,
-    typeCalculation=2,
     TypeTarget=3,
     folder="~/scratch/",
     cold_start=True,
@@ -20,75 +19,26 @@ def calculator(
     profProvided=False,
     fineTargetsResolution = None,
 ):
-    profiles = (
-        input_gacode if profProvided else PROFILEStools.gacode_state(input_gacode)
-    )
+    profiles = input_gacode if profProvided else PROFILEStools.gacode_state(input_gacode)
 
-    # Calculate using TGYRO
-    if typeCalculation == 1:
-        p = STATEtools.powerstate(
-            profiles,
-            evolution_options={
-                "rhoPredicted": rho_vec,
-                "fineTargetsResolution": fineTargetsResolution,
-            },
-            target_options={
-                "evaluator": targets_analytic.analytical_model,
-                "options": {
-                    "TypeTarget": TypeTarget,
-                    "target_evaluator_method":  "tgyro"},
-            },
-            transport_options={
-                "evaluator": transport_tglfneo.tglfneo_model,
-                "options": {
-                    "cold_start": cold_start,
-                    "portals_parameters": {
-                        "solution": {
-                            "launchSlurm": True,
-                            "Qi_includes_fast": False,
-                        },
-                        "model_parameters": {
-                            "Physics_options": {
-                                "TypeTarget": 3,
-                                "TurbulentExchange": 0,
-                                "PtotType": 1,
-                                "GradientsType": 0,
-                                "InputType": 1,
-                            },
-                            "predicted_channels": ["te", "ti", "ne"],
-                            "predicted_rho": rho_vec,
-                            "applyCorrections": {
-                                "Tfast_ratio": False,
-                                "Ti_thermals": True,
-                                "ni_thermals": True,
-                                "recalculate_ptot": False,
-                            },
-                            "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
-                        },
-                    },
+    p = STATEtools.powerstate(
+        profiles,
+        evolution_options={
+            "rhoPredicted": rho_vec,
+        },
+        target_options={
+            "evaluator": targets_analytic.analytical_model,
+            "options": {
+                "TypeTarget": TypeTarget,
+                "target_evaluator_method":  "powerstate",
+                "fineTargetsResolution": fineTargetsResolution
                 },
-            }
-        )
-
-    # Calculate using powerstate
-    elif typeCalculation == 2:
-        p = STATEtools.powerstate(
-            profiles,
-            evolution_options={
-                "rhoPredicted": rho_vec,
-                "fineTargetsResolution": fineTargetsResolution,
-            },
-            target_options={
-                "evaluator": targets_analytic.analytical_model,
-                "options": {
-                    "TypeTarget": TypeTarget,
-                    "target_evaluator_method":  "powerstate"},
-            },
-            transport_options={
-                "evaluator": None,
-                "options": {}
-            },
-        )
+        },
+        transport_options={
+            "evaluator": None,
+            "options": {}
+        },
+    )
 
     # Determine performance
     nameRun="test"
@@ -150,6 +100,5 @@ def calculator(
 
 if __name__ == "__main__":
     input_gacode = IOtools.expandPath(sys.argv[1])
-    typeCalculation = int(sys.argv[2])
 
-    calculator(input_gacode, typeCalculation=typeCalculation)
+    calculator(input_gacode)
