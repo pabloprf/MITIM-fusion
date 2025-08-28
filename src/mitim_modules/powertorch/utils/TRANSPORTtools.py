@@ -127,7 +127,7 @@ class power_transport:
 
     def _produce_profiles(self,derive_quantities=True):
 
-        self.applyCorrections = self.powerstate.transport_options["transport_evaluator_options"].get("MODELparameters", {}).get("applyCorrections", {})
+        self.applyCorrections = self.powerstate.transport_options["applyCorrections"]
 
         # Write this updated profiles class (with parameterized profiles and target powers)
         self.file_profs = self.folder / "input.gacode"
@@ -154,7 +154,7 @@ class power_transport:
         self.file_profs_unmod = self.file_profs.parent / f"{self.file_profs.name}_unmodified"
         shutil.copy2(self.file_profs, self.file_profs_unmod)
 
-        profiles_postprocessing_fun = self.powerstate.transport_options["transport_evaluator_options"].get("profiles_postprocessing_fun", None)
+        profiles_postprocessing_fun = self.powerstate.transport_options["profiles_postprocessing_fun"]
 
         if profiles_postprocessing_fun is not None:
             print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")

@@ -15,7 +15,7 @@ s = STATEtools.powerstate(inputgacode,
                          'rhoPredicted': rho
                         },
     transport_options = { 'transport_evaluator': transport_analytic.diffusion_model,
-                         'transport_evaluator_options': {
+                         "transport_evaluator_options": {
                             'chi_e': torch.ones(rho.shape[0]).to(rho)*0.8,
                             'chi_i': torch.ones(rho.shape[0]).to(rho)*1.2
                             }

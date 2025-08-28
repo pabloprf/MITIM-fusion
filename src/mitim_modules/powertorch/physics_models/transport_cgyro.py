@@ -97,13 +97,13 @@ class cgyro_model(transport_tgyro.tgyro_model):
         # **************************************************************************************************************************
 
         evaluateCGYRO(
-            self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["PORTALSparameters"],
-            self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"],
+            self.powerstate.transport_options["transport_evaluator_options"]["transport_parameters"],
+            self.powerstate.transport_options["folder"],
             self.evaluation_number,
             FolderEvaluation_TGYRO,
             self.file_profs,
             self.powerstate.plasma["roa"][0,1:],
-            self.powerstate.ProfilesPredicted,
+            self.powerstate.predicted_channels,
         )
 
         # Make tensors
@@ -140,7 +140,7 @@ The CGYRO file must contain GB units, and the gb unit is MW/m^2, 1E19m^2/s
 The CGYRO file must use particle flux. Convective transformation occurs later
 """
 
-def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii, ProfilesPredicted):
+def evaluateCGYRO(transport, folder, numPORTALS, FolderEvaluation, unmodified_profiles, radii, predicted_channels, impurityPosition):
     print("\n ** CGYRO evaluation of fluxes has been requested before passing information to the STRATEGY module **",typeMsg="i",)
 
     if isinstance(numPORTALS, int):
@@ -149,7 +149,7 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
     # ------------------------------------------------------------------------------------------------
     # Harcoded
     # ------------------------------------------------------------------------------------------------
-    if PORTALSparameters['hardCodedCGYRO'] is not None:
+    if transport['hardCodedCGYRO'] is not None:
         """
         train_sep is the number of initial runs in it#0 results file. Now, it's usually 1
         start_num is the number of the first iteration, usually 0
@@ -160,10 +160,10 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
 
         """
 
-        train_sep = PORTALSparameters["hardCodedCGYRO"]["train_sep"]
-        start_num = PORTALSparameters["hardCodedCGYRO"]["start_num"]
-        last_one = PORTALSparameters["hardCodedCGYRO"]["last_one"]
-        trick_hardcoded_f = PORTALSparameters["hardCodedCGYRO"]["trick_hardcoded_f"]
+        train_sep = transport["hardCodedCGYRO"]["train_sep"]
+        start_num = transport["hardCodedCGYRO"]["start_num"]
+        last_one = transport["hardCodedCGYRO"]["last_one"]
+        trick_hardcoded_f = transport["hardCodedCGYRO"]["trick_hardcoded_f"]
     else:
         train_sep = None
         start_num = None
@@ -171,19 +171,10 @@ def evaluateCGYRO(PORTALSparameters, folder, numPORTALS, FolderEvaluation, unmod
         trick_hardcoded_f = None
     # ------------------------------------------------------------------------------------------------
 
-    minErrorPercent = PORTALSparameters["percentError_stable"]
-    Qi_criterion_stable = PORTALSparameters["Qi_criterion_stable"]
+    minErrorPercent = transport["percentError_stable"]
+    Qi_criterion_stable = transport["Qi_criterion_stable"]
 
-    try:
-        impurityPosition = MITIMstate.impurity_location(PROFILEStools.gacode_state(unmodified_profiles), PORTALSparameters["ImpurityOfInterest"])
-    except ValueError:
-        if 'nZ' in ProfilesPredicted:
-            raise ValueError(f"Impurity {PORTALSparameters['ImpurityOfInterest']} not found in the profiles and needed for CGYRO evaluation")
-        else:
-            impurityPosition = 0
-            print(f'\t- Impurity location not found. Using hardcoded value of {impurityPosition}')
-
-    OriginalFimp = PORTALSparameters["fImp_orig"]
+    OriginalFimp = portals_parameters["main_parameters"]["fImp_orig"]
 
     cgyroing_file = (
         lambda file_cgyro, numPORTALS_this=0: cgyroing(

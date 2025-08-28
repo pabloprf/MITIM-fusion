@@ -24,17 +24,17 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
     set_plots = [ ]
 
-    if "te" in self.ProfilesPredicted:
+    if "te" in self.predicted_channels:
         set_plots.append(
             [   'te', 'aLte', 'QeMWm2_tr', 'QeMWm2',
                 'Electron Temperature','$T_e$ (keV)','$a/LT_e$','$Q_e$ (GB)','$Q_e$ ($MW/m^2$)',
                 1.0,"Qgb"])
-    if "ti" in self.ProfilesPredicted:
+    if "ti" in self.predicted_channels:
         set_plots.append(
             [   'ti', 'aLti', 'QiMWm2_tr', 'QiMWm2',
                 'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)',
                 1.0,"Qgb"])
-    if "ne" in self.ProfilesPredicted:
+    if "ne" in self.predicted_channels:
 
         # If this model provides the raw particle flux, go for it
         if 'Ge1E20m2_tr' in self.plasma:
@@ -48,7 +48,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                     'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
                     1E-1,"Qgb"])
 
-    if "nZ" in self.ProfilesPredicted:
+    if "nZ" in self.predicted_channels:
 
         # If this model provides the raw particle flux, go for it
         if 'GZ1E20m2_tr' in self.plasma:
@@ -62,7 +62,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
                     1E-1,"Qgb"])
 
-    if "w0" in self.ProfilesPredicted:
+    if "w0" in self.predicted_channels:
         set_plots.append(
             [   'w0', 'aLw0', 'MtJm2_tr', 'MtJm2',
                 'Rotation','$\\omega_0$ ($krad/s$)','$-d\\omega_0/dr$ ($krad/s/cm$)','$\\Pi$ (GB)','$\\Pi$ ($J/m^2$)',
@@ -104,7 +104,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
         colors = GRAPHICStools.listColors()
 
         cont = 0
-        for i in range(len(self.ProfilesPredicted)):
+        for i in range(len(self.predicted_channels)):
 
             # Plot gradient evolution
             ax = axsRes[1+cont]
@@ -119,7 +119,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
             ax.set_ylabel(self.labelsFM[i][0])
             
-            if i == len(self.ProfilesPredicted)-1:
+            if i == len(self.predicted_channels)-1:
                 GRAPHICStools.addLegendApart(ax, ratio=1.0,extraPad=0.05, size=9)
 
             # Plot residual evolution

@@ -193,7 +193,7 @@ def gacode_to_powerstate(self, rho_vec=None):
         self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
 
         # Check that it's not completely zero
-        if key[0] in self.ProfilesPredicted:
+        if key[0] in self.predicted_channels:
             if self.plasma[f"aL{key[0]}"].sum() == 0.0:
                 addT = 1e-15
                 print(f"\t- All values of {key[0]} detected to be zero, to avoid NaNs, inserting {addT} at the edge",typeMsg="w")
@@ -278,7 +278,7 @@ def powerstate_to_gacode(
     ]
 
     for key in quantities:
-        if key[0] in self.ProfilesPredicted:
+        if key[0] in self.predicted_channels:
             print(f"\t- Inserting {key[0]} into input.gacode profiles")
 
             # *********************************************************************************************
@@ -319,7 +319,7 @@ def powerstate_to_gacode(
                 print("\t\t* Adjusting ni of thermal ions", typeMsg="i")
                 profiles.scaleAllThermalDensities(scaleFactor=scaleFactor)
 
-    if "w0" not in self.ProfilesPredicted and ensureMachNumber is not None:
+    if "w0" not in self.predicted_channels and ensureMachNumber is not None:
         # Rotation fixed to ensure Mach number
         profiles.introduceRotationProfile(Mach_LF=ensureMachNumber)
 
@@ -369,6 +369,8 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
                 "target_evaluator_options": {
                     "TypeTarget": self.target_options["target_evaluator_options"]["TypeTarget"], # Important to keep the same as in the original
                     "target_evaluator_method": "powerstate",
+                    "forceZeroParticleFlux": self.target_options["target_evaluator_options"]["forceZeroParticleFlux"],
+                    "percent_error": self.target_options["target_evaluator_options"]["percent_error"]
                     }
                 },
             increase_profile_resol = False

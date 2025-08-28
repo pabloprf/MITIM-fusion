@@ -34,16 +34,14 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _evaluate_tglf_neo(self):
 
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        transport = self.powerstate.transport_options["transport_evaluator_options"]["transport_parameters"]
+        cold_start = self.powerstate.transport_options["transport_evaluator_options"]["cold_start"]
 
-        MODELparameters = transport_evaluator_options.get("MODELparameters",None)
-        Qi_includes_fast = transport_evaluator_options.get("Qi_includes_fast",False)
-        launchMODELviaSlurm = transport_evaluator_options.get("launchMODELviaSlurm", False)
-        cold_start = transport_evaluator_options.get("cold_start", False)
-        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
-        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
-        use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
+        Qi_includes_fast = transport["Qi_includes_fast"]
+        launchMODELviaSlurm = transport["launchMODELviaSlurm"]
+        percent_error = transport["percent_error"]
+        cores_per_tglf_instance = transport["cores_per_tglf_instance"]
+        use_tglf_scan_trick = transport["use_scan_trick_for_stds"]
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport #transport_evaluator_options.get("impurityPosition", 1)
@@ -69,13 +67,13 @@ class tgyro_model(TRANSPORTtools.power_transport):
             special_radii=rho_locations,
             iterations=0,
             PredictionSet=[
-                int("te" in self.powerstate.ProfilesPredicted),
-                int("ti" in self.powerstate.ProfilesPredicted),
-                int("ne" in self.powerstate.ProfilesPredicted),
+                int("te" in self.powerstate.predicted_channels),
+                int("ti" in self.powerstate.predicted_channels),
+                int("ne" in self.powerstate.predicted_channels),
             ],
-            TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-            extraOptionsTGLF=MODELparameters["transport_model"]["extraOptionsTGLF"],
-            TGYRO_physics_options=MODELparameters["Physics_options"],
+            TGLFsettings=transport["transport_evaluator_options"]["TGLFsettings"],
+            extraOptionsTGLF=transport["transport_evaluator_options"]["extraOptionsTGLF"],
+            TGYRO_physics_options=portals_parameters["model_parameters"]["Physics_options"],
             launchSlurm=launchMODELviaSlurm,
             minutesJob=5,
             forcedName=self.name,
@@ -100,12 +98,11 @@ class tgyro_model(TRANSPORTtools.power_transport):
             tgyro,
             "tglf_neo_original",
             rho_locations,
-            self.powerstate.ProfilesPredicted,
+            self.powerstate.predicted_channels,
             self.folder / "tglf_neo",
-            percentError,
+            percent_error,
             impurityPosition=impurityPosition,
             Qi_includes_fast=Qi_includes_fast,
-            provideTurbulentExchange=provideTurbulentExchange,
             use_tglf_scan_trick = use_tglf_scan_trick,
             cold_start=cold_start,
             extra_name = self.name,
@@ -115,44 +112,16 @@ class tgyro_model(TRANSPORTtools.power_transport):
         # Read again to capture errors
         tgyro.read(label="tglf_neo", folder=self.folder / "tglf_neo")
 
-        # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-        # Run TGLF standalone --> In preparation for the transition
-        # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
-        # from mitim_tools.gacode_tools import TGLFtools
-        # tglf = TGLFtools.TGLF(rhos=rho_locations)
-        # _ = tglf.prep_using_tgyro(
-        #     self.folder / 'stds',
-        #     inputgacode=self.file_profs,
-        #     recalculate_ptot=False, # Use what's in the input.gacode, which is what PORTALS TGYRO does
-        #     cold_start=cold_start)
-
-        # tglf.run(
-        #     subfolder="tglf_neo_original",
-        #     TGLFsettings=MODELparameters["transport_model"]["TGLFsettings"],
-        #     cold_start=cold_start,
-        #     forceIfcold_start=True,
-        #     extraOptions=MODELparameters["transport_model"]["extraOptionsTGLF"],
-        #     launchSlurm=launchMODELviaSlurm,
-        #     slurm_setup={"cores": 4, "minutes": 1},
-        # )
-
-        # tglf.read(label="tglf_neo_original")
-
-        # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-        # $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-
         return tgyro
 
     def _postprocess_tgyro(self, tgyro, label):
 
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
-
-        Qi_includes_fast = transport_evaluator_options.get("Qi_includes_fast",False)
-        UseFineGridTargets = transport_evaluator_options.get("UseFineGridTargets", False)
-        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
-        OriginalFimp = transport_evaluator_options.get("OriginalFimp", 1.0)
-        forceZeroParticleFlux = transport_evaluator_options.get("forceZeroParticleFlux", False)
+        portals_parameters = self.powerstate.transport_options["transport_evaluator_options"]["portals_parameters"]
+        
+        Qi_includes_fast = portals_parameters["model_parameters"]["transport_parameters"]["Qi_includes_fast"]
+        UseFineGridTargets = portals_parameters["main_parmaters"]["UseFineGridTargets"]
+        OriginalFimp = portals_parameters["main_parmaters"]["OriginalFimp"]
+        forceZeroParticleFlux = portals_parameters["model_parameters"]["target_parameters"]["target_evaluator_options"]["forceZeroParticleFlux"]
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
@@ -166,8 +135,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
             UseFineGridTargets=UseFineGridTargets,
             OriginalFimp=OriginalFimp,
             forceZeroParticleFlux=forceZeroParticleFlux,
-            provideTurbulentExchange=provideTurbulentExchange,
-            provideTargets=self.powerstate.target_options['target_evaluator_options']['target_evaluator_method'] == "tgyro",
+            provideTargets=self.powerstate.target_options['target_evaluator_options']["target_evaluator_method"] == "tgyro",
         )
 
         tgyro.results["use"] = tgyro.results[label]
@@ -188,8 +156,8 @@ class tgyro_model(TRANSPORTtools.power_transport):
 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.transport_options["transport_evaluator_options"] and "folder" in self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "folder" in self.powerstate.transport_options["transport_evaluator_options"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 
@@ -204,7 +172,7 @@ class tgyro_model(TRANSPORTtools.power_transport):
 def tglf_scan_trick(
     tglf,
     rho_locations, 
-    ProfilesPredicted, 
+    predicted_channels, 
     impurityPosition=1,
     Qi_includes_fast=False,  
     delta=0.02, 
@@ -219,7 +187,7 @@ def tglf_scan_trick(
 
     # Prepare scan 
     variables_to_scan = []
-    for i in ProfilesPredicted:
+    for i in predicted_channels:
         if i == 'te': variables_to_scan.append('RLTS_1')
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
@@ -227,11 +195,11 @@ def tglf_scan_trick(
         if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
-    if 'te' in ProfilesPredicted or 'ti' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
         variables_to_scan.append('TAUS_2')
-    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
         variables_to_scan.append('XNUE')
-    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
         variables_to_scan.append('BETAE')
     
     relative_scan = [1-delta, 1+delta]
@@ -343,10 +311,9 @@ def curateTGYROfiles(
     tgyroObject,
     label,
     rho_locations,
-    ProfilesPredicted,
+    predicted_channels,
     folder,
-    percentError,
-    provideTurbulentExchange=False,
+    percent_error,
     impurityPosition=1,
     Qi_includes_fast=False,
     use_tglf_scan_trick=None,
@@ -359,8 +326,8 @@ def curateTGYROfiles(
     tgyro = tgyroObject.results[label]
     
     # Determine NEO and Target errors
-    relativeErrorNEO = percentError[1] / 100.0
-    relativeErrorTAR = percentError[2] / 100.0
+    relativeErrorNEO = percent_error[1] / 100.0
+    relativeErrorTAR = percent_error[2] / 100.0
 
     # Grab fluxes from TGYRO
     Qe = tgyro.Qe_sim_turb[0, 1:]
@@ -380,7 +347,7 @@ def curateTGYROfiles(
         Flux_base, Flux_mean, Flux_std = tglf_scan_trick(
             tglfObject,
             rho_locations, 
-            ProfilesPredicted, 
+            predicted_channels, 
             impurityPosition=impurityPosition, 
             Qi_includes_fast=Qi_includes_fast, 
             delta = use_tglf_scan_trick,
@@ -405,27 +372,27 @@ def curateTGYROfiles(
         Mt_tgyro = tgyro.Mt_sim_turb[0, 1:]
         Pexch_tgyro = tgyro.EXe_sim_turb[0, 1:]
 
-        Qe_err = np.abs( (Qe_base - Qe_tgyro) / Qe_tgyro ) if 'te' in ProfilesPredicted else np.zeros_like(Qe_base)
-        Qi_err = np.abs( (Qi_base - Qi_tgyro) / Qi_tgyro ) if 'ti' in ProfilesPredicted else np.zeros_like(Qi_base)
-        Ge_err = np.abs( (Ge_base - Ge_tgyro) / Ge_tgyro ) if 'ne' in ProfilesPredicted else np.zeros_like(Ge_base)
-        GZ_err = np.abs( (GZ_base - GZ_tgyro) / GZ_tgyro ) if 'nZ' in ProfilesPredicted else np.zeros_like(GZ_base)
-        Mt_err = np.abs( (Mt_base - Mt_tgyro) / Mt_tgyro ) if 'w0' in ProfilesPredicted else np.zeros_like(Mt_base)
-        Pexch_err = np.abs( (Pexch - Pexch_tgyro) / Pexch_tgyro ) if provideTurbulentExchange else np.zeros_like(Pexch)
+        Qe_err = np.abs( (Qe_base - Qe_tgyro) / Qe_tgyro ) if 'te' in predicted_channels else np.zeros_like(Qe_base)
+        Qi_err = np.abs( (Qi_base - Qi_tgyro) / Qi_tgyro ) if 'ti' in predicted_channels else np.zeros_like(Qi_base)
+        Ge_err = np.abs( (Ge_base - Ge_tgyro) / Ge_tgyro ) if 'ne' in predicted_channels else np.zeros_like(Ge_base)
+        GZ_err = np.abs( (GZ_base - GZ_tgyro) / GZ_tgyro ) if 'nZ' in predicted_channels else np.zeros_like(GZ_base)
+        Mt_err = np.abs( (Mt_base - Mt_tgyro) / Mt_tgyro ) if 'w0' in predicted_channels else np.zeros_like(Mt_base)
+        Pexch_err = np.abs( (Pexch - Pexch_tgyro) / Pexch_tgyro )
 
         F_err = np.concatenate((Qe_err, Qi_err, Ge_err, GZ_err, Mt_err, Pexch_err))
         if F_err.max() > check_coincidence_thr:
             print(f"\t- TGLF scans are not consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%, in quantity:",typeMsg="w")
-            if ('te' in ProfilesPredicted) and Qe_err.max() > check_coincidence_thr:
+            if ('te' in predicted_channels) and Qe_err.max() > check_coincidence_thr:
                 print('\t\t* Qe:',Qe_err)
-            if ('ti' in ProfilesPredicted) and Qi_err.max() > check_coincidence_thr:
+            if ('ti' in predicted_channels) and Qi_err.max() > check_coincidence_thr:
                 print('\t\t* Qi:',Qi_err)
-            if ('ne' in ProfilesPredicted) and Ge_err.max() > check_coincidence_thr:
+            if ('ne' in predicted_channels) and Ge_err.max() > check_coincidence_thr:
                 print('\t\t* Ge:',Ge_err)
-            if ('nZ' in ProfilesPredicted) and GZ_err.max() > check_coincidence_thr:
+            if ('nZ' in predicted_channels) and GZ_err.max() > check_coincidence_thr:
                 print('\t\t* GZ:',GZ_err)
-            if ('w0' in ProfilesPredicted) and Mt_err.max() > check_coincidence_thr:
+            if ('w0' in predicted_channels) and Mt_err.max() > check_coincidence_thr:
                 print('\t\t* Mt:',Mt_err)
-            if provideTurbulentExchange and Pexch_err.max() > check_coincidence_thr:
+            if Pexch_err.max() > check_coincidence_thr:
                 print('\t\t* Pexch:',Pexch_err)
         else:
             print(f"\t- TGLF scans are consistent with TGYRO, maximum error = {F_err.max()*100:.2f}%")
@@ -446,7 +413,7 @@ def curateTGYROfiles(
         # If simply a percentage error provided
         # --------------------------------------------------------------
 
-        relativeErrorTGLF = [percentError[0] / 100.0]*len(rho_locations)
+        relativeErrorTGLF = [percent_error[0] / 100.0]*len(rho_locations)
     
         QeE = abs(Qe) * relativeErrorTGLF
         QiE = abs(Qi) * relativeErrorTGLF
@@ -907,7 +874,6 @@ def tgyro_to_powerstate(
     impurityPosition=1,
     UseFineGridTargets=False,
     OriginalFimp=1.0,
-    provideTurbulentExchange=False,
     provideTargets=False
     ):
     """
@@ -990,12 +956,8 @@ def tgyro_to_powerstate(
     # *********** Energy Exchange
     # **********************************
 
-    if provideTurbulentExchange:
-        self.QieGB_turb = TGYROresults.EXeGB_sim_turb[0, 1:nr]
-        self.QieGB_turb_stds = TGYROresults.EXeGB_sim_turb_stds[0, 1:nr]
-    else:
-        self.QieGB_turb = self.QeGB_turb * 0.0
-        self.QieGB_turb_stds = self.QeGB_turb * 0.0
+    self.QieGB_turb = TGYROresults.EXeGB_sim_turb[0, 1:nr]
+    self.QieGB_turb_stds = TGYROresults.EXeGB_sim_turb_stds[0, 1:nr]
 
     self.QieGB_neoc = self.QeGB_turb * 0.0
     self.QieGB_neoc_stds = self.QeGB_turb_stds * 0.0

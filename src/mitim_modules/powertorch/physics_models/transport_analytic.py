@@ -70,7 +70,7 @@ class surrogate(TRANSPORTtools.power_transport):
         """
 
         X = torch.Tensor()
-        for prof in self.powerstate.ProfilesPredicted:
+        for prof in self.powerstate.predicted_channels:
             X = torch.cat((X,self.powerstate.plasma['aL'+prof][:,1:]),axis=1)
 
         _, Q, _, _ = self.powerstate.transport_options["transport_evaluator_options"]["flux_fun"](X)
@@ -85,6 +85,6 @@ class surrogate(TRANSPORTtools.power_transport):
             "w0": "MtJm2",
         }
 
-        for c, i in enumerate(self.powerstate.ProfilesPredicted):
+        for c, i in enumerate(self.powerstate.predicted_channels):
             self.powerstate.plasma[f"{quantities[i]}_tr"] = torch.cat((torch.tensor([[0.0]]),Q[:, numeach * c : numeach * (c + 1)]),dim=1)
 

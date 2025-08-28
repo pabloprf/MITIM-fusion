@@ -36,9 +36,8 @@ class powerstate:
             - profiles_object: Object for gacode_state or others
             - evolution_options:
                 - rhoPredicted: radial grid (MUST NOT CONTAIN ZERO, it will be added internally)
-                - ProfilesPredicted: list of profiles to predict
+                - predicted_channels: list of profiles to predict
                 - impurityPosition: int = position of the impurity in the ions set
-                - fineTargetsResolution: int = resolution of the fine targets
             - transport_options: dictionary with transport_evaluator and transport_evaluator_options
             - target_options: dictionary with target_evaluator and target_evaluator_options
         '''
@@ -57,10 +56,11 @@ class powerstate:
             "target_evaluator": targets_analytic.analytical_model,
             "target_evaluator_options": {
                 "TypeTarget": 3,
-                "target_evaluator_method": "powerstate"
+                "target_evaluator_method": "powerstate",
+                "forceZeroParticleFlux": False
                 },
             }
-            
+
         if tensor_options is None:
             tensor_options = {
                 "dtype": torch.double,
@@ -77,10 +77,10 @@ class powerstate:
         self.target_options = target_options
 
         # Default options
-        self.ProfilesPredicted = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
+        self.predicted_channels = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
         self.impurityPosition = evolution_options.get("impurityPosition", 1)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
-        self.fineTargetsResolution = evolution_options.get("fineTargetsResolution", None)
+        self.fineTargetsResolution = target_options.get("fineTargetsResolution", None)
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
         rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
 
@@ -96,7 +96,7 @@ class powerstate:
                     # Swap "ne" and "nZ" positions
                     lst[ne_index], lst[nz_index] = lst[nz_index], lst[ne_index]
             return lst
-        self.ProfilesPredicted = _ensure_ne_before_nz(self.ProfilesPredicted)
+        self.predicted_channels = _ensure_ne_before_nz(self.predicted_channels)
 
         # Default type and device tensor
         self.dfT = torch.randn((2, 2), **tensor_options)
@@ -105,7 +105,7 @@ class powerstate:
         Potential profiles to evolve (aLX) and their corresponding flux matching
         ------------------------------------------------------------------------
             The order in the P and P_tr (and therefore the source S)
-            tensors will be the same as in self.ProfilesPredicted
+            tensors will be the same as in self.predicted_channels
         '''
         self.profile_map = {
             "te": ("QeMWm2", "QeMWm2_tr"),
@@ -131,7 +131,7 @@ class powerstate:
         ), torch.Tensor().to(self.dfT)
 
         self.labelsFM = []
-        for profile in self.ProfilesPredicted:
+        for profile in self.predicted_channels:
             self.labelsFM.append([f'aL{profile}', list(self.profile_map[profile])[0], list(self.profile_map[profile])[1]])
 
         # -------------------------------------------------------------------------------------
@@ -297,7 +297,7 @@ class powerstate:
         self.calculateProfileFunctions()
 
         # 3. Sources and sinks (populates components and Pe,Pi,...)
-        relative_error_assumed = self.transport_options["transport_evaluator_options"].get("percentError", [5, 1, 0.5])[-1]
+        relative_error_assumed = self.target_options["target_evaluator_options"]["percent_error"]
         self.calculateTargets(relative_error_assumed=relative_error_assumed)  # Calculate targets based on powerstate functions (it may be overwritten in next step, if chosen)
 
         # 4. Turbulent and neoclassical transport (populates components and Pe_tr,Pi_tr,...)
@@ -321,7 +321,7 @@ class powerstate:
         self.Xcurrent = X
         numeach = self.plasma["rho"].shape[1] - 1
 
-        for c, i in enumerate(self.ProfilesPredicted):
+        for c, i in enumerate(self.predicted_channels):
             if X is not None:
 
                 aLx_before = self.plasma[f"aL{i}"][:, 1:].clone()
@@ -406,11 +406,11 @@ class powerstate:
 
         # Concatenate the input gradients
         x0 = torch.Tensor().to(self.plasma["aLte"])
-        for c, i in enumerate(self.ProfilesPredicted):
+        for c, i in enumerate(self.predicted_channels):
             x0 = torch.cat((x0, self.plasma[f"aL{i}"][:, 1:].detach()), dim=1)
 
         # Make sure is properly batched
-        x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.ProfilesPredicted),))
+        x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.predicted_channels),))
 
         # Optimize
         x_best,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
@@ -448,17 +448,17 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState", tab_color='r')
             # Optimization
             figOpt = fn.add_figure(label="Optimization", tab_color='r')
-            grid = plt.GridSpec(2, 1+len(self.ProfilesPredicted), hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 1+len(self.predicted_channels), hspace=0.3, wspace=0.3)
 
             axsRes = [figOpt.add_subplot(grid[:, 0])]
-            for i in range(len(self.ProfilesPredicted)):
+            for i in range(len(self.predicted_channels)):
                 for j in range(2):
                     axsRes.append(figOpt.add_subplot(grid[j, i+1]))
 
             # Profiles
             figs = state_plotting.add_figures(fn, tab_color='b')
 
-            axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.ProfilesPredicted))
+            axs, axsMetrics = add_axes_powerstate_plot(figMain, num_kp = len(self.predicted_channels))
         
         else:
             axsNotGiven = False
@@ -709,7 +709,7 @@ class powerstate:
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.transport_options["transport_evaluator_options"].get("forceZeroParticleFlux", False))
+            forceZeroParticleFlux=self.target_options["target_evaluator_options"]["forceZeroParticleFlux"])
 
     def calculateTransport(
         self, nameRun="test", folder="~/scratch/", evaluation_number=0):
@@ -746,7 +746,7 @@ class powerstate:
 
         self.plasma["P"], self.plasma["P_tr"] = torch.Tensor().to(self.plasma["QeMWm2"]), torch.Tensor().to(self.plasma["QeMWm2"])
 
-        for profile in self.ProfilesPredicted:
+        for profile in self.predicted_channels:
             _concatenate_flux(self.plasma, *self.profile_map[profile])
             
         self.plasma["S"] = self.plasma["P"] - self.plasma["P_tr"]

@@ -40,14 +40,14 @@ def PORTALSanalyzer_plotMetrics(
         plt.ion()
         fig = plt.figure(figsize=(15, 8))
 
-    numprofs = len(self.ProfilesPredicted)
+    numprofs = len(self.predicted_channels)
 
     grid = plt.GridSpec(nrows=8, ncols=numprofs + 1, hspace=0.3, wspace=0.35)
 
     cont = 0
 
     # Te
-    if "te" in self.ProfilesPredicted:
+    if "te" in self.predicted_channels:
         axTe = fig.add_subplot(grid[:4, cont])
         axTe.set_title("Electron Temperature")
         axTe_g = fig.add_subplot(grid[4:6, cont])
@@ -56,7 +56,7 @@ def PORTALSanalyzer_plotMetrics(
     else:
         axTe = axTe_g = axTe_f = None
 
-    if "ti" in self.ProfilesPredicted:
+    if "ti" in self.predicted_channels:
         axTi = fig.add_subplot(grid[:4, cont])
         axTi.set_title("Ion Temperature")
         axTi_g = fig.add_subplot(grid[4:6, cont])
@@ -66,7 +66,7 @@ def PORTALSanalyzer_plotMetrics(
         axTi = axTi_g = axTi_f = None
 
     
-    if "ne" in self.ProfilesPredicted:
+    if "ne" in self.predicted_channels:
         axne = fig.add_subplot(grid[:4, cont])
         axne.set_title("Electron Density")
         axne_g = fig.add_subplot(grid[4:6, cont])
@@ -478,7 +478,7 @@ def PORTALSanalyzer_plotMetrics(
         ax.set_xticklabels([])
 
     ax = axC
-    if "te" in self.ProfilesPredicted:
+    if "te" in self.predicted_channels:
         v = self.resTeM
         ax.plot(
             self.evaluations,
@@ -489,7 +489,7 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label=self.labelsFluxes["te"],
         )
-    if "ti" in self.ProfilesPredicted:
+    if "ti" in self.predicted_channels:
         v = self.resTiM
         ax.plot(
             self.evaluations,
@@ -500,7 +500,7 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label=self.labelsFluxes["ti"],
         )
-    if "ne" in self.ProfilesPredicted:
+    if "ne" in self.predicted_channels:
         v = self.resneM
         ax.plot(
             self.evaluations,
@@ -511,7 +511,7 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label=self.labelsFluxes["ne"],
         )
-    if "nZ" in self.ProfilesPredicted:
+    if "nZ" in self.predicted_channels:
         v = self.resnZM
         ax.plot(
             self.evaluations,
@@ -522,7 +522,7 @@ def PORTALSanalyzer_plotMetrics(
             markersize=2,
             label=self.labelsFluxes["nZ"],
         )
-    if "w0" in self.ProfilesPredicted:
+    if "w0" in self.predicted_channels:
         v = self.resw0M
         ax.plot(
             self.evaluations,
@@ -546,7 +546,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
-        if "te" in self.ProfilesPredicted:
+        if "te" in self.predicted_channels:
             v = self.resTeM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -555,7 +555,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "ti" in self.ProfilesPredicted:
+        if "ti" in self.predicted_channels:
             v = self.resTiM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -564,7 +564,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "ne" in self.ProfilesPredicted:
+        if "ne" in self.predicted_channels:
             v = self.resneM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -573,7 +573,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "nZ" in self.ProfilesPredicted:
+        if "nZ" in self.predicted_channels:
             v = self.resnZM
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -582,7 +582,7 @@ def PORTALSanalyzer_plotMetrics(
                 color=col,
                 markersize=4,
             )
-        if "w0" in self.ProfilesPredicted:
+        if "w0" in self.predicted_channels:
             v = self.resw0M
             ax.plot(
                 [self.evaluations[indexUse]],
@@ -1128,7 +1128,7 @@ def PORTALSanalyzer_plotExpected(
 
     # ---- Plot
 
-    numprofs = len(self.ProfilesPredicted)
+    numprofs = len(self.predicted_channels)
 
     if numprofs <= 4:
         wspace = 0.3
@@ -1138,7 +1138,7 @@ def PORTALSanalyzer_plotExpected(
     grid = plt.GridSpec(nrows=4, ncols=numprofs, hspace=0.2, wspace=wspace)
 
     cont = 0
-    if "te" in self.ProfilesPredicted:
+    if "te" in self.predicted_channels:
         axTe = fig.add_subplot(grid[0, cont])
         axTe.set_title("Electron Temperature")
         axTe_g = fig.add_subplot(grid[1, cont], sharex=axTe)
@@ -1147,7 +1147,7 @@ def PORTALSanalyzer_plotExpected(
         cont += 1
     else:
         axTe = axTe_g = axTe_f = axTe_r = None
-    if "ti" in self.ProfilesPredicted:
+    if "ti" in self.predicted_channels:
         axTi = fig.add_subplot(grid[0, cont], sharex=axTe)
         axTi.set_title("Ion Temperature")
         axTi_g = fig.add_subplot(grid[1, cont], sharex=axTe)
@@ -1156,7 +1156,7 @@ def PORTALSanalyzer_plotExpected(
         cont += 1
     else:
         axTi = axTi_g = axTi_f = axTi_r = None
-    if "ne" in self.ProfilesPredicted:
+    if "ne" in self.predicted_channels:
         axne = fig.add_subplot(grid[0, cont], sharex=axTe)
         axne.set_title("Electron Density")
         axne_g = fig.add_subplot(grid[1, cont], sharex=axTe)
@@ -1207,7 +1207,7 @@ def PORTALSanalyzer_plotExpected(
 
     rho = p.profiles["rho(-)"]
     roa = p.derived["roa"]
-    rhoVals = self.MODELparameters["RhoLocations"]
+    rhoVals = self.portals_parameters["model_parameters"]["radii_rho"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
@@ -1395,7 +1395,7 @@ def PORTALSanalyzer_plotExpected(
             
 
             rho = self.profiles_next_new.profiles["rho(-)"]
-            rhoVals = self.MODELparameters["RhoLocations"]
+            rhoVals = self.portals_parameters["model_parameters"]["radii_rho"]
             roaVals = np.interp(rhoVals, rho, roa)
 
             p0 = self.powerstates[plotPoints[0]].profiles
@@ -1852,7 +1852,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     fig4 = fn.add_figure(label="PROFILES Comparison", tab_color=fn_color)
     grid = plt.GridSpec(
         2,
-        np.max([3, len(self.ProfilesPredicted)]),
+        np.max([3, len(self.predicted_channels)]),
         hspace=0.3,
         wspace=0.3,
     )
@@ -1892,10 +1892,10 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             axs4,
             color=colors[i],
             label=label,
-            lastRho=self.MODELparameters["RhoLocations"][-1],
+            lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.MODELparameters["RhoLocations"],
+            RhoLocationsPlot=self.portals_parameters["model_parameters"]["radii_rho"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
             autoscale=i == 3,
@@ -1908,7 +1908,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     # -------------------------------------------------------
 
     fig = fn.add_figure(label="Powerstate", tab_color=fn_color)
-    axs, axsM = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.ProfilesPredicted))
+    axs, axsM = STATEtools.add_axes_powerstate_plot(fig,num_kp=len(self.predicted_channels))
 
     for indeces,c in zip(indecesPlot,["g","r","m"]):
         if indeces is not None:
@@ -1926,7 +1926,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         fig = plt.figure()
 
     pps = np.max(
-        [3, len(self.ProfilesPredicted)]
+        [3, len(self.predicted_channels)]
     )  # Because plotGradients require at least Te, Ti, ne
     grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
     axsR = []
@@ -1959,7 +1959,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="b",
-        lastRho=self.MODELparameters["RhoLocations"][-1],
+        lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
@@ -1976,7 +1976,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         p.plot_gradients(
             axsR,
             color="r",
-            lastRho=self.MODELparameters["RhoLocations"][-1],
+            lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
@@ -1988,7 +1988,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="g",
-        lastRho=self.MODELparameters["RhoLocations"][-1],
+        lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
@@ -2011,10 +2011,10 @@ def PORTALSanalyzer_plotModelComparison(
 
     if (fig is None) and (axs is None):
         plt.ion()
-        fig = plt.figure(figsize=(15, 6 if len(self.ProfilesPredicted)+int(self.PORTALSparameters["turbulent_exchange_as_surrogate"]) < 4 else 10))
+        fig = plt.figure(figsize=(15, 6 if len(self.predicted_channels)+int(self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]) < 4 else 10))
 
     if axs is None:
-        if len(self.ProfilesPredicted)+int(self.PORTALSparameters["turbulent_exchange_as_surrogate"]) < 4:
+        if len(self.predicted_channels)+int(self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]) < 4:
             axs = fig.subplots(ncols=3)
         else:
             axs = fig.subplots(ncols=3, nrows=2)
@@ -2027,7 +2027,7 @@ def PORTALSanalyzer_plotModelComparison(
     metrics = {}
 
     # te
-    if 'te' in self.ProfilesPredicted:
+    if 'te' in self.predicted_channels:
         quantityX = "QeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Qe"
         quantityX_stds = "QeGB_sim_turb_stds" if UseTGLFfull_x is None else None
         quantityY = "QeGB_sim_turb"
@@ -2052,7 +2052,7 @@ def PORTALSanalyzer_plotModelComparison(
         cont += 1
 
     # ti
-    if 'ti' in self.ProfilesPredicted:
+    if 'ti' in self.predicted_channels:
         quantityX = "QiGBIons_sim_turb_thr" if UseTGLFfull_x is None else "[TGLF]Qi"
         quantityX_stds = "QiGBIons_sim_turb_thr_stds" if UseTGLFfull_x is None else None
         quantityY = "QiGBIons_sim_turb_thr"
@@ -2077,7 +2077,7 @@ def PORTALSanalyzer_plotModelComparison(
         cont += 1
 
     # ne
-    if 'ne' in self.ProfilesPredicted:
+    if 'ne' in self.predicted_channels:
         quantityX = "GeGB_sim_turb" if UseTGLFfull_x is None else "[TGLF]Ge"
         quantityX_stds = "GeGB_sim_turb_stds" if UseTGLFfull_x is None else None
         quantityY = "GeGB_sim_turb"
@@ -2119,7 +2119,7 @@ def PORTALSanalyzer_plotModelComparison(
         cont += 1
 
 
-    if "nZ" in self.ProfilesPredicted:
+    if "nZ" in self.predicted_channels:
 
         impurity_search = self.runWithImpurity_transport
 
@@ -2165,7 +2165,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    if "w0" in self.ProfilesPredicted:
+    if "w0" in self.predicted_channels:
         if UseTGLFfull_x is not None:
             raise Exception("Momentum plot not implemented yet")
         # w0
@@ -2201,7 +2201,7 @@ def PORTALSanalyzer_plotModelComparison(
 
         cont += 1
 
-    if self.PORTALSparameters["turbulent_exchange_as_surrogate"]:
+    if self.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
         if UseTGLFfull_x is not None:
             raise Exception("Turbulent exchange plot not implemented yet")
         # Sexch
@@ -2419,8 +2419,8 @@ def varToReal(y, mitim_model):
     cont = 0
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
-    for prof in mitim_model.optimization_object.MODELparameters["ProfilesPredicted"]:
-        for rad in mitim_model.optimization_object.MODELparameters["RhoLocations"]:
+    for prof in mitim_model.optimization_object.portals_parameters["model_parameters"]["predicted_channels"]:
+        for rad in mitim_model.optimization_object.portals_parameters["model_parameters"]["radii_rho"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2493,7 +2493,7 @@ def plotVars(
             .plasma["roa"][0, 1:]
             .cpu()
             .cpu().numpy()
-        )  # mitim_model.optimization_object.MODELparameters['RhoLocations']
+        )  # mitim_model.optimization_object.portals_parameters["model_parameters"]['radii_rho']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
@@ -3254,7 +3254,7 @@ def plotFluxComparison(
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
 ):
-    rhos = np.append([0], self_complete.MODELparameters["RhoLocations"])
+    rhos = np.append([0], self_complete.portals_parameters["model_parameters"]["radii_rho"])
     aLTe, aLTi, aLne, aLnZ, aLw0 = (
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),
@@ -3275,19 +3275,19 @@ def produceInfoRanges(
         if f"aLw0_{i+1}" in bounds:
             aLw0[i + 1, :] = bounds[f"aLw0_{i+1}"]
 
-    X = torch.zeros(((len(rhos) - 1) * len(self_complete.MODELparameters["ProfilesPredicted"]), 2))
+    X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["model_parameters"]["predicted_channels"]), 2))
     l = len(rhos) - 1
     X[0:l, :] = torch.from_numpy(aLTe[1:, :])
     X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
 
     cont = 0
-    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
-    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
         cont += 1
-    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
@@ -3338,7 +3338,7 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "ne" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3361,7 +3361,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "nZ" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "nZ" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],
@@ -3384,7 +3384,7 @@ def produceInfoRanges(
         )
         cont += 2
 
-    if "w0" in self_complete.MODELparameters["ProfilesPredicted"]:
+    if "w0" in self_complete.portals_parameters["model_parameters"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 1],
             powerstate.plasma["rho"][0],

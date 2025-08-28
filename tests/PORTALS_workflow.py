@@ -28,14 +28,17 @@ torch.set_num_threads(8)
 portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 2
-portals_fun.MODELparameters["RhoLocations"] = [0.25, 0.45, 0.65, 0.85]
-portals_fun.MODELparameters['ProfilesPredicted'] = ["te", "ti", "ne", "nZ", 'w0'] 
-portals_fun.PORTALSparameters['ImpurityOfInterest'] = 'N'
-portals_fun.PORTALSparameters['turbulent_exchange_as_surrogate'] = True
-portals_fun.INITparameters["remove_fast"] = True
-portals_fun.INITparameters["quasineutrality"] = True
-portals_fun.INITparameters["enforce_same_aLn"] = True
-portals_fun.MODELparameters["transport_model"]["TGLFsettings"] = 2
+
+portals_fun.portals_parameters["main_parameters"]['turbulent_exchange_as_surrogate'] = True
+
+portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
+portals_fun.portals_parameters["initialization_parameters"]["quasineutrality"] = True
+portals_fun.portals_parameters["initialization_parameters"]["enforce_same_aLn"] = True
+
+portals_fun.portals_parameters["model_parameters"]["radii_rho"] = [0.25, 0.45, 0.65, 0.85]
+portals_fun.portals_parameters["model_parameters"]['predicted_channels'] = ["te", "ti", "ne", "nZ", 'w0'] 
+portals_fun.portals_parameters["model_parameters"]['ImpurityOfInterest'] = 'N'
+portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["tglf"]["run"]["code_settings"] = 2
 
 # Prepare run
 portals_fun.prep(inputgacode)

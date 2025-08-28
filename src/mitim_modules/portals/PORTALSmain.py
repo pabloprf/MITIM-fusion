@@ -115,71 +115,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.potential_flags = {'INITparameters': [], 'MODELparameters': [], 'PORTALSparameters': []}
-
-        """
-		Parameters to initialize files
-		------------------------------
-			These parameters are used to initialize the input.gacode to work with, before any PORTALS workflow
-			( passed directly to profiles.correct() )
-            Bear in mind that this is not necessary, you provide an already ready-to-go input.gacode without the need
-            to run these corrections.
-		"""
-
-        self.INITparameters = {
-            "recalculate_ptot": True,  # Recompute PTOT to match kinetic profiles (after removals)
-            "quasineutrality": False,  # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
-            "removeIons": [],  # Remove this ion from the input.gacode (if D,T,Z, eliminate T with [2])
-            "remove_fast": False,  # Automatically detect which are fast ions and remove them
-            "thermalize_fast": False,  # Do not remove fast, keep their diluiton effect but make them thermal
-            "enforce_same_aLn": False,  # Make all ion density gradients equal to electrons
-            "groupQIONE": False,
-            "ensure_positive_Gamma": False,
-            "ensureMachNumber": None,
-        }
-
-        for key in self.INITparameters.keys():
-            self.potential_flags['INITparameters'].append(key)
-
-        """
-		Parameters to run the model
-		---------------------------
-			The corrections are applied prior to each evaluation, so that things are consistent.
-			Here, do not include things that are not specific for a given iteration. Otherwise if they are general
-			changes to input.gacode, then that should go into INITparameters.
-
-			if MODELparameters contains RoaLocations, use that instead of RhoLocations
-		"""
-
-        self.MODELparameters = {
-            "RhoLocations": [0.3, 0.45, 0.6, 0.75, 0.9],
-            "RoaLocations": None,
-            "ProfilesPredicted": ["te", "ti", "ne"],  # ['nZ','w0']
-            "Physics_options": {
-                "TypeTarget": 3,
-                "TurbulentExchange": 0,  # In PORTALS TGYRO evaluations, let's always calculate turbulent exchange, but NOT include it in targets!
-                "PtotType": 1,  # In PORTALS TGYRO evaluations, let's always use the PTOT column (so control of that comes from the ap)
-                "GradientsType": 0,  # In PORTALS TGYRO evaluations, we need to not recompute gradients
-                "InputType": 1,  # In PORTALS TGYRO evaluations, we need to use exact profiles
-            },
-            "applyCorrections": {
-                "Ti_thermals": True,  # Keep all thermal ion temperatures equal to the main Ti
-                "ni_thermals": True,  # Adjust for quasineutrality by modifying the thermal ion densities together with ne
-                "recalculate_ptot": True,  # Recompute PTOT to insert in input file each time
-                "Tfast_ratio": False,  # Keep the ratio of Tfast/Te constant throughout the Te evolution
-                "ensureMachNumber": None,  # Change w0 to match this Mach number when Ti varies
-            },
-            "transport_model": {
-                "run_type": "normal",   # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
-                "TGLFsettings": 6,
-                "extraOptionsTGLF": {},
-                "CGYROsettings": 1,
-                "extraOptionsCGYRO": {}
-                }
-        }
-
-        for key in self.MODELparameters.keys():
-            self.potential_flags['MODELparameters'].append(key)
+        self.portals_parameters = {}
 
         """
 		Physics-informed parameters to fit surrogates
@@ -192,9 +128,48 @@ class portals(STRATEGYtools.opt_evaluator):
         ) = PORTALStools.default_portals_transformation_variables(additional_params = additional_params_in_surrogate)
 
         """
-		Parameters to run PORTALS
-		-----------------------
+		PORTALS-specific parameters (i.e. on the transport solver level, not model)
+		----------------------------------------------------------------------------
 		"""
+
+        self.portals_parameters["main_parameters"] = {
+            "portals_transformation_variables": portals_transformation_variables,               # Physics-informed parameters to fit surrogates
+            "portals_transformation_variables_trace": portals_transformation_variables_trace,   # Physics-informed parameters to fit surrogates for trace impurities
+            "turbulent_exchange_as_surrogate": False,                                           # Run turbulent exchange as surrogate?
+            "Pseudo_multipliers": [1.0]*5,                                                      # [Qe,Qi,Ge] multipliers to calculate pseudo
+            "applyImpurityGammaTrick": True,                                                    # If True, fit model to GZ/nZ, valid on the trace limit
+            "UseOriginalImpurityConcentrationAsWeight": 1.0,                                    # If not None, using UseOriginalImpurityConcentrationAsWeight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+            "fImp_orig": 1.0,
+            "additional_params_in_surrogate": additional_params_in_surrogate,
+            "keep_full_model_folder": True,                                                     # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
+        }
+
+        """
+		Parameters to initialize files
+		------------------------------
+			These parameters are used to initialize the input.gacode to work with, before any PORTALS workflow
+			( passed directly to profiles.correct() )
+            Bear in mind that this is not necessary, you provide an already ready-to-go input.gacode without the need
+            to run these corrections.
+		"""
+
+        self.portals_parameters["initialization_parameters"] = {
+            "recalculate_ptot": True,   # Recompute PTOT to match kinetic profiles (after removals)
+            "quasineutrality": False,   # Make sure things are quasineutral by changing the *MAIN* ion (D,T or both)  (after removals)
+            "removeIons": [],           # Remove this ion from the input.gacode (if D,T,Z, eliminate T with [2])
+            "remove_fast": False,       # Automatically detect which are fast ions and remove them
+            "thermalize_fast": False,   # Do not remove fast, keep their diluiton effect but make them thermal
+            "enforce_same_aLn": False,  # Make all ion density gradients equal to electrons
+            "groupQIONE": False,
+            "ensure_positive_Gamma": False,
+            "ensureMachNumber": None,
+        }
+
+        '''
+        model_parameters
+        ----------------
+        These parameters are communicated to the powertorch object.
+        '''
 
         # Selection of model
         if CGYROrun:
@@ -204,36 +179,98 @@ class portals(STRATEGYtools.opt_evaluator):
 
         from mitim_modules.powertorch.physics_models.targets_analytic import analytical_model as target_evaluator
 
-        self.PORTALSparameters = {
-            "percentError": [5,10,1],  # (%) Error (std, in percent) of model evaluation [TGLF (treated as minimum if scan trick), NEO, TARGET]
-            "transport_evaluator": transport_evaluator,
-            "target_evaluator": target_evaluator,
-            "target_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
-            "launchEvaluationsAsSlurmJobs": True,  # Launch each evaluation as a batch job (vs just comand line)
-            "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)
-            "portals_transformation_variables": portals_transformation_variables,  # Physics-informed parameters to fit surrogates
-            "portals_transformation_variables_trace": portals_transformation_variables_trace,  # Physics-informed parameters to fit surrogates for trace impurities
-            "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
-            "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
-            "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
-            "turbulent_exchange_as_surrogate": False,  # Run turbulent exchange as surrogate?
-            "profiles_postprocessing_fun": None,  # Function to post-process input.gacode only BEFORE passing to transport codes
-            "Pseudo_multipliers": [1.0]*5,  # [Qe,Qi,Ge] multipliers to calculate pseudo
+        self.portals_parameters["model_parameters"] = {
+            
+            # Specification of radial locations (roa wins over rho, if provided)
+            "radii_rho": [0.3, 0.45, 0.6, 0.75, 0.9],
+            "radii_roa": None,
+            
+            # Channels to be predicted
+            "predicted_channels": ["te", "ti", "ne"],  # ['nZ','w0']
+
+            # -------------------------
+            # Transport model settings 
+            # -------------------------
+            "transport_parameters": {
+                
+                # Transport model class
+                
+                "transport_evaluator": transport_evaluator,
+                
+                # Simulation kwargs to be passed directly to run and read commands
+                
+                "transport_evaluator_options": {
+                    "tglf": {
+                        "run": {
+                            "code_settings": 6,
+                            "extraOptions": {},
+                        },
+                        "read": {},
+                        "use_scan_trick_for_stds": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+                        "keep_files": "base", # minimal: only retrieve minimal files always; base: retrieve all files when running TGLF base; none: always minimal files
+                        "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
+                        "launchEvaluationsAsSlurmJobs": True, # Launch each evaluation as a batch job (vs just comand line)
+                        "percent_error": 5, # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
+                        "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)                
+                    },
+                    "neo": {
+                        "run": {},
+                        "read": {},
+                        "percent_error": 10 # (%) Error (std, in percent) of model evaluation
+                        },
+                    "cgyro": {
+                        "run": {
+                            "code_settings": 1,
+                            "extraOptions": {},
+                            "run_type": "normal",   # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
+                        },
+                        "read": {
+                            "tmin": 0.0
+                        },
+                        "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
+                        "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
+                    },
+                },
+                
+                # Corrections to be applied to each iteration input.gacode file
+                
+                "profiles_postprocessing_fun": None, # Function to post-process input.gacode only BEFORE passing to transport codes
+                
+                "applyCorrections": {
+                    "Ti_thermals": True,        # Keep all thermal ion temperatures equal to the main Ti
+                    "ni_thermals": True,        # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+                    "recalculate_ptot": True,   # Recompute PTOT to insert in input file each time
+                    "Tfast_ratio": False,       # Keep the ratio of Tfast/Te constant throughout the Te evolution
+                    "ensureMachNumber": None,   # Change w0 to match this Mach number when Ti varies
+                },
+            },
+            
+            # -------------------------
+            # Target model settings 
+            # -------------------------
+            "target_parameters": {
+                "target_evaluator": target_evaluator,
+                "target_evaluator_options": {
+                    "TypeTarget": 3,
+                    "target_evaluator": target_evaluator,
+                    "target_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
+                    "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
+                    "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults target_evaluator_method to powerstate)
+                    "percent_error": 1 # (%) Error (std, in percent) of model evaluation 
+                }
+            },
             "ImpurityOfInterest": None,  # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"
-            "applyImpurityGammaTrick": True,  # If True, fit model to GZ/nZ, valid on the trace limit
-            "UseOriginalImpurityConcentrationAsWeight": 1.0,  # If not None, using UseOriginalImpurityConcentrationAsWeight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
-            "fImp_orig": 1.0,
-            "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults target_evaluator_method to powerstate)
-            "hardCodedCGYRO": None,  # If not None, use this hard-coded CGYRO evaluation
-            "additional_params_in_surrogate": additional_params_in_surrogate,
-            "use_tglf_scan_trick": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
-            "keep_full_model_folder": True,  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
-            "keep_tglf_files": "base", # minimal: only retrieve minimal files always; base: retrieve all files when running TGLF base; none: always minimal files
-            "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
         }
 
-        for key in self.PORTALSparameters.keys():
-            self.potential_flags['PORTALSparameters'].append(key)
+        # Grab all the flags here in a way that, after changing the dictionary extenrally, I make sure it's the same flags as PORTALS expects
+        
+        def _grab_flags_dictionary(d):
+            keys = {}
+            for key in d.keys():
+                keys[key] = _grab_flags_dictionary(d[key]) if isinstance(d[key], dict) else None
+            return keys
+
+        self.potential_flags = _grab_flags_dictionary(self.portals_parameters)
 
     def prep(
         self,
@@ -284,15 +321,15 @@ class portals(STRATEGYtools.opt_evaluator):
             ymax_rel0 = copy.deepcopy(ymax_rel)
 
             ymax_rel = {}
-            for prof in self.MODELparameters["ProfilesPredicted"]:
-                ymax_rel[prof] = np.array( [ymax_rel0] * len(self.MODELparameters[key_rhos]) )
+            for prof in self.portals_parameters["model_parameters"]["predicted_channels"]:
+                ymax_rel[prof] = np.array( [ymax_rel0] * len(self.portals_parameters["model_parameters"][key_rhos]) )
         
         if IOtools.isfloat(ymin_rel):
             ymin_rel0 = copy.deepcopy(ymin_rel)
 
             ymin_rel = {}
-            for prof in self.MODELparameters["ProfilesPredicted"]:
-                ymin_rel[prof] = np.array( [ymin_rel0] * len(self.MODELparameters[key_rhos]) )
+            for prof in self.portals_parameters["model_parameters"]["predicted_channels"]:
+                ymin_rel[prof] = np.array( [ymin_rel0] * len(self.portals_parameters["model_parameters"][key_rhos]) )
 
         if enforceFiniteTemperatureGradients is not None:
             for prof in ['te', 'ti']:
@@ -305,7 +342,7 @@ class portals(STRATEGYtools.opt_evaluator):
             self,
             self.folder,
             fileGACODE,
-            self.INITparameters,
+            self.portals_parameters,
             ymax_rel,
             ymin_rel,
             start_from_folder=start_from_folder,
@@ -317,7 +354,6 @@ class portals(STRATEGYtools.opt_evaluator):
             tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
-            transport_evaluator_options=transport_evaluator_options,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -382,7 +418,7 @@ class portals(STRATEGYtools.opt_evaluator):
             name,
             numPORTALS=numPORTALS,
             dictOFs=dictOFs,
-            remove_folder_upon_completion=not self.PORTALSparameters["keep_full_model_folder"],
+            remove_folder_upon_completion=not self.portals_parameters["main_parameters"]["keep_full_model_folder"],
         )
 
         # Write results
@@ -441,7 +477,7 @@ class portals(STRATEGYtools.opt_evaluator):
 				  res must have shape (dim1...N)
 		"""
 
-        of, cal, _, res = PORTALStools.calculate_residuals(self.powerstate, self.PORTALSparameters,specific_vars=var_dict)
+        of, cal, _, res = PORTALStools.calculate_residuals(self.powerstate, self.portals_parameters,specific_vars=var_dict)
 
         return of, cal, res
 
@@ -459,40 +495,19 @@ class portals(STRATEGYtools.opt_evaluator):
         print(">> PORTALS flags pre-check")
 
         # Check that I haven't added a deprecated variable that I expect some behavior from
-        for key in self.potential_flags.keys():
-            for flag in self.__dict__[key]:
-                if flag not in self.potential_flags[key]:
-                    print(
-                        f"\t- {key}['{flag}'] is an unexpected variable, prone to errors or misinterpretation",
-                        typeMsg="q",
-                    )
-        # ----------------------------------------------------------------------------------
+        
+        def _check_flags_dictionary(d, d_check):
+            for key in d.keys():
+                if key not in d_check:
+                    print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q")
+                elif not isinstance(d[key], dict):
+                    continue
+                else:
+                    _check_flags_dictionary(d[key], d_check[key])
+                
+        _check_flags_dictionary(self.portals_parameters, self.potential_flags)
 
-        if self.PORTALSparameters["fineTargetsResolution"] is not None:
-            if self.PORTALSparameters["target_evaluator_method"] != "powerstate":
-                print("\t- Requested fineTargetsResolution, so running powerstate target calculations",typeMsg="w")
-                self.PORTALSparameters["target_evaluator_method"] = "powerstate"
-
-        from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
-        if not issubclass(self.PORTALSparameters["transport_evaluator"], tgyro_model) and (self.PORTALSparameters["target_evaluator_method"] == "tgyro"):
-            print("\t- Requested TGYRO targets, but transport evaluator is not tgyro, so changing to powerstate",typeMsg="w")
-            self.PORTALSparameters["target_evaluator_method"] = "powerstate"
-
-        if ("InputType" not in self.MODELparameters["Physics_options"]) or self.MODELparameters["Physics_options"]["InputType"] != 1:
-            print("\t- In PORTALS TGYRO evaluations, we need to use exact profiles (InputType=1)",typeMsg="i")
-            self.MODELparameters["Physics_options"]["InputType"] = 1
-
-        if ("GradientsType" not in self.MODELparameters["Physics_options"]) or self.MODELparameters["Physics_options"]["GradientsType"] != 0:
-            print("\t- In PORTALS TGYRO evaluations, we need to not recompute gradients (GradientsType=0)",typeMsg="i")
-            self.MODELparameters["Physics_options"]["GradientsType"] = 0
-
-        if self.PORTALSparameters["target_evaluator_method"] == "tgyro" and self.PORTALSparameters['profiles_postprocessing_fun'] is not None:
-            print("\t- Requested custom modification of postprocessing function but targets from TGYRO... are you sure?",typeMsg="q")
-
-        if self.PORTALSparameters["target_evaluator_method"] == "tgyro" and self.PORTALSparameters['transport_evaluator'] != tgyro_model:
-            print("\t- Requested TGYRO targets but transport evaluator is not TGYRO... are you sure?",typeMsg="q")
-
-        key_rhos = "RoaLocations" if self.MODELparameters["RoaLocations"] is not None else "RhoLocations"
+        key_rhos = "radii_roa" if self.portals_parameters["model_parameters"]["radii_roa"] is not None else "radii_rho"
 
         return key_rhos
 
@@ -615,9 +630,9 @@ def runModelEvaluator(
     # Prepare evaluating vector X
     # ---------------------------------------------------------------------------------------------------
 
-    X = torch.zeros(len(powerstate.ProfilesPredicted) * (powerstate.plasma["rho"].shape[1] - 1)).to(powerstate.dfT)
+    X = torch.zeros(len(powerstate.predicted_channels) * (powerstate.plasma["rho"].shape[1] - 1)).to(powerstate.dfT)
     cont = 0
-    for ikey in powerstate.ProfilesPredicted:
+    for ikey in powerstate.predicted_channels:
         for ix in range(powerstate.plasma["rho"].shape[1] - 1):
             X[cont] = dictDVs[f"aL{ikey}_{ix+1}"]["value"]
             cont += 1
@@ -654,7 +669,7 @@ def runModelEvaluator(
 
 def map_powerstate_to_portals(powerstate, dictOFs):
 
-    for var in powerstate.ProfilesPredicted:
+    for var in powerstate.predicted_channels:
         # Write in OFs
         for i in range(powerstate.plasma["rho"].shape[1] - 1): # Ignore position 0, which is rho=0
             if var == "te":

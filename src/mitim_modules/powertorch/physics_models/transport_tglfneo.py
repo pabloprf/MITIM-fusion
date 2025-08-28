@@ -26,24 +26,23 @@ class tglfneo_model(TRANSPORTtools.power_transport):
     # Have it separate such that I can call it from the CGYRO class but without the decorator
     def _evaluate_tglf(self):
         
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        
+        cold_start = self.powerstate.transport_options["cold_start"]
+        
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
         # ------------------------------------------------------------------------------------------------------------------------
 
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        simulation_options_tglf = transport_evaluator_options["tglf"]
         
-        TGLFsettings = transport_evaluator_options["MODELparameters"]["transport_model"]["TGLFsettings"]
-        extraOptions = transport_evaluator_options["MODELparameters"]["transport_model"]["extraOptionsTGLF"]
-        
-        Qi_includes_fast = transport_evaluator_options.get("Qi_includes_fast",False)
-        launchMODELviaSlurm = transport_evaluator_options.get("launchMODELviaSlurm", False)
-        cold_start = transport_evaluator_options.get("cold_start", False)
-        provideTurbulentExchange = transport_evaluator_options.get("TurbulentExchange", False)
-        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
-        use_tglf_scan_trick = transport_evaluator_options.get("use_tglf_scan_trick", None)
-        cores_per_tglf_instance = transport_evaluator_options.get("extra_params", {}).get('PORTALSparameters', {}).get("cores_per_tglf_instance", 1)
-        keep_tglf_files = transport_evaluator_options.get("keep_tglf_files", "minimal")
-        
+        Qi_includes_fast = simulation_options_tglf["Qi_includes_fast"]
+        launchMODELviaSlurm = simulation_options_tglf["launchEvaluationsAsSlurmJobs"]
+        use_tglf_scan_trick = simulation_options_tglf["use_scan_trick_for_stds"]
+        cores_per_tglf_instance = simulation_options_tglf["cores_per_tglf_instance"]
+        keep_tglf_files = simulation_options_tglf["keep_files"]
+        percent_error = simulation_options_tglf["percent_error"]
+
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
         
@@ -67,8 +66,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 
         tglf.run(
             'base_tglf',
-            code_settings=TGLFsettings,
-            extraOptions=extraOptions,
             ApplyCorrections=False,
             launchSlurm= launchMODELviaSlurm,
             cold_start= cold_start,
@@ -79,10 +76,14 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 "minutes": 2,
                 },
             attempts_execution=2,
-            only_minimal_files=keep_tglf_files in ['minimal']
+            only_minimal_files=keep_tglf_files in ['minimal'],
+            **simulation_options_tglf["run"]
         )
     
-        tglf.read(label='base',require_all_files=False)
+        tglf.read(
+            label='base',
+            require_all_files=False,
+            **simulation_options_tglf["read"])
         
         # Grab values
         Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
@@ -113,7 +114,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             # *******************************************************************
             
             Flux_mean = Flux_base
-            Flux_std = abs(Flux_mean)*percentError[0]/100.0
+            Flux_std = abs(Flux_mean)*percent_error/100.0
 
         else:
             
@@ -124,10 +125,8 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             Flux_mean, Flux_std = _run_tglf_uncertainty_model(
                 tglf,
                 rho_locations, 
-                self.powerstate.ProfilesPredicted, 
+                self.powerstate.predicted_channels, 
                 Flux_base = Flux_base,
-                TGLFsettings=TGLFsettings,
-                extraOptionsTGLF=extraOptions,
                 impurityPosition=impurityPosition, 
                 delta = use_tglf_scan_trick,
                 cold_start=cold_start,
@@ -135,7 +134,8 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 cores_per_tglf_instance=cores_per_tglf_instance,
                 launchMODELviaSlurm=launchMODELviaSlurm,
                 Qi_includes_fast=Qi_includes_fast,
-                only_minimal_files=keep_tglf_files in ['minimal', 'base']
+                only_minimal_files=keep_tglf_files in ['minimal', 'base'],
+                **simulation_options_tglf["run"]
                 )
 
         self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
@@ -159,22 +159,24 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.MtGB_turb = Flux_mean[4]
         self.MtGB_turb_stds = Flux_std[4] 
 
-        self.QieGB_turb = Flux_mean[5] if provideTurbulentExchange else Flux_mean[5]*0.0
-        self.QieGB_turb_stds = Flux_std[5] if provideTurbulentExchange else Flux_std[5]*0.0
+        self.QieGB_turb = Flux_mean[5]
+        self.QieGB_turb_stds = Flux_std[5]
 
         return tglf
 
     @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         
+        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options from powerstate
         # ------------------------------------------------------------------------------------------------------------------------
-
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
         
+        simulation_options_neo = transport_evaluator_options["neo"]
+        percent_error = simulation_options_neo["percent_error"]
         cold_start = transport_evaluator_options.get("cold_start", False)
-        percentError = transport_evaluator_options.get("percentError", [5, 1, 0.5])
+        
         impurityPosition = self.powerstate.impurityPosition_transport
                 
         # ------------------------------------------------------------------------------------------------------------------------        
@@ -195,9 +197,12 @@ class tglfneo_model(TRANSPORTtools.power_transport):
             'base_neo',
             cold_start=cold_start,
             forceIfcold_start=True,
+            **simulation_options_neo["run"]
         )
     
-        neo.read(label='base')
+        neo.read(
+            label='base',
+            **simulation_options_neo["read"])
         
         Qe = np.array([neo.results['base']['NEOout'][i].Qe for i in range(len(rho_locations))])
         Qi = np.array([neo.results['base']['NEOout'][i].Qi for i in range(len(rho_locations))])
@@ -216,11 +221,11 @@ class tglfneo_model(TRANSPORTtools.power_transport):
         self.MtGB_neoc = Mt
         
         # Uncertainties is just a percent of the value
-        self.QeGB_neoc_stds = abs(Qe) * percentError[1]/100.0
-        self.QiGB_neoc_stds = abs(Qi) * percentError[1]/100.0
-        self.GeGB_neoc_stds = abs(Ge) * percentError[1]/100.0
-        self.GZGB_neoc_stds = abs(GZ) * percentError[1]/100.0
-        self.MtGB_neoc_stds = abs(Mt) * percentError[1]/100.0
+        self.QeGB_neoc_stds = abs(Qe) * percent_error/100.0
+        self.QiGB_neoc_stds = abs(Qi) * percent_error/100.0
+        self.GeGB_neoc_stds = abs(Ge) * percent_error/100.0
+        self.GZGB_neoc_stds = abs(GZ) * percent_error/100.0
+        self.MtGB_neoc_stds = abs(Mt) * percent_error/100.0
 
         # No neoclassical exchange
         self.QieGB_neoc = Qe * 0.0
@@ -230,8 +235,8 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 
     def _profiles_to_store(self):
 
-        if "extra_params" in self.powerstate.transport_options["transport_evaluator_options"] and "folder" in self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]:
-            whereFolder = IOtools.expandPath(self.powerstate.transport_options["transport_evaluator_options"]["extra_params"]["folder"] / "Outputs" / "portals_profiles")
+        if "folder" in self.powerstate.transport_options["transport_evaluator_options"]:
+            whereFolder = IOtools.expandPath(self.powerstate.transport_options["folder"] / "Outputs" / "portals_profiles")
             if not whereFolder.exists():
                 IOtools.askNewFolder(whereFolder)
 
@@ -266,10 +271,10 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 def _run_tglf_uncertainty_model(
     tglf,
     rho_locations, 
-    ProfilesPredicted, 
+    predicted_channels, 
     Flux_base = None,
-    TGLFsettings=None,
-    extraOptionsTGLF=None,
+    code_settings=None,
+    extraOptions=None,
     impurityPosition=1,
     delta=0.02, 
     minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
@@ -286,7 +291,7 @@ def _run_tglf_uncertainty_model(
 
     # Prepare scan 
     variables_to_scan = []
-    for i in ProfilesPredicted:
+    for i in predicted_channels:
         if i == 'te': variables_to_scan.append('RLTS_1')
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
@@ -294,11 +299,11 @@ def _run_tglf_uncertainty_model(
         if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
-    if 'te' in ProfilesPredicted or 'ti' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
         variables_to_scan.append('TAUS_2')
-    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
         variables_to_scan.append('XNUE')
-    if 'te' in ProfilesPredicted or 'ne' in ProfilesPredicted:
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
         variables_to_scan.append('BETAE')
     
     relative_scan = [1-delta, 1+delta]
@@ -328,8 +333,8 @@ def _run_tglf_uncertainty_model(
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,
-                    TGLFsettings = TGLFsettings,
-                    extraOptions = extraOptionsTGLF,
+                    TGLFsettings = code_settings,
+                    extraOptions = extraOptions,
                     ApplyCorrections = False,
                     add_baseline_to = 'none',
                     cold_start=cold_start,

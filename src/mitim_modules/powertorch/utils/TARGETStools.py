@@ -55,7 +55,7 @@ class power_targets:
         # ----------------------------------------------------
         # Integrate through fine profile constructors
         # ----------------------------------------------------
-        for i in self.powerstate.ProfilesPredicted:
+        for i in self.powerstate.predicted_channels:
             _ = self.powerstate.update_var(i,specific_profile_constructor=self.powerstate.profile_constructors_coarse_middle)
 
     def flux_integrate(self):

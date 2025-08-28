@@ -150,17 +150,15 @@ class PORTALSanalyzer:
         self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
         self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
 
-        self.PORTALSparameters = self.opt_fun.mitim_model.optimization_object.PORTALSparameters
-        self.MODELparameters = self.opt_fun.mitim_model.optimization_object.MODELparameters
+        self.portals_parameters = self.opt_fun.mitim_model.optimization_object.portals_parameters
 
         # Useful flags
-        self.ProfilesPredicted = self.MODELparameters["ProfilesPredicted"]
+        self.predicted_channels = self.portals_parameters["model_parameters"]["predicted_channels"]
 
-        self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.ProfilesPredicted else None
+        self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.predicted_channels else None
 
-        self.runWithRotation = "w0" in self.ProfilesPredicted
-        self.includeFast = self.PORTALSparameters["Qi_includes_fast"]
-        self.forceZeroParticleFlux = self.PORTALSparameters["forceZeroParticleFlux"]
+        self.runWithRotation = "w0" in self.predicted_channels
+        self.forceZeroParticleFlux = self.portals_parameters["model_parameters"]["target_parameters"]["target_evaluator_options"]["forceZeroParticleFlux"]
 
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
@@ -170,7 +168,7 @@ class PORTALSanalyzer:
             self.powerstates.append(self.mitim_runs[i]["powerstate"])
 
         # runWithImpurity_transport is stored after powerstate has run transport
-        self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.ProfilesPredicted else None
+        self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.predicted_channels else None
 
         if len(self.powerstates) <= self.ibest:
             print("\t- PORTALS was read after new residual was computed but before pickle was written!",typeMsg="w")
@@ -229,7 +227,7 @@ class PORTALSanalyzer:
 
             _, _, source, res = PORTALStools.calculate_residuals(
                 power,
-                self.PORTALSparameters,
+                self.portals_parameters,
             )
 
             # Make sense of tensor "source" which are defining the entire predictive set in
@@ -239,7 +237,7 @@ class PORTALSanalyzer:
             GZ_resR = np.zeros(self.rhos.shape[0])
             Mt_resR = np.zeros(self.rhos.shape[0])
             cont = 0
-            for prof in self.MODELparameters["ProfilesPredicted"]:
+            for prof in self.portals_parameters["model_parameters"]["predicted_channels"]:
                 for ix in range(self.rhos.shape[0]):
                     if prof == "te":
                         Qe_resR[ix] = source[0, cont].abs()
@@ -273,7 +271,7 @@ class PORTALSanalyzer:
                         y2_std,
                     ) = PORTALStools.calculate_residuals_distributions(
                         power,
-                        self.PORTALSparameters,
+                        self.portals_parameters,
                     )
 
                     QR, chiR = PLASMAtools.RicciMetric(
@@ -330,14 +328,14 @@ class PORTALSanalyzer:
 
         self.resCheck = (
             self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.MODELparameters["ProfilesPredicted"])
+        ) / len(self.portals_parameters["model_parameters"]["predicted_channels"])
 
         # ---------------------------------------------------------------------------------------------------------------------
         # Jacobian
         # ---------------------------------------------------------------------------------------------------------------------
 
         DeltaQ1 = []
-        for i in self.MODELparameters["ProfilesPredicted"]:
+        for i in self.portals_parameters["model_parameters"]["predicted_channels"]:
             if i == "te":
                 DeltaQ1.append(-self.resTe)
             if i == "ti":
@@ -505,8 +503,7 @@ class PORTALSanalyzer:
         portals_fun = portals(folder)
 
         # Transfer settings
-        portals_fun.PORTALSparameters = portals_fun_original.PORTALSparameters
-        portals_fun.MODELparameters = portals_fun_original.MODELparameters
+        portals_fun.portals_parameters = portals_fun_original.portals_parameters
 
         # PRINTING
         print(
@@ -514,7 +511,7 @@ class PORTALSanalyzer:
 ****************************************************************************************************
 > MITIM has extracted PORTALS class to run in {IOtools.clipstr(folder)}, to proceed:
     1. Modify any parameter as required
-                portals_fun.PORTALSparameters, portals_fun.MODELparameters, portals_fun.optimization_options
+                portals_fun.portals_parameters
     2. Take the class portals_fun (arg #0) and prepare it with fileGACODE (arg #1) and folder (arg #2) with:
                 portals_fun.prep(fileGACODE,folder)
     3. Run PORTALS with:
@@ -547,12 +544,12 @@ class PORTALSanalyzer:
             folder, profilesclass_custom=profiles, cold_start=cold_start, forceIfcold_start=True
         )
 
-        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
-        extraOptionsTGLF = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
+        TGLFsettings = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["TGLFsettings"]
+        extraOptionsTGLF = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["extraOptionsTGLF"]
         PredictionSet = [
-            int("te" in self.MODELparameters["ProfilesPredicted"]),
-            int("ti" in self.MODELparameters["ProfilesPredicted"]),
-            int("ne" in self.MODELparameters["ProfilesPredicted"]),
+            int("te" in self.portals_parameters["model_parameters"]["predicted_channels"]),
+            int("ti" in self.portals_parameters["model_parameters"]["predicted_channels"]),
+            int("ne" in self.portals_parameters["model_parameters"]["predicted_channels"]),
         ]
 
         return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
@@ -566,12 +563,12 @@ class PORTALSanalyzer:
         """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
-            1. self.MODELparameters["RhoLocations"] -> the ones PORTALS sent to TGYRO
+            1. self.portals_parameters["model_parameters"]["radii_rho"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         #TODO: This should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable
         """
-        rhos_considered = self.MODELparameters["RhoLocations"]
+        rhos_considered = self.portals_parameters["model_parameters"]["radii_rho"]
 
         if positions is None:
             rhos = rhos_considered
@@ -596,8 +593,8 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
 
-        TGLFsettings = self.MODELparameters["transport_model"]["TGLFsettings"]
-        extraOptions = self.MODELparameters["transport_model"]["extraOptionsTGLF"]
+        TGLFsettings = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["TGLFsettings"]
+        extraOptions = self.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["extraOptionsTGLF"]
 
         return tglf, TGLFsettings, extraOptions
 
@@ -990,12 +987,12 @@ class PORTALSinitializer:
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
         # -----------------------------------------------------------------
 
-        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].ProfilesPredicted)]))
+        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].predicted_channels)]))
 
         colors = GRAPHICStools.listColors()
         axsGrads_extra = []
         cont = 0
-        for i in range(np.max([3,len(self.powerstates[-1].ProfilesPredicted)])):
+        for i in range(np.max([3,len(self.powerstates[-1].predicted_channels)])):
             axsGrads_extra.append(axs[cont])
             axsGrads_extra.append(axs[cont+1])
             cont += 4
@@ -1012,8 +1009,8 @@ class PORTALSinitializer:
                 self.powerstates[i].profiles.plot_gradients(
                     axsGrads_extra,
                     color=colors[i],
-                    plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
-                    plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                    plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].predicted_channels else None,
+                    plotRotation='w0' in self.powerstates[0].predicted_channels,
                     ls='-',
                     lw=0.5,
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
@@ -1027,8 +1024,8 @@ class PORTALSinitializer:
             self.profiles[-1].plot_gradients(
                 axsGrads_extra,
                 color=colors[i+1],
-                plotImpurity=self.powerstates[-1].impurityPosition_transport if 'nZ' in self.powerstates[-1].ProfilesPredicted else None,
-                plotRotation='w0' in self.powerstates[0].ProfilesPredicted,
+                plotImpurity=self.powerstates[-1].impurityPosition_transport if 'nZ' in self.powerstates[-1].predicted_channels else None,
+                plotRotation='w0' in self.powerstates[0].predicted_channels,
                 ls='-',
                 lw=1.0,
                 lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
@@ -1055,8 +1052,8 @@ class PORTALSinitializer:
                     p.profiles.plot_gradients(
                         axsGrads,
                         color=colors[i],
-                        plotImpurity=p.impurityPosition if 'nZ' in p.ProfilesPredicted else None,
-                        plotRotation='w0' in p.ProfilesPredicted,
+                        plotImpurity=p.impurityPosition if 'nZ' in p.predicted_channels else None,
+                        plotRotation='w0' in p.predicted_channels,
                         lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                         label=f"profile #{i}",
                     )
@@ -1067,8 +1064,8 @@ class PORTALSinitializer:
                     prof.plot_gradients(
                         axsGrads,
                         color=colors[i+1],
-                        plotImpurity=p.impurityPosition_transport if 'nZ' in p.ProfilesPredicted else None,
-                        plotRotation='w0' in p.ProfilesPredicted,
+                        plotImpurity=p.impurityPosition_transport if 'nZ' in p.predicted_channels else None,
+                        plotRotation='w0' in p.predicted_channels,
                         lastRho=p.plasma["rho"][-1, -1].item(),
                         label="next",
                     )

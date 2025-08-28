@@ -61,13 +61,13 @@
           "portals_beat": {
                 "use_default": false,
                 "portals_namelist" : {
-                     "PORTALSparameters": {
+                     "portals_parameters": {
                           "forceZeroParticleFlux": true,
                           "keep_full_model_folder": false,
                           "cores_per_tglf_instance": 1
                      },
                      "MODELparameters": {
-                          "RoaLocations": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
+                          "radii_roa": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
                           "Physics_options": {"TypeTarget": 3},
                           "transport_model": {
                                 "TGLFsettings": 100, 

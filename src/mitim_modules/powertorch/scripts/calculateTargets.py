@@ -30,7 +30,7 @@ def calculator(
             profiles,
             evolution_options={
                 "rhoPredicted": rho_vec,
-                'fineTargetsResolution': fineTargetsResolution,
+                "fineTargetsResolution": fineTargetsResolution,
             },
             target_options={
                 "target_evaluator": targets_analytic.analytical_model,
@@ -42,28 +42,32 @@ def calculator(
                 "transport_evaluator": transport_tgyro.tgyro_model,
                 "transport_evaluator_options": {
                     "cold_start": cold_start,
-                    "launchSlurm": True,
-                    "MODELparameters": {
-                        "Physics_options": {
-                            "TypeTarget": 3,
-                            "TurbulentExchange": 0,
-                            "PtotType": 1,
-                            "GradientsType": 0,
-                            "InputType": 1,
+                    "portals_parameters": {
+                        "main_parameters": {
+                            "launchSlurm": True,
+                            "Qi_includes_fast": False,
                         },
-                        "ProfilesPredicted": ["te", "ti", "ne"],
-                        "RhoLocations": rho_vec,
-                        "applyCorrections": {
-                            "Tfast_ratio": False,
-                            "Ti_thermals": True,
-                            "ni_thermals": True,
-                            "recalculate_ptot": False,
+                        "model_parameters": {
+                            "Physics_options": {
+                                "TypeTarget": 3,
+                                "TurbulentExchange": 0,
+                                "PtotType": 1,
+                                "GradientsType": 0,
+                                "InputType": 1,
+                            },
+                            "predicted_channels": ["te", "ti", "ne"],
+                            "radii_rho": rho_vec,
+                            "applyCorrections": {
+                                "Tfast_ratio": False,
+                                "Ti_thermals": True,
+                                "ni_thermals": True,
+                                "recalculate_ptot": False,
+                            },
+                            "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                         },
-                        "transport_model": {"TGLFsettings": 5, "extraOptionsTGLF": {}},
                     },
-                    "Qi_includes_fast": False,
                 },
-            },
+            }
         )
 
     # Calculate using powerstate
@@ -72,7 +76,7 @@ def calculator(
             profiles,
             evolution_options={
                 "rhoPredicted": rho_vec,
-                'fineTargetsResolution': fineTargetsResolution,
+                "fineTargetsResolution": fineTargetsResolution,
             },
             target_options={
                 "target_evaluator": targets_analytic.analytical_model,

@@ -140,13 +140,13 @@ def flux_match_surrogate(
 
     # Define transport calculation function as a surrogate model
     transport_options['transport_evaluator'] = transport_analytic.surrogate
-    transport_options['transport_evaluator_options'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
+    transport_options["transport_evaluator_options"] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
 
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
         profiles,
         evolution_options={
-            "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
+            "ProfilePredicted": step.surrogate_parameters["powerstate"].predicted_channels,
             "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
             "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
             "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,

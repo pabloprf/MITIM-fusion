@@ -18,7 +18,7 @@ def initializeProblem(
     portals_fun,
     folderWork,
     fileStart,
-    INITparameters,
+    portals_parameters,
     RelVar_y_max,
     RelVar_y_min,
     limitsAreRelative=True,
@@ -27,7 +27,6 @@ def initializeProblem(
     dvs_fixed=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
-    transport_evaluator_options=None,
     seedInitial=None,
     checkForSpecies=True,
     tensor_options = {
@@ -39,7 +38,6 @@ def initializeProblem(
     Notes:
         - Specification of points occur in rho coordinate, although internally the work is r/a
             cold_start = True if cold_start from beginning
-        - I can give transport_evaluator_options directly (e.g. if I want chis or something)
         - define_ranges_from_profiles must be PROFILES class
     """
 
@@ -73,34 +71,34 @@ def initializeProblem(
     profiles = PROFILEStools.gacode_state(initialization_file)
 
     # About radial locations
-    if portals_fun.MODELparameters["RoaLocations"] is not None:
-        roa = portals_fun.MODELparameters["RoaLocations"]
+    if portals_fun.portals_parameters["model_parameters"]["radii_roa"] is not None:
+        roa = portals_fun.portals_parameters["model_parameters"]["radii_roa"]
         rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
-        portals_fun.MODELparameters["RhoLocations"] = rho
+        portals_fun.portals_parameters["model_parameters"]["radii_rho"] = rho
 
     if (
-        len(INITparameters["removeIons"]) > 0
-        or INITparameters["remove_fast"]
-        or INITparameters["quasineutrality"]
-        or INITparameters["enforce_same_aLn"]
-        or INITparameters["recalculate_ptot"]
+        len(portals_parameters["initialization_parameters"]["removeIons"]) > 0
+        or portals_parameters["initialization_parameters"]["remove_fast"]
+        or portals_parameters["initialization_parameters"]["quasineutrality"]
+        or portals_parameters["initialization_parameters"]["enforce_same_aLn"]
+        or portals_parameters["initialization_parameters"]["recalculate_ptot"]
     ):
-        profiles.correct(options=INITparameters)
+        profiles.correct(options=portals_parameters["initialization_parameters"])
 
-    if portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
-        position_of_impurity = MITIMstate.impurity_location(profiles, portals_fun.PORTALSparameters["ImpurityOfInterest"])
+    if portals_fun.portals_parameters["model_parameters"]["ImpurityOfInterest"] is not None:
+        position_of_impurity = MITIMstate.impurity_location(profiles, portals_fun.portals_parameters["model_parameters"]["ImpurityOfInterest"])
     else:
         position_of_impurity = 1
 
-    if portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"] is not None and portals_fun.PORTALSparameters["ImpurityOfInterest"] is not None:
+    if portals_fun.portals_parameters["main_parameters"]["UseOriginalImpurityConcentrationAsWeight"] is not None and portals_fun.portals_parameters["model_parameters"]["ImpurityOfInterest"] is not None:
         f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
-        portals_fun.PORTALSparameters["fImp_orig"] = f0/portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]
-        print(f'\t- Ion {portals_fun.PORTALSparameters["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.PORTALSparameters["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.PORTALSparameters["fImp_orig"]:.2e}',typeMsg="i")
+        portals_fun.portals_parameters["main_parameters"]["fImp_orig"] = f0/portals_fun.portals_parameters["main_parameters"]["UseOriginalImpurityConcentrationAsWeight"]
+        print(f'\t- Ion {portals_fun.portals_parameters["model_parameters"]["ImpurityOfInterest"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.portals_parameters["main_parameters"]["UseOriginalImpurityConcentrationAsWeight"]} as scaling factor of GZ -> {portals_fun.portals_parameters["main_parameters"]["fImp_orig"]:.2e}',typeMsg="i")
     else:
-        portals_fun.PORTALSparameters["fImp_orig"] = 1.0
+        portals_fun.portals_parameters["main_parameters"]["fImp_orig"] = 1.0
 
     # Check if I will be able to calculate radiation
     speciesNotFound = []
@@ -112,7 +110,7 @@ def initializeProblem(
     # Print warning or question to be careful!
     if len(speciesNotFound) > 0:
 
-        if portals_fun.MODELparameters["Physics_options"]["TypeTarget"] == 3:
+        if portals_fun.portals_parameters["model_parameters"]["target_parameters"]["TypeTarget"] == 3:
         
             answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
             if checkForSpecies and (not answerYN):
@@ -124,31 +122,7 @@ def initializeProblem(
 
     # Prepare and defaults
 
-    xCPs = torch.from_numpy(np.array(portals_fun.MODELparameters["RhoLocations"])).to(dfT)
-
-    if transport_evaluator_options is None:
-        transport_evaluator_options = {
-            "launchMODELviaSlurm": portals_fun.PORTALSparameters["launchEvaluationsAsSlurmJobs"],
-            "Qi_includes_fast": portals_fun.PORTALSparameters["Qi_includes_fast"],
-            "TurbulentExchange": portals_fun.PORTALSparameters["turbulent_exchange_as_surrogate"],
-            "profiles_postprocessing_fun": portals_fun.PORTALSparameters["profiles_postprocessing_fun"],
-            "UseFineGridTargets": portals_fun.PORTALSparameters["fineTargetsResolution"],
-            "OriginalFimp": portals_fun.PORTALSparameters["fImp_orig"],
-            "forceZeroParticleFlux": portals_fun.PORTALSparameters["forceZeroParticleFlux"],
-            "percentError": portals_fun.PORTALSparameters["percentError"],
-            "use_tglf_scan_trick": portals_fun.PORTALSparameters["use_tglf_scan_trick"],
-            "keep_tglf_files": portals_fun.PORTALSparameters["keep_tglf_files"],
-            "cold_start": False,
-            "MODELparameters": portals_fun.MODELparameters,
-            "impurityPosition": position_of_impurity,
-        }
-
-    if "extra_params" not in transport_evaluator_options:
-        transport_evaluator_options["extra_params"] = {
-            "PORTALSparameters": portals_fun.PORTALSparameters,
-            "folder": portals_fun.folder,
-        }
-
+    xCPs = torch.from_numpy(np.array(portals_fun.portals_parameters["model_parameters"]["radii_rho"])).to(dfT)
 
     """
     ***************************************************************************************************
@@ -156,25 +130,23 @@ def initializeProblem(
     ***************************************************************************************************
     """
 
+    transport_parameters = portals_fun.portals_parameters["model_parameters"]["transport_parameters"]
+    
+    # Add folder and cold_start to the simulation options
+    transport_options = transport_parameters | {"folder": portals_fun.folder, "cold_start": False}
+
+    target_options = portals_fun.portals_parameters["model_parameters"]["target_parameters"]
+
     portals_fun.powerstate = STATEtools.powerstate(
         profiles,
         evolution_options={
-            "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+            "ProfilePredicted": portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
             "rhoPredicted": xCPs,
             "impurityPosition": position_of_impurity,
-            "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
         },
-        transport_options={
-               "transport_evaluator": portals_fun.PORTALSparameters["transport_evaluator"],
-               "transport_evaluator_options": transport_evaluator_options,
-        },
-        target_options={
-            "target_evaluator": portals_fun.PORTALSparameters["target_evaluator"],
-            "target_evaluator_options": {
-                "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                "target_evaluator_method": portals_fun.PORTALSparameters["target_evaluator_method"]},
-        },
-        tensor_options = tensor_options
+        transport_options=transport_options,
+        target_options=target_options,
+        tensor_options=tensor_options
     )
 
     # After resolution and corrections, store.
@@ -185,13 +157,13 @@ def initializeProblem(
 
     # Store parameterization in dictCPs_base (to define later the relative variations) and modify profiles class with parameterized profiles
     dictCPs_base = {}
-    for name in portals_fun.MODELparameters["ProfilesPredicted"]:
+    for name in portals_fun.portals_parameters["model_parameters"]["predicted_channels"]:
         dictCPs_base[name] = portals_fun.powerstate.update_var(name, var=None)[0, :]
 
     # Maybe it was provided from earlier run
     if start_from_folder is not None:
         dictCPs_base = grabPrevious(start_from_folder, dictCPs_base)
-        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
+        for name in portals_fun.portals_parameters["model_parameters"]["predicted_channels"]:
             _ = portals_fun.powerstate.update_var(
                 name, var=dictCPs_base[name].unsqueeze(0)
             )
@@ -199,7 +171,7 @@ def initializeProblem(
     # Write this updated profiles class (with parameterized profiles)
     _ = portals_fun.powerstate.from_powerstate(
         write_input_gacode=FolderInitialization / "input.gacode",
-        postprocess_input_gacode=portals_fun.MODELparameters["applyCorrections"],
+        postprocess_input_gacode=portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["applyCorrections"],
     )
 
     # Original complete targets
@@ -214,22 +186,25 @@ def initializeProblem(
         powerstate_extra = STATEtools.powerstate(
             define_ranges_from_profiles,
             evolution_options={
-                "ProfilePredicted": portals_fun.MODELparameters["ProfilesPredicted"],
+                "ProfilePredicted": portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
                 "rhoPredicted": xCPs,
                 "impurityPosition": position_of_impurity,
-                "fineTargetsResolution": portals_fun.PORTALSparameters["fineTargetsResolution"],
+                "fineTargetsResolution": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["fineTargetsResolution"],
             },
             target_options={
-                "target_evaluator": portals_fun.PORTALSparameters["target_evaluator"],
-                "transport_evaluator_options": {
-                    "TypeTarget": portals_fun.MODELparameters["Physics_options"]["TypeTarget"],
-                    "target_evaluator_method": portals_fun.PORTALSparameters["target_evaluator_method"]},
+                "target_evaluator": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["target_evaluator"],
+                "target_evaluator_options": {
+                    "TypeTarget": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["TypeTarget"],
+                    "target_evaluator_method": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["target_evaluator_method"],
+                    "forceZeroParticleFlux": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["target_evaluator_options"]["forceZeroParticleFlux"],
+                    "percent_error": portals_fun.portals_parameters["model_parameters"]["target_parameters"]["percent_error"]
+                    },
             },
             tensor_options = tensor_options
         )
 
         dictCPs_base_extra = {}
-        for name in portals_fun.MODELparameters["ProfilesPredicted"]:
+        for name in portals_fun.portals_parameters["model_parameters"]["predicted_channels"]:
             dictCPs_base_extra[name] = powerstate_extra.update_var(name, var=None)[0, :]
 
         dictCPs_base = dictCPs_base_extra
@@ -285,7 +260,7 @@ def initializeProblem(
         elif ikey == "w0":
             var = "Mt"
 
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+        for i in range(len(portals_fun.portals_parameters["model_parameters"]["radii_rho"])):
             ofs.append(f"{var}_tr_turb_{i+1}")
             ofs.append(f"{var}_tr_neoc_{i+1}")
 
@@ -293,13 +268,13 @@ def initializeProblem(
 
             name_objectives.append(f"{var}Res_{i+1}")
 
-    if portals_fun.PORTALSparameters["turbulent_exchange_as_surrogate"]:
-        for i in range(len(portals_fun.MODELparameters["RhoLocations"])):
+    if portals_fun.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
+        for i in range(len(portals_fun.portals_parameters["model_parameters"]["radii_rho"])):
             ofs.append(f"Qie_tr_turb_{i+1}")
 
     name_transformed_ofs = []
     for of in ofs:
-        if ("GZ" in of) and (portals_fun.PORTALSparameters["applyImpurityGammaTrick"]):
+        if ("GZ" in of) and (portals_fun.portals_parameters["main_parameters"]["applyImpurityGammaTrick"]):
             lab = f"{of} (GB MOD)"
         else:
             lab = f"{of} (GB)"
@@ -328,14 +303,14 @@ def initializeProblem(
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     Variables = {}
-    for ikey in portals_fun.PORTALSparameters["portals_transformation_variables"]:
+    for ikey in portals_fun.portals_parameters["main_parameters"]["portals_transformation_variables"]:
         Variables[ikey] = prepportals_transformation_variables(portals_fun, ikey)
 
     portals_fun.surrogate_parameters = {
         "transformationInputs": PORTALStools.input_transform_portals,
         "transformationOutputs": PORTALStools.output_transform_portals,
         "powerstate": portals_fun.powerstate,
-        "applyImpurityGammaTrick": portals_fun.PORTALSparameters["applyImpurityGammaTrick"],
+        "applyImpurityGammaTrick": portals_fun.portals_parameters["main_parameters"]["applyImpurityGammaTrick"],
         "surrogate_transformation_variables_alltimes": Variables,
         "surrogate_transformation_variables_lasttime": copy.deepcopy(Variables[list(Variables.keys())[-1]]),
         "parameters_combined": {},
@@ -343,9 +318,9 @@ def initializeProblem(
 
 def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValues=False):
     allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
-    portals_transformation_variables = portals_fun.PORTALSparameters["portals_transformation_variables"][ikey]
-    portals_transformation_variables_trace = portals_fun.PORTALSparameters["portals_transformation_variables_trace"][ikey]
-    additional_params_in_surrogate = portals_fun.PORTALSparameters["additional_params_in_surrogate"]
+    portals_transformation_variables = portals_fun.portals_parameters["main_parameters"]["portals_transformation_variables"][ikey]
+    portals_transformation_variables_trace = portals_fun.portals_parameters["main_parameters"]["portals_transformation_variables_trace"][ikey]
+    additional_params_in_surrogate = portals_fun.portals_parameters["main_parameters"]["additional_params_in_surrogate"]
 
     Variables = {}
     for output in allOuts:
@@ -378,17 +353,17 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 isAbsValFixed = False
 
             Variations = {
-                "aLte": "te" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLti": "ti" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLne": "ne" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLw0": "w0" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "te": ("te" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "aLte": "te" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLti": "ti" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLne": "ne" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLw0": "w0" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "te": ("te" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "ti": ("ti" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "ti": ("ti" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "ne": ("ne" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "ne": ("ne" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "w0": ("w0" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "w0": ("w0" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
             }
 
@@ -413,20 +388,20 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 isAbsValFixed = False
 
             Variations = {
-                "aLte": "te" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLti": "ti" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLne": "ne" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLw0": "w0" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "aLnZ": "nZ" in portals_fun.MODELparameters["ProfilesPredicted"],
-                "te": ("te" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "aLte": "te" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLti": "ti" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLne": "ne" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLw0": "w0" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "aLnZ": "nZ" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"],
+                "te": ("te" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "ti": ("ti" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "ti": ("ti" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "ne": ("ne" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "ne": ("ne" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "w0": ("w0" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "w0": ("w0" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
-                "nZ": ("nZ" in portals_fun.MODELparameters["ProfilesPredicted"])
+                "nZ": ("nZ" in portals_fun.portals_parameters["model_parameters"]["predicted_channels"])
                 and (not isAbsValFixed),
             }
 

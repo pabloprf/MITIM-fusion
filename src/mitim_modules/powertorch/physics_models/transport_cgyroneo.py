@@ -12,24 +12,21 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
     # Do not hook here
     def evaluate_turbulence(self):
-        
+
+        transport_evaluator_options  = self.powerstate.transport_options["transport_evaluator_options"]
+        cold_start                   = self.powerstate.transport_options["cold_start"]
+
         # Run base TGLF always, to keep track of discrepancies! --------------------------------------
-        self.powerstate.transport_options["transport_evaluator_options"]["use_tglf_scan_trick"] = None
+        transport_evaluator_options["tglf"]["use_scan_trick_for_stds"] = None
         self._evaluate_tglf()
         # --------------------------------------------------------------------------------------------
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         
-        transport_evaluator_options = self.powerstate.transport_options["transport_evaluator_options"]
+        simulation_options_cgyro = transport_evaluator_options["cgyro"]
         
-        cold_start = transport_evaluator_options.get("cold_start", False)
+        run_type = simulation_options_cgyro["run_type"]
         
-        run_type = transport_evaluator_options["MODELparameters"]["transport_model"]["run_type"]
-        CGYROsettings = transport_evaluator_options["MODELparameters"]["transport_model"]["CGYROsettings"]
-        extraOptionsCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["extraOptionsCGYRO"]
-        every_n_minutesCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["every_n_minutesCGYRO"]
-        tminCGYRO = transport_evaluator_options["MODELparameters"]["transport_model"]["tminCGYRO"]
-
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare CGYRO object
         # ------------------------------------------------------------------------------------------------------------------------
@@ -46,21 +43,20 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         _ = cgyro.run(
             'base_cgyro',
             run_type = run_type,
-            code_settings=CGYROsettings,
-            extraOptions=extraOptionsCGYRO,
             cold_start=cold_start,
             forceIfcold_start=True,
+            **simulation_options_cgyro["run"]
             )
         
         if run_type in ['normal', 'submit']:
             
             if run_type in ['submit']:
-                cgyro.check(every_n_minutes=every_n_minutesCGYRO)
+                cgyro.check(every_n_minutes=10)
                 cgyro.fetch()
 
             cgyro.read(
                 label='base_cgyro',
-                tmin = tminCGYRO
+                **simulation_options_cgyro["read"]
                 )
         
             # ------------------------------------------------------------------------------------------------------------------------

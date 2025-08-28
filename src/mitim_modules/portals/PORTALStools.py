@@ -291,7 +291,7 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
             # Obtain modified profiles
             CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
-            for iprof, var in enumerate(powerstate.ProfilesPredicted):
+            for iprof, var in enumerate(powerstate.predicted_channels):
                 # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
                 CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
 
@@ -352,7 +352,7 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
 
 
 
-def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
+def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
     """
     Notes
     -----
@@ -399,7 +399,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if PORTALSparameters["turbulent_exchange_as_surrogate"]:
+    if portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
         QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
     else:
         QieMWm2_tr_turb = torch.zeros(dfT.shape).to(dfT)
@@ -413,7 +413,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
         torch.Tensor().to(dfT),
         torch.Tensor().to(dfT),
     )
-    for prof in powerstate.ProfilesPredicted:
+    for prof in powerstate.predicted_channels:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":
@@ -452,28 +452,28 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
 
         if var == "Qe":
             of0, cal0 = (
-                of0 * PORTALSparameters["Pseudo_multipliers"][0],
-                cal0 * PORTALSparameters["Pseudo_multipliers"][0],
+                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][0],
+                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][0],
             )
         elif var == "Qi":
             of0, cal0 = (
-                of0 * PORTALSparameters["Pseudo_multipliers"][1],
-                cal0 * PORTALSparameters["Pseudo_multipliers"][1],
+                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][1],
+                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][1],
             )
         elif var == "Ge":
             of0, cal0 = (
-                of0 * PORTALSparameters["Pseudo_multipliers"][2],
-                cal0 * PORTALSparameters["Pseudo_multipliers"][2],
+                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][2],
+                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][2],
             )
         elif var == "GZ":
             of0, cal0 = (
-                of0 * PORTALSparameters["Pseudo_multipliers"][3],
-                cal0 * PORTALSparameters["Pseudo_multipliers"][3],
+                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][3],
+                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][3],
             )
         elif var == "MtJm2":
             of0, cal0 = (
-                of0 * PORTALSparameters["Pseudo_multipliers"][4],
-                cal0 * PORTALSparameters["Pseudo_multipliers"][4],
+                of0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][4],
+                cal0 * portals_parameters["main_parameters"]["Pseudo_multipliers"][4],
             )
 
         of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
@@ -491,7 +491,7 @@ def calculate_residuals(powerstate, PORTALSparameters, specific_vars=None):
     return of, cal, source, res
 
 
-def calculate_residuals_distributions(powerstate, PORTALSparameters):
+def calculate_residuals_distributions(powerstate, portals_parameters):
     """
     - Works with tensors
     - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
@@ -532,7 +532,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
     # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
     # -------------------------------------------------------------------------
 
-    if PORTALSparameters["turbulent_exchange_as_surrogate"]:
+    if portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
         QieMWm2_tr_turb = computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
         QieMWm2_tr_turb_stds = computeTurbExchangeIndividual(var_dict["Qie_tr_turb_stds"], powerstate)
     else:
@@ -545,7 +545,7 @@ def calculate_residuals_distributions(powerstate, PORTALSparameters):
 
     of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
     ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
-    for prof in powerstate.ProfilesPredicted:
+    for prof in powerstate.predicted_channels:
         if prof == "te":
             var = "Qe"
         elif prof == "ti":

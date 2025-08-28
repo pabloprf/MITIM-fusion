@@ -13,25 +13,25 @@ folder = __mitimroot__ / "tests" / "scratch" / "portals_tutorial"
 # Initialize PORTALS class
 portals_fun = PORTALSmain.portals(folder)
 
-# Radial locations (RhoLocations or RoaLocations [last one preceeds])
-portals_fun.MODELparameters["RhoLocations"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
+# Radial locations (radii_rho or radii_roa [last one preceeds])
+portals_fun.portals_parameters["model_parameters"]["radii_rho"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
-portals_fun.MODELparameters["ProfilesPredicted"] = ["te", "ti", "ne"]
+portals_fun.portals_parameters["model_parameters"]["predicted_channels"] = ["te", "ti", "ne"]
 
 # Codes to use
 from mitim_modules.powertorch.physics_models.transport_tgyro import tgyro_model
-portals_fun.PORTALSparameters["transport_evaluator"] = tgyro_model
+portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator"] = tgyro_model
 
 # TGLF specifications
-portals_fun.MODELparameters["transport_model"] = {
+portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"] = {
 	"TGLFsettings": 6,							# Check out templates/input.tglf.models.json for more options
 	"extraOptionsTGLF": {"USE_BPER": False}  	# Turn off BPER
 	}
 
 # Plasma preparation: remove fast species, adjust quasineutrality
-portals_fun.INITparameters["remove_fast"] = True
-portals_fun.INITparameters["quasineutrality"] = True
+portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
+portals_fun.portals_parameters["initialization_parameters"]["quasineutrality"] = True
 
 # Stopping criterion 1: 100x improvement in residual
 portals_fun.optimization_options['convergence_options']['stopping_criteria_parameters']["maximum_value"] = 1e-2
