@@ -1080,7 +1080,7 @@ def create_slurm_execution_files(
 
     nameJob = slurm_settings.setdefault("name", "mitim_job")
     minutes = int(slurm_settings.setdefault("minutes", 10))
-    memory_req_by_job = slurm_settings.setdefault("mem", None)
+    memory_req_by_job = slurm_settings.setdefault("memory_req_by_job", None)
 
     nodes = slurm_settings.setdefault("nodes", None)
     ntasks = slurm_settings.setdefault("ntasks", None)
