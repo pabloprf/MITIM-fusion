@@ -25,7 +25,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
         
         simulation_options_cgyro = transport_evaluator_options["cgyro"]
         
-        run_type = simulation_options_cgyro["run_type"]
+        run_type = simulation_options_cgyro["run"]["run_type"]
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare CGYRO object
@@ -42,7 +42,6 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
 
         _ = cgyro.run(
             'base_cgyro',
-            run_type = run_type,
             cold_start=cold_start,
             forceIfcold_start=True,
             **simulation_options_cgyro["run"]
@@ -107,6 +106,25 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
                 if file_path.exists():
                     all_good = post_checks(self)
 
+        self._stable_correction(simulation_options_cgyro)
+
+    def _stable_correction(self, simulation_options_cgyro):
+
+        Qi_stable_criterion = simulation_options_cgyro["Qi_stable_criterion"]
+        Qi_stable_percent_error = simulation_options_cgyro["Qi_stable_percent_error"]
+        
+        # Check if Qi in MW/m2 < Qi_stable_criterion
+        QiMWm2 = self.QiGB_turb * self.powerstate.plasma['Qgb'][0,1:].cpu().numpy()
+        QiGB_target = self.powerstate.plasma['QiGB'][0,1:].cpu().numpy()
+        
+        radii_stable = QiMWm2 < Qi_stable_criterion
+        
+        for i in range(len(radii_stable)):
+            if radii_stable[i]:
+                print(f"\t- Qi considered stable at radius #{i}, ({QiMWm2[i]:.2f} < {Qi_stable_criterion:.2f})", typeMsg='i')
+                Qi_std = QiGB_target[i] * Qi_stable_percent_error / 100
+                print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target as standard deviation: {Qi_std:.2f} instead of {self.QiGB_turb_stds[i]}", typeMsg='i')
+                self.QiGB_turb_stds[i] = Qi_std
 
 def pre_checks(self):
     

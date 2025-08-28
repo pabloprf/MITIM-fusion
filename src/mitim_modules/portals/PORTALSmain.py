@@ -182,8 +182,8 @@ class portals(STRATEGYtools.opt_evaluator):
         self.portals_parameters["model_parameters"] = {
             
             # Specification of radial locations (roa wins over rho, if provided)
-            "radii_rho": [0.3, 0.45, 0.6, 0.75, 0.9],
-            "radii_roa": None,
+            "predicted_rho": [0.3, 0.45, 0.6, 0.75, 0.9],
+            "predicted_roa": None,
             
             # Channels to be predicted
             "predicted_channels": ["te", "ti", "ne"],  # ['nZ','w0']
@@ -227,8 +227,8 @@ class portals(STRATEGYtools.opt_evaluator):
                         "read": {
                             "tmin": 0.0
                         },
-                        "Qi_criterion_stable": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
-                        "percentError_stable": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
+                        "Qi_stable_criterion": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
+                        "Qi_stable_percent_error": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
                     },
                 },
                 
@@ -496,18 +496,20 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Check that I haven't added a deprecated variable that I expect some behavior from
         
-        def _check_flags_dictionary(d, d_check):
+        def _check_flags_dictionary(d, d_check, avoid = ["run", "read"]):
             for key in d.keys():
                 if key not in d_check:
                     print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q")
                 elif not isinstance(d[key], dict):
                     continue
+                elif key in avoid:
+                    continue
                 else:
                     _check_flags_dictionary(d[key], d_check[key])
-                
+
         _check_flags_dictionary(self.portals_parameters, self.potential_flags)
 
-        key_rhos = "radii_roa" if self.portals_parameters["model_parameters"]["radii_roa"] is not None else "radii_rho"
+        key_rhos = "predicted_roa" if self.portals_parameters["model_parameters"]["predicted_roa"] is not None else "predicted_rho"
 
         return key_rhos
 

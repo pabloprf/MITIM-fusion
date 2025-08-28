@@ -557,7 +557,7 @@ def modifyResults(
     tgyro,
     folder_tgyro,
     minErrorPercent=5.0,
-    Qi_criterion_stable=0.0025,
+    Qi_stable_criterion=0.0025,
     impurityPosition=3,
     OriginalFimp=1.0,
 ):
@@ -585,9 +585,9 @@ def modifyResults(
         Mt_min = Mt_target * (minErrorPercent / 100.0)
 
         for i in range(Qe.shape[0]):
-            if Qi[i] < Qi_criterion_stable:
+            if Qi[i] < Qi_stable_criterion:
                 print(
-                    f"\t- Based on 'Qi_criterion_stable', plasma considered stable (Qi = {Qi[i]:.2e} < {Qi_criterion_stable:.2e} MW/m2) at position #{i}, using minimum errors of {minErrorPercent}% of targets",
+                    f"\t- Based on 'Qi_stable_criterion', plasma considered stable (Qi = {Qi[i]:.2e} < {Qi_stable_criterion:.2e} MW/m2) at position #{i}, using minimum errors of {minErrorPercent}% of targets",
                     typeMsg="w",
                 )
                 QeE[i] = Qe_min[i]

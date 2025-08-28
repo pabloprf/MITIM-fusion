@@ -13,8 +13,8 @@ folder = __mitimroot__ / "tests" / "scratch" / "portals_tutorial"
 # Initialize PORTALS class
 portals_fun = PORTALSmain.portals(folder)
 
-# Radial locations (radii_rho or radii_roa [last one preceeds])
-portals_fun.portals_parameters["model_parameters"]["radii_rho"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
+# Radial locations (predicted_rho or predicted_roa [last one preceeds])
+portals_fun.portals_parameters["model_parameters"]["predicted_rho"] = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.85]
 
 # Profiles to predict
 portals_fun.portals_parameters["model_parameters"]["predicted_channels"] = ["te", "ti", "ne"]

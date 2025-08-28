@@ -1207,7 +1207,7 @@ def PORTALSanalyzer_plotExpected(
 
     rho = p.profiles["rho(-)"]
     roa = p.derived["roa"]
-    rhoVals = self.portals_parameters["model_parameters"]["radii_rho"]
+    rhoVals = self.portals_parameters["model_parameters"]["predicted_rho"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
 
@@ -1395,7 +1395,7 @@ def PORTALSanalyzer_plotExpected(
             
 
             rho = self.profiles_next_new.profiles["rho(-)"]
-            rhoVals = self.portals_parameters["model_parameters"]["radii_rho"]
+            rhoVals = self.portals_parameters["model_parameters"]["predicted_rho"]
             roaVals = np.interp(rhoVals, rho, roa)
 
             p0 = self.powerstates[plotPoints[0]].profiles
@@ -1892,10 +1892,10 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             axs4,
             color=colors[i],
             label=label,
-            lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
+            lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.portals_parameters["model_parameters"]["radii_rho"],
+            RhoLocationsPlot=self.portals_parameters["model_parameters"]["predicted_rho"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
             autoscale=i == 3,
@@ -1959,7 +1959,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="b",
-        lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
+        lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
         ms=ms,
         lw=1.0,
         label="Initial (#0)",
@@ -1976,7 +1976,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         p.plot_gradients(
             axsR,
             color="r",
-            lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
+            lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
             ms=ms,
             lw=0.3,
             ls="-o" if self.opt_fun.mitim_model.avoidPoints is not None else "-.o",
@@ -1988,7 +1988,7 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     p.plot_gradients(
         axsR,
         color="g",
-        lastRho=self.portals_parameters["model_parameters"]["radii_rho"][-1],
+        lastRho=self.portals_parameters["model_parameters"]["predicted_rho"][-1],
         ms=ms,
         lw=1.0,
         label=f"Best (#{self.opt_fun.res.best_absolute_index})",
@@ -2420,7 +2420,7 @@ def varToReal(y, mitim_model):
     Qe, Qi, Ge, GZ, Mt = [], [], [], [], []
     Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = [], [], [], [], []
     for prof in mitim_model.optimization_object.portals_parameters["model_parameters"]["predicted_channels"]:
-        for rad in mitim_model.optimization_object.portals_parameters["model_parameters"]["radii_rho"]:
+        for rad in mitim_model.optimization_object.portals_parameters["model_parameters"]["predicted_rho"]:
             if prof == "te":
                 Qe.append(of[0, cont])
                 Qe_tar.append(cal[0, cont])
@@ -2493,7 +2493,7 @@ def plotVars(
             .plasma["roa"][0, 1:]
             .cpu()
             .cpu().numpy()
-        )  # mitim_model.optimization_object.portals_parameters["model_parameters"]['radii_rho']
+        )  # mitim_model.optimization_object.portals_parameters["model_parameters"]['predicted_rho']
 
         try:
             Qe, Qi, Ge, GZ, Mt, Qe_tar, Qi_tar, Ge_tar, GZ_tar, Mt_tar = varToReal(
@@ -3254,7 +3254,7 @@ def plotFluxComparison(
 def produceInfoRanges(
     self_complete, bounds, axsR, label="", color="k", lw=0.2, alpha=0.05
 ):
-    rhos = np.append([0], self_complete.portals_parameters["model_parameters"]["radii_rho"])
+    rhos = np.append([0], self_complete.portals_parameters["model_parameters"]["predicted_rho"])
     aLTe, aLTi, aLne, aLnZ, aLw0 = (
         np.zeros((len(rhos), 2)),
         np.zeros((len(rhos), 2)),

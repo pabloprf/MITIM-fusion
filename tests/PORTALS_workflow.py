@@ -35,7 +35,7 @@ portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = Tru
 portals_fun.portals_parameters["initialization_parameters"]["quasineutrality"] = True
 portals_fun.portals_parameters["initialization_parameters"]["enforce_same_aLn"] = True
 
-portals_fun.portals_parameters["model_parameters"]["radii_rho"] = [0.25, 0.45, 0.65, 0.85]
+portals_fun.portals_parameters["model_parameters"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.portals_parameters["model_parameters"]['predicted_channels'] = ["te", "ti", "ne", "nZ", 'w0'] 
 portals_fun.portals_parameters["model_parameters"]['ImpurityOfInterest'] = 'N'
 portals_fun.portals_parameters["model_parameters"]["transport_parameters"]["transport_evaluator_options"]["tglf"]["run"]["code_settings"] = 2

@@ -71,13 +71,13 @@ def initializeProblem(
     profiles = PROFILEStools.gacode_state(initialization_file)
 
     # About radial locations
-    if portals_fun.portals_parameters["model_parameters"]["radii_roa"] is not None:
-        roa = portals_fun.portals_parameters["model_parameters"]["radii_roa"]
+    if portals_fun.portals_parameters["model_parameters"]["predicted_roa"] is not None:
+        roa = portals_fun.portals_parameters["model_parameters"]["predicted_roa"]
         rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
-        portals_fun.portals_parameters["model_parameters"]["radii_rho"] = rho
+        portals_fun.portals_parameters["model_parameters"]["predicted_rho"] = rho
 
     if (
         len(portals_parameters["initialization_parameters"]["removeIons"]) > 0
@@ -122,7 +122,7 @@ def initializeProblem(
 
     # Prepare and defaults
 
-    xCPs = torch.from_numpy(np.array(portals_fun.portals_parameters["model_parameters"]["radii_rho"])).to(dfT)
+    xCPs = torch.from_numpy(np.array(portals_fun.portals_parameters["model_parameters"]["predicted_rho"])).to(dfT)
 
     """
     ***************************************************************************************************
@@ -260,7 +260,7 @@ def initializeProblem(
         elif ikey == "w0":
             var = "Mt"
 
-        for i in range(len(portals_fun.portals_parameters["model_parameters"]["radii_rho"])):
+        for i in range(len(portals_fun.portals_parameters["model_parameters"]["predicted_rho"])):
             ofs.append(f"{var}_tr_turb_{i+1}")
             ofs.append(f"{var}_tr_neoc_{i+1}")
 
@@ -269,7 +269,7 @@ def initializeProblem(
             name_objectives.append(f"{var}Res_{i+1}")
 
     if portals_fun.portals_parameters["main_parameters"]["turbulent_exchange_as_surrogate"]:
-        for i in range(len(portals_fun.portals_parameters["model_parameters"]["radii_rho"])):
+        for i in range(len(portals_fun.portals_parameters["model_parameters"]["predicted_rho"])):
             ofs.append(f"Qie_tr_turb_{i+1}")
 
     name_transformed_ofs = []

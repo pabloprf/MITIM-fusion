@@ -56,7 +56,7 @@ def calculator(
                                 "InputType": 1,
                             },
                             "predicted_channels": ["te", "ti", "ne"],
-                            "radii_rho": rho_vec,
+                            "predicted_rho": rho_vec,
                             "applyCorrections": {
                                 "Tfast_ratio": False,
                                 "Ti_thermals": True,

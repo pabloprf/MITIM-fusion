@@ -67,7 +67,7 @@
                           "cores_per_tglf_instance": 1
                      },
                      "MODELparameters": {
-                          "radii_roa": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
+                          "predicted_roa": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
                           "Physics_options": {"TypeTarget": 3},
                           "transport_model": {
                                 "TGLFsettings": 100, 

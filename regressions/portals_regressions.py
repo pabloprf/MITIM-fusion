@@ -93,7 +93,7 @@ for test in tests:
             portals_fun = PORTALSmain.portals(folderWork)
             portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
             portals_fun.optimization_options["initialization_options"]["initial_training"] = 3
-            portals_fun.portals_parameters["model_parameters"]["radii_rho"] = [0.25, 0.45, 0.65, 0.85]
+            portals_fun.portals_parameters["model_parameters"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
             portals_fun.portals_parameters["initialization_parameters"]["remove_fast"] = True
             portals_fun.portals_parameters["initialization_parameters"]["quasineutrality"] = True
             portals_fun.portals_parameters["initialization_parameters"]["enforce_same_aLn"] = True

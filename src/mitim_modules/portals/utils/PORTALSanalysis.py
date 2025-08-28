@@ -563,12 +563,12 @@ class PORTALSanalyzer:
         """
         NOTE on radial location extraction:
         Two possible options for the rho locations to use:
-            1. self.portals_parameters["model_parameters"]["radii_rho"] -> the ones PORTALS sent to TGYRO
+            1. self.portals_parameters["model_parameters"]["predicted_rho"] -> the ones PORTALS sent to TGYRO
             2. self.rhos (came from TGYRO's t.rho[0, 1:]) -> the ones written by the TGYRO run (clipped to 7 decimal places)
         Because we want here to run TGLF *exactly* as TGYRO did, we use the first option.
         #TODO: This should be fixed in the future, we should never send to TGYRO more than 7 decimal places of any variable
         """
-        rhos_considered = self.portals_parameters["model_parameters"]["radii_rho"]
+        rhos_considered = self.portals_parameters["model_parameters"]["predicted_rho"]
 
         if positions is None:
             rhos = rhos_considered

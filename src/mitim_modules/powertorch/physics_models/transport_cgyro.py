@@ -171,8 +171,8 @@ def evaluateCGYRO(transport, folder, numPORTALS, FolderEvaluation, unmodified_pr
         trick_hardcoded_f = None
     # ------------------------------------------------------------------------------------------------
 
-    minErrorPercent = transport["percentError_stable"]
-    Qi_criterion_stable = transport["Qi_criterion_stable"]
+    minErrorPercent = transport["Qi_stable_percent_error"]
+    Qi_stable_criterion = transport["Qi_stable_criterion"]
 
     OriginalFimp = portals_parameters["main_parameters"]["fImp_orig"]
 
@@ -182,7 +182,7 @@ def evaluateCGYRO(transport, folder, numPORTALS, FolderEvaluation, unmodified_pr
             unmodified_profiles,
             numPORTALS,
             minErrorPercent,
-            Qi_criterion_stable,
+            Qi_stable_criterion,
             radii,
             OriginalFimp=OriginalFimp,
             evaluationsInFile=f"{numPORTALS_this}",
@@ -212,7 +212,7 @@ def cgyroing(
     unmodified_profiles,
     evaluations,
     minErrorPercent,
-    Qi_criterion_stable,
+    Qi_stable_criterion,
     radii,
     OriginalFimp=1.0,
     file=None,
@@ -257,7 +257,7 @@ def cgyroing(
             tgyro,
             FolderEvaluation,
             minErrorPercent=minErrorPercent,
-            Qi_criterion_stable=Qi_criterion_stable,
+            Qi_stable_criterion=Qi_stable_criterion,
             impurityPosition=impurityPosition,
             OriginalFimp=OriginalFimp,
         )
