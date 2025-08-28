@@ -50,7 +50,9 @@ class powerstate:
             "evaluator": None,
             "options": {}
             }
-            
+
+        transport_options.setdefault("evaluator_instance_attributes", {})
+
         if target_options is None:
             target_options = {
             "evaluator": targets_analytic.analytical_model,
@@ -727,6 +729,10 @@ class powerstate:
             transport = TRANSPORTtools.power_transport( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
         else:
             transport = self.transport_options["evaluator"]( self, name=nameRun, folder=folder, evaluation_number=evaluation_number )
+        
+        # The transport class may have instanciating attributes
+        for key in self.transport_options["evaluator_instance_attributes"]:
+            setattr(transport, key, self.transport_options["evaluator_instance_attributes"][key])
         
         # Produce profile object (for certain transport evaluators, this is necessary)
         transport.produce_profiles()

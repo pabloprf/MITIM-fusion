@@ -80,7 +80,7 @@ class portals(STRATEGYtools.opt_evaluator):
     def __init__(
         self, 
         folder,                             # Folder where the PORTALS workflow will be run
-        transport_model = 'tglf',
+        transport_models = ['tglf', 'neo'],
         namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
         tensor_options = {
             "dtype": torch.double,
@@ -160,13 +160,9 @@ class portals(STRATEGYtools.opt_evaluator):
         ----------------
         These parameters are communicated to the powertorch object.
         '''
+        
+        from mitim_modules.powertorch.utils.TRANSPORTtools import portals_model as transport_evaluator
 
-        # Selection of model
-        if transport_model == 'cgyro':
-            from mitim_modules.powertorch.physics_models.transport_cgyroneo import cgyroneo_model as transport_evaluator
-        elif transport_model == 'tglf':
-            from mitim_modules.powertorch.physics_models.transport_tglfneo import tglfneo_model as transport_evaluator
-            
         # -------------------------
         # Transport model settings 
         # -------------------------
@@ -175,7 +171,12 @@ class portals(STRATEGYtools.opt_evaluator):
             # Transport model class
             
             "evaluator": transport_evaluator,
-            
+
+            "evaluator_instance_attributes": {
+                "turbulence_model": transport_models[0],
+                "neoclassical_model": transport_models[1],
+            },
+
             # Simulation kwargs to be passed directly to run and read commands
             
             "options": {

@@ -76,20 +76,16 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     print(f"\t* Written JSON with {suffix} information to {self.folder / file_name}")
 
 class power_transport:
-    '''
-    Default class for power transport models, change "evaluate" method to implement a new model and produce_profiles if the model requires written input.gacode written
 
-    Notes:
-        - After evaluation, the self.model_results attribute will contain the results of the model, which can be used for plotting and analysis
-        - model results can have .plot() method that can grab kwargs or be similar to TGYRO plot
-
-    '''
     def __init__(self, powerstate, name = "test", folder = "~/scratch/", evaluation_number = 0):
 
         self.name = name
         self.folder = IOtools.expandPath(folder)
         self.evaluation_number = evaluation_number
         self.powerstate = powerstate
+
+        self.transport_evaluator_options  = self.powerstate.transport_options["options"]
+        self.cold_start                   = self.powerstate.transport_options["cold_start"]
 
         # Allowed fluxes in powerstate so far
         self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2']
@@ -128,6 +124,89 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
+    def evaluate(self):
+
+        # Initialize them as zeros
+        for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
+            for suffix in ['turb', 'neoc']:
+                for suffix0 in ['', '_stds']:
+                    self.__dict__[f"{var}_{suffix}{suffix0}"] = np.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
+
+        # Copy the input.gacode files to the output folder
+        self._profiles_to_store()
+
+        '''
+        ******************************************************************************************************
+        Evaluate neoclassical and turbulent transport. 
+        These functions use a hook to write the .json files to communicate the results to powerstate.plasma
+        ******************************************************************************************************
+        '''
+        neoclassical = self.evaluate_neoclassical()
+        turbulence = self.evaluate_turbulence()
+        
+        '''
+        ******************************************************************************************************
+        From the json to powerstate.plasma
+        ******************************************************************************************************
+        '''
+        self._populate_from_json(file_name = 'fluxes_turb.json', suffix= 'turb')
+        self._populate_from_json(file_name = 'fluxes_neoc.json', suffix= 'neoc')
+
+        '''
+        ******************************************************************************************************
+        Post-process the data: add turb and neoc, tensorize and transformations
+        ******************************************************************************************************
+        '''
+        self._postprocess()
+        
+    def _postprocess(self):
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
+        # ------------------------------------------------------------------------------------------------------------------------
+        
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
+
+        for variable in variables:
+            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
+
+                # Make them tensors and add a batch dimension
+                self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
+ 
+                # Pad with zeros at rho=0.0
+                self.powerstate.plasma[f"{variable}{suffix}"] = torch.cat((
+                    torch.zeros((1, 1)),
+                    self.powerstate.plasma[f"{variable}{suffix}"],
+                ), dim=1)
+
+        # -----------------------------------------------------------
+        # Sum the turbulent and neoclassical contributions
+        # -----------------------------------------------------------
+        
+        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
+        
+        for variable in variables:
+            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
+
+        # ---------------------------------------------------------------------------------
+        # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
+        # ---------------------------------------------------------------------------------
+        
+        mapper_convective = {
+            'Ce': 'Ge1E20m2',
+            'CZ': 'GZ1E20m2',
+        }
+        
+        for key in mapper_convective.keys():
+            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
+                
+                mult = 1/self.powerstate.fImp_orig if key == 'CZ' else 1.0
+                
+                self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
+                    self.powerstate.plasma["te"],
+                    self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
+                ) * mult
+           
     def produce_profiles(self):
         # Only add self._produce_profiles() if it's needed (e.g. full TGLF), otherwise this is somewhat expensive
         # (e.g. for flux matching of analytical models)
@@ -185,83 +264,6 @@ class power_transport:
             print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
 
-    def evaluate(self):
-
-        # Copy the input.gacode files to the output folder
-        self._profiles_to_store()
-
-        '''
-        ******************************************************************************************************
-        Evaluate neoclassical and turbulent transport. 
-        These functions use a hook to write the .json files to communicate the results to powerstate.plasma
-        ******************************************************************************************************
-        '''
-        neoclassical = self.evaluate_neoclassical()
-        turbulence = self.evaluate_turbulence()
-        
-        '''
-        ******************************************************************************************************
-        From the json to powerstate.plasma
-        ******************************************************************************************************
-        '''
-        self._populate_from_json(file_name = 'fluxes_turb.json', suffix= 'turb')
-        self._populate_from_json(file_name = 'fluxes_neoc.json', suffix= 'neoc')
-
-        '''
-        ******************************************************************************************************
-        Post-process the data: add turb and neoc, tensorize and transformations
-        ******************************************************************************************************
-        '''
-        self._postprocess()
-
-    def _postprocess(self):
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
-        # ------------------------------------------------------------------------------------------------------------------------
-        
-        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
-
-        for variable in variables:
-            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
-
-                # Make them tensors and add a batch dimension
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
- 
-                # Pad with zeros at rho=0.0
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.cat((
-                    torch.zeros((1, 1)),
-                    self.powerstate.plasma[f"{variable}{suffix}"],
-                ), dim=1)
-
-        # -----------------------------------------------------------
-        # Sum the turbulent and neoclassical contributions
-        # -----------------------------------------------------------
-        
-        variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
-        
-        for variable in variables:
-            self.powerstate.plasma[f"{variable}_tr"] = self.powerstate.plasma[f"{variable}_tr_turb"] + self.powerstate.plasma[f"{variable}_tr_neoc"]
-
-        # ---------------------------------------------------------------------------------
-        # Convective fluxes (& Re-scale the GZ flux by the original impurity concentration)
-        # ---------------------------------------------------------------------------------
-        
-        mapper_convective = {
-            'Ce': 'Ge1E20m2',
-            'CZ': 'GZ1E20m2',
-        }
-        
-        for key in mapper_convective.keys():
-            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
-                
-                mult = 1/self.powerstate.fImp_orig if key == 'CZ' else 1.0
-                
-                self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
-                    self.powerstate.plasma["te"],
-                    self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
-                ) * mult
-               
     def _profiles_to_store(self):
 
         if "folder" in self.powerstate.transport_options:
@@ -312,7 +314,7 @@ class power_transport:
                 'GeGB': ['Ggb', 'Ge1E20m2'],
                 'GZGB': ['Ggb', 'GZ1E20m2'],
                 'MtGB': ['Pgb', 'MtJm2'],
-                'QieGB': ['Sgb', 'QieMWm3'],
+                'QieGB': ['Sgb', 'QieMWm3']
             }
 
             dum = {}
@@ -320,6 +322,10 @@ class power_transport:
                 gb = self.powerstate.plasma[f"{mapper[var][0]}"][0,1:].cpu().numpy()
                 dum[f"{mapper[var][1]}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var]) * gb
                 dum[f"{mapper[var][1]}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var]) * gb
+
+            mapperQ = {
+                
+            }
 
             if units == 'GB':
                 
@@ -361,20 +367,6 @@ class power_transport:
         '''
 
         print(">> No turbulent fluxes to evaluate", typeMsg="w")
-
-        dim = self.powerstate.plasma['rho'].shape[-1]-1
-        
-        for var in [
-            'QeGB',
-            'QiGB',
-            'GeGB',
-            'GZGB',
-            'MtGB',
-            'QieGB'
-        ]:
-
-            self.__dict__[f"{var}_turb"] = np.zeros(dim)
-            self.__dict__[f"{var}_turb_stds"] = np.zeros(dim)
     
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))    
     def evaluate_neoclassical(self):
@@ -382,25 +374,48 @@ class power_transport:
         This needs to populate the following np.arrays in self.:
             - QeGB_neoc
             - QiGB_neoc
-            - GeGB_tr_neoc
-            - GZGB_tr_neoc
-            - MtGB_tr_neoc
-        and their respective standard deviations, e.g. QeGB_tr_neoc_stds
+            - GeGB_neoc
+            - GZGB_neoc
+            - MtGB_neoc
+            - QieGB_neoc (zero)
+        and their respective standard deviations, e.g. QeGB_neoc_stds
         '''
 
         print(">> No neoclassical fluxes to evaluate", typeMsg="w")
         
-        dim = self.powerstate.plasma['rho'].shape[-1]-1
         
-        for var in [
-            'QeGB',
-            'QiGB',
-            'GeGB',
-            'GZGB',
-            'MtGB',
-            'QieGB'
-        ]:
+# *******************************************************************************************
+# Combinations
+# *******************************************************************************************
 
-            self.__dict__[f"{var}_neoc"] = np.zeros(dim)
-            self.__dict__[f"{var}_neoc_stds"] = np.zeros(dim)
-            
+from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
+from mitim_modules.powertorch.physics_models.transport_neo import neo_model
+from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model
+
+class portals_model(power_transport, tglf_model, neo_model, cgyro_model):
+
+    def __init__(self, powerstate, **kwargs):
+        super().__init__(powerstate, **kwargs)
+
+        # Defaults
+        self.turbulence_model = 'tglf'
+        self.neoclassical_model = 'neo'
+
+    def produce_profiles(self):
+        self._produce_profiles()
+        
+    @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
+    def evaluate_turbulence(self):
+        if self.turbulence_model == 'tglf':
+            return tglf_model.evaluate_turbulence(self)
+        elif self.turbulence_model == 'cgyro':
+            return cgyro_model.evaluate_turbulence(self)
+        else:
+            raise Exception(f"Unknown turbulence model {self.turbulence_model}")
+
+    @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
+    def evaluate_neoclassical(self):
+        if self.neoclassical_model == 'neo':
+            return neo_model.evaluate_neoclassical(self)
+        else:
+            raise Exception(f"Unknown neoclassical model {self.neoclassical_model}")

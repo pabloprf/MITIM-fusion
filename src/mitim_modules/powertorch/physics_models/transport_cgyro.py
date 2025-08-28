@@ -1,32 +1,33 @@
 import json
+from functools import partial
 import numpy as np
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
-from mitim_modules.powertorch.physics_models import transport_tglfneo
+from mitim_modules.powertorch.physics_models import transport_tglf
+from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-# Inherit from transport_tglfneo.tglfneo_model so that I have the NEO evaluator
-class cgyroneo_model(transport_tglfneo.tglfneo_model):
-    def __init__(self, powerstate, **kwargs):
-        super().__init__(powerstate, **kwargs)
-        
-    # Do not hook here
+class cgyro_model:
+
     def evaluate_turbulence(self):
 
-        transport_evaluator_options  = self.powerstate.transport_options["options"]
-        cold_start                   = self.powerstate.transport_options["cold_start"]
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Grab options
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        simulation_options = self.transport_evaluator_options["cgyro"]
+        simulation_options_tglf = self.transport_evaluator_options["tglf"]
+        cold_start = self.cold_start
+
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
+        run_type = simulation_options["run"]["run_type"]        
 
         # Run base TGLF always, to keep track of discrepancies! --------------------------------------
-        transport_evaluator_options["tglf"]["use_scan_trick_for_stds"] = None
+        simulation_options_tglf["use_scan_trick_for_stds"] = None
         self._evaluate_tglf()
         # --------------------------------------------------------------------------------------------
 
-        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        
-        simulation_options_cgyro = transport_evaluator_options["cgyro"]
-        
-        run_type = simulation_options_cgyro["run"]["run_type"]
-        
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare CGYRO object
         # ------------------------------------------------------------------------------------------------------------------------
@@ -40,11 +41,13 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
             self.folder,
             )
 
+        subfolder_name = "base_cgyro"
+
         _ = cgyro.run(
-            'base_cgyro',
+            subfolder_name,
             cold_start=cold_start,
             forceIfcold_start=True,
-            **simulation_options_cgyro["run"]
+            **simulation_options["run"]
             )
         
         if run_type in ['normal', 'submit']:
@@ -54,22 +57,22 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
                 cgyro.fetch()
 
             cgyro.read(
-                label='base_cgyro',
-                **simulation_options_cgyro["read"]
+                label=subfolder_name,
+                **simulation_options["read"]
                 )
         
             # ------------------------------------------------------------------------------------------------------------------------
             # Pass the information to what power_transport expects
             # ------------------------------------------------------------------------------------------------------------------------
             
-            self.QeGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qe_mean for i in range(len(rho_locations))])
-            self.QeGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qe_std for i in range(len(rho_locations))])
+            self.QeGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qe_mean for i in range(len(rho_locations))])
+            self.QeGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qe_std for i in range(len(rho_locations))])
                     
-            self.QiGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qi_mean for i in range(len(rho_locations))])
-            self.QiGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Qi_std for i in range(len(rho_locations))])
+            self.QiGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qi_mean for i in range(len(rho_locations))])
+            self.QiGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qi_std for i in range(len(rho_locations))])
                     
-            self.GeGB_turb = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Ge_mean for i in range(len(rho_locations))])
-            self.GeGB_turb_stds = np.array([cgyro.results['base_cgyro']['CGYROout'][i].Ge_std for i in range(len(rho_locations))]) 
+            self.GeGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Ge_mean for i in range(len(rho_locations))])
+            self.GeGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Ge_std for i in range(len(rho_locations))]) 
             
             self.GZGB_turb = self.QeGB_turb*0.0 #TODO     
             self.GZGB_turb_stds = self.QeGB_turb*0.0 #TODO          
@@ -87,7 +90,7 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
             
             # Wait until the user has placed the json file in the right folder
             
-            self.powerstate.profiles_transport.write_state(self.folder / "base_cgyro" / "input.gacode")
+            self.powerstate.profiles_transport.write_state(self.folder / subfolder_name / "input.gacode")
             
             pre_checks(self)
 
@@ -102,18 +105,18 @@ class cgyroneo_model(transport_tglfneo.tglfneo_model):
                     print(f" MITIM could not find the file... looping back", typeMsg='i')
                     print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
                     print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
-                logic_to_wait(self.folder)
+                logic_to_wait(self.folder, self.folder / subfolder_name)
                 attempts += 1
 
                 if file_path.exists():
                     all_good = post_checks(self)
 
-        self._stable_correction(simulation_options_cgyro)
+        self._stable_correction(simulation_options)
 
-    def _stable_correction(self, simulation_options_cgyro):
+    def _stable_correction(self, simulation_options):
 
-        Qi_stable_criterion = simulation_options_cgyro["Qi_stable_criterion"]
-        Qi_stable_percent_error = simulation_options_cgyro["Qi_stable_percent_error"]
+        Qi_stable_criterion = simulation_options["Qi_stable_criterion"]
+        Qi_stable_percent_error = simulation_options["Qi_stable_percent_error"]
         
         # Check if Qi in MW/m2 < Qi_stable_criterion
         QiMWm2 = self.QiGB_turb * self.powerstate.plasma['Qgb'][0,1:].cpu().numpy()
@@ -154,9 +157,9 @@ def pre_checks(self):
 
     print(txt)
 
-def logic_to_wait(folder):
-    print(f"\n**** CGYRO prepared. Please, run CGYRO from the simulation setup in folder:\n", typeMsg='i')
-    print(f"\t {folder}/base_cgyro\n", typeMsg='i')
+def logic_to_wait(folder, subfolder):
+    print(f"\n**** Simulation inputs prepared. Please, run it from the simulation setup in folder:\n", typeMsg='i')
+    print(f"\t {subfolder}\n", typeMsg='i')
     print(f"**** When finished, the fluxes_turb.json file should be placed in:\n", typeMsg='i')
     print(f"\t {folder}/fluxes_turb.json\n", typeMsg='i')
     while not print(f"**** When you have done that, please say yes", typeMsg='q'):

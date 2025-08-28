@@ -1,46 +1,30 @@
-
-import shutil
 import numpy as np
 from mitim_tools.misc_tools import IOtools
-from functools import partial
-from mitim_tools.gacode_tools import TGLFtools, NEOtools
-from mitim_modules.powertorch.utils import TRANSPORTtools
+from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class tglfneo_model(TRANSPORTtools.power_transport):
-    def __init__(self, powerstate, **kwargs):
-        super().__init__(powerstate, **kwargs)
+class tglf_model:
 
-    def produce_profiles(self):
-        self._produce_profiles()
-        
-    # ************************************************************************************
-    # Private functions for the evaluation
-    # ************************************************************************************
-    
-    @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):        
         self._evaluate_tglf()
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
     def _evaluate_tglf(self):
         
-        transport_evaluator_options = self.powerstate.transport_options["options"]
-        cold_start = self.powerstate.transport_options["cold_start"]
-        
         # ------------------------------------------------------------------------------------------------------------------------
-        # Grab options from powerstate
+        # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options_tglf = transport_evaluator_options["tglf"]
+        simulation_options = self.transport_evaluator_options["tglf"]
+        cold_start = self.cold_start
         
-        Qi_includes_fast = simulation_options_tglf["Qi_includes_fast"]
-        launchMODELviaSlurm = simulation_options_tglf["launchEvaluationsAsSlurmJobs"]
-        use_tglf_scan_trick = simulation_options_tglf["use_scan_trick_for_stds"]
-        cores_per_tglf_instance = simulation_options_tglf["cores_per_tglf_instance"]
-        keep_tglf_files = simulation_options_tglf["keep_files"]
-        percent_error = simulation_options_tglf["percent_error"]
+        Qi_includes_fast = simulation_options["Qi_includes_fast"]
+        launchMODELviaSlurm = simulation_options["launchEvaluationsAsSlurmJobs"]
+        use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
+        cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
+        keep_tglf_files = simulation_options["keep_files"]
+        percent_error = simulation_options["percent_error"]
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         impurityPosition = self.powerstate.impurityPosition_transport
@@ -76,13 +60,13 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 },
             attempts_execution=2,
             only_minimal_files=keep_tglf_files in ['minimal'],
-            **simulation_options_tglf["run"]
+            **simulation_options["run"]
         )
     
         tglf.read(
             label='base',
             require_all_files=False,
-            **simulation_options_tglf["read"])
+            **simulation_options["read"])
         
         # Grab values
         Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
@@ -134,7 +118,7 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                 launchMODELviaSlurm=launchMODELviaSlurm,
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ['minimal', 'base'],
-                **simulation_options_tglf["run"]
+                **simulation_options["run"]
                 )
 
         self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
@@ -163,70 +147,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
 
         return tglf
 
-    @IOtools.hook_method(after=partial(TRANSPORTtools.write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
-    def evaluate_neoclassical(self):
-        
-        transport_evaluator_options = self.powerstate.transport_options["options"]
-        cold_start = self.powerstate.transport_options["cold_start"]
-        
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Grab options from powerstate
-        # ------------------------------------------------------------------------------------------------------------------------
-        
-        simulation_options_neo = transport_evaluator_options["neo"]
-        percent_error = simulation_options_neo["percent_error"]
-        impurityPosition = self.powerstate.impurityPosition_transport
-                
-        # ------------------------------------------------------------------------------------------------------------------------        
-        # Run
-        # ------------------------------------------------------------------------------------------------------------------------
-        
-        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        
-        neo = NEOtools.NEO(rhos=rho_locations)
-
-        _ = neo.prep(
-            self.powerstate.profiles_transport,
-            self.folder,
-            cold_start = cold_start,
-            )
-        
-        neo.run(
-            'base_neo',
-            cold_start=cold_start,
-            forceIfcold_start=True,
-            **simulation_options_neo["run"]
-        )
-    
-        neo.read(
-            label='base',
-            **simulation_options_neo["read"])
-        
-        Qe = np.array([neo.results['base']['NEOout'][i].Qe for i in range(len(rho_locations))])
-        Qi = np.array([neo.results['base']['NEOout'][i].Qi for i in range(len(rho_locations))])
-        Ge = np.array([neo.results['base']['NEOout'][i].Ge for i in range(len(rho_locations))])
-        GZ = np.array([neo.results['base']['NEOout'][i].GiAll[impurityPosition-1] for i in range(len(rho_locations))])
-        Mt = np.array([neo.results['base']['NEOout'][i].Mt for i in range(len(rho_locations))])
-        
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Pass the information to what power_transport expects
-        # ------------------------------------------------------------------------------------------------------------------------
-        
-        self.QeGB_neoc = Qe
-        self.QiGB_neoc = Qi
-        self.GeGB_neoc = Ge
-        self.GZGB_neoc = GZ
-        self.MtGB_neoc = Mt
-        
-        # Uncertainties is just a percent of the value
-        self.QeGB_neoc_stds = abs(Qe) * percent_error/100.0
-        self.QiGB_neoc_stds = abs(Qi) * percent_error/100.0
-        self.GeGB_neoc_stds = abs(Ge) * percent_error/100.0
-        self.GZGB_neoc_stds = abs(GZ) * percent_error/100.0
-        self.MtGB_neoc_stds = abs(Mt) * percent_error/100.0
-
-        return neo
-
     def _raise_warnings(self, tglf, rho_locations, Qi_includes_fast):
 
         for i in range(len(tglf.profiles.Species)):
@@ -246,7 +166,6 @@ class tglfneo_model(TRANSPORTtools.power_transport):
                             
                     else:
                         print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
-
 
 def _run_tglf_uncertainty_model(
     tglf,
