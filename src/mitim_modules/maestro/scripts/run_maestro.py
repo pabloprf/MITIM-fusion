@@ -92,7 +92,7 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped", "transp", "transp_soft", "portals", "portals_soft"]:
+    for beat_type in ["eped", "eped_initializer", "transp", "transp_soft", "portals", "portals_soft"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 
@@ -215,7 +215,7 @@ def run_maestro_local(
                 'eped', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
                 nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped"],
+                **beat_namelists["eped_initializer"],
                 **parameters_engineering
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
