@@ -512,13 +512,13 @@ def plot_gradients(
     ms=2,
     alpha=1.0,
     useRoa=False,
-    RhoLocationsPlot=None,
+    predicted_rhoPlot=None,
     plotImpurity=None,
     plotRotation=False,
     autoscale=True,
     ):
 
-    if RhoLocationsPlot is None: RhoLocationsPlot=[]
+    if predicted_rhoPlot is None: predicted_rhoPlot=[]
 
     if axs4 is None:
         plt.ion()
@@ -713,7 +713,7 @@ def plot_gradients(
             GRAPHICStools.autoscale_y(ax, bottomy=0)
         cont += 2
 
-    for x0 in RhoLocationsPlot:
+    for x0 in predicted_rhoPlot:
         ix = np.argmin(np.abs(self.profiles["rho(-)"] - x0))
         for ax in axs4:
             ax.axvline(x=xcoord[ix], ls="--", lw=0.5, c=color)

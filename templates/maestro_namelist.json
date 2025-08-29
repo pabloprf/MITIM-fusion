@@ -62,19 +62,25 @@
                 "use_default": false,
                 "portals_namelist" : {
                      "portals_parameters": {
-                          "force_zero_particle_flux": true,
-                          "keep_full_model_folder": false,
-                          "cores_per_tglf_instance": 1
-                     },
-                     "MODELparameters": {
-                          "predicted_roa": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
-                          "Physics_options": {"TypeTarget": 3},
-                          "transport_model": {
-                                "TGLFsettings": 100, 
-                                "extraOptionsTGLF": {"USE_BPER": true}
+                          "solution": {
+                               "predicted_roa": [0.35,0.45,0.55,0.65,0.75,0.875,0.9],
+                               "keep_full_model_folder": false
+                              },
+                          "transport": {
+                               "options": {
+                                   "run": {
+                                        "code_settings": 100,
+                                        "extraOptions": {"USE_BPER": true}
+                                   }
+                               }
+                          },
+                          "target": {
+                              "options": {
+                                   "force_zero_particle_flux": true
+                              }
                           }
                      },
-                     "INITparameters": {
+                     "initialization_parameters": {
                           "thermalize_fast": true,
                           "quasineutrality": true
                      },

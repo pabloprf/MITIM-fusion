@@ -1895,7 +1895,7 @@ def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
             lastRho=self.portals_parameters["solution"]["predicted_rho"][-1],
             alpha=alpha,
             useRoa=True,
-            RhoLocationsPlot=self.portals_parameters["solution"]["predicted_rho"],
+            predicted_rhoPlot=self.portals_parameters["solution"]["predicted_rho"],
             plotImpurity=self.runWithImpurity,
             plotRotation=self.runWithRotation,
             autoscale=i == 3,

@@ -43,7 +43,7 @@ transp_namelist = {
 
 # To see what values this namelist can take: mitim_modules/portals/PORTALSmain.py: __init__()
 portals_namelist = {    "main_parameters": {"launchEvaluationsAsSlurmJobs": True,"forceZeroParticleFlux": True, 'use_tglf_scan_trick': 0.02},
-                        "MODELparameters": { "RoaLocations": [0.35,0.55,0.75,0.875,0.9],
+                        "MODELparameters": { "predicted_roa": [0.35,0.55,0.75,0.875,0.9],
                                             "ProfilesPredicted": ["te", "ti", "ne"],
                                             "Physics_options": {"TypeTarget": 3},
                                              "transport_model": {"TGLFsettings": 6, "extraOptionsTGLF": {'USE_BPER':True}}},
