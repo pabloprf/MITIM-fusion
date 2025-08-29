@@ -1838,7 +1838,7 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
 
     maximum_value_is_rel    = parameters["maximum_value_is_rel"]
     maximum_value_orig      = parameters["maximum_value"]
-    minimum_dvs_variation   = parameters["minimum_dvs_variation"]
+    minimum_inputs_variation   = parameters["minimum_inputs_variation"]
 
     res_base = -mitim_bo.BOmetrics["overall"]["Residual"][0].item()
 
@@ -1848,8 +1848,8 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
     # Stopping criteria
     # ------------------------------------------------------------------------------------
 
-    if minimum_dvs_variation is not None:
-        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation)
+    if minimum_inputs_variation is not None:
+        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_inputs_variation)
     else:
         converged_by_dvs = False
         yvals = None
@@ -1880,28 +1880,28 @@ def stopping_criteria_by_value(mitim_bo, maximum_value):
 
     return criterion_is_met, -yvals
 
-def stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation):
+def stopping_criteria_by_dvs(mitim_bo, minimum_inputs_variation):
 
     print("\t- Checking DV variations...")
     _, yG_max = TESTtools.DVdistanceMetric(mitim_bo.train_X)
 
     criterion_is_met = (
         mitim_bo.currentIteration
-        >= minimum_dvs_variation[0]
-        + minimum_dvs_variation[1]
+        >= minimum_inputs_variation[0]
+        + minimum_inputs_variation[1]
     )
-    for i in range(int(minimum_dvs_variation[1])):
+    for i in range(int(minimum_inputs_variation[1])):
         criterion_is_met = criterion_is_met and (
-            yG_max[-1 - i] < minimum_dvs_variation[2]
+            yG_max[-1 - i] < minimum_inputs_variation[2]
         )
 
     if criterion_is_met:
         print(
-            f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+            f"\t\t* DVs varied by less than {minimum_inputs_variation[2]}% compared to the rest of individuals for the past {int(minimum_inputs_variation[1])} iterations"
         )
     else:
         print(
-            f"\t\t* DVs have varied by more than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+            f"\t\t* DVs have varied by more than {minimum_inputs_variation[2]}% compared to the rest of individuals for the past {int(minimum_inputs_variation[1])} iterations"
         )
 
     return criterion_is_met, yG_max
