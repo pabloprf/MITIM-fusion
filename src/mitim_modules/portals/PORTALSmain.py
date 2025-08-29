@@ -29,7 +29,6 @@ class portals(STRATEGYtools.opt_evaluator):
             "dtype": torch.double,
             "device": torch.device("cpu"),
         },
-        askQuestions=True
         ):
 
         print("\n-----------------------------------------------------------------------------------------")
