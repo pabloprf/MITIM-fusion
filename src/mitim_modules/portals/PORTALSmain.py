@@ -29,9 +29,9 @@ class portals(STRATEGYtools.opt_evaluator):
             "dtype": torch.double,
             "device": torch.device("cpu"),
         },
+        askQuestions=True
         ):
 
-        
         print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t PORTALS class module")
         print("-----------------------------------------------------------------------------------------\n")
@@ -98,7 +98,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # Make sure that options that are required by good behavior of PORTALS
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        key_rhos = self.check_flags()
+        key_rhos = self.check_flags(askQuestions=askQuestions)
 
         # TO BE REMOVED IN FUTURE
         if not isinstance(cold_start, bool):
@@ -152,9 +152,7 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         if start_from_folder is not None:
-            self.reuseTrainingTabular(
-                start_from_folder, self.folder, reevaluate_targets=reevaluate_targets
-            )
+            self.reuseTrainingTabular(start_from_folder, self.folder, reevaluate_targets=reevaluate_targets)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Ignore targets in surrogate_data.csv
@@ -280,7 +278,7 @@ class portals(STRATEGYtools.opt_evaluator):
             self, plotYN=plotYN, fn=fn, cold_start=cold_start, analysis_level=analysis_level
         )
 
-    def check_flags(self):
+    def check_flags(self, askQuestions=True):
 
         print(">> PORTALS flags pre-check")
 
@@ -289,7 +287,7 @@ class portals(STRATEGYtools.opt_evaluator):
         def _check_flags_dictionary(d, d_check, avoid = ["run", "read"]):
             for key in d.keys():
                 if key not in d_check:
-                    print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q")
+                    print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q" if askQuestions else "w")
                 elif not isinstance(d[key], dict):
                     continue
                 elif key in avoid:
