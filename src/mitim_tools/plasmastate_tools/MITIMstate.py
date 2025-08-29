@@ -1623,7 +1623,7 @@ class mitim_state:
         enforce_same_aLn = options.get("enforce_same_aLn", False)
         groupQIONE = options.get("groupQIONE", False)
         ensure_positive_Gamma = options.get("ensure_positive_Gamma", False)
-        ensureMachNumber = options.get("ensureMachNumber", None)
+        force_mach = options.get("force_mach", None)
         thermalize_fast = options.get("thermalize_fast", False)
 
         print("\t- Custom correction of input.gacode file has been requested")
@@ -1697,8 +1697,8 @@ class mitim_state:
             self.profiles["qpar_wall(1/m^3/s)"] = self.profiles["qpar_wall(1/m^3/s)"].clip(0)
 
         # Mach
-        if ensureMachNumber is not None:
-            self.introduceRotationProfile(Mach_LF=ensureMachNumber)
+        if force_mach is not None:
+            self.introduceRotationProfile(Mach_LF=force_mach)
 
         # ----------------------------------------------------------------------
         # Re-derive

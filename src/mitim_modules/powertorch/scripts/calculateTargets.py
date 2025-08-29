@@ -77,7 +77,7 @@ def calculator(
             "Ti_thermals": False,
             "ni_thermals": False,
             "recalculate_ptot": False,
-            "ensureMachNumber": None,
+            "force_mach": None,
         },
         insert_highres_powers=True,
         rederive_profiles=False,

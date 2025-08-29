@@ -452,28 +452,28 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
 
         if var == "Qe":
             of0, cal0 = (
-                of0 * portals_parameters["solution"]["Pseudo_multipliers"][0],
-                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][0],
+                of0 * portals_parameters["solution"]["scalar_multipliers"][0],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][0],
             )
         elif var == "Qi":
             of0, cal0 = (
-                of0 * portals_parameters["solution"]["Pseudo_multipliers"][1],
-                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][1],
+                of0 * portals_parameters["solution"]["scalar_multipliers"][1],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][1],
             )
         elif var == "Ge":
             of0, cal0 = (
-                of0 * portals_parameters["solution"]["Pseudo_multipliers"][2],
-                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][2],
+                of0 * portals_parameters["solution"]["scalar_multipliers"][2],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][2],
             )
         elif var == "GZ":
             of0, cal0 = (
-                of0 * portals_parameters["solution"]["Pseudo_multipliers"][3],
-                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][3],
+                of0 * portals_parameters["solution"]["scalar_multipliers"][3],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][3],
             )
         elif var == "MtJm2":
             of0, cal0 = (
-                of0 * portals_parameters["solution"]["Pseudo_multipliers"][4],
-                cal0 * portals_parameters["solution"]["Pseudo_multipliers"][4],
+                of0 * portals_parameters["solution"]["scalar_multipliers"][4],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][4],
             )
 
         of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)

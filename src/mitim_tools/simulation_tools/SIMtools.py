@@ -330,7 +330,7 @@ class mitim_simulation:
             # Run simulation
             # ----------------------------------------------------------------------------------------------------------------
             """
-            launchSlurm = True -> Launch as a batch job in the machine chosen
+            launchSlurm = True -> Launch as a batch job in the machine chosen, if partition specified
             launchSlurm = False -> Launch locally as a bash script
             """
 

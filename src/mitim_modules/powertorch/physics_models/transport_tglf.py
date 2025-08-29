@@ -20,7 +20,6 @@ class tglf_model:
         cold_start = self.cold_start
         
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
-        launchMODELviaSlurm = simulation_options["launchEvaluationsAsSlurmJobs"]
         use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
@@ -50,7 +49,6 @@ class tglf_model:
         tglf.run(
             'base_tglf',
             ApplyCorrections=False,
-            launchSlurm= launchMODELviaSlurm,
             cold_start= cold_start,
             forceIfcold_start=True,
             extra_name= self.name,

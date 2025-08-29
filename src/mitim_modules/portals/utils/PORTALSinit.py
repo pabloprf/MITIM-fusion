@@ -20,10 +20,10 @@ def initializeProblem(
     fileStart,
     RelVar_y_max,
     RelVar_y_min,
-    limitsAreRelative=True,
-    hardGradientLimits=None,
+    limits_are_relative=True,
+    yminymax_atleast=None,
     cold_start=False,
-    dvs_fixed=None,
+    fixed_gradients=None,
     start_from_folder=None,
     define_ranges_from_profiles=None,
     seedInitial=None,
@@ -201,18 +201,18 @@ def initializeProblem(
     dictDVs = OrderedDict()
     for var in dictCPs_base:
         for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
-            if limitsAreRelative:
+            if limits_are_relative:
                 y1 = dictCPs_base[var][i] - abs(dictCPs_base[var][i])*RelVar_y_min[var][conti]
                 y2 = dictCPs_base[var][i] + abs(dictCPs_base[var][i])*RelVar_y_max[var][conti]
             else:
                 y1 = torch.tensor(RelVar_y_min[var][conti]).to(dfT)
                 y2 = torch.tensor(RelVar_y_max[var][conti]).to(dfT)
 
-            if hardGradientLimits is not None:
-                if hardGradientLimits[0] is not None:
-                    y1 = torch.tensor(np.min([y1, hardGradientLimits[0]]))
-                if hardGradientLimits[1] is not None:
-                    y2 = torch.tensor(np.max([y2, hardGradientLimits[1]]))
+            if yminymax_atleast is not None:
+                if yminymax_atleast[0] is not None:
+                    y1 = torch.tensor(np.min([y1, yminymax_atleast[0]]))
+                if yminymax_atleast[1] is not None:
+                    y2 = torch.tensor(np.max([y2, yminymax_atleast[1]]))
 
             # Check that makes sense
             if y2-y1 < thr:
@@ -225,10 +225,10 @@ def initializeProblem(
                 base_gradient = torch.rand(1)[0] * (y2 - y1) / 4 + (3 * y1 + y2) / 4
 
             name = f"aL{var}_{i}"
-            if dvs_fixed is None:
+            if fixed_gradients is None:
                 dictDVs[name] = [y1, base_gradient, y2]
             else:
-                dictDVs[name] = [dvs_fixed[name][0], base_gradient, dvs_fixed[name][1]]
+                dictDVs[name] = [fixed_gradients[name][0], base_gradient, fixed_gradients[name][1]]
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Define output dictionaries

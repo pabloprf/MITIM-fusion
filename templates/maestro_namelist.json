@@ -81,7 +81,7 @@
                      "exploration_ranges": {
                           "ymax_rel": 1.0,
                           "ymin_rel": 1.0,
-                          "hardGradientLimits": [null, 4]
+                          "yminymax_atleast": [null, 4]
                 },
                 "change_last_radial_call" : true, 
                 "use_previous_surrogate_data" : true, 

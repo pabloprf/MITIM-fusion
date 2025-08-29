@@ -7,6 +7,7 @@ from functools import partial
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import (
     PORTALSinit,
@@ -147,9 +148,9 @@ class portals(STRATEGYtools.opt_evaluator):
             "portals_transformation_variables": portals_transformation_variables,               # Physics-informed parameters to fit surrogates
             "portals_transformation_variables_trace": portals_transformation_variables_trace,   # Physics-informed parameters to fit surrogates for trace impurities
             "turbulent_exchange_as_surrogate": False,                                           # Run turbulent exchange as surrogate?
-            "Pseudo_multipliers": [1.0]*5,                                                      # [Qe,Qi,Ge] multipliers to calculate pseudo
+            "scalar_multipliers": [1.0]*5,                                                      # [Qe,Qi,Ge] multipliers to calculate pseudo
             "impurity_trick": True,                                                             # If True, fit model to GZ/nZ, valid on the trace limit
-            "fZ0_as_weight": 1.0,                                                               # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+            "fZ0_as_weight": None,                                                               # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
             "fImp_orig": 1.0,
             "additional_params_in_surrogate": additional_params_in_surrogate,
             "keep_full_model_folder": True,                                                     # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
@@ -161,8 +162,6 @@ class portals(STRATEGYtools.opt_evaluator):
         These parameters are communicated to the powertorch object.
         '''
         
-        from mitim_modules.powertorch.utils.TRANSPORTtools import portals_transport_model as transport_evaluator
-
         # -------------------------
         # Transport model settings 
         # -------------------------
@@ -170,7 +169,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
             # Transport model class
             
-            "evaluator": transport_evaluator,
+            "evaluator": TRANSPORTtools.portals_transport_model,
 
             "evaluator_instance_attributes": {
                 "turbulence_model": transport_models[0],
@@ -191,7 +190,6 @@ class portals(STRATEGYtools.opt_evaluator):
                     "use_scan_trick_for_stds": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
                     "keep_files": "base", # minimal: only retrieve minimal files always; base: retrieve all files when running TGLF base; none: always minimal files
                     "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
-                    "launchEvaluationsAsSlurmJobs": True, # Launch each evaluation as a batch job (vs just comand line)
                     "percent_error": 5, # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
                     "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)                
                 },
@@ -238,7 +236,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 "ni_thermals": True,        # Adjust for quasineutrality by modifying the thermal ion densities together with ne
                 "recalculate_ptot": True,   # Recompute PTOT to insert in input file each time
                 "Tfast_ratio": False,       # Keep the ratio of Tfast/Te constant throughout the Te evolution
-                "ensureMachNumber": None,   # Change w0 to match this Mach number when Ti varies
+                "force_mach": None,   # Change w0 to match this Mach number when Ti varies
             },
         }
             
@@ -271,20 +269,19 @@ class portals(STRATEGYtools.opt_evaluator):
 
     def prep(
         self,
-        fileGACODE,
+        mitim_state,
         cold_start=False,
         ymax_rel=1.0,
         ymin_rel=1.0,
-        limitsAreRelative=True,
-        dvs_fixed=None,
-        hardGradientLimits=None,
-        enforceFiniteTemperatureGradients=None,
+        limits_are_relative=True,
+        fixed_gradients=None,
+        yminymax_atleast=None,
+        enforce_finite_aLT=None,
         define_ranges_from_profiles=None,
         start_from_folder=None,
-        reevaluateTargets=0,
+        reevaluate_targets=0,
         seedInitial=None,
         askQuestions=True,
-        transport_evaluator_options=None,
     ):
         """
         Notes:
@@ -294,9 +291,9 @@ class portals(STRATEGYtools.opt_evaluator):
                         'ti': [0.5, 0.5, 0.5, 0.5],
                         'ne': [1.0, 0.5, 0.5, 0.5]
                     }
-            - enforceFiniteTemperatureGradients is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforceFiniteTemperatureGradients = 0.95
+            - enforce_finite_aLT is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
             - start_from_folder is a folder from which to grab optimization_data and optimization_extra
-                (if used with reevaluateTargets>0, change targets by reevaluating with different parameters)
+                (if used with reevaluate_targets>0, change targets by reevaluating with different parameters)
             - seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
 
@@ -328,25 +325,25 @@ class portals(STRATEGYtools.opt_evaluator):
             for prof in self.portals_parameters["solution"]["predicted_channels"]:
                 ymin_rel[prof] = np.array( [ymin_rel0] * len(self.portals_parameters["solution"][key_rhos]) )
 
-        if enforceFiniteTemperatureGradients is not None:
+        if enforce_finite_aLT is not None:
             for prof in ['te', 'ti']:
                 if prof in ymin_rel:
-                    ymin_rel[prof] = np.array(ymin_rel[prof]).clip(min=None,max=enforceFiniteTemperatureGradients)
+                    ymin_rel[prof] = np.array(ymin_rel[prof]).clip(min=None,max=enforce_finite_aLT)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
         PORTALSinit.initializeProblem(
             self,
             self.folder,
-            fileGACODE,
+            mitim_state,
             ymax_rel,
             ymin_rel,
             start_from_folder=start_from_folder,
             define_ranges_from_profiles=define_ranges_from_profiles,
-            dvs_fixed=dvs_fixed,
-            limitsAreRelative=limitsAreRelative,
+            fixed_gradients=fixed_gradients,
+            limits_are_relative=limits_are_relative,
             cold_start=cold_start,
-            hardGradientLimits=hardGradientLimits,
+            yminymax_atleast=yminymax_atleast,
             tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
@@ -359,7 +356,7 @@ class portals(STRATEGYtools.opt_evaluator):
 
         if start_from_folder is not None:
             self.reuseTrainingTabular(
-                start_from_folder, self.folder, reevaluateTargets=reevaluateTargets
+                start_from_folder, self.folder, reevaluate_targets=reevaluate_targets
             )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -510,9 +507,9 @@ class portals(STRATEGYtools.opt_evaluator):
         return key_rhos
 
     def reuseTrainingTabular(
-        self, folderRead, folderNew, reevaluateTargets=0, cold_startIfExists=False):
+        self, folderRead, folderNew, reevaluate_targets=0, cold_startIfExists=False):
         """
-        reevaluateTargets:
+        reevaluate_targets:
                 0: No
                 1: Quick targets from powerstate with no transport calculation
                 2: Full original model (either with transport model targets or powerstate targets, but also calculate transport)
@@ -538,7 +535,7 @@ class portals(STRATEGYtools.opt_evaluator):
             typeMsg="i",
         )
 
-        if reevaluateTargets > 0:
+        if reevaluate_targets > 0:
             print("- Re-evaluate targets", typeMsg="i")
 
             (folderNew / "TargetsRecalculate").mkdir(parents=True, exist_ok=True)
@@ -570,7 +567,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 name = f"portals_{b}_targets_ev{numPORTALS}"
 
                 self_copy = copy.deepcopy(self)
-                if reevaluateTargets == 1:
+                if reevaluate_targets == 1:
                     self_copy.powerstate.transport_options["evaluator"] = None
                     self_copy.powerstate.target_options["options"]["targets_evolve"] = "target_evaluator_method"
 

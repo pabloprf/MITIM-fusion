@@ -264,7 +264,7 @@ def powerstate_to_gacode(
     Ti_thermals = postprocess_input_gacode.get("Ti_thermals", True)
     ni_thermals = postprocess_input_gacode.get("ni_thermals", True)
     recalculate_ptot = postprocess_input_gacode.get("recalculate_ptot", True)
-    ensureMachNumber = postprocess_input_gacode.get("ensureMachNumber", None)
+    force_mach = postprocess_input_gacode.get("force_mach", None)
 
     # ------------------------------------------------------------------------------------------
     # Insert profiles
@@ -323,9 +323,9 @@ def powerstate_to_gacode(
                 print("\t\t* Adjusting ni of thermal ions", typeMsg="i")
                 profiles.scaleAllThermalDensities(scaleFactor=scaleFactor)
 
-    if "w0" not in self.predicted_channels and ensureMachNumber is not None:
+    if "w0" not in self.predicted_channels and force_mach is not None:
         # Rotation fixed to ensure Mach number
-        profiles.introduceRotationProfile(Mach_LF=ensureMachNumber)
+        profiles.introduceRotationProfile(Mach_LF=force_mach)
 
     # ------------------------------------------------------------------------------------------
     # Insert Powers
@@ -402,7 +402,6 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
         else:
             profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
             profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-
     
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
