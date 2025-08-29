@@ -1,49 +1,36 @@
 import json
-from functools import partial
 import numpy as np
-from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import CGYROtools
-from mitim_modules.powertorch.physics_models import transport_tglf
-from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class cgyro_model:
+class gyrokinetic_model:
 
-    def evaluate_turbulence(self):
-
+    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None, out_name = 'CGYROout'):
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options = self.transport_evaluator_options["cgyro"]
-        simulation_options_tglf = self.transport_evaluator_options["tglf"]
+        simulation_options = self.transport_evaluator_options[code]
         cold_start = self.cold_start
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
         run_type = simulation_options["run"]["run_type"]        
 
-        # Run base TGLF always, to keep track of discrepancies! --------------------------------------
-        simulation_options_tglf["use_scan_trick_for_stds"] = None
-        self._evaluate_tglf()
-        # --------------------------------------------------------------------------------------------
-
         # ------------------------------------------------------------------------------------------------------------------------
-        # Prepare CGYRO object
+        # Prepare object
         # ------------------------------------------------------------------------------------------------------------------------
-        
-        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        
-        cgyro = CGYROtools.CGYRO(rhos=rho_locations)
+                
+        gk_object = gk_object(rhos=rho_locations)
 
-        _ = cgyro.prep(
+        _ = gk_object.prep(
             self.powerstate.profiles_transport,
             self.folder,
             )
 
-        subfolder_name = "base_cgyro"
+        subfolder_name = f"base_{code}"
 
-        _ = cgyro.run(
+        _ = gk_object.run(
             subfolder_name,
             cold_start=cold_start,
             forceIfcold_start=True,
@@ -53,10 +40,10 @@ class cgyro_model:
         if run_type in ['normal', 'submit']:
             
             if run_type in ['submit']:
-                cgyro.check(every_n_minutes=10)
-                cgyro.fetch()
+                gk_object.check(every_n_minutes=10)
+                gk_object.fetch()
 
-            cgyro.read(
+            gk_object.read(
                 label=subfolder_name,
                 **simulation_options["read"]
                 )
@@ -65,14 +52,14 @@ class cgyro_model:
             # Pass the information to what power_transport expects
             # ------------------------------------------------------------------------------------------------------------------------
             
-            self.QeGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qe_mean for i in range(len(rho_locations))])
-            self.QeGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qe_std for i in range(len(rho_locations))])
+            self.QeGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Qe_mean for i in range(len(rho_locations))])
+            self.QeGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Qe_std for i in range(len(rho_locations))])
                     
-            self.QiGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qi_mean for i in range(len(rho_locations))])
-            self.QiGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Qi_std for i in range(len(rho_locations))])
+            self.QiGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Qi_mean for i in range(len(rho_locations))])
+            self.QiGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Qi_std for i in range(len(rho_locations))])
                     
-            self.GeGB_turb = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Ge_mean for i in range(len(rho_locations))])
-            self.GeGB_turb_stds = np.array([cgyro.results[subfolder_name]['CGYROout'][i].Ge_std for i in range(len(rho_locations))]) 
+            self.GeGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Ge_mean for i in range(len(rho_locations))])
+            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Ge_std for i in range(len(rho_locations))]) 
             
             self.GZGB_turb = self.QeGB_turb*0.0 #TODO     
             self.GZGB_turb_stds = self.QeGB_turb*0.0 #TODO          
@@ -131,11 +118,25 @@ class cgyro_model:
                 print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target as standard deviation: {Qi_std:.2f} instead of {self.QiGB_turb_stds[i]}", typeMsg='i')
                 self.QiGB_turb_stds[i] = Qi_std
 
+
+class cgyro_model(gyrokinetic_model):
+
+    def evaluate_turbulence(self):
+
+        # Run base TGLF always, to keep track of discrepancies! --------------------------------------
+        simulation_options_tglf = self.transport_evaluator_options["tglf"]
+        simulation_options_tglf["use_scan_trick_for_stds"] = None
+        self._evaluate_tglf()
+        # --------------------------------------------------------------------------------------------
+
+        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO, out_name = 'CGYROout')
+
+
 def pre_checks(self):
     
     plasma = self.powerstate.plasma
 
-    txt = "\nFluxes to be matched by CGYRO ( Target - Neoclassical ):"
+    txt = "\nFluxes to be matched by turbulence ( Target - Neoclassical ):"
 
     # Print gradients
     for var, varn in zip(

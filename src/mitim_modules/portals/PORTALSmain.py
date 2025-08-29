@@ -161,7 +161,7 @@ class portals(STRATEGYtools.opt_evaluator):
         These parameters are communicated to the powertorch object.
         '''
         
-        from mitim_modules.powertorch.utils.TRANSPORTtools import portals_model as transport_evaluator
+        from mitim_modules.powertorch.utils.TRANSPORTtools import portals_transport_model as transport_evaluator
 
         # -------------------------
         # Transport model settings 
@@ -215,6 +215,17 @@ class portals(STRATEGYtools.opt_evaluator):
                     },
                     "Qi_stable_criterion": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
                     "Qi_stable_percent_error": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
+                },
+                # Defaults for GX simulation
+                "gx": {
+                    "run": {
+                        "code_settings": 1,
+                        "extraOptions": {},
+                        "run_type": "normal",   # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
+                    },
+                    "read": {
+                        "tmin": 0.0
+                    },
                 },
             },
             

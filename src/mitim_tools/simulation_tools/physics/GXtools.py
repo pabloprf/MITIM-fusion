@@ -1,7 +1,7 @@
 import netCDF4
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
-from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
+from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
@@ -162,8 +162,6 @@ class GX(SIMtools.mitim_simulation):
         ax1.set_ylabel("Real frequency")
         ax1.legend(loc='best', prop={'size': 4})
         ax2.set_ylabel("Growth rate")
-
-
 
         ax3 = fig.add_subplot(grid[0, 1])
         ax4 = fig.add_subplot(grid[1, 1])
@@ -358,10 +356,12 @@ class GXinput(SIMtools.GACODEinput):
         return param_written
 
 class GXoutput(SIMtools.GACODEoutput):
-    def __init__(self, FolderGACODE, suffix="", **kwargs):
+    def __init__(self, FolderGACODE, suffix="", tmin = 0.0,  **kwargs):
         super().__init__()
         
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
+        
+        self.tmin = tmin
 
         if suffix == "":
             print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
@@ -395,4 +395,23 @@ class GXoutput(SIMtools.GACODEoutput):
         self.Ge = G[:,-1]
         self.GiAll = G[:,:-1]
         self.Gi = self.GiAll.sum(axis=1)
+
+        self._signal_analysis()
+
+    def _signal_analysis(self):
+        
+        flags = [
+            'Qe',
+            'Qi',
+            'Ge',
+        ]
+        
+        for iflag in flags:
+            self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = CGYROutils.apply_ac(
+                    self.t,
+                    self.__dict__[iflag],
+                    tmin=self.tmin,
+                    label_print=iflag,
+                    print_msg=True,
+                    )
 
