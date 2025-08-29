@@ -92,7 +92,7 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped", "transp", "transp_soft", "portals", "portals_soft"]:
+    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 

@@ -28,7 +28,7 @@ class portals_beat(beat):
             exploration_ranges = {
                 'ymax_rel': 1.0,
                 'ymin_rel': 1.0,
-                'hardGradientLimits': [0,2]
+                'yminymax_atleast': [0,2]
             },
             portals_parameters = {},
             initialization_parameters = {},
@@ -406,9 +406,9 @@ def portals_beat_soft_criteria(portals_namelist):
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
 
-    if 'target' not in portals_namelist_soft:
+    if 'target' not in portals_namelist_soft["portals_parameters"]:
         portals_namelist_soft["portals_parameters"]['target'] = {}
-    if 'options' not in portals_namelist_soft['target']:
+    if 'options' not in portals_namelist_soft["portals_parameters"]['target']:
         portals_namelist_soft["portals_parameters"]['target']['options'] = {}
 
     portals_namelist_soft["portals_parameters"]["target"]["options"]["targets_evolve"] = ["qie"]
