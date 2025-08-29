@@ -105,7 +105,7 @@ def initializeProblem(
     # Print warning or question to be careful!
     if len(speciesNotFound) > 0:
 
-        if "qrad" in portals_fun.portals_parameters["target"]["targets_evolve"]:
+        if "qrad" in portals_fun.portals_parameters["target"]["options"]["targets_evolve"]:
         
             answerYN = print(f"\t- Species {speciesNotFound} not found in radiation database, radiation will be zero in PORTALS... is this ok for your predictions?",typeMsg="q" if checkForSpecies else "w")
             if checkForSpecies and (not answerYN):
