@@ -1,0 +1,200 @@
+# -----------------------------------------------------------------
+# Main solver parameters
+# -----------------------------------------------------------------
+
+solution:
+
+  # Specification of radial locations (roa wins over rho, if provided)
+  predicted_roa: null
+  predicted_rho: [0.35, 0.55, 0.75, 0.875, 0.9]
+
+  # Channels to be predicted
+  predicted_channels: ["te", "ti", "ne"]  # ['nZ','w0']
+
+  # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"
+  trace_impurity: null
+
+  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
+  keep_full_model_folder: true
+
+  # Run turbulent exchange as surrogate
+  turbulent_exchange_as_surrogate: false
+
+  # If True, fit model to GZ/nZ, valid on the trace limit
+  impurity_trick: true
+
+  # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+  fZ0_as_weight: null
+  fImp_orig: 1.0
+
+  # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
+  scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
+
+  # Physics-informed parameters to fit surrogates
+  portals_transformation_variables:
+    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
+    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
+    10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne]}
+
+  # Physics-informed parameters to fit surrogates for trace impurities
+  portals_transformation_variables_trace:
+    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
+    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
+    10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne], aLnZ: [aLnZ]}
+
+  additional_params_in_surrogate: []
+
+# -----------------------------------------------------------------
+# Transport model parameters
+# -----------------------------------------------------------------
+
+transport:
+
+  # Transport model class
+  evaluator: "import::mitim_modules.powertorch.utils.TRANSPORTtools.portals_transport_model"
+
+  # Select transport models (when instantiating the evaluator, assign these parameters)
+  evaluator_instance_attributes:
+    turbulence_model: "tglf"
+    neoclassical_model: "neo"
+
+  # Simulation kwargs to be passed directly to run and read commands (defaults here)
+  options:
+
+    # ***********************************
+    # TGLF
+    # ***********************************
+    tglf:
+
+      # Kwargs to be passed to the run command
+      run:
+        code_settings: 6
+        extraOptions: {}
+
+      # Kwargs to be passed to the read command
+      read: {}
+
+      # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+      use_scan_trick_for_stds: 0.02
+
+      # Files to keep from simulation (minimal: only retrieve minimal files always, none: always minimal files, base: retrieve all files)
+      keep_files: "base" 
+
+      # Number of cores to use per TGLF instance
+      cores_per_tglf_instance: 1
+
+      # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
+      percent_error: 5
+
+      # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)
+      Qi_includes_fast: false
+
+    # ***********************************
+    # NEO
+    # ***********************************
+    neo:
+
+      run: {}
+
+      read: {}
+
+      # (%) Error (std, in percent) of model evaluation
+      percent_error: 10
+
+    # ***********************************
+    # CGYRO
+    # ***********************************
+    cgyro:
+
+      run:
+        code_settings: 1
+        extraOptions: {}
+
+        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        run_type: "normal"
+      
+      read:
+        tmin: 0.0
+      
+      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
+      Qi_stable_criterion: 0.01
+
+      # (%) For CGYRO runs, minimum error based on target if case is considered stable
+      Qi_stable_percent_error: 5.0
+
+    # ***********************************
+    # GX
+    # ***********************************
+    gx:
+
+      run:
+
+        code_settings: 1
+        extraOptions: {}
+
+        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        run_type: "normal"
+      
+      read:
+        tmin: 0.0
+
+  # Function to post-process input.gacode only BEFORE passing to transport codes
+  profiles_postprocessing_fun: null
+
+  # Corrections to be applied to each iteration input.gacode file
+  applyCorrections:
+    Ti_thermals: true # Keep all thermal ion temperatures equal to the main Ti
+    ni_thermals: true # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+    recalculate_ptot: true  # Recompute PTOT to insert in input file each time
+    Tfast_ratio: false # Keep the ratio of Tfast/Te constant throughout the Te evolution
+    force_mach: null # Change w0 to match this Mach number when Ti varies
+
+# -----------------------------------------------------------------
+# Target model parameters
+# -----------------------------------------------------------------
+
+target:
+
+  # Target model evaluator
+  evaluator: "import::mitim_modules.powertorch.physics_models.targets_analytic.analytical_model"
+
+  options:
+    targets_evolve: ["qie", "qrad", "qfus"]
+    # Method to calculate targets (tgyro or powerstate)
+    target_evaluator_method: "powerstate"
+    # If True, ignore particle flux profile and assume zero for all radii
+    force_zero_particle_flux: false
+    # If not None, calculate targets with this radial resolution
+    targets_resolution: 20
+    # (%) Error (std, in percent) of model evaluation
+    percent_error: 1
+
+
+# -----------------------------------------------------------------
+# Optimization options (to change the main optimization namelist)
+# -----------------------------------------------------------------
+
+optimization_options:
+
+  initialization_options: 
+    initial_training: 5
+    initialization_fun: "import::mitim_modules.portals.utils.PORTALSoptimization.initialization_simple_relax"
+
+  convergence_options:
+    maximum_iterations: 50
+    stopping_criteria: "import::mitim_modules.portals.PORTALStools.stopping_criteria_portals"
+    stopping_criteria_parameters:
+      maximum_value: 5.e-3     # Reducing residual by 200x is enough
+      maximum_value_is_rel: true
+      minimum_dvs_variation: [10, 5, 0.1] # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
+      ricci_value: 0.05
+      ricci_d0: 2.0
+      ricci_lambda: 0.5
+
+  acquisition_options:
+    relative_improvement_for_stopping: 1.e-2
+    type:  "posterior_mean" # "noisy_logei_mc"
+    optimizers: ["sr", "root"] #, "botorch"]
+
+  surrogate_options:
+    surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"

@@ -97,12 +97,12 @@ class opt_evaluator:
                 IOtools.askNewFolder(self.folder / "Outputs")
 
         if namelist is not None:
-            print(f"\t- Namelist provided: {namelist}", typeMsg="i")
+            print(f"\t- Optimizaiton namelist provided: {namelist}", typeMsg="i")
 
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
-            print("\t- Namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
+            print("\t- Optimizaiton namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
 
             namelist = __mitimroot__ / "templates" / "main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
@@ -110,10 +110,7 @@ class opt_evaluator:
             self.optimization_options = default_namelist_function(self.optimization_options)
 
         else:
-            print(
-                "\t- No namelist provided (likely b/c for reading/plotting purposes)",
-                typeMsg="i",
-            )
+            print("\t- No optimizaiton namelist provided (likely b/c for reading/plotting purposes)",typeMsg="i")
             self.optimization_options = None
 
         self.surrogate_parameters = {

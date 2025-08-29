@@ -113,7 +113,6 @@ class tglf_model:
                 cold_start=cold_start,
                 extra_name=self.name,
                 cores_per_tglf_instance=cores_per_tglf_instance,
-                launchMODELviaSlurm=launchMODELviaSlurm,
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ['minimal', 'base'],
                 **simulation_options["run"]
@@ -179,7 +178,6 @@ def _run_tglf_uncertainty_model(
     extra_name="", 
     remove_folders_out = False,
     cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
-    launchMODELviaSlurm=False,
     Qi_includes_fast=False,
     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
     ):
@@ -244,7 +242,6 @@ def _run_tglf_uncertainty_model(
                     positionIon=impurityPosition+2,
                     attempts_execution=2, 
                     only_minimal_files=only_minimal_files,
-                    launchSlurm=launchMODELviaSlurm,
                     )
 
     # Remove folders because they are heavy to carry many throughout

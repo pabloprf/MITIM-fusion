@@ -1,99 +1,36 @@
 import shutil
 import torch
 import copy
+import yaml, importlib
+from collections import OrderedDict
 import numpy as np
 import dill as pickle_dill
-from functools import partial
 from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.portals.utils import (
     PORTALSinit,
-    PORTALSoptimization,
     PORTALSanalysis,
 )
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools import __mitimroot__
 from IPython import embed
-
-
-"""
-Reading analysis for PORTALS has more options than standard:
---------------------------------------------------------------------------------------------------------
-	Standard:
-	**************************************
-	  -1:  Only improvement
-		0:  Only optimization_results
-		1:  0 + Pickle
-		2:  1 + Final redone in this machine
-		
-	PORTALS-specific:
-	**************************************
-		3:  1 + PORTALSplot metrics  (only works if optimization_extra is provided or Execution exists)
-		4:  3 + PORTALSplot expected (only works if optimization_extra is provided or Execution exists)
-		5:  2 + 4                    (only works if optimization_extra is provided or Execution exists)
-
-		>2 will also plot profiles & gradients comparison (original, initial, best)
-"""
-
-def default_namelist(optimization_options):
-    """
-    This is to be used after reading the namelist, so self.optimization_options should be completed with main defaults.
-    """
-
-    # Initialization
-    optimization_options["initialization_options"]["initial_training"] = 5
-    optimization_options["initialization_options"]["initialization_fun"] = PORTALSoptimization.initialization_simple_relax
-
-    # Strategy for stopping
-    optimization_options["convergence_options"]["maximum_iterations"] = 50
-    optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
-    optimization_options['convergence_options']['stopping_criteria_parameters'] =  {
-                "maximum_value": 5e-3,                  # Reducing residual by 200x is enough
-                "maximum_value_is_rel": True,
-                "minimum_dvs_variation": [10, 5, 0.1],  # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
-                "ricci_value": 0.05,
-                "ricci_d0": 2.0,
-                "ricci_lambda": 0.5,
-            }
-
-    optimization_options['acquisition_options']['relative_improvement_for_stopping'] = 1e-2
-
-    # Surrogate
-    optimization_options["surrogate_options"]["surrogate_selection"] = partial(PORTALStools.surrogate_selection_portals)
-
-    # if CGYROrun:
-    #     # CGYRO runs should prioritize accuracy
-    #     optimization_options["acquisition_options"]["type"] = "posterior_mean"
-    #     optimization_options["acquisition_options"]["optimizers"] = ["root", "botorch", "ga"]
-    # else:
-    #     # TGLF runs should prioritize speed
-    optimization_options["acquisition_options"]["type"] = "posterior_mean" # "noisy_logei_mc"
-    optimization_options["acquisition_options"]["optimizers"] = ["sr", "root"] #, "botorch"]   
-
-    return optimization_options
 
 
 class portals(STRATEGYtools.opt_evaluator):
     def __init__(
         self, 
         folder,                             # Folder where the PORTALS workflow will be run
-        transport_models = ['tglf', 'neo'],
-        namelist=None,                      # If None, default namelist will be used. If not None, it will be read and used
+        portals_namelist = None,
         tensor_options = {
             "dtype": torch.double,
             "device": torch.device("cpu"),
         },
-        portals_transformation_variables = None,          # If None, use defaults for both main and trace
-        portals_transformation_variables_trace = None,
-        additional_params_in_surrogate = [] # Additional parameters to be used in the surrogate (e.g. ['q'])
         ):
-        '''
-        Note that additional_params_in_surrogate They must exist in the plasma dictionary of the powerstate object
-        '''
+
         
         print("\n-----------------------------------------------------------------------------------------")
         print("\t\t\t PORTALS class module")
@@ -101,171 +38,31 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Store folder, namelist. Read namelist
 
-        super().__init__(
-            folder,
-            namelist=namelist,
-            tensor_options=tensor_options,
-            default_namelist_function=(
-                partial(default_namelist)
-                if (namelist is None)
-                else None
-            ),
-        )
+        super().__init__(folder,tensor_options=tensor_options)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.portals_parameters = {}
+        # Read optimization namelist (always the default, the values to be modified are in the portals one)
+        namelist = __mitimroot__ / "templates" / "main.namelist.json"
+        self.optimization_options = IOtools.read_mitim_nml(namelist)
 
-        """
-		Physics-informed parameters to fit surrogates
-		---------------------------------------------
-		"""
+        # Read PORTALS namelist (if not provided, use default)
+        if portals_namelist is None:
+            portals_namelist = __mitimroot__ / "templates" / "portals.namelist.yaml"
+            print(f"\t- No PORTALS namelist provided, using default in {IOtools.clipstr(portals_namelist)}")
+        else:
+            print(f"\t- Using provided PORTALS namelist in {IOtools.clipstr(portals_namelist)}")
+        self.portals_parameters = read_portals_nml(portals_namelist)
 
-        (
-            portals_transformation_variables,
-            portals_transformation_variables_trace,
-        ) = PORTALStools.default_portals_transformation_variables(additional_params = additional_params_in_surrogate)
-
-        """
-		PORTALS-specific parameters (i.e. on the transport solver level, not model)
-		----------------------------------------------------------------------------
-		"""
-
-        self.portals_parameters["solution"] = {
-            
-            # Specification of radial locations (roa wins over rho, if provided)
-            "predicted_roa": [0.35, 0.55, 0.75, 0.875, 0.9],
-            "predicted_rho": [0.3,  0.45,  0.6,  0.75, 0.9],
-            
-            # Channels to be predicted
-            "predicted_channels": ["te", "ti", "ne"],  # ['nZ','w0']
-            
-            "trace_impurity": None,  # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"
-            
-            # PORTALS
-            "portals_transformation_variables": portals_transformation_variables,               # Physics-informed parameters to fit surrogates
-            "portals_transformation_variables_trace": portals_transformation_variables_trace,   # Physics-informed parameters to fit surrogates for trace impurities
-            "turbulent_exchange_as_surrogate": False,                                           # Run turbulent exchange as surrogate?
-            "scalar_multipliers": [1.0]*5,                                                      # [Qe,Qi,Ge] multipliers to calculate pseudo
-            "impurity_trick": True,                                                             # If True, fit model to GZ/nZ, valid on the trace limit
-            "fZ0_as_weight": None,                                                               # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
-            "fImp_orig": 1.0,
-            "additional_params_in_surrogate": additional_params_in_surrogate,
-            "keep_full_model_folder": True,                                                     # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
-        }
-
-        '''
-        model_parameters
-        ----------------
-        These parameters are communicated to the powertorch object.
-        '''
-        
-        # -------------------------
-        # Transport model settings 
-        # -------------------------
-        self.portals_parameters["transport"] = {
-
-            # Transport model class
-            
-            "evaluator": TRANSPORTtools.portals_transport_model,
-
-            "evaluator_instance_attributes": {
-                "turbulence_model": transport_models[0],
-                "neoclassical_model": transport_models[1],
-            },
-
-            # Simulation kwargs to be passed directly to run and read commands
-            
-            "options": {
-                
-                # Defaults for TGLF simulation
-                "tglf": {
-                    "run": {
-                        "code_settings": 6,
-                        "extraOptions": {},
-                    },
-                    "read": {},
-                    "use_scan_trick_for_stds": 0.02,  # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
-                    "keep_files": "base", # minimal: only retrieve minimal files always; base: retrieve all files when running TGLF base; none: always minimal files
-                    "cores_per_tglf_instance": 1,  # Number of cores to use per TGLF instance
-                    "percent_error": 5, # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
-                    "Qi_includes_fast": False,  # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)                
-                },
-                
-                # Defaults for NEO simulation
-                "neo": {
-                    "run": {},
-                    "read": {},
-                    "percent_error": 10 # (%) Error (std, in percent) of model evaluation
-                    },
-                
-                # Defaults for CGYRO simulation
-                "cgyro": {
-                    "run": {
-                        "code_settings": 1,
-                        "extraOptions": {},
-                        "run_type": "normal",   # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
-                    },
-                    "read": {
-                        "tmin": 0.0
-                    },
-                    "Qi_stable_criterion": 0.01,  # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
-                    "Qi_stable_percent_error": 5.0,  # (%) For CGYRO runs, minimum error based on target if case is considered stable
-                },
-                # Defaults for GX simulation
-                "gx": {
-                    "run": {
-                        "code_settings": 1,
-                        "extraOptions": {},
-                        "run_type": "normal",   # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
-                    },
-                    "read": {
-                        "tmin": 0.0
-                    },
-                },
-            },
-            
-            # Corrections to be applied to each iteration input.gacode file
-            
-            "profiles_postprocessing_fun": None, # Function to post-process input.gacode only BEFORE passing to transport codes
-            
-            "applyCorrections": {
-                "Ti_thermals": True,        # Keep all thermal ion temperatures equal to the main Ti
-                "ni_thermals": True,        # Adjust for quasineutrality by modifying the thermal ion densities together with ne
-                "recalculate_ptot": True,   # Recompute PTOT to insert in input file each time
-                "Tfast_ratio": False,       # Keep the ratio of Tfast/Te constant throughout the Te evolution
-                "force_mach": None,   # Change w0 to match this Mach number when Ti varies
-            },
-        }
-            
-        # -------------------------
-        # Target model settings 
-        # -------------------------
-        
-        from mitim_modules.powertorch.physics_models.targets_analytic import analytical_model as target_evaluator
-        
-        self.portals_parameters["target"] = {
-            "evaluator": target_evaluator,
-            "options": {
-                "targets_evolve": ["qie", "qrad", "qfus"],
-                "target_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
-                "force_zero_particle_flux": False,  # If True, ignore particle flux profile and assume zero for all radii
-                "targets_resolution": 20,  # If not None, calculate targets with this radial resolution (defaults target_evaluator_method to powerstate)
-                "percent_error": 1 # (%) Error (std, in percent) of model evaluation 
-            }
-        }
+        # Apply the optimization options to the proper namelist and drop it from portals_parameters
+        if 'optimization_options' in self.portals_parameters:
+            self.optimization_options = IOtools.deep_dict_update(self.optimization_options, self.portals_parameters['optimization_options'])
+            del self.portals_parameters['optimization_options']
 
         # Grab all the flags here in a way that, after changing the dictionary extenrally, I make sure it's the same flags as PORTALS expects
-        
-        def _grab_flags_dictionary(d):
-            keys = {}
-            for key in d.keys():
-                keys[key] = _grab_flags_dictionary(d[key]) if isinstance(d[key], dict) else None
-            return keys
-
-        self.potential_flags = _grab_flags_dictionary(self.portals_parameters)
+        self.potential_flags = IOtools.deep_grab_flags_dict(self.portals_parameters)
 
     def prep(
         self,
@@ -736,3 +533,20 @@ def analyze_results(
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.mitim_model.optimization_object
+
+def read_portals_nml(path: str):
+
+    def resolve(x):
+        if isinstance(x, dict):
+            return {k: resolve(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [resolve(v) for v in x]
+        if isinstance(x, str) and x.startswith("import::"):
+            modattr = x[len("import::"):]
+            module_name, attr = modattr.rsplit(".", 1)
+            return getattr(importlib.import_module(module_name), attr)
+        return x
+
+    with open(path, "r") as f:
+        cfg = yaml.safe_load(f)
+    return resolve(cfg)

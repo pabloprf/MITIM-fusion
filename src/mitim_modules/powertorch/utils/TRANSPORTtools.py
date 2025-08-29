@@ -323,10 +323,6 @@ class power_transport:
                 dum[f"{mapper[var][1]}_tr_{suffix}"] = np.array(json_dict['fluxes_mean'][var]) * gb
                 dum[f"{mapper[var][1]}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var]) * gb
 
-            mapperQ = {
-                
-            }
-
             if units == 'GB':
                 
                 print("\t\t- File has fluxes in GB units... using GB units from powerstate to convert to real units")
@@ -407,6 +403,7 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
         
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
+        
         if self.turbulence_model == 'tglf':
             return tglf_model.evaluate_turbulence(self)
         elif self.turbulence_model == 'cgyro':

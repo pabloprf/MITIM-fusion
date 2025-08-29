@@ -312,6 +312,21 @@ def clipstr(txt, chars=40):
         txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
+        
+def deep_dict_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, dict) and isinstance(d.get(k), dict):
+            deep_dict_update(d[k], v)   # recurse into nested dict
+        else:
+            d[k] = v               # overwrite at lowest level
+    return d
+
+def deep_grab_flags_dict(d):
+    keys = {}
+    for key in d.keys():
+        keys[key] = deep_grab_flags_dict(d[key]) if isinstance(d[key], dict) else None
+    return keys
+
 def receiveWebsite(url, data=None):
     NumTriesAfterTimeOut = 60
     secWaitTimeOut = 10
