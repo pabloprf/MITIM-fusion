@@ -55,8 +55,21 @@
                 },
                 "ptop_multiplier": 1.0,
                 "TioverTe": 1.0
-            }
-              
+            } 
+          },
+          "eped_initializer_beat": {
+            "use_default": false,
+            "eped_namelist":{
+                "nn_location": "$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras",
+                "norm_location": "$MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt",
+                "corrections_set": {
+                    "Bt": 12.2,
+                    "R": 1.85,
+                    "a": 0.57
+                },
+                "ptop_multiplier": 1.0,
+                "TioverTe": 1.0
+            } 
           },
           "portals_beat": {
                 "use_default": false,
