@@ -1355,7 +1355,7 @@ def default_nml(
         "Fuel": 2.5,
     },
     pservers=[1, 1, 0],
-    TGLFsettings=5,
+    code_settings=5,
     useMMX = False,
     isolver = False,
     grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
@@ -1414,7 +1414,7 @@ def default_nml(
         AddHe4ifDT=AddHe4ifDT,
         isolver=isolver,
         PTsolver=True,
-        TGLFsettings=TGLFsettings,
+        code_settings=code_settings,
         grTGLF=grTGLF,
         **transp_params
     )

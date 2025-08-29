@@ -513,7 +513,7 @@ class transp_output:
 		"""
 
         # ****** Settings *********
-        TGLFsettings = 5
+        code_settings = 5
         d_perp_cm = {0.7: 0.757 / np.sqrt(2) / (np.cos(11 * (np.pi / 180)))}
         # *************************
 
@@ -540,7 +540,7 @@ class transp_output:
                             quantity=quantity,
                             rho=location,
                             time=self.t[index],
-                            TGLFsettings=TGLFsettings,
+                            code_settings=code_settings,
                             d_perp_cm=d_perp_cm,
                         )
                         success = success and True
@@ -14122,7 +14122,7 @@ class transp_output:
         rho=0.50,
         time=None,
         avTime=0.0,
-        TGLFsettings=1,
+        code_settings=1,
         d_perp_cm=None,
     ):
         if time is None:
@@ -14147,7 +14147,7 @@ class transp_output:
                 subfolder="chi_per",
                 label="chi_pert",
                 analysisType="e",
-                TGLFsettings=TGLFsettings,
+                code_settings=code_settings,
             )
 
             value = self.TGLFstd[int(time * 1000)].scans["chi_pert"]["chi_inc"][0]
@@ -14160,7 +14160,7 @@ class transp_output:
                 subfolder="impurity",
                 label="impurity",
                 analysisType="Z",
-                TGLFsettings=TGLFsettings,
+                code_settings=code_settings,
                 trace=addTrace,
             )
 
@@ -14174,7 +14174,7 @@ class transp_output:
         if "FLUC" in typeAnalysis:
             self.TGLFstd[int(time * 1000)].run(
                 subfolder="fluctuations",
-                TGLFsettings=TGLFsettings,
+                code_settings=code_settings,
                 forceIfcold_start=True,
             )
 
@@ -14676,7 +14676,7 @@ class transp_output:
         time=None,
         rhoRange=[0.4, 0.8],
         timeRange=0.5,
-        TGLFsettings=1,
+        code_settings=1,
         cold_start=False,
         plotYN=True,
     ):
@@ -14700,7 +14700,7 @@ class transp_output:
             subfolder="chi_per",
             label="chi_pert",
             analysisType="e",
-            TGLFsettings=TGLFsettings,
+            code_settings=code_settings,
             cold_start=cold_start,
             cdf_open=self,
         )

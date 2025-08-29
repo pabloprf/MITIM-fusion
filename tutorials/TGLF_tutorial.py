@@ -21,7 +21,7 @@ Run standandalone TGLF
 # Run TGLF in subfolder
 tglf.run(
     subfolder="yes_em_folder",
-    TGLFsettings=5,
+    code_settings=5,
     extraOptions={},
     cold_start=False
     )
@@ -32,7 +32,7 @@ tglf.read(label="yes_em")
 # Run TGLF in a different subfolder with different settings
 tglf.run(
     subfolder="no_em_folder",
-    TGLFsettings=5,
+    code_settings=5,
     extraOptions={"USE_BPER": False},
     cold_start=False,
 )
@@ -50,7 +50,7 @@ Run TGLF scan
 '''
 
 tglf.runScan(	subfolder = 'scan1',
-                TGLFsettings  = 5,
+                code_settings  = 5,
                 cold_start       = False,
                 variable      = 'RLTS_1',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
@@ -58,7 +58,7 @@ tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 
 tglf.runScan(	subfolder = 'scan2',
-                TGLFsettings  = 5,
+                code_settings  = 5,
                 cold_start       = False,
                 variable      = 'RLTS_2',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
@@ -75,7 +75,7 @@ Automatic scan of turbulence drives
 
 tglf.runScanTurbulenceDrives(	
                 subfolder = 'turb_drives',
-                TGLFsettings  = 5,
+                code_settings  = 5,
                 cold_start       = False)
 
 tglf.plotScanTurbulenceDrives(label='turb_drives')
@@ -89,7 +89,7 @@ Automatic scan of turbulence drives
 tglf.runAnalysis(
             subfolder 	= 'chi_e',
             analysisType  	= 'chi_e',
-            TGLFsettings  	= 5,
+            code_settings  	= 5,
             cold_start 		= False,
             label 			= 'chi_eu')
 
@@ -105,7 +105,7 @@ for i in[1,2,3,4,5,6]:
     tglf.run(
         subfolder = f'settings{i}',
         runWaveForms  = [0.67],
-        TGLFsettings  = i,
+        code_settings  = i,
         cold_start       = False)
     tglf.read(label=f'settings{i}')
 

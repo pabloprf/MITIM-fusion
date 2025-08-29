@@ -97,7 +97,7 @@ for test in tests:
             portals_fun.portals_parameters["initialization"]["remove_fast"] = True
             portals_fun.portals_parameters["initialization"]["quasineutrality"] = True
             portals_fun.portals_parameters["initialization"]["enforce_same_aLn"] = True
-            portals_fun.portals_parameters["transport"]["options"]["TGLFsettings"] = 2
+            portals_fun.portals_parameters["transport"]["options"]["code_settings"] = 2
 
             portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne"]
 

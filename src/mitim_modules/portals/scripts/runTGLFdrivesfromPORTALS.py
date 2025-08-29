@@ -38,14 +38,14 @@ ion = args.ion
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
+tglf, code_settings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
 
 tglf.runScanTurbulenceDrives(
     subfolder="turb",
     resolutionPoints=num,
     variation=var,
     variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
-    TGLFsettings=TGLFsettings,
+    code_settings=code_settings,
     extraOptions=extraOptions,
     cold_start=cold_start,
     runWaveForms=wf,

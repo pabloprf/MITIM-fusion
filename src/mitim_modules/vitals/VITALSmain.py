@@ -51,7 +51,7 @@ class vitals(STRATEGYtools.opt_evaluator):
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.TGLFparameters = {"TGLFsettings": 2, "extraOptions": {}}
+        self.TGLFparameters = {"code_settings": 2, "extraOptions": {}}
 
         self.VITALSparameters = {
             "rel_error": 0.02,  # Standard deviation (relative to value)
@@ -304,7 +304,7 @@ def runTGLF(
     tglf.run(
         subfolder=f"{folder_label}",
         cold_start=cold_start,
-        TGLFsettings=self.TGLFparameters["TGLFsettings"],
+        code_settings=self.TGLFparameters["code_settings"],
         forceIfcold_start=True,
         extraOptions=extraOptions,
         multipliers=multipliers,

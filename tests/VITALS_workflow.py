@@ -18,7 +18,7 @@ if cold_start and os.path.exists(folderWork):
     os.system(f"rm -r {folderWork}")
 
 rho = 0.5
-TGLFsettings = 2
+code_settings = 2
 
 dvs = ["RLTS_1", "RLTS_2", "RLNS_1", "ZEFF", "TAUS_2"]
 ofs = ["Qe", "Qi", "TeFluct", "neTe"]
@@ -31,7 +31,7 @@ dvs_max = [1.3, 1.3, 1.3, 1.3, 1.3]
 
 tglf = TGLFtools.TGLF(rhos=[rho])
 cdf = tglf.prep_using_tgyro(folderWork, cold_start=cold_start, inputgacode=inputgacode)
-tglf.run(subfolder="run_base/", TGLFsettings=TGLFsettings, cold_start=cold_start)
+tglf.run(subfolder="run_base/", code_settings=code_settings, cold_start=cold_start)
 
 # ********************************************************************************
 # Then, add experimental data of fluctuation information and error bars
@@ -70,7 +70,7 @@ tglf.save_pkl(file)
 
 vitals_fun = VITALSmain.vitals(folderWork)
 vitals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
-vitals_fun.TGLFparameters["TGLFsettings"] = TGLFsettings
+vitals_fun.TGLFparameters["code_settings"] = code_settings
 
 vitals_fun.prep(file, rho, ofs, dvs, dvs_min, dvs_max)
 

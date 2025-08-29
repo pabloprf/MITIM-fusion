@@ -228,7 +228,7 @@ def _run_tglf_uncertainty_model(
                     variablesDrives = variables_to_scan,
                     varUpDown     = relative_scan,
                     minimum_delta_abs = minimum_delta_abs,
-                    TGLFsettings = code_settings,
+                    code_settings = code_settings,
                     extraOptions = extraOptions,
                     ApplyCorrections = False,
                     add_baseline_to = 'none',

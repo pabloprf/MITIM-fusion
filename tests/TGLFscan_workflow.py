@@ -17,7 +17,7 @@ tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 tglf.prep(input_gacode,folder, cold_start=cold_start)
 
 tglf.run_scan(	subfolder = 'scan1',
-                TGLFsettings  = None,
+                code_settings  = None,
                 cold_start       = cold_start,
                 runWaveForms  = [0.67, 10.0],
                 variable      = 'RLTS_1',
@@ -30,7 +30,7 @@ tglf.fn.close()
 
 tglf.runScanTurbulenceDrives(	
                 subfolder = 'turb_drives',
-                TGLFsettings  = None,
+                code_settings  = None,
                 resolutionPoints=3,
                 cold_start       = cold_start)
 

@@ -544,7 +544,7 @@ class PORTALSanalyzer:
             folder, profilesclass_custom=profiles, cold_start=cold_start, forceIfcold_start=True
         )
 
-        TGLFsettings = self.portals_parameters["transport"]["options"]["TGLFsettings"]
+        code_settings = self.portals_parameters["transport"]["options"]["code_settings"]
         extraOptionsTGLF = self.portals_parameters["transport"]["options"]["extraOptionsTGLF"]
         PredictionSet = [
             int("te" in self.portals_parameters["solution"]["predicted_channels"]),
@@ -552,7 +552,7 @@ class PORTALSanalyzer:
             int("ne" in self.portals_parameters["solution"]["predicted_channels"]),
         ]
 
-        return tgyro, self.rhos, PredictionSet, TGLFsettings, extraOptionsTGLF
+        return tgyro, self.rhos, PredictionSet, code_settings, extraOptionsTGLF
 
     def extractTGLF(self, folder=None, positions=None, evaluation=None, cold_start=False, modified_profiles=False):
         if evaluation is None:
@@ -593,10 +593,10 @@ class PORTALSanalyzer:
         tglf = TGLFtools.TGLF(rhos=rhos)
         _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
 
-        TGLFsettings = self.portals_parameters["transport"]["options"]["TGLFsettings"]
+        code_settings = self.portals_parameters["transport"]["options"]["code_settings"]
         extraOptions = self.portals_parameters["transport"]["options"]["extraOptionsTGLF"]
 
-        return tglf, TGLFsettings, extraOptions
+        return tglf, code_settings, extraOptions
 
     # ****************************************************************************
     # UTILITIES for post-analysis
@@ -613,7 +613,7 @@ class PORTALSanalyzer:
     ):
         """
         This runs TGLF for all evaluations, all radii.
-        This is convenient if I want to re=run TGLF with different settings, e.g. different TGLFsettings,
+        This is convenient if I want to re=run TGLF with different settings, e.g. different code_settings,
         that you can provide as keyword arguments.
         """
 
@@ -625,14 +625,14 @@ class PORTALSanalyzer:
         ranges = [self.ibest] if onlyBest else range(self.ilast + 1)
 
         for ev in ranges:
-            tglf, TGLFsettings, extraOptions = self.extractTGLF(
+            tglf, code_settings, extraOptions = self.extractTGLF(
                 folder=folder / f"Evaluation.{ev}", evaluation=ev, cold_start=cold_start
             )
 
             kwargsTGLF_this = copy.deepcopy(kwargsTGLF)
 
-            if "TGLFsettings" not in kwargsTGLF_this:
-                kwargsTGLF_this["TGLFsettings"] = TGLFsettings
+            if "code_settings" not in kwargsTGLF_this:
+                kwargsTGLF_this["code_settings"] = code_settings
             if "extraOptions" not in kwargsTGLF_this:
                 kwargsTGLF_this["extraOptions"] = extraOptions
 

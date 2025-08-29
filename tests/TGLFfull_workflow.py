@@ -22,7 +22,7 @@ _ = tglf.prep_using_tgyro(folder, cold_start=cold_start)
 
 tglf.run(
     subfolder="runSAT2",
-    TGLFsettings=5,
+    code_settings=5,
     runWaveForms=[0.1,0.3],
     cold_start=cold_start,
     forceIfcold_start=True,
@@ -31,7 +31,7 @@ tglf.read(label="runSAT2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
     subfolder="runSAT0",
-    TGLFsettings=2,
+    code_settings=2,
     runWaveForms=[0.5],
     cold_start=cold_start,
     forceIfcold_start=True,
@@ -40,7 +40,7 @@ tglf.read(label="runSAT0", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
     subfolder="runSAT3",
-    TGLFsettings=6,
+    code_settings=6,
     runWaveForms=[0.5],
     cold_start=cold_start,
     forceIfcold_start=True,

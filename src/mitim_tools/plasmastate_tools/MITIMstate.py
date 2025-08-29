@@ -2202,7 +2202,7 @@ class mitim_state:
     # Code conversions
     # ************************************************************************************************************************************************
 
-    def to_tglf(self, r=[0.5], TGLFsettings=1, r_is_rho = True):
+    def to_tglf(self, r=[0.5], code_settings=1, r_is_rho = True):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2285,7 +2285,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addTGLFcontrol(TGLFsettings)
+            controls = GACODEdefaults.addTGLFcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles

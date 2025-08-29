@@ -95,9 +95,9 @@ def add_code_settings(options,code_settings, models_file = "input.tglf.models.js
     return options
 
 
-def TGLFinTRANSP(TGLFsettings, NS=3):
+def TGLFinTRANSP(code_settings, NS=3):
     
-    TGLFoptions = addTGLFcontrol(TGLFsettings, NS=NS)
+    TGLFoptions = addTGLFcontrol(code_settings, NS=NS)
 
     """
 	------------------------------------------------------------------------------------------------------
