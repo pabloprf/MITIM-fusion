@@ -199,19 +199,19 @@ class vitals(STRATEGYtools.opt_evaluator):
         for iquant in dictOFs:
             if "_exp" not in iquant:
                 if iquant == "Qe":
-                    value = tglf.results["tglf1"]["TGLFout"][0].Qe_unn
+                    value = tglf.results["tglf1"]["output"][0].Qe_unn
                 elif iquant == "Qi":
-                    value = tglf.results["tglf1"]["TGLFout"][0].Qi_unn
+                    value = tglf.results["tglf1"]["output"][0].Qi_unn
                 elif iquant == "TeFluct":
-                    value = tglf.results["tglf1"]["TGLFout"][
+                    value = tglf.results["tglf1"]["output"][
                         0
                     ].AmplitudeSpectrum_Te_level
                 elif iquant == "neFluct":
-                    value = tglf.results["tglf1"]["TGLFout"][
+                    value = tglf.results["tglf1"]["output"][
                         0
                     ].AmplitudeSpectrum_ne_level
                 elif iquant == "neTe":
-                    value = tglf.results["tglf1"]["TGLFout"][0].neTeSpectrum_level
+                    value = tglf.results["tglf1"]["output"][0].neTeSpectrum_level
 
                 dictOFs[iquant]["value"] = value
                 dictOFs[iquant]["error"] = np.abs(

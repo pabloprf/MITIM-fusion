@@ -251,10 +251,10 @@ class portals(STRATEGYtools.opt_evaluator):
         self.portals_parameters["target"] = {
             "evaluator": target_evaluator,
             "options": {
-                "TypeTarget": 3,
+                "targets_evolve": ["qie", "qrad", "qfus"],
                 "target_evaluator_method": "powerstate",  # Method to calculate targets (tgyro or powerstate)
-                "forceZeroParticleFlux": False,  # If True, ignore particle flux profile and assume zero for all radii
-                "fineTargetsResolution": 20,  # If not None, calculate targets with this radial resolution (defaults target_evaluator_method to powerstate)
+                "force_zero_particle_flux": False,  # If True, ignore particle flux profile and assume zero for all radii
+                "targets_resolution": 20,  # If not None, calculate targets with this radial resolution (defaults target_evaluator_method to powerstate)
                 "percent_error": 1 # (%) Error (std, in percent) of model evaluation 
             }
         }
@@ -572,7 +572,7 @@ class portals(STRATEGYtools.opt_evaluator):
                 self_copy = copy.deepcopy(self)
                 if reevaluateTargets == 1:
                     self_copy.powerstate.transport_options["evaluator"] = None
-                    self_copy.powerstate.target_options["options"]["TypeTarget"] = "powerstate"
+                    self_copy.powerstate.target_options["options"]["targets_evolve"] = "target_evaluator_method"
 
                 _, dictOFs = runModelEvaluator(
                     self_copy,

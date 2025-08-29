@@ -51,7 +51,6 @@ class NEO(SIMtools.mitim_simulation):
             'complete_variation': None,
             'default_cores': 1,  # Default cores to use in the simulation
             'output_class': NEOoutput,
-            'output_store': 'NEOout'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -88,10 +87,10 @@ class NEO(SIMtools.mitim_simulation):
         for i,label in enumerate(labels):
             roa, QeGB, QiGB, GeGB = [], [], [], []
             for irho in range(len(self.rhos)):
-                roa.append(self.results[label]['NEOout'][irho].roa)
-                QeGB.append(self.results[label]['NEOout'][irho].Qe)
-                QiGB.append(self.results[label]['NEOout'][irho].Qi)
-                GeGB.append(self.results[label]['NEOout'][irho].Ge)
+                roa.append(self.results[label]['output'][irho].roa)
+                QeGB.append(self.results[label]['output'][irho].Qe)
+                QiGB.append(self.results[label]['output'][irho].Qi)
+                GeGB.append(self.results[label]['output'][irho].Ge)
                 
             axQe.plot(roa, QeGB, label=label, color=colors[i], marker='o', linestyle='-')
             axQi.plot(roa, QiGB, label=label, color=colors[i], marker='o', linestyle='-')
@@ -115,7 +114,7 @@ class NEO(SIMtools.mitim_simulation):
         positionIon=2
     ):
 
-        output_object = "NEOout"
+        output_object = "output"
 
         variable_mapping = {
             'scanned_variable': ["parsed", variable, None],

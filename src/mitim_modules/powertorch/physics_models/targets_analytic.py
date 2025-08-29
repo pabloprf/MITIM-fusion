@@ -28,11 +28,13 @@ class analytical_model(TARGETStools.power_targets):
 
     def evaluate(self):
 
-        if self.powerstate.target_options["options"]["TypeTarget"] >= 2:
+        if "qie" in self.powerstate.target_options["options"]["targets_evolve"]:
             self._evaluate_energy_exchange()
 
-        if self.powerstate.target_options["options"]["TypeTarget"] == 3:
+        if "qfus" in self.powerstate.target_options["options"]["targets_evolve"]:
             self._evaluate_alpha_heating()
+            
+        if "qrad" in self.powerstate.target_options["options"]["targets_evolve"]:
             self._evaluate_radiation()
 
     def _evaluate_energy_exchange(self):

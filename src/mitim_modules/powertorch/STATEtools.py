@@ -57,12 +57,12 @@ class powerstate:
             target_options = {
             "evaluator": targets_analytic.analytical_model,
             "options": {
-                "TypeTarget": 3,
+                "targets_evolve": ["qie", "qrad", "qfus"],
                 "target_evaluator_method": "powerstate",
                 },
             }
             
-        target_options["options"].setdefault("forceZeroParticleFlux", False)
+        target_options["options"].setdefault("force_zero_particle_flux", False)
         target_options["options"].setdefault("percent_error", 1.0)
 
         if tensor_options is None:
@@ -84,7 +84,7 @@ class powerstate:
         self.predicted_channels = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
         self.impurityPosition = evolution_options.get("impurityPosition", 1)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
-        self.fineTargetsResolution = target_options.get("fineTargetsResolution", None)
+        self.targets_resolution = target_options.get("targets_resolution", None)
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
         self.fImp_orig = evolution_options.get("fImp_orig", 1.0)
         rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
@@ -159,7 +159,7 @@ class powerstate:
         # Fine targets (need to do it here so that it's only once per definition of powerstate)
         # -------------------------------------------------------------------------------------
 
-        if self.fineTargetsResolution is None:
+        if self.targets_resolution is None:
             self.plasma_fine, self.positions_targets = None, None
         else:
             self._fine_grid()
@@ -184,7 +184,7 @@ class powerstate:
     def _high_res_rho(self):
 
         rho_new = torch.linspace(
-            self.plasma["rho"][0], self.plasma["rho"][-1], self.fineTargetsResolution
+            self.plasma["rho"][0], self.plasma["rho"][-1], self.targets_resolution
         ).to(self.plasma["rho"])
         for i in self.plasma["rho"]:
             if not torch.isclose(
@@ -698,7 +698,7 @@ class powerstate:
             targets = self.target_options["evaluator"](self)
 
         # [Optional] Calculate local targets and integrals on a fine grid
-        if self.fineTargetsResolution is not None:
+        if self.targets_resolution is not None:
             targets.fine_grid()
 
         # Evaluate local quantities
@@ -708,13 +708,13 @@ class powerstate:
         targets.flux_integrate()
 
         # Come back to original grid
-        if self.fineTargetsResolution is not None:
+        if self.targets_resolution is not None:
             targets.coarse_grid()
 
         # Merge targets, calculate errors and normalize
         targets.postprocessing(
             relative_error_assumed=relative_error_assumed,
-            forceZeroParticleFlux=self.target_options["options"]["forceZeroParticleFlux"]
+            force_zero_particle_flux=self.target_options["options"]["force_zero_particle_flux"]
             )
 
     def calculateTransport(

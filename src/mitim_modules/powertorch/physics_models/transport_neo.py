@@ -42,11 +42,11 @@ class neo_model:
             label='base',
             **simulation_options["read"])
         
-        Qe = np.array([neo.results['base']['NEOout'][i].Qe for i in range(len(rho_locations))])
-        Qi = np.array([neo.results['base']['NEOout'][i].Qi for i in range(len(rho_locations))])
-        Ge = np.array([neo.results['base']['NEOout'][i].Ge for i in range(len(rho_locations))])
-        GZ = np.array([neo.results['base']['NEOout'][i].GiAll[impurityPosition-1] for i in range(len(rho_locations))])
-        Mt = np.array([neo.results['base']['NEOout'][i].Mt for i in range(len(rho_locations))])
+        Qe = np.array([neo.results['base']['output'][i].Qe for i in range(len(rho_locations))])
+        Qi = np.array([neo.results['base']['output'][i].Qi for i in range(len(rho_locations))])
+        Ge = np.array([neo.results['base']['output'][i].Ge for i in range(len(rho_locations))])
+        GZ = np.array([neo.results['base']['output'][i].GiAll[impurityPosition-1] for i in range(len(rho_locations))])
+        Mt = np.array([neo.results['base']['output'][i].Mt for i in range(len(rho_locations))])
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Pass the information to what power_transport expects

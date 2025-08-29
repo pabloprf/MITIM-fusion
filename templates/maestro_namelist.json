@@ -62,7 +62,7 @@
                 "use_default": false,
                 "portals_namelist" : {
                      "portals_parameters": {
-                          "forceZeroParticleFlux": true,
+                          "force_zero_particle_flux": true,
                           "keep_full_model_folder": false,
                           "cores_per_tglf_instance": 1
                      },

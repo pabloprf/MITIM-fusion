@@ -61,8 +61,7 @@ class CGYRO(SIMtools.mitim_simulation):
             'input_class': CGYROinput,
             'complete_variation': None,
             'default_cores': 16,  # Default cores to use in the simulation
-            'output_class': CGYROutils.CGYROout,
-            'output_store': 'CGYROout'
+            'output_class': CGYROutils.CGYROoutput,
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -138,7 +137,7 @@ class CGYRO(SIMtools.mitim_simulation):
         for label in labels:
             for i,rho in enumerate(self.rhos):
                 labels_with_rho.append(f"{label}_{rho}")
-                self.results[f'{label}_{rho}'] = self.results_all[label]['CGYROout'][i]
+                self.results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
         labels = labels_with_rho
         # ------------------------------------------------
         

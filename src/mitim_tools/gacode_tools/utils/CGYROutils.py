@@ -50,7 +50,7 @@ class CGYROlinear_scan:
         self.Qe_mean = np.array(self.Qe_mean)
         self.Qi_mean = np.array(self.Qi_mean)
 
-class CGYROout(SIMtools.GACODEoutput):
+class CGYROoutput(SIMtools.GACODEoutput):
     def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
         
         super().__init__()

@@ -71,13 +71,16 @@ class power_targets:
         qe = self.powerstate.plasma["te"]*0.0
         qi = self.powerstate.plasma["te"]*0.0
         
-        if self.powerstate.target_options['options']['TypeTarget'] >= 2:
+        if "qie" in self.powerstate.target_options['options']['targets_evolve']:
             qe += -self.powerstate.plasma["qie"]
             qi +=  self.powerstate.plasma["qie"]
-        
-        if self.powerstate.target_options['options']['TypeTarget'] == 3:
-            qe +=  self.powerstate.plasma["qfuse"] - self.powerstate.plasma["qrad"]
+
+        if "qfus" in self.powerstate.target_options['options']['targets_evolve']:
+            qe +=  self.powerstate.plasma["qfuse"]
             qi +=  self.powerstate.plasma["qfusi"]
+
+        if "qrad" in self.powerstate.target_options['options']['targets_evolve']:
+            qe -=  self.powerstate.plasma["qrad"]
 
         q = torch.cat((qe, qi)).to(qe)
         self.P = self.powerstate.from_density_to_flux(q, force_dim=q.shape[0])
@@ -89,14 +92,19 @@ class power_targets:
         # **************************************************************************************************
 
         # Interpolate results from fine to coarse (i.e. whole point is that it is better than integrate interpolated values)
-        if self.powerstate.target_options['options']['TypeTarget'] >= 2:
+        if "qie" in self.powerstate.target_options['options']['targets_evolve']:
             for i in ["qie"]:
                 self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
         
-        if self.powerstate.target_options['options']['TypeTarget'] == 3:
+        if "qfus" in self.powerstate.target_options['options']['targets_evolve']:
             for i in [
                 "qfuse",
                 "qfusi",
+            ]:
+                self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
+
+        if "qrad" in self.powerstate.target_options['options']['targets_evolve']:
+            for i in [
                 "qrad",
                 "qrad_bremms",
                 "qrad_line",
@@ -104,13 +112,15 @@ class power_targets:
             ]:
                 self.powerstate.plasma[i] = self.powerstate.plasma[i][:, self.powerstate.positions_targets]
        
+       
+       
         self.P = self.P[:, self.powerstate.positions_targets]
 
         # Recover variables calculated prior to the fine-targets method
         for i in self.plasma_original:
             self.powerstate.plasma[i] = self.plasma_original[i]
 
-    def postprocessing(self, forceZeroParticleFlux=False, relative_error_assumed=1.0):
+    def postprocessing(self, force_zero_particle_flux=False, relative_error_assumed=1.0):
 
         # **************************************************************************************************
         # Plug-in targets that were fixed
@@ -122,7 +132,7 @@ class power_targets:
         self.powerstate.plasma["GZ1E20m2"] = self.powerstate.plasma["GZ_fixedtargets"]    # 1E20/s/m^2
         self.powerstate.plasma["MtJm2"]     = self.powerstate.plasma["MtJm2_fixedtargets"]    # J/m^2
 
-        if forceZeroParticleFlux:
+        if force_zero_particle_flux:
             self.powerstate.plasma["Ge1E20m2"]     = self.powerstate.plasma["Ge1E20m2"] * 0
 
         # Convective fluxes

@@ -352,8 +352,8 @@ class mitim_simulation:
             
             tmpFolder = self.FolderGACODE / f"tmp_{code}"
             IOtools.askNewFolder(tmpFolder, force=True)
-
-            kkeys = [keys.strip('/') for keys in code_executor.keys()]
+            
+            kkeys = [str(keys).replace('/','') for keys in code_executor.keys()]
             log_simulation_file=self.FolderGACODE / f"mitim_simulation_{kkeys[0]}.log" # Refer with the first folder
             self.simulation_job = FARMINGtools.mitim_job(tmpFolder, log_simulation_file=log_simulation_file)
 
@@ -808,20 +808,20 @@ class mitim_simulation:
     ):
         print("> Reading simulation results")
 
-        class_output = [self.run_specifications['output_class'], self.run_specifications['output_store']]
+        class_output = self.run_specifications['output_class']
 
         # If no specified folder, check the last one
         if folder is None:
             folder = self.FolderSimLast
             
         self.results[label] = {
-            class_output[1]:[],
+            'output':[],
             'parsed': [],
             "x": np.array(self.rhos),
             }
         for rho in self.rhos:
 
-            SIMout = class_output[0](
+            SIMout = class_output(
                 folder,
                 suffix=f"_{rho:.4f}" if suffix is None else suffix,
                 **kwargs_to_class_output
@@ -836,7 +836,7 @@ class mitim_simulation:
             else:
                 print("No normalization sets found.")
 
-            self.results[label][class_output[1]].append(SIMout)
+            self.results[label]['output'].append(SIMout)
 
             self.results[label]['parsed'].append(buildDictFromInput(SIMout.inputFile) if SIMout.inputFile else None)
 

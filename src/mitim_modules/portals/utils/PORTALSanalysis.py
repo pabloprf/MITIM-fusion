@@ -158,7 +158,7 @@ class PORTALSanalyzer:
         self.runWithImpurity = self.powerstate.impurityPosition if "nZ" in self.predicted_channels else None
 
         self.runWithRotation = "w0" in self.predicted_channels
-        self.forceZeroParticleFlux = self.portals_parameters["target"]["options"]["forceZeroParticleFlux"]
+        self.force_zero_particle_flux = self.portals_parameters["target"]["options"]["force_zero_particle_flux"]
 
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")

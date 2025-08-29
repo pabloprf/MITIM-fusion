@@ -6,7 +6,7 @@ from IPython import embed
 
 class gyrokinetic_model:
 
-    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None, out_name = 'CGYROout'):
+    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
@@ -51,15 +51,15 @@ class gyrokinetic_model:
             # ------------------------------------------------------------------------------------------------------------------------
             # Pass the information to what power_transport expects
             # ------------------------------------------------------------------------------------------------------------------------
-            
-            self.QeGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Qe_mean for i in range(len(rho_locations))])
-            self.QeGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Qe_std for i in range(len(rho_locations))])
+
+            self.QeGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Qe_mean for i in range(len(rho_locations))])
+            self.QeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Qe_std for i in range(len(rho_locations))])
                     
-            self.QiGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Qi_mean for i in range(len(rho_locations))])
-            self.QiGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Qi_std for i in range(len(rho_locations))])
+            self.QiGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Qi_mean for i in range(len(rho_locations))])
+            self.QiGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Qi_std for i in range(len(rho_locations))])
                     
-            self.GeGB_turb = np.array([gk_object.results[subfolder_name][out_name][i].Ge_mean for i in range(len(rho_locations))])
-            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name][out_name][i].Ge_std for i in range(len(rho_locations))]) 
+            self.GeGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Ge_mean for i in range(len(rho_locations))])
+            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Ge_std for i in range(len(rho_locations))]) 
             
             self.GZGB_turb = self.QeGB_turb*0.0 #TODO     
             self.GZGB_turb_stds = self.QeGB_turb*0.0 #TODO          
@@ -129,7 +129,7 @@ class cgyro_model(gyrokinetic_model):
         self._evaluate_tglf()
         # --------------------------------------------------------------------------------------------
 
-        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO, out_name = 'CGYROout')
+        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO, out_name = 'output')
 
 
 def pre_checks(self):

@@ -69,16 +69,16 @@ class tglf_model:
             **simulation_options["read"])
         
         # Grab values
-        Qe = np.array([tglf.results['base']['TGLFout'][i].Qe for i in range(len(rho_locations))])
-        Qi = np.array([tglf.results['base']['TGLFout'][i].Qi for i in range(len(rho_locations))])
-        Ge = np.array([tglf.results['base']['TGLFout'][i].Ge for i in range(len(rho_locations))])
-        GZ = np.array([tglf.results['base']['TGLFout'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
-        Mt = np.array([tglf.results['base']['TGLFout'][i].Mt for i in range(len(rho_locations))])
-        S = np.array([tglf.results['base']['TGLFout'][i].Se for i in range(len(rho_locations))])
+        Qe = np.array([tglf.results['base']['output'][i].Qe for i in range(len(rho_locations))])
+        Qi = np.array([tglf.results['base']['output'][i].Qi for i in range(len(rho_locations))])
+        Ge = np.array([tglf.results['base']['output'][i].Ge for i in range(len(rho_locations))])
+        GZ = np.array([tglf.results['base']['output'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
+        Mt = np.array([tglf.results['base']['output'][i].Mt for i in range(len(rho_locations))])
+        S = np.array([tglf.results['base']['output'][i].Se for i in range(len(rho_locations))])
 
         if Qi_includes_fast:
             
-            Qifast = [tglf.results['base']['TGLFout'][i].Qifast for i in range(len(rho_locations))]
+            Qifast = [tglf.results['base']['output'][i].Qifast for i in range(len(rho_locations))]
             
             if Qifast.sum() != 0.0:
                 print(f"\t- Qi includes fast ions, adding their contribution")

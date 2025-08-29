@@ -12,12 +12,12 @@ from IPython import embed
 
 def calculator(
     input_gacode,
-    TypeTarget=3,
+    targets_evolve=["qie", "qrad", "qfus"],
     folder="~/scratch/",
     cold_start=True,
     rho_vec=np.linspace(0.1, 0.9, 9),
     profProvided=False,
-    fineTargetsResolution = None,
+    targets_resolution = None,
 ):
     profiles = input_gacode if profProvided else PROFILEStools.gacode_state(input_gacode)
 
@@ -29,9 +29,9 @@ def calculator(
         target_options={
             "evaluator": targets_analytic.analytical_model,
             "options": {
-                "TypeTarget": TypeTarget,
+                "targets_evolve": targets_evolve,
                 "target_evaluator_method":  "powerstate",
-                "fineTargetsResolution": fineTargetsResolution
+                "targets_resolution": targets_resolution
                 },
         },
         transport_options={

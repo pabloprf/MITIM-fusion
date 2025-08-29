@@ -4,7 +4,5 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class gx_model(gyrokinetic_model):
-
     def evaluate_turbulence(self):
-        
-        self._evaluate_gyrokinetic_model(code = 'gx', gk_object = GXtools.GX, out_name = 'CGXout')
+        self._evaluate_gyrokinetic_model(code = 'gx', gk_object = GXtools.GX)

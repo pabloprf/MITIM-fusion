@@ -246,7 +246,7 @@ def PORTALSanalyzer_plotMetrics(
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
-                    power.plasma['Ge1E20m2'].cpu().numpy() * (1 - int(self.forceZeroParticleFlux)),
+                    power.plasma['Ge1E20m2'].cpu().numpy() * (1 - int(self.force_zero_particle_flux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -382,7 +382,7 @@ def PORTALSanalyzer_plotMetrics(
             col=col,
             lab=lab,
             msFlux=msFlux,
-            forceZeroParticleFlux=self.forceZeroParticleFlux,
+            force_zero_particle_flux=self.force_zero_particle_flux,
             maxStore=indexToMaximize == indexUse,
             decor=self.ibest == indexUse,
             plotFlows=plotFlows and (self.ibest == indexUse),
@@ -2101,7 +2101,7 @@ def PORTALSanalyzer_plotModelComparison(
         else:
             val_calc = np.array(
                 [
-                    self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
+                    self.tglf_full.results["ev0"]["output"][j].__dict__[
                         quantityX.replace("[TGLF]", "")
                     ]
                     for j in range(len(self.rhos))
@@ -2151,7 +2151,7 @@ def PORTALSanalyzer_plotModelComparison(
         else:
             val_calc = np.array(
                 [
-                    self.tglf_full.results["ev0"]["TGLFout"][j].__dict__[
+                    self.tglf_full.results["ev0"]["output"][j].__dict__[
                         quantityX.replace("[TGLF]", "")
                     ]
                     for j in range(len(self.rhos))
@@ -2291,7 +2291,7 @@ def plotModelComparison_quantity(
         if "[TGLF]" in quantityX:
             X.append(
                 [
-                    self.tglf_full.results[f"ev{i}"]["TGLFout"][j].__dict__[
+                    self.tglf_full.results[f"ev{i}"]["output"][j].__dict__[
                         quantityX.replace("[TGLF]", "")
                     ]
                     for j in range(len(self.rhos))
@@ -2835,7 +2835,7 @@ def plotFluxComparison(
     axne_f,
     axnZ_f,
     axw0_f,
-    forceZeroParticleFlux=False,
+    force_zero_particle_flux=False,
     runWithImpurity=3,
     labZ="Z",
     includeFirst=True,
@@ -3012,7 +3012,7 @@ def plotFluxComparison(
 
     Qe_tar = power.plasma['QeMWm2'].cpu().numpy()[0][ixF:]
     Qi_tar = power.plasma['QiMWm2'].cpu().numpy()[0][ixF:]
-    Ge_tar = power.plasma['Ge1E20m2'].cpu().numpy()[0][ixF:] * (1-int(forceZeroParticleFlux))
+    Ge_tar = power.plasma['Ge1E20m2'].cpu().numpy()[0][ixF:] * (1-int(force_zero_particle_flux))
     GZ_tar = power.plasma['GZ1E20m2'].cpu().numpy()[0][ixF:]
     Mt_tar = power.plasma['MtJm2'].cpu().numpy()[0][ixF:]
 
@@ -3112,7 +3112,7 @@ def plotFluxComparison(
                     y = tBest.derived[var] * mult
 
                 if var == "ge_10E20m2":
-                    y *= 1 - int(forceZeroParticleFlux)
+                    y *= 1 - int(force_zero_particle_flux)
 
                 ax.plot(
                     (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),

@@ -161,7 +161,6 @@ class TGLF(SIMtools.mitim_simulation):
             'complete_variation': completeVariation_TGLF,
             'default_cores': 4,  # Default cores to use in the simulation
             'output_class': TGLFoutput,
-            'output_store': 'TGLFout'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -296,9 +295,9 @@ class TGLF(SIMtools.mitim_simulation):
 
                             # Only unstable ones
                             kys_n = []
-                            for j in range(len(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky)):
-                                if self.results[f"ky{ky_single0}"]["TGLFout"][i].g[0, j] > 0.0:
-                                    kys_n.append(self.results[f"ky{ky_single0}"]["TGLFout"][i].ky[j])
+                            for j in range(len(self.results[f"ky{ky_single0}"]["output"][i].ky)):
+                                if self.results[f"ky{ky_single0}"]["output"][i].g[0, j] > 0.0:
+                                    kys_n.append(self.results[f"ky{ky_single0}"]["output"][i].ky[j])
                             kys_n = np.array(kys_n)
                             # ----
 
@@ -732,13 +731,13 @@ class TGLF(SIMtools.mitim_simulation):
             for irho in range(len(self.rhos)):
                 successful_normalization = (
                     successful_normalization
-                    and self.results[label]["TGLFout"][irho].unnormalization_successful
+                    and self.results[label]["output"][irho].unnormalization_successful
                 )
                 max_num_species = np.max(
-                    [max_num_species, self.results[label]["TGLFout"][irho].num_species]
+                    [max_num_species, self.results[label]["output"][irho].num_species]
                 )
 
-                for il in self.results[label]["TGLFout"][irho].fields:
+                for il in self.results[label]["output"][irho].fields:
                     if il not in max_fields:
                         max_fields.append(il)
 
@@ -1006,10 +1005,10 @@ class TGLF(SIMtools.mitim_simulation):
                 # --------------------------------
                 # Plot Raw TGLF (normalized)
                 # --------------------------------
-                self.results[label]["TGLFout"][irho].plotTGLF_Summary(
+                self.results[label]["output"][irho].plotTGLF_Summary(
                     c=colors[cont], label=full_label, axs=axsTGLF1, irho_cont=irho_cont
                 )
-                self.results[label]["TGLFout"][irho].plotTGLF_Contributors(
+                self.results[label]["output"][irho].plotTGLF_Contributors(
                     c=colors[cont],
                     label=full_label,
                     axs=axsTGLF2,
@@ -1017,11 +1016,11 @@ class TGLF(SIMtools.mitim_simulation):
                     title_legend=title_legend,
                     cont=cont,
                 )
-                self.results[label]["TGLFout"][irho].plotTGLF_Model(
+                self.results[label]["output"][irho].plotTGLF_Model(
                     axs=axsTGLF3, c=colors[cont], label=full_label
                 )
 
-                self.results[label]["TGLFout"][irho].plotTGLF_Fluctuations(
+                self.results[label]["output"][irho].plotTGLF_Fluctuations(
                     axs=axsTGLF_flucts,
                     c=colors[cont],
                     label=full_label,
@@ -1030,7 +1029,7 @@ class TGLF(SIMtools.mitim_simulation):
                     cont=cont,
                 )
 
-                self.results[label]["TGLFout"][irho].plotTGLF_Field(
+                self.results[label]["output"][irho].plotTGLF_Field(
                     quantity="phi",
                     c=colors[cont],
                     label=full_label,
@@ -1041,7 +1040,7 @@ class TGLF(SIMtools.mitim_simulation):
                 )
 
                 if "a_par" in max_fields:
-                    self.results[label]["TGLFout"][irho].plotTGLF_Field(
+                    self.results[label]["output"][irho].plotTGLF_Field(
                         quantity="a_par",
                         c=colors[cont],
                         label=full_label,
@@ -1051,7 +1050,7 @@ class TGLF(SIMtools.mitim_simulation):
                         cont=cont,
                     )
                 if "a_per" in max_fields:
-                    self.results[label]["TGLFout"][irho].plotTGLF_Field(
+                    self.results[label]["output"][irho].plotTGLF_Field(
                         quantity="a_per",
                         c=colors[cont],
                         label=full_label,
@@ -1084,9 +1083,9 @@ class TGLF(SIMtools.mitim_simulation):
                 if successful_normalization:
                     GACODEplotting.plotTGLFspectrum(
                         [axS00, axS10],
-                        self.results[label]["TGLFout"][irho].ky,
-                        self.results[label]["TGLFout"][irho].g[0, :],
-                        freq=self.results[label]["TGLFout"][irho].f[0, :],
+                        self.results[label]["output"][irho].ky,
+                        self.results[label]["output"][irho].g[0, :],
+                        freq=self.results[label]["output"][irho].f[0, :],
                         coeff=0.0,
                         c=colors[cont],
                         ls="-",
@@ -1114,22 +1113,22 @@ class TGLF(SIMtools.mitim_simulation):
             for irho_cont in range(len(self.rhos)):
                 irho = np.where(self.results[label]["x"] == self.rhos[irho_cont])[0][0]
 
-                if self.results[label]["TGLFout"][irho].unnormalization_successful:
-                    Qe.append(self.results[label]["TGLFout"][irho].Qe_unn)
-                    Qi.append(self.results[label]["TGLFout"][irho].Qi_unn)
-                    Ge.append(self.results[label]["TGLFout"][irho].Ge_unn)
+                if self.results[label]["output"][irho].unnormalization_successful:
+                    Qe.append(self.results[label]["output"][irho].Qe_unn)
+                    Qi.append(self.results[label]["output"][irho].Qi_unn)
+                    Ge.append(self.results[label]["output"][irho].Ge_unn)
                     TeF.append(
-                        self.results[label]["TGLFout"][irho].AmplitudeSpectrum_Te_level
+                        self.results[label]["output"][irho].AmplitudeSpectrum_Te_level
                     )
-                    neTe.append(self.results[label]["TGLFout"][irho].neTeSpectrum_level)
+                    neTe.append(self.results[label]["output"][irho].neTeSpectrum_level)
 
-                roas.append(self.results[label]["TGLFout"][irho].roa)
+                roas.append(self.results[label]["output"][irho].roa)
 
-                QeGB.append(self.results[label]["TGLFout"][irho].Qe)
-                QiGB.append(self.results[label]["TGLFout"][irho].Qi)
-                GeGB.append(self.results[label]["TGLFout"][irho].Ge)
+                QeGB.append(self.results[label]["output"][irho].Qe)
+                QiGB.append(self.results[label]["output"][irho].Qi)
+                GeGB.append(self.results[label]["output"][irho].Ge)
 
-            if self.results[label]["TGLFout"][irho].unnormalization_successful:
+            if self.results[label]["output"][irho].unnormalization_successful:
                 axT2.plot(self.rhos, Qe, "-o", c=colorLab[0], lw=2, label=full_label)
                 axS01.plot(self.rhos, Qe, "-o", c=colorLab[0], lw=2, label=full_label)
 
@@ -1410,7 +1409,7 @@ class TGLF(SIMtools.mitim_simulation):
                     a = normalization["rmin"][-1] * 100
                     rhosa = rho_s / a
 
-                    kys = self.results[label]["TGLFout"][irho].ky / rho_s
+                    kys = self.results[label]["output"][irho].ky / rho_s
 
                     xP = np.linspace(0, kys[-1], 1000)
 
@@ -1431,7 +1430,7 @@ class TGLF(SIMtools.mitim_simulation):
                         yP = np.ones(len(xP))
 
                     ax = axFluc00
-                    fluct = self.results[label]["TGLFout"][irho].AmplitudeSpectrum_Te
+                    fluct = self.results[label]["output"][irho].AmplitudeSpectrum_Te
                     ylabel = "$A_{T_e}(k_y)$"
                     GACODEplotting.plotTGLFfluctuations(
                         ax,
@@ -1455,7 +1454,7 @@ class TGLF(SIMtools.mitim_simulation):
                     axFluc00Sym.plot(xP, yP, ls="-.", lw=0.5, color=colors[cont])
 
                     ax = axFluc10e
-                    fluct = self.results[label]["TGLFout"][
+                    fluct = self.results[label]["output"][
                         irho
                     ].AmplitudeSpectrum_Te * np.interp(kys, xP, yP)
                     ylabel = "$A_{T_e}(k_y)$*W"
@@ -1478,7 +1477,7 @@ class TGLF(SIMtools.mitim_simulation):
                     ax.plot(kysPlot, fluctPlot, "--", lw=0.3, color=colors[cont])
 
                     ax = axFluc01
-                    fluct = self.results[label]["TGLFout"][irho].AmplitudeSpectrum_ne
+                    fluct = self.results[label]["output"][irho].AmplitudeSpectrum_ne
                     ylabel = "$A_{n_e}(k_y)$"
                     GACODEplotting.plotTGLFfluctuations(
                         ax,
@@ -1502,7 +1501,7 @@ class TGLF(SIMtools.mitim_simulation):
                     axFluc01Sym.plot(xP, yP, ls="-.", lw=0.5, color=colors[cont])
 
                     ax = axFluc11e
-                    fluct = self.results[label]["TGLFout"][
+                    fluct = self.results[label]["output"][
                         irho
                     ].AmplitudeSpectrum_ne * np.interp(kys, xP, yP)
                     ylabel = "$A_{n_e}(k_y)$*W"
@@ -1527,10 +1526,10 @@ class TGLF(SIMtools.mitim_simulation):
 
                     # ---
                     for inmode in range(
-                        self.results[label]["TGLFout"][irho].num_nmodes
+                        self.results[label]["output"][irho].num_nmodes
                     ):
                         ax = axFluc02
-                        fluct = self.results[label]["TGLFout"][irho].neTeSpectrum[
+                        fluct = self.results[label]["output"][irho].neTeSpectrum[
                             inmode, :
                         ]
                         ylabel = "$n_eT_e(k_y)$"
@@ -1568,7 +1567,7 @@ class TGLF(SIMtools.mitim_simulation):
                         )
 
                         ax = axFluc12e
-                        fluct = self.results[label]["TGLFout"][irho].neTeSpectrum[
+                        fluct = self.results[label]["output"][irho].neTeSpectrum[
                             inmode, :
                         ] * np.interp(kys, xP, yP)
                         ylabel = "$n_eT_e(k_y)$*W"
@@ -1647,12 +1646,12 @@ class TGLF(SIMtools.mitim_simulation):
                     ][0]
 
                     T.append(
-                        self.results[label]["TGLFout"][irho].AmplitudeSpectrum_Te_level
+                        self.results[label]["output"][irho].AmplitudeSpectrum_Te_level
                     )
                     N.append(
-                        self.results[label]["TGLFout"][irho].AmplitudeSpectrum_ne_level
+                        self.results[label]["output"][irho].AmplitudeSpectrum_ne_level
                     )
-                    NT.append(self.results[label]["TGLFout"][irho].neTeSpectrum_level)
+                    NT.append(self.results[label]["output"][irho].neTeSpectrum_level)
                     TL.append(f"{labZX}$\\rho_N={self.rhos[irho_cont]:.4f}$")
                     C.append(colors[cont])
                     cont += 1
@@ -1823,15 +1822,15 @@ class TGLF(SIMtools.mitim_simulation):
 
                         # all eigenvalues
                         ax00.plot(
-                            self.results[label]["TGLFout"][irho_cont].ky,
-                            self.results[label]["TGLFout"][irho_cont].g[0],
+                            self.results[label]["output"][irho_cont].ky,
+                            self.results[label]["output"][irho_cont].g[0],
                             "-s",
                             markersize=3,
                             color=colors[cont],
                         )
                         ax10.plot(
-                            self.results[label]["TGLFout"][irho_cont].ky,
-                            self.results[label]["TGLFout"][irho_cont].f[0],
+                            self.results[label]["output"][irho_cont].ky,
+                            self.results[label]["output"][irho_cont].f[0],
                             "-s",
                             markersize=3,
                             color=colors[cont],
@@ -1857,15 +1856,15 @@ class TGLF(SIMtools.mitim_simulation):
 
                             # all eigenvalues
                             ax00.plot(
-                                self.results[label]["TGLFout"][irho_cont].ky,
-                                self.results[label]["TGLFout"][irho_cont].g[i + 1],
+                                self.results[label]["output"][irho_cont].ky,
+                                self.results[label]["output"][irho_cont].g[i + 1],
                                 "-s",
                                 markersize=1,
                                 color=colors[cont],
                             )
                             ax10.plot(
-                                self.results[label]["TGLFout"][irho_cont].ky,
-                                self.results[label]["TGLFout"][irho_cont].f[i + 1],
+                                self.results[label]["output"][irho_cont].ky,
+                                self.results[label]["output"][irho_cont].f[i + 1],
                                 "-s",
                                 markersize=1,
                                 color=colors[cont],
@@ -1996,7 +1995,7 @@ class TGLF(SIMtools.mitim_simulation):
         positionIon=2
     ):
         
-        output_object = "TGLFout"
+        output_object = "output"
 
         variable_mapping = {
             'scanned_variable': ["parsed", variable, None],
@@ -3845,30 +3844,30 @@ def readTGLFresults(
 
     for rho in rhos:
         # Read full folder
-        TGLFout = TGLFoutput(
+        output = TGLFoutput(
             FolderGACODE_tmp,
             suffix=f"_{rho:.4f}" if suffix is None else suffix,
             require_all_files=require_all_files,
         )
 
         # Unnormalize
-        TGLFout.unnormalize(
+        output.unnormalize(
             NormalizationSets["SELECTED"],
             rho=rho,
             convolution_fun_fluct=convolution_fun_fluct,
             factorTot_to_Perp=factorTot_to_Perp,
         )
 
-        TGLFstd_TGLFout.append(TGLFout)
-        inputclasses.append(TGLFout.inputclass)
+        TGLFstd_TGLFout.append(output)
+        inputclasses.append(output.inputclass)
 
-        parse = SIMtools.buildDictFromInput(TGLFout.inputFile)
+        parse = SIMtools.buildDictFromInput(output.inputFile)
         parsed.append(parse)
 
     results = {
         "inputclasses": inputclasses,
         "parsed": parsed,
-        "TGLFout": TGLFstd_TGLFout,
+        "output": TGLFstd_TGLFout,
         "x": np.array(rhos),
     }
 

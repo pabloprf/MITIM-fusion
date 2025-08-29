@@ -120,12 +120,16 @@ def gacode_to_powerstate(self, rho_vec=None):
     quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20"] * 0.0
     quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
 
-    if self.target_options["options"]["TypeTarget"] < 3:
-        # Fusion and radiation fixed if 1,2
-        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MW"] - input_gacode.derived["qrad_MW"]
+    if 'qfus' not in self.target_options["options"]["targets_evolve"]:
+        # Fusion fixed
+        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MW"]
         quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qi_fus_MW"]
+   
+    if 'qrad' not in self.target_options["options"]["targets_evolve"]:
+        # Fusion fixed
+        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qrad_MW"]
     
-    if self.target_options["options"]["TypeTarget"] < 2:
+    if 'qie' not in self.target_options["options"]["targets_evolve"]:
         # Exchange fixed if 1
         quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qe_exc_MW"]
         quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qe_exc_MW"]
@@ -367,9 +371,9 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
             target_options={
                 "evaluator": targets_analytic.analytical_model,
                 "options": {
-                    "TypeTarget": self.target_options["options"]["TypeTarget"], # Important to keep the same as in the original
+                    "targets_evolve": self.target_options["options"]["targets_evolve"], # Important to keep the same as in the original
                     "target_evaluator_method": "powerstate",
-                    "forceZeroParticleFlux": self.target_options["options"]["forceZeroParticleFlux"],
+                    "force_zero_particle_flux": self.target_options["options"]["force_zero_particle_flux"],
                     "percent_error": self.target_options["options"]["percent_error"]
                     }
                 },
@@ -382,12 +386,13 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
 
     conversions = {}
 
-    if self.target_options["options"]["TypeTarget"] > 1:
+    if 'qie' in self.target_options["options"]["targets_evolve"]:
         conversions['qie'] = "qei(MW/m^3)"
-    if self.target_options["options"]["TypeTarget"] > 2:
+    if 'qrad' in self.target_options["options"]["targets_evolve"]:
         conversions['qrad_bremms'] = "qbrem(MW/m^3)"
         conversions['qrad_sync'] = "qsync(MW/m^3)"
         conversions['qrad_line'] = "qline(MW/m^3)"
+    if 'qfus' in self.target_options["options"]["targets_evolve"]:
         conversions['qfuse'] = "qfuse(MW/m^3)"
         conversions['qfusi'] = "qfusi(MW/m^3)"
 

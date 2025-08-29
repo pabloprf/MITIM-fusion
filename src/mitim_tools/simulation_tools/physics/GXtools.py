@@ -58,7 +58,6 @@ class GX(SIMtools.mitim_simulation):
             'complete_variation': None,
             'default_cores': 4,  # Default gpus to use in the simulation
             'output_class': GXoutput,
-            'output_store': 'GXout'
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -104,7 +103,7 @@ class GX(SIMtools.mitim_simulation):
         i = 0
         for label in labels:
             for irho in range(len(self.rhos)):
-                c = self.results[label]['GXout'][irho]
+                c = self.results[label]['output'][irho]
                 
                 typeLs = '-' if c.t.shape[0]>20 else '-s'
                 
@@ -146,7 +145,7 @@ class GX(SIMtools.mitim_simulation):
         i = 0
         for label in labels:
             for irho in range(len(self.rhos)):
-                c = self.results[label]['GXout'][irho]
+                c = self.results[label]['output'][irho]
                 
                 typeLs = '-' if c.t.shape[0]>20 else '-s'
                 
@@ -169,7 +168,7 @@ class GX(SIMtools.mitim_simulation):
         i = 0
         for label in labels:
             for irho in range(len(self.rhos)):
-                c = self.results[label]['GXout'][irho]
+                c = self.results[label]['output'][irho]
                 ax3.plot(c.ky, c.w[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
                 ax4.plot(c.ky, c.g[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
                 i += 1

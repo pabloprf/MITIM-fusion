@@ -14222,13 +14222,13 @@ class transp_output:
             TGLFstd_x = self.TGLFstd[int(time * 1000)].results[tglfRun]["x"]
             TGLFstd_Qe, TGLFstd_Qi = [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_Qe.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].Qe_unn
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].Qe_unn
                 )
                 TGLFstd_Qi.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].Qi_unn
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].Qi_unn
                 )
 
             TGLFstd_Qe, TGLFstd_Qi = np.array(TGLFstd_Qe), np.array(TGLFstd_Qi)
@@ -14361,16 +14361,16 @@ class transp_output:
         else:
             TGLFstd_ky, TGLFstd_gamma, TGLFstd_freq = [], [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_ky.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].ky
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].ky
                 )
                 TGLFstd_gamma.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].g[0]
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].g[0]
                 )
                 TGLFstd_freq.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].f[0]
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].f[0]
                 )
 
             TGLFstd_ky, TGLFstd_gamma, TGLFstd_freq = (
@@ -14518,19 +14518,19 @@ class transp_output:
         else:
             TGLFstd_ky, TGLFstd_te, TGLFstd_ne = [], [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_ky.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].ky
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].ky
                 )
                 TGLFstd_te.append(
                     self.TGLFstd[int(time * 1000)]
-                    .results[tglfRun]["TGLFout"][i]
+                    .results[tglfRun]["output"][i]
                     .AmplitudeSpectrum_Te
                 )
                 TGLFstd_ne.append(
                     self.TGLFstd[int(time * 1000)]
-                    .results[tglfRun]["TGLFout"][i]
+                    .results[tglfRun]["output"][i]
                     .AmplitudeSpectrum_ne
                 )
 
