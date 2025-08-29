@@ -121,6 +121,9 @@ def parse_maestro_nml(file_path):
 
                 beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
 
+            elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
+                print('Using the eped_beat namelist for the eped_initializer')
+                beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
 
             # ***************************************************************************
@@ -150,9 +153,6 @@ def parse_maestro_nml(file_path):
                     return p
                 beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
 
-        elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
-                print('Using the eped_beat namelist for the eped_initializer')
-                beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
         else:
             raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
