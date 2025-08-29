@@ -219,7 +219,7 @@ def run_maestro_local(
                 'eped_initializer', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
                 nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped"],
+                **beat_namelists["eped_initializer"],
                 **parameters_engineering
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
@@ -232,7 +232,7 @@ def run_maestro_local(
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
             run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
-        elif maestro_beats["beats"][0] in ["eped"]:
+        elif maestro_beats["beats"][0] in ["eped", "eped_initializer"]:
             run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])

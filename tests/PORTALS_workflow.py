@@ -20,11 +20,11 @@ if cold_start and folderWork.exists():
 # Let's not consume the entire computer resources when running test... limit threads
 torch.set_num_threads(8)
 
-# --------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 # Optimization Class
-# --------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 
-# Initialize class
+# Initialize class with the default namelist in templates/portals.namelist.yaml but modify some of its parameters
 portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 2
@@ -43,9 +43,9 @@ plasma_state.correct(options={"recalculate_ptot": True, "remove_fast": True, "qu
 # Prepare run
 portals_fun.prep(plasma_state)
 
-# --------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 # Run
-# --------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 
 # Run
 mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestions=False)

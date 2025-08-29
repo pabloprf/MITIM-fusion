@@ -2,18 +2,21 @@
 # This is a complete template for a PORTALS-TGLF+NEO profile prediction.
 # The user is welcomed to change any of the parameters below to fit their specific use case,
 # by copying this template namelist and instantiating the PORTALS object with its path:
-#     portals_fun = PORTALSmain.portals(folder, portals_namelist=PATH_TO_NAMELIST)
+#
+#          portals_fun = PORTALSmain.portals(folder, portals_namelist=PATH_TO_NAMELIST)
 #
 # Alternatively, you can simply use the default parameters provided in this template by not 
-# specifying a namelist and then, in the launch script change the dictionary values:
-#     portals_fun = PORTALSmain.portals(folderWork)
-#     portals_fun.portals_parameters["solution"]['predicted_roa'] = [0.25, 0.45, 0.65, 0.85]
-#     portals_fun.portals_parameters["solution"]['predicted_channels'] = ["te", "ti", "ne", "nZ", 'w0']
-#     ...
+# specifying a namelist and then, in the launching script change the dictionary values:
+#
+#          portals_fun = PORTALSmain.portals(folder)
+#          portals_fun.portals_parameters["solution"]['predicted_roa'] = [0.25, 0.45, 0.65, 0.85]
+#          portals_fun.portals_parameters["solution"]['predicted_channels'] = ["te", "ti", "ne", "nZ", 'w0']
+#          ...
 #
 # The dictionary follows the same structure as the YAML namelist, except the optimization_options that must
-# be passed as a separate dictionary:
-#     portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 10
+# be passed as a separate dictionary (because they are common among optimization problems):
+#
+#          portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 10
 #
 
 # -----------------------------------------------------------------
@@ -211,14 +214,14 @@ optimization_options:
     # Criterion 1: Maximum iterations
     maximum_iterations: 50
 
-    # Stopping criteria function for the optimization process
+    # Stopping function for the rest of criteria
     stopping_criteria: "import::mitim_modules.portals.PORTALStools.stopping_criteria_portals"
     
     stopping_criteria_parameters:
 
       # Criterion 2: Residual reduction
-      maximum_value: 5.e-3                # Reducing residual by 200x is enough
-      maximum_value_is_rel: true
+      maximum_value: 5.e-3                # Reducing residual by 200x is enough for most PORTALS runs
+      maximum_value_is_rel: true          # Indicates that maximum_value is relative to iteration #0
 
       # Criterion 3: Variation of input parameters
       minimum_inputs_variation: [10, 5, 0.1] # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
@@ -231,12 +234,12 @@ optimization_options:
   acquisition_options:
 
     # Relative improvement for stopping criteria of the acquisition optimization
-    relative_improvement_for_stopping: 1.e-2 # 100x is enough
+    relative_improvement_for_stopping: 1.e-2    # Reducing residual by 100x is enough
 
     # Type of acquisition function (Options: ["posterior_mean", "noisy_logei_mc", ...])
     type:  "posterior_mean"
 
-    # Optimizers to apply in sequence (Options: ["sr", "root", "botorch"])
+    # Optimizers to apply sequentially (Options: ["sr", "root", "botorch"])
     optimizers: ["sr", "root"]
 
   surrogate_options:
