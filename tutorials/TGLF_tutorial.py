@@ -10,7 +10,8 @@ folder = __mitimroot__ / "tests" / "scratch" / "tglf_tut"
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 
 # Prepare the TGLF class
-cdf = tglf.prep_using_tgyro(folder, inputgacode=inputgacode_file, cold_start=False)
+tglf.prep(inputgacode_file,folder, cold_start=False)
+
 
 '''
 ***************************************************************************
@@ -21,7 +22,7 @@ Run standandalone TGLF
 # Run TGLF in subfolder
 tglf.run(
     subfolder="yes_em_folder",
-    code_settings=5,
+    code_settings="SAT2em",
     extraOptions={},
     cold_start=False
     )
@@ -32,7 +33,7 @@ tglf.read(label="yes_em")
 # Run TGLF in a different subfolder with different settings
 tglf.run(
     subfolder="no_em_folder",
-    code_settings=5,
+    code_settings="SAT2em",
     extraOptions={"USE_BPER": False},
     cold_start=False,
 )
@@ -50,7 +51,7 @@ Run TGLF scan
 '''
 
 tglf.runScan(	subfolder = 'scan1',
-                code_settings  = 5,
+                code_settings  = "SAT2em",
                 cold_start       = False,
                 variable      = 'RLTS_1',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
@@ -58,7 +59,7 @@ tglf.readScan(label='scan1',variable = 'RLTS_1')
 
 
 tglf.runScan(	subfolder = 'scan2',
-                code_settings  = 5,
+                code_settings  = "SAT2em",
                 cold_start       = False,
                 variable      = 'RLTS_2',
                 varUpDown 	  = np.linspace(0.5,1.5,3))
@@ -75,21 +76,21 @@ Automatic scan of turbulence drives
 
 tglf.runScanTurbulenceDrives(	
                 subfolder = 'turb_drives',
-                code_settings  = 5,
+                code_settings  = "SAT2em",
                 cold_start       = False)
 
 tglf.plotScanTurbulenceDrives(label='turb_drives')
 
 '''
 ***************************************************************************
-Automatic scan of turbulence drives
+Analysis of chi incremental
 ***************************************************************************
 '''
 
 tglf.runAnalysis(
             subfolder 	= 'chi_e',
             analysisType  	= 'chi_e',
-            code_settings  	= 5,
+            code_settings  	= "SAT2em",
             cold_start 		= False,
             label 			= 'chi_eu')
 
@@ -110,3 +111,4 @@ for i in[1,2,3,4,5,6]:
     tglf.read(label=f'settings{i}')
 
 tglf.plot(labels=[f'settings{i}' for i in range(1,6)])
+
