@@ -30,10 +30,11 @@ eped.run(
     scan_param = {'variable': 'neped', 'values': [15.0, 30.0, 45.0, 60.0, 75.0]},
     keep_nsep_ratio = 0.4,
     nproc_per_run = 64,
-    cold_start = True,
+    cold_start = cold_start,
 )
 
 eped.read(subfolder='case1')
 
 eped.plot(labels=['case1'])
-plt.show()
+
+eped.fn.show()
