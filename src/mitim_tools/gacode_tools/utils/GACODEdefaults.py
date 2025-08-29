@@ -41,15 +41,7 @@ def addTGLFcontrol(code_settings, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    with open(__mitimroot__ / "templates" / "input.tglf.models.json", "r") as f:
-        settings = json.load(f)
-
-    if str(code_settings) in settings:
-        sett = settings[str(code_settings)]
-        for ikey in sett["controls"]:
-            options[ikey] = sett["controls"][ikey]
-    else:
-        print(f"\t- {code_settings = } not found in input.tglf.models.json, using defaults",typeMsg="w",)
+    options = add_code_settings(options, code_settings, models_file="input.tglf.models.json")
 
     return options
 
@@ -57,51 +49,51 @@ def addNEOcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
     
+    options = add_code_settings(options, code_settings, models_file="input.neo.models.json")
+    
     return options
 
 def addGXcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
-    
-    """
-	********************************************************************************
-	Standard sets of control parameters
-	  (rest of parameters are as defaults)
-	********************************************************************************
-	"""
 
-    with open(__mitimroot__ / "templates" / "input.gx.models.json", "r") as f:
-        settings = json.load(f)
+    options = add_code_settings(options, code_settings, models_file="input.gx.models.json")
 
-    if str(code_settings) in settings:
-        sett = settings[str(code_settings)]
-        for ikey in sett["controls"]:
-            options[ikey] = sett["controls"][ikey]
-    else:
-        print("\t- code_settings not found in input.cgyro.models.json, using defaults",typeMsg="w")
-    
     return options
 
 def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
 
-    """
-	********************************************************************************
-	Standard sets of control parameters
-	  (rest of parameters are as defaults)
-	********************************************************************************
-	"""
+    options = add_code_settings(options, code_settings, models_file="input.cgyro.models.json")
+    
+    return options
 
-    with open(__mitimroot__ / "templates" / "input.cgyro.models.json", "r") as f:
+def add_code_settings(options,code_settings, models_file = "input.tglf.models.json"):
+
+    with open(__mitimroot__ / "templates" / models_file, "r") as f:
         settings = json.load(f)
 
+    found = False
+
+    # Search by number first
     if str(code_settings) in settings:
         sett = settings[str(code_settings)]
         for ikey in sett["controls"]:
             options[ikey] = sett["controls"][ikey]
+        found = True
     else:
-        print("\t- code_settings not found in input.cgyro.models.json, using defaults",typeMsg="w")
+        # Search by label second
+        for ikey in settings:
+            if settings[ikey]["label"] == code_settings:
+                sett = settings[ikey]
+                for jkey in sett["controls"]:
+                    options[jkey] = sett["controls"][jkey]
+                found = True
+                break
+            
+    if not found:
+        print(f"\t- {code_settings = } not found in {models_file}, using defaults",typeMsg="w")
 
     return options
 

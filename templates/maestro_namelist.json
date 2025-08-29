@@ -82,7 +82,7 @@
                           "transport": {
                                "options": {
                                    "run": {
-                                        "code_settings": 100,
+                                        "code_settings": "SAT2astra",
                                         "extraOptions": {"USE_BPER": true}
                                    }
                                }

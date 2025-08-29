@@ -86,7 +86,7 @@ transport:
 
       # Kwargs to be passed to the run command
       run:
-        code_settings: 6
+        code_settings: "SAT3"
         extraOptions: {}
 
       # Kwargs to be passed to the read command
@@ -112,7 +112,8 @@ transport:
     # ***********************************
     neo:
 
-      run: {}
+      run: 
+        code_settings: "Sonic"
 
       read: {}
 
@@ -125,7 +126,7 @@ transport:
     cgyro:
 
       run:
-        code_settings: 1
+        code_settings: "Nonlinear"
         extraOptions: {}
 
         # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
@@ -147,7 +148,7 @@ transport:
 
       run:
 
-        code_settings: 1
+        code_settings: "Nonlinear"
         extraOptions: {}
 
         # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
