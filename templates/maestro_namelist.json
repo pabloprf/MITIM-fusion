@@ -81,9 +81,11 @@
                               },
                           "transport": {
                                "options": {
-                                   "run": {
-                                        "code_settings": "SAT2astra",
-                                        "extraOptions": {"USE_BPER": true}
+                                   "tglf": {
+                                        "run": {
+                                             "code_settings": "SAT2astra",
+                                             "extraOptions": {"USE_BPER": true}
+                                        }
                                    }
                                }
                           },
