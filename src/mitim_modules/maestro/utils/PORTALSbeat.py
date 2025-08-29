@@ -25,7 +25,6 @@ class portals_beat(beat):
             use_previous_surrogate_data = False,
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
-            additional_params_in_surrogate = [],
             exploration_ranges = {
                 'ymax_rel': 1.0,
                 'ymin_rel': 1.0,
@@ -68,8 +67,6 @@ class portals_beat(beat):
         self.optimization_options = optimization_options
         self.initialization_parameters = initialization_parameters
 
-        self.additional_params_in_surrogate = additional_params_in_surrogate
-
         self.exploration_ranges = exploration_ranges
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
@@ -89,8 +86,6 @@ class portals_beat(beat):
 
         portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
         portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
-
-        portals_fun.portals_parameters['solution']['additional_params_in_surrogate'] = self.additional_params_in_surrogate
 
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state

@@ -307,7 +307,6 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
     allOuts = portals_fun.optimization_options["problem_options"]["ofs"]
     portals_transformation_variables = portals_fun.portals_parameters["solution"]["portals_transformation_variables"][ikey]
     portals_transformation_variables_trace = portals_fun.portals_parameters["solution"]["portals_transformation_variables_trace"][ikey]
-    additional_params_in_surrogate = portals_fun.portals_parameters["solution"]["additional_params_in_surrogate"]
 
     Variables = {}
     for output in allOuts:
@@ -354,9 +353,6 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 and (not isAbsValFixed),
             }
 
-            for kkey in additional_params_in_surrogate:
-                Variations[kkey] = True
-
             Variables[output] = []
             for ikey in portals_transformation_variables:
                 useThisOne = False
@@ -391,9 +387,6 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
                 "nZ": ("nZ" in portals_fun.portals_parameters["solution"]["predicted_channels"])
                 and (not isAbsValFixed),
             }
-
-            for kkey in additional_params_in_surrogate:
-                Variations[kkey] = True
 
             Variables[output] = []
             for ikey in portals_transformation_variables_trace:
