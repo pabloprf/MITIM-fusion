@@ -248,13 +248,13 @@ def _run_tglf_uncertainty_model(
     if remove_folders_out:
         IOtools.shutil_rmtree(tglf.FolderGACODE)
 
-    Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    Qifast = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    GZ = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    Mt = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
-    S = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan)+1 ))
+    Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Qifast = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    GZ = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Mt = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    S = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
 
     cont = 0
     for vari in variables_to_scan:
