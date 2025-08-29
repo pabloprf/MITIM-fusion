@@ -48,7 +48,6 @@ def addTGLFcontrol(code_settings, NS=2, minimal=False):
 def addNEOcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
-    
     options = add_code_settings(options, code_settings, models_file="input.neo.models.json")
     
     return options
@@ -56,7 +55,6 @@ def addNEOcontrol(code_settings,*args, **kwargs):
 def addGXcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
-
     options = add_code_settings(options, code_settings, models_file="input.gx.models.json")
 
     return options
@@ -64,7 +62,6 @@ def addGXcontrol(code_settings,*args, **kwargs):
 def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
-
     options = add_code_settings(options, code_settings, models_file="input.cgyro.models.json")
     
     return options

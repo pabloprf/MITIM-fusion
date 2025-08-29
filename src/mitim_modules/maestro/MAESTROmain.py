@@ -124,7 +124,7 @@ class maestro:
         '''
         To initialize some profile functional form
         '''
-        if method == 'eped':
+        if method == 'eped' or method == 'eped' or 'eped_initializer':
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
@@ -137,8 +137,7 @@ class maestro:
     # Beat operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
     def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
@@ -173,8 +172,7 @@ class maestro:
 
         return output_file is not None
 
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Initializer',
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Initializer',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def initialize(self, *args, **kwargs):
 
@@ -201,8 +199,7 @@ class maestro:
                 # First initialization, freeze engineering parameters
                 self._freeze_parameters(profiles = PROFILEStools.gacode_state(self.beat.initialize.folder / 'input.gacode'))
 
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Preparation',
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Preparation',
         log_file = lambda self: self.folder_performance / "timing.jsonl")    
     def prepare(self, *args, **kwargs):
 
@@ -223,8 +220,7 @@ class maestro:
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
 
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def run(self, **kwargs):
 
@@ -271,8 +267,7 @@ class maestro:
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
         self.profiles_with_engineering_parameters.write_state(file= (self.folder_output / 'input.gacode_frozen'))
 
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Finalizing',
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Finalizing',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def finalize(self):
 
@@ -291,8 +286,7 @@ class maestro:
     # Plotting operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer(
-        lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
     def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
         print('*** Plotting MAESTRO ******************************************************************** ')
