@@ -353,7 +353,7 @@ class mitim_simulation:
             tmpFolder = self.FolderGACODE / f"tmp_{code}"
             IOtools.askNewFolder(tmpFolder, force=True)
 
-            kkeys = [keys for keys in code_executor.keys()]
+            kkeys = [keys.strip('/') for keys in code_executor.keys()]
             log_simulation_file=self.FolderGACODE / f"mitim_simulation_{kkeys[0]}.log" # Refer with the first folder
             self.simulation_job = FARMINGtools.mitim_job(tmpFolder, log_simulation_file=log_simulation_file)
 
