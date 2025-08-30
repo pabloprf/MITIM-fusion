@@ -41,48 +41,49 @@ def addTGLFcontrol(code_settings, NS=2, minimal=False):
 	********************************************************************************
 	"""
 
-    options = add_code_settings(options, code_settings, models_file="input.tglf.models.json")
+    options = add_code_settings(options, code_settings, models_file="input.tglf.models.yaml")
 
     return options
 
 def addNEOcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.neo.controls", caseInsensitive=False)
-    options = add_code_settings(options, code_settings, models_file="input.neo.models.json")
+    options = add_code_settings(options, code_settings, models_file="input.neo.models.yaml")
     
     return options
 
 def addGXcontrol(code_settings,*args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
-    options = add_code_settings(options, code_settings, models_file="input.gx.models.json")
+    options = add_code_settings(options, code_settings, models_file="input.gx.models.yaml")
 
     return options
 
 def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.cgyro.controls", caseInsensitive=False)
-    options = add_code_settings(options, code_settings, models_file="input.cgyro.models.json")
+    options = add_code_settings(options, code_settings, models_file="input.cgyro.models.yaml")
     
     return options
 
-def add_code_settings(options,code_settings, models_file = "input.tglf.models.json"):
+def add_code_settings(options,code_settings, models_file = "input.tglf.models.yaml"):
 
-    with open(__mitimroot__ / "templates" / models_file, "r") as f:
-        settings = json.load(f)
+    settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)
 
     found = False
 
-    # Search by number first
+    code_settings = str(code_settings)
+
+    # Search by label first
     if str(code_settings) in settings:
         sett = settings[str(code_settings)]
         for ikey in sett["controls"]:
             options[ikey] = sett["controls"][ikey]
         found = True
     else:
-        # Search by label second
+        # Search by deprecated descriptor
         for ikey in settings:
-            if settings[ikey]["label"] == code_settings:
+            if settings[ikey]["deprecated_descriptor"] == code_settings:
                 sett = settings[ikey]
                 for jkey in sett["controls"]:
                     options[jkey] = sett["controls"][jkey]

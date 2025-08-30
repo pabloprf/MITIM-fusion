@@ -1,0 +1,4 @@
+"Sonic":
+  deprecated_descriptor: "0"
+  controls:
+    ROTATION_MODEL: 2

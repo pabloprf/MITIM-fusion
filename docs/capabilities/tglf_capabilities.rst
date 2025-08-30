@@ -77,7 +77,7 @@ To generate the input files (input.tglf) to TGLF at each radial location, MITIM 
 Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``cold_start`` flag can be provided.
 The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
 First, the argument ``code_settings`` indicates the base case to start with.
-The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
+The user is referred to ``templates/input.tglf.models.yaml`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
 Second, the argument ``extraOptions`` can be passed as a dictionary of variables to change.
 For example, the following two commands will run TGLF with saturation rule number 2 with and without electromagnetic effets. After each ``run()`` command, a ``read()`` is needed, to populate the *tglf.results* dictionary with the TGLF outputs (``label`` refers to the dictionary key for each run):
 

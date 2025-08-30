@@ -25,7 +25,7 @@ portals_fun.portals_parameters["transport"]["evaluator"] = tgyro_model
 
 # TGLF specifications
 portals_fun.portals_parameters["transport"]["options"] = {
-	"code_settings": 6,							# Check out templates/input.tglf.models.json for more options
+	"code_settings": 6,							# Check out templates/input.tglf.models.yaml for more options
 	"extraOptionsTGLF": {"USE_BPER": False}  	# Turn off BPER
 	}
 

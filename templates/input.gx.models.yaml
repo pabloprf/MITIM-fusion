@@ -1,0 +1,15 @@
+"Linear":
+  # Linear with 10 ky modes
+  deprecated_descriptor: "0"
+  controls:
+    nonlinear_mode: false
+    hyper: false
+    HB_hyper: false
+    nperiod: 2
+    nx: 1
+    ny: 28
+
+"Nonlinear":
+  deprecated_descriptor: "1"
+  controls:
+    nonlinear_mode: true

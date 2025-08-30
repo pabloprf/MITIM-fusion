@@ -1,0 +1,9 @@
+"Linear":
+  deprecated_descriptor: "0"
+  controls:
+    NONLINEAR_FLAG: 0
+
+"Nonlinear":
+  deprecated_descriptor: "1"
+  controls:
+    NONLINEAR_FLAG: 1
