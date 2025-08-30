@@ -70,9 +70,9 @@ def add_code_settings(options,code_settings, models_file = "input.tglf.models.ya
 
     settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)
 
-    found = False
-
     code_settings = str(code_settings)
+
+    found = False
 
     # Search by label first
     if str(code_settings) in settings:
@@ -81,13 +81,14 @@ def add_code_settings(options,code_settings, models_file = "input.tglf.models.ya
             options[ikey] = sett["controls"][ikey]
         found = True
     else:
-        # Search by deprecated descriptor
+        # Search by deprecated descriptor (if available)
         for ikey in settings:
-            if settings[ikey]["deprecated_descriptor"] == code_settings:
-                sett = settings[ikey]
-                for jkey in sett["controls"]:
-                    options[jkey] = sett["controls"][jkey]
-                found = True
+            if "deprecated_descriptor" in settings[ikey]:
+                if settings[ikey]["deprecated_descriptor"] == code_settings:
+                    sett = settings[ikey]
+                    for jkey in sett["controls"]:
+                        options[jkey] = sett["controls"][jkey]
+                    found = True
                 break
             
     if not found:

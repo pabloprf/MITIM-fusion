@@ -1,15 +1,15 @@
-"SAT1":
-  deprecated_descriptor: "1"
-  controls:
-    SAT_RULE: 1
-    UNITS: GYRO
-
 "SAT0":
   deprecated_descriptor: "2"
   controls:
     SAT_RULE: 0
     UNITS: GYRO
     ETG_FACTOR: 1.25
+
+"SAT1":
+  deprecated_descriptor: "1"
+  controls:
+    SAT_RULE: 1
+    UNITS: GYRO
 
 "SAT1geo":
   deprecated_descriptor: "3"
@@ -21,23 +21,6 @@
   deprecated_descriptor: "4"
   controls:
     SAT_RULE: 2
-    UNITS: CGYRO
-    XNU_MODEL: 3
-    WDIA_TRAPPED: 1.0
-
-"SAT2em":
-  deprecated_descriptor: "5"
-  controls:
-    SAT_RULE: 2
-    UNITS: CGYRO
-    XNU_MODEL: 3
-    WDIA_TRAPPED: 1.0
-    USE_BPER: true
-
-"SAT3":
-  deprecated_descriptor: "6"
-  controls:
-    SAT_RULE: 3
     UNITS: CGYRO
     XNU_MODEL: 3
     WDIA_TRAPPED: 1.0
@@ -55,7 +38,16 @@
     B_MODEL_SA: 1
     FT_MODEL_SA: 1
 
-"Experimentation] SAT3em basis":
+"SAT3":
+  deprecated_descriptor: "6"
+  controls:
+    SAT_RULE: 3
+    UNITS: CGYRO
+    XNU_MODEL: 3
+    WDIA_TRAPPED: 1.0
+
+# Experimentation
+"SAT3em basis":
   deprecated_descriptor: "101"
   controls:
     SAT_RULE: 2
@@ -65,3 +57,13 @@
     USE_BPER: true
     KYGRID_MODEL: 4
     NBASIS_MAX: 6
+
+#TODO: To be removed in the future
+"SAT2em":
+  deprecated_descriptor: "5"
+  controls:
+    SAT_RULE: 2
+    UNITS: CGYRO
+    XNU_MODEL: 3
+    WDIA_TRAPPED: 1.0
+    USE_BPER: true

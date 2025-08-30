@@ -38,7 +38,7 @@ portals_fun.optimization_options['convergence_options']['stopping_criteria_param
 portals_fun.optimization_options['convergence_options']['stopping_criteria_parameters']["maximum_value_is_rel"] = True
 
 # Prepare run: search +-100% the original gradients
-portals_fun.prep(inputgacode, ymax_rel=1.0, ymin_rel=1.0)
+portals_fun.prep(inputgacode)
 
 # --------------------------------------------------------------------------------------------
 # Run (optimization following namelist: templates/main.namelists.json)

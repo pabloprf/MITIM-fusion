@@ -514,6 +514,7 @@ def pringLogTail(log_file, howmanylines=100, typeMsg="w"):
     print(txt, typeMsg=typeMsg)
 
 def runSINGULARITY_finish(folderWork, runid, tok, job_name):
+    embed()
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(

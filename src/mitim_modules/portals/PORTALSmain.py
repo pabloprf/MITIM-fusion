@@ -49,8 +49,8 @@ class portals(STRATEGYtools.opt_evaluator):
         self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
 
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
-        if self.portals_parameters["optimization_namelist"] is not None:
-            self.optimization_namelist = self.portals_parameters["optimization_namelist"]
+        if self.portals_parameters["optimization_namelist_location"] is not None:
+            self.optimization_namelist = self.portals_parameters["optimization_namelist_location"]
         else:
             self.optimization_namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
         self.optimization_options = IOtools.read_mitim_yaml(self.optimization_namelist)
@@ -70,22 +70,10 @@ class portals(STRATEGYtools.opt_evaluator):
         seedInitial=None,
         askQuestions=True,
     ):
-        """
-        Notes:
-            - ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the dictionary directly, e.g.:
-                    ymax_rel = {
-                        'te': [1.0, 0.5, 0.5, 0.5],
-                        'ti': [0.5, 0.5, 0.5, 0.5],
-                        'ne': [1.0, 0.5, 0.5, 0.5]
-                    }
-            - enforce_finite_aLT is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
-            - start_from_folder is a folder from which to grab optimization_data and optimization_extra
-                (if used with reevaluate_targets>0, change targets by reevaluating with different parameters)
-            - seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
-        """
 
-        ymax_rel = self.portals_parameters["solution"]["exploration_ranges"]["ymax_rel"]
-        ymin_rel = self.portals_parameters["solution"]["exploration_ranges"]["ymin_rel"]
+        # Grab exploration ranges
+        ymax = self.portals_parameters["solution"]["exploration_ranges"]["ymax"]
+        ymin = self.portals_parameters["solution"]["exploration_ranges"]["ymin"]
         limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
         fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
         yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
@@ -105,32 +93,28 @@ class portals(STRATEGYtools.opt_evaluator):
 
         key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
-        # TO BE REMOVED IN FUTURE
-        if not isinstance(cold_start, bool):
-            raise Exception("cold_start must be a boolean")
-
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if IOtools.isfloat(ymax_rel):
-            ymax_rel0 = copy.deepcopy(ymax_rel)
+        if IOtools.isfloat(ymax):
+            ymax0 = copy.deepcopy(ymax)
 
-            ymax_rel = {}
+            ymax = {}
             for prof in self.portals_parameters["solution"]["predicted_channels"]:
-                ymax_rel[prof] = np.array( [ymax_rel0] * len(self.portals_parameters["solution"][key_rhos]) )
+                ymax[prof] = np.array( [ymax0] * len(self.portals_parameters["solution"][key_rhos]) )
         
-        if IOtools.isfloat(ymin_rel):
-            ymin_rel0 = copy.deepcopy(ymin_rel)
+        if IOtools.isfloat(ymin):
+            ymin0 = copy.deepcopy(ymin)
 
-            ymin_rel = {}
+            ymin = {}
             for prof in self.portals_parameters["solution"]["predicted_channels"]:
-                ymin_rel[prof] = np.array( [ymin_rel0] * len(self.portals_parameters["solution"][key_rhos]) )
+                ymin[prof] = np.array( [ymin0] * len(self.portals_parameters["solution"][key_rhos]) )
 
         if enforce_finite_aLT is not None:
             for prof in ['te', 'ti']:
-                if prof in ymin_rel:
-                    ymin_rel[prof] = np.array(ymin_rel[prof]).clip(min=None,max=enforce_finite_aLT)
+                if prof in ymin:
+                    ymin[prof] = np.array(ymin[prof]).clip(min=None,max=enforce_finite_aLT)
 
         # Initialize
         print(">> PORTALS initalization module (START)", typeMsg="i")
@@ -138,8 +122,8 @@ class portals(STRATEGYtools.opt_evaluator):
             self,
             self.folder,
             mitim_state,
-            ymax_rel,
-            ymin_rel,
+            ymax,
+            ymin,
             start_from_folder=start_from_folder,
             define_ranges_from_profiles=define_ranges_from_profiles,
             fixed_gradients=fixed_gradients,

@@ -1,4 +1,5 @@
-# ------------------------------------------------------------------------------------------------------------
+# (**************************************************************************************************************)
+#
 # This is a complete template for a PORTALS-TGLF+NEO profile prediction.
 # The user is welcomed to change any of the parameters below to fit their specific use case,
 # by copying this template namelist and instantiating the PORTALS object with its path:
@@ -6,7 +7,8 @@
 #          portals_fun = PORTALSmain.portals(folder, portals_namelist=PATH_TO_NAMELIST)
 #
 # Alternatively, you can simply use the default parameters provided in this template by not 
-# specifying a namelist and then, in the launching script change the dictionary values:
+# specifying a namelist and then, in the launching script change the dictionary values
+# (*before* you perform the portals_fun.prep() command):
 #
 #          portals_fun = PORTALSmain.portals(folder)
 #          portals_fun.portals_parameters["solution"]['predicted_roa'] = [0.25, 0.45, 0.65, 0.85]
@@ -18,6 +20,7 @@
 #
 #          portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 10
 #
+# (**************************************************************************************************************)
 
 # -----------------------------------------------------------------
 # Main solver parameters
@@ -38,21 +41,21 @@ solution:
   # Options that define boundaries for the optimization
   exploration_ranges:
     
-    # Bounds for the input parameters
-    # - ymax_rel (and ymin_rel) can be float (common for all radii, channels) or the dictionary directly, e.g.:
-    #       ymax_rel = {
+    # Are ymax and ymin relative or absolute
+    limits_are_relative: true
+    
+    # Bounds for the input parameters. ymax/ymin can be float (common for all radii, channels) or a dictionary::
+    #       ymax:
     #           'te': [1.0, 0.5, 0.5, 0.5],
     #           'ti': [0.5, 0.5, 0.5, 0.5],
-    #           'ne': [1.0, 0.5, 0.5, 0.5]
-    #       }
-    limits_are_relative: true
-    ymax_rel: 1.0
-    ymin_rel: 1.0
-    yminymax_atleast: null # Cold hardGradientLimits, defines the ranges that will be, at least, covered, e.g. [0,2]
+    #           ...
+    ymax: 1.0
+    ymin: 1.0
+    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2], even if not achieved via ymin/ymax
 
     fixed_gradients: null
 
-    # enforce_finite_aLT is used to be able to select ymin_rel = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
+    # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
     enforce_finite_aLT: null
 
     define_ranges_from_profiles: null
@@ -109,9 +112,9 @@ transport:
   # Simulation kwargs to be passed directly to run and read commands (defaults here)
   options:
 
-    # ***********************************
+    # *********************************************************************************************************
     # TGLF
-    # ***********************************
+    # *********************************************************************************************************
     tglf:
 
       # Kwargs to be passed to the run command
@@ -132,14 +135,14 @@ transport:
       cores_per_tglf_instance: 1
 
       # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
-      percent_error: 5
+      percent_error: 5.0
 
       # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)
       Qi_includes_fast: false
 
-    # ***********************************
+    # *********************************************************************************************************
     # NEO
-    # ***********************************
+    # *********************************************************************************************************
     neo:
 
       run: 
@@ -148,11 +151,11 @@ transport:
       read: {}
 
       # (%) Error (std, in percent) of model evaluation
-      percent_error: 10
+      percent_error: 10.0
 
-    # ***********************************
+    # *********************************************************************************************************
     # CGYRO
-    # ***********************************
+    # *********************************************************************************************************
     cgyro:
 
       run:
@@ -171,9 +174,9 @@ transport:
       # (%) For CGYRO runs, minimum error based on target if case is considered stable
       Qi_stable_percent_error: 5.0
 
-    # ***********************************
+    # *********************************************************************************************************
     # GX
-    # ***********************************
+    # *********************************************************************************************************
     gx:
 
       run:
@@ -187,16 +190,17 @@ transport:
       read:
         tmin: 0.0
 
-  # Function to post-process input.gacode only BEFORE passing to transport codes
+  # Function to post-process input.gacode only *before* passing to transport codes
   profiles_postprocessing_fun: null
 
   # Corrections to be applied to each iteration input.gacode file
   applyCorrections:
-    Ti_thermals: true # Keep all thermal ion temperatures equal to the main Ti
-    ni_thermals: true # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+    Ti_thermals: true       # Keep all thermal ion temperatures equal to the main Ti
+    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
     recalculate_ptot: true  # Recompute PTOT to insert in input file each time
-    Tfast_ratio: false # Keep the ratio of Tfast/Te constant throughout the Te evolution
-    force_mach: null # Change w0 to match this Mach number when Ti varies
+    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
+    force_mach: null        # Change w0 to match this Mach number when Ti varies
+
 
 # -----------------------------------------------------------------
 # Target model parameters
@@ -228,7 +232,7 @@ target:
 # Optimization options namelist
 # -----------------------------------------------------------------
 
-optimization_namelist: null # If null, it will grab the default at: __mitimroot__ / "templates" / "namelist.optimization.yaml"
+optimization_namelist_location: null # If null, it will grab the default at: __mitimroot__ / "templates" / "namelist.optimization.yaml"
 
 # -----------------------------------------------------------------
 # Optimization options (to change the main optimization namelist)

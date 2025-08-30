@@ -76,7 +76,7 @@ class portals_beat(beat):
 
         cold_start = kwargs.get('cold_start', False)
 
-        portals_fun  = PORTALSmain.portals(self.folder)
+        portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_parameters["portals_namelist_location"])
 
         portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
         portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)

@@ -20,15 +20,10 @@ def main():
     inputgacode = args.input
     cold_start = args.cold
     
-    if portals_namelist is None:
-        portals_namelist = IOtools.expandPath('.') / "namelist.portals.yaml"
-    else:
-        portals_namelist = Path(portals_namelist)
-
-    if inputgacode is None:
-        inputgacode = IOtools.expandPath('.') / "input.gacode"
-    else:
-        inputgacode = Path(inputgacode)
+    # Actual PORTALS run 
+    
+    portals_namelist = Path(portals_namelist) if  portals_namelist is not None else IOtools.expandPath('.') / "namelist.portals.yaml"
+    inputgacode = Path(inputgacode) if  inputgacode is not None else IOtools.expandPath('.') / "input.gacode"
 
     portals_fun = PORTALSmain.portals(folderWork, portals_namelist=portals_namelist)
     portals_fun.prep(inputgacode)
