@@ -24,7 +24,7 @@ torch.set_num_threads(8)
 # Optimization Class
 # ---------------------------------------------------------------------------------------------------------------------
 
-# Initialize class with the default namelist in templates/portals.namelist.yaml but modify some of its parameters
+# Initialize class with the default namelist in templates/namelist.portals.yaml but modify some of its parameters
 portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 2

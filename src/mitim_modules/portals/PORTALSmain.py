@@ -43,12 +43,12 @@ class portals(STRATEGYtools.opt_evaluator):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
-        namelist = __mitimroot__ / "templates" / "main.namelist.json"
-        self.optimization_options = IOtools.read_mitim_nml(namelist)
+        self.optimization_namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
+        self.optimization_options = IOtools.read_mitim_yaml(self.optimization_namelist)
 
         # Read PORTALS namelist (if not provided, use default)
         if portals_namelist is None:
-            self.portals_namelist = __mitimroot__ / "templates" / "portals.namelist.yaml"
+            self.portals_namelist = __mitimroot__ / "templates" / "namelist.portals.yaml"
             print(f"\t- No PORTALS namelist provided, using default in {IOtools.clipstr(self.portals_namelist)}")
         else:
             self.portals_namelist = portals_namelist
@@ -97,7 +97,12 @@ class portals(STRATEGYtools.opt_evaluator):
         # Make sure that options that are required by good behavior of PORTALS
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        key_rhos = self.check_flags(askQuestions=askQuestions)
+        print(">> PORTALS flags pre-check")
+
+        # Check that I haven't added a deprecated variable that I expect some behavior from
+        IOtools.check_flags_dictionary(self.portals_parameters, self.potential_flags, avoid = ["run", "read"], askQuestions=askQuestions)
+
+        key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
         # TO BE REMOVED IN FUTURE
         if not isinstance(cold_start, bool):
@@ -170,7 +175,7 @@ class portals(STRATEGYtools.opt_evaluator):
         shutil.copy(self.portals_namelist, self.folder / "portals.namelist_original.yaml")
 
         # Write the parameters (after script modification) to a yaml namelist for tracking purposes
-        IOtools.write_mitim_yaml(self.portals_parameters, self.folder / "portals.namelist.yaml")
+        IOtools.write_mitim_yaml(self.portals_parameters, self.folder / "namelist.portals.yaml")
 
     def _define_reuse_models(self):
         '''
@@ -282,29 +287,6 @@ class portals(STRATEGYtools.opt_evaluator):
         return analyze_results(
             self, plotYN=plotYN, fn=fn, cold_start=cold_start, analysis_level=analysis_level
         )
-
-    def check_flags(self, askQuestions=True):
-
-        print(">> PORTALS flags pre-check")
-
-        # Check that I haven't added a deprecated variable that I expect some behavior from
-        
-        def _check_flags_dictionary(d, d_check, avoid = ["run", "read"]):
-            for key in d.keys():
-                if key not in d_check:
-                    print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q" if askQuestions else "w")
-                elif not isinstance(d[key], dict):
-                    continue
-                elif key in avoid:
-                    continue
-                else:
-                    _check_flags_dictionary(d[key], d_check[key])
-
-        _check_flags_dictionary(self.portals_parameters, self.potential_flags)
-
-        key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
-
-        return key_rhos
 
     def reuseTrainingTabular(
         self, folderRead, folderNew, reevaluate_targets=0, cold_startIfExists=False):

@@ -10,7 +10,7 @@ from IPython import embed
 
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
-    maestro_namelist = IOtools.read_mitim_nml(file_path)
+    maestro_namelist = IOtools.read_mitim_json(file_path)
 
     if "seed" in maestro_namelist:
         seed = maestro_namelist["seed"]

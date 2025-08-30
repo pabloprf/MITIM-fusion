@@ -99,13 +99,13 @@ class opt_evaluator:
         if namelist is not None:
             print(f"\t- Optimizaiton namelist provided: {namelist}", typeMsg="i")
 
-            self.optimization_options = IOtools.read_mitim_nml(namelist)
+            self.optimization_options = IOtools.read_mitim_yaml(namelist)
 
         elif default_namelist_function is not None:
             print("\t- Optimizaiton namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
 
-            namelist = __mitimroot__ / "templates" / "main.namelist.json"
-            self.optimization_options = IOtools.read_mitim_nml(namelist)
+            namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
+            self.optimization_options = IOtools.read_mitim_yaml(namelist)
 
             self.optimization_options = default_namelist_function(self.optimization_options)
 
@@ -345,7 +345,7 @@ class MITIM_BO:
         """
         Inputs:
                 - optimization_object   :  Function that is executed,
-                        with .optimization_options in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_nml))
+                        with .optimization_options in it (Dictionary with optimization parameters (must be obtained using namelist and read_mitim_yaml))
                         and .folder (Where the function runs)
                         and surrogate_parameters: Parameters to pass to surrogate (e.g. for transformed function), It can be different from function_parameters because of making evaluations fast.
                 - cold_start 	 :  If False, try to find the values from Outputs/optimization_data.csv
@@ -414,13 +414,22 @@ class MITIM_BO:
         self.surrogate_parameters = self.optimization_object.surrogate_parameters
         self.optimization_options = self.optimization_object.optimization_options
 
-        # Curate namelist ---------------------------------------------------------------------------------
         if self.optimization_options is not None:
-            self.optimization_options = IOtools.curate_mitim_nml(
-                self.optimization_options,
-                self.optimization_object.folder,
-                stopping_criteria_default = stopping_criteria_default
+
+            # Check if the optimization options are in the namelist
+            optimization_options_default = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.optimization.yaml")
+            potential_flags = IOtools.deep_grab_flags_dict(optimization_options_default)
+            IOtools.check_flags_dictionary(
+                self.optimization_options, potential_flags,
+                avoid = ["stopping_criteria_parameters"], # Because they are specific to the stopping criteria
+                askQuestions=askQuestions
                 )
+
+            # Write the optimization parameters stored in the object, into a file
+            if self.optimization_object.folder is not None:
+                IOtools.write_mitim_yaml(self.optimization_options, self.optimization_object.folder / "optimization.namelist.yaml")
+                print(f" --> Optimization namelist written to {self.optimization_object.folder / 'optimization.namelist.yaml'}")
+            
         # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
@@ -1829,6 +1838,12 @@ def max_val(maximum_value_orig, maximum_value_is_rel, res_base):
 
 def stopping_criteria_default(mitim_bo, parameters = {}):
 
+
+    print('\n')
+    print('--------------------------------------------------')
+    print('Convergence criteria')
+    print('--------------------------------------------------')
+
     # ------------------------------------------------------------------------------------
     # Determine the stopping criteria
     # ------------------------------------------------------------------------------------
@@ -1858,7 +1873,7 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
         yvals = None
 
     converged = converged_by_value or converged_by_dvs
-
+    
     return converged, yvals
 
 def stopping_criteria_by_value(mitim_bo, maximum_value):

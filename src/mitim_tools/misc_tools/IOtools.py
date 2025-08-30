@@ -601,45 +601,24 @@ def calculate_size_pickle(file):
 # MITIM optimization namelist
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def read_mitim_nml(json_file):
+def read_mitim_json(json_file):
     jpath = Path(json_file).expanduser()
     with open(jpath, 'r') as file:
         optimization_options = json.load(file)
 
     return optimization_options
 
-def curate_mitim_nml(optimization_options, folder, stopping_criteria_default = None):
+def check_flags_dictionary(d, d_check, avoid = [], askQuestions=True):
+    for key in d.keys():
+        if key in avoid:
+            continue
+        elif key not in d_check:
+            print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q" if askQuestions else "w")
+        elif not isinstance(d[key], dict):
+            continue
+        else:
+            check_flags_dictionary(d[key], d_check[key], avoid=avoid, askQuestions=askQuestions)
 
-    # Optimization criterion
-    if optimization_options['convergence_options']['stopping_criteria'] is None:
-        optimization_options['convergence_options']['stopping_criteria'] = stopping_criteria_default
-
-    # Add optimization print
-    if optimization_options is not None:
-        unprint_fun = copy.deepcopy(optimization_options['convergence_options']['stopping_criteria'])
-        def opt_crit(*args,**kwargs):
-            print('\n')
-            print('--------------------------------------------------')
-            print('Convergence criteria')
-            print('--------------------------------------------------')
-            v = unprint_fun(*args, **kwargs)
-            print('--------------------------------------------------\n')
-            return v
-        optimization_options['convergence_options']['stopping_criteria'] = opt_crit
-
-    # Check if the optimization options are in the namelist
-    from mitim_tools import __mitimroot__
-    Optim_potential = read_mitim_nml(__mitimroot__ / "templates" / "main.namelist.json")
-    for ikey in optimization_options:
-        if ikey not in Optim_potential:
-            print(f"\t- Option {ikey} is an unexpected variable, prone to errors", typeMsg="q")
-
-    # Write the optimization parameters stored in the object, into a file
-    if folder is not None:
-        write_mitim_yaml(optimization_options, folder / "optimization.namelist.yaml")
-        print(f" --> Optimization namelist written to {folder / 'optimization.namelist.yaml'}")
-
-    return optimization_options
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
