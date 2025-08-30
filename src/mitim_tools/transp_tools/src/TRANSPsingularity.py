@@ -445,6 +445,9 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         shellPreCommands=shellPreCommands,
     )
 
+    if 'exclusive' not in transp_job.machineSettings["slurm"] or not transp_job.machineSettings["slurm"]["exclusive"]:
+        print("\tTRANSP typically requires exclusive node allocation, but that has not been requested, prone to failure", typeMsg="q")
+
     transp_job.run(waitYN=False)
 
     IOtools.shutil_rmtree(folderWork / 'tmp_inputs')
@@ -514,7 +517,7 @@ def pringLogTail(log_file, howmanylines=100, typeMsg="w"):
     print(txt, typeMsg=typeMsg)
 
 def runSINGULARITY_finish(folderWork, runid, tok, job_name):
-    embed()
+
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
