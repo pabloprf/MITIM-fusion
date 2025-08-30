@@ -197,6 +197,12 @@ target:
     percent_error: 1
 
 # -----------------------------------------------------------------
+# Optimization options namelist
+# -----------------------------------------------------------------
+
+optimization_namelist: null # If null, it will grab the default at: __mitimroot__ / "templates" / "namelist.optimization.yaml"
+
+# -----------------------------------------------------------------
 # Optimization options (to change the main optimization namelist)
 # -----------------------------------------------------------------
 

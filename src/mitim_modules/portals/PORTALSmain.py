@@ -34,17 +34,10 @@ class portals(STRATEGYtools.opt_evaluator):
         print("\t\t\t PORTALS class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        # Store folder, namelist. Read namelist
-
-        super().__init__(folder,tensor_options=tensor_options)
-
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Default (please change to your desire after instancing the object)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        # Read optimization namelist (always the default, the values to be modified are in the portals one)
-        self.optimization_namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
-        self.optimization_options = IOtools.read_mitim_yaml(self.optimization_namelist)
+        super().__init__(
+            folder,
+            tensor_options=tensor_options
+            )
 
         # Read PORTALS namelist (if not provided, use default)
         if portals_namelist is None:
@@ -54,6 +47,13 @@ class portals(STRATEGYtools.opt_evaluator):
             self.portals_namelist = portals_namelist
             print(f"\t- Using provided PORTALS namelist in {IOtools.clipstr(self.portals_namelist)}")
         self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
+
+        # Read optimization namelist (always the default, the values to be modified are in the portals one)
+        if self.portals_parameters["optimization_namelist"] is not None:
+            self.optimization_namelist = self.portals_parameters["optimization_namelist"]
+        else:
+            self.optimization_namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
+        self.optimization_options = IOtools.read_mitim_yaml(self.optimization_namelist)
 
         # Apply the optimization options to the proper namelist and drop it from portals_parameters
         if 'optimization_options' in self.portals_parameters:
