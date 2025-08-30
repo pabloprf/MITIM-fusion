@@ -21,6 +21,8 @@ import subprocess
 import json
 import functools
 import hashlib
+import yaml, importlib
+from typing import Any, Mapping
 from collections import OrderedDict
 from pathlib import Path
 import platform
@@ -2158,3 +2160,124 @@ class CPU_Unpickler(pickle_dill.Unpickler):
                 print(f"\t\tModule not found: {module} {name}; returning dummy", typeMsg="i")
                 return super().find_class("torch._utils", name)
 
+def read_mitim_yaml(path: str):
+
+    def resolve(x):
+        if isinstance(x, dict):
+            return {k: resolve(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [resolve(v) for v in x]
+        if isinstance(x, str) and x.startswith("import::"):
+            modattr = x[len("import::"):]
+            module_name, attr = modattr.rsplit(".", 1)
+            return getattr(importlib.import_module(module_name), attr)
+        return x
+
+    with open(path, "r") as f:
+        cfg = yaml.safe_load(f)
+    return resolve(cfg)
+
+
+import yaml
+import numpy as np
+import inspect
+from pathlib import Path
+from typing import Any, Mapping
+
+def _as_import_string(obj: Any) -> str:
+    """
+    Return an 'import::module.qualname' for callables/classes.
+    Falls back to str(obj) if module/name aren't available.
+    """
+    # Handle bound methods
+    if inspect.ismethod(obj):
+        func = obj.__func__
+        mod = func.__module__
+        qn = getattr(func, "__qualname__", func.__name__)
+        qn = qn.replace("<locals>.", "")
+        return f"import::{mod}.{qn}"
+    # Handle functions, classes, other callables with module/name
+    if inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
+        mod = getattr(obj, "__module__", None)
+        name = getattr(obj, "__qualname__", getattr(obj, "__name__", None))
+        if mod and name:
+            name = name.replace("<locals>.", "")
+            return f"import::{mod}.{name}"
+        return f"import::{str(obj)}"
+
+    # Strings: if they already look like import::..., keep; otherwise just return
+    if isinstance(obj, str):
+        return obj
+
+    # Fallback
+    return f"import::{str(obj)}"
+
+def _normalize_for_yaml(obj: Any) -> Any:
+    """
+    Recursively convert objects into YAML-safe Python builtins.
+    - NumPy arrays/scalars -> lists/scalars
+    - Paths -> str
+    - sets -> lists
+    - callables/classes/methods -> 'import::module.qualname'
+    Leaves basic builtins as-is.
+    """
+    # NumPy
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+
+    # Simple builtins
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+
+    # Path-like
+    if isinstance(obj, (Path, )):
+        return str(obj)
+
+    # Sets -> lists
+    if isinstance(obj, (set, frozenset)):
+        return [_normalize_for_yaml(v) for v in obj]
+
+    # Mappings
+    if isinstance(obj, Mapping):
+        # ensure keys are YAML-safe (coerce to str if needed)
+        return {str(k): _normalize_for_yaml(v) for k, v in obj.items()}
+
+    # Sequences
+    if isinstance(obj, (list, tuple)):
+        return [_normalize_for_yaml(v) for v in obj]
+
+    # Anything callable or class-like -> import string
+    if inspect.ismethod(obj) or inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
+        return _as_import_string(obj)
+
+    # Fallback to str for unknown objects
+    return str(obj)
+
+class _NoAliasDumper(yaml.SafeDumper):
+    def ignore_aliases(self, data):
+        return True
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow, indentless=False)
+
+def write_mitim_yaml(parameters: Mapping[str, Any], path: str) -> None:
+    """
+    General YAML writer:
+    - No assumptions about keys (works for solution/transport/target and also optimization_options).
+    - Normalizes everything to YAML-safe types, including function objects.
+    """
+    if not isinstance(parameters, Mapping):
+        raise TypeError("parameters must be a dict-like mapping")
+    clean = _normalize_for_yaml(parameters)
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(
+            clean,
+            f,
+            Dumper=_NoAliasDumper,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=True,
+            width=1000,
+        )

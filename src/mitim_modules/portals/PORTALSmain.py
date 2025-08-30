@@ -1,7 +1,6 @@
 import shutil
 import torch
 import copy
-import yaml, importlib
 from collections import OrderedDict
 import numpy as np
 import dill as pickle_dill
@@ -49,11 +48,12 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Read PORTALS namelist (if not provided, use default)
         if portals_namelist is None:
-            portals_namelist = __mitimroot__ / "templates" / "portals.namelist.yaml"
-            print(f"\t- No PORTALS namelist provided, using default in {IOtools.clipstr(portals_namelist)}")
+            self.portals_namelist = __mitimroot__ / "templates" / "portals.namelist.yaml"
+            print(f"\t- No PORTALS namelist provided, using default in {IOtools.clipstr(self.portals_namelist)}")
         else:
-            print(f"\t- Using provided PORTALS namelist in {IOtools.clipstr(portals_namelist)}")
-        self.portals_parameters = read_portals_nml(portals_namelist)
+            self.portals_namelist = portals_namelist
+            print(f"\t- Using provided PORTALS namelist in {IOtools.clipstr(self.portals_namelist)}")
+        self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
 
         # Apply the optimization options to the proper namelist and drop it from portals_parameters
         if 'optimization_options' in self.portals_parameters:
@@ -165,6 +165,12 @@ class portals(STRATEGYtools.opt_evaluator):
 
         else:
             print("\t- extrapointsModels already defined, not changing")
+
+        # Make a copy of the namelist that was imported to the folder
+        shutil.copy(self.portals_namelist, self.folder / "portals.namelist_original.yaml")
+
+        # Write the parameters (after script modification) to a yaml namelist for tracking purposes
+        IOtools.write_mitim_yaml(self.portals_parameters, self.folder / "portals.namelist.yaml")
 
     def _define_reuse_models(self):
         '''
@@ -530,20 +536,3 @@ def analyze_results(
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.mitim_model.optimization_object
-
-def read_portals_nml(path: str):
-
-    def resolve(x):
-        if isinstance(x, dict):
-            return {k: resolve(v) for k, v in x.items()}
-        if isinstance(x, list):
-            return [resolve(v) for v in x]
-        if isinstance(x, str) and x.startswith("import::"):
-            modattr = x[len("import::"):]
-            module_name, attr = modattr.rsplit(".", 1)
-            return getattr(importlib.import_module(module_name), attr)
-        return x
-
-    with open(path, "r") as f:
-        cfg = yaml.safe_load(f)
-    return resolve(cfg)

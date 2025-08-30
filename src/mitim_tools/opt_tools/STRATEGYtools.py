@@ -359,6 +359,9 @@ class MITIM_BO:
         self.askQuestions = askQuestions
         self.seed = seed
         self.avoidPoints = []
+        
+        # Write the optimizaiton parameters stored in the object, into a file
+        IOtools.write_mitim_yaml(self.optimization_object.optimization_options, self.optimization_object.folder / "optimization.namelist.yaml")
 
         if self.optimization_object.name_objectives is None:
             self.optimization_object.name_objectives = "y"
