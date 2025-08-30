@@ -2,7 +2,7 @@ import torch
 import copy
 import numpy as np
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_tools.opt_tools.optimizers import optim
+from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_tools.opt_tools.utils import TESTtools
 from IPython import embed
 
@@ -29,7 +29,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
             'solver': optimization_params.get("solver","lm"),
             'write_trajectory': writeTrajectory
         }
-        solver_fun = optim.scipy_root
+        solver_fun = multivariate_tools.scipy_root
         numZ = 5
     
     elif method == "sr":
@@ -37,14 +37,13 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
         print("\t- Implementation of simple relaxation method")
         
         solver_options = {
-            "tol": optimization_params.get("tol",-1e-6),
             "tol_rel": optimization_params.get("relative_improvement_for_stopping",1e-4),
-            "maxiter": optimization_params.get("maxiter",2000),
+            "maxiter": optimization_params.get("maxiter",1000),
             "relax": optimization_params.get("relax",0.1),     
             "relax_dyn": optimization_params.get("relax_dyn",True),
-            "print_each": optimization_params.get("maxiter",2000)//20,
+            "print_each": optimization_params.get("maxiter",1000)//20,
         }
-        solver_fun = optim.simple_relaxation
+        solver_fun = multivariate_tools.simple_relaxation
         numZ = 6
     
     # --------------------------------------------------------------------------------------------------------
@@ -56,24 +55,13 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
         # Evaluate source term
         yOut, y1, y2, _ = fun.evaluators["residual_function"](X, outputComponents=True)
 
-        # -----------------------------------------
-        # Post-process
-        # -----------------------------------------
-
-        # Best in batch
-        best_candidate = yOut.argmax().item()
-        # Only pass the best candidate
-        yRes = (y2-y1)[best_candidate, :].detach()
-        yMetric = yOut[best_candidate].detach()
-        Xpass = X[best_candidate, :].detach()
-
         # Store values
         if metric_history is not None:
-            metric_history.append(yMetric)
+            metric_history.append(yOut.detach())
         if x_history is not None:
-            x_history.append(Xpass)
+            x_history.append(X.detach())
         if y_history is not None:
-            y_history.append(yRes)
+            y_history.append((y2-y1).detach())
 
         return y1, y2, yOut
 
@@ -104,7 +92,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # --------------------------------------------------------------------------------------------------------
 
     print("************************************************************************************************")
-    x_res, _, _, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    x_res, y_history, x_history, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
     # --------------------------------------------------------------------------------------------------------

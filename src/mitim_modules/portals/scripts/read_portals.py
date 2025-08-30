@@ -1,64 +1,74 @@
 import argparse
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import IOtools
 from mitim_modules.portals.utils import PORTALSanalysis
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.opt_tools import STRATEGYtools
+from mitim_tools.misc_tools.utils import remote_tools
 from IPython import embed
 
-"""
-This script is to plot only the convergence figure, not the rest of surrogates that takes long.
-It also does it on a separate figure, so easy to manage (e.g. for saving as .eps)
-"""
 
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--remote", "-r", type=str, required=False, default=None)
+    
+    # Standard options
+    parser.add_argument("folders", type=str, nargs="*",
+                        help="Paths to the folders to read.")
 
-    parser.add_argument(
-        "--max", type=int, required=False, default=None
-    )  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
+    # PORTALS specific options
+    parser.add_argument("--max", type=int, required=False, default=None)  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
     parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*")
-    parser.add_argument(
-        "--all", required=False, default=False, action="store_true"
-    )  # Plot all fluxes?
-    parser.add_argument(
-        "--file", type=str, required=False, default=None
-    )  # File to save .eps
-    parser.add_argument(
-        "--complete", "-c", required=False, default=False, action="store_true"
-    )
+    parser.add_argument("--all", required=False, default=False, action="store_true")  # Plot all fluxes?
+    parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
+    parser.add_argument("--complete", "-c", required=False, default=False, action="store_true")
+   
+    # Remote options
+    parser.add_argument("--remote",type=str, required=False, default=None,
+                        help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
+    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+                        help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
+    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
+                        help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
+    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+                        help="If set, it will only retrieve the folder structure with a few key files.")
+    parser.add_argument('--fix', required=False, default=False, action='store_true',
+                        help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
 
-    folders = [IOtools.expandPath(folder) for folder in args.folders]
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Retrieve from remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    portals_total = []
-    for folderWork in folders:
-        folderRemote_reduced = args.remote
-        file = args.file
-        indexToMaximize = args.max
-        indeces_extra = args.indeces_extra
-        plotAllFluxes = args.all
-        complete = args.complete
+    only_folder_structure_with_files = None
+    if args.remote_minimal:
+        only_folder_structure_with_files = ["Outputs/optimization_data.csv","Outputs/optimization_extra.pkl","Outputs/optimization_object.pkl","Outputs/optimization_results.out"]
+            
+    folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 
-        if not folderWork.exists():
-            folderWork.mkdir(parents=True, exist_ok=True)
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Fix pkl optimization portals in remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        folderRemote = (
-            f"{folderRemote_reduced}/{IOtools.reducePathLevel(folderWork)[-1]}/"
-            if folderRemote_reduced is not None
-            else None
-        )
+    if args.fix:
+        for folder in folders:
+            STRATEGYtools.clean_state(folder)
 
-        # Read PORTALS
-        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(
-            folderWork, folderRemote=folderRemote
-        )
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # PORTALS reading
+    # --------------------------------------------------------------------------------------------------------------------------------------------
 
-        portals_total.append(portals)
+    portals_total = [PORTALSanalysis.PORTALSanalyzer.from_folder(folderWork) for folderWork in folders]
 
-    # PLOTTING
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Actual PORTALS plotting
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+
+    file = args.file
+    indexToMaximize = args.max
+    indeces_extra = args.indeces_extra
+    plotAllFluxes = args.all
+    complete = args.complete
 
     if not complete:
         size = 8
@@ -87,9 +97,7 @@ def main():
         portals_total[i].fn = fn
 
         # Plot metrics
-        if (not complete) or (
-            isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer)
-        ):
+        if (not complete) or isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
             if isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
                 fig = None
             elif requiresFN:
@@ -115,6 +123,7 @@ def main():
     else:
         plt.show()
     embed()
+
 
 if __name__ == "__main__":
     main()

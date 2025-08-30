@@ -1,9 +1,10 @@
 import copy
+from mitim_modules.powertorch.physics_models import transport_analytic
 import torch
 import shutil
 import random
 from functools import partial
-from mitim_modules.powertorch.physics import TRANSPORTtools
+from mitim_modules.powertorch.utils import TRANSPORTtools
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.powertorch import STATEtools
 from mitim_tools.opt_tools.utils import BOgraphics
@@ -30,7 +31,7 @@ def initialization_simple_relax(self):
     MainFolder.mkdir(parents=True, exist_ok=True)
 
     a, b = IOtools.reducePathLevel(self.folderExecution, level=1)
-    namingConvention = f"portals_sr_{b}_ev"
+    namingConvention = "portals_sr_ev"
 
     if self.seed is not None and self.seed != 0:
         random.seed(self.seed)
@@ -77,10 +78,10 @@ def initialization_simple_relax(self):
         newname = f"{namingConvention}_{i}"
 
         # Delte destination first
-        if (ff / "model_complete").exists():
-            IOtools.shutil_rmtree(ff / "model_complete")
+        if (ff / "transport_simulation_folder").exists():
+            IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
-        shutil.copytree(MainFolder / newname / "model_complete", ff / "model_complete") #### delete first
+        shutil.copytree(MainFolder / newname / "transport_simulation_folder", ff / "transport_simulation_folder") #### delete first
 
     return Xopt.cpu().numpy()
 
@@ -91,7 +92,17 @@ def initialization_simple_relax(self):
 """
 
 
-def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_write_csv=None, algorithm = None, solver_options = None, keep_within_bounds = True):
+def flux_match_surrogate(
+        step,
+        profiles,
+        plot_results=False,
+        fn = None,
+        file_write_csv=None,
+        algorithm = None,
+        solver_options = None,
+        keep_within_bounds = True,
+        target_options_use = None,
+        ):
     '''
     Technique to reutilize flux surrogates to predict new conditions
     ----------------------------------------------------------------
@@ -125,27 +136,26 @@ def flux_match_surrogate(step,profiles, plot_results=False, fn = None, file_writ
     # Create powerstate with new profiles
     # ----------------------------------------------------
 
-    TransportOptions = copy.deepcopy(step.surrogate_parameters["powerstate"].TransportOptions)
+    transport_options = copy.deepcopy(step.surrogate_parameters["powerstate"].transport_options)
 
     # Define transport calculation function as a surrogate model
-    TransportOptions['transport_evaluator'] = TRANSPORTtools.surrogate_model
-    TransportOptions['ModelOptions'] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
+    transport_options['evaluator'] = transport_analytic.surrogate
+    transport_options["options"] = {'flux_fun': partial(step.evaluators['residual_function'],outputComponents=True)}
 
     # Create powerstate with the same options as the original portals but with the new profiles
     powerstate = STATEtools.powerstate(
         profiles,
-        EvolutionOptions={
-            "ProfilePredicted": step.surrogate_parameters["powerstate"].ProfilesPredicted,
+        evolution_options={
+            "ProfilePredicted": step.surrogate_parameters["powerstate"].predicted_channels,
             "rhoPredicted": step.surrogate_parameters["powerstate"].plasma["rho"][0,1:],
-            "useConvectiveFluxes": step.surrogate_parameters["powerstate"].useConvectiveFluxes,
             "impurityPosition": step.surrogate_parameters["powerstate"].impurityPosition,
-            "fineTargetsResolution": step.surrogate_parameters["powerstate"].fineTargetsResolution,
         },
-        TransportOptions=TransportOptions,
-        TargetOptions=step.surrogate_parameters["powerstate"].TargetOptions,
-        tensor_opts = {
+        transport_options=transport_options,
+        target_options= step.surrogate_parameters["powerstate"].target_options if target_options_use is None else target_options_use,
+        tensor_options = {
             "dtype": step.surrogate_parameters["powerstate"].dfT.dtype,
-            "device": step.surrogate_parameters["powerstate"].dfT.device},
+            "device": step.surrogate_parameters["powerstate"].dfT.device
+            },
     )
 
     # Pass powerstate as part of the surrogate_parameters such that transformations now occur with the new profiles

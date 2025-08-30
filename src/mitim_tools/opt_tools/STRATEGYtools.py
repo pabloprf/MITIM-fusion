@@ -1,3 +1,4 @@
+import sys
 import copy
 import datetime
 import array
@@ -10,6 +11,7 @@ import dill as pickle_dill
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
+from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools import OPTtools, STEPtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
@@ -69,7 +71,7 @@ class opt_evaluator:
         folder,
         namelist=None,
         default_namelist_function=None,
-        tensor_opts = {
+        tensor_options = {
             "dtype": torch.double,
             "device": torch.device("cpu"),
         }
@@ -78,7 +80,7 @@ class opt_evaluator:
         Namelist file can be provided and will be copied to the folder
         """
 
-        self.tensor_opts = tensor_opts
+        self.tensor_options = tensor_options
 
         print("- Parent opt_evaluator function initialized")
 
@@ -95,12 +97,12 @@ class opt_evaluator:
                 IOtools.askNewFolder(self.folder / "Outputs")
 
         if namelist is not None:
-            print(f"\t- Namelist provided: {namelist}", typeMsg="i")
+            print(f"\t- Optimizaiton namelist provided: {namelist}", typeMsg="i")
 
             self.optimization_options = IOtools.read_mitim_nml(namelist)
 
         elif default_namelist_function is not None:
-            print("\t- Namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
+            print("\t- Optimizaiton namelist not provided, using MITIM default for this optimization sub-module", typeMsg="i")
 
             namelist = __mitimroot__ / "templates" / "main.namelist.json"
             self.optimization_options = IOtools.read_mitim_nml(namelist)
@@ -108,10 +110,7 @@ class opt_evaluator:
             self.optimization_options = default_namelist_function(self.optimization_options)
 
         else:
-            print(
-                "\t- No namelist provided (likely b/c for reading/plotting purposes)",
-                typeMsg="i",
-            )
+            print("\t- No optimizaiton namelist provided (likely b/c for reading/plotting purposes)",typeMsg="i")
             self.optimization_options = None
 
         self.surrogate_parameters = {
@@ -123,8 +122,8 @@ class opt_evaluator:
         }
 
         # Determine type of tensors to work with
-        torch.set_default_dtype(self.tensor_opts["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
-        self.dfT = torch.randn( (2, 2), **tensor_opts)
+        torch.set_default_dtype(self.tensor_options["dtype"])  # In case I forgot to specify a type explicitly, use as default (https://github.com/pytorch/botorch/discussions/1444)
+        self.dfT = torch.randn( (2, 2), **tensor_options)
 
         # Name of calibrated objectives (e.g. QiRes1 to represent the objective from Qi1-QiT1)
         self.name_objectives = None
@@ -193,7 +192,6 @@ class opt_evaluator:
                 self.fn,
                 self.res,
                 self.mitim_model,
-                self.log,
                 self.data,
             ) = BOgraphics.retrieveResults(
                 self.folder,
@@ -362,13 +360,6 @@ class MITIM_BO:
         self.seed = seed
         self.avoidPoints = []
 
-        if (not self.cold_start) and askQuestions:
-            if not print(
-                f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",
-                typeMsg="q",
-            ):
-                raise Exception("[MITIM] - User requested to stop")
-
         if self.optimization_object.name_objectives is None:
             self.optimization_object.name_objectives = "y"
 
@@ -380,6 +371,13 @@ class MITIM_BO:
         )
 
         self.folderOutputs = self.folderExecution / "Outputs"
+
+        if (not self.cold_start) and askQuestions:
+            
+            # Check if Outputs folder is empty (if it's empty, do not ask the user, just continue)
+            if self.folderOutputs.exists() and (len(list(self.folderOutputs.iterdir())) > 0):
+                if not print(f"\t* Because {cold_start = }, MITIM will try to read existing results from folder",typeMsg="q"):
+                    raise Exception("[MITIM] - User requested to stop")
 
         if optimization_object.optimization_options is not None:
             if not self.folderOutputs.exists():
@@ -438,10 +436,11 @@ class MITIM_BO:
 			Grab variables
 			------------------------------------------------------------------------------
 			"""
+   
+            self.timings_file = self.folderOutputs / "timing.jsonl"
 
             # Logger
-            self.logFile = BOgraphics.LogFile(self.folderOutputs / "optimization_log.txt")
-            self.logFile.activate()
+            sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
 
             # Meta
             self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
@@ -690,22 +689,14 @@ class MITIM_BO:
                 current_step = self.read()
 
                 if current_step is None:
-                    print(
-                        "\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",
-                        typeMsg="w",
-                    )
-                    print(
-                        "\t* Are you aware of the consequences of continuing?",
-                        typeMsg="q",
-                    )
+                    print("\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",typeMsg="w")
+                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q")
 
                     self.cold_start = True
 
             if not self.cold_start:
                 # Read next from Tabular
-                self.x_next, _, _ = self.optimization_data.extract_points(
-                    points=np.arange(len(self.train_X), len(self.train_X) + self.best_points)
-                )
+                self.x_next, _, _ = self.optimization_data.extract_points(points=np.arange(len(self.train_X), len(self.train_X) + self.best_points))
                 self.x_next = torch.from_numpy(self.x_next).to(self.dfT)
 
                 # Re-write x_next from the pkl... reason for this is that if optimization is heuristic, I may prefer what was in Tabular
@@ -741,47 +732,8 @@ class MITIM_BO:
 				---------------------------------------------------------------------------------------
 				"""
 
-                train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
+                self._step()
 
-                current_step = STEPtools.OPTstep(
-                    self.train_X,
-                    self.train_Y,
-                    train_Ystd,
-                    bounds=self.bounds,
-                    stepSettings=self.stepSettings,
-                    currentIteration=self.currentIteration,
-                    strategy_options=self.strategy_options_use,
-                    BOmetrics=self.BOmetrics,
-                    surrogate_parameters=self.surrogate_parameters,
-                )
-
-                # Incorporate strategy_options for later retrieving
-                current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
-
-                self.steps.append(current_step)
-
-                # Avoid points
-                avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
-                self.avoidPoints = np.unique([int(j) for j in avoidPoints])
-
-                # ***** Fit
-                self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
-
-                # ***** Define evaluators
-                self.steps[-1].defineFunctions(self.scalarized_objective)
-
-                # Store class with the model fitted and evaluators defined
-                if self.storeClass:
-                    self.save()
-
-                # ***** Optimize
-                if not self.hard_finish:
-                    self.steps[-1].optimize(
-                        position_best_so_far=self.BOmetrics["overall"]["indBest"],
-                        seed=self.seed,
-                    )
-                else:
-                    self.steps[-1].x_next = None
 
             # Pass the information about next step
             self.x_next = self.steps[-1].x_next
@@ -906,6 +858,73 @@ class MITIM_BO:
 
         return aux if provideFullClass else step
 
+    # Convenient helper methods to track timings of components
+
+    @mitim_timer(lambda self: f'Eval @ {self.currentIteration}', log_file=lambda self: self.timings_file)
+    def _evaluate(self):
+        
+        y_next, ystd_next, self.numEval = EVALUATORtools.fun(
+            self.optimization_object,
+            self.x_next,
+            self.folderExecution,
+            self.bounds,
+            self.outputs,
+            self.optimization_data,
+            parallel=self.parallel_evaluations,
+            cold_start=self.cold_start,
+            numEval=self.numEval,
+        )
+        
+        return y_next, ystd_next
+    
+    @mitim_timer(lambda self: f'Surr @ {self.currentIteration}', log_file=lambda self: self.timings_file)
+    def _step(self):
+        
+        train_Ystd = self.train_Ystd if (self.optimization_options["evaluation_options"]["train_Ystd"] is None) else self.optimization_options["evaluation_options"]["train_Ystd"]
+        
+        current_step = STEPtools.OPTstep(
+            self.train_X,
+            self.train_Y,
+            train_Ystd,
+            bounds=self.bounds,
+            stepSettings=self.stepSettings,
+            currentIteration=self.currentIteration,
+            strategy_options=self.strategy_options_use,
+            BOmetrics=self.BOmetrics,
+            surrogate_parameters=self.surrogate_parameters,
+        )
+
+        # Incorporate strategy_options for later retrieving
+        current_step.strategy_options_use = copy.deepcopy(self.strategy_options_use)
+
+        self.steps.append(current_step)
+
+        # Avoid points
+        avoidPoints = np.append(self.avoidPoints_failed, self.avoidPoints_outside)
+        self.avoidPoints = np.unique([int(j) for j in avoidPoints])
+
+        # ***** Fit
+        self.steps[-1].fit_step(avoidPoints=self.avoidPoints)
+
+        # ***** Define evaluators
+        self.steps[-1].defineFunctions(self.scalarized_objective)
+
+        # Store class with the model fitted and evaluators defined
+        if self.storeClass:
+            self.save()
+
+        # ***** Optimize
+        if not self.hard_finish:
+            self.steps[-1].optimize(
+                position_best_so_far=self.BOmetrics["overall"]["indBest"],
+                seed=self.seed,
+            )
+        else:
+            self.steps[-1].x_next = None
+        
+    # ---------------------------------------------------------------------------------
+
+
     def updateSet(
         self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
     ):
@@ -949,17 +968,7 @@ class MITIM_BO:
 
         # --- Evaluation
         time1 = datetime.datetime.now()
-        y_next, ystd_next, self.numEval = EVALUATORtools.fun(
-            self.optimization_object,
-            self.x_next,
-            self.folderExecution,
-            self.bounds,
-            self.outputs,
-            self.optimization_data,
-            parallel=self.parallel_evaluations,
-            cold_start=self.cold_start,
-            numEval=self.numEval,
-        )
+        y_next, ystd_next = self._evaluate()
         txt_time = IOtools.getTimeDifference(time1)
         print(f"\t- Complete model update took {txt_time}")
         # ------------------
@@ -1010,12 +1019,8 @@ class MITIM_BO:
 		"""
         print("\n~~~~~~~~~~~~~~~ Entering bounds upgrade module ~~~~~~~~~~~~~~~~~~~")
         print("(if extrapolations were allowed during optimization)")
-        self.bounds = SBOcorrections.upgradeBounds(
-            self.bounds, self.train_X, self.avoidPoints_outside
-        )
-        print(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
-        )
+        self.bounds = SBOcorrections.upgradeBounds(self.bounds, self.train_X, self.avoidPoints_outside)
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 
         # ~~~~~~~~~~~~~~~~~~
         # Possible corrections to modeled & optimization region
@@ -1066,6 +1071,7 @@ class MITIM_BO:
 
         return y_next, ystd_next
 
+    @mitim_timer(lambda self: f'Init', log_file=lambda self: self.timings_file)
     def initializeOptimization(self):
         print("\n")
         print("------------------------------------------------------------")
@@ -1109,29 +1115,21 @@ class MITIM_BO:
 
         if (not self.cold_start) and (self.optimization_data is not None):
             self.type_initialization = 3
-            print(
-                "--> Since cold_start from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",
-                typeMsg="i",
-            )
+            print("--> Since restart from a previous MITIM has been requested, forcing initialization type to 3 (read from optimization_data)",typeMsg="i",)
 
         if self.type_initialization == 3:
             print("--> Initialization by reading tabular data...")
 
             try:
                 tabExists = len(self.optimization_data.data) >= self.initial_training
-                print(
-                    f"\t- optimization_data file has {len(self.optimization_data.data)} elements, and initial_training were {self.initial_training}"
-                )
+                print(f"\t- optimization_data file has {len(self.optimization_data.data)} elements, and initial_training were {self.initial_training}")
             except:
                 tabExists = False
                 print("\n\nCould not read Tabular, because:", typeMsg="w")
                 print(traceback.format_exc())
 
             if not tabExists:
-                print(
-                    "--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",
-                    typeMsg="i",
-                )
+                print("--> type_initialization 3 requires optimization_data but something failed. Assigning type_initialization=1 and cold_starting from scratch",typeMsg="i",)
                 if self.askQuestions:
                     flagger = print("Are you sure?", typeMsg="q")
                     if not flagger:
@@ -1149,9 +1147,7 @@ class MITIM_BO:
         # cold_started run from previous. Grab DVs of initial set
         if readCasesFromTabular:
             try:
-                self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(
-                    points=np.arange(self.initial_training)
-                )
+                self.train_X, self.train_Y, self.train_Ystd = self.optimization_data.extract_points(points=np.arange(self.initial_training))
 
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
                 
@@ -1165,20 +1161,14 @@ class MITIM_BO:
                             self.avoidPoints_outside.append(i)
 
             except:
-                flagger = print(
-                    "Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",
-                    typeMsg="q",
-                )
+                flagger = print("Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",typeMsg="q",)
 
                 self.type_initialization = 1
                 self.cold_start = True
                 readCasesFromTabular = False
 
             if readCasesFromTabular and IOtools.isAnyNan(self.train_X):
-                flagger = print(
-                    " --> cold_start requires non-nan DVs, doing normal initialization",
-                    typeMsg="q",
-                )
+                flagger = print(" --> cold_start requires non-nan DVs, doing normal initialization",typeMsg="q",)
                 if not flagger:
                     embed()
 
@@ -1191,10 +1181,7 @@ class MITIM_BO:
         if not readCasesFromTabular:
             if self.type_initialization == 1 and self.optimization_options["problem_options"]["dvs_base"] is not None:
                 self.initial_training = self.initial_training - 1
-                print(
-                    f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",
-                    typeMsg="i",
-                )
+                print(f"--> Baseline point has been requested with LHS initialization, reducing requested initial random set to {self.initial_training}",typeMsg="i",)
 
             """
 			Initialization
@@ -1545,12 +1532,8 @@ class MITIM_BO:
         if plotoptimization_results:
             # Most current state of the optimization_results.out
             self.optimization_results.read()
-            if "logFile" in self.__dict__.keys():
-                logFile = self.logFile
-            else:
-                logFile = None
             self.optimization_results.plot(
-                fn=fn, doNotShow=True, log=logFile, tab_color=tab_color
+                fn=fn, doNotShow=True, log=self.timings_file, tab_color=tab_color
             )
 
         """
@@ -1600,11 +1583,16 @@ class MITIM_BO:
             # Plot acquisition evolution 
             for i in range(len(infoOPT)-1): #no cleanup stage
                 y_acq = infoOPT[i]['info']['acq_evaluated'].cpu().numpy()
-                ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]} (max of batch)')
+                
+                if len(y_acq.shape)>1:
+                    for j in range(y_acq.shape[1]):
+                        ax.plot(y_acq[:,j],'-o', c=colors[i], markersize=0.5, lw = 0.3, label=f'{infoOPT[i]["method"]} (candidate #{j})')
+                else:
+                    ax.plot(y_acq,'-o', c=colors[i], markersize=1, lw = 0.5, label=f'{infoOPT[i]["method"]}')
                 
                 # Plot max of guesses
                 if len(y_acq)>0:
-                    ax.axhline(y=y_acq[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
+                    ax.axhline(y=y_acq.max(axis=1)[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
 
             ax.set_title(f'BO Step #{step}')
             ax.set_ylabel('$f_{acq}$ (to max)')
@@ -1613,6 +1601,7 @@ class MITIM_BO:
                 ax.legend(loc='best', fontsize=6)
 
             GRAPHICStools.addDenseAxis(ax)
+
 
     def plotModelStatus(
         self, fn=None, boStep=-1, plotsPerFigure=20, stds=2, tab_color=None
@@ -1696,9 +1685,7 @@ class MITIM_BO:
         info, boundsRaw = step.InfoOptimization, step.bounds
 
         bounds = torch.Tensor([boundsRaw[b] for b in boundsRaw])
-        boundsThis = (
-            info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
-        )
+        boundsThis = info[0]["bounds"].cpu().numpy().transpose(1, 0) if "bounds" in info[0] else None
 
         # ----------------------------------------------------------------------
         # Prep figures
@@ -1851,7 +1838,7 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
 
     maximum_value_is_rel    = parameters["maximum_value_is_rel"]
     maximum_value_orig      = parameters["maximum_value"]
-    minimum_dvs_variation   = parameters["minimum_dvs_variation"]
+    minimum_inputs_variation   = parameters["minimum_inputs_variation"]
 
     res_base = -mitim_bo.BOmetrics["overall"]["Residual"][0].item()
 
@@ -1861,8 +1848,8 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
     # Stopping criteria
     # ------------------------------------------------------------------------------------
 
-    if minimum_dvs_variation is not None:
-        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation)
+    if minimum_inputs_variation is not None:
+        converged_by_dvs, yvals = stopping_criteria_by_dvs(mitim_bo, minimum_inputs_variation)
     else:
         converged_by_dvs = False
         yvals = None
@@ -1893,28 +1880,28 @@ def stopping_criteria_by_value(mitim_bo, maximum_value):
 
     return criterion_is_met, -yvals
 
-def stopping_criteria_by_dvs(mitim_bo, minimum_dvs_variation):
+def stopping_criteria_by_dvs(mitim_bo, minimum_inputs_variation):
 
     print("\t- Checking DV variations...")
     _, yG_max = TESTtools.DVdistanceMetric(mitim_bo.train_X)
 
     criterion_is_met = (
         mitim_bo.currentIteration
-        >= minimum_dvs_variation[0]
-        + minimum_dvs_variation[1]
+        >= minimum_inputs_variation[0]
+        + minimum_inputs_variation[1]
     )
-    for i in range(int(minimum_dvs_variation[1])):
+    for i in range(int(minimum_inputs_variation[1])):
         criterion_is_met = criterion_is_met and (
-            yG_max[-1 - i] < minimum_dvs_variation[2]
+            yG_max[-1 - i] < minimum_inputs_variation[2]
         )
 
     if criterion_is_met:
         print(
-            f"\t\t* DVs varied by less than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+            f"\t\t* DVs varied by less than {minimum_inputs_variation[2]}% compared to the rest of individuals for the past {int(minimum_inputs_variation[1])} iterations"
         )
     else:
         print(
-            f"\t\t* DVs have varied by more than {minimum_dvs_variation[2]}% compared to the rest of individuals for the past {int(minimum_dvs_variation[1])} iterations"
+            f"\t\t* DVs have varied by more than {minimum_inputs_variation[2]}% compared to the rest of individuals for the past {int(minimum_inputs_variation[1])} iterations"
         )
 
     return criterion_is_met, yG_max
@@ -1964,6 +1951,7 @@ def clean_state(folder):
             aux.optimization_options['convergence_options']['stopping_criteria'] = PORTALStools.stopping_criteria_portals
 
         aux.folderOutputs = folder / "Outputs"
+        aux.timings_file = aux.folderOutputs / "timing.jsonl"
 
         aux.save()
 

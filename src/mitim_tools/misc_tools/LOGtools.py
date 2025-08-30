@@ -27,7 +27,7 @@ def printMsg(*args, typeMsg=""):
     verbose = read_verbose_level()
 
     if verbose == 0:
-        return False
+        return True
     else:
 
         # -----------------------------------------------------------------------------
@@ -57,8 +57,6 @@ def printMsg(*args, typeMsg=""):
             # Print
             if typeMsg in ["w"]:
                 print(*total)
-            # Question result
-            return False
 
         elif verbose == 2:
             # Print
@@ -82,6 +80,8 @@ def printMsg(*args, typeMsg=""):
             # Question result
             if typeMsg == "q":
                 return query_yes_no("\t\t>> Do you want to continue?", extra=extra)
+
+        return True # Default return value if no specific typeMsg is provided
 
 
 if not sys.platform.startswith('win'):
@@ -119,6 +119,10 @@ def query_yes_no(question, extra=""):
     '''
     From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input 
     '''
+
+    if not sys.stdin.isatty():
+        raise Exception("Interactive terminal response required - something is wrong with this run")
+
 
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
@@ -164,9 +168,9 @@ chatGPT 4o as of 08/18/2024
 '''
 
 @contextlib.contextmanager
-def conditional_log_to_file(log_file=None, msg=None):
+def conditional_log_to_file(log_file=None, msg=None, write_log=True):
 
-    if log_file is not None:
+    if log_file is not None and write_log:
         with log_to_file(log_file, msg) as logger:
             yield logger
     else:

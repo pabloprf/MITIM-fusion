@@ -1,7 +1,9 @@
 import os
+import re
 import shutil
 import psutil
 import copy
+from typing import Callable
 import dill as pickle_dill
 import pandas as pd
 from mitim_tools.misc_tools import GRAPHICStools
@@ -59,45 +61,271 @@ class speeder(object):
         self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
         self.profiler.dump_stats(self.file)
 
-        print(
-            f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")'
-        )
+        print(f'Script took {createTimeTXT(self.timeDiff)}, profiler stats dumped to {self.file} (open with "python3 -m snakeviz {self.file}")')
 
-class timer(object):
+class timer:
+    '''
+    Context manager to time a script or function execution.
+    '''
+    # ────────────────────────────────────────────────────────────────────
+    def __init__(self,
+                 name: str = "Script",                  # Name of the script for printing, visualization
+                 print_at_entering: str | None = None,  # Prefix printed right before the timer starts
+                 log_file: Path | None = None):         # File to log the timing information in JSON format
+        self.name       = name
+        self.print_at_entering = print_at_entering
+        self.log_file   = log_file
 
-    def __init__(self, name="\t* Script", name_timer = '\t* Start time: '):
-        self.name = name
-        self.name_timer = name_timer
-
+    # ────────────────────────────────────────────────────────────────────
     def __enter__(self):
-        self.timeBeginning = datetime.datetime.now()
-        if self.name_timer is not None: print(f'{self.name_timer}{self.timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+        # high-resolution timer + wall-clock stamp
+        
+        self.t0_wall    = time.perf_counter()
+        self.t0         = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if self.print_at_entering:
+            print(f'{self.print_at_entering}{self.t0}')
         return self
 
-    def __exit__(self, *args):
-        self._get_time()
+    # ────────────────────────────────────────────────────────────────────
+    def __exit__(self, exc_type, exc, tb):
+        self._finish() 
+        return False            # propagate any exception
 
-    def _get_time(self):
+    # ────────────────────────────────────────────────────────────────────
+    def _finish(self):
+        
+        dt = time.perf_counter() - self.t0_wall
+        t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        print(f'\t\t* {self.name} took {createTimeTXT(dt)}')
 
-        self.timeDiff = getTimeDifference(self.timeBeginning, niceText=False)
-
-        print(f'{self.name} took {createTimeTXT(self.timeDiff)}')
+        if self.log_file:
+            record = {
+                "script"      : self.name,
+                "t_start"     : self.t0,
+                "ts_end"      : t1,
+                "duration_s"  : dt,
+            }
+            with Path(self.log_file).open("a", buffering=1) as f:
+                f.write(json.dumps(record) + "\n")
 
 # Decorator to time functions
 
-def mitim_timer(name="\t* Script",name_timer = '\t* Start time: '):
+def mitim_timer(
+        name: str | None = None,
+        print_at_entering: str | None = None,
+        log_file: str | Path | Callable[[object], str | Path] | None = None
+    ):
+    """
+    Decorator that times a function / method and optionally appends one JSON
+    line to *log_file* after the call finishes.
+
+    Parameters
+    ----------
+    name : str | None
+        Human-readable beat name.  If None, defaults to the wrapped function's __name__.
+    print_at_entering : str
+        Prefix printed right before the timer starts
+    log_file : str | Path | callable(self) -> str | Path | None
+        • str / Path  → literal path written every time the beat finishes  
+        • callable    → called **at call time** with the bound instance
+                        (`self`) and must return the path to use  
+        • None        → no file is written, only console timing is printed
+
+    Notes
+    -----
+    *When* the wrapper runs it has access to the bound instance (`self`), so
+    callable argument values let you access self variables.
+    """
+
     def decorator_timer(func):
+        script_name = name or func.__name__
+
         @functools.wraps(func)
         def wrapper_timer(*args, **kwargs):
-            with timer(name,name_timer=name_timer):
+            # -------------------- resolve name --------------------------
+            if callable(script_name):
+                # assume first positional arg is `self` for bound methods
+                instance = args[0] if args else None
+                chosen_script_name = script_name(instance)
+            else:
+                chosen_script_name = script_name
+            # ---------------------------------------------------------------
+            # -------------------- resolve log_file --------------------------
+            if callable(log_file):
+                # assume first positional arg is `self` for bound methods
+                instance = args[0] if args else None
+                chosen_log_file = log_file(instance)
+            else:
+                chosen_log_file = log_file
+            # ---------------------------------------------------------------
+
+            # Your original context-manager timer class:
+            with timer(chosen_script_name,
+                       print_at_entering=print_at_entering,
+                       log_file=chosen_log_file):
                 return func(*args, **kwargs)
+
         return wrapper_timer
+
     return decorator_timer
+
+# ---------------------------------------------------------------------------
+def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= '', log=False):
+    """
+    Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
+    with vertical lines when the beat number changes.
+
+    Parameters
+    ----------
+    jsonl_path : str | Path
+        File with one JSON record per line.
+    unit : {"s", "min", "h"}
+        Unit for the y-axis.
+    """
+    multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
+
+    scripts, script_time, cumulative, beat_nums, script_restarts = [], [], [], [], []
+    running = 0.0
+    beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
+
+    # ── read the file ───────────────────────────────────────────────────────
+    with Path(jsonl_path).expanduser().open() as f:
+        for line in f:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            
+            if rec["script"] not in scripts:
+            
+                scripts.append(rec["script"])
+                script_time.append(rec["duration_s"] * multiplier)
+                running += rec["duration_s"]* multiplier
+                cumulative.append(running)
+
+                m = beat_pat.search(rec["script"])
+                beat_nums.append(int(m.group(1)) if m else None)
+                
+                script_restarts.append(0.0)
+                
+            else:
+                # If the script is already in the list, it means it was restarted
+                idx = scripts.index(rec["script"])
+                script_restarts[idx] += rec["duration_s"] * multiplier
+                
+                cumulative[-1] += script_restarts[idx] 
+                running += script_restarts[idx] 
+                
+
+    if not scripts:
+        raise ValueError(f"No records found in {jsonl_path}")
+
+    beat_nums = [0] + beat_nums  # Start with zero beat
+    scripts = ['ini'] + scripts  # Add initial beat
+    script_time = [0.0] + script_time  # Start with zero time
+    cumulative = [0.0] + cumulative  # Start with zero time
+    script_restarts = [0.0] + script_restarts  # Start with zero restarts
+
+    # ── plot ────────────────────────────────────────────────────────────────
+    x = list(range(len(scripts)))
+    
+    if axs is None:
+        plt.ion()
+        fig = plt.figure()
+        axs = fig.subplot_mosaic("""
+                                A
+                                B
+                                """)
+    
+    try:
+        axs = [ax for ax in axs.values()]
+    except:
+        pass
+
+    ax = axs[0]
+    ax.plot(x, cumulative, "-s", markersize=8, color=color, label=label)
+    
+    # Add restarts as vertical lines
+    for i in range(len(script_restarts)):
+        if script_restarts[i] > 0:
+            ax.plot(
+                [x[i],x[i]],
+                [cumulative[i],cumulative[i]-script_restarts[i]],
+                "-.o", markersize=5, color=color)
+    
+    
+    for i in range(1, len(beat_nums)):
+        if beat_nums[i] != beat_nums[i - 1]:
+            ax.axvline(i - 0.5, color='k',linestyle="-.")
+
+    #ax.set_xlim(left=0)
+    ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
+    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.legend(loc='upper left', fontsize=8)
+
+
+    ax = axs[1]
+    for i in range(len(scripts)-1):
+        ax.plot([x[i], x[i+1]], [0, script_time[i+1]], "-s", markersize=8, color=color)
+
+    # Add restarts as vertical lines
+    for i in range(len(script_restarts)-1):
+        if script_restarts[i] > 0:
+            ax.plot(
+                [x[i+1],x[i+1]],
+                [script_time[i+1],script_time[i+1]+script_restarts[i+1]],
+                "-.o", markersize=5, color=color)
+
+    for i in range(1, len(beat_nums)):
+        if beat_nums[i] != beat_nums[i - 1]:
+            ax.axvline(i - 0.5, color='k',linestyle="-.")
+
+    #ax.set_xlim(left=0)
+    ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
+    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    GRAPHICStools.addDenseAxis(ax)
+    if log:
+        ax.set_yscale('log')
+    
+    return x, scripts
+
+
+# ------------------------------------
+
+# Decorator to hook methods before and after execution
+def hook_method(before=None, after=None):
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            if before:
+                before(self)
+            result = func(self, *args, **kwargs)
+            if after:
+                after(self)
+            return result
+        return wrapper
+    return decorator
 
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
         txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
+
+        
+def deep_dict_update(d, u):
+    for k, v in u.items():
+        if isinstance(v, dict) and isinstance(d.get(k), dict):
+            deep_dict_update(d[k], v)   # recurse into nested dict
+        else:
+            d[k] = v               # overwrite at lowest level
+    return d
+
+def deep_grab_flags_dict(d):
+    keys = {}
+    for key in d.keys():
+        keys[key] = deep_grab_flags_dict(d[key]) if isinstance(d[key], dict) else None
+    return keys
 
 def receiveWebsite(url, data=None):
     NumTriesAfterTimeOut = 60
@@ -392,7 +620,7 @@ def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
             print('--------------------------------------------------')
             print('Convergence criteria')
             print('--------------------------------------------------')
-            v = unprint_fun(*args,**kwargs)
+            v = unprint_fun(*args, **kwargs)
             print('--------------------------------------------------\n')
             return v
         optimization_options['convergence_options']['stopping_criteria'] = opt_crit
@@ -719,7 +947,7 @@ def getLocInfo(locFile, with_extension=False):
 
 
 def findFileByExtension(
-    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False
+    folder, extension, prefix=" ", fixSpaces=False, ForceFirst=False, agnostic_to_case=False, do_not_consider_files=None
     ):
     """
     Retrieves the file without folder and extension
@@ -730,6 +958,16 @@ def findFileByExtension(
     retpath = None
     if fpath.exists():
         allfiles = findExistingFiles(fpath, extension, agnostic_to_case = agnostic_to_case)
+
+        # Filter out files that contain any of the strings in do_not_consider_files
+        if do_not_consider_files is not None:
+            filtered_files = []
+            for file_path in allfiles:
+                file_name = file_path.name
+                should_exclude = any(exclude_str in file_name for exclude_str in do_not_consider_files)
+                if not should_exclude:
+                    filtered_files.append(file_path)
+            allfiles = filtered_files
 
         if len(allfiles) > 1:
             # print(allfiles)
@@ -750,7 +988,7 @@ def findFileByExtension(
             f"\t\t\t~ Folder ...{fstr} does not exist, returning None",
         )
 
-    # TODO: We really should not change return type
+    #TODO: We really should not change return type
     #retval = None
     #if retpath is not None:
     #    if not provide_full_path:
@@ -1875,6 +2113,19 @@ def shutil_rmtree(item):
             new_item = item.with_name(item.name + "_cannotrm")
             shutil.move(item, new_item)
             print(f"> Folder {clipstr(item)} could not be removed. Renamed to {clipstr(new_item)}",typeMsg='w')
+
+def recursive_backup(file, extension='bak'):
+    
+    index = 0
+    file_new = file.with_suffix(f".{extension}.{index}")
+    
+    while file_new.exists():
+        index += 1
+        file_new = file.with_suffix(f".{extension}.{index}")
+
+    shutil.copy2(file, file_new)
+    print(f"> File {clipstr(file)} backed up to {clipstr(file_new)}", typeMsg='i')
+
 
 def unpickle_mitim(file):
 

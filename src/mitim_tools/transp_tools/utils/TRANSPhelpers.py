@@ -1,10 +1,8 @@
-import os
 import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -762,7 +760,8 @@ class transp_input_time:
         self.time = time
 
         if isinstance(profiles_file, str):
-            self.p = PROFILEStools.PROFILES_GACODE(profiles_file)
+            from mitim_tools.gacode_tools import PROFILEStools
+            self.p = PROFILEStools.gacode_state(profiles_file)
         else:
             self.p = profiles_file
 
@@ -809,7 +808,7 @@ class transp_input_time:
             z = self.p.derived['Zeff']
         elif var == 'PichT':
             x = [1]
-            z = self.p.derived['qRF_MWmiller'][-1]*1E6
+            z = self.p.derived['qRF_MW'][-1]*1E6
 
         return x,z
 
@@ -821,7 +820,7 @@ class transp_input_time:
         # Separatrix
         # --------------------------------------------------------------
 
-        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][-1], self.p.derived["Z_surface"][-1]
+        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][0,-1,:], self.p.derived["Z_surface"][0,-1,:]
 
         # --------------------------------------------------------------
         # VV
@@ -1356,7 +1355,7 @@ def default_nml(
         "Fuel": 2.5,
     },
     pservers=[1, 1, 0],
-    TGLFsettings=5,
+    code_settings=5,
     useMMX = False,
     isolver = False,
     grTGLF = False  # Disable by default because it takes disk space and time... enable for 2nd preditive outside of this routine
@@ -1415,7 +1414,7 @@ def default_nml(
         AddHe4ifDT=AddHe4ifDT,
         isolver=isolver,
         PTsolver=True,
-        TGLFsettings=TGLFsettings,
+        code_settings=code_settings,
         grTGLF=grTGLF,
         **transp_params
     )

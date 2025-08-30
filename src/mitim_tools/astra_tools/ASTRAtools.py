@@ -158,7 +158,7 @@ def convert_ASTRA_to_gacode_fromCDF(astra_cdf,
     """
 
     template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
-    p = PROFILEStools.PROFILES_GACODE(template_path)
+    p = PROFILEStools.gacode_state(template_path)
     params = p.profiles
 
     # Extract CDF file
@@ -204,7 +204,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     """
 
     template_path = __mitimroot__ / "tests" / "data"/ "input.gacode"
-    p = PROFILEStools.PROFILES_GACODE(template_path)
+    p = PROFILEStools.gacode_state(template_path)
     params = p.profiles
 
     #c.calcProfiles()
@@ -263,7 +263,7 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     bcentr = np.array([c.BTOR[ai]])             ; params['bcentr(T)'] = bcentr
     current = np.array([c.IPL[ai]])             ; params['current(MA)'] = current
     rho = interp_to_nexp(c.rho[ai]/c.rho[ai,-1]); params['rho(-)'] = rho
-    polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux
+    polflux = interp_to_nexp(c.FP[ai])          ; params['polflux(Wb/radian)'] = polflux/2/np.pi
 
     polflux_norm = (polflux-polflux[0])/(polflux[-1]-polflux[0])
     
@@ -342,13 +342,13 @@ def convert_ASTRA_to_gacode_from_transp_output(c,
     p.profiles['rho(-)'][0] = 0.0
 
     # rederive quantities
-    p.deriveQuantities()
+    p.derive_quantities()
 
     # Print output to check Q, Pfus, etc.
     p.printInfo()
     
     if gacode_out is not None:
-        p.writeCurrentStatus(file=gacode_out)
+        p.write_state(file=gacode_out)
     if plot_result:
         p.plot()
 
@@ -501,7 +501,7 @@ def create_initial_conditions(te_avg,
                 profiles.makeAllThermalIonsHaveSameTemp()
                 profiles.profiles['ni(10^19/m^3)'][:,0] = profiles.profiles['ne(10^19/m^3)']
                 profiles.enforceQuasineutrality()
-                profiles.deriveQuantities()
+                profiles.derive_quantities()
 
                 print("residual:", ((profiles.derived['BetaN_engineering']-betan_desired) / betan_desired)**2)
 
@@ -544,6 +544,8 @@ def create_initial_conditions(te_avg,
             T[BC_index:] = T_ped[BC_index:]
 
             print(f"Pedestal values: ne_ped = {ne_ped}, Te_ped = {Te_ped}")
+    else:
+        x=rho
 
     preamble_Temp = f""" 900052D3D  2 0 6              ;-SHOT #- F(X) DATA WRITEUF OMFIT
                                ;-SHOT DATE-  UFILES ASCII FILE SYSTEM

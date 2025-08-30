@@ -364,7 +364,6 @@ class MITIMgeqdsk:
         profiles['ze'] = np.array([-1.0])
         profiles['z'] = np.array([1.0, Z])
 
-
         profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
         profiles['rcentr(m)'] = np.array([R0])
         profiles['bcentr(T)'] = np.array([B0])
@@ -419,16 +418,16 @@ class MITIMgeqdsk:
 
         _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
 
-        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+        p = PROFILEStools.gacode_state.scratch(profiles)
 
-        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MWmiller'][-1] /2
+        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
         p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
 
         # -------------------------------------------------------------------------------------------------------
         # Ready to go
         # -------------------------------------------------------------------------------------------------------
 
-        p.deriveQuantities()
+        p.derive_quantities()
 
         # -------------------------------------------------------------------------------------------------------
         # Plotting
@@ -439,7 +438,7 @@ class MITIMgeqdsk:
             fig, ax = plt.subplots()
             ff = np.linspace(0, 1, 11)
             self.plotFluxSurfaces(ax=ax, fluxes=ff, rhoPol=False, sqrt=True, color="r", plot1=False)
-            p.plotGeometry(ax=ax, surfaces_rho=ff, color="b")
+            p.plot_state_flux_surfaces(ax=ax, surfaces_rho=ff, color="b")
             plt.show()
 
         return p
@@ -451,7 +450,7 @@ class MITIMgeqdsk:
         folder.mkdir(parents=True, exist_ok=True)
 
         p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
-        p.writeCurrentStatus(folder / 'input.gacode')
+        p.write_state(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
 
@@ -953,9 +952,9 @@ class freegs_millerized:
             max_error = np.max([max_error, error])
 
         if max_error > warning_error:
-            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='w')
+            print(f"\t\t- Maximum error in equilibrium quantities is {100*max_error:.2f}%", typeMsg='w')
         else:
-            print(f"\t\t- Maximum error is {100*max_error:.2f}%", typeMsg='i')
+            print(f"\t\t- Maximum error in equilibrium quantities is {100*max_error:.2f}%")
 
         # --------------------------------------------------------------
         # Plotting

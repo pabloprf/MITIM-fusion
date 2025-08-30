@@ -1,4 +1,4 @@
-import sys
+import argparse
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from IPython import embed
@@ -13,7 +13,7 @@ e.g.
 """
 
 
-def compareNML(file1, file2, commentCommand="!", separator="=", precision_of=None):
+def compareNML(file1, file2, commentCommand="!", separator="=", precision_of=None, close_enough=1e-7):
     d1 = IOtools.generateMITIMNamelist(
         file1, commentCommand=commentCommand, separator=separator
     )
@@ -24,7 +24,7 @@ def compareNML(file1, file2, commentCommand="!", separator="=", precision_of=Non
     d1 = separateArrays(d1)
     d2 = separateArrays(d2)
 
-    diff = compareDictionaries(d1, d2, precision_of = precision_of)
+    diff = compareDictionaries(d1, d2, precision_of=precision_of, close_enough=close_enough)
 
     diffo = cleanDifferences(diff)
 
@@ -77,7 +77,7 @@ def cleanDifferences(d, tol_rel=1e-7):
 
     return d_new
 
-def compare_number(a,b,precision_of=None):
+def compare_number(a,b,precision_of=None, close_enough=1e-7):
 
     if precision_of is None:
         a_rounded = a
@@ -91,7 +91,10 @@ def compare_number(a,b,precision_of=None):
         else:
             decimal_places = 0
 
-        b_rounded = round(b, decimal_places)
+        if isinstance(b, str):
+            b_rounded = b
+        else:  
+            b_rounded = round(b, decimal_places)
         a_rounded = a
 
     elif precision_of == 2:
@@ -107,11 +110,15 @@ def compare_number(a,b,precision_of=None):
         a_rounded = round(a, decimal_places)
 
     # Compare the two numbers
-    are_equal = (a_rounded == b_rounded)
+    if isinstance(a_rounded, str) or isinstance(b_rounded, str):
+        # If either is a string, we cannot compare numerically
+        are_equal = a_rounded == b_rounded
+    else:
+        are_equal = np.isclose(a_rounded, b_rounded, rtol=close_enough)
 
     return are_equal
 
-def compareDictionaries(d1, d2, precision_of=None):
+def compareDictionaries(d1, d2, precision_of=None, close_enough=1e-7):
     different = {}
 
     for key in d1:
@@ -120,7 +127,7 @@ def compareDictionaries(d1, d2, precision_of=None):
             different[key] = [d1[key], None]
         # Values are different
         else:
-            if not compare_number(d1[key],d2[key],precision_of=precision_of):
+            if not compare_number(d1[key],d2[key],precision_of=precision_of, close_enough=close_enough):
                 different[key] = [d1[key], d2[key]]
 
     for key in d2:
@@ -131,7 +138,7 @@ def compareDictionaries(d1, d2, precision_of=None):
     return different
 
 
-def printTable(diff, warning_percent=1e-1):
+def printTable(diff, printing_percent = 1e-5, warning_percent=1e-1):
 
     for key in diff:
         if diff[key][0] is not None:
@@ -147,12 +154,12 @@ def printTable(diff, warning_percent=1e-1):
                     perc = np.nan
                 print(
                     f"{key:>15}{str(diff[key][0]):>25}{str(diff[key][1]):>25}  (~{perc:.0e}%)",
-                    typeMsg="w" if perc > warning_percent else "",
+                    typeMsg="i" if perc > warning_percent else "",
                 )
             else:
-                print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}")
+                print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}  (100%)", typeMsg="i")
         else:
-            print(f"{key:>15}{'':>25}{str(diff[key][1]):>25}")
+            print(f"{key:>15}{'':>25}{str(diff[key][1]):>25}  (100%)", typeMsg="i")
         print(
             "--------------------------------------------------------------------------------"
         )
@@ -160,19 +167,28 @@ def printTable(diff, warning_percent=1e-1):
 
 def main():
 
-    file1 = sys.argv[1]
-    file2 = sys.argv[2]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file1", type=str, help="First namelist file to compare")
+    parser.add_argument("file2", type=str, help="Second namelist file to compare")
+    parser.add_argument("--separator", type=str, required=False, default="=",
+                        help="Separator used in the namelist files, default is '='")
+    parser.add_argument("--precision", type=int, required=False, default=None,
+                        help="Precision for comparing numbers: 1 for decimal places, 2 for significant figures, None for exact comparison")
+    parser.add_argument("--close_enough", type=float, required=False, default=1e-7,
+                        help="Tolerance for comparing numbers, default is 1e-7")
+    args = parser.parse_args()
 
-    try:
-        separator = sys.argv[3]
-    except:
-        separator = "="
+    # Get arguments
+    file1 = args.file1
+    file2 = args.file2
+    separator = args.separator
+    precision = args.precision
+    close_enough = args.close_enough
 
-    diff = compareNML(file1, file2, separator=separator)
+    diff = compareNML(file1, file2, separator=separator, precision_of=precision, close_enough=close_enough)
 
     printTable(diff)
     print(f"Differences: {len(diff)}")
-
 
 if __name__ == "__main__":
     main()

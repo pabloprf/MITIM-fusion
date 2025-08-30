@@ -33,7 +33,7 @@ tgrid2	= 1e-3 	 ! Control of time resolution of 2D input data
 
 dtmaxg = 0.001 ! Max time step for MHD
 
-!----- MPI Settings
+!----- MPI code_settings
 
 nbi_pserve     =0
 ntoric_pserve  =1

@@ -92,7 +92,7 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped", "transp", "transp_soft", "portals", "portals_soft"]:
+    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 
@@ -121,6 +121,8 @@ def parse_maestro_nml(file_path):
 
                 beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
 
+
+
             # ***************************************************************************
             # Nothin yet
             # ***************************************************************************
@@ -139,13 +141,18 @@ def parse_maestro_nml(file_path):
 
                 # add postprocessing function
                 def profiles_postprocessing_fun(file_profs):
-                    p = PROFILEStools.PROFILES_GACODE(file_profs)
+                    p = PROFILEStools.gacode_state(file_profs)
                     if lumpImpurities:
                         p.lumpImpurities()
                     if enforce_same_density_gradients:
                         p.enforce_same_density_gradients()
-                    p.writeCurrentStatus(file=file_profs)
-                beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
+                    p.write_state(file=file_profs)
+                    return p
+                beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
+
+        elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
+                print('Using the eped_beat namelist for the eped_initializer')
+                beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
         else:
             raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
@@ -156,7 +163,7 @@ def parse_maestro_nml(file_path):
 
     return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
 
-@mitim_timer('\t\t* MAESTRO')
+@mitim_timer('MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
         parameters_initialize, 
@@ -178,7 +185,13 @@ def run_maestro_local(
     if folder is None:
         folder = IOtools.expandPath('./')
 
-    m = maestro(folder, master_seed = seed, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
+    m = maestro(
+        folder, 
+        master_seed = seed, 
+        terminal_outputs = terminal_outputs, 
+        overall_log_file = True,
+        master_cold_start = force_cold_start, 
+        keep_all_files = keep_all_files)
 
     # -------------------------------------------------------------------------
     # Loop through beats
@@ -205,10 +218,10 @@ def run_maestro_local(
         # ****************************************************************************
         if not creator_added:
             m.define_creator(
-                'eped', 
+                'eped_initializer', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
                 nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped"],
+                **beat_namelists["eped_initializer"],
                 **parameters_engineering
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
@@ -221,6 +234,8 @@ def run_maestro_local(
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
             run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+        elif maestro_beats["beats"][0] in ["eped", "eped_initializer"]:
+            run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])
         m.run(**run_namelist)
@@ -246,8 +261,9 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    shutil.copy2(file_path, folder / 'maestro_namelist.json')
-
+    if (folder / 'maestro_namelist.json').exists():
+        IOtools.recursive_backup(folder / 'maestro_namelist.json')
+    
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 

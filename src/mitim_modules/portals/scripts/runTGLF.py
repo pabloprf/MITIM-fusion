@@ -43,7 +43,7 @@ ion = args.ion
 # --- Workflow
 
 portals = PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
-tglf, TGLFsettings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
+tglf, code_settings, extraOptions = portals.extractTGLF(positions=pos, evaluation=ev, modified_profiles=True, cold_start=cold_start)
 
 if not drives:
     varUpDown = np.linspace(1.0 - var, 1.0 + var, num)
@@ -51,10 +51,10 @@ if not drives:
     labels = []
     for param in params:
         tglf.runScan(
-            subFolderTGLF="scan",
+            subfolder="scan",
             variable=param,
             varUpDown=varUpDown,
-            TGLFsettings=TGLFsettings,
+            code_settings=code_settings,
             extraOptions=extraOptions,
             cold_start=cold_start,
             runWaveForms=wf,
@@ -69,11 +69,11 @@ if not drives:
 
 else:
     tglf.runScanTurbulenceDrives(
-        subFolderTGLF="turb",
+        subfolder="turb",
         resolutionPoints=5,
         variation=var,
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2", "BETAE"],
-        TGLFsettings=TGLFsettings,
+        code_settings=code_settings,
         extraOptions=extraOptions,
         cold_start=cold_start,
         runWaveForms=wf,

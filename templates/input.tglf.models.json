@@ -50,7 +50,7 @@
         }
     },
     "100": {
-        "label": "settings as in ASTRA-TGLF framework",
+        "label": "SAT2astra",
         "controls": {
             "UNITS": "CGYRO",
             "USE_BPER": true,

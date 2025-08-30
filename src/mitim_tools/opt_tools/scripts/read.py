@@ -5,6 +5,8 @@ from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools.utils import remote_tools
+
 
 # These import are usually needed if they are called within the pickling object
 import torch  
@@ -53,100 +55,16 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     ax0 = fig.add_subplot(grid[0, 0])
     ax1 = fig.add_subplot(grid[1, 0], sharex=ax0)
     ax2 = fig.add_subplot(grid[0, 1])
-    ax3 = fig.add_subplot(grid[1, 1])
+    ax3 = fig.add_subplot(grid[1, 1],sharex=ax2)
     ax1i = fig.add_subplot(grid[2, 0], sharex=ax0)
 
-    types_ls = [
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-        "-",
-        "--",
-        "-.",
-        ":",
-    ]
-    types_m = [
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-        "o",
-        "s",
-        "^",
-        "v",
-        "*",
-    ]
+    types_ls = GRAPHICStools.listLS()
+    types_m = GRAPHICStools.listmarkers
 
     maxEv = -np.inf
     yCummMeans = []
     xes = []
     resS = []
-    logS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
         res = BOgraphics.optimization_results(
             folderWork / "Outputs" / "optimization_results.out"
@@ -155,14 +73,6 @@ def plotCompare(folders, plotMeanMax=[True, False]):
             STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
         )
         res.read()
-
-        log_class = BOgraphics.LogFile(folderWork / "Outputs" / "optimization_log.txt")
-
-        try:
-            log_class.interpret()
-        except:
-            print("Could not read log", typeMsg="w")
-            log_class = None
 
         plotAllmembers = len(folderWorks) <= 3
         xe, yCummMean = res.plotImprovement(
@@ -178,31 +88,23 @@ def plotCompare(folders, plotMeanMax=[True, False]):
         #compared = -yCummMean[0] * conv if conv < 0 else conv
         #ax1.axhline(y=compared, ls="-.", lw=0.3, color=color)
 
-        if log_class is not None:
-            log_class.plot(
-                axs=[ax2, ax3],
-                ls=types_ls[i],
-                lab=name,
-                marker=types_m[i],
-                color=colors[i],
-            )
+        IOtools.plot_timings(
+            folderWork / "Outputs" / "timing.jsonl", axs=[ax2, ax3], label=name, color=color
+        )
 
         yCummMeans.append(yCummMean)
         xes.append(xe)
         resS.append(res)
-        logS.append(log_class)
 
     ax0.set_xlim([0, maxEv])
 
     ax2.legend(prop={"size": 6})
     ax3.legend(prop={"size": 6})
 
-    return yCummMeans, xes, resS, logS, fig
+    return yCummMeans, xes, resS, fig
 
 
 def main():
-
-    
 
 # ----- Inputs
 
@@ -211,43 +113,49 @@ def main():
         "--type", type=int, required=False, default=4
     )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
     parser.add_argument("folders", type=str, nargs="*")
-    parser.add_argument("--remote", "-r", type=str, required=False, default=None)
     parser.add_argument("--seeds", type=int, required=False, default=None)
     parser.add_argument("--resolution", type=int, required=False, default=50)
     parser.add_argument("--save", type=str, required=False, default=None)
     parser.add_argument("--conv", type=float, required=False, default=-1e-2)
     parser.add_argument("--its", type=int, nargs="*", required=False, default=None)
 
+    # Remote options
+    parser.add_argument("--remote",type=str, required=False, default=None,
+                        help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
+    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+                        help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
+    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
+                        help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
+    # parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+    #                     help="If set, it will only retrieve the folder structure with a few key files")
+    parser.add_argument('--fix', required=False, default=False, action='store_true',
+                        help="If set, it will fix the pkl optimization portals in the remote folders.")
+
     args = parser.parse_args()
 
     analysis_level = args.type
-    folders = args.folders
-    remote_parent = args.remote
     seeds = args.seeds
     resolution = args.resolution
     save_folder = args.save
     conv = args.conv
     rangePlot = args.its
 
-# -----------------------------------------
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Retrieve from remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    # ----- Folders (complete local path)
-    folders_complete = []
-    for i in range(len(folders)):
-        if seeds is not None:
-            aux = [f"{folders[i]}_s{k}" for k in range(seeds)]
-            folders_complete.extend(aux)
-        else:
-            folders_complete.append(folders[i])
+    folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, None)
 
-    txt = "***************************************************************************\n"
-    for i in range(len(folders_complete)):
-        folders_complete[i] = IOtools.expandPath(folders_complete[i])
-        folders_complete[i].mkdir(parents=True, exist_ok=True)
-        txt += f"* Reading results in {folders_complete[i]}\n"
-        
-    # ----- Folders (reduced local path)
-    folders_reduced = [IOtools.reducePathLevel(folderWork)[-1] for folderWork in folders_complete]
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Fix pkl optimization portals in remote
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+
+    if args.fix:
+        for folder in folders:
+            STRATEGYtools.clean_state(folder)
+
+
+    folders_complete = folders
 
     if len(folders_complete) > 1:
         retrieval_level = copy.deepcopy(analysis_level)
@@ -255,27 +163,13 @@ def main():
     else:
         retrieval_level = analysis_level
 
-    if remote_parent is None:
-        folders_remote = [None] * len(folders_complete)
-    else:
-        folders_remote = [
-            f"{remote_parent}/{reduced_folder}/"
-            for reduced_folder in folders_reduced
-        ]
-        txt += f"\n\t...From remote folder {remote_parent}\n"
 
-    print(
-        "\n"
-        + txt
-        + "***************************************************************************"
-    )
     print(f"(Analysis level {analysis_level})\n")
 
     if len(folders_complete) == 1:
         opt_fun = STRATEGYtools.opt_evaluator(folders_complete[0])
         opt_fun.plot_optimization_results(
             analysis_level=analysis_level,
-            folderRemote=folders_remote[0],
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
             save_folder=save_folder,
@@ -283,12 +177,11 @@ def main():
         )
     else:
         opt_funs = []
-        for folderWork, folderRemote in zip(folders_complete, folders_remote):
+        for folderWork  in folders_complete:
             opt_fun = STRATEGYtools.opt_evaluator(folderWork)
             try:
                 opt_fun.plot_optimization_results(
                     analysis_level=analysis_level,
-                    folderRemote=folderRemote,
                     retrieval_level=retrieval_level,
                     save_folder=save_folder,
                     rangesPlot=rangePlot,
@@ -298,7 +191,7 @@ def main():
             opt_funs.append(opt_fun)
 
     if analysis_level == -1:
-        yCummMeans, xes, resS, logS, fig = plotCompare(
+        yCummMeans, xes, resS, fig = plotCompare(
             folders_complete, plotMeanMax=[True, len(folders_complete) < 2]
         )
 

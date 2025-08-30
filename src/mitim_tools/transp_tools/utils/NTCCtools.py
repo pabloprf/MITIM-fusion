@@ -1,15 +1,9 @@
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
 from collections import OrderedDict
-
-try:
-    import xarray as xr
-except:
-    pass
-try:
-    from IPython import embed
-except:
-    pass
+import xarray as xr
+from IPython import embed
 
 """
 This set of routines is used to create a Plasmastate class by reading a standard
@@ -54,18 +48,14 @@ class Plasmastate:
 
         print(f"\t- Modifying {self.CDFfile} Plasmastate file...")
 
-        self.lumpChargeStates(self.CDFfile_new + "_1")
+        self.lumpChargeStates( self.CDFfile_new.with_name(self.CDFfile_new.name + '_1'))
+
         try:
-            self.removeExtraFusionIons(
-                self.CDFfile_new + "_2", speciesNames=RemoveFusionIons
-            )
+            self.removeExtraFusionIons( self.CDFfile_new.with_name(self.CDFfile_new.name + '_2'), speciesNames=RemoveFusionIons)
         except:
-            print(
-                " --> I could not remove extra fusion ions. Probably because TRANSP was run without fusion reactions",
-            )
-        self.removeExtraTHERMALIons(
-            self.CDFfile_new + "_3", speciesNames=RemoveTHERMALIons
-        )
+            print(" --> I could not remove extra fusion ions. Probably because TRANSP was run without fusion reactions",)
+        
+        self.removeExtraTHERMALIons( self.CDFfile_new.with_name(self.CDFfile_new.name + '_3'), speciesNames=RemoveTHERMALIons)
 
         self.addShotNumber(self.CDFfile_new, shotNumber)
 
@@ -129,9 +119,7 @@ class Plasmastate:
                     self.plasma = xr.Dataset(NewData)
 
                 else:
-                    print(
-                        f"Charge States for impurity {impName} could not be found...",
-                    )
+                    print(f"Charge States for impurity {impName} could not be found...",)
 
         # ------------------------------------------------------------------
         #       Writting New PLASMASTATE

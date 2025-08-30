@@ -21,7 +21,7 @@ def main():
     tgyros = []
     for folder in folders:
         prof_file = folder / "input.gacode"
-        prof = PROFILEStools.PROFILES_GACODE(prof_file)
+        prof = PROFILEStools.gacode_state(prof_file)
         p = TGYROtools.TGYROoutput(folder, profiles=prof)
         tgyros.append(p)
 

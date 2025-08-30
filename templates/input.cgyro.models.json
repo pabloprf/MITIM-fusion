@@ -4,5 +4,11 @@
         "controls": {
             "NONLINEAR_FLAG": 0
         }
+    },
+    "1": {
+        "label": "Nonlinear",
+        "controls": {
+            "NONLINEAR_FLAG": 1
+        }
     }
 }

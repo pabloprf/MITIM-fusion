@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MITIM"
-version = "3.0.0"
+version = "4.0.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest BOTORCH, 3.13 has issues with tensorflow (nn) and omfit_classesv (omfit_new)
@@ -43,7 +43,11 @@ dependencies = [
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   "psutil",
   "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
-  "tensorflow"
+  "tensorflow", 
+  "f90nml",
+  "pyyaml"
+  # "vmecpp",
+  # "quends @ git+https://github.com/sandialabs/quends.git"
 ]
 
 [project.optional-dependencies]
@@ -77,6 +81,7 @@ mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--su
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
+mitim_plot_eped = "mitim_tools.eped_tools.scripts.plot_eped:main"
 
 mitim_run_tglf = "mitim_tools.gacode_tools.scripts.run_tglf:main"        # (folder input.tglf)  [--gacode input.gacode] [--scan RLTS_2] [--drives True]
 

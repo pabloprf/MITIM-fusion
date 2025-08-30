@@ -16,7 +16,7 @@
         "stopping_criteria_parameters": {
             "maximum_value": -1e-3,
             "maximum_value_is_rel": false,
-            "minimum_dvs_variation": [10, 3, 0.01]
+            "minimum_inputs_variation": [10, 3, 0.01]
         }
     },
     "initialization_options": {

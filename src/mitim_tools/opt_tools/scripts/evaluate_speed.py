@@ -25,9 +25,7 @@ step = opt_fun.mitim_model.steps[-1]
 x = torch.rand(cases, step.train_X.shape[-1])
 
 with IOtools.speeder(f"profiler{name}.prof") as s:
-    with torch.no_grad():
-        mean, upper, lower, _ = step.GP["combined_model"].predict(x)
+    #with torch.no_grad():
+    mean, upper, lower, _ = step.GP["combined_model"].predict(x)
 
-print(
-    f"\nIt took {s.timeDiff:.3f}s to run {x.shape[0]:.1e} parallel evaluations (i.e. {s.timeDiff*1E6/cases:.3f}micro-s/member) of {mean.shape[-1]} GPs with {x.shape[-1]} raw input dimensions"
-)
+print(f"\nIt took {s.timeDiff:.3f}s to run {x.shape[0]:.1e} parallel evaluations (i.e. {s.timeDiff*1E6/cases:.3f}micro-s/member) of {mean.shape[-1]} GPs with {x.shape[-1]} raw input dimensions")

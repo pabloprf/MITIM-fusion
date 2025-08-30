@@ -1,0 +1,312 @@
+import numpy as np
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.gacode_tools import TGLFtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
+from IPython import embed
+
+class tglf_model:
+
+    def evaluate_turbulence(self):        
+        self._evaluate_tglf()
+
+    # Have it separate such that I can call it from the CGYRO class but without the decorator
+    def _evaluate_tglf(self):
+        
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Grab options
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        simulation_options = self.transport_evaluator_options["tglf"]
+        cold_start = self.cold_start
+        
+        Qi_includes_fast = simulation_options["Qi_includes_fast"]
+        use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
+        cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
+        keep_tglf_files = simulation_options["keep_files"]
+        percent_error = simulation_options["percent_error"]
+
+        # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
+        impurityPosition = self.powerstate.impurityPosition_transport
+        
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Prepare TGLF object
+        # ------------------------------------------------------------------------------------------------------------------------
+        
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        
+        tglf = TGLFtools.TGLF(rhos=rho_locations)
+
+        _ = tglf.prep(
+            self.powerstate.profiles_transport,
+            self.folder,
+            cold_start = cold_start,
+            )
+        
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Run TGLF (base)
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        tglf.run(
+            'base_tglf',
+            ApplyCorrections=False,
+            cold_start= cold_start,
+            forceIfcold_start=True,
+            extra_name= self.name,
+            slurm_setup={
+                "cores": cores_per_tglf_instance,      
+                "minutes": 2,
+                },
+            attempts_execution=2,
+            only_minimal_files=keep_tglf_files in ['minimal'],
+            **simulation_options["run"]
+        )
+    
+        tglf.read(
+            label='base',
+            require_all_files=False,
+            **simulation_options["read"])
+        
+        # Grab values
+        Qe = np.array([tglf.results['base']['output'][i].Qe for i in range(len(rho_locations))])
+        Qi = np.array([tglf.results['base']['output'][i].Qi for i in range(len(rho_locations))])
+        Ge = np.array([tglf.results['base']['output'][i].Ge for i in range(len(rho_locations))])
+        GZ = np.array([tglf.results['base']['output'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
+        Mt = np.array([tglf.results['base']['output'][i].Mt for i in range(len(rho_locations))])
+        S = np.array([tglf.results['base']['output'][i].Se for i in range(len(rho_locations))])
+
+        if Qi_includes_fast:
+            
+            Qifast = [tglf.results['base']['output'][i].Qifast for i in range(len(rho_locations))]
+            
+            if Qifast.sum() != 0.0:
+                print(f"\t- Qi includes fast ions, adding their contribution")
+                Qi += Qifast
+                
+        Flux_base = np.array([Qe, Qi, Ge, GZ, Mt, S])
+              
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Evaluate TGLF uncertainty
+        # ------------------------------------------------------------------------------------------------------------------------
+                
+        if use_tglf_scan_trick is None:
+            
+            # *******************************************************************
+            # Just apply an ad-hoc percent error to the results
+            # *******************************************************************
+            
+            Flux_mean = Flux_base
+            Flux_std = abs(Flux_mean)*percent_error/100.0
+
+        else:
+            
+            # *******************************************************************
+            # Run TGLF with scans to estimate the uncertainty
+            # *******************************************************************
+            
+            Flux_mean, Flux_std = _run_tglf_uncertainty_model(
+                tglf,
+                rho_locations, 
+                self.powerstate.predicted_channels, 
+                Flux_base = Flux_base,
+                impurityPosition=impurityPosition, 
+                delta = use_tglf_scan_trick,
+                cold_start=cold_start,
+                extra_name=self.name,
+                cores_per_tglf_instance=cores_per_tglf_instance,
+                Qi_includes_fast=Qi_includes_fast,
+                only_minimal_files=keep_tglf_files in ['minimal', 'base'],
+                **simulation_options["run"]
+                )
+
+        self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Pass the information to what power_transport expects
+        # ------------------------------------------------------------------------------------------------------------------------
+        
+        self.QeGB_turb = Flux_mean[0]
+        self.QeGB_turb_stds = Flux_std[0]
+                
+        self.QiGB_turb = Flux_mean[1]
+        self.QiGB_turb_stds = Flux_std[1]
+                
+        self.GeGB_turb = Flux_mean[2]
+        self.GeGB_turb_stds = Flux_std[2]        
+        
+        self.GZGB_turb = Flux_mean[3]           
+        self.GZGB_turb_stds = Flux_std[3]       
+
+        self.MtGB_turb = Flux_mean[4]
+        self.MtGB_turb_stds = Flux_std[4] 
+
+        self.QieGB_turb = Flux_mean[5]
+        self.QieGB_turb_stds = Flux_std[5]
+
+        return tglf
+
+    def _raise_warnings(self, tglf, rho_locations, Qi_includes_fast):
+
+        for i in range(len(tglf.profiles.Species)):
+            gacode_type = tglf.profiles.Species[i]['S']
+            for rho in rho_locations:
+                tglf_type = tglf.inputs_files[rho].ions_info[i+2]['type']
+                
+                if gacode_type[:5] != tglf_type[:5]:
+                    print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")
+        
+                    if tglf_type == 'fast':
+        
+                        if Qi_includes_fast:
+                            print(f"\t\t\t* The fast ion considered by TGLF was summed into the Qi", typeMsg="i")
+                        else:
+                            print(f"\t\t\t* The fast ion considered by TGLF was NOT summed into the Qi", typeMsg="i")
+                            
+                    else:
+                        print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
+
+def _run_tglf_uncertainty_model(
+    tglf,
+    rho_locations, 
+    predicted_channels, 
+    Flux_base = None,
+    code_settings=None,
+    extraOptions=None,
+    impurityPosition=1,
+    delta=0.02, 
+    minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
+    cold_start=False, 
+    extra_name="", 
+    remove_folders_out = False,
+    cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
+    Qi_includes_fast=False,
+    only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
+    ):
+
+    print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
+
+    # Prepare scan 
+    variables_to_scan = []
+    for i in predicted_channels:
+        if i == 'te': variables_to_scan.append('RLTS_1')
+        if i == 'ti': variables_to_scan.append('RLTS_2')
+        if i == 'ne': variables_to_scan.append('RLNS_1')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
+
+    #TODO: Only if that parameter is changing at that location
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('XNUE')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('BETAE')
+    
+    relative_scan = [1-delta, 1+delta]
+
+    # Enforce at least "minimum_abs_gradient" in gradient, to avoid zero gradient situations
+    minimum_delta_abs = {}
+    for ikey in variables_to_scan:
+        if 'RL' in ikey:
+            minimum_delta_abs[ikey] = minimum_abs_gradient
+
+    name = 'turb_drives'
+
+    tglf.rhos = rho_locations # To avoid the case in which TGYRO was run with an extra rho point
+
+    # Estimate job minutes based on cases and cores (mostly IO I think at this moment, otherwise it should be independent on cases)
+    num_cases = len(rho_locations) * len(variables_to_scan) * len(relative_scan)
+    if cores_per_tglf_instance == 1:
+        minutes = 10 * (num_cases / 60) # Ad-hoc formula
+    else:
+        minutes = 1 * (num_cases / 60) # Ad-hoc formula
+
+    # Enforce minimum minutes
+    minutes = max(2, minutes)
+
+    tglf.runScanTurbulenceDrives(	
+                    subfolder = name,
+                    variablesDrives = variables_to_scan,
+                    varUpDown     = relative_scan,
+                    minimum_delta_abs = minimum_delta_abs,
+                    code_settings = code_settings,
+                    extraOptions = extraOptions,
+                    ApplyCorrections = False,
+                    add_baseline_to = 'none',
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
+                    slurm_setup={
+                        "cores": cores_per_tglf_instance,      
+                        "minutes": minutes,
+                                 },
+                    extra_name = f'{extra_name}_{name}',
+                    positionIon=impurityPosition+2,
+                    attempts_execution=2, 
+                    only_minimal_files=only_minimal_files,
+                    )
+
+    # Remove folders because they are heavy to carry many throughout
+    if remove_folders_out:
+        IOtools.shutil_rmtree(tglf.FolderGACODE)
+
+    Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Qifast = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    GZ = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    Mt = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+    S = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
+
+    cont = 0
+    for vari in variables_to_scan:
+        jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
+
+        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe_gb']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi_gb']
+        Qifast[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qifast_gb']
+        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge_gb']
+        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi_gb']
+        Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt_gb']
+        S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S_gb']
+        cont += jump
+        
+    if Qi_includes_fast:
+        print(f"\t- Qi includes fast ions, adding their contribution")
+        Qi += Qifast
+
+    # Add the base that was calculated earlier
+    if Flux_base is not None:
+        Qe = np.append(np.atleast_2d(Flux_base[0]).T, Qe, axis=1)
+        Qi = np.append(np.atleast_2d(Flux_base[1]).T, Qi, axis=1)
+        Ge = np.append(np.atleast_2d(Flux_base[2]).T, Ge, axis=1)
+        GZ = np.append(np.atleast_2d(Flux_base[3]).T, GZ, axis=1)
+        Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
+        S = np.append(np.atleast_2d(Flux_base[5]).T, S, axis=1)
+
+    # Calculate the standard deviation of the scans, that's going to be the reported stds
+
+    def calculate_mean_std(Q):
+        # Assumes Q is [radii, points], with [radii, 0] being the baseline
+
+        Qm = np.mean(Q, axis=1)
+        Qstd = np.std(Q, axis=1)
+
+        # Qm = Q[:,0]
+        # Qstd = np.std(Q, axis=1)
+
+        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
+        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
+
+        return  Qm, Qstd
+
+    Qe_point, Qe_std = calculate_mean_std(Qe)
+    Qi_point, Qi_std = calculate_mean_std(Qi)
+    Ge_point, Ge_std = calculate_mean_std(Ge)
+    GZ_point, GZ_std = calculate_mean_std(GZ)
+    Mt_point, Mt_std = calculate_mean_std(Mt)
+    S_point, S_std = calculate_mean_std(S)
+
+    #TODO: Careful with fast particles
+    Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, S_point]
+    Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
+
+    return Flux_mean, Flux_std

@@ -1,0 +1,24 @@
+#-------------------------------------------------------------------------
+# Template input.neo file (controls-only)
+#-------------------------------------------------------------------------
+
+SILENT_FLAG=0   # 0: output files are written
+
+# Setup
+EQUILIBRIUM_MODEL=2         # 2: Miller
+PROFILE_MODEL=1             # 1: local (one radius)
+PROFILE_ERAD0_MODEL=1       # 1: Use the profile of the Erad0 parameter as specified in input.profiles
+
+# Resolution
+N_RADIAL=1      # Number of radial grid points
+N_THETA=17      # Number of poloidal grid points
+N_ENERGY=6      # Number of v polynomials
+N_XI=17         # Number of xi polynomials
+
+# Models
+COLLISION_MODEL=4   # 4: Full linearized Fokker-Plank operator
+SIM_MODEL=2         # 2: Numerical solution and analytic theory only
+SPITZER_MODEL=0     # 0: solve the standard neoclassical transport problem
+ROTATION_MODEL=2    # 2: Sonic rotation effects included (solves the Hinton-Wong generalized
+THREED_MODEL=0      # 0: Toroidally axisymmetric limit (2D).
+THREED_EXB_MODEL=0  # 0: higher-order drift velocity not included.

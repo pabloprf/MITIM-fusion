@@ -1,8 +1,10 @@
+from operator import index
 import torch
 import copy
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.optimize import root
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -17,10 +19,10 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
         - flux_residual_evaluator is a function that:
             - Takes X (batches,dimX)
             - Provides Y1: transport (batches,dimY), Y2: target (batches,dimY) and M: maximization metric (batches,1)
-            It must also take optional arguments, to capture the best in the batch:
+            It must also take optional arguments, to capture the evolution of the batch:
                 x_history
-                y_history () 
-                metric_history (to maximize, similar to acquisition definition, must be 1D, best in batch)
+                y_history
+                metric_history (to maximize, similar to acquisition definition)
     Outputs:
         - Optium vector x_sol with (batches,dimX) and the trajectory of the acquisition function evaluations (best per batch)
     Notes:
@@ -127,7 +129,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     # Perform optimization
     # --------------------------------------------------------------------------------------------------------
 
-    with IOtools.timer(name="\t- SCIPY.ROOT multi-variate root finding method"):
+    with IOtools.timer(name="SCIPY.ROOT multi-variate root finding method"):
         sol = root(function_for_optimizer, x_initial0, jac=jac_ad, method=solver, tol=tol, options=algorithm_options)
 
     # --------------------------------------------------------------------------------------------------------
@@ -171,36 +173,45 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
 
     return x_best, y_history, x_history, metric_history
 
-
 # --------------------------------------------------------------------------------------------------------
 #  Ready to go optimization tool: Simple Relax
 # --------------------------------------------------------------------------------------------------------
 
-def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_options=None ):
+def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_options=None, debug=False ):
     """
     See scipy_root for the inputs and outputs
     """
 
-    tol = solver_options.get("tol", -1e-6)                      # Tolerance for the residual (negative because I want to maximize)
-    tol_rel = solver_options.get("tol_rel", None)               # Relative tolerance for the residual (superseeds tol)
+    # ********************************************************************************************
+    # Solver options
+    # ********************************************************************************************
+
+    tol = solver_options.get("tol", -1e-6)                             # Tolerance for the residual (negative because I want to maximize)
+    tol_rel = solver_options.get("tol_rel", None)                      # Relative tolerance for the residual (superseeds tol)
     
     maxiter = solver_options.get("maxiter", 1e5)
-    relax = solver_options.get("relax", 0.1)                    # Defines relationship between flux_residual_evaluator and gradient
-    dx_max = solver_options.get("dx_max", 0.1)                  # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 10% each time)
-    dx_max_abs = solver_options.get("dx_max_abs", None)         # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
-    dx_min_abs = solver_options.get("dx_min_abs", None)         # Minimum step size in gradient, absolute (e.g. a/Lx must at least increase by 0.01 each time)
+    relax0 = solver_options.get("relax", 0.1)                          # Defines relationship between flux_residual_evaluator and gradient
+    dx_max = solver_options.get("dx_max", 0.1)                         # Maximum step size in gradient, relative (e.g. a/Lx can only increase by 10% each time)
+    dx_max_abs = solver_options.get("dx_max_abs", None)                # Maximum step size in gradient, absolute (e.g. a/Lx can only increase by 0.1 each time)
+    dx_min_abs = solver_options.get("dx_min_abs", 1E-5)                # Minimum step size in gradient, absolute (e.g. a/Lx must at least increase by 0.01 each time)
     
     relax_dyn = solver_options.get("relax_dyn", False)                 # Dynamic relax, decreases relax if residual is not decreasing
     relax_dyn_decrease = solver_options.get("relax_dyn_decrease", 5)   # Decrease relax by this factor
-    relax_dyn_num = solver_options.get("relax_dyn_num", 100)           # Number of iterations to average over
-    relax_dyn_tol = solver_options.get("relax_dyn_tol", 1e-4)          # Tolerance to consider that the residual is not decreasing
+    relax_dyn_num = solver_options.get("relax_dyn_num", 100)            # Number of iterations to average over and check if the residual is decreasing
 
     print_each = solver_options.get("print_each", 1e2)
-    
     write_trajectory = solver_options.get("write_trajectory", True)
-    x_history, y_history, metric_history = [], [], []
-
+    
     thr_bounds = 1e-4 # To avoid being exactly in the bounds (relative -> 0.01%)
+
+    # ********************************************************************************************
+    # Initial condition
+    # ********************************************************************************************
+
+    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel
+    relax = torch.ones_like(x_initial) * relax0
+
+    x_history, y_history, metric_history = [], [], []
 
     x = copy.deepcopy(x_initial)
     Q, QT, M = flux_residual_evaluator(
@@ -209,64 +220,87 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         x_history = x_history if write_trajectory else None,
         metric_history = metric_history if write_trajectory else None
         )
-    print(f"\t* Starting residual: {(Q-QT).abs().mean(axis=1)[0].item():.4e}, will run {int(maxiter)-1} more evaluations, printing every {print_each} iteration:",typeMsg="i")
+
+    print(f"\t* Starting best-candidate residual: {(Q-QT).abs().mean(axis=1).min().item():.4e}, will run {int(maxiter)-1} more evaluations, printing every {print_each} iteration",typeMsg="i")
 
     if tol_rel is not None:
         tol = tol_rel * M.max().item()
         print(f"\t* Relative tolerance of {tol_rel:.1e} will be used, resulting in an absolute tolerance of {tol:.1e}")
 
+    print(f"\t* Flux-grad relationship of {relax0} and maximum gradient jump of {dx_max}")
 
-    print(f"\t* Flux-grad relationship of {relax*100.0:.1f}% and maximum gradient jump of {dx_max*100.0:.1f}%,{f' to achieve residual of {tol:.1e}' if tol is not None else ''} in maximum of {maxiter:.0f} iterations")
+    # ********************************************************************************************
+    # Iterative strategy
+    # ********************************************************************************************
 
-    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel
-    relax = torch.ones_like(x) * relax
-
-    its_since_last_dyn_relax = 0
-    i = 0
+    hardbreak = False
+    relax_history, step_history = [], []
+    its_since_last_dyn_relax, i = 0, 0
+    
     for i in range(int(maxiter) - 1):
-        # --------------------------------------------------------------------------------------------------------
-        # Iterative Strategy
-        # --------------------------------------------------------------------------------------------------------
 
-        x_new = _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = dx_max_abs, dx_min_abs = dx_min_abs)
+        # Make a step in the gradient direction
+        x_new, x_step = _sr_step(
+            x,
+            Q,
+            QT,
+            relax,
+            dx_max,
+            dx_max_abs=dx_max_abs,
+            dx_min_abs=dx_min_abs,
+            bounds=bounds,
+            thr_bounds=thr_bounds
+        )
 
-        # Clamp to bounds
-        if bounds is not None:
-            bb = bounds[1,:]-bounds[0,:]
-            x_new = x_new.clamp(min=bounds[0,:]+thr_bounds*bb, max=bounds[1,:]-thr_bounds*bb)
-
+        # Make it the new point
         x = x_new.clone()
 
-        # --------------------------------------------------------------------------------------------------------
+        # Evaluate new residual
         Q, QT, M = flux_residual_evaluator(
             x,
-            y_history = y_history if write_trajectory else None,
-            x_history = x_history if write_trajectory else None,
-            metric_history = metric_history
-            )
+            y_history=y_history if write_trajectory else None,
+            x_history=x_history if write_trajectory else None,
+            metric_history=metric_history if write_trajectory else None
+        )
 
         # Best metric of the batch
-        metric_best = M.max(axis=-1)[0].item()
+        metric_best = M.max().item()
 
         if (i + 1) % int(print_each) == 0:
-            print(f"\t\t- Metric (to maximize) @{i+1}: {metric_best:.2e}")
+            print(f"\t\t- Best metric (to maximize) @{i+1}: {metric_best:.2e}")
 
         # Stopping based on the best of the batch based on the metric
-        if tol is not None and M.max().item() > tol:
-            print(f"\t\t- Metric (to maximize) @{i+1}: {metric_best:.2e}",typeMsg="i")
+        if (tol is not None) and (M.max().item() > tol):
             print(f"\t* Converged in {i+1} iterations with metric of {metric_best:.2e} > {tol:.2e}",typeMsg="i")
             break
 
-        if relax_dyn and (i-its_since_last_dyn_relax > relax_dyn_num):
-            relax, changed, hardbreak = _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol,i+1)
-            if changed:
-                its_since_last_dyn_relax = i
-            if hardbreak:
-                break
+        # Update the dynamic relax if needed
+        if relax_dyn:
+            relax, its_since_last_dyn_relax, hardbreak = _dynamic_relax(
+                x_history,
+                y_history,
+                relax,
+                relax_dyn_decrease, 
+                relax_dyn_num,
+                i,
+                its_since_last_dyn_relax
+                )
+            
+        # For debugging
+        if debug:
+            step_history.append(x_step.detach().clone())
+            relax_history.append(relax.clone())
+
+        if hardbreak:
+            break
 
     if i == int(maxiter) - 2:
         print(f"\t* Did not converge in {maxiter} iterations",typeMsg="i")
 
+    # ********************************************************************************************
+    # Debugging, storing and plotting
+    # ********************************************************************************************
+    
     if write_trajectory:
         try:
             y_history = torch.stack(y_history)
@@ -278,49 +312,68 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
             x_history = torch.Tensor(x_history)
         try:
             metric_history = torch.stack(metric_history)
-        except(TypeError,RuntimeError):
+        except (TypeError,RuntimeError):
             metric_history = torch.Tensor(metric_history)
     else:
         y_history, x_history, metric_history = torch.Tensor(), torch.Tensor(), torch.Tensor()
 
-    index_best = metric_history.argmax()
-    print(f"\t* Best metric: {metric_history[index_best].mean().item():.2e} at iteration {index_best}",typeMsg="i")
+    if debug:
+
+        relax_history = torch.stack(relax_history)
+        step_history = torch.stack(step_history)
+        
+        for candidate in range(x_history.shape[1]):
+            
+            fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10), sharex=True)
+            
+            axs = axs.flatten()
+            
+            x = x_history[:,candidate,:].cpu().numpy()
+            y = y_history[:,candidate,:].cpu().numpy()
+            r = relax_history[:,candidate,:].cpu().numpy()
+            m = metric_history[:,candidate].cpu().numpy()
+            s = step_history[:,candidate,:].cpu().numpy()
+            
+            colors = GRAPHICStools.listColors()[:x.shape[-1]]
+
+            xvals = np.arange(x.shape[0])
+            plot_ranges = range(x.shape[1])
+
+            for k in plot_ranges:
+                axs[0].plot(xvals, x[:,k], '-o', markersize=0.5, lw=1.0, label=f"x{k}", color=colors[k])
+                axs[1].plot(xvals, y[:,k], '-o', markersize=0.5, lw=1.0,color=colors[k])
+                axs[2].plot(xvals[1:r.shape[0]+1], r[:,k], '-o', markersize=0.5, lw=1.0,color=colors[k])
+                axs[3].plot(xvals[1:r.shape[0]+1], s[:,k], '-o', markersize=0.5, lw=1.0,color=colors[k])
+            axs[5].plot(xvals, m, '-o', markersize=0.5, lw=1.0)
+
+            for i in range(len(axs)):
+                GRAPHICStools.addDenseAxis(axs[i])
+                axs[i].set_xlabel("Iteration")
+                
+            axs[0].set_title("x history"); axs[0].legend()
+            axs[1].set_title("y history")
+            axs[2].set_title("Relax history"); axs[2].set_yscale('log')
+            axs[3].set_title("Step history")
+            axs[5].set_title("Metric history")
+        
+            plt.tight_layout()
+
+        plt.show()
+        
+        embed()
+
+    # Find the best iteration of each candidate trajectory
+    index_bests = metric_history.argmax(dim=0)
+    x_best = x_history[index_bests, torch.arange(x_history.shape[1]), :]
     
-    # The best candidate, regardless of the restarts
-    x_best = x_history[index_best,:].unsqueeze(0)
+    idx_flat = metric_history.argmax()
+    index_best = divmod(idx_flat.item(), metric_history.shape[1])
+    print(f"\t* Best metric: {metric_history[index_best].item():.2e} at iteration {index_best[0]} for candidate in position {index_best[1]}",typeMsg="i")
 
     return x_best, y_history, x_history, metric_history
 
-
-def _dynamic_relaxation(relax, relax_dyn_decrease, metric_history, relax_dyn_num, relax_dyn_tol, it, min_relax=1e-6):
-    '''
-    Logic:  If the metric is not improving enough, decrease the relax parameter. To determine
-            if the metric is improving enough, I will fit a line to the last relax_dyn_num points and
-            check if the slope is small enough. If it is, I will decrease the relax parameter.
-    '''
-
-    metric_history_considered = torch.Tensor(metric_history[-relax_dyn_num:])
-
-    # Linear fit to the time series
-    x = np.arange(len(metric_history_considered))
-    y = metric_history_considered
-    slope, intercept = np.polyfit(x, y, 1)
-    metric0 = intercept
-    metric1 = slope * len(metric_history_considered) + intercept
-    change_in_metric = metric1 - metric0
-
-    if (change_in_metric < relax_dyn_tol):
-        if relax.all() > min_relax:
-            print(f"\t\t\t<> Metric not improving enough (@{it}), decreasing relax from {relax.max():.1e} to {relax.max()/relax_dyn_decrease:.1e}")
-            relax = relax / relax_dyn_decrease
-            return relax, True, False
-        else:
-            print(f"\t\t\t<> Metric not improving enough (@{it}), relax already at minimum of {min_relax:.1e}, not worth continuing", typeMsg="i")
-            return relax, False, True
-    else:
-        return relax, False, False
-
-def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10):
+def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10, bounds=None, thr_bounds=1e-4):
+    
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
     dx = relax * (QT - Q) / (Q**2 + QT**2).clamp(min=threshold_zero_flux_issue) ** 0.5
 
@@ -336,6 +389,7 @@ def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_a
         ix = x_step.abs() > dx_max_abs
         direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
         x_step[ix] = dx_max_abs * direction
+    
     if dx_min_abs is not None:
         ix = x_step.abs() < dx_min_abs
         direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
@@ -344,7 +398,103 @@ def _simple_relax_iteration(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_a
     # Update
     x_new = x + x_step
 
-    return x_new
+    # Clamp to bounds
+    if bounds is not None:
+        thr_bounds_abs =  ( bounds[1,:] - bounds[0,:]) * thr_bounds
+        x_new = x_new.clamp(min=bounds[0,:]+thr_bounds_abs, max=bounds[1,:]-thr_bounds_abs)
+
+    return x_new, x_step
+
+def _dynamic_relax(x, y, relax, relax_dyn_decrease, relax_dyn_num, iteration_num, iteration_applied):
+
+    min_relax = 1e-6
+
+    if iteration_num - iteration_applied > relax_dyn_num:
+
+        mask_reduction = _check_oscillation(torch.stack(x), relax_dyn_num)
+
+        if mask_reduction.any():
+            
+            if (relax < min_relax).all():
+                print(f"\t\t\t<> Oscillatory behavior detected (@{iteration_num}), all relax already at minimum of {min_relax:.1e}, not worth continuing", typeMsg="i")
+                return relax, iteration_applied, True
+
+            print(f"\t\t\t<> Oscillatory behavior detected (@{iteration_num}), decreasing relax for {mask_reduction.sum()} out of {torch.stack(x).shape[1]*torch.stack(x).shape[2]} channels")
+
+            relax[mask_reduction] = relax[mask_reduction] / relax_dyn_decrease
+            
+            print(f"\t\t\t\t- New relax values span from {relax.min():.1e} to {relax.max():.1e}")
+            
+        iteration_applied = iteration_num
+        
+    return relax, iteration_applied, False        
+
+def _check_oscillation(signal_raw, relax_dyn_num):
+
+    """Check for oscillations using FFT to detect dominant frequencies"""
+
+    # Stack batch dimension (time, batch, dim) -> (time, batch*dim)
+    signal = signal_raw.reshape(signal_raw.shape[0], -1)
+
+    oscillating_dims = torch.zeros(signal.shape[1:], dtype=torch.bool)
+    
+    # fig, axs = plt.subplots(nrows=2, figsize=(6, 6))
+    # colors = GRAPHICStools.listColors()
+    
+    for i in range(signal.shape[1]):
+        
+        iterations_to_consider = relax_dyn_num 
+        
+        # Only consider a number of last iterations
+        y_vals = signal[-iterations_to_consider:, i].cpu().numpy()
+        
+        # If the signal is not constant
+        if y_vals.std() > 0.0:
+            
+            # Remove DC component and apply FFT
+            y_detrended = y_vals - np.mean(y_vals)
+            fft_vals = np.fft.fft(y_detrended)
+            power_spectrum = np.abs(fft_vals[1:len(fft_vals)//2+1])  # Exclude DC and negative frequencies
+            
+            # Check if there's a dominant frequency
+            excl = 2
+            p_around = 1
+            argmax_power = np.argmax(power_spectrum[excl:])  # Exclude lowest frequencies
+            max_power = np.sum(power_spectrum[(argmax_power+excl) - p_around:(argmax_power+excl) + p_around])
+            total_power = np.sum(power_spectrum)
+
+            # If a single frequency dominates (30%), it might be oscillating (even if low frequency)
+            single_frequency_power = max_power / total_power
+            single_frequency_dominance = bool(single_frequency_power > 0.3)
+            
+            # If more than 50% of the power comes from high frequencies (>1/3), consider it oscillating
+            index_high_freq = len(power_spectrum) // 3
+            high_frequency_power = np.sum(power_spectrum[index_high_freq:]) / total_power
+            high_frequency_dominance = bool(high_frequency_power > 0.5)
+
+            # if signal completely flat, it's an indication that has hit the bounds, also consider it oscillating
+            signal_flat = bool(y_vals.std() < 1e-6)
+         
+        # If the signal is constant, consider it non-oscillating but flat
+        else:
+            single_frequency_dominance = False
+            high_frequency_dominance = False
+            signal_flat = True
+        
+        oscillating_dims[i] = single_frequency_dominance or high_frequency_dominance or signal_flat
+        
+        
+    # Back to the original shape
+    oscillating_dims = oscillating_dims.reshape(signal_raw.shape[1:])
+        
+    #     axs[0].plot(y_vals, color=colors[i], ls='-' if oscillating_dims[i] else '--')
+    #     axs[1].plot(power_spectrum/max_power, label = f"{single_frequency_power:.3f}, {high_frequency_power:.3f}, {y_vals.std():.1e}", color=colors[i], ls='-' if oscillating_dims[i] else '--')
+    # axs[1].legend(loc='best',prop={'size': 6})
+    # plt.show()
+
+    return oscillating_dims
+
+
 
 '''
 ********************************************************************************************************************************** 

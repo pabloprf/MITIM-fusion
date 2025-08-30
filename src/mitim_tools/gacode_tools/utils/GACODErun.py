@@ -1,13 +1,13 @@
 import shutil
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.transp_tools.utils import PLASMASTATEtools
+from mitim_tools.transp_tools.utils import NTCCtools
 from mitim_tools.misc_tools import FARMINGtools, IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
+from mitim_tools.misc_tools.PLASMAtools import md_u
 
 def runTGYRO(
     folderWork,
@@ -93,123 +93,6 @@ def runTGYRO(
 
     tgyro_job.run()
 
-
-def modifyInputs(
-    input_class,
-    Settings=None,
-    extraOptions={},
-    multipliers={},
-    position_change=0,
-    addControlFunction=None,
-    **kwargs_to_function,
-):
-
-    # Check that those are valid flags
-    GACODEdefaults.review_controls(extraOptions)
-    GACODEdefaults.review_controls(multipliers)
-    # -------------------------------------------
-
-    if Settings is not None:
-        _, CodeOptions, label = addControlFunction(Settings, **kwargs_to_function)
-
-        # ~~~~~~~~~~ Change with presets
-        print(f" \t- Using presets Settings = {Settings} ({label})", typeMsg="i")
-        input_class.controls = CodeOptions
-
-    else:
-        print("\t- Input file was not modified by Settings, using what was there before",typeMsg="i")
-
-    # Make all upper case
-    extraOptions = {ikey.upper(): value for ikey, value in extraOptions.items()}
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Change with external options -> Input directly, not as multiplier
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if len(extraOptions) > 0:
-        print("\t- External options:")
-    for ikey in extraOptions:
-        if isinstance(extraOptions[ikey], (list, np.ndarray)):
-            value_to_change_to = extraOptions[ikey][position_change]
-        else:
-            value_to_change_to = extraOptions[ikey]
-
-        # is a specie one?
-        try:
-            isspecie = ikey.split("_")[0] in input_class.species[1]
-        except:
-            isspecie = False
-
-        if isspecie:
-            specie = int(ikey.split("_")[-1])
-            varK = "_".join(ikey.split("_")[:-1])
-            var_orig = input_class.species[specie][varK]
-            var_new = value_to_change_to
-            input_class.species[specie][varK] = var_new
-        else:
-            if ikey in input_class.controls:
-                var_orig = input_class.controls[ikey]
-                var_new = value_to_change_to
-                input_class.controls[ikey] = var_new
-            elif ikey in input_class.geom:
-                var_orig = input_class.geom[ikey]
-                var_new = value_to_change_to
-                input_class.geom[ikey] = var_new
-            elif ikey in input_class.plasma:
-                var_orig = input_class.plasma[ikey]
-                var_new = value_to_change_to
-                input_class.plasma[ikey] = var_new
-            else:
-                # If the variable in extraOptions wasn't in there, consider it a control param
-                print(
-                    "\t\t- Variable to change did not exist previously, creating now",
-                    typeMsg="i",
-                )
-                var_orig = None
-                var_new = value_to_change_to
-                input_class.controls[ikey] = var_new
-
-        print(
-            f"\t\t- Changing {ikey} from {var_orig} to {var_new}",
-            typeMsg="i",
-        )
-
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # Change with multipliers -> Input directly, not as multiplier
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if len(multipliers) > 0:
-        print("\t\t- Variables change:")
-    for ikey in multipliers:
-        # is a specie one?
-        if ikey.split("_")[0] in input_class.species[1]:
-            specie = int(ikey.split("_")[-1])
-            varK = "_".join(ikey.split("_")[:-1])
-            var_orig = input_class.species[specie][varK]
-            var_new = var_orig * multipliers[ikey]
-            input_class.species[specie][varK] = var_new
-        else:
-            if ikey in input_class.controls:
-                var_orig = input_class.controls[ikey]
-                var_new = var_orig * multipliers[ikey]
-                input_class.controls[ikey] = var_new
-            elif ikey in input_class.geom:
-                var_orig = input_class.geom[ikey]
-                var_new = var_orig * multipliers[ikey]
-                input_class.geom[ikey] = var_new
-            elif ikey in input_class.plasma:
-                var_orig = input_class.plasma[ikey]
-                var_new = var_orig * multipliers[ikey]
-                input_class.plasma[ikey] = var_new
-            else:
-                print(
-                    "\t- Variable to scan did not exist in original file, add it as extraOptions first",
-                    typeMsg="w",
-                )
-
-        print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{multipliers[ikey]})")
-
-    return input_class
-
-
 def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=True):
     # -----------------------------------------------------------
     # Find namelist
@@ -235,7 +118,6 @@ def findNamelist(LocationCDF, folderWork=None, nameRunid="10000", ForceFirst=Tru
         dummy = False
 
     return LocationNML, dummy
-
 
 def prepareTGYRO(
     LocationCDF,
@@ -275,7 +157,6 @@ def prepareTGYRO(
         UseMITIMmodification=fixPlasmaState,
         includeGEQ=includeGEQ,
     )
-
 
 def CDFtoTRXPLoutput(
     LocationCDF,
@@ -329,60 +210,6 @@ def CDFtoTRXPLoutput(
             nameOutputs=nameOutputs,
             grids=grids,
         )
-
-
-def executeCGYRO(
-    FolderCGYRO,
-    linesCGYRO,
-    fileProfiles,
-    outputFiles=["out.cgyro.run"],
-    name="",
-    numcores=32,
-):
-    FolderCGYRO.mkdir(parents=True, exist_ok=True)
-
-    cgyro_job = FARMINGtools.mitim_job(FolderCGYRO)
-
-    cgyro_job.define_machine(
-        "cgyro",
-        f"mitim_cgyro_{name}",
-        slurm_settings={
-            "minutes": 60,
-            "ntasks": numcores,
-            "name": name,
-        },
-    )
-
-    # ---------------
-    # Prepare files
-    # ---------------
-
-    fileCGYRO = FolderCGYRO / f"input.cgyro"
-    with open(fileCGYRO, "w") as f:
-        f.write("\n".join(linesCGYRO))
-
-    # ---------------
-    # Execution command
-    # ---------------
-
-    folderExecution = cgyro_job.machineSettings["folderWork"]
-    CGYROcommand = f"cgyro -e . -n {numcores} -p {folderExecution}"
-
-    shellPreCommands = []
-
-    # ---------------
-    # Execute
-    # ---------------
-
-    cgyro_job.prep(
-        CGYROcommand,
-        input_files=[fileProfiles, fileCGYRO],
-        output_files=outputFiles,
-        shellPreCommands=shellPreCommands,
-    )
-
-    cgyro_job.run()
-
 
 def runTRXPL(
     FolderTRXPL,
@@ -445,7 +272,6 @@ def runTRXPL(
     )
     trxpl_job.run()
 
-
 def runPROFILES_GEN(
     FolderTGLF,
     nameFiles="10001",
@@ -457,7 +283,7 @@ def runPROFILES_GEN(
     if UseMITIMmodification:
         print("\t\t- Running modifyPlasmaState")
         shutil.copy2(FolderTGLF / f"{nameFiles}.cdf", FolderTGLF / f"{nameFiles}.cdf_old")
-        pls = PLASMASTATEtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
+        pls = NTCCtools.Plasmastate(FolderTGLF / f"{nameFiles}.cdf_old")
         pls.modify_default(FolderTGLF / f"{nameFiles}.cdf")
 
     inputFiles = [
@@ -474,7 +300,7 @@ def runPROFILES_GEN(
         txt += f" -g {nameFiles}.geq\n"
     else:
         txt += "\n"
-    with open(FolderTGLF + "profiles_gen.sh", "w") as f:
+    with open(FolderTGLF / "profiles_gen.sh", "w") as f:
         f.write(txt)
     # ******************
 
@@ -511,7 +337,6 @@ def runPROFILES_GEN(
 
         print(f"\t\t- Proceeding to run PROFILES_GEN with: {txt}")
         pgen_job.run()
-
 
 def runVGEN(
     workingFolder,
@@ -589,44 +414,9 @@ def runVGEN(
 
     return file_new
 
-
-def buildDictFromInput(inputFile):
-    parsed = {}
-
-    lines = inputFile.split("\n")
-    for line in lines:
-        if "=" in line:
-            splits = [i.split()[0] for i in line.split("=")]
-            if ("." in splits[1]) and (splits[1][0].split()[0] != "."):
-                parsed[splits[0].split()[0]] = float(splits[1].split()[0])
-            else:
-                try:
-                    parsed[splits[0].split()[0]] = int(splits[1].split()[0])
-                except:
-                    parsed[splits[0].split()[0]] = splits[1].split()[0]
-
-    for i in parsed:
-        if isinstance(parsed[i], str):
-            if (
-                parsed[i].lower() == "t"
-                or parsed[i].lower() == "true"
-                or parsed[i].lower() == ".true."
-            ):
-                parsed[i] = True
-            elif (
-                parsed[i].lower() == "f"
-                or parsed[i].lower() == "false"
-                or parsed[i].lower() == ".false."
-            ):
-                parsed[i] = False
-
-    return parsed
-
-
 # ----------------------------------------------------------------------
 # 						Reading/Writing routines
 # ----------------------------------------------------------------------
-
 
 def obtainFluctuationLevel(
     ky,
@@ -669,7 +459,6 @@ def obtainFluctuationLevel(
 
     return fluctSim * 100.0 * factorTot_to_Perp
 
-
 def obtainNTphase(
     ky,
     nTphase,
@@ -689,7 +478,6 @@ def obtainNTphase(
     neTe = np.sum(y * gaussW) / np.sum(gaussW)
 
     return neTe
-
 
 def integrateSpectrum(
     xOriginal,
@@ -832,7 +620,6 @@ def integrateSpectrum(
 
     return integ
 
-
 def defineNewGrid(
     xOriginal1,
     yOriginal1,
@@ -898,237 +685,3 @@ def defineNewGrid(
 
     return x[imin:imax], y[imin:imax]
 
-
-def runTGLF(
-    FolderGACODE,
-    tglf_executor,
-    minutes=5,
-    cores_tglf=4,
-    extraFlag="",
-    filesToRetrieve=["out.tglf.gbflux"],
-    name="",
-    launchSlurm=True,
-    attempts_execution=1,
-):
-    """
-    launchSlurm = True -> Launch as a batch job in the machine chosen
-    launchSlurm = False -> Launch locally as a bash script
-    """
-
-    tmpFolder = FolderGACODE / "tmp_tglf"
-    IOtools.askNewFolder(tmpFolder, force=True)
-
-    tglf_job = FARMINGtools.mitim_job(tmpFolder)
-
-    tglf_job.define_machine_quick("tglf",f"mitim_{name}")
-
-    folders, folders_red = [], []
-    for subFolderTGLF in tglf_executor:
-
-        rhos = list(tglf_executor[subFolderTGLF].keys())
-
-        # ---------------------------------------------
-        # Prepare files and folders
-        # ---------------------------------------------
-
-        for i, rho in enumerate(rhos):
-            print(f"\t- Preparing TGLF ({subFolderTGLF}) at rho={rho:.4f}")
-
-            folderTGLF_this = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}"
-            folders.append(folderTGLF_this)
-
-            folderTGLF_this_rel = folderTGLF_this.relative_to(tmpFolder)
-            folders_red.append(folderTGLF_this_rel.as_posix() if tglf_job.machineSettings['machine'] != 'local' else str(folderTGLF_this_rel))
-
-            folderTGLF_this.mkdir(parents=True, exist_ok=True)
-
-            fileTGLF = folderTGLF_this / "input.tglf"
-            with open(fileTGLF, "w") as f:
-                f.write(tglf_executor[subFolderTGLF][rho]["inputs"])
-
-    # ---------------------------------------------
-    # Prepare command
-    # ---------------------------------------------
-
-    # Grab machine local limits -------------------------------------------------
-    max_cores_per_node = FARMINGtools.mitim_job.grab_machine_settings("tglf")["cores_per_node"]
-
-    # If the run is local and not slurm, let's check the number of cores
-    if (FARMINGtools.mitim_job.grab_machine_settings("tglf")["machine"] == "local") and not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
-        
-        cores_in_machine = int(os.cpu_count())
-        cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
-
-        if cores_allocated is not None:
-            if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
-                print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
-                max_cores_per_node = cores_allocated
-        elif cores_in_machine is not None:
-            if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
-                print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
-                max_cores_per_node = cores_in_machine
-        else:
-            # Default to just 16 just in case
-            if max_cores_per_node is None: 
-                max_cores_per_node = 16
-    else:
-        # For remote execution, default to just 16 just in case
-        if max_cores_per_node is None: 
-            max_cores_per_node = 16
-    # ---------------------------------------------------------------------------
-
-    # Grab the total number of cores of this job --------------------------------
-    total_tglf_executions = len(rhos) * len(tglf_executor)
-    total_cores_required = int(cores_tglf) * total_tglf_executions
-    # ---------------------------------------------------------------------------
-
-    # Simply bash, no slurm
-    if not (launchSlurm and ("partition" in tglf_job.machineSettings["slurm"])):
-
-        max_parallel_execution = max_cores_per_node // cores_tglf # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
-
-        print(f"\t- TGLF will be executed as bash script (total cores: {total_cores_required},  cores per TGLF: {cores_tglf}). MITIM will launch {total_tglf_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
-
-        # Build the bash script with job control enabled and a loop to limit parallel jobs
-        TGLFcommand = "#!/usr/bin/env bash\n"
-        TGLFcommand += "set -m\n"  # Enable job control even in non-interactive mode
-        TGLFcommand += f"max_parallel_execution={max_parallel_execution}\n\n"  # Set the maximum number of parallel processes
-
-        # Create a bash array of folders
-        TGLFcommand += "folders=(\n"
-        for folder in folders_red:
-            TGLFcommand += f'    "{folder}"\n'
-        TGLFcommand += ")\n\n"
-
-        # Loop over each folder and launch tglf, waiting if we've reached max_parallel_execution
-        TGLFcommand += "for folder in \"${folders[@]}\"; do\n"
-        TGLFcommand += f"    tglf -e \"$folder\" -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
-        TGLFcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
-        TGLFcommand += "done\n\n"
-        TGLFcommand += "wait\n"
-
-        # Slurm setup
-        array_list = None
-        shellPreCommands = None
-        shellPostCommands = None
-        ntasks = total_cores_required
-        cpuspertask = cores_tglf
-
-    else:
-
-        # Job array 
-        if total_cores_required < max_cores_per_node:
-
-            print(f"\t- TGLF will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
-
-            # TGLF launches
-            TGLFcommand = ""
-            for folder in folders_red:
-                TGLFcommand += f"tglf -e {folder} -n {cores_tglf} -p {tglf_job.folderExecution} &\n"
-            TGLFcommand += "\nwait"  # This is needed so that the script doesn't end before each job
-            
-            # Slurm setup
-            array_list = None
-            shellPreCommands = None
-            shellPostCommands = None
-            ntasks = total_tglf_executions
-            cpuspertask = cores_tglf
-
-        # Standard job
-        else:
-            #raise Exception("TGLF array not implemented yet")
-            print(f"\t- TGLF will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
-
-            # As a pre-command, organize all folders in a simpler way
-            shellPreCommands = []
-            shellPostCommands = []
-            array_list = []
-            for i, folder in enumerate(folders_red):
-                array_list.append(f"{i}")
-                folder_temp_array = f"run{i}"
-                folder_actual = folder
-                shellPreCommands.append(f"mkdir {tglf_job.folderExecution}/{folder_temp_array}; cp {tglf_job.folderExecution}/{folder_actual}/*  {tglf_job.folderExecution}/{folder_temp_array}/.")
-                shellPostCommands.append(f"cp {tglf_job.folderExecution}/{folder_temp_array}/* {tglf_job.folderExecution}/{folder_actual}/.; rm -r {tglf_job.folderExecution}/{folder_temp_array}")
-
-            # TGLF launches
-            indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-            TGLFcommand = f'tglf -e {indexed_folder} -n {cores_tglf} -p {tglf_job.folderExecution} 1> {tglf_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {tglf_job.folderExecution}/{indexed_folder}/slurm_error.dat\n'
-
-            # Slurm setup
-            array_list = ",".join(array_list)
-            ntasks = 1
-            cpuspertask = cores_tglf
-
-    # ---------------------------------------------
-    # Execute
-    # ---------------------------------------------
-
-    tglf_job.define_machine(
-        "tglf",
-        f"mitim_{name}",
-        launchSlurm=launchSlurm,
-        slurm_settings={
-            "minutes": minutes,
-            "ntasks": ntasks,
-            "name": name,
-            "cpuspertask": cpuspertask,
-            "job_array": array_list,
-            #"nodes": 1,
-        },
-    )
-
-    # I would like the mitim_job to check if the retrieved folders were complete
-    check_files_in_folder = {}
-    for folder in folders_red:
-        check_files_in_folder[folder] = filesToRetrieve
-    # ---------------------------------------------
-
-    tglf_job.prep(
-        TGLFcommand,
-        input_folders=folders,
-        output_folders=folders_red,
-        check_files_in_folder=check_files_in_folder,
-        shellPreCommands=shellPreCommands,
-        shellPostCommands=shellPostCommands,
-    )
-
-    tglf_job.run(
-        removeScratchFolders=True,
-        attempts_execution=attempts_execution
-        )
-
-    # ---------------------------------------------
-    # Organize
-    # ---------------------------------------------
-
-    print("\t- Retrieving files and changing names for storing")
-    fineall = True
-    for subFolderTGLF in tglf_executor:
-
-        for i, rho in enumerate(tglf_executor[subFolderTGLF].keys()):
-            for file in filesToRetrieve:
-                original_file = f"{file}_{rho:.4f}{extraFlag}"
-                final_destination = (
-                    tglf_executor[subFolderTGLF][rho]['folder'] / f"{original_file}"
-                )
-                final_destination.unlink(missing_ok=True)
-
-                temp_file = tmpFolder / subFolderTGLF / f"rho_{rho:.4f}" / f"{file}"
-                temp_file.replace(final_destination)
-
-                fineall = fineall and final_destination.exists()
-
-                if not final_destination.exists():
-                    print(
-                        f"\t!! file {file} ({original_file}) could not be retrived",
-                        typeMsg="w",
-                    )
-
-    if fineall:
-        print("\t\t- All files were successfully retrieved")
-
-        # Remove temporary folder
-        shutil.rmtree(tmpFolder)
-
-    else:
-        print("\t\t- Some files were not retrieved", typeMsg="w")

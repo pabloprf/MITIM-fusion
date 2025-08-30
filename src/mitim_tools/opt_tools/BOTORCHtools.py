@@ -170,10 +170,6 @@ class ExactGPcustom(botorch.models.gp_regression.SingleTaskGP):
             self.mean_module = MITIM_LinearMeanGradients(
                 batch_shape=self._aug_batch_shape, variables=variables, output=output
             )
-        elif TypeMean == 3:
-            self.mean_module = MITIM_CriticalGradient(
-                batch_shape=self._aug_batch_shape, variables=variables
-            )
 
         """
 		-----------------------------------------------------------------------
@@ -689,85 +685,56 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
             else:
 
                 mapping = {
-                    'Qe': 'aLte',
-                    'Qi': 'aLti',
-                    'Ge': 'aLne',
-                    'GZ': 'aLnZ',
-                    'Mt': 'dw0dr',
-                    'Pe': None  # Referring to energy exchange
+                    'Qe_': 'aLte',
+                    'Qi_': 'aLti',
+                    'Ge_': 'aLne',
+                    'GZ_': 'aLnZ',
+                    'Mt_': 'dw0dr',
+                    'Qie': None  # Referring to energy exchange
                 }
 
                 for i, variable in enumerate(variables):
-                    if (mapping[output[:2]] is not None) and (mapping[output[:2]] == variable):
+                    if (mapping[output[:3]] is not None) and (mapping[output[:3]] == variable):
                         grad_vector.append(i)
 
         self.indeces_grad = tuple(grad_vector)
         # ----------------------------------------------------------------
 
-        self.register_parameter(
-            name="weights_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_parameter(
-            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
-        )
+        self.register_parameter(name="raw_weights_lin",parameter=torch.nn.Parameter(torch.randn(*batch_shape, len(self.indeces_grad), 1)),)
+        self.register_parameter(name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1)))
 
         # set the parameter constraint to be [0,1], when nothing is specified
         diffusion_constraint = gpytorch.constraints.constraints.Positive()
 
         # positive diffusion coefficient
         if only_diffusive:
-            self.register_constraint("weights_lin", diffusion_constraint)
+            self.register_constraint("raw_weights_lin", diffusion_constraint)
 
     def forward(self, x):
-        res = x[..., self.indeces_grad].matmul(self.weights_lin).squeeze(-1) + self.bias
+        weights_lin = self.weights_lin
+        res = x[..., self.indeces_grad].matmul(weights_lin).squeeze(-1) + self.bias
         return res
+    
+    # This follows the exact same pattern as in gpytorch's constant_mean.py
 
+    @property
+    def weights_lin(self):
+        return self._weights_lin_param(self)
 
-class MITIM_CriticalGradient(gpytorch.means.mean.Mean):
-    def __init__(self, batch_shape=torch.Size(), variables=None, **kwargs):
-        super().__init__()
+    @weights_lin.setter
+    def weights_lin(self, value):
+        self._weights_lin_closure(self, value)
 
-        # Indeces of variables that are gradient, so subject to CG behavior
-        grad_vector = []
-        if variables is not None:
-            for i, variable in enumerate(variables):
-                if ("aL" in variable) or ("dw" in variable):
-                    grad_vector.append(i)
-        self.indeces_grad = tuple(grad_vector)
-        # ----------------------------------------------------------------
+    def _weights_lin_param(self, m):
+        if hasattr(m, "raw_weights_lin_constraint"):
+            return m.raw_weights_lin_constraint.transform(m.raw_weights_lin)
+        return m.raw_weights_lin
 
-        self.register_parameter(
-            name="weights_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_parameter(
-            name="bias", parameter=torch.nn.Parameter(torch.randn(*batch_shape, 1))
-        )
+    def _weights_lin_closure(self, m, value):
+        if not torch.is_tensor(value):
+            value = torch.as_tensor(value).to(m.raw_weights_lin)
 
-        self.NNfunc = (
-            lambda x: x * (1 + torch.erf(x / 0.01)) / 2.0
-        )  # https://paperswithcode.com/method/gelu
-
-        self.register_parameter(
-            name="relu_lin",
-            parameter=torch.nn.Parameter(
-                torch.randn(*batch_shape, len(self.indeces_grad), 1)
-            ),
-        )
-        self.register_constraint(
-            "relu_lin", gpytorch.constraints.constraints.Interval(0, 1)
-        )
-
-    def forward(self, x):
-        res = (
-            self.NNfunc(x[..., self.indeces_grad] - self.relu_lin.transpose(0, 1))
-            .matmul(self.weights_lin)
-            .squeeze(-1)
-            + self.bias
-        )
-        return res
+        if hasattr(m, "raw_weights_lin_constraint"):
+            m.initialize(raw_weights_lin=m.raw_weights_lin_constraint.inverse_transform(value))
+        else:
+            m.initialize(raw_weights_lin=value)

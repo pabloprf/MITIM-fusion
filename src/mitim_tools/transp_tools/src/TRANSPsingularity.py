@@ -472,7 +472,7 @@ def interpretRun(infoSLURM, log_file):
         Case is not running (finished or failed)
         """
 
-        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):
+        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
             status = 1
             info["info"]["status"] = "finished"
         elif ("Error termination" in "\n".join(log_file)) or (
@@ -489,10 +489,7 @@ def interpretRun(infoSLURM, log_file):
             status = -1
             info["info"]["status"] = "stopped"
         else:
-            print(
-                "\t- No error nor termination found, assuming it is still running",
-                typeMsg="w",
-            )
+            print("\t- No error nor termination found, assuming it is still running",typeMsg="w",)
             pringLogTail(log_file, typeMsg="i")
             status = 0
             info["info"]["status"] = "running"
@@ -568,7 +565,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         if item.is_file():
             shutil.copy2(item, folderWork)
         elif item.is_dir():
-            shutil.copytree(item, folderWork / item.name)
+            shutil.copytree(item, folderWork / item.name, dirs_exist_ok=True)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 

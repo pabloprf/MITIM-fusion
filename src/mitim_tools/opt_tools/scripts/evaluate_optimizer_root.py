@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools, OPTtools
 from mitim_tools.opt_tools.utils import TESTtools
-from mitim_tools.opt_tools.optimizers import ROOTtools
+from mitim_tools.opt_tools.optimizers import multivariate
 from IPython import embed
 
 """
@@ -60,7 +60,7 @@ bounds_logi = fun.bounds_mod
 
 # for opt,lab in enumerate(['vectorize=True']): #,'vectorize=False']):
 for opt, lab in enumerate(["x0=0"]):  # ,'x0=1.0']): #,'vectorize=False']):
-    logi = ROOTtools.logistic(l=bounds_logi[0, :], u=bounds_logi[1, :], k=0.5, x0=0)
+    logi = multivariate.logistic(l=bounds_logi[0, :], u=bounds_logi[1, :], k=0.5, x0=0)
     # ***************************************************************************************************
     # OPTIMIZER
     # ***************************************************************************************************
