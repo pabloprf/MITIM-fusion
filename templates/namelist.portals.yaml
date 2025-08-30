@@ -46,8 +46,8 @@ solution:
     
     # Bounds for the input parameters. ymax/ymin can be float (common for all radii, channels) or a dictionary::
     #       ymax:
-    #           'te': [1.0, 0.5, 0.5, 0.5],
-    #           'ti': [0.5, 0.5, 0.5, 0.5],
+    #           'te': [1.0, 0.5, 0.5, 0.5]
+    #           'ti': [0.5, 0.5, 0.5, 0.5]
     #           ...
     ymax: 1.0
     ymin: 1.0

@@ -3,7 +3,7 @@ import torch
 from mitim_tools import __mitimroot__
 from mitim_modules.maestro.scripts import run_maestro
 
-cold_start = True
+cold_start = False
 
 folder = __mitimroot__ / "tests" / "scratch" / "maestro_test"
 template = __mitimroot__ / "templates" / "namelist.maestro.yaml"

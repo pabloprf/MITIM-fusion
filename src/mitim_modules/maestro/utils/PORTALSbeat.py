@@ -26,6 +26,7 @@ class portals_beat(beat):
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
             portals_parameters = {},
+            portals_namelist_location = None,
             initialization_parameters = {},
             optimization_options = {},
             enforce_impurity_radiation_existence = True,
@@ -59,6 +60,7 @@ class portals_beat(beat):
         self.profiles_current.write_state(file = self.fileGACODE)
 
         self.portals_parameters = portals_parameters
+        self.portals_namelist_location = portals_namelist_location
         self.optimization_options = optimization_options
         self.initialization_parameters = initialization_parameters
 
@@ -76,7 +78,7 @@ class portals_beat(beat):
 
         cold_start = kwargs.get('cold_start', False)
 
-        portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_parameters["portals_namelist_location"])
+        portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_namelist_location)
 
         portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
         portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
