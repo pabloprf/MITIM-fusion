@@ -419,7 +419,7 @@ class MITIM_BO:
             # Check if the optimization options are in the namelist
             optimization_options_default = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.optimization.yaml")
             potential_flags = IOtools.deep_grab_flags_dict(optimization_options_default)
-            IOtools.check_flags_dictionary(
+            IOtools.check_flags_mitim_namelist(
                 self.optimization_options, potential_flags,
                 avoid = ["stopping_criteria_parameters"], # Because they are specific to the stopping criteria
                 askQuestions=askQuestions

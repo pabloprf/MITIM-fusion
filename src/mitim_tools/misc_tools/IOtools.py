@@ -597,18 +597,7 @@ def calculate_size_pickle(file):
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# MITIM optimization namelist
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-def read_mitim_json(json_file):
-    jpath = Path(json_file).expanduser()
-    with open(jpath, 'r') as file:
-        optimization_options = json.load(file)
-
-    return optimization_options
-
-def check_flags_dictionary(d, d_check, avoid = [], askQuestions=True):
+def check_flags_mitim_namelist(d, d_check, avoid = [], askQuestions=True):
     for key in d.keys():
         if key in avoid:
             continue
@@ -617,10 +606,7 @@ def check_flags_dictionary(d, d_check, avoid = [], askQuestions=True):
         elif not isinstance(d[key], dict):
             continue
         else:
-            check_flags_dictionary(d[key], d_check[key], avoid=avoid, askQuestions=askQuestions)
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            check_flags_mitim_namelist(d[key], d_check[key], avoid=avoid, askQuestions=askQuestions)
 
 def getpythonversion():
     return [ int(i.split("\n")[0].split("+")[0]) for i in sys.version.split()[0].split(".") ]

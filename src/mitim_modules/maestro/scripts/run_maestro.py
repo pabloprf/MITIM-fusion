@@ -1,5 +1,4 @@
 import argparse
-import shutil
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -10,7 +9,7 @@ from IPython import embed
 
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
-    maestro_namelist = IOtools.read_mitim_json(file_path)
+    maestro_namelist = IOtools.read_mitim_yaml(file_path)
 
     if "seed" in maestro_namelist:
         seed = maestro_namelist["seed"]
@@ -261,8 +260,8 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    if (folder / 'maestro_namelist.json').exists():
-        IOtools.recursive_backup(folder / 'maestro_namelist.json')
+    if (folder / 'namelist.maestro.yaml').exists():
+        IOtools.recursive_backup(folder / 'namelist.maestro.yaml')
     
     run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 

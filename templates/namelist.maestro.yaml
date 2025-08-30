@@ -1,0 +1,128 @@
+# Name of this simulation
+flag: SPARC PRD
+
+# Random seed for reproducibility (master seed to be sent to all beats that receive seed)
+seed: 0
+
+# Machine parameters
+machine:
+
+  Bt: 12.2
+  Ip: 8.7
+
+  # Separatrix specification
+  separatrix:
+    type: freegs
+    parameters:
+      R: 1.85
+      a: 0.57
+      delta_sep: 0.57
+      kappa_sep: 1.97
+      n_mxh: 5
+      geqdsk_file: ""
+
+  # Heating parameters
+  heating:
+    type: ICRH
+    parameters:
+      P_icrh: 11.0
+      minority: [2, 3]
+      fmini: 0.05
+
+# Simulation assumptions
+assumptions:
+
+  # Impurities
+  Zeff: 1.5
+  mix:
+    fmain: 0.85
+    ZW: 50
+    fW: 1.5e-5
+
+  # Initialization of profiles
+  initialization:
+    BetaN: 1.0
+    density_peaking: 1.3
+    assume_neped: true
+    neped_20: 2.5
+    nesep_ratio: 0.3
+
+  # Edge parameters
+  Tesep_eV: 75.0
+
+# MAESTRO workflow parameters
+maestro:
+
+  # Remove intermediate files
+  keep_all_files: true
+
+  # Sequence of beats
+  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+
+  # ---------------------------------------------------------------------------
+  # Each individual beat parameters
+  # ---------------------------------------------------------------------------
+
+  eped_beat:
+    use_default: false
+    eped_namelist:
+      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
+      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+      corrections_set:
+        Bt: 12.2
+        R: 1.85
+        a: 0.57
+      ptop_multiplier: 1.0
+      TioverTe: 1.0
+
+  eped_initializer_beat:
+    use_default: false
+    eped_initializer_namelist:
+      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
+      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+      corrections_set:
+        Bt: 12.2
+        R: 1.85
+        a: 0.57
+      ptop_multiplier: 1.0
+      TioverTe: 1.0
+
+  portals_beat:
+    use_default: false
+    portals_namelist:
+      portals_parameters:
+        solution:
+          predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
+          keep_full_model_folder: false
+        transport:
+          options:
+            tglf:
+              run:
+                code_settings: SAT2astra
+                extraOptions:
+                  USE_BPER: true
+        target:
+          options:
+            force_zero_particle_flux: true
+      initialization_parameters:
+        thermalize_fast: true
+        quasineutrality: true
+      exploration_ranges:
+        ymax_rel: 1.0
+        ymin_rel: 1.0
+        yminymax_atleast: [null, 4]
+      change_last_radial_call: true
+      use_previous_surrogate_data: true
+      try_flux_match_only_for_first_point: true
+    transport_preprocessing:
+      lumpImpurities: true
+      enforce_same_density_gradients: true
+
+  portals_soft_beat:
+    use_default: true
+
+  transp_beat:
+    use_default: true
+
+  transp_soft_beat:
+    use_default: true

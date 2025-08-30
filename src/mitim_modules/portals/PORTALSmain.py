@@ -100,7 +100,7 @@ class portals(STRATEGYtools.opt_evaluator):
         print(">> PORTALS flags pre-check")
 
         # Check that I haven't added a deprecated variable that I expect some behavior from
-        IOtools.check_flags_dictionary(self.portals_parameters, self.potential_flags, avoid = ["run", "read"], askQuestions=askQuestions)
+        IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read"], askQuestions=askQuestions)
 
         key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
