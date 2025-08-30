@@ -1244,9 +1244,7 @@ class mitim_state:
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
-                print(
-                    f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor_ions):.3f}"
-                )
+                print(f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor_ions):.3f}")
                 ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
                 self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 

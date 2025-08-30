@@ -422,9 +422,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ni"], mi, Zi, c_rad = [], [], [], []
     for i in range(len(input_gacode.profiles["mass"])):
         if input_gacode.profiles["type"][i] == "[therm]":
-            self.plasma["ni"].append(
-                interpolation_function(rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i])
-            )
+            self.plasma["ni"].append(interpolation_function(rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i]))
             mi.append(input_gacode.profiles["mass"][i])
             Zi.append(input_gacode.profiles["z"][i])
 
@@ -433,7 +431,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             try:
                 c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,2:].astype(float)
             except IndexError:
-                print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in ADAS database, assuming zero radiation from it',typeMsg="w")
+                print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in radiation database, assuming zero radiation from it',typeMsg="w")
                 c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
             c_rad.append(c)

@@ -608,7 +608,7 @@ def read_mitim_nml(json_file):
 
     return optimization_options
 
-def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
+def curate_mitim_nml(optimization_options, folder, stopping_criteria_default = None):
 
     # Optimization criterion
     if optimization_options['convergence_options']['stopping_criteria'] is None:
@@ -633,6 +633,11 @@ def curate_mitim_nml(optimization_options, stopping_criteria_default = None):
     for ikey in optimization_options:
         if ikey not in Optim_potential:
             print(f"\t- Option {ikey} is an unexpected variable, prone to errors", typeMsg="q")
+
+    # Write the optimization parameters stored in the object, into a file
+    if folder is not None:
+        write_mitim_yaml(optimization_options, folder / "optimization.namelist.yaml")
+        print(f" --> Optimization namelist written to {folder / 'optimization.namelist.yaml'}")
 
     return optimization_options
 

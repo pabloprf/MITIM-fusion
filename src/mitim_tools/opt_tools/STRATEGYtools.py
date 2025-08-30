@@ -360,19 +360,11 @@ class MITIM_BO:
         self.seed = seed
         self.avoidPoints = []
         
-        # Write the optimizaiton parameters stored in the object, into a file
-        if (self.optimization_object.optimization_options is not None) and (self.optimization_object.folder is not None):
-            IOtools.write_mitim_yaml(self.optimization_object.optimization_options, self.optimization_object.folder / "optimization.namelist.yaml")
-
         if self.optimization_object.name_objectives is None:
             self.optimization_object.name_objectives = "y"
 
         # Folders and Logger
-        self.folderExecution = (
-            IOtools.expandPath(self.optimization_object.folder)
-            if (self.optimization_object.folder is not None)
-            else Path("")
-        )
+        self.folderExecution = IOtools.expandPath(self.optimization_object.folder) if (self.optimization_object.folder is not None) else Path("")
 
         self.folderOutputs = self.folderExecution / "Outputs"
 
@@ -426,6 +418,7 @@ class MITIM_BO:
         if self.optimization_options is not None:
             self.optimization_options = IOtools.curate_mitim_nml(
                 self.optimization_options,
+                self.optimization_object.folder,
                 stopping_criteria_default = stopping_criteria_default
                 )
         # -------------------------------------------------------------------------------------------------
