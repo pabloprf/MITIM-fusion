@@ -11,14 +11,14 @@ def main():
     parser.add_argument("folder", type=str, help="Simulation folder")
     parser.add_argument("--namelist", type=str, required=False, default=None) # namelist.portals.yaml file, otherwise what's in the current folder
     parser.add_argument("--input", type=str, required=False, default=None) # input.gacode file, otherwise what's in the current folder
-    parser.add_argument('--cold_start', required=False, default=False, action='store_true')
+    parser.add_argument('--cold', required=False, default=False, action='store_true')
 
     args = parser.parse_args()
     
     folderWork = Path(args.folder)
     portals_namelist = args.namelist
     inputgacode = args.input
-    cold_start = args.cold_start
+    cold_start = args.cold
     
     if portals_namelist is None:
         portals_namelist = IOtools.expandPath('.') / "namelist.portals.yaml"

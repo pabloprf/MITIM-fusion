@@ -67,15 +67,6 @@ class portals(STRATEGYtools.opt_evaluator):
         self,
         mitim_state,
         cold_start=False,
-        ymax_rel=1.0,
-        ymin_rel=1.0,
-        limits_are_relative=True,
-        fixed_gradients=None,
-        yminymax_atleast=None,
-        enforce_finite_aLT=None,
-        define_ranges_from_profiles=None,
-        start_from_folder=None,
-        reevaluate_targets=0,
         seedInitial=None,
         askQuestions=True,
     ):
@@ -92,6 +83,16 @@ class portals(STRATEGYtools.opt_evaluator):
                 (if used with reevaluate_targets>0, change targets by reevaluating with different parameters)
             - seedInitial can be optionally give a seed to randomize the starting profile (useful for developing, paper writing)
         """
+
+        ymax_rel = self.portals_parameters["solution"]["exploration_ranges"]["ymax_rel"]
+        ymin_rel = self.portals_parameters["solution"]["exploration_ranges"]["ymin_rel"]
+        limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
+        fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
+        yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
+        enforce_finite_aLT = self.portals_parameters["solution"]["exploration_ranges"]["enforce_finite_aLT"]
+        define_ranges_from_profiles = self.portals_parameters["solution"]["exploration_ranges"]["define_ranges_from_profiles"]
+        start_from_folder = self.portals_parameters["solution"]["exploration_ranges"]["start_from_folder"]
+        reevaluate_targets = self.portals_parameters["solution"]["exploration_ranges"]["reevaluate_targets"]
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Make sure that options that are required by good behavior of PORTALS

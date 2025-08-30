@@ -25,11 +25,6 @@ class portals_beat(beat):
             use_previous_surrogate_data = False,
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
-            exploration_ranges = {
-                'ymax_rel': 1.0,
-                'ymin_rel': 1.0,
-                'yminymax_atleast': [0,2]
-            },
             portals_parameters = {},
             initialization_parameters = {},
             optimization_options = {},
@@ -67,7 +62,6 @@ class portals_beat(beat):
         self.optimization_options = optimization_options
         self.initialization_parameters = initialization_parameters
 
-        self.exploration_ranges = exploration_ranges
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
@@ -92,7 +86,7 @@ class portals_beat(beat):
         p = gacode_state(self.fileGACODE)
         p.correct(options=self.initialization_parameters)
 
-        portals_fun.prep(p,askQuestions=False,**self.exploration_ranges)
+        portals_fun.prep(p,askQuestions=False)
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False)
 
@@ -105,7 +99,7 @@ class portals_beat(beat):
             if len(self.mitim_bo.optimization_data.data) == 0:
                 self._flux_match_for_first_point()
 
-            portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
+            portals_fun.prep(self.fileGACODE,askQuestions=False)
 
             self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
