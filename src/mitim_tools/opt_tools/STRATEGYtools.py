@@ -361,7 +361,8 @@ class MITIM_BO:
         self.avoidPoints = []
         
         # Write the optimizaiton parameters stored in the object, into a file
-        IOtools.write_mitim_yaml(self.optimization_object.optimization_options, self.optimization_object.folder / "optimization.namelist.yaml")
+        if (self.optimization_object.optimization_options is not None) and (self.optimization_object.folder is not None):
+            IOtools.write_mitim_yaml(self.optimization_object.optimization_options, self.optimization_object.folder / "optimization.namelist.yaml")
 
         if self.optimization_object.name_objectives is None:
             self.optimization_object.name_objectives = "y"
