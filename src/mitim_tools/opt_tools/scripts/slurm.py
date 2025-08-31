@@ -17,7 +17,8 @@ def run_slurm(
     seed_specific=0,
     machine="local",
     exclude=None,
-    mem=None
+    mem=None,
+    exclusive=False
 ):
 
     folder = IOtools.expandPath(folder)
@@ -46,13 +47,13 @@ def run_slurm(
             command,
             folder,
             folder_local=folder,
-            slurm={"partition": partition, 'exclude': exclude},
+            slurm={"partition": partition, 'exclude': exclude,'exclusive': exclusive},
             slurm_settings = {
                 'nameJob': nameJob,
                 'minutes': int(60 * hours),
                 'ntasks': 1,
                 'cpuspertask': n,
-                'memory_req_by_job': mem,
+                'memory_req_by_job': mem
             }
         )
 
