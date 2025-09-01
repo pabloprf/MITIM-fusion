@@ -1048,14 +1048,21 @@ def cold_start_checker(
 def modifyInputs(
     input_class,
     code_settings=None,
-    extraOptions={},
-    multipliers={},
-    minimum_delta_abs={},
+    extraOptions=None,
+    multipliers=None,
+    minimum_delta_abs=None,
     position_change=0,
     addControlFunction=None,
     controls_file = 'input.tglf.controls',
     **kwargs_to_function,
 ):
+
+    if extraOptions is None:
+        extraOptions = {}
+    if multipliers is None:
+        multipliers = {}
+    if minimum_delta_abs is None:
+        minimum_delta_abs = {}
 
     # Check that those are valid flags
     GACODEdefaults.review_controls(extraOptions, control = controls_file)
@@ -1123,28 +1130,34 @@ def modifyInputs(
     if len(multipliers) > 0:
         print("\t\t- Variables change:")
     for ikey in multipliers:
+    
+        if isinstance(multipliers[ikey], (list, np.ndarray)):
+            value_to_change_to = multipliers[ikey][position_change]
+        else:
+            value_to_change_to = multipliers[ikey]
+    
         # is a specie one?
         if "species" in input_class.__dict__.keys() and ikey.split("_")[0] in input_class.species[1]:
             specie = int(ikey.split("_")[-1])
             varK = "_".join(ikey.split("_")[:-1])
             var_orig = input_class.species[specie][varK]
-            var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+            var_new = multiplier_input(var_orig, value_to_change_to, minimum_delta_abs = minimum_delta_abs.get(ikey,None))
             input_class.species[specie][varK] = var_new
         else:
             if ikey in input_class.controls:
                 var_orig = input_class.controls[ikey]
-                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+                var_new = multiplier_input(var_orig, value_to_change_to, minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.controls[ikey] = var_new
             
             elif ikey in input_class.plasma:
                 var_orig = input_class.plasma[ikey]
-                var_new = multiplier_input(var_orig, multipliers[ikey], minimum_delta_abs = minimum_delta_abs.get(ikey,None))
+                var_new = multiplier_input(var_orig, value_to_change_to, minimum_delta_abs = minimum_delta_abs.get(ikey,None))
                 input_class.plasma[ikey] = var_new
             
             else:
                 print("\t- Variable to scan did not exist in original file, add it as extraOptions first",typeMsg="w",)
 
-        print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{multipliers[ikey]})")
+        print(f"\t\t\t- Changing {ikey} from {var_orig} to {var_new} (x{value_to_change_to})")
 
     return input_class
 

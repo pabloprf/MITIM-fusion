@@ -18,6 +18,7 @@ tglf.prep(input_gacode,folder, cold_start=cold_start)
 
 tglf.run_scan(	subfolder = 'scan1',
                 code_settings  = None,
+                extraOptions = {"USE_BPER": [False, True]}, # extraOptions can receive a list to provide different values per rho
                 cold_start       = cold_start,
                 runWaveForms  = [0.67, 10.0],
                 variable      = 'RLTS_1',
