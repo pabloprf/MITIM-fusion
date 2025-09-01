@@ -24,7 +24,7 @@ gx.prep(p, folder)
 gx.run(
     'gx1/',
     cold_start=cold_start,
-    code_settings=0,    # Linear
+    code_settings="Linear",
     extraOptions={
         't_max':5.0,    # Run up to 5 a/c_s (should take ~2min using 8 A100s)
         'y0' :5.0,      # kymin = 1/y0 = 0.2

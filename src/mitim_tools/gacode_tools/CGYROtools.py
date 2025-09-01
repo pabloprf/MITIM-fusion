@@ -4,12 +4,13 @@ import matplotlib.pyplot as plt
 from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.utils import SIMplot
 from mitim_tools.misc_tools import GRAPHICStools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-class CGYRO(SIMtools.mitim_simulation):
+class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -360,50 +361,6 @@ class CGYRO(SIMtools.mitim_simulation):
                         #cb.set_label(f"{var} (common range)")
 
         self.results = self.results_all
-
-    def _plot_trace(self, ax, label, variable, c="b", lw=1, ls="-", label_plot='', meanstd=True, var_meanstd= None):
-        
-        t = self.results[label].t
-        
-        if not isinstance(variable, str):
-            z = variable
-            if var_meanstd is not None:
-                z_mean = var_meanstd[0]
-                z_std = var_meanstd[1]
-            
-        else:
-            z = self.results[label].__dict__[variable]
-            if meanstd and (f'{variable}_mean' in self.results[label].__dict__):
-                z_mean = self.results[label].__dict__[variable + '_mean']
-                z_std = self.results[label].__dict__[variable + '_std']
-            else:
-                z_mean = None
-                z_std = None
-        
-        ax.plot(
-            t,
-            z,
-            ls=ls,
-            lw=lw,
-            c=c,
-            label=label_plot,
-        )
-        
-        if meanstd and z_std>0.0:
-            GRAPHICStools.fillGraph(
-                ax,
-                t[t>self.results[label].tmin],
-                z_mean,
-                y_down=z_mean
-                - z_std,
-                y_up=z_mean
-                + z_std,
-                alpha=0.1,
-                color=c,
-                lw=0.5,
-                islwOnlyMean=True,
-                label=label_plot + f" $\\mathbf{{{z_mean:.2f} \\pm {z_std:.2f}}}$ (1$\\sigma$)",
-            )
 
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
         

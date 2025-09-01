@@ -23,13 +23,21 @@ machine:
 
   # Separatrix specification
   separatrix:
+
+    # Type of separatrix (freegs, geqdsk)
     type: freegs
+
+    # Parameters for this type of separatrix
     parameters:
+
+      # If the separatrix type receives boundary parameterization, parameters here
       R: 1.85
       a: 0.57
       delta_sep: 0.57
       kappa_sep: 1.97
       n_mxh: 5
+
+      # If the separatrix type receives a geqdsk file directly, provide path here
       geqdsk_file: ""
 
   # Heating parameters
@@ -73,7 +81,7 @@ assumptions:
 
 maestro:
 
-  # Remove intermediate files
+  # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
 
   # Sequence of beats

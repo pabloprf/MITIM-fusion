@@ -11,3 +11,8 @@
 "Nonlinear":
   controls:
     nonlinear_mode: true
+    hyper: true
+    HB_hyper: true
+    nperiod: 1
+    nx: 192
+    ny: 64

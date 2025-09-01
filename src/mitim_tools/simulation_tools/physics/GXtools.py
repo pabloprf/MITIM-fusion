@@ -3,12 +3,13 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.utils import SIMplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from mitim_tools import __version__ as mitim_version
 from IPython import embed
 
-class GX(SIMtools.mitim_simulation):
+class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -92,7 +93,7 @@ class GX(SIMtools.mitim_simulation):
             colors = GRAPHICStools.listColors()
 
         # Fluxes
-        fig = self.fn.add_figure(label=f"{extratitle}Fluxes", tab_color=fn_color)
+        fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes", tab_color=fn_color)
 
         grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
 
@@ -107,9 +108,9 @@ class GX(SIMtools.mitim_simulation):
                 
                 typeLs = '-' if c.t.shape[0]>20 else '-s'
                 
-                ax1.plot(c.t, c.Qe, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                ax2.plot(c.t, c.Qi, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                ax3.plot(c.t, c.Ge, typeLs, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+                self._plot_trace(ax1,self.results[label]['output'][irho],"Qe",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+                self._plot_trace(ax2,self.results[label]['output'][irho],"Qi",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+                self._plot_trace(ax3,self.results[label]['output'][irho],"Ge",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
 
                 i += 1
 
@@ -134,7 +135,7 @@ class GX(SIMtools.mitim_simulation):
 
             
         # Linear stability
-        fig = self.fn.add_figure(label=f"{extratitle}Linear stability", tab_color=fn_color)
+        fig = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
         
         grid = plt.GridSpec(2, 2, hspace=0.7, wspace=0.2)
 
@@ -381,7 +382,7 @@ class GXoutput(SIMtools.GACODEoutput):
         ikx = 0
         self.ky = data.groups['Grids'].variables['ky'][1:]   # (ky)
         self.w = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,0]    # (time, ky)
-        self.g = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,1]      # (time, ky)
+        self.g = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,1]    # (time, ky)
 
         # Fluxes
         Q = data.groups['Diagnostics'].variables['HeatFlux_st']     # (time, species)
