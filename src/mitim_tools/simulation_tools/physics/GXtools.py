@@ -65,15 +65,59 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t GX class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.ResultsFiles = self.ResultsFiles_minimal = [
+        self.ResultsFiles_minimal = [
+            'gxplasma.out.nc'
+        ]
+
+        self.ResultsFiles = self.ResultsFiles_minimal + [
             'gxplasma.eik.out',
             'gxplasma.eiknc.nc',
             'gxplasma.gx_geo.log',
-            'gxplasma.restart.nc',
             'gxplasma.big.nc',
-            'gxplasma.out.nc',
-            'gxplasma.mitim.log'
+            'gxplasma.mitim.log',
+            'gxplasma.restart.nc',
             ]
+
+    '''
+    Redefined here so that I handle restart properly and
+    I can choose numerical setup based on plasma
+    '''
+    def run(
+        self,
+        subfolder,
+        numerics_based_on_plasma = None, # A dictionary with the parameters to match
+        **kwargs_sim_run
+    ):
+        
+        # ------------------------------------
+        # Check about restarts
+        # ------------------------------------
+        
+        # Assume every template writes a restart file named "gxplasma.restart.nc"
+        # If extraOptions indicate not to write a restart, remove the file
+        if not kwargs_sim_run.get('extraOptions', {}).get('save_for_restart', True):
+            self.ResultsFiles.remove("gxplasma.restart.nc")
+            print("\t- Not saving restart file")
+
+        # If the name has changed, update the results files list
+        if kwargs_sim_run.get('extraOptions', {}).get('restart_to_file', None) is not None:
+            restart_name = kwargs_sim_run['extraOptions']['restart_to_file']
+            self.ResultsFiles.remove("gxplasma.restart.nc")
+            self.ResultsFiles.append(restart_name)
+            print(f"\t- Saving restart file as {restart_name}")
+
+        # ------------------------------------
+        # Add numerical setup based on plasma
+        # ------------------------------------
+        if numerics_based_on_plasma is not None:
+            pass
+        #TODO
+
+        # ------------------------------------
+        # Run the super run
+        # ------------------------------------
+        
+        super().run(subfolder, **kwargs_sim_run)
 
     def plot(
         self,
@@ -231,7 +275,7 @@ class GXinput(SIMtools.GACODEinput):
                 '[Dissipation]':
                     [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper', 'D_H', 'w_osc', 'p_HB', 'HB_hyper'], [] ],
                 '[Restart]':
-                    [ ['restart', 'save_for_restart', 'nsave'], [] ],
+                    [ ['save_for_restart', 'nsave','restart_to_file', 'restart', 'restart_from_file'], [] ],
                 '[Diagnostics]':
                     [ ['nwrite', 'omega', 'fluxes', 'fields', 'moments'], [] ]
             }

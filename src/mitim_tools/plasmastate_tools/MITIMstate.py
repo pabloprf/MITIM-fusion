@@ -2200,7 +2200,7 @@ class mitim_state:
     # Code conversions
     # ************************************************************************************************************************************************
 
-    def to_tglf(self, r=[0.5], code_settings=1, r_is_rho = True):
+    def to_tglf(self, r=[0.5], code_settings='SAT0', r_is_rho = True):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2390,7 +2390,7 @@ class mitim_state:
             
         return input_parameters
 
-    def to_neo(self, r=[0.5], r_is_rho = True):
+    def to_neo(self, r=[0.5], r_is_rho = True, code_settings='Sonic'):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2442,7 +2442,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addNEOcontrol(0)
+            controls = GACODEdefaults.addNEOcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles
@@ -2538,7 +2538,7 @@ class mitim_state:
 
         return input_parameters
 
-    def to_cgyro(self, r=[0.5], r_is_rho = True):
+    def to_cgyro(self, r=[0.5], r_is_rho = True, code_settings = 'Linear'):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2596,7 +2596,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addCGYROcontrol(0)
+            controls = GACODEdefaults.addCGYROcontrol(code_settings)
             controls['PROFILE_MODEL'] = 1
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2692,7 +2692,7 @@ class mitim_state:
 
         return input_parameters
 
-    def to_gx(self, r=[0.5], r_is_rho = True):
+    def to_gx(self, r=[0.5], r_is_rho = True, code_settings = 'Linear'):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2735,7 +2735,7 @@ class mitim_state:
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
             
-            controls = GACODEdefaults.addGXcontrol(0)
+            controls = GACODEdefaults.addGXcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Species come from profiles

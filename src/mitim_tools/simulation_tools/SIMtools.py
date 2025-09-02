@@ -116,6 +116,7 @@ class mitim_simulation:
         attempts_execution=1,
         only_minimal_files=False,
         run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
+        additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
     ):
         
         if slurm_setup is None:
@@ -141,6 +142,8 @@ class mitim_simulation:
             #
             launchSlurm=launchSlurm,
             slurm_setup=slurm_setup,
+            #
+            additional_files_to_send=additional_files_to_send,
             #
             ApplyCorrections=ApplyCorrections,
             minimum_delta_abs=minimum_delta_abs,
@@ -194,6 +197,10 @@ class mitim_simulation:
         # ********************************
         launchSlurm=True,
         slurm_setup=None, 
+        # ********************************
+        # Additional files to send (e.g. restarts). Must be a dictionary with rho keys
+        # ********************************
+        additional_files_to_send = None,
         # ********************************
         # Additional settings to correct/modify inputs
         # ********************************
@@ -277,6 +284,7 @@ class mitim_simulation:
                 "inputs": latest_inputsFile[irho],
                 "extraOptions": extraOptions,
                 "multipliers": multipliers,
+                "additional_files_to_send": additional_files_to_send[irho] if additional_files_to_send is not None else None
             }
             if irho in rhosEvaluate:
                 code_executor[subfolder_simulation][irho] = code_executor_full[subfolder_simulation][irho]
@@ -383,6 +391,11 @@ class mitim_simulation:
                     with open(input_file_sim, "w") as f:
                         f.write(code_executor[subfolder_sim][rho]["inputs"])
                         
+                    # Copy potential additional files to send
+                    if code_executor[subfolder_sim][rho]["additional_files_to_send"] is not None:
+                        for file in code_executor[subfolder_sim][rho]["additional_files_to_send"]:
+                            shutil.copy(file, folder_sim_this / Path(file).name)
+
             # ---------------------------------------------
             # Prepare command
             # ---------------------------------------------
@@ -425,7 +438,7 @@ class mitim_simulation:
             if machineSettings['gpus_per_node'] == 0:
                 max_cores_per_node_compare = max_cores_per_node
             else:
-                print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-arra execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified)",typeMsg="i")
                 max_cores_per_node_compare = machineSettings['gpus_per_node']
 
             if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
@@ -1180,8 +1193,12 @@ def buildDictFromInput(inputFile):
         if "=" in line:
             splits = [i.split()[0] for i in line.split("=")]
             if ("." in splits[1]) and (splits[1][0].split()[0] != "."):
-                parsed[splits[0].split()[0]] = float(splits[1].split()[0])
-            else:
+                try:
+                    parsed[splits[0].split()[0]] = float(splits[1].split()[0])
+                    continue
+                except:
+                    pass
+                    
                 try:
                     parsed[splits[0].split()[0]] = int(splits[1].split()[0])
                 except:

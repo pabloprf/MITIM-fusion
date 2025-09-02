@@ -51,9 +51,13 @@
  p_HB = 2                        # exponent for the H-B model
 
 [Restart]
- restart = false
  save_for_restart = true
- nsave = 100                     # save restart file every nsave timesteps
+ nsave = 100                              # save restart file every nsave timesteps
+#restart_to_file = ""  # Specify restart file name, otherwise “[input_stem].restart.nc”
+
+restart = false
+restart_from_file = "none"              # Specify restart file name, otherwise “[input_stem].restart.nc”
+
 
 [Diagnostics]
  nwrite = 100                    # write diagnostics every nwrite timesteps (this is NOT a/c_s) (=1 doesn't work)
