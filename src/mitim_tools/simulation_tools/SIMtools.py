@@ -1199,10 +1199,10 @@ def buildDictFromInput(inputFile):
                 except:
                     pass
                     
-                try:
-                    parsed[splits[0].split()[0]] = int(splits[1].split()[0])
-                except:
-                    parsed[splits[0].split()[0]] = splits[1].split()[0]
+            try:
+                parsed[splits[0].split()[0]] = int(splits[1].split()[0])
+            except:
+                parsed[splits[0].split()[0]] = splits[1].split()[0]
 
     for i in parsed:
         if isinstance(parsed[i], str):
