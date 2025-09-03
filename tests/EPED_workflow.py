@@ -31,6 +31,7 @@ eped.run(
     keep_nsep_ratio = 0.4,
     nproc_per_run = 64,
     cold_start = cold_start,
+    job_array_limit=5,
 )
 
 eped.read(subfolder='case1')
