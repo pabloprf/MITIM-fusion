@@ -36,6 +36,7 @@ class EPED:
             nproc_per_run = 64,
             minutes_slurm = 30,
             cold_start = False,
+            job_array_limit = 5,
             ):
 
         # ------------------------------------
@@ -64,7 +65,8 @@ class EPED:
                 'name': 'mitim_eped',
                 'minutes': minutes_slurm,
                 'ntasks': nproc_per_run,
-                'job_array': job_array
+                'job_array': job_array, 
+                'job_array_limit': job_array_limit,
             }
         )
 
