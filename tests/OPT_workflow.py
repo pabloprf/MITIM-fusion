@@ -62,7 +62,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = __mitimroot__ / "templates" / "namelist.optimization.yamln"
+namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
 folderWork = __mitimroot__ / "tests" / "scratch" / "opt_test"
 
 if cold_start and os.path.exists(folderWork):

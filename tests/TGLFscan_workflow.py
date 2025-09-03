@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
+from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
 
 cold_start = True

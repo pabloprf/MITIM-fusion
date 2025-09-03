@@ -2200,6 +2200,28 @@ class mitim_state:
     # Code conversions
     # ************************************************************************************************************************************************
 
+    def _print_gb_normalizations(self,L_label,Z_label,A_label,n_label,T_label, B_label, L, Z, A):
+        print(f'\t- GB normalizations, such that Q_gb = n_ref * T_ref^5/2 * m_ref^0.5 / (Z_ref * L_ref * B_ref)^2')
+        print(f'\t\t* L_ref = {L_label} = {L:.3f}')
+        print(f'\t\t* Z_ref = {Z_label} = {Z:.3f}')
+        print(f'\t\t* A_ref = {A_label} = {A:.3f}')
+        print(f'\t\t* B_ref = {B_label}')
+        print(f'\t\t* n_ref = {n_label}')
+        print(f'\t\t* T_ref = {T_label}')
+        print(f'')
+
+    def _calculate_pressure_gradient_from_aLx(self, pe, pi, aLTe, aLTi, aLne, aLni, a):
+        '''
+        pe and pi in MPa. pi two dimensional
+        '''
+
+        adpedr = - pe * 1E6 * (aLTe + aLne) 
+        adpjdr = - pi * 1E6 * (aLTi + aLni)
+
+        dpdr  = ( adpedr + adpjdr.sum(axis=-1)) / a 
+        
+        return dpdr
+
     def to_tglf(self, r=[0.5], code_settings='SAT0', r_is_rho = True):
 
         # <> Function to interpolate a curve <> 
@@ -2219,8 +2241,10 @@ class mitim_state:
         else:
             tglf_ions_num = len(self.Species)
 
-        # Determine the mass reference
-        mass_ref = 2.0 # TODO: This is the only way to make it consistent with TGYRO (derivations with mD_u but mass in tglf with 2.0... https://github.com/gafusion/gacode/issues/398
+        # Determine the mass reference for TGLF (use 2.0 for D-mass normalization; derivatives use mD_u elsewhere)
+        mass_ref = 2.0
+
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
 
         # -----------------------------------------------------------------------
         # Derived profiles
@@ -2238,11 +2262,13 @@ class mitim_state:
         --------------------------------------------------------
             Recompute pprime with those species that belong to this run             #TODO not exact?
         '''
-
-        adpedr = - self.derived['pe'] * (self.derived['aLTe'] + self.derived['aLne'])
-        adpjdr = - self.derived['pi_all'][:,:tglf_ions_num] * (self.derived['aLTi'][:,:tglf_ions_num] + self.derived['aLni'][:,:tglf_ions_num])
-
-        dpdr  = ( adpedr + adpjdr.sum(axis=-1)) / self.derived['a'] * 1E6
+        
+        dpdr = self._calculate_pressure_gradient_from_aLx(
+            self.derived['pe'], self.derived['pi_all'][:,:tglf_ions_num],
+            self.derived['aLTe'], self.derived['aLTi'][:,:tglf_ions_num],
+            self.derived['aLne'], self.derived['aLni'][:,:tglf_ions_num],
+            self.derived['a']
+        )
         
         pprime = 1E-7 * abs(self.profiles["q(-)"])*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*dpdr
         pprime[0] = 0 # infinite in first location
@@ -2292,7 +2318,7 @@ class mitim_state:
             species = {
                 1: {
                     'ZS': -1.0,
-                    'MASS': 0.000272445,
+                    'MASS': PLASMAtools.me_u / mass_ref,
                     'RLNS': interpolator(self.derived['aLne']),
                     'RLTS': interpolator(self.derived['aLTe']),
                     'TAUS': 1.0,
@@ -2427,6 +2453,8 @@ class mitim_state:
         
         # NEO definition: 'OMEGA_ROT_DERIV=',-gamma_p_loc*a/cs_loc/rmaj_loc
         omega_rot_deriv = gamma_p * a / cs / rmaj # Equivalent to: self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
+
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
 
         input_parameters = {}
         for rho in r:
@@ -2582,6 +2610,8 @@ class mitim_state:
         # Because in MITIMstate I keep Bunit always positive, but CGYRO routines may need it negative? #TODO
         sign_Bunit = np.sign(self.profiles['torfluxa(Wb/radian)'][0])
             
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
+            
         input_parameters = {}
         for rho in r:
 
@@ -2709,17 +2739,20 @@ class mitim_state:
           
         # Determine the mass reference
         mass_ref = 2.0
-            
 
-        import scipy.constants as const
-        p_normalized = self.profiles['ptot(Pa)'] / (8*np.pi) * (2*const.mu_0)
-        betaprim = -(8*np.pi / self.derived['B_unit']**2) * np.gradient(p_normalized, self.derived['roa'])
+        dpdr = self._calculate_pressure_gradient_from_aLx(
+            self.derived['pe'], self.derived['pi_all'][:,:],
+            self.derived['aLTe'], self.derived['aLTi'][:,:],
+            self.derived['aLne'], self.derived['aLni'][:,:],
+            self.derived['a']
+        )
+        betaprim = -(8*np.pi*1E-7) * self.derived['a'] / self.derived['B_unit']**2 * dpdr
         
         #TODO #to check
         s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
         s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
 
-
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
             
         input_parameters = {}
         for rho in r:
@@ -2746,7 +2779,11 @@ class mitim_state:
             # Ions
             for i in range(len(self.Species)):
 
-                nu_ii = self.derived['xnue'] * (self.Species[i]['Z']/self.profiles['ze'][0])**4 * (self.profiles['ni(10^19/m^3)'][:,0]/self.profiles['ne(10^19/m^3)']) * (self.profiles['mass'][i]/self.profiles['masse'][0])**-0.5 * (self.profiles['ti(keV)'][:,0]/self.profiles['te(keV)'])**-1.5
+                nu_ii = self.derived['xnue'] * \
+                    (self.Species[i]['Z']/self.profiles['ze'][0])**4 * \
+                        (self.profiles['ni(10^19/m^3)'][:,0]/self.profiles['ne(10^19/m^3)']) * \
+                            (self.profiles['mass'][i]/self.profiles['masse'][0])**-0.5 * \
+                                (self.profiles['ti(keV)'][:,0]/self.profiles['te(keV)'])**-1.5
 
                 species[i+1] = {
                     'z': self.Species[i]['Z'],
