@@ -1738,7 +1738,7 @@ class mitim_state:
         print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
 
-    def enforceQuasineutrality(self):
+    def enforceQuasineutrality(self, using_ion = None):
         print(f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",typeMsg="i",)
 
         # What's the lack of quasineutrality?
@@ -1748,23 +1748,26 @@ class mitim_state:
         ne_missing = self.profiles["ne(10^19/m^3)"] - ni
 
         # What ion to modify?
-        if self.DTplasmaBool:
-            print("\t\t\t* Enforcing quasineutrality by modifying D and T equally")
-            prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Dion])
-            self.profiles["ni(10^19/m^3)"][:, self.Dion] += ne_missing / 2
-            self.profiles["ni(10^19/m^3)"][:, self.Tion] += ne_missing / 2
-            new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Dion])
+        if using_ion is None:
+            if self.DTplasmaBool:
+                print("\t\t\t* Enforcing quasineutrality by modifying D and T equally")
+                prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Dion])
+                self.profiles["ni(10^19/m^3)"][:, self.Dion] += ne_missing / 2
+                self.profiles["ni(10^19/m^3)"][:, self.Tion] += ne_missing / 2
+                new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Dion])
+            else:
+                print(f"\t\t\t* Enforcing quasineutrality by modifying main ion (position #{self.Mion})")
+                prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Mion])
+                self.profiles["ni(10^19/m^3)"][:, self.Mion] += ne_missing
+                new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Mion])
         else:
-            print(
-                f"\t\t\t* Enforcing quasineutrality by modifying main ion (position #{self.Mion})"
-            )
-            prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Mion])
-            self.profiles["ni(10^19/m^3)"][:, self.Mion] += ne_missing
-            new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, self.Mion])
+            print(f"\t\t\t* Enforcing quasineutrality by modifying ion (position #{using_ion})")
+            prev_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, using_ion])
+            self.profiles["ni(10^19/m^3)"][:, using_ion] += ne_missing
+            new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, using_ion])
 
-        print(
-            f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)"
-        )
+
+        print(f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)")
 
         self.derive_quantities(rederiveGeometry=False)
 

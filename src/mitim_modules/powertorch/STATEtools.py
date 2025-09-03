@@ -52,18 +52,20 @@ class powerstate:
             }
 
         transport_options.setdefault("evaluator_instance_attributes", {})
+        transport_options.setdefault("cold_start", False)
 
+        # Target options defaults --------------------
         if target_options is None:
-            target_options = {
-            "evaluator": targets_analytic.analytical_model,
-            "options": {
-                "targets_evolve": ["qie", "qrad", "qfus"],
-                "target_evaluator_method": "powerstate",
-                },
-            }
-            
+            target_options = {}
+        if "options" not in target_options:
+            target_options["options"] = {}
+
+        target_options.setdefault("evaluator", targets_analytic.analytical_model)
+        target_options["options"].setdefault("target_evaluator_method", "powerstate")
+        target_options["options"].setdefault("targets_evolve", ["qie", "qrad", "qfus"])
         target_options["options"].setdefault("force_zero_particle_flux", False)
         target_options["options"].setdefault("percent_error", 1.0)
+        # ---------------------------------------------
 
         if tensor_options is None:
             tensor_options = {
@@ -84,10 +86,11 @@ class powerstate:
         self.predicted_channels = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
         self.impurityPosition = evolution_options.get("impurityPosition", 1)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
-        self.targets_resolution = target_options.get("targets_resolution", None)
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
         self.fImp_orig = evolution_options.get("fImp_orig", 1.0)
         rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
+        
+        self.targets_resolution = target_options["options"].get("targets_resolution", None)
 
         if rho_vec[0] == 0:
             raise ValueError("[MITIM] The radial grid must not contain the initial zero")

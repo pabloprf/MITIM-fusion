@@ -353,7 +353,7 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
 
     profiles.derive_quantities(rederiveGeometry=False)
 
-    print("\t- Insering powers")
+    print("\t- Inserting powers")
 
     state_temp = self.copy_state()
 

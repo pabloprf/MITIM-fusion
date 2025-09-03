@@ -1,5 +1,5 @@
 """
-calculateTargets.py input.gacode
+calculateTargets.py input.gacode run1
 """
 
 import sys
@@ -7,7 +7,7 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.powertorch.physics_models import targets_analytic, transport_tglfneo
+from mitim_modules.powertorch.physics_models import targets_analytic
 from IPython import embed
 
 def calculator(
@@ -15,7 +15,7 @@ def calculator(
     targets_evolve=["qie", "qrad", "qfus"],
     folder="~/scratch/",
     cold_start=True,
-    rho_vec=np.linspace(0.1, 0.9, 9),
+    rho_vec=np.linspace(0.01, 0.94, 50),
     profProvided=False,
     targets_resolution = None,
 ):
