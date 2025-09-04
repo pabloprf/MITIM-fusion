@@ -473,17 +473,11 @@ class mitim_state:
         self.derived["QiQe"] = self.derived["qi_MWm2"] / np.where(self.derived["qe_MWm2"] == 0, 1e-10, self.derived["qe_MWm2"]) # to avoid division by zero
 
         # "Convective" flux
-        self.derived["ce_MW"] = PLASMAtools.convective_flux(
-            self.profiles["te(keV)"], self.derived["ge_10E20"]
-        )
-        self.derived["ce_MWm2"] = PLASMAtools.convective_flux(
-            self.profiles["te(keV)"], self.derived["ge_10E20m2"]
-        )
+        self.derived["ce_MW"] = PLASMAtools.convective_flux(self.profiles["te(keV)"], self.derived["ge_10E20"])
+        self.derived["ce_MWm2"] = PLASMAtools.convective_flux(self.profiles["te(keV)"], self.derived["ge_10E20m2"])
 
         # qmom
-        self.derived["mt_Jmiller"] = CALCtools.volume_integration(
-            self.profiles["qmom(N/m^2)"], r, volp
-        )
+        self.derived["mt_Jmiller"] = CALCtools.volume_integration(self.profiles["qmom(N/m^2)"], r, volp)
         self.derived["mt_Jm2"] = self.derived["mt_Jmiller"] / (volp)
 
         # Extras for plotting in TGYRO for comparison

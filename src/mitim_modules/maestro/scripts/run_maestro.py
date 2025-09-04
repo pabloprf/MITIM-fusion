@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -248,22 +249,22 @@ def run_maestro_local(
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
     parser.add_argument('folder', type=str, help='Folder to run MAESTRO')
-    parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
-    parser.add_argument('cpus', type=int, help='Number of CPUs to use')
+    parser.add_argument("--namelist", type=str, required=False, default=None) # namelist.maestro.yaml file, otherwise what's in the current folder
+    parser.add_argument('--cpus', type=int, required=False, default=8, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     args = parser.parse_args()
+    
     folder = IOtools.expandPath(args.folder)
-    file_path = args.file_path
+    maestro_namelist = args.namelist
     cpus = args.cpus
     terminal_outputs = args.terminal
+
+    maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    if (folder / 'namelist.maestro.yaml').exists():
-        IOtools.recursive_backup(folder / 'namelist.maestro.yaml')
-    
-    run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
+    run_maestro_local(*parse_maestro_nml(maestro_namelist),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 
 if __name__ == "__main__":
