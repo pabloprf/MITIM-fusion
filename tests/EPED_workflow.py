@@ -26,12 +26,15 @@ eped.run(
         'zeffped': 1.5,
         'nesep': 10.0,
         'tesep': 100.0,
+        # Can add zeta if your implementation of EPED supports it
     },
     scan_param = {'variable': 'neped', 'values': [15.0, 30.0, 45.0, 60.0, 75.0]},
     keep_nsep_ratio = 0.4,
     nproc_per_run = 64,
     cold_start = cold_start,
     job_array_limit=5,
+    removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
+
 )
 
 eped.read(subfolder='case1')
@@ -39,3 +42,4 @@ eped.read(subfolder='case1')
 eped.plot(labels=['case1'])
 
 eped.fn.show()
+

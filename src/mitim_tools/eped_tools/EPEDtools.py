@@ -25,18 +25,19 @@ class EPED:
 
         self.results = {}
 
-        self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep']
+        self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'zeta']
 
     def run(
             self,
             subfolder = 'run1',
-            input_params = None,    # {'ip': 12.0, 'bt': 12.16, 'r': 1.85, 'a': 0.57, 'kappa': 1.9, 'delta': 0.5, 'neped': 30.0, 'betan': 1.0, 'zeffped': 1.5, 'nesep': 10.0, 'tesep': 100.0},
+            input_params = None,    # {'ip': 12.0, 'bt': 12.16, 'r': 1.85, 'a': 0.57, 'kappa': 1.9, 'delta': 0.5, 'neped': 30.0, 'betan': 1.0, 'zeffped': 1.5, 'nesep': 10.0, 'tesep': 100.0, 'zeta': 0},
             scan_param = None,      # {'variable': 'neped', 'values': [10.0, 20.0, 30.0]}
             keep_nsep_ratio = None, # Ratio of neped to nesep
             nproc_per_run = 64,
             minutes_slurm = 30,
             cold_start = False,
             job_array_limit = 5,
+            removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
             ):
 
         # ------------------------------------
@@ -149,7 +150,7 @@ class EPED:
         self.eped_job.prep(EPEDcommand,input_folders=folder_cases,output_files=copy.deepcopy(output_files),shellPreCommands=shellPreCommands)
 
         # Run the job
-        self.eped_job.run()
+        self.eped_job.run(removeScratchFolders=removeScratchFolders) 
 
         # -------------------------------------
         # Postprocessing
