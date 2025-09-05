@@ -798,9 +798,7 @@ class mitim_job:
         else:
             self.infoSLURM = {}
             for i in range(len(output_squeue[0].split())):
-                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[
-                    i
-                ]
+                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
 
             self.jobid_found = self.infoSLURM["JOBID"]
 
@@ -810,9 +808,7 @@ class mitim_job:
 
         if self.infoSLURM["STATE"] == "PENDING":
             self.status = 0
-        elif (self.infoSLURM["STATE"] == "RUNNING") or (
-            self.infoSLURM["STATE"] == "COMPLETING"
-        ):
+        elif (self.infoSLURM["STATE"] == "RUNNING") or (self.infoSLURM["STATE"] == "COMPLETING"):
             self.status = 1
         elif self.infoSLURM["STATE"] == "NOT FOUND":
             self.status = 2

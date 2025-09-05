@@ -81,10 +81,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # --------------------------------------------------------------
 
         # Check for linear run
-        if 'phib' in self.cgyrodata.__dict__ and last_tmin_for_linear:
-            print('\t- Forcing tmin to the last time point because this is a linear run', typeMsg='i')
-            self.tmin = self.cgyrodata.t[-1]
+        if 'phib' in self.cgyrodata.__dict__:
+            print('\t- This is a linear run', typeMsg='i')
             self.linear = True
+            if last_tmin_for_linear:
+                print('\t- Forcing tmin to the last time point', typeMsg='i')
+                self.tmin = self.cgyrodata.t[-1]
+            
         else:
             self.linear = False
 
@@ -128,7 +131,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         self._process_linear()
 
-        if not minimal: # or not self.linear:
+        if not minimal and self.linear == False:
             self.cgyrodata.getbigfield()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:
