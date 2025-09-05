@@ -7,8 +7,11 @@ import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from pygacode.cgyro.data_plot import cgyrodata_plot
-from pygacode import gacodefuncs
+try:
+    from pygacode.cgyro.data_plot import cgyrodata_plot
+    from pygacode import gacodefuncs
+except ModuleNotFoundError:
+    print("\t- Could not find pygacode module in this environment. Please install it if you need CGYRO capabilities", typeMsg='w')
 from IPython import embed
 import pandas as pd
 
