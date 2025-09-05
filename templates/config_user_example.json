@@ -26,6 +26,18 @@
         "cores_per_node":  8,
         "gpus_per_node": 0
     },
+    "engaging": {
+        "machine":          "orcd-login001.mit.edu", 
+        "username":         "exampleusername",
+        "slurm": {
+            "partition":    "sched_mit_psfc",
+            "exclusive":    false
+        },
+        "scratch":          "/orcd/pool/003/exampleusername/scratch/",
+        "modules":    "",
+        "cores_per_node":  64,
+        "gpus_per_node": 0
+    },
     "perlmutter": {
         "machine":          "perlmutter.nersc.gov", 
         "username":         "exampleusername",
@@ -39,18 +51,6 @@
             "exclusive":    false,
             "email":      "optional@email"
         },
-        "cores_per_node":  32,
-        "gpus_per_node": 0
-    },
-    "engaging": {
-        "machine":          "eofe7.mit.edu", 
-        "username":         "exampleusername",
-        "slurm": {
-            "partition":    "sched_mit_psfc",
-            "exclusive":    true
-        },
-        "scratch":          "/nobackup1/exampleusername/",
-        "modules":    "",
         "cores_per_node":  32,
         "gpus_per_node": 0
     },

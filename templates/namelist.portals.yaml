@@ -284,3 +284,8 @@ optimization_options:
 
     # Function to select the GP parameters depending on each channel/radius (superseeds the main optimization namelist)
     surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"
+
+  strategy_options:
+
+    # Allow excursions from the bounds
+    AllowedExcursions: [0.0, 0.0]
