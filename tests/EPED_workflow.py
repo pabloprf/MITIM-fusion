@@ -5,7 +5,7 @@ from mitim_tools import __mitimroot__
 
 cold_start = True
 
-folder = __mitimroot__ / "tests" / "scratch" / "eped_test"
+folder = __mitimroot__ / "tests" / "scratch" / "eped_test2"
 
 if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
@@ -26,6 +26,7 @@ eped.run(
         'zeffped': 1.5,
         'nesep': 10.0,
         'tesep': 100.0,
+        'zeta': 0.01
         # Can add zeta if your implementation of EPED supports it
     },
     scan_param = {'variable': 'neped', 'values': [15.0, 30.0, 45.0, 60.0, 75.0]},
