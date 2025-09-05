@@ -34,7 +34,7 @@ portals_fun.portals_parameters["solution"]['turbulent_exchange_as_surrogate'] = 
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", 'w0'] 
 portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
-portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = 2
+portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
 
 # Prepare case to run
 plasma_state = PROFILEStools.gacode_state(inputgacode)

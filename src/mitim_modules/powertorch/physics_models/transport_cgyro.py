@@ -228,8 +228,8 @@ def write_json_CGYRO(roa, fluxes_mean, fluxes_stds, additional_info = None, file
         additional_info = {}
 
     with open(file, 'w') as f:
-        
-        additional_info_extended = additional_info | {'roa': roa.tolist()}
+
+        additional_info_extended = additional_info | {'roa': roa.tolist() if not isinstance(roa, list) else roa}
 
         json_dict = {
             'fluxes_mean': fluxes_mean,
