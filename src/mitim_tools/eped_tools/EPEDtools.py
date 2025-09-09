@@ -219,8 +219,8 @@ class EPED:
         for output_file in output_files:
 
 
-            data = xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4')
-            data = postprocess_eped(data, 'G', 0.03)
+            with xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4') as ds:
+                data = postprocess_eped(ds, 'G', 0.03)
 
             sublabel = output_file.name.split('_')[-1].split('.')[0]
 
@@ -280,12 +280,15 @@ class EPED:
         ax.set_xlabel('neped ($10^{19}m^{-3}$)')
         ax.set_ylabel('ptop (kPa)')
         ax.set_ylim(bottom=0)
+        ax.legend(labels)
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
+
         ax.set_xlabel('neped ($10^{19}m^{-3}$)')
         ax.set_ylabel('wptop (psi_pol)')
         ax.set_ylim(bottom=0)
+        ax.legend(labels)
         GRAPHICStools.addDenseAxis(ax)
 
         plt.tight_layout()
@@ -433,7 +436,8 @@ def read_eped_file(ipaths):
         dummy_vars = {k: (['dim_one'], [v]) for k, v in set_inputs['eped_input'].items() if k in invars}
         data = xr.Dataset(coords=dummy_coords, data_vars=dummy_vars)
         if ipath.is_file():
-            data = xr.open_dataset(f'{ipath.resolve()}', engine='netcdf4')
+            with xr.open_dataset(f'{ipath.resolve()}', engine='netcdf4') as ds:
+                data = ds.load()
             data = postprocess_eped(data, 'G', 0.03)
         data_arrays.append(data.expand_dims({'filename': [ipath.parent.parent.parent.name]}))
 
