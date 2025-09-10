@@ -18,7 +18,8 @@ def run_slurm(
     machine="local",
     exclude=None,
     mem=None,
-    exclusive=False
+    exclusive=False, 
+    wait=False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -40,7 +41,6 @@ def run_slurm(
         folder.mkdir(parents=True, exist_ok=True)
 
         command = [venv,script + (f" --seed {seed}" if seed is not None else "")]
-
         nameJob = f"mitim_{folder.name}{extra_name}"
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
@@ -55,9 +55,12 @@ def run_slurm(
                 'cpuspertask': n,
                 'memory_req_by_job': mem
             }
-        )
 
-        command_execution = f"sbatch {fileSBATCH}"
+        if wait == True:
+            print('* Waiting for job to complete...')
+            command_execution = f"sbatch --wait {fileSBATCH}"
+        else: 
+            command_execution = f"sbatch {fileSBATCH}"
 
         if machine == "local":
             os.system(command_execution)
