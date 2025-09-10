@@ -49,12 +49,13 @@ def run_slurm(
             folder_local=folder,
             slurm={"partition": partition, 'exclude': exclude,'exclusive': exclusive},
             slurm_settings = {
-                'nameJob': nameJob,
+                'name': nameJob,
                 'minutes': int(60 * hours),
                 'ntasks': 1,
                 'cpuspertask': n,
                 'memory_req_by_job': mem
             }
+        )
 
         if wait == True:
             print('* Waiting for job to complete...')
