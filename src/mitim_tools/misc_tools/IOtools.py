@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 import psutil
-import copy
 from typing import Callable
 import dill as pickle_dill
 import pandas as pd
@@ -21,6 +20,8 @@ import subprocess
 import json
 import functools
 import hashlib
+import io
+from contextlib import redirect_stdout
 import yaml, importlib
 from typing import Any, Mapping
 from collections import OrderedDict
@@ -1963,6 +1964,36 @@ def print_machine_info(output_file=None):
     info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
     info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
     info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    for var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK"]:
+        info_lines.append(f"{var}: {os.environ.get(var, 'Not set')}")
+
+    f = io.StringIO()
+    with redirect_stdout(f):
+        torch.__config__.show()
+    info_lines.append("\n=== PyTorch Build Config ===")
+    info_lines.append(f.getvalue())
+
+    info_lines.append("\n=== Package Versions ===")
+    for pkg in ["torch", "gpytorch", "botorch"]:
+        try:
+            mod = __import__(pkg)
+            info_lines.append(f"{pkg}: {mod.__version__}")
+        except Exception:
+            info_lines.append(f"{pkg}: not available")
+
+    try:
+        import psutil
+        proc = psutil.Process()
+        if hasattr(proc, "cpu_affinity"):
+            info_lines.append(f"Process affinity (cpus): {proc.cpu_affinity()}")
+        else:
+            info_lines.append("CPU affinity not supported on this platform/psutil build")
+    except ImportError:
+        info_lines.append("psutil not installed (skipping affinity check)")
+
+    info_lines.append("=============================\n\n")
 
     # Output to screen or file
     output = '\n'.join(info_lines)

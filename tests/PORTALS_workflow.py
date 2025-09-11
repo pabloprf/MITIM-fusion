@@ -17,9 +17,6 @@ folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 if cold_start and folderWork.exists():
     os.system(f"rm -r {folderWork.resolve()}")
 
-# Let's not consume the entire computer resources when running test... limit threads
-torch.set_num_threads(8)
-
 # ---------------------------------------------------------------------------------------------------------------------
 # Optimization Class
 # ---------------------------------------------------------------------------------------------------------------------

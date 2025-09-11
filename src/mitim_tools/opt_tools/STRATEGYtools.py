@@ -3,6 +3,7 @@ import copy
 import datetime
 import array
 import traceback
+from typing import IO
 import torch
 from pathlib import Path
 from collections import OrderedDict
@@ -433,10 +434,7 @@ class MITIM_BO:
         # -------------------------------------------------------------------------------------------------
 
         if not onlyInitialize:
-            print("\n-----------------------------------------------------------------------------------------")
-            print("\t\t\t BO class module")
-            print("-----------------------------------------------------------------------------------------\n")
-
+            
             """
 			------------------------------------------------------------------------------
 			Grab variables
@@ -447,6 +445,13 @@ class MITIM_BO:
 
             # Logger
             sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
+
+            print("\n-----------------------------------------------------------------------------------------")
+            print("\t\t\t BO class module")
+            print("-----------------------------------------------------------------------------------------\n")
+
+            # Print machine resources
+            IOtools.print_machine_info()
 
             # Meta
             self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
