@@ -149,7 +149,11 @@ class tglf_model:
         for i in range(len(tglf.profiles.Species)):
             gacode_type = tglf.profiles.Species[i]['S']
             for rho in rho_locations:
-                tglf_type = tglf.inputs_files[rho].ions_info[i+2]['type']
+                try:
+                    tglf_type = tglf.inputs_files[rho].ions_info[i+2]['type']
+                except KeyError:
+                    print(f"\t\t\t* Could not determine ion type from TGLF inputs because ion {i+2} was not there for {rho =}, skipping consistency check", typeMsg="w")
+                    continue
                 
                 if gacode_type[:5] != tglf_type[:5]:
                     print(f"\t- For location {rho=:.2f}, ion specie #{i+1} ({tglf.profiles.Species[i]['N']}) is considered '{gacode_type}' by gacode but '{tglf_type}' by TGLF. Make sure this is consistent with your use case", typeMsg="w")

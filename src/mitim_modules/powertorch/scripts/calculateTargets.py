@@ -15,6 +15,7 @@ def calculator(
     targets_evolve=["qie", "qrad", "qfus"],
     folder="~/scratch/",
     cold_start=True,
+    file_name = "input.gacode.new.powerstate",
     rho_vec=np.linspace(0.01, 0.94, 50),
     profProvided=False,
     targets_resolution = None,
@@ -70,7 +71,7 @@ def calculator(
     p.profiles.derive_quantities()
     
     p.from_powerstate(
-        write_input_gacode=folder / "input.gacode.new.powerstate",
+        write_input_gacode=folder / file_name,
         position_in_powerstate_batch=0,
         postprocess_input_gacode={
             "Tfast_ratio": False,
