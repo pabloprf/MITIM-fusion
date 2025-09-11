@@ -210,6 +210,7 @@ def to_gacode(
     postprocess_input_gacode={},
     insert_highres_powers=False,
     rederive_profiles=True,
+    debugPlot=False,
 ):
     '''
     Notes:
@@ -223,6 +224,7 @@ def to_gacode(
         postprocess_input_gacode=postprocess_input_gacode,
         insert_highres_powers=insert_highres_powers,
         rederive=rederive_profiles,
+        debugPlot=debugPlot,
     )
 
     # Write input.gacode
@@ -332,7 +334,7 @@ def powerstate_to_gacode(
     # ------------------------------------------------------------------------------------------
 
     if insert_highres_powers:
-        powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch)
+        powerstate_to_gacode_powers(self, profiles)
 
     # ------------------------------------------------------------------------------------------
     # Recalculate and change ptot to make it consistent?
@@ -349,7 +351,7 @@ def powerstate_to_gacode(
 
     return profiles
 
-def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
+def powerstate_to_gacode_powers(self, profiles):
 
     profiles.derive_quantities(rederiveGeometry=False)
 
@@ -395,6 +397,8 @@ def powerstate_to_gacode_powers(self, profiles, position_in_powerstate_batch=0):
     if 'qfus' in self.target_options["options"]["targets_evolve"]:
         conversions['qfuse'] = "qfuse(MW/m^3)"
         conversions['qfusi'] = "qfusi(MW/m^3)"
+
+    position_in_powerstate_batch = 0
 
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
