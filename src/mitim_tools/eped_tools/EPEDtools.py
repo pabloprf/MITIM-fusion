@@ -250,6 +250,9 @@ class EPED:
             self,
             labels = ['run1'],
             axs = None,
+            plot_labels = None,
+            legend_title = None,
+            legend_location = 'best',   
             ):
 
         if axs is None:
@@ -259,20 +262,27 @@ class EPED:
 
         colors = GRAPHICStools.listColors()
 
+
+
         for i,name in enumerate(labels):
 
             data = self.results[name]
 
             neped, ptop, wtop = [], [], []
-            for sublabel in data:
+            sublabels = data.keys()
+            try:  
+                sublabels = sorted(sublabels, key=lambda x: int(x.split('run')[1]))
+            except: 
+                print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
+            for sublabel in sublabels:
                 neped.append(float(data[sublabel]['neped']))
                 if 'ptop' in data[sublabel].data_vars:
                     ptop.append(float(data[sublabel]['ptop']))
                     wtop.append(float(data[sublabel]['wptop']))
                 else:
-                    ptop.append(0.0)
-                    wtop.append(0.0)
-            
+                    ptop.append(np.nan)
+                    wtop.append(np.nan)
+
             axs[0].plot(neped,ptop,'-s', c = colors[i], ms = 10)
             axs[1].plot(neped,wtop,'-s', c = colors[i], ms = 10)
 
@@ -280,7 +290,9 @@ class EPED:
         ax.set_xlabel('neped ($10^{19}m^{-3}$)')
         ax.set_ylabel('ptop (kPa)')
         ax.set_ylim(bottom=0)
-        ax.legend(labels)
+        plot_labels = plot_labels if plot_labels is not None else labels
+        ax.legend(plot_labels, loc=legend_location, title =legend_title)
+
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
@@ -288,7 +300,7 @@ class EPED:
         ax.set_xlabel('neped ($10^{19}m^{-3}$)')
         ax.set_ylabel('wptop (psi_pol)')
         ax.set_ylim(bottom=0)
-        ax.legend(labels)
+        ax.legend(plot_labels, loc=legend_location, title=legend_title)
         GRAPHICStools.addDenseAxis(ax)
 
         plt.tight_layout()
