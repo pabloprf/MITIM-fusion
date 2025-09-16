@@ -1,5 +1,5 @@
-import os
-from mitim_tools.misc_tools import IOtools, FARMINGtools
+import os, shutil
+from mitim_tools.misc_tools import IOtools, FARMINGtools, CONFIGread
 from IPython import embed
 
 def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_folders, only_folder_structure_with_files):
@@ -15,10 +15,13 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
         folders_remote = folders_local
 
     # Retrieve remote
+    s = CONFIGread.load_settings()
+    scratch_local_folder = s['local']['scratch']
+    
     if remote is not None:
             
         _, folders = FARMINGtools.retrieve_files_from_remote(
-            IOtools.expandPath('./'),
+            scratch_local_folder,
             remote,
             folders_remote = folders_remote,
             purge_tmp_files = True,
@@ -35,7 +38,8 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
             if folder_orig.exists():
                 IOtools.shutil_rmtree(folder_orig)
                 
-            os.rename(folder, folder_orig)
+            shutil.copytree(folder, folder_orig)
+            IOtools.shutil_rmtree(folder)
             
 
     return folders_local

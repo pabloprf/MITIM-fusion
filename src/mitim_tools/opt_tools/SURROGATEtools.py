@@ -436,12 +436,18 @@ class surrogate_model:
                 - Samples if nSamples not None
         """
 
-        # Fast
-        # with gpytorch.settings.fast_computations(), gpytorch.settings.fast_pred_samples(), \
-        # 	 gpytorch.settings.fast_pred_var(), gpytorch.settings.lazily_evaluate_kernels():
+        
         # Accurate
         # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
         # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
+
+        # # Fast
+        # with gpytorch.settings.fast_computations(), \
+        #     gpytorch.settings.fast_pred_samples(), \
+        #     gpytorch.settings.fast_pred_var(), \
+        #     gpytorch.settings.lazily_evaluate_kernels(True), \
+        #     (fundamental_model_context(self) if produceFundamental else contextlib.nullcontext(self)) as surrogate_model:
+        #     posterior = surrogate_model.gpmodel.posterior(X)
 
         with (
             fundamental_model_context(self)

@@ -41,39 +41,45 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     }
     '''
     
-    with open(self.folder / file_name, 'w') as f:
+    if self.folder.exists():
+        
+        with open(self.folder / file_name, 'w') as f:
 
-        fluxes_mean = {}
-        fluxes_stds = {}
+            fluxes_mean = {}
+            fluxes_stds = {}
 
-        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB']:
-            fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
-            fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
+            for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB']:
+                fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
+                fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
 
-        try:
-            var = 'QieGB'
-            fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
-            fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
-        except KeyError:
-            # NEO file may not have it
-            pass
+            try:
+                var = 'QieGB'
+                fluxes_mean[var] = self.__dict__[f"{var}_{suffix}"].tolist()
+                fluxes_stds[var] = self.__dict__[f"{var}_{suffix}_stds"].tolist()
+            except KeyError:
+                # NEO file may not have it
+                pass
 
-        json_dict = {
-            'fluxes_mean': fluxes_mean,
-            'fluxes_stds': fluxes_stds,
-            'additional_info': {
-                'rho': self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist(),
-                'roa': self.powerstate.plasma["roa"][0, 1:].cpu().numpy().tolist(),
-                'Qgb': self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy().tolist(),
-                'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
-                'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
-                'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
+            json_dict = {
+                'fluxes_mean': fluxes_mean,
+                'fluxes_stds': fluxes_stds,
+                'additional_info': {
+                    'rho': self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist(),
+                    'roa': self.powerstate.plasma["roa"][0, 1:].cpu().numpy().tolist(),
+                    'Qgb': self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy().tolist(),
+                    'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
+                    'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
+                    'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
+                }
             }
-        }
 
-        json.dump(json_dict, f, indent=4)
+            json.dump(json_dict, f, indent=4)
 
-    print(f"\t* Written JSON with {suffix} information to {self.folder / file_name}")
+        print(f"\t* Written JSON with {suffix} information to {self.folder / file_name}")
+        
+    else:
+        
+        print(f"\t* Folder {self.folder} does not exist, cannot write {file_name}", typeMsg='w')
 
 class power_transport:
 
@@ -87,30 +93,8 @@ class power_transport:
         self.transport_evaluator_options  = self.powerstate.transport_options["options"]
         self.cold_start                   = self.powerstate.transport_options["cold_start"]
 
-        # Allowed fluxes in powerstate so far
-        self.quantities = ['QeMWm2', 'QiMWm2', 'Ce', 'CZ', 'MtJm2']
-
-        # Each flux has a turbulent and neoclassical component
-        self.variables = [f'{i}_tr_turb' for i in self.quantities] + [f'{i}_tr_neoc' for i in self.quantities]
-
-        # Each flux component has a standard deviation
-        self.variables += [f'{i}_stds' for i in self.variables]
-
-        # There is also turbulent exchange
-        self.variables += ['QieMWm3_tr_turb', 'QieMWm3_tr_turb_stds']
-
-        # And total transport flux
-        self.variables += [f'{i}_tr' for i in self.quantities]
-
         # Model results is None by default, but can be assigned in evaluate
         self.model_results = None
-
-        # Assign zeros to transport ones if not evaluated
-        for i in self.variables:
-            self.powerstate.plasma[i] = self.powerstate.plasma["te"] * 0.0
-
-        # There is also target components
-        self.variables += [f'{i}' for i in self.quantities] + [f'{i}_stds' for i in self.quantities]
 
         # ----------------------------------------------------------------------------------------
         # labels for plotting
@@ -126,27 +110,28 @@ class power_transport:
 
     def evaluate(self):
 
-        # Initialize them as zeros
-        for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
-            for suffix in ['turb', 'neoc']:
-                for suffix0 in ['', '_stds']:
-                    self.__dict__[f"{var}_{suffix}{suffix0}"] = np.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
-
         # Copy the input.gacode files to the output folder
         self._profiles_to_store()
 
         '''
         ******************************************************************************************************
-        Evaluate neoclassical and turbulent transport. 
+        Evaluate neoclassical and turbulent transport (*in GB units*). 
         These functions use a hook to write the .json files to communicate the results to powerstate.plasma
         ******************************************************************************************************
         '''
+        
+        # Initialize them as zeros
+        for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
+            for suffix in ['turb', 'neoc']:
+                for suffix0 in ['', '_stds']:
+                    self.__dict__[f"{var}_{suffix}{suffix0}"] = torch.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
+        
         neoclassical = self.evaluate_neoclassical()
         turbulence = self.evaluate_turbulence()
         
         '''
         ******************************************************************************************************
-        From the json to powerstate.plasma
+        From the json to powerstate.plasma and GB to real units transformation
         ******************************************************************************************************
         '''
         self._populate_from_json(file_name = 'fluxes_turb.json', suffix= 'turb')
@@ -160,11 +145,14 @@ class power_transport:
         self._postprocess()
         
     def _postprocess(self):
+        '''
+        Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
+        Before calling this function, the powerstate.plasma should have the following variables:
+            'QeMWm2_tr_X', 'QiMWm2_tr_X', 'Ge1E20m2_tr_X', 'GZ1E20m2_tr_X', 'MtJm2_tr_X', 'QieMWm3_tr_X'
+        where X = 'turb' or 'neoc'
+        and also the corresponding _stds versions
+        '''
 
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
-        # ------------------------------------------------------------------------------------------------------------------------
-        
         variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
 
         for variable in variables:
@@ -279,11 +267,39 @@ class power_transport:
             print("\t- Could not move files", typeMsg="w")
                 
     def _populate_from_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
-        
         '''
         Populate the powerstate.plasma with the results from the json file
         '''
         
+        mapper = {
+            'QeGB': ['Qgb', 'QeMWm2'],
+            'QiGB': ['Qgb', 'QiMWm2'],
+            'GeGB': ['Ggb', 'Ge1E20m2'],
+            'GZGB': ['Ggb', 'GZ1E20m2'],
+            'MtGB': ['Pgb', 'MtJm2'],
+            'QieGB': ['Sgb', 'QieMWm3']
+        }
+        
+        '''
+        **********************************************************************************************
+        If no population file exists, I only convert from GB to real units and return
+        **********************************************************************************************
+        '''
+        if not (self.folder / file_name).exists():
+            print(f"\t* File {self.folder / file_name} does not exist, cannot populate powerstate.plasma", typeMsg='w')
+            print(f"\t- Tranforming from GB to real units:")
+            
+            for var in mapper:
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"] = self.__dict__[f"{var}_{suffix}"] * self.powerstate.plasma[f"{mapper[var][0]}"][0,1:]
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds"] = self.__dict__[f"{var}_{suffix}_stds"] * self.powerstate.plasma[f"{mapper[var][0]}"][0,1:]
+
+            return
+        
+        '''
+        **********************************************************************************************
+        Populate the powerstate.plasma from the json file
+        **********************************************************************************************
+        '''
         print(f"\t* Populating powerstate.plasma with JSON data from {self.folder / file_name}")
 
         with open(self.folder / file_name, 'r') as f:
@@ -307,15 +323,6 @@ class power_transport:
                 self.powerstate.plasma[f"{var}_tr_{suffix}_stds"] = np.array(json_dict['fluxes_stds'][var])
 
         elif units == 'GB' or units == 'both':
-
-            mapper = {
-                'QeGB': ['Qgb', 'QeMWm2'],
-                'QiGB': ['Qgb', 'QiMWm2'],
-                'GeGB': ['Ggb', 'Ge1E20m2'],
-                'GZGB': ['Ggb', 'GZ1E20m2'],
-                'MtGB': ['Pgb', 'MtJm2'],
-                'QieGB': ['Sgb', 'QieMWm3']
-            }
 
             dum = {}
             for var in mapper:
