@@ -671,7 +671,7 @@ class mitim_simulation:
             print("\t\t- All files were successfully retrieved")
 
             # Remove temporary folder
-            shutil.rmtree(tmpFolder)
+            IOtools.shutil_rmtree(tmpFolder)
 
         else:
             print("\t\t- Some files were not retrieved", typeMsg="w")
