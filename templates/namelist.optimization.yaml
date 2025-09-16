@@ -62,7 +62,7 @@ acquisition_options:
 surrogate_options:
   TypeKernel: 0
   TypeMean: 0
-  selectSurrogate: null
+  surrogate_selection: null
   FixedNoise: true
   ExtraNoise: false
   additional_constraints: null
