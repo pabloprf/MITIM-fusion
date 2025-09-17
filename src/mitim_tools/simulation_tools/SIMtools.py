@@ -20,7 +20,7 @@ class mitim_simulation:
     '''
     def __init__(
         self,
-        rhos=[0.4, 0.6],  # rho locations of interest
+        rhos=[None],  # rho locations of interest, e.g. [0.4,0.6,0.8]
     ):
         self.rhos = np.array(rhos) if rhos is not None else None
 
@@ -832,11 +832,12 @@ class mitim_simulation:
             'parsed': [],
             "x": np.array(self.rhos),
             }
+
         for rho in self.rhos:
 
             SIMout = class_output(
                 folder,
-                suffix=f"_{rho:.4f}" if suffix is None else suffix,
+                suffix=(f"_{rho:.4f}" if rho is not None else "") if suffix is None else suffix,
                 **kwargs_to_class_output
             )
             

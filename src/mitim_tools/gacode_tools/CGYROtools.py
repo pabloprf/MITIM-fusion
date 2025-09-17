@@ -13,10 +13,10 @@ from IPython import embed
 class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def __init__(
         self,
-        rhos=[0.4, 0.6],  # rho locations of interest
+        **kwargs,
     ):
-        
-        super().__init__(rhos=rhos)
+
+        super().__init__(**kwargs)
 
         def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
             return f"cgyro -e {folder} -n {n} -nomp {nomp} -p {p} {additional_command}"
