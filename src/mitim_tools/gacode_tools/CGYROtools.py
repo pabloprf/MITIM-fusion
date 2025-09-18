@@ -146,17 +146,39 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Get all folders inside "folder" that start with "preffix"
         subfolders = [subfolder for subfolder in Path(folder).glob(f"{preffix}*") if subfolder.is_dir()]
 
+        labels_in_results = []
         if len(subfolders) == 0:
             print(f"No subfolders found in {folder} with preffix {preffix}. Reading the folder directly.")
-            self.read(label=f'{main_label}_KY_scan0', folder=folder, **kwargs)
-            return        
+            labels_in_results.append(f'{main_label}_KY_scan0')
+            self.read(label=labels_in_results[-1], folder=folder, **kwargs)
+        else:   
+            for subfolder in subfolders:
+                labels_in_results.append(f'{main_label}_KY_{subfolder.name}')
+                self.read(label=labels_in_results[-1], folder=subfolder, **kwargs)        
 
-        for subfolder in subfolders:
-            self.read(label=f'{main_label}_KY_{subfolder.name}', folder=folder / subfolder, **kwargs)        
+        # ----------------------------------------------------------
+        # Make it a linear scan for the main label
+        # ----------------------------------------------------------
+        labelsD = {}
+        for label in [main_label]:
+            labelsD[label] = []
+        for label in labels_in_results:
+            parts = label.split('_')
+            if len(parts) >= 3 and parts[-2] == "KY":
+                # Extract the base name (scan1) and middle value (0.3/0.4)
+                base_name = '_'.join(parts[0:-2])               
+                labelsD[base_name].append(label)
 
+        for label in labelsD:
+            self.results[label] = CGYROutils.CGYROlinear_scan(labelsD[label], self.results)
 
-    def _labelize(self, labels):
-
+    def plot(
+        self,
+        labels=[""],
+        fn=None,
+        include_2D=True,
+        common_colorbar=True):
+        
         # If it has radii, we need to correct the labels
         self.results_all = copy.deepcopy(self.results)
         self.results = {}
@@ -167,17 +189,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 self.results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
         labels = labels_with_rho
         # ------------------------------------------------
-        
-        return labels
-
-    def plot(
-        self,
-        labels=[""],
-        fn=None,
-        include_2D=True,
-        common_colorbar=True):
-        
-        labels = self._labelize(labels)
     
         if fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -1530,10 +1541,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             
             return cont
-       
-        # Convert the raw labels into the linear scan for nicer plotting
-        self._kyfy(labels)
-        
+
         co = -1
         for i,label0 in enumerate(labels):
             co = _plot_linear_stability(axs, self.results[label0].labels, label0, start_cont=co, col_lin=colors[i])
@@ -1551,32 +1559,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         ax.set_title("Real Frequency")
         ax.axhline(y=0, lw=0.5, ls="--", c="k")
         ax.set_xlim(left=0)
-
-    def _kyfy(self,labels_new):
-        '''
-        This function transforms the original labels into the linear scan
-        e.g. from labels:
-            ['scan1_KY_0.3',
-            'scan1_KY_0.4']
-        to:
-            ['scan1']
-        where these are the CGYROlinear_scan object
-        '''
-        
-        labels_in_results = list(self.results.keys())
-        labelsD = {}
-        for label in labels_new:
-            labelsD[label] = []
-        for label in labels_in_results:
-            parts = label.split('_')
-            if len(parts) >= 3 and parts[1] == "KY":
-                # Extract the base name (scan1) and middle value (0.3/0.4)
-                base_name = parts[0]                
-                labelsD[base_name].append(label)
-
-        for label in labelsD:
-            self.results[label] = CGYROutils.CGYROlinear_scan(labelsD[label], self.results)
-
 
 class CGYROinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
