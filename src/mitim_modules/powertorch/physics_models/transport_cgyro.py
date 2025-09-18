@@ -129,7 +129,7 @@ class cgyro_model(gyrokinetic_model):
         self._evaluate_tglf()
         # --------------------------------------------------------------------------------------------
 
-        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO, out_name = 'output')
+        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO)
 
 
 def pre_checks(self):
