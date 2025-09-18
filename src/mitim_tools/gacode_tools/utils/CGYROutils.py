@@ -16,7 +16,7 @@ from IPython import embed
 import pandas as pd
 
 class CGYROlinear_scan:
-    def __init__(self, labels, cgyro_data):   
+    def __init__(self, labels, results):   
 
         self.labels = labels
 
@@ -32,16 +32,16 @@ class CGYROlinear_scan:
         self.Qi_mean = []
 
         for label in labels:
-            self.ky.append(cgyro_data[label].ky[0])
-            self.aLTi.append(cgyro_data[label].aLTi)
-            self.g_mean.append(cgyro_data[label].g_mean[0])
-            self.f_mean.append(cgyro_data[label].f_mean[0])
+            self.ky.append(results[label]['output'][0].ky[0])
+            self.aLTi.append(results[label]['output'][0].aLTi)
+            self.g_mean.append(results[label]['output'][0].g_mean[0])
+            self.f_mean.append(results[label]['output'][0].f_mean[0])
             
-            self.Qe_mean.append(cgyro_data[label].Qe_mean)
-            self.Qi_mean.append(cgyro_data[label].Qi_mean)
+            self.Qe_mean.append(results[label]['output'][0].Qe_mean)
+            self.Qi_mean.append(results[label]['output'][0].Qi_mean)
 
             try:
-                self.neTe_mean.append(cgyro_data[label].neTe_kx0_mean[0])
+                self.neTe_mean.append(results[label]['output'][0].neTe_kx0_mean[0])
             except:
                 self.neTe_mean.append(np.nan)
 
@@ -52,6 +52,20 @@ class CGYROlinear_scan:
         self.neTe_mean = np.array(self.neTe_mean)
         self.Qe_mean = np.array(self.Qe_mean)
         self.Qi_mean = np.array(self.Qi_mean)
+        
+        
+        # Organize them by ky
+        order = np.argsort(self.ky)
+        self.ky = self.ky[order]
+        self.aLTi = self.aLTi[order]
+        self.g_mean = self.g_mean[order]
+        self.f_mean = self.f_mean[order]
+        self.neTe_mean = self.neTe_mean[order]
+        self.Qe_mean = self.Qe_mean[order]
+        self.Qi_mean = self.Qi_mean[order]
+        self.labels = [self.labels[i] for i in order]
+        self.results = {label: results[label] for label in self.labels}
+        
 
 class CGYROoutput(SIMtools.GACODEoutput):
     def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
@@ -134,7 +148,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         self._process_linear()
 
-        if not minimal and self.linear == False:
+        if (not minimal): # and (self.linear == False):
             self.cgyrodata.getbigfield()
 
             if 'kxky_phi' in self.cgyrodata.__dict__:

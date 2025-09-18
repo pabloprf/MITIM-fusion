@@ -34,7 +34,11 @@ def main():
     labels = []
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
-        c.read(label=labels[-1], folder=folder, tmin=tmin[i], last_tmin_for_linear=last_tmin_for_linear)
+        
+        if linear:
+            c.read_linear_scan(label=labels[-1], folder=folder)
+        else:
+            c.read(label=labels[-1], folder=folder, tmin=tmin[i], last_tmin_for_linear=last_tmin_for_linear)
 
     if linear:
         # Plot linear spectrum
