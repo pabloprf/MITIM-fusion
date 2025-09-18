@@ -65,9 +65,11 @@ def plot_results(self, fn):
     # ********************************************************************************************************
 
     # Collect initialization
-    ini = {'geqdsk': None, 'profiles': PROFILEStools.gacode_state(f'{self.beats[1].initialize.folder}/input.gacode')}
+    ini = {'geqdsk': None, 'profiles': None}
     if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
         ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
+    if Path(f'{self.beats[1].initialize.folder}/input.gacode').exists():
+        ini['profiles'] = PROFILEStools.gacode_state(f'{self.beats[1].initialize.folder}/input.gacode')
 
     # Collect PORTALS profiles and TRANSP cdfs translated to profiles
     objs = OrderedDict()

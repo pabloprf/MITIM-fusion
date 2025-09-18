@@ -8,7 +8,7 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
     folders_local = [IOtools.expandPath(folder).resolve() for folder in folders_local]
 
     if remote_folder_parent is not None:
-        folders_remote = [remote_folder_parent + '/' + folder.split('/')[-1] for folder in folders_local]
+        folders_remote = [remote_folder_parent + '/' + folder.name for folder in folders_local]
     elif remote_folders is not None:
         folders_remote = remote_folders
     else:
