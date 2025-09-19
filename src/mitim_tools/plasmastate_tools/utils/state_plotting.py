@@ -803,7 +803,21 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
         c=color,
         lw=lw,
         ls="--",
-        label=extralab + "$P_i/P_e$",
+        label=extralab + "$P_{aux,i}/P_{aux,e}$",
+    )
+    safe_division = np.divide(
+        self.derived["qi_aux_MW"]+self.derived['qi_fus_MW'],
+        self.derived["qe_aux_MW"]+self.derived['qe_fus_MW'],
+        where=(self.derived["qe_aux_MW"]+self.derived['qe_fus_MW']) != 0,
+        out=np.full_like(self.derived["qi_aux_MW"], np.nan),
+    )
+    ax.plot(
+        self.profiles["rho(-)"],
+        safe_division,
+        c=color,
+        lw=lw,
+        ls="-.",
+        label=extralab + "$(P_{aux,i}+P_{fus,i})/(P_{aux,e}+P_{fus,e})$",
     )
     ax.set_ylabel("Power ratios")
     ax.set_xlabel("$\\rho$")
