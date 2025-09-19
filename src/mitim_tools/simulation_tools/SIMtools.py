@@ -69,7 +69,7 @@ class mitim_simulation:
             self.profiles = mitim_state
 
         # Keep a copy of the file
-        self.profiles.write_state(file=self.FolderGACODE / "input.gacode")
+        self.profiles.write_state(file=self.FolderGACODE / "input.gacode_torun")
 
         self.profiles.derive_quantities(mi_ref=md_u)
 
