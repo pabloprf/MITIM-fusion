@@ -1705,13 +1705,13 @@ class mitim_state:
             self.write_state(file=new_file)
             self.printInfo()
         
-    def enforce_same_density_gradients(self):
+    def enforce_same_density_gradients(self, onlyThermal=False):
         txt = ""
         for sp in range(len(self.Species)):
-            if self.Species[sp]["S"] == "therm":
+            if (not onlyThermal) or (self.Species[sp]["S"] == "therm"):
                 self.profiles["ni(10^19/m^3)"][:, sp] = self.derived["fi_vol"][sp] * self.profiles["ne(10^19/m^3)"]
                 txt += f"{self.Species[sp]['N']} "
-        print(f"\t\t- Making all thermal ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
+        print(f"\t\t- Making all {'thermal ' if onlyThermal else ''}ions ({txt}) have the same a/Ln as electrons (making them an exact flat fraction)",typeMsg="i",)
         self.derive_quantities(rederiveGeometry=False)
 
     def make_fast_ions_thermal(self):
