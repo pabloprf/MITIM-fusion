@@ -130,6 +130,20 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             last_tmin_for_linear = last_tmin_for_linear,
             **kwargs)
 
+    # Re-defined to make allowing reading a scan of KY linear runs easily
+    def read_scan(
+        self,
+        label="scan1",
+        cgyro_linear_scan = False,
+        **kwargs
+    ):
+    
+        super().read_scan(label=label,**kwargs)
+        
+        if cgyro_linear_scan:
+            self.results[label] = CGYROutils.CGYROlinear_scan(list(self.results.keys()), self.results)
+            print(f"\t- Created a linear scan object with label {label} from all the read cases", typeMsg='i')
+
     def read_linear_scan(
         self,
         folder=None,
@@ -144,7 +158,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         del kwargs['label']
         
         # Get all folders inside "folder" that start with "preffix"
-        subfolders = [subfolder for subfolder in Path(folder).glob(f"{preffix}*") if subfolder.is_dir()]
+        subfolders = [subfolder for subfolder in Path(folder).glob(f"*{preffix}*") if subfolder.is_dir()]
 
         labels_in_results = []
         if len(subfolders) == 0:
@@ -159,18 +173,15 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # ----------------------------------------------------------
         # Make it a linear scan for the main label
         # ----------------------------------------------------------
-        labelsD = {}
-        for label in [main_label]:
-            labelsD[label] = []
+        labelsD = []
         for label in labels_in_results:
             parts = label.split('_')
             if len(parts) >= 3 and parts[-2] == "KY":
                 # Extract the base name (scan1) and middle value (0.3/0.4)
                 base_name = '_'.join(parts[0:-2])               
-                labelsD[base_name].append(label)
+                labelsD.append(label)
 
-        for label in labelsD:
-            self.results[label] = CGYROutils.CGYROlinear_scan(labelsD[label], self.results)
+        self.results[main_label] = CGYROutils.CGYROlinear_scan(labelsD, self.results)
 
     def plot(
         self,
@@ -1552,13 +1563,19 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         ax.set_ylabel("$\\gamma$ $(c_s/a)$")
         ax.set_title("Growth Rate")
         ax.set_xlim(left=0)
-        ax.legend()
+        ax.legend(loc='best', prop={'size': 8},)
+        
         ax = axs['2']
         ax.set_xlabel("Time $(a/c_s)$")
         ax.set_ylabel("$\\omega$ $(c_s/a)$")
         ax.set_title("Real Frequency")
         ax.axhline(y=0, lw=0.5, ls="--", c="k")
         ax.set_xlim(left=0)
+        
+        for ax in [axs['1'], axs['2'], axs['3'], axs['4']]:
+            GRAPHICStools.addDenseAxis(ax)
+        
+        plt.tight_layout()
 
 class CGYROinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
