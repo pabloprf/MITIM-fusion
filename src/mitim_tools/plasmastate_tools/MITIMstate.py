@@ -1569,10 +1569,7 @@ class mitim_state:
             self.remove([position_to_moveFROM_in_profiles + 2])
 
     def addSpecie(self, Z=5.0, mass=10.0, fi_vol=0.1, forcename=None):
-        print(
-            f"\t\t- Creating new specie with Z={Z}, mass={mass}, fi_vol={fi_vol}",
-            typeMsg="i",
-        )
+        print(f"\t\t- Creating new specie with Z={Z}, mass={mass}, fi_vol={fi_vol}",typeMsg="i",)
 
         if forcename is None:
             forcename = "LUMPED"

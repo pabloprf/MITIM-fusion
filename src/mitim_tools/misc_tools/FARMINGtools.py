@@ -163,7 +163,13 @@ class mitim_job:
             removeScratchFolders_goingIn=None,
             check_if_files_received=True,
             attempts_execution=1,
+            helper_lostconnection=False,
             ):
+        
+        '''
+        if helper_lostconnection is True, it means that the connection to the remote machine was lost, but the files are there,
+        so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
+        '''
 
         removeScratchFolders_goingOut = removeScratchFolders
         if removeScratchFolders_goingIn is None:
@@ -208,12 +214,13 @@ class mitim_job:
         # Process
         self.full_process(
             comm,
-            removeScratchFolders_goingIn=removeScratchFolders_goingIn,
+            removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
             removeScratchFolders_goingOut=removeScratchFolders_goingOut,
             timeoutSecs=timeoutSecs,
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
             attempts_execution=attempts_execution,
+            execute_flag=not helper_lostconnection
         )
 
         # Get jobid
@@ -242,11 +249,17 @@ class mitim_job:
         check_if_files_received=True,
         check_files_in_folder={},
         attempts_execution = 1,
+        execute_flag=True,
     ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
         want to finish the sbatch launch process.
+        
+        Notes:
+         - If execute_flag is False, the commands will not be executed. This is useful,
+            together with removeScratchFolders_goingIn=False if the results exist in the remote
+            but the connection failed with your local machine. You can then just retrieve the results.
         """
         wait_for_all_commands = True
 
@@ -268,13 +281,18 @@ class mitim_job:
         execution_counter = 0
 
         while execution_counter < attempts_execution:
-            output, error = self.execute(
-                comm,
-                wait_for_all_commands=wait_for_all_commands,
-                printYN=True,
-                timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-                log_file=self.log_simulation_file
-            )
+            
+            if execute_flag:
+                output, error = self.execute(
+                    comm,
+                    wait_for_all_commands=wait_for_all_commands,
+                    printYN=True,
+                    timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+                    log_file=self.log_simulation_file
+                )
+            else:
+                output, error = b"", b""
+                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="i")
 
             # ~~~~~~ Retrieve
             received = self.retrieve(

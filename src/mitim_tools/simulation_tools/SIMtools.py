@@ -117,6 +117,7 @@ class mitim_simulation:
         only_minimal_files=False,
         run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
+        helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
         
         if slurm_setup is None:
@@ -167,7 +168,8 @@ class mitim_simulation:
             slurm_setup=slurm_setup,
             only_minimal_files=only_minimal_files,
             attempts_execution=attempts_execution,
-            run_type=run_type
+            run_type=run_type,
+            helper_lostconnection=helper_lostconnection,
         )
         
         return code_executor_full
@@ -554,7 +556,8 @@ class mitim_simulation:
             
                 self.simulation_job.run(
                     removeScratchFolders=True,
-                    attempts_execution=attempts_execution
+                    attempts_execution=attempts_execution,
+                    helper_lostconnection=kwargs_run.get("helper_lostconnection", False)
                     )
                     
                 self._organize_results(code_executor, tmpFolder, filesToRetrieve)
@@ -869,6 +872,11 @@ class mitim_simulation:
 
         if subfolder is None:
             subfolder = self.subfolder_scan
+            
+        if variable_mapping is None:
+            variable_mapping = {}
+        if variable_mapping_unn is None:
+            variable_mapping_unn = {}
 
         self.scans[label] = {}
         self.scans[label]["variable"] = variable
