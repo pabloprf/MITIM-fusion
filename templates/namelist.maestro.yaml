@@ -163,6 +163,12 @@ maestro:
         target:
           options:
             force_zero_particle_flux: true
+
+        optimization_options:
+          convergence_options:
+            maximum_iterations: 30
+          strategy_options:
+            AllowedExcursions: [0.25, 0.0]
       
       # Operations to do to mitim_state before passing it to PORTALS
       initialization_parameters:
