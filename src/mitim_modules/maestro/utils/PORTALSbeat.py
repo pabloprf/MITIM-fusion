@@ -25,12 +25,20 @@ class portals_beat(beat):
             use_previous_surrogate_data = False,
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
-            portals_parameters = {},
             portals_namelist_location = None,
-            initialization_parameters = {},
-            optimization_options = {},
+            portals_parameters = None,
+            initialization_parameters = None,
+            optimization_options = None,
             enforce_impurity_radiation_existence = True,
             ):
+        
+        if portals_parameters is None:
+            portals_parameters = {}
+        if initialization_parameters is None:
+            initialization_parameters = {}
+        if optimization_options is None:
+            optimization_options = {}
+
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
 
@@ -78,10 +86,15 @@ class portals_beat(beat):
 
         cold_start = kwargs.get('cold_start', False)
 
+        # Read the namelist if explicitly given in the MAESTRO namelist (variable: portals_namelist_location)
         portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_namelist_location)
 
+        # Update the namelist with the parameters in the MAESTRO namelist (variable: portals_parameters)
         portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
-        portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
+        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.portals_parameters['optimization_options'])
+        
+        # MAESTRO beat may receive optimization options changes from previous beats, so allow that too
+        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
 
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state
