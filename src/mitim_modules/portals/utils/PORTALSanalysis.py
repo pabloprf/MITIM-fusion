@@ -1,5 +1,6 @@
 import copy
 import torch
+import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1074,3 +1075,99 @@ class PORTALSinitializer:
                 axsGrads[0].legend(prop={"size": 8})
 
 
+def surrogate_file_expansion(
+    portals_folder,
+    file_new,
+    variables = ['aLte', 'aLti', 'aLne', 'nuei', 'tite', 'beta_e'],
+    output_mapper ={
+        'Qe_tr_turb': ['QeMWm2_tr_turb', 'Qgb'],
+        'Qi_tr_turb': ['QiMWm2_tr_turb', 'Qgb'],
+        'Ge_tr_turb': ['Ge1E20m2_tr_turb', 'Ggb'],
+        'Qe_tr_neoc': ['QeMWm2_tr_neoc', 'Qgb'],
+        'Qi_tr_neoc': ['QiMWm2_tr_neoc', 'Qgb'],
+        'Ge_tr_neoc': ['Ge1E20m2_tr_neoc', 'Ggb'],
+    }
+    ):
+    '''
+    This function reads a PORTALS folder and extracts the inputs and outputs using variables and output_mapper.
+    It then writes a surrogate_data.csv file that can be used as extrapointsFile
+    
+    This is useful when you have a PORTALS simulation with [te, ti] and now you want to create a surrogate model with [te, ti, ne]
+    
+    '''
+
+    # ----------------------------------------------------------------------------
+    # Grab powerstates and turb_files
+    # ----------------------------------------------------------------------------
+    
+    portals = PORTALSanalyzer.from_folder(portals_folder)
+    mitim_runs = IOtools.unpickle_mitim(portals.opt_fun.mitim_model.optimization_object.optimization_extra)
+
+    powerstates = [mitim_runs[i]['powerstate'] for i in range(0, portals.ilast+1)]
+    turb_files = [powerstates[0].transport_options['folder'] / 'Execution' / f'Evaluation.{i}' / 'transport_simulation_folder' / 'fluxes_turb.json' for i in range(0, portals.ilast+1)]
+    
+    turb_info = []
+    for file_name in turb_files:
+        with open(file_name, 'r') as f:
+            turb_info.append(json.load(f))
+
+    # ----------------------------------------------------------------------------
+    # Prepare dictionary with new inputs and outputs
+    # ----------------------------------------------------------------------------
+
+    df_new = []
+    
+    for i in range(0, portals.ilast+1):
+        
+        df_helper = {}
+        for var in output_mapper:
+            df_helper[var] = {
+                'y':    (  mitim_runs[i]['powerstate'].plasma[output_mapper[var][0]][0,1:] / mitim_runs[i]['powerstate'].plasma[output_mapper[var][1]][0,1:] ).cpu().numpy(),
+                'yvar': ( (mitim_runs[i]['powerstate'].plasma[output_mapper[var][0]+'_stds'][0,1:] / mitim_runs[i]['powerstate'].plasma[output_mapper[var][1]][0,1:])**2 ).cpu().numpy(),
+                'x_names': variables,
+                }
+            for ix,x in enumerate(df_helper[var]['x_names']):
+                df_helper[var][f'x{ix}'] = mitim_runs[i]['powerstate'].plasma[x][0,1:].cpu().numpy()
+        
+        # Make it per radius
+        df_helper_new = {}
+        for ir in range(len(df_helper['Qe_tr_turb']['y'])):
+            for var in output_mapper:
+                new_name = var+f'_{ir+1}'
+                df_helper_new[new_name] = {}
+                df_helper_new[new_name]['y'] = df_helper[var]['y'][ir]
+                df_helper_new[new_name]['yvar'] = df_helper[var]['yvar'][ir]
+                df_helper_new[new_name]['x_names'] = df_helper[var]['x_names']
+                for ix,x in enumerate(df_helper[var]['x_names']):
+                    df_helper_new[new_name][f'x{ix}'] = df_helper[var][f'x{ix}'][ir]
+        
+        df_new.append(df_helper_new)
+    
+    # ----------------------------------------------------------------------------
+    # Insert in new dataframe
+    # ----------------------------------------------------------------------------
+    
+    # Flatten df_new into rows
+    rows = []
+    for d in df_new:
+        for model, vals in d.items():
+            row = {
+                "Model": model,
+                "y": vals["y"],
+                "yvar": vals["yvar"],
+                "x_names": vals["x_names"],
+            }
+            # Add all x0, x1, ... keys
+            for k, v in vals.items():
+                if k.startswith("x"):
+                    row[k] = v
+            rows.append(row)
+
+    # Build dataframe
+    df_new_flat = pd.DataFrame(rows)
+        
+    # ----------------------------------------------------------------------------
+    # Grab those that have not been updated (targets)
+    # ----------------------------------------------------------------------------
+    
+    df_new_flat.to_csv(file_new, index=False)
