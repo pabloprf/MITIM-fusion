@@ -123,11 +123,12 @@ class cgyro_model(gyrokinetic_model):
 
     def evaluate_turbulence(self):
 
-        # Run base TGLF always, to keep track of discrepancies! --------------------------------------
-        simulation_options_tglf = self.transport_evaluator_options["tglf"]
-        simulation_options_tglf["use_scan_trick_for_stds"] = None
-        self._evaluate_tglf()
-        # --------------------------------------------------------------------------------------------
+        if self.transport_evaluator_options["cgyro"].get("run_base_tglf", True):
+            # Run base TGLF, to keep track of discrepancies! ---------------------------------------------
+            simulation_options_tglf = self.transport_evaluator_options["tglf"]
+            simulation_options_tglf["use_scan_trick_for_stds"] = None
+            self._evaluate_tglf()
+            # --------------------------------------------------------------------------------------------
 
         self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO)
 
