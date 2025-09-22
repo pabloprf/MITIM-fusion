@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--two", action="store_true", help="Include 2D plots")
     parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
     parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
-    parser.add_argument("--scan_subfolder_id" , type=str, default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
+    parser.add_argument("--scan_subfolder_id" , type=str, nargs="*", default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
     args = parser.parse_args()
 
     folders = args.folders
@@ -53,7 +53,7 @@ def main():
                 label=labels[-1],
                 folder=folder,
                 suffix=suffixes[i],
-                preffix=scan_subfolder_id
+                preffix=scan_subfolder_id[i]
                 )
             
         else:
@@ -62,7 +62,8 @@ def main():
                 folder=folder,
                 tmin=tmin[i],
                 last_tmin_for_linear=last_tmin_for_linear,
-                suffix=suffixes[i]
+                suffix=suffixes[i],
+                preffix=scan_subfolder_id[i]
             )
 
     if linear:
