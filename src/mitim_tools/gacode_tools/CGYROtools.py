@@ -115,6 +115,40 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.rotation",
         ]
 
+    # Redefine to raise warning
+    def _run_prepare(
+        self,
+        subfolder_simulation,
+        extraOptions=None,
+        multipliers=None,
+        **kwargs,
+    ):
+        
+        # ---------------------------------------------
+        # Check if any *_SCALE_* variable is being used
+        # ---------------------------------------------
+        dictionary_check = {}
+        if extraOptions is not None:
+            if multipliers is not None:
+                dictionary_check = {**extraOptions, **multipliers}
+            else:
+                dictionary_check = extraOptions
+        elif multipliers is not None:
+                dictionary_check = multipliers
+        
+        for key in dictionary_check:
+            if '_SCALE_' in key:
+                print(f"The use of *_SCALE_* is discouraged, please use the appropriate variable instead.", typeMsg='q')
+            
+        # ---------------------------------------------
+            
+        return super()._run_prepare(
+            subfolder_simulation,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            **kwargs,
+        )
+
     # Re-defined to make specific arguments explicit
     def read(
         self,
