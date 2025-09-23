@@ -163,8 +163,11 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         else:
             print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
-            
-        self._process_fluxes()        
+        try:
+            self._process_fluxes()
+        except ValueError as e:
+                print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
+        #self._process_fluxes()        
         self._saturate_signals()
         
         self.remove_symlinks()
@@ -269,9 +272,9 @@ class CGYROoutput(SIMtools.GACODEoutput):
             moment, species, field = 'n', self.electron_flag, 0
             self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
 
-        species = self.ions_flags
-        self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)     # [COMPLEX] (nradial,nions,ntoroidal,time)
-        self.ni = self.ni_all.sum(axis=1)                                                         # [COMPLEX] (nradial,ntoroidal,time)
+            species = self.ions_flags
+            self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)     # [COMPLEX] (nradial,nions,ntoroidal,time)
+            self.ni = self.ni_all.sum(axis=1)                                                         # [COMPLEX] (nradial,ntoroidal,time)
 
         if 'kxky_e' in self.cgyrodata.__dict__:
             moment, species, field = 'e', self.electron_flag, 0
@@ -289,7 +292,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         variables = ['phi', 'apar', 'bpar', 'ne', 'ni_all', 'ni', 'Te', 'Ti', 'Ti_all']
         for var in variables:
             if var in self.__dict__:
-                
+                print(var)
                 # Make sure I go to the real units for all of them *******************
                 self.__dict__[var] = self.__dict__[var] * self.artificial_rhos_factor
                 # ********************************************************************
@@ -323,35 +326,43 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 self.__dict__[var+'_rms_sumn'] = (abs(self.__dict__[var])**2).sum(axis=(axis_toroidal))**0.5         # (nradial,time)
 
         # Cross-phases
-        self.neTe = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.neTe_kx0 = self.neTe[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
+        if 'ne' in self.__dict__ and 'Te' in self.__dict__:
+            self.neTe = _cross_phase(self.t, self.ne, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.neTe_kx0 = self.neTe[np.argmin(np.abs(self.kx)),:,:]  # (ntoroidal, time)
         
-        self.niTi = _cross_phase(self.t, self.ni, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.niTi_kx0 = self.niTi[np.argmin(np.abs(self.kx)),:,:]
+        if 'ni' in self.__dict__ and 'Ti' in self.__dict__:
+            self.niTi = _cross_phase(self.t, self.ni, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.niTi_kx0 = self.niTi[np.argmin(np.abs(self.kx)),:,:]
         
-        self.phiTe = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phiTe_kx0 = self.phiTe[np.argmin(np.abs(self.kx)),:,:]
-        
-        self.phiTi = _cross_phase(self.t, self.phi, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phiTi_kx0 = self.phiTi[np.argmin(np.abs(self.kx)),:,:]
-      
+        if 'phi' in self.__dict__ and 'Te' in self.__dict__:
+            self.phiTe = _cross_phase(self.t, self.phi, self.Te) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.phiTe_kx0 = self.phiTe[np.argmin(np.abs(self.kx)),:,:]
+
+        if 'phi' in self.__dict__ and 'Ti' in self.__dict__:
+            self.phiTi = _cross_phase(self.t, self.phi, self.Ti) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.phiTi_kx0 = self.phiTi[np.argmin(np.abs(self.kx)),:,:]
+
         self.phiTi_all = []
-        for ion in self.ions_flags:
-            self.phiTi_all.append(_cross_phase(self.t, self.phi, self.Ti_all[:,ion,:]) * 180/ np.pi)
-        self.phiTi_all = np.array(self.phiTi_all)
-        self.phiTi_all_kx0 = self.phiTi_all[:,np.argmin(np.abs(self.kx)),:,:]
+        if 'phi' in self.__dict__ and 'Ti_all' in self.__dict__:
+            for ion in self.ions_flags:
+                self.phiTi_all.append(_cross_phase(self.t, self.phi, self.Ti_all[:,ion,:]) * 180/ np.pi)
+            self.phiTi_all = np.array(self.phiTi_all)
+            self.phiTi_all_kx0 = self.phiTi_all[:,np.argmin(np.abs(self.kx)),:,:]
+
+        if 'ne' in self.__dict__ and 'phi' in self.__dict__:
+            self.phine = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.phine_kx0 = self.phine[np.argmin(np.abs(self.kx)),:,:]
         
-        self.phine = _cross_phase(self.t, self.phi, self.ne) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phine_kx0 = self.phine[np.argmin(np.abs(self.kx)),:,:]
-        
-        self.phini = _cross_phase(self.t, self.phi, self.ni) * 180/ np.pi  # (nradial, ntoroidal, time)
-        self.phini_kx0 = self.phini[np.argmin(np.abs(self.kx)),:,:]
+        if 'ni' in self.__dict__ and 'phi' in self.__dict__:
+            self.phini = _cross_phase(self.t, self.phi, self.ni) * 180/ np.pi  # (nradial, ntoroidal, time)
+            self.phini_kx0 = self.phini[np.argmin(np.abs(self.kx)),:,:]
 
         self.phini_all = []
-        for ion in self.ions_flags:
-            self.phini_all.append(_cross_phase(self.t, self.phi, self.ni_all[:,ion,:]) * 180/ np.pi)
-        self.phini_all = np.array(self.phini_all)
-        self.phini_all_kx0 = self.phini_all[:,np.argmin(np.abs(self.kx)),:,:]
+        if 'phi' in self.__dict__ and 'ni_all' in self.__dict__:
+            for ion in self.ions_flags:
+                self.phini_all.append(_cross_phase(self.t, self.phi, self.ni_all[:,ion,:]) * 180/ np.pi)
+            self.phini_all = np.array(self.phini_all)
+            self.phini_all_kx0 = self.phini_all[:,np.argmin(np.abs(self.kx)),:,:]
 
         # Correlation length
         phi = (abs(self.phi[:,self.ky>0,:])).sum(axis=1) # Sum over toroidal modes n>0
@@ -371,50 +382,62 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         ky_flux = self.cgyrodata.ky_flux # (species, moments, fields, ntoroidal, time)
 
+        fields = ['phi','apar','bpar']
+
         # Electron energy flux
         
         i_species, i_moment = -1, 1
-        i_fields = 0
-        self.Qe_ES_ky = ky_flux[i_species, i_moment, i_fields, :, :]
-        i_fields = 1
-        self.Qe_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :, :]
-        i_fields = 2
-        self.Qe_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :, :]
+        for i_field, field in enumerate(fields):
+            if field in self.__dict__:
+                if field == 'phi':
+                    self.Qe_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                else:
+                    self.Qe_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
 
-        self.Qe_EM_ky = self.Qe_EM_apar_ky + self.Qe_EM_aper_ky
-        self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
+        if 'Qe_EM_ky' in self.__dict__:
+            self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
+        else:
+            self.Qe_ky = self.Qe_ES_ky
 
         # Electron particle flux
         
         i_species, i_moment = -1, 0
-        i_fields = 0
-        self.Ge_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
-        i_fields = 1
-        self.Ge_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
-        i_fields = 2
-        self.Ge_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
-        
-        self.Ge_EM_ky = self.Ge_EM_apar_ky + self.Ge_EM_aper_ky
-        self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
+        for i_field, field in enumerate(fields):
+            if field in self.__dict__:
+                if field == 'phi':
+                    self.Ge_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                else:
+                    self.Ge_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+
+        if 'Ge_EM_ky' in self.__dict__:
+            self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
+        else:
+            self.Ge_ky = self.Ge_ES_ky
         
         # Ions energy flux
         
         i_species, i_moment = self.ions_flags, 1
-        i_fields = 0
-        self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_fields, :]
-        i_fields = 1
-        self.Qi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_fields, :]
-        i_fields = 2
-        self.Qi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_fields, :]
+        for i_field, field in enumerate(fields):
+            if field in self.__dict__:
+                if field == 'phi':
+                    self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                else:
+                    self.Qi_all_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+
+        if 'Qi_all_EM_ky' in self.__dict__:
+            self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
+            self.Qi_ky = self.Qi_all_ky.sum(axis=0)
+            self.Qi_EM_ky = self.Qi_all_EM_ky.sum(axis=0)
+            self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
+            self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
+            self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+        else:
+            self.Qi_all_ky = self.Qi_all_ES_ky
+            self.Qi_ky = self.Qi_all_ky.sum(axis=0)
+            self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+
         
-        self.Qi_all_EM_ky = self.Qi_all_EM_apar_ky + self.Qi_all_EM_aper_ky
-        self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
-        
-        self.Qi_ky = self.Qi_all_ky.sum(axis=0)
-        self.Qi_EM_ky = self.Qi_all_EM_ky.sum(axis=0)
-        self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
-        self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
-        self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+
         
         # ************************
         # Sum total 
@@ -422,7 +445,9 @@ class CGYROoutput(SIMtools.GACODEoutput):
         variables = ['Qe','Ge','Qi','Qi_all']
         for var in variables:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
-                self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
+                if var+i+'_ky' in self.__dict__:
+                    print(var+i)
+                    self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
         
         # Convert to MW/m^2     
         self.QeMWm2 = self.Qe * self.Qgb
