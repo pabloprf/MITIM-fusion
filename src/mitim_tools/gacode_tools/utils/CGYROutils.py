@@ -124,7 +124,6 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.all_names = [f"{gacodefuncs.specmap(self.cgyrodata.mass[i],self.cgyrodata.z[i])}({self.cgyrodata.z[i]},{self.cgyrodata.mass[i]:.1f})" for i in self.all_flags]
 
         self.fields = np.arange(self.cgyrodata.n_field)
-
         self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
@@ -382,7 +381,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         ky_flux = self.cgyrodata.ky_flux # (species, moments, fields, ntoroidal, time)
 
-        fields = ['phi','apar','bpar']
+        fields = ['phi','apar','bpar'][:self.cgyrodata.n_field] 
 
         # Electron energy flux
         
@@ -390,8 +389,12 @@ class CGYROoutput(SIMtools.GACODEoutput):
         for i_field, field in enumerate(fields):
             if field == 'phi':
                 self.Qe_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-            else:
-                self.Qe_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+            elif field == 'apar':
+                self.Qe_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Qe_EM_ky = self.Qe_EM_apar_ky.copy()
+            elif field == 'bpar':
+                self.Qe_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Qe_EM_ky += self.Qe_EM_aper_ky
 
         if 'Qe_EM_ky' in self.__dict__:
             self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
@@ -404,8 +407,12 @@ class CGYROoutput(SIMtools.GACODEoutput):
         for i_field, field in enumerate(fields):
             if field == 'phi':
                 self.Ge_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-            else:
-                self.Ge_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+            elif field == 'apar':
+                self.Ge_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Ge_EM_ky = self.Ge_EM_apar_ky.copy()
+            elif field == 'bpar':
+                self.Ge_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Ge_EM_ky += self.Ge_EM_aper_ky
 
         if 'Ge_EM_ky' in self.__dict__:
             self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
@@ -418,16 +425,24 @@ class CGYROoutput(SIMtools.GACODEoutput):
         for i_field, field in enumerate(fields):
             if field == 'phi':
                 self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-            else:
-                self.Qi_all_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+                # sum over species
+                self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
+            elif field == 'apar':
+                self.Qi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Qi_all_EM_ky = self.Qi_all_EM_apar_ky.copy()
+                # sum over species
+                self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
+            elif field == 'bpar':
+                self.Qi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Qi_all_EM_ky += self.Qi_all_EM_aper_ky
+                # sum over species
+                self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
+
 
         if 'Qi_all_EM_ky' in self.__dict__:
             self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
             self.Qi_ky = self.Qi_all_ky.sum(axis=0)
             self.Qi_EM_ky = self.Qi_all_EM_ky.sum(axis=0)
-            self.Qi_EM_apar_ky = self.Qi_all_EM_apar_ky.sum(axis=0)
-            self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
-            self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
         else:
             self.Qi_all_ky = self.Qi_all_ES_ky
             self.Qi_ky = self.Qi_all_ky.sum(axis=0)
