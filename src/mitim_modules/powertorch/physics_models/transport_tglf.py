@@ -10,7 +10,7 @@ class tglf_model:
         self._evaluate_tglf()
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
-    def _evaluate_tglf(self):
+    def _evaluate_tglf(self, pass_info = True):
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
@@ -124,23 +124,25 @@ class tglf_model:
         # Pass the information to what power_transport expects
         # ------------------------------------------------------------------------------------------------------------------------
         
-        self.QeGB_turb = Flux_mean[0]
-        self.QeGB_turb_stds = Flux_std[0]
-                
-        self.QiGB_turb = Flux_mean[1]
-        self.QiGB_turb_stds = Flux_std[1]
-                
-        self.GeGB_turb = Flux_mean[2]
-        self.GeGB_turb_stds = Flux_std[2]        
-        
-        self.GZGB_turb = Flux_mean[3]           
-        self.GZGB_turb_stds = Flux_std[3]       
+        if pass_info:
+            
+            self.QeGB_turb = Flux_mean[0]
+            self.QeGB_turb_stds = Flux_std[0]
+                    
+            self.QiGB_turb = Flux_mean[1]
+            self.QiGB_turb_stds = Flux_std[1]
+                    
+            self.GeGB_turb = Flux_mean[2]
+            self.GeGB_turb_stds = Flux_std[2]        
+            
+            self.GZGB_turb = Flux_mean[3]           
+            self.GZGB_turb_stds = Flux_std[3]       
 
-        self.MtGB_turb = Flux_mean[4]
-        self.MtGB_turb_stds = Flux_std[4] 
+            self.MtGB_turb = Flux_mean[4]
+            self.MtGB_turb_stds = Flux_std[4] 
 
-        self.QieGB_turb = Flux_mean[5]
-        self.QieGB_turb_stds = Flux_std[5]
+            self.QieGB_turb = Flux_mean[5]
+            self.QieGB_turb_stds = Flux_std[5]
 
         return tglf
 

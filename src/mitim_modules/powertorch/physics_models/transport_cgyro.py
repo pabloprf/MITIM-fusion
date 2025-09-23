@@ -69,11 +69,11 @@ class gyrokinetic_model:
 
             self.QieGB_turb = self.QeGB_turb*0.0 #TODO     
             self.QieGB_turb_stds = self.QeGB_turb*0.0 #TODO     
-        
-            from mitim_modules.powertorch.utils.TRANSPORTtools import write_json
-            write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb')
 
         elif run_type == 'prep':
+            
+            # Prevent writing the json file from variables, as we will wait for the user to run CGYRO externally and provide the json themselves
+            self._write_json_from_variables_turb = False
             
             # Wait until the user has placed the json file in the right folder
             
@@ -127,7 +127,7 @@ class cgyro_model(gyrokinetic_model):
             # Run base TGLF, to keep track of discrepancies! ---------------------------------------------
             simulation_options_tglf = self.transport_evaluator_options["tglf"]
             simulation_options_tglf["use_scan_trick_for_stds"] = None
-            self._evaluate_tglf()
+            self._evaluate_tglf(pass_info = False)
             # --------------------------------------------------------------------------------------------
 
         self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO)

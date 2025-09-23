@@ -16,7 +16,6 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     containing the simulation results. JSON should look like:
     
     {
-        
         'fluxes_mean': 
             {
                 'QeGB': ...
@@ -41,7 +40,9 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     }
     '''
     
-    if self.folder.exists():
+    write_json_from_variables = self._write_json_from_variables_turb if suffix == 'turb' else self._write_json_from_variables_neoc
+    
+    if self.folder.exists() and write_json_from_variables:
         
         with open(self.folder / file_name, 'w') as f:
 
@@ -95,6 +96,10 @@ class power_transport:
 
         # Model results is None by default, but can be assigned in evaluate
         self.model_results = None
+        
+        # By default, write the json files after evaluating the variables (will be changed in gyrokinetic "prep" run mode)
+        self._write_json_from_variables_turb = True
+        self._write_json_from_variables_neoc = True
 
         # ----------------------------------------------------------------------------------------
         # labels for plotting
