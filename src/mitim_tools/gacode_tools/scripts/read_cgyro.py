@@ -21,6 +21,8 @@ def main():
     parser.add_argument("--scan_subfolder_id" , type=str, nargs="*", default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
     parser.add_argument("--noplot", action="store_true", help="If set, it will not plot anything, just read the data.")
     parser.add_argument("--pickle", action="store_true", help="If set, it will save the read data in a pickle file for faster reading next time.")
+    parser.add_argument("--minimal", action="store_true")
+    
     args = parser.parse_args()
 
     folders = args.folders
@@ -29,10 +31,14 @@ def main():
     include_2D = args.two
     skip_plotting = args.noplot
     pkl = args.pickle
+    minimal = args.minimal
 
     suffixes = args.suffixes
     
     scan_subfolder_id = args.scan_subfolder_id
+    
+    if isinstance(scan_subfolder_id, str):
+        scan_subfolder_id = [scan_subfolder_id for _ in range(len(folders))]
 
     if suffixes is None:
         suffixes = ["" for _ in range(len(folders))]
@@ -60,7 +66,8 @@ def main():
                 label=labels[-1],
                 folder=folder,
                 suffix=suffixes[i],
-                preffix=scan_subfolder_id[i]
+                preffix=scan_subfolder_id[i],
+                minimal=minimal
                 )   
         elif include_2D:
             c.read(
@@ -69,7 +76,8 @@ def main():
                 tmin=tmin[i],
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
-                preffix=scan_subfolder_id[i]
+                preffix=scan_subfolder_id[i],
+                minimal=minimal
             )
         else:
             c.read(
@@ -79,7 +87,7 @@ def main():
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i],
-                minimal=True
+                minimal=minimal
             )
 
         if pkl:
