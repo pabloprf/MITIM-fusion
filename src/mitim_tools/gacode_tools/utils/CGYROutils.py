@@ -114,7 +114,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.cgyrodata.getxflux()
 
         # Understand positions
-        self.electron_flag = np.where(self.cgyrodata.z == -1)[0][0]
+        if -1 in self.cgyrodata.z:
+            self.electron_flag = np.where(self.cgyrodata.z == -1)[0][0]
+        else:
+            self.electron_flag = None
         self.all_flags = np.arange(0, len(self.cgyrodata.z), 1)
         self.ions_flags = self.all_flags[self.all_flags != self.electron_flag]
 
@@ -262,25 +265,25 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.bpar, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)   # [COMPLEX] (nradial,ntoroidal,time)
         
         self.tmax_fluct = _detect_exploiding_signal(self.t, self.phi**2)
-        
-        moment, species, field = 'n', self.electron_flag, 0
-        self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
+        if 'kxky_n' in self.cgyrodata.__dict__:
+            moment, species, field = 'n', self.electron_flag, 0
+            self.ne, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)         # [COMPLEX] (nradial,ntoroidal,time)
 
         species = self.ions_flags
         self.ni_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)     # [COMPLEX] (nradial,nions,ntoroidal,time)
         self.ni = self.ni_all.sum(axis=1)                                                         # [COMPLEX] (nradial,ntoroidal,time)
 
-        moment, species, field = 'e', self.electron_flag, 0
-        Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)              # [COMPLEX] (nradial,ntoroidal,time)
-        
-        species = self.ions_flags
-        Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)          # [COMPLEX] (nradial,nions,ntoroidal,time)
-        Ei = Ei_all.sum(axis=1)
-
-        # Transform to temperature
-        self.Te         = 2/3 * Ee - self.ne
-        self.Ti_all     = 2/3 * Ei_all - self.ni_all
-        self.Ti         = 2/3 * Ei - self.ni
+        if 'kxky_e' in self.cgyrodata.__dict__:
+            moment, species, field = 'e', self.electron_flag, 0
+            Ee, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)              # [COMPLEX] (nradial,ntoroidal,time)
+            
+            species = self.ions_flags
+            Ei_all, _ = self.cgyrodata.kxky_select(theta,field,moment,species,gbnorm=gbnorm)          # [COMPLEX] (nradial,nions,ntoroidal,time)
+            Ei = Ei_all.sum(axis=1)                                                        # [COMPLEX] (nradial,ntoroidal,time)
+            # Transform to temperature
+            self.Te         = 2/3 * Ee - self.ne
+            self.Ti_all     = 2/3 * Ei_all - self.ni_all
+            self.Ti         = 2/3 * Ei - self.ni
 
         # Sum over radial modes and divide between n=0 and n>0 modes, RMS
         variables = ['phi', 'apar', 'bpar', 'ne', 'ni_all', 'ni', 'Te', 'Ti', 'Ti_all']
