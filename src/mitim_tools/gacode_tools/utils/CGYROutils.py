@@ -388,11 +388,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         i_species, i_moment = -1, 1
         for i_field, field in enumerate(fields):
-            if field in self.__dict__:
-                if field == 'phi':
-                    self.Qe_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-                else:
-                    self.Qe_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+            if field == 'phi':
+                self.Qe_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+            else:
+                self.Qe_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
 
         if 'Qe_EM_ky' in self.__dict__:
             self.Qe_ky = self.Qe_ES_ky + self.Qe_EM_ky
@@ -403,11 +402,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         i_species, i_moment = -1, 0
         for i_field, field in enumerate(fields):
-            if field in self.__dict__:
-                if field == 'phi':
-                    self.Ge_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-                else:
-                    self.Ge_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+            if field == 'phi':
+                self.Ge_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+            else:
+                self.Ge_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
 
         if 'Ge_EM_ky' in self.__dict__:
             self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
@@ -418,11 +416,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         i_species, i_moment = self.ions_flags, 1
         for i_field, field in enumerate(fields):
-            if field in self.__dict__:
-                if field == 'phi':
-                    self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
-                else:
-                    self.Qi_all_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
+            if field == 'phi':
+                self.Qi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+            else:
+                self.Qi_all_EM_ky += ky_flux[i_species, i_moment, i_field, :, :]
 
         if 'Qi_all_EM_ky' in self.__dict__:
             self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
@@ -435,9 +432,6 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.Qi_all_ky = self.Qi_all_ES_ky
             self.Qi_ky = self.Qi_all_ky.sum(axis=0)
             self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
-
-        
-
         
         # ************************
         # Sum total 
@@ -446,7 +440,6 @@ class CGYROoutput(SIMtools.GACODEoutput):
         for var in variables:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
                 if var+i+'_ky' in self.__dict__:
-                    print(var+i)
                     self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
         
         # Convert to MW/m^2     
