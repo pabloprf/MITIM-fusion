@@ -61,9 +61,8 @@ def main():
                 folder=folder,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i]
-                )
-            
-        else:
+                )   
+        elif include_2D:
             c.read(
                 label=labels[-1],
                 folder=folder,
@@ -71,6 +70,16 @@ def main():
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i]
+            )
+        else:
+            c.read(
+                label=labels[-1],
+                folder=folder,
+                tmin=tmin[i],
+                last_tmin_for_linear=last_tmin_for_linear,
+                suffix=suffixes[i],
+                preffix=scan_subfolder_id[i],
+                minimal=True
             )
 
         if pkl:
