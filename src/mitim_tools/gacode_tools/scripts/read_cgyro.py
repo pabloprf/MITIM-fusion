@@ -1,4 +1,6 @@
 import argparse
+import pickle
+from mitim_tools.gacode_tools.utils.CGYROutils import CGYROoutput
 from xml.etree.ElementInclude import include
 import matplotlib.pyplot as plt
 from IPython import embed
@@ -17,13 +19,17 @@ def main():
     parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
     parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
     parser.add_argument("--scan_subfolder_id" , type=str, nargs="*", default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
+    parser.add_argument("--noplot", action="store_true", help="If set, it will not plot anything, just read the data.")
+    parser.add_argument("--pickle", action="store_true", help="If set, it will save the read data in a pickle file for faster reading next time.")
     args = parser.parse_args()
 
     folders = args.folders
     linear = args.linear
     tmin = args.tmin
     include_2D = args.two
-    
+    skip_plotting = args.noplot
+    pkl = args.pickle
+
     suffixes = args.suffixes
     
     scan_subfolder_id = args.scan_subfolder_id
@@ -45,6 +51,7 @@ def main():
     c = CGYROtools.CGYRO()
 
     labels = []
+    output_pickle = {}
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
         
@@ -66,15 +73,26 @@ def main():
                 preffix=scan_subfolder_id[i]
             )
 
-    if linear:
-        # Plot linear spectrum
-        c.plot_quick_linear(labels=labels)
-        plt.show()
-    else:
-        c.plot(labels=labels, include_2D=include_2D, common_colorbar=True)
-        c.fn.show()
+        if pkl:
+            print("Pickling data...")
+            print(c.results[labels[-1]]['output'])
+            with open(folder + "/data.pkl", "wb") as f:
+                pickle.dump(c.results[labels[-1]]['output'], f)
+            print("Pickling done.")
+
+    if not skip_plotting:
+        if linear:
+            # Plot linear spectrum
+            c.plot_quick_linear(labels=labels)
+            plt.show()
+        else:
+            c.plot(labels=labels, include_2D=include_2D, common_colorbar=True)
+            c.fn.show()
     
-    embed()
+        embed()
+
+
+
 
 if __name__ == "__main__":
     main()

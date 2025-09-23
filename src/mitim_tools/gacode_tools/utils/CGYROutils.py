@@ -291,7 +291,6 @@ class CGYROoutput(SIMtools.GACODEoutput):
         variables = ['phi', 'apar', 'bpar', 'ne', 'ni_all', 'ni', 'Te', 'Ti', 'Ti_all']
         for var in variables:
             if var in self.__dict__:
-                print(var)
                 # Make sure I go to the real units for all of them *******************
                 self.__dict__[var] = self.__dict__[var] * self.artificial_rhos_factor
                 # ********************************************************************
@@ -726,3 +725,18 @@ def quends_analysis(t, S, debug = False):
         embed()
         
     return mean, std, stats
+
+def fetch_CGYROoutput(folder, remote):
+    '''This is a helper function to bring back only the python object from a remote CGYRO run
+    this is useful when nonlinear runs are too large to be transfered back. It is important to
+    make sure MITIM is the same version in the remote and local machine. for now I'm writing the commit hash to a file
+    and checking if they are the same and raising a warning if not.'''
+    
+    # execute pickle_cgyro remotely
+
+    # retrieve remote folder
+
+    # read pickle file
+
+    c=None
+    return c
