@@ -5,6 +5,7 @@ from xml.etree.ElementInclude import include
 import matplotlib.pyplot as plt
 from IPython import embed
 from mitim_tools.gacode_tools import CGYROtools
+import os
 
 """
 e.g.	read_cgyro.py folder
@@ -93,7 +94,11 @@ def main():
         if pkl:
             print("Pickling data...")
             print(c.results[labels[-1]]['output'])
-            with open(folder + "/data.pkl", "wb") as f:
+            folder_abs = os.path.abspath(folder)
+            simname = folder_abs.rstrip("/").split("/")[-1]
+            print(f"Pickling to {simname}.pkl", folder_abs.rstrip("/").split("/"))
+            
+            with open(f"{simname}_data.pkl", "wb") as f:
                 pickle.dump(c.results[labels[-1]]['output'], f)
             print("Pickling done.")
 
