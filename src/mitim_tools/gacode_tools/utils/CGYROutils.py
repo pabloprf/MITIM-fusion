@@ -746,7 +746,7 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
                 )
 
     # retrieve remote file
-    remote_files = [f"{folder_remote}/{folder_remote.rstrip("/").split("/")[-1]}_data.pkl" for folder_remote in folders_remote]
+    remote_files = [f"{folder_remote}/{folder_remote.split('/')[-1]}_data.pkl" for folder_remote in folders_remote]
     FARMINGtools.retrieve_files_from_remote(
                 folder_local,
                 machine,
