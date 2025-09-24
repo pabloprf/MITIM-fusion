@@ -96,9 +96,9 @@ def main():
             print(c.results[labels[-1]]['output'])
             folder_abs = os.path.abspath(folder)
             simname = folder_abs.rstrip("/").split("/")[-1]
-            print(f"Pickling to {simname}.pkl", folder_abs.rstrip("/").split("/"))
+            print(f"Pickling to {simname}.pkl")
             
-            with open(f"{simname}_data.pkl", "wb") as f:
+            with open(f"{folder}/{simname}_data.pkl", "wb") as f:
                 pickle.dump(c.results[labels[-1]]['output'], f)
             print("Pickling done.")
 
