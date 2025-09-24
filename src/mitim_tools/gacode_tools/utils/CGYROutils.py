@@ -727,7 +727,7 @@ def quends_analysis(t, S, debug = False):
         
     return mean, std, stats
 
-def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
+def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delete_local=False):
     '''This is a helper function to bring back only the python object from a remote CGYRO run
     this is useful when nonlinear runs are too large to be transfered back. It is important to
     make sure MITIM is the same version in the remote and local machine. for now I'm writing the commit hash to a file
@@ -736,7 +736,13 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
     import pickle
     # execute pickle_cgyro remotely
     folders_string = " ".join(folders_remote)
-    minimal_flag = "--minimal" if minimal else ""
+
+    if minimal:
+        minimal_flag = "--minimal"
+    else:
+        minimal_flag = ""
+
+    print("MINIMAL FLAG", minimal_flag)
     command = f"mitim_plot_cgyro --noplot --pickle {minimal_flag} {folders_string}"
     print(f"Executing remotely: {command}")
     FARMINGtools.perform_quick_remote_execution(
@@ -760,9 +766,15 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
             c[folder_remote] = pickle.load(f)
         print(f"Retrieved CGYRO output from {folder_remote}")
 
+    if delete_local:
+        import os
+        for i, folder_remote in enumerate(folders_remote):
+            os.remove(f"{folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl")
+            print(f"Deleted local pickle file {folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl")
 
     return c
 
 if __name__ == "__main__":
-    c = fetch_CGYROoutput(folder_local=".", folders_remote=["/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_+20%_alne_sugama", "/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_-20%_alne_sugama"], machine="cosmos", minimal=False)
+    c = fetch_CGYROoutput(folder_local=".", folders_remote=["/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_+20%_alne_sugama", "/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_-20%_alne_sugama"], machine="cosmos", minimal=True)
     c
+    embed()
