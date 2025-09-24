@@ -1566,15 +1566,16 @@ class mitim_state:
         self.profiles["nion"] = np.array([f"{int(self.profiles['nion'][0])+1}"])
 
         for ikey in ["name", "mass", "z", "type", "ni(10^19/m^3)", "ti(keV)", "vpol(m/s)", "vtor(m/s)"]:
-            if len(self.profiles[ikey].shape) > 1:
-                axis = 1
-                newly = self.profiles[ikey][:, position_to_moveFROM_in_profiles]
-            else:
-                axis = 0
-                newly = self.profiles[ikey][position_to_moveFROM_in_profiles]
-            self.profiles[ikey] = np.insert(
-                self.profiles[ikey], position_to_moveTO_in_profiles, newly, axis=axis
-            )
+            if ikey in self.profiles:
+                if len(self.profiles[ikey].shape) > 1:
+                    axis = 1
+                    newly = self.profiles[ikey][:, position_to_moveFROM_in_profiles]
+                else:
+                    axis = 0
+                    newly = self.profiles[ikey][position_to_moveFROM_in_profiles]
+                self.profiles[ikey] = np.insert(
+                    self.profiles[ikey], position_to_moveTO_in_profiles, newly, axis=axis
+                )
 
         self.readSpecies()
         self.derive_quantities(rederiveGeometry=False)
