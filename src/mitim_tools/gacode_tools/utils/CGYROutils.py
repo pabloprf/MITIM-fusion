@@ -736,7 +736,8 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
     import pickle
     # execute pickle_cgyro remotely
     folders_string = " ".join(folders_remote)
-    command = f"mitim_plot_cgyro --noplot --pickle {"--minimal" if minimal else ""} {folders_string}"
+    minimal_flag = "--minimal" if minimal else ""
+    command = f"mitim_plot_cgyro --noplot --pickle {minimal_flag} {folders_string}"
     print(f"Executing remotely: {command}")
     FARMINGtools.perform_quick_remote_execution(
                 folder_local,
