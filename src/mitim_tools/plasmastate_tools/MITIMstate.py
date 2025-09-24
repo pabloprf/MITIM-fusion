@@ -1320,9 +1320,10 @@ class mitim_state:
                 break
 
         if not fail:
-            var_changes = ["ni(10^19/m^3)", "ti(keV)"]
+            var_changes = ["ni(10^19/m^3)", "ti(keV)", "vpol(m/s)", "vtor(m/s)"]
             for i in var_changes:
-                self.profiles[i] = np.delete(self.profiles[i], ions_list, axis=1)
+                if i in self.profiles:
+                    self.profiles[i] = np.delete(self.profiles[i], ions_list, axis=1)
 
         if not fail:
             # Ensure we extract the scalar value from the array
@@ -1378,6 +1379,13 @@ class mitim_state:
 
         A = Z * 2 if force_mass is None else force_mass
         nZ = fZ1 / Z * self.profiles["ne(10^19/m^3)"]
+        mass_density = A * self.derived["fi"]
+
+        # Compute the mass weighted average velocity profiles
+        if "vpol(m/s)" in self.profiles:
+            vpol = np.sum((mass_density * self.profiles["vpol(m/s)"])[:,np.array(ions_list)-1],axis=1) / np.sum(mass_density[:,np.array(ions_list)-1],axis=1)
+        if "vtor(m/s)" in self.profiles:
+            vtor = np.sum((mass_density * self.profiles["vtor(m/s)"])[:,np.array(ions_list)-1],axis=1) / np.sum(mass_density[:,np.array(ions_list)-1],axis=1)
 
         print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f} (calculated as 2*Z)")
 
@@ -1395,6 +1403,14 @@ class mitim_state:
             np.transpose(np.atleast_2d(self.profiles["ti(keV)"][:, 0])),
             axis=1,
         )
+        if "vpol(m/s)" in self.profiles:
+            self.profiles["vpol(m/s)"] = np.append(
+                self.profiles["vpol(m/s)"], np.transpose(np.atleast_2d(vpol)), axis=1
+            )
+        if "vtor(m/s)" in self.profiles:
+            self.profiles["vtor(m/s)"] = np.append(
+                self.profiles["vtor(m/s)"], np.transpose(np.atleast_2d(vtor)), axis=1
+            )
 
         self.readSpecies()
         self.derive_quantities(rederiveGeometry=False)
@@ -1549,7 +1565,7 @@ class mitim_state:
 
         self.profiles["nion"] = np.array([f"{int(self.profiles['nion'][0])+1}"])
 
-        for ikey in ["name", "mass", "z", "type", "ni(10^19/m^3)", "ti(keV)"]:
+        for ikey in ["name", "mass", "z", "type", "ni(10^19/m^3)", "ti(keV)", "vpol(m/s)", "vtor(m/s)"]:
             if len(self.profiles[ikey].shape) > 1:
                 axis = 1
                 newly = self.profiles[ikey][:, position_to_moveFROM_in_profiles]
