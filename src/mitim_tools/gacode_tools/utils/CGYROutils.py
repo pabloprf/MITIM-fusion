@@ -162,6 +162,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
         else:
             print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
+
         try:
             self._process_fluxes()
         except ValueError as e:
@@ -726,17 +727,41 @@ def quends_analysis(t, S, debug = False):
         
     return mean, std, stats
 
-def fetch_CGYROoutput(folder, remote):
+def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True):
     '''This is a helper function to bring back only the python object from a remote CGYRO run
     this is useful when nonlinear runs are too large to be transfered back. It is important to
     make sure MITIM is the same version in the remote and local machine. for now I'm writing the commit hash to a file
     and checking if they are the same and raising a warning if not.'''
-    
+    from mitim_tools.misc_tools import FARMINGtools
+    import pickle
     # execute pickle_cgyro remotely
+    folders_string = " ".join(folders_remote)
+    command = f"mitim_plot_cgyro --noplot --pickle {"--minimal" if minimal else ""} {folders_string}"
+    print(f"Executing remotely: {command}")
+    FARMINGtools.perform_quick_remote_execution(
+                folder_local,
+                machine,
+                command
+                )
 
-    # retrieve remote folder
+    # retrieve remote file
+    remote_files = [f"{folder_remote}/{folder_remote.rstrip("/").split("/")[-1]}_data.pkl" for folder_remote in folders_remote]
+    FARMINGtools.retrieve_files_from_remote(
+                folder_local,
+                machine,
+                remote_files
+                )
+    
+    # read pickle file as cgyroOutput object
+    c={}
+    for i, folder_remote in enumerate(folders_remote):
+        with open(f"{folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl", "rb") as f:
+            c[folder_remote] = pickle.load(f)
+        print(f"Retrieved CGYRO output from {folder_remote}")
 
-    # read pickle file
 
-    c=None
     return c
+
+if __name__ == "__main__":
+    c = fetch_CGYROoutput(folder_local=".", folders_remote=["/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_+20%_alne_sugama", "/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_-20%_alne_sugama"], machine="cosmos", minimal=False)
+    c
