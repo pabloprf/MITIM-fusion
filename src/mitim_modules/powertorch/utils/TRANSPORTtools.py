@@ -362,7 +362,7 @@ class power_transport:
     # EVALUATE (custom part)
     # ----------------------------------------------------------------------------------------------------
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
-    def evaluate_turbulence(self):
+    def evaluate_turbulence(self, **kwargs):
         '''
         This needs to populate the following np.arrays in self., with dimensions of rho:
             - QeGB_turb
@@ -403,8 +403,10 @@ from mitim_modules.powertorch.physics_models.transport_gx import gx_model
 
 class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model):
 
-    def __init__(self, powerstate, **kwargs):
+    def __init__(self, powerstate, fidelity_level=0, **kwargs):
         super().__init__(powerstate, **kwargs)
+
+        self.fidelity_level = fidelity_level
 
         # Defaults
         self.turbulence_model = 'tglf'
@@ -414,16 +416,18 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
         self._produce_profiles()
         
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
-    def evaluate_turbulence(self):
+    def evaluate_turbulence(self, **kwargs):
         
-        if self.turbulence_model == 'tglf':
-            return tglf_model.evaluate_turbulence(self)
-        elif self.turbulence_model == 'cgyro':
-            return cgyro_model.evaluate_turbulence(self)
-        elif self.turbulence_model == 'gx':
-            return gx_model.evaluate_turbulence(self)
+        turbulence_model = self.turbulence_model[int(np.round(self.fidelity_level))] if isinstance(self.turbulence_model, list) else self.turbulence_model
+        
+        if turbulence_model.split('_')[0] == "tglf":
+            return tglf_model.evaluate_turbulence(self, label_options = turbulence_model)
+        elif turbulence_model.split('_')[0] == 'cgyro':
+            return cgyro_model.evaluate_turbulence(self, label_options = turbulence_model)
+        elif turbulence_model.split('_')[0] == 'gx':
+            return gx_model.evaluate_turbulence(self, label_options = turbulence_model)
         else:
-            raise Exception(f"Unknown turbulence model {self.turbulence_model}")
+            raise Exception(f"Unknown turbulence model {turbulence_model}")
 
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):

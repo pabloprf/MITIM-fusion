@@ -6,17 +6,17 @@ from IPython import embed
 
 class tglf_model:
 
-    def evaluate_turbulence(self):        
-        self._evaluate_tglf()
+    def evaluate_turbulence(self, label_options = 'tglf_fidelity1'):        
+        self._evaluate_tglf(label_options=label_options)
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
-    def _evaluate_tglf(self, pass_info = True):
+    def _evaluate_tglf(self, pass_info = True, label_options = 'tglf_fidelity1'):
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options = self.transport_evaluator_options["tglf"]
+        simulation_options = self.transport_evaluator_options[label_options]
         cold_start = self.cold_start
         
         Qi_includes_fast = simulation_options["Qi_includes_fast"]

@@ -6,12 +6,12 @@ from IPython import embed
 
 class gyrokinetic_model:
 
-    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
+    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None, label_options = 'cgyro'):
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options = self.transport_evaluator_options[code]
+        simulation_options = self.transport_evaluator_options[label_options]
         cold_start = self.cold_start
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
@@ -121,7 +121,7 @@ class gyrokinetic_model:
 
 class cgyro_model(gyrokinetic_model):
 
-    def evaluate_turbulence(self):
+    def evaluate_turbulence(self, label_options = 'cgyro'):
 
         if self.transport_evaluator_options["cgyro"].get("run_base_tglf", True):
             # Run base TGLF, to keep track of discrepancies! ---------------------------------------------
@@ -130,7 +130,7 @@ class cgyro_model(gyrokinetic_model):
             self._evaluate_tglf(pass_info = False)
             # --------------------------------------------------------------------------------------------
 
-        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO)
+        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO, label_options = label_options)
 
 
 def pre_checks(self):
