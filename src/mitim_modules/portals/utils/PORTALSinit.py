@@ -31,7 +31,8 @@ def initializeProblem(
     tensor_options = {
         "dtype": torch.double,
         "device": torch.device("cpu"),
-    }
+    },
+    add_fidelity_level_variable=False,
     ):
     """
     Notes:
@@ -229,6 +230,9 @@ def initializeProblem(
                 dictDVs[name] = [y1, base_gradient, y2]
             else:
                 dictDVs[name] = [fixed_gradients[name][0], base_gradient, fixed_gradients[name][1]]
+
+    if add_fidelity_level_variable:
+        dictDVs['fidelity_level'] = [torch.tensor(0), torch.tensor(0), torch.tensor(1)]  # Extra variable to change fidelity
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Define output dictionaries

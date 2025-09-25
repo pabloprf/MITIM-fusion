@@ -81,6 +81,11 @@ class portals(STRATEGYtools.opt_evaluator):
         define_ranges_from_profiles = self.portals_parameters["solution"]["exploration_ranges"]["define_ranges_from_profiles"]
         start_from_folder = self.portals_parameters["solution"]["exploration_ranges"]["start_from_folder"]
         reevaluate_targets = self.portals_parameters["solution"]["exploration_ranges"]["reevaluate_targets"]
+        
+        if not isinstance(self.portals_parameters['transport']['evaluator_instance_attributes']['turbulence_model'], str) and len(self.portals_parameters['transport']['evaluator_instance_attributes']['turbulence_model']) > 1:
+            add_fidelity_level_variable = True
+        else:
+            add_fidelity_level_variable = False
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Make sure that options that are required by good behavior of PORTALS
@@ -133,6 +138,7 @@ class portals(STRATEGYtools.opt_evaluator):
             tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
+            add_fidelity_level_variable=add_fidelity_level_variable
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -403,8 +409,13 @@ def runModelEvaluator(
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
     powerstate.transport_options["cold_start"] = cold_start
 
+    if "fidelity_level" not in dictDVs:
+        fidelity_level = 0
+    else:
+        fidelity_level = dictDVs['fidelity_level']['value']
+
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
-    powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)
+    powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS, fidelity_level=fidelity_level)
 
     # ---------------------------------------------------------------------------------------------------
     # Produce dictOFs
