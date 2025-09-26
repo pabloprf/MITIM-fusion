@@ -1,3 +1,4 @@
+from matplotlib import markers
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -65,11 +66,28 @@ def PRFfunctionals_Lmode(T_avol, n_avol, nu_n, rho=None, debug=False):
         print(f">> Gradient aLT outside of search range ({g1})", typeMsg="w")
 
     if debug:
-        fig, ax = plt.subplots()
+        fig, axs = plt.subplots(nrows=3, figsize=(6, 10))
+        ax = axs[0]
         ax.plot(gs, Tvol, "-s")
         ax.axhline(y=T_avol)
         ax.axvline(x=g1)
+        ax = axs[1]
+        ax.plot(x[0], T, "-s", markersize=1)
+        ax.set_xlabel(r"$\rho$")
+        ax.set_ylabel(r"$T$")
+        GRAPHICStools.addDenseAxis(ax)
+        ax = axs[2]
+        aLT_reconstructed = CALCtools.derivation_into_Lx(
+            torch.from_numpy(x[0]),
+            torch.from_numpy(T),
+        ).cpu().numpy()
+        ax.plot(x[0], aLT_reconstructed, "-s", markersize=1)
+        ax.set_xlabel(r"$\rho$")
+        ax.set_ylabel(r"$1/L_T$")
+        GRAPHICStools.addDenseAxis(ax)
+        plt.tight_layout()
         plt.show()
+        embed()
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~ Density
@@ -78,19 +96,6 @@ def PRFfunctionals_Lmode(T_avol, n_avol, nu_n, rho=None, debug=False):
     n_roa1 = n_avol / 3
 
     _, n = parabolic(Tbar=n_avol, nu=nu_n, rho=x[0], Tedge=n_roa1)
-
-    # g2_n 		= 1
-    # g1Range_n 	= [0.1,10]
-    # xtransition_n 		= 0.8
-
-    # gs,nvol = np.linspace(g1Range_n[0],g1Range_n[1],points_search), []
-
-    # n 		= FUNCTIONALScalc.doubleLinear_aLT(x,gs,g2_n,xtransition_n,n_roa1)
-    # nvol 	= FUNCTIONALScalc.calculate_simplified_volavg(x,n)
-    # g1 		= MATHtools.extrapolateCubicSpline(n_avol,nvol,gs)
-    # n 		= FUNCTIONALScalc.doubleLinear_aLT(np.atleast_2d(x[0]),g1,g2_n,xtransition_n,n_roa1)[0]
-
-    # if g1<g1Range_n[0] or g1>g1Range_n[1]: print(f'>> Gradient aLn outside of search range ({g1})',typeMsg='w')
 
     return x[0], T, n
 
