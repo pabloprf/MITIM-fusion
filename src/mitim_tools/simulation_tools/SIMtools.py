@@ -476,7 +476,8 @@ class mitim_simulation:
 
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
-                GACODEcommand += f'    {code_call(folder = '\"$folder\"', n = cores_per_code_call, p = self.simulation_job.folderExecution)} &\n'
+                folder_str = '"$folder"'  # literal double quotes around $folder
+                GACODEcommand += f'    {code_call(folder=folder_str, n=cores_per_code_call, p=self.simulation_job.folderExecution)} &\n'
                 GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
