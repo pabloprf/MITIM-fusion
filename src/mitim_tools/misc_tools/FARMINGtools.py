@@ -316,7 +316,7 @@ class mitim_job:
             # If not received, write output and error to files
             self._write_debugging_files(output, error)
 
-            cont = print("\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",typeMsg="q")
+            cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
             if not cont:
                 print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                 embed()
