@@ -358,7 +358,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f'_{len(self.portals_parameters['solution'][strKeys])}']
+            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
@@ -389,10 +389,10 @@ class portals_beat(beat):
 
         if 'predicted_roa' in portals_parameters['solution']:
             self.maestro_instance.parameters_trans_beat['predicted_roa'] = portals_parameters['solution']['predicted_roa']
-            print(f'\t\t* predicted_roa saved for future beats: {portals_parameters['solution']["predicted_roa"]}')
+            print(f'\t\t* predicted_roa saved for future beats: {portals_parameters["solution"]["predicted_roa"]}')
         elif 'predicted_rho' in portals_parameters['solution']:
             self.maestro_instance.parameters_trans_beat['predicted_rho'] = portals_parameters['solution']['predicted_rho']
-            print(f'\t\t* predicted_rho saved for future beats: {portals_parameters['solution']["predicted_rho"]}')
+            print(f'\t\t* predicted_rho saved for future beats: {portals_parameters["solution"]["predicted_rho"]}')
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
