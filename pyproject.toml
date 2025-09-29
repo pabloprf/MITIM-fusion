@@ -7,7 +7,7 @@ name = "MITIM"
 version = "4.0.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
-requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest BOTORCH, 3.13 has issues with tensorflow (nn) and omfit_classesv (omfit_new)
+requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest BOTORCH, 3.13 has issues with tensorflow (nn)
 license = {file = "LICENSE"}
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
@@ -42,7 +42,7 @@ dependencies = [
   "botorch",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   "psutil",
-  "onnx2pytorch",    # Stricly not for MITIM, but good to use ONNX models
+  #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
   "tensorflow", 
   "f90nml",
   "pyyaml"
@@ -74,7 +74,7 @@ test = [
 "Source" = "https://github.com/pabloprf/MITIM-fusion"
 
 [project.scripts]
-# mitim_tools interfaces: read, run, plot
+
 mitim_plot_gacode = "mitim_tools.gacode_tools.scripts.read_gacode:main"
 mitim_plot_tgyro = "mitim_tools.gacode_tools.scripts.read_tgyro:main"
 mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--suffix _0.55] [--gacode input.gacode]
@@ -82,34 +82,24 @@ mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
 mitim_plot_eped = "mitim_tools.eped_tools.scripts.plot_eped:main"
-
-mitim_run_tglf = "mitim_tools.gacode_tools.scripts.run_tglf:main"        # (folder input.tglf)  [--gacode input.gacode] [--scan RLTS_2] [--drives True]
-
-# Optimizations
+mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
 mitim_plot_opt = "mitim_tools.opt_tools.scripts.read:main"               # Not transferred: --type 4 --resolution 20
 mitim_plot_portals = "mitim_modules.portals.scripts.read_portals:main"
-mitim_slurm = "mitim_tools.opt_tools.scripts.slurm:main"
+
 mitim_run_portals = "mitim_modules.portals.scripts.run_portals:main"    # folder --input input.gacode --namelist namelist.portals.yaml --cold_start
+mitim_run_maestro = "mitim_modules.maestro.scripts.run_maestro:main" # add file argument
+mitim_run_tglf = "mitim_tools.gacode_tools.scripts.run_tglf:main"        # (folder input.tglf)  [--gacode input.gacode] [--scan RLTS_2] [--drives True]
+mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main" # To run TRANSP (in folder with required files): mitim_run_transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
+mitim_slurm = "mitim_tools.opt_tools.scripts.slurm:main"
+mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
+mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim_scp mfews15 --files /home/pablorf/file1 --folders /home/pablorf/folder1
+mitim_check_maestro = "mitim_modules.maestro.scripts.check_maestro:main"
 
 # TRANSP
 mitim_trcheck = "mitim_tools.transp_tools.scripts.run_check:main"	        # e.g. mitim_trcheck pablorf
 mitim_trcheck_p = "mitim_tools.transp_tools.scripts.run_check_periodic:main"	# e.g. mitim_trcheck_p pablorf
 mitim_trclean = "mitim_tools.transp_tools.scripts.run_clean:main" 		# e.g. mitim_trclean 88664P CMOD --numbers 1,2,3
 mitim_trlook = "mitim_tools.transp_tools.scripts.run_look:main"                 # e.g. mitim_trlook 152895P01 CMOD --nofull --plot --remove
-
-# MAESTRO
-mitim_plot_maestro = "mitim_modules.maestro.scripts.plot_maestro:main" # --beats 2 (for the last two beats) --only transp
-mitim_run_maestro = "mitim_modules.maestro.scripts.run_maestro:main" # add file argument
-
-# To run TRANSP (in folder with required files): mitim_run_transp 88664 P01 CMOD --version tshare --trmpi 32 --toricmpi 32 --ptrmpi 32
-mitim_run_transp = "mitim_tools.transp_tools.scripts.run_transp:main"
-
-# Others
-mitim_compare_nml = "mitim_tools.misc_tools.scripts.compare_namelist:main"
-mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim_scp mfews15 --files /home/pablorf/file1 --folders /home/pablorf/folder1
-#eff_job="mitim_tools.misc_tools.PARALLELtools.py $1" # Give mitim.out or slurm_output.dat
-mitim_check_maestro = "mitim_modules.maestro.scripts.check_maestro:main"
-
 
 [tool.pytest.ini_options]
 markers = [

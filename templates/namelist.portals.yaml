@@ -53,6 +53,7 @@ solution:
     ymin: 1.0
     yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2], even if not achieved via ymin/ymax
 
+    # DEPCRECATED
     fixed_gradients: null
 
     # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
