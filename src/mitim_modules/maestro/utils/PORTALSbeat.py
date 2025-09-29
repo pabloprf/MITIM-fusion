@@ -339,7 +339,7 @@ class portals_beat(beat):
                 # set the last value of the radial locations to the interpolated value
                 rhotop_old = copy.deepcopy(self.portals_parameters['solution']['predicted_rho'][-1])
                 self.portals_parameters['solution']['predicted_rho'][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
-                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.portals_parameters["solution"]['predicted_rho'][-1]}')
+                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.portals_parameters["solution"]["predicted_rho"][-1]}')
 
                 strKeys = 'predicted_rho'
 
