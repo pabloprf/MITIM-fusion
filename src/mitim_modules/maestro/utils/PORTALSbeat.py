@@ -328,7 +328,7 @@ class portals_beat(beat):
                 roatop_old = copy.deepcopy(self.portals_parameters['solution']["predicted_roa"][-1])
                 self.portals_parameters['solution']["predicted_roa"][-1] = roatop
                 print(f'\t\t\t* Last radial location moved from r/a = {roatop_old} to {self.portals_parameters["solution"]["predicted_roa"][-1]}')
-                print(f'\t\t\t* predicted_roa: {self.portals_parameters['solution']["predicted_roa"]}')
+                print(f'\t\t\t* predicted_roa: {self.portals_parameters["solution"]["predicted_roa"]}')
 
                 strKeys = 'predicted_roa'
 
@@ -339,7 +339,7 @@ class portals_beat(beat):
                 # set the last value of the radial locations to the interpolated value
                 rhotop_old = copy.deepcopy(self.portals_parameters['solution']['predicted_rho'][-1])
                 self.portals_parameters['solution']['predicted_rho'][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
-                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.portals_parameters['solution']['predicted_rho'][-1]}')
+                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.portals_parameters["solution"]['predicted_rho'][-1]}')
 
                 strKeys = 'predicted_rho'
 
@@ -348,7 +348,7 @@ class portals_beat(beat):
             # Check if I changed it previously and it hasn't moved
             if strKeys in self.maestro_instance.parameters_trans_beat:
                 print(f'\t\t\t* {strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
-                print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.portals_parameters['solution'][strKeys]}')
+                print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.portals_parameters["solution"][strKeys]}')
 
                 if abs(self.portals_parameters['solution'][strKeys][-1]-self.maestro_instance.parameters_trans_beat[strKeys][-1]) / self.maestro_instance.parameters_trans_beat[strKeys][-1] < minimum_relative_change_in_x:
                     print('\t\t\t* Last radial location was not moved')
