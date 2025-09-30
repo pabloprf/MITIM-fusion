@@ -298,6 +298,11 @@ class surrogate_model:
         self.surrogate_transformation_variables = None
         if ("surrogate_transformation_variables_alltimes" in self.surrogate_parameters) and (self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None):
 
+            # Make sure that I can read both int or str as keys to surrogate_transformation_variables_alltimes
+            # Change the dictionary keys to be always integers
+            if not isinstance(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[0], int):
+                self.surrogate_parameters["surrogate_transformation_variables_alltimes"] = {int(k): v for k, v in self.surrogate_parameters["surrogate_transformation_variables_alltimes"].items()}
+
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
                     np.where(self.num_training_points < np.array(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())))[0][0]]
 

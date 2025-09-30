@@ -28,7 +28,7 @@ def main():
     portals_fun = PORTALSmain.portals(folderWork, portals_namelist=portals_namelist)
     portals_fun.prep(inputgacode)
 
-    mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestions=False)
+    mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start)
     mitim_bo.run()
 
 if __name__ == "__main__":
