@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from functools import partial
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -7,6 +8,15 @@ from mitim_modules.maestro.utils import TRANSPbeat, PORTALSbeat
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools import PLASMAtools
 from IPython import embed
+
+def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
+    p = PROFILEStools.gacode_state(file_profs)
+    if lumpImpurities:
+        p.lumpImpurities()
+    if enforce_same_density_gradients:
+        p.enforce_same_density_gradients()
+    p.write_state(file=file_profs)
+    return p
 
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
@@ -140,15 +150,7 @@ def parse_maestro_nml(file_path):
                 enforce_same_density_gradients = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["enforce_same_density_gradients"]
 
                 # add postprocessing function
-                def profiles_postprocessing_fun(file_profs):
-                    p = PROFILEStools.gacode_state(file_profs)
-                    if lumpImpurities:
-                        p.lumpImpurities()
-                    if enforce_same_density_gradients:
-                        p.enforce_same_density_gradients()
-                    p.write_state(file=file_profs)
-                    return p
-                beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
+                beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
 
         elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
                 print('Using the eped_beat namelist for the eped_initializer')
