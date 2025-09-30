@@ -30,7 +30,7 @@ parser.add_argument("--ion", type=int, required=False, default=2)
 
 args = parser.parse_args()
 folder = IOtools.expandPath(args.folder)
-ev = args.ev
+ev = int(args.ev)
 params = args.params
 pos = args.pos
 wf = args.wf
