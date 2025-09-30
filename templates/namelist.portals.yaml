@@ -28,12 +28,15 @@
 
 solution:
 
-  # Specification of radial locations (roa wins over rho, if provided)
+  # Specification of radial locations (if both provided, predicted_roa is used instead of predicted_rho)
   predicted_roa: null
   predicted_rho: [0.35, 0.55, 0.75, 0.875, 0.9]
 
   # Channels to be predicted (Options: ["te", "ti", "ne", "nZ", "w0"])
   predicted_channels: ["te", "ti", "ne"]
+
+  # Run turbulent exchange as surrogate
+  turbulent_exchange_as_surrogate: false
 
   # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"
   trace_impurity: null
@@ -51,10 +54,7 @@ solution:
     #           ...
     ymax: 1.0
     ymin: 1.0
-    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2], even if not achieved via ymin/ymax
-
-    # DEPCRECATED
-    fixed_gradients: null
+    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
 
     # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
     enforce_finite_aLT: null
@@ -67,16 +67,16 @@ solution:
 
     reevaluate_targets: 0
 
-  # If False, remove full model folder after evaluation, to avoid large folders (e.g. in MAESTRO runs)
+    # DEPCRECATED, #TOREMOVE
+    fixed_gradients: null
+
+  # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
   keep_full_model_folder: true
 
-  # Run turbulent exchange as surrogate
-  turbulent_exchange_as_surrogate: false
-
-  # If True, fit model to GZ/nZ, valid on the trace limit
+  # If True, fit surrogate model to GZ/nZ instead of GZ, valid on the trace limit
   impurity_trick: true
 
-  # If not None, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+  # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
   fZ0_as_weight: null
   fImp_orig: 1.0
 
@@ -107,7 +107,11 @@ transport:
 
   # Select transport models (when instantiating the evaluator, assign these parameters)
   evaluator_instance_attributes:
+
+    # Turbulent transport model
     turbulence_model: "tglf"
+
+    # Neoclassical transport model
     neoclassical_model: "neo"
 
   # Simulation kwargs to be passed directly to run and read commands (defaults here)

@@ -431,12 +431,14 @@ class PORTALSanalyzer:
             evaluation = self.ibest
         elif evaluation < 0:
             evaluation = self.ilast
+        else:
+            evaluation = int(evaluation)
 
         powerstate = self.mitim_runs[evaluation]["powerstate"]
 
         try:
-            p0 =  powerstate.profiles if not modified_profiles else powerstate.model_results.profiles
-        except TypeError:
+            p0 =  powerstate.profiles if not modified_profiles else powerstate.profiles_transport
+        except (TypeError, AttributeError):
             raise Exception(f"[MITIM] Could not extract profiles from evaluation {evaluation}, are you sure you have the right index?")
 
         p = copy.deepcopy(p0)
@@ -592,10 +594,11 @@ class PORTALSanalyzer:
         p.write_state(file=inputgacode)
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        _ = tglf.prep_using_tgyro(folder, cold_start=cold_start, inputgacode=inputgacode)
+        
+        _ = tglf.prep(p,folder,cold_start = cold_start)
 
-        code_settings = self.portals_parameters["transport"]["options"]["code_settings"]
-        extraOptions = self.portals_parameters["transport"]["options"]["extraOptionsTGLF"]
+        code_settings = self.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"]
+        extraOptions = self.portals_parameters["transport"]["options"]["tglf"]["run"]["extraOptions"]
 
         return tglf, code_settings, extraOptions
 
