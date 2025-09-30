@@ -138,31 +138,46 @@ def compareDictionaries(d1, d2, precision_of=None, close_enough=1e-7):
     return different
 
 
-def printTable(diff, printing_percent = 1e-5, warning_percent=1e-1):
+def printTable(diff, warning_percent=1e-1):
 
+    # Compute percent differences first so we can sort by them
+    percs = {}
     for key in diff:
-        if diff[key][0] is not None:
-            if diff[key][1] is not None:
-                if diff[key][0] != 0.0:
-                    try:
-                        perc = 100 * np.abs(
-                            (diff[key][0] - diff[key][1]) / diff[key][0]
-                        )
-                    except:
-                        perc = np.nan
-                else:
-                    perc = np.nan
-                print(
-                    f"{key:>15}{str(diff[key][0]):>25}{str(diff[key][1]):>25}  (~{perc:.0e}%)",
-                    typeMsg="i" if perc > warning_percent else "",
-                )
-            else:
-                print(f"{key:>15}{str(diff[key][0]):>25}{'':>25}  (100%)", typeMsg="i")
+        v0, v1 = diff[key]
+        if v0 is None or v1 is None:
+            # Treat missing values as 100% difference for sorting
+            percs[key] = 100.0
         else:
-            print(f"{key:>15}{'':>25}{str(diff[key][1]):>25}  (100%)", typeMsg="i")
-        print(
-            "--------------------------------------------------------------------------------"
-        )
+            if v0 != 0.0:
+                try:
+                    percs[key] = 100 * np.abs((v0 - v1) / v0)
+                except Exception:
+                    percs[key] = np.nan
+            else:
+                percs[key] = np.nan
+
+    # Sort keys by descending percent; NaNs go last
+    def sort_key(k):
+        p = percs[k]
+        return (1, 0) if (p is None or (isinstance(p, float) and np.isnan(p))) else (0, -p)
+
+    for key in sorted(diff.keys(), key=sort_key):
+        v0, v1 = diff[key]
+        if v0 is not None:
+            if v1 is not None:
+                perc = percs[key]
+                if perc<1e-2:
+                    perc_str = f"{perc:.2e}"
+                elif perc<1.0:
+                    perc_str = f"{perc:.3f}"
+                else:
+                    perc_str = f"{perc:.1f}"
+                print(f"{key:>15}{str(v0):>25}{str(v1):>25}  ({perc_str} %)",typeMsg="i" if perc > warning_percent else "",)
+            else:
+                print(f"{key:>15}{str(v0):>25}{'':>25}  (100%)", typeMsg="i")
+        else:
+            print(f"{key:>15}{'':>25}{str(v1):>25}  (100%)", typeMsg="i")
+        print("--------------------------------------------------------------------------------")
 
 
 def main():
