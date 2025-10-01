@@ -133,6 +133,9 @@ transport:
       # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
       use_scan_trick_for_stds: 0.02
 
+      # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
+      reuse_scan_ball: false
+
       # Files to keep from simulation (minimal: only retrieve minimal files always, none: always minimal files, base: retrieve all files)
       keep_files: "base" 
 

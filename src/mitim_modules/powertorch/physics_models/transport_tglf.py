@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGLFtools
@@ -21,6 +22,7 @@ class tglf_model:
         
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
         use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
+        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
         percent_error = simulation_options["percent_error"]
@@ -115,6 +117,7 @@ class tglf_model:
                 cores_per_tglf_instance=cores_per_tglf_instance,
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ['minimal', 'base'],
+                reuse_scan_ball_file=reuse_scan_ball_file,
                 **simulation_options["run"]
                 )
 
@@ -186,6 +189,7 @@ def _run_tglf_uncertainty_model(
     cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
     Qi_includes_fast=False,
     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
+    reuse_scan_ball_file=None,      # If not None, it will reuse previous evaluations within the delta ball (to capture combinations)
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -256,7 +260,6 @@ def _run_tglf_uncertainty_model(
 
     Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
-    Qifast = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     GZ = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     Mt = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
@@ -266,18 +269,18 @@ def _run_tglf_uncertainty_model(
     for vari in variables_to_scan:
         jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
 
+        # Outputs
         Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe_gb']
-        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi_gb']
-        Qifast[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qifast_gb']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi_gb'] + (0 if not Qi_includes_fast else tglf.scans[f'{name}_{vari}']['Qifast_gb'])
         Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge_gb']
         GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi_gb']
         Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt_gb']
         S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S_gb']
-        cont += jump
         
+        cont += jump
+
     if Qi_includes_fast:
         print(f"\t- Qi includes fast ions, adding their contribution")
-        Qi += Qifast
 
     # Add the base that was calculated earlier
     if Flux_base is not None:
@@ -288,13 +291,16 @@ def _run_tglf_uncertainty_model(
         Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
         S = np.append(np.atleast_2d(Flux_base[5]).T, S, axis=1)
 
+    if reuse_scan_ball_file is not None:
+        Qe, Qi, Ge, GZ, Mt, S = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
+
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
     def calculate_mean_std(Q):
         # Assumes Q is [radii, points], with [radii, 0] being the baseline
 
-        Qm = np.mean(Q, axis=1)
-        Qstd = np.std(Q, axis=1)
+        Qm = np.nanmean(Q, axis=1)
+        Qstd = np.nanstd(Q, axis=1)
 
         # Qm = Q[:,0]
         # Qstd = np.std(Q, axis=1)
@@ -316,3 +322,128 @@ def _run_tglf_uncertainty_model(
     Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
 
     return Flux_mean, Flux_std
+
+
+def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=0.02):
+    '''
+    Workflow to reuse previous TGLF evaluations within a delta ball to capture combinations
+    around the current base case.
+    '''
+    
+    # Grab all inputs and outputs of the current run 
+    input_params_keys = variables_to_scan
+    output_params_keys = ['Qe', 'Qi', 'Ge', 'Gi', 'Mt', 'S']
+    input_params = np.zeros((len(rho_locations), len(input_params_keys), len(tglf.results)))
+    output_params = np.zeros((len(rho_locations), len(output_params_keys), len(tglf.results)))
+    input_params_base = np.zeros((len(rho_locations), len(input_params_keys)))
+    for i, key in enumerate(tglf.results.keys()):
+        for irho in range(len(rho_locations)):
+            
+            # Grab all inputs
+            for ikey in range(len(input_params_keys)):
+                input_params[irho, ikey, i] = tglf.results[key]['parsed'][irho][input_params_keys[ikey]]
+                if key == 'base':
+                    input_params_base[irho, ikey] = tglf.results[key]['parsed'][irho][input_params_keys[ikey]]
+              
+            # Grab all outputs
+            output_params[irho, 0, i] = tglf.results[key]['output'][irho].Qe
+            output_params[irho, 1, i] = tglf.results[key]['output'][irho].Qi + (0 if not Qi_includes_fast else tglf.results[key]['output'][irho].Qifast)
+            output_params[irho, 2, i] = tglf.results[key]['output'][irho].Ge
+            output_params[irho, 3, i] = tglf.results[key]['output'][irho].GiAll[impurityPosition]
+            output_params[irho, 4, i] = tglf.results[key]['output'][irho].Mt
+            output_params[irho, 5, i] = tglf.results[key]['output'][irho].Se
+    
+    # --------------------------------------------------------------------------------------------------------
+    # Read previous ball and append
+    # --------------------------------------------------------------------------------------------------------
+
+    if Path(file).exists():
+        
+        print(f"\t- Reusing previous TGLF scan evaluations within the delta ball to capture combinations", typeMsg="i")
+        
+        # Grab ball
+        with np.load(file) as data:
+            rho_ball = data['rho']
+            input_ball = data['input_params']
+            output_ball = data['output_params']
+            
+        precision_check = 1E-5 # I needed to add a small number to avoid numerical issues because TGLF input files have limited precision
+            
+        # Get the indeces of the points within the delta ball (condition in which all inputs are within the delta of the base case for that specific radius)
+        indices_to_grab = {}
+        for irho in range(len(rho_locations)):
+            indices_to_grab[irho] = []
+            inputs_base = input_params_base[irho, :]
+            for icase in range(input_ball.shape[-1]):
+                inputs_case = input_ball[irho, :, icase]
+                
+                # Check if all inputs are within the delta ball (but not exactly equal, in case the ball has been run at the wrong time)
+                is_this_within_ball = True
+                for ikey in range(len(input_params_keys)):
+                    val_current = inputs_base[ikey]
+                    val_ball = inputs_case[ikey]
+                    
+                    # I need to have all inputs within the delta ball
+                    is_this_within_ball = is_this_within_ball and ( abs(val_current-val_ball) <= abs(val_current*delta_ball) + precision_check )
+                    
+                if is_this_within_ball:
+                    indices_to_grab[irho].append(icase)
+
+            print(f"\t\t- Out of {input_ball.shape[-1]} points in file, found {len(indices_to_grab[irho])} at location {irho} within the delta ball ({delta_ball*100}%)", typeMsg="i")
+        
+        # Make an output_ball_select array equivalent to output_ball but only with the points within the delta ball (rest make them NaN)
+        output_ball_select = np.full_like(output_ball, np.nan)
+        for irho in range(len(rho_locations)):
+            for icase in indices_to_grab[irho]:
+                output_ball_select[irho, :, icase] = output_ball[irho, :, icase]
+        
+        # Append those points to the current run
+        Qe = np.append(Qe, output_ball_select[:, 0, :], axis=1)
+        Qi = np.append(Qi, output_ball_select[:, 1, :], axis=1)
+        Ge = np.append(Ge, output_ball_select[:, 2, :], axis=1)
+        GZ = np.append(GZ, output_ball_select[:, 3, :], axis=1)
+        Mt = np.append(Mt, output_ball_select[:, 4, :], axis=1)
+        S = np.append(S, output_ball_select[:, 5, :], axis=1)
+        
+        # Remove repeat points (for example when transitioning from simple relaxation initialization to full optimization)
+        def remove_duplicate_cases(*arrays):
+            """Remove duplicate cases (columns) from arrays of shape (rho_size, cases_size)"""
+            if len(arrays) == 0:
+                return arrays
+            
+            # Stack all arrays to create a combined signature for each case
+            combined = np.vstack(arrays)  # Shape: (total_channels, cases_size)
+            
+            # Find unique cases, handling NaN values properly
+            # Use pandas for robust duplicate detection with NaN support
+            import pandas as pd
+            df = pd.DataFrame(combined.T)  # Transpose so each row is a case
+            unique_indices = df.drop_duplicates().index.values
+            
+            print(f"\t\t- Removed {combined.shape[1] - len(unique_indices)} duplicate cases, keeping {len(unique_indices)} unique cases", typeMsg="i")
+            
+            # Return arrays with only unique cases
+            return tuple(arr[:, unique_indices] for arr in arrays)
+        
+        Qe, Qi, Ge, GZ, Mt, S = remove_duplicate_cases(Qe, Qi, Ge, GZ, Mt, S)
+        
+
+    else:
+        rho_ball = np.array([])
+        input_ball = np.array([])
+        output_ball = np.array([])
+
+    # --------------------------------------------------------------------------------------------------------
+    # Save new ball
+    # --------------------------------------------------------------------------------------------------------
+    
+    # Append to the values read from previous ball
+    if rho_ball.shape[0] != 0:
+        input_params = np.append(input_ball, input_params, axis=2)
+        output_params = np.append(output_ball, output_params, axis=2)
+
+    # Save the new ball
+    np.savez(file, rho=rho_locations, input_params=input_params, output_params=output_params)
+    print(f"\t- Saved updated ball with {input_params.shape[-1]} points to {IOtools.clipstr(file)}", typeMsg="i")
+    
+    return Qe, Qi, Ge, GZ, Mt, S
