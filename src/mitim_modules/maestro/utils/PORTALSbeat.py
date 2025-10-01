@@ -91,7 +91,8 @@ class portals_beat(beat):
 
         # Update the namelist with the parameters in the MAESTRO namelist (variable: portals_parameters)
         portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
-        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.portals_parameters['optimization_options'])
+        if 'optimization_options' in self.portals_parameters:
+            portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.portals_parameters['optimization_options'])
         
         # MAESTRO beat may receive optimization options changes from previous beats, so allow that too
         portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
