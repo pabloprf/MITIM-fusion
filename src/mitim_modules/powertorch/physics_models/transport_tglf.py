@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import pandas as pd
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -324,7 +325,7 @@ def _run_tglf_uncertainty_model(
     return Flux_mean, Flux_std
 
 
-def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=0.02):
+def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):
     '''
     Workflow to reuse previous TGLF evaluations within a delta ball to capture combinations
     around the current base case.
@@ -332,20 +333,26 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPositio
     
     # Grab all inputs and outputs of the current run 
     input_params_keys = variables_to_scan
-    output_params_keys = ['Qe', 'Qi', 'Ge', 'Gi', 'Mt', 'S']
     input_params = np.zeros((len(rho_locations), len(input_params_keys), len(tglf.results)))
-    output_params = np.zeros((len(rho_locations), len(output_params_keys), len(tglf.results)))
+    
     input_params_base = np.zeros((len(rho_locations), len(input_params_keys)))
+    
+    output_params_keys = ['Qe', 'Qi', 'Ge', 'Gi', 'Mt', 'S']
+    output_params = np.zeros((len(rho_locations), len(output_params_keys), len(tglf.results)))
+    
     for i, key in enumerate(tglf.results.keys()):
         for irho in range(len(rho_locations)):
             
-            # Grab all inputs
+            # Grab all inputs in array with shape (Nr, Ninputs, Ncases)
             for ikey in range(len(input_params_keys)):
                 input_params[irho, ikey, i] = tglf.results[key]['parsed'][irho][input_params_keys[ikey]]
-                if key == 'base':
+            
+            # Grab base inputs in array with shape (Nr, Ninputs)
+            if key == 'base':
+                for ikey in range(len(input_params_keys)):
                     input_params_base[irho, ikey] = tglf.results[key]['parsed'][irho][input_params_keys[ikey]]
               
-            # Grab all outputs
+            # Grab all outputs in array with shape (Nr, Noutputs, Ncases)
             output_params[irho, 0, i] = tglf.results[key]['output'][irho].Qe
             output_params[irho, 1, i] = tglf.results[key]['output'][irho].Qi + (0 if not Qi_includes_fast else tglf.results[key]['output'][irho].Qifast)
             output_params[irho, 2, i] = tglf.results[key]['output'][irho].Ge
@@ -359,9 +366,9 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPositio
 
     if Path(file).exists():
         
-        print(f"\t- Reusing previous TGLF scan evaluations within the delta ball to capture combinations", typeMsg="i")
+        print(f"\t- Reusing previous TGLF scan evaluations within the delta ball to capture combinations")
         
-        # Grab ball
+        # Grab ball contents
         with np.load(file) as data:
             rho_ball = data['rho']
             input_ball = data['input_params']
@@ -389,49 +396,64 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPositio
                 if is_this_within_ball:
                     indices_to_grab[irho].append(icase)
 
-            print(f"\t\t- Out of {input_ball.shape[-1]} points in file, found {len(indices_to_grab[irho])} at location {irho} within the delta ball ({delta_ball*100}%)", typeMsg="i")
+            print(f"\t\t- Out of {input_ball.shape[-1]} points in file, found {len(indices_to_grab[irho])} at location {irho} within the delta ball ({delta_ball*100}%)", typeMsg="i" if len(indices_to_grab[irho]) > 0 else "")
         
         # Make an output_ball_select array equivalent to output_ball but only with the points within the delta ball (rest make them NaN)
         output_ball_select = np.full_like(output_ball, np.nan)
         for irho in range(len(rho_locations)):
             for icase in indices_to_grab[irho]:
                 output_ball_select[irho, :, icase] = output_ball[irho, :, icase]
-        
-        # Append those points to the current run
-        Qe = np.append(Qe, output_ball_select[:, 0, :], axis=1)
-        Qi = np.append(Qi, output_ball_select[:, 1, :], axis=1)
-        Ge = np.append(Ge, output_ball_select[:, 2, :], axis=1)
-        GZ = np.append(GZ, output_ball_select[:, 3, :], axis=1)
-        Mt = np.append(Mt, output_ball_select[:, 4, :], axis=1)
-        S = np.append(S, output_ball_select[:, 5, :], axis=1)
+
+        # Append those points to the current run (these will always have shape (Nr, Ncases+original) but those cases that were not in the ball will be NaN)
+        # The reason to do it this way is that I want to keep it as a uniform shape to be able to calculate stds later, and I would risk otherwise having different shapes per radius
+        Qe = np.append(Qe_orig, output_ball_select[:, 0, :], axis=1)
+        Qi = np.append(Qi_orig, output_ball_select[:, 1, :], axis=1)
+        Ge = np.append(Ge_orig, output_ball_select[:, 2, :], axis=1)
+        GZ = np.append(GZ_orig, output_ball_select[:, 3, :], axis=1)
+        Mt = np.append(Mt_orig, output_ball_select[:, 4, :], axis=1)
+        S = np.append(S_orig, output_ball_select[:, 5, :], axis=1)
+        print(f"\t\t>>> Flux arrays have shape {Qe.shape} after appending ball points (NaNs are added to those locations and cases that did not fall within delta ball)")
         
         # Remove repeat points (for example when transitioning from simple relaxation initialization to full optimization)
         def remove_duplicate_cases(*arrays):
-            """Remove duplicate cases (columns) from arrays of shape (rho_size, cases_size)"""
-            if len(arrays) == 0:
-                return arrays
+            """Remove duplicate cases (columns) from arrays of shape (rho_size, cases_size)
             
+            Returns:
+                tuple: (unique_arrays, duplicate_arrays) where each is a tuple of arrays
+            """
+
             # Stack all arrays to create a combined signature for each case
             combined = np.vstack(arrays)  # Shape: (total_channels, cases_size)
-            
-            # Find unique cases, handling NaN values properly
-            # Use pandas for robust duplicate detection with NaN support
-            import pandas as pd
+
+            # Find unique cases, handling NaN values properly (Use pandas for robust duplicate detection with NaN support)
             df = pd.DataFrame(combined.T)  # Transpose so each row is a case
             unique_indices = df.drop_duplicates().index.values
+            nan_indices = np.where(np.all(np.isnan(combined), axis=0))[0]
+            unique_notnan_indeces = [idx for idx in unique_indices if idx not in nan_indices]            
+            all_indices = np.arange(combined.shape[1])
+            duplicate_indices = np.setdiff1d(all_indices, unique_notnan_indeces)
             
-            print(f"\t\t- Removed {combined.shape[1] - len(unique_indices)} duplicate cases, keeping {len(unique_indices)} unique cases", typeMsg="i")
+            print(f"\t\t* Removed {len(duplicate_indices)} duplicate / all-nan cases, keeping {len(unique_notnan_indeces)} unique cases", typeMsg="i")
             
-            # Return arrays with only unique cases
-            return tuple(arr[:, unique_indices] for arr in arrays)
+            # Return arrays with unique cases and duplicate cases
+            unique_arrays = tuple(arr[:, unique_notnan_indeces] for arr in arrays)
+            duplicate_arrays = tuple(arr[:, duplicate_indices] for arr in arrays)
+            
+            return unique_arrays, duplicate_arrays
         
-        Qe, Qi, Ge, GZ, Mt, S = remove_duplicate_cases(Qe, Qi, Ge, GZ, Mt, S)
+        unique_results, duplicate_results = remove_duplicate_cases(Qe, Qi, Ge, GZ, Mt, S)
         
-
+        Qe, Qi, Ge, GZ, Mt, S = unique_results
+        
+        print(f"\t\t>>> Flux arrays have shape {Qe.shape} after finding unique points")
+        
     else:
+        
         rho_ball = np.array([])
         input_ball = np.array([])
         output_ball = np.array([])
+        
+        Qe, Qi, Ge, GZ, Mt, S = Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig
 
     # --------------------------------------------------------------------------------------------------------
     # Save new ball
