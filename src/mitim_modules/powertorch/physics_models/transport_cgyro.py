@@ -98,7 +98,8 @@ class gyrokinetic_model:
                 if file_path.exists():
                     all_good = post_checks(self)
 
-        self._stable_correction(simulation_options)
+        if 'Qi_stable_criterion' in simulation_options:
+            self._stable_correction(simulation_options)
 
     def _stable_correction(self, simulation_options):
 
