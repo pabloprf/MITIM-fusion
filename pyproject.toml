@@ -48,6 +48,7 @@ dependencies = [
   "pyyaml"
   # "vmecpp",
   # "quends @ git+https://github.com/sandialabs/quends.git"
+  "megpy",
 ]
 
 [project.optional-dependencies]
