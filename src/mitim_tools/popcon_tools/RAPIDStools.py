@@ -229,6 +229,13 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     if vertical_at_nominal:
         axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
         axs[1,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+        
+        fG_nominal = results1['fG'][np.argmin(np.abs(results1['x']- (nominal_parameters[xparam] if not relative else nominal_parameters[xparam])))]
+        axs[0,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+        axs[1,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+
+
+
 
     axs[0,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
     axs[1,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
