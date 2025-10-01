@@ -238,4 +238,16 @@ def write_json_CGYRO(roa, fluxes_mean, fluxes_stds, additional_info = None, file
             'additional_info': additional_info_extended
         }
 
-        json.dump(json_dict, f, indent=4)
+        def convert_numpy(obj):
+            if isinstance(obj, dict):
+                return {k: convert_numpy(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy(v) for v in obj]
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, (np.generic,)):
+                return obj.item()
+            else:
+                return obj
+            
+        json.dump(convert_numpy(json_dict), f, indent=4)
