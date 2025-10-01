@@ -20,7 +20,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         def code_call(folder, n, p, additional_command="", **kwargs):
             return f"gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log"
 
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, raise_warning=True,array_list=None):
 
             slurm_settings = {
                 "name": name,
@@ -31,8 +31,11 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             machineSettings = CONFIGread.machineSettings(code='gx')
             
             if machineSettings['gpus_per_node'] == 0:
-                raise Exception("[MITIM] GX needs GPUs to run, but the selected machine does not have any GPU configured. Please select another machine in the config file with gpus_per_node>0.")
-            
+                if raise_warning:
+                    raise Exception("[MITIM] GX needs GPUs to run, but the selected machine does not have any GPU configured. Please select another machine in the config file with gpus_per_node>0.")
+                else:
+                    print("[MITIM] Warning: GX needs GPUs to run, but the selected machine does not have any GPU configured. Running without GPUs, but this will likely fail.", typeMsg="w")
+
             if type_of_submission == "slurm_standard":
                 
                 slurm_settings['ntasks'] = total_cores_required

@@ -22,7 +22,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
             return f"cgyro -e {folder} -n {n} -nomp {nomp} -p {p} {additional_command}"
 
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
 
             slurm_settings = {
                 "name": name,

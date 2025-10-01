@@ -18,7 +18,7 @@ class NEO(SIMtools.mitim_simulation):
         def code_call(folder, n, p, additional_command="", **kwargs):
             return f"neo -e {folder} -n {n} -p {p} {additional_command}"
 
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None):
+        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
 
             slurm_settings = {
                 "name": name,

@@ -527,7 +527,8 @@ class mitim_simulation:
                 total_cores_required=total_cores_required,
                 cores_per_code_call=cores_per_code_call,
                 type_of_submission=type_of_submission,
-                array_list=array_list if type_of_submission == "slurm_array" else None
+                array_list=array_list if type_of_submission == "slurm_array" else None,
+                raise_warning= run_type == 'normal'
             )
 
             self.simulation_job.define_machine(
