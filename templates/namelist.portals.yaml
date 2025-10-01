@@ -196,7 +196,7 @@ transport:
         extraOptions: {}
 
         # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
-        run_type: "normal"
+        run_type: "prep"
       
       read:
         tmin: 0.0
