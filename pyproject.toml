@@ -45,7 +45,7 @@ dependencies = [
   "tensorflow", 
   "f90nml",
   "pyyaml",
-  "megpy @ git+https://github.com/gsnoep/megpy.git@feature/tracer-rebuild",
+  "megpy @ git+https://github.com/gsnoep/megpy.git@feature/unstable",
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
   # "vmecpp",
   # "quends @ git+https://github.com/sandialabs/quends.git"
