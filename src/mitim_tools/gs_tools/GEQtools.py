@@ -6,29 +6,69 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.gs_tools.utils import GEQplotting
+from mitim_tools.gs_tools.utils import GEQplotting_old as GEQplotting
 from shapely.geometry import LineString
-from scipy.integrate import quad, cumulative_trapezoid
-import megpy
+from scipy.integrate import quad
 import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """
-Note that this module relies on megpy to intrepret the content of g-eqdsk files.
-Modifications are made in MITIM for visualizations and a few extra derivations.
+Note that this module relies on OMFIT classes (https://omfit.io/classes.html) procedures to intrepret the content of g-eqdsk files.
+Modifications are made in MITINM for visualizations and a few extra derivations.
 """
+
+def fix_file(filename):
+
+    with open(filename, "r") as f:
+        lines = f.readlines()
+
+    # -----------------------------------------------------------------------
+    # Remove coils (chatGPT 4o as of 08/24/24)
+    # -----------------------------------------------------------------------
+    # Use StringIO to simulate the file writing
+    noCoils_file = io.StringIO()
+    for cont, line in enumerate(lines):
+        if cont > 0 and line[:2] == "  ":
+            break
+        noCoils_file.write(line)
+
+    # Reset cursor to the start of StringIO
+    noCoils_file.seek(0)
+
+    # Write the StringIO content to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        tmp_file.write(noCoils_file.getvalue().encode('utf-8'))
+        noCoils_file = tmp_file.name
+    # -----------------------------------------------------------------------
+
+    with open(filename, 'r') as file1, open(noCoils_file, 'r') as file2:
+        file1_content = file1.read()
+        file2_content = file2.read()
+        
+    if file1_content != file2_content:
+        print(f"\t- geqdsk file {IOtools.clipstr(filename)} had coils, I have removed them")
+
+    filename = noCoils_file
+
+    return filename
 
 class MITIMgeqdsk:
     def __init__(self, filename):
 
-        self.g = megpy.Equilibrium()
-        self.g.read_geqdsk(f_path=filename)
-        self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True)
+        # Fix file by removing coils if it has them
+        filename = fix_file(filename)
+
+        # Read GEQDSK file using OMFIT
+        import omfit_classes.omfit_eqdsk
+        self.g = omfit_classes.omfit_eqdsk.OMFITgeqdsk(filename, forceFindSeparatrix=True)
 
         # Extra derivations in MITIM
         self.derive()
+
+        # Remove temporary file
+        os.remove(filename)
 
     @classmethod
     def timeslices(cls, filename, **kwargs):
@@ -71,65 +111,61 @@ class MITIMgeqdsk:
 
     def derive(self, debug=False):
 
-        zero_vector = np.zeros(self.g.derived["rho_pol"].shape)
-
-        self.rho_pol = self.g.derived["rho_pol"].copy()
-        self.rho_tor = self.g.derived["rho_tor"].copy()
-        self.psi_pol_norm = self.rho_pol ** 2
-        self.psi_tor_norm = self.rho_tor ** 2
-
-        self.Jt = self.g.derived["j_tor"] * 1e-6
-        self.Jt_fb = zero_vector.copy()
+        self.Jt = self.g.surfAvg("Jt") * 1e-6
+        self.Jt_fb = self.g.surfAvg("Jt_fb") * 1e-6
 
         self.Jerror = np.abs(self.Jt - self.Jt_fb)
 
-        self.Ip = self.g.raw["current"]
+        self.Ip = self.g["CURRENT"]
 
         # Parameterizations of LCFS
-        self.kappa = self.g.derived["miller_geo"]["kappa"][-1]
-        self.kappaU = self.g.derived["miller_geo"]["kappa_u"][-1]
-        self.kappaL = self.g.derived["miller_geo"]["kappa_l"][-1]
+        self.kappa = self.g["fluxSurfaces"]["geo"]["kap"][-1]
+        self.kappaU = self.g["fluxSurfaces"]["geo"]["kapu"][-1]
+        self.kappaL = self.g["fluxSurfaces"]["geo"]["kapl"][-1]
 
-        self.delta = self.g.derived["miller_geo"]["delta"][-1]
-        self.deltaU = self.g.derived["miller_geo"]["delta_u"][-1]
-        self.deltaL = self.g.derived["miller_geo"]["delta_l"][-1]
+        self.delta = self.g["fluxSurfaces"]["geo"]["delta"][-1]
+        self.deltaU = self.g["fluxSurfaces"]["geo"]["dell"][-1]
+        self.deltaL = self.g["fluxSurfaces"]["geo"]["dell"][-1]
 
-        self.zeta = self.g.derived["miller_geo"]["zeta"][-1]
+        self.zeta = self.g["fluxSurfaces"]["geo"]["zeta"][-1]
 
-        self.a = self.g.derived["r"][-1]
-        self.Rmag = self.g.derived["Ro"][0]
-        self.Zmag = self.g.derived["Zo"][0]
+        self.a = self.g["fluxSurfaces"]["geo"]["a"][-1]
+        self.Rmag = self.g["fluxSurfaces"]["geo"]["R"][0]
+        self.Zmag = self.g["fluxSurfaces"]["geo"]["Z"][0]
+        self.Rmajor = np.mean(
+            [
+                self.g["fluxSurfaces"]["geo"]["Rmin_centroid"][-1],
+                self.g["fluxSurfaces"]["geo"]["Rmax_centroid"][-1],
+            ]
+        )
 
-        self.Rmajor = self.g.derived["Ro"][-1]
-        self.Zmajor = self.Zmag #self.g.derived["Zo"][-1] TODO: check which Z0 to use, perhaps switch to MXH definition
+        self.Zmajor = self.Zmag
 
         self.eps = self.a / self.Rmajor
 
         # Core values
-        vp = np.array(self.g.fluxsurfaces["Vprime"]).flatten()
-        ir = np.array(self.g.fluxsurfaces["1/R"]).flatten()
-        self.cx_area = cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0)
-        self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
+
+        self.kappa_a = self.g["fluxSurfaces"]["geo"]["cxArea"][-1] / (np.pi * self.a**2)
 
         self.kappa995 = np.interp(
             0.995,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["kappa"],
+            self.g["AuxQuantities"]["PSI_NORM"],
+            self.g["fluxSurfaces"]["geo"]["kap"],
         )
         self.kappa95 = np.interp(
             0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["kappa"],
+            self.g["AuxQuantities"]["PSI_NORM"],
+            self.g["fluxSurfaces"]["geo"]["kap"],
         )
         self.delta995 = np.interp(
             0.995,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["delta"],
+            self.g["AuxQuantities"]["PSI_NORM"],
+            self.g["fluxSurfaces"]["geo"]["delta"],
         )
         self.delta95 = np.interp(
             0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["delta"],
+            self.g["AuxQuantities"]["PSI_NORM"],
+            self.g["fluxSurfaces"]["geo"]["delta"],
         )
 
         """
@@ -137,23 +173,26 @@ class MITIMgeqdsk:
         Boundary
         --------------------------------------------------------------------------------------------------------------------------------------
             Note that the RBBS and ZBBS values in the gfile are often too scattered and do not reproduce the boundary near x-points.
-            The shaping parameters calculated using fluxsurfaces are correct though.
+            The shaping parameters calculated using fluxSurfaces are correct though.
         """
 
-        self.Rb_gfile, self.Yb_gfile = self.g.raw["rbbbs"].copy(), self.g.raw["zbbbs"].copy()
-        self.Rb, self.Yb = self.g.fluxsurfaces["R"][-1], self.g.fluxsurfaces["Z"][-1]
+        self.Rb_gfile, self.Yb_gfile = self.g["RBBBS"], self.g["ZBBBS"]
+        self.Rb, self.Yb = self.g["fluxSurfaces"].sep.transpose()
         
         if len(self.Rb) == 0:
-            print("\t- MITIM > No separatrix found in the megpy fluxsurfaces, using explicit boundary in g-eqdsk file!",typeMsg='i')
+            print("\t- MITIM > No separatrix found in the OMFIT fluxSurfaces, increasing resolution and going all in!",typeMsg='i')
 
-            self.Rb = self.Rb_gfile.copy()
-            self.Yb = self.Yb_gfile.copy()
+            flx = copy.deepcopy(self.g['fluxSurfaces'])
+            flx._changeResolution(6)
+            flx.findSurfaces([0.0,0.5,1.0])
+            fs = flx['flux'][list(flx['flux'].keys())[-1]]
+            self.Rb, self.Yb = fs['R'], fs['Z']
 
         if debug:
             fig, ax = plt.subplots()
 
-            # megpy
-            ax.plot(self.Rb, self.Yb, "-s", c="r", label="megpy")
+            # OMFIT
+            ax.plot(self.Rb, self.Yb, "-s", c="r", label="OMFIT")
 
             # GFILE
             ax.plot(self.Rb_gfile, self.Yb_gfile, "-s", c="y", label="GFILE")
@@ -206,7 +245,10 @@ class MITIMgeqdsk:
         If filename is None, use the original one
         """
 
-        self.g.write_geqdsk(f_path=filename)
+        if filename is not None:
+            self.g.filename = filename
+
+        self.g.save()
 
     # -----------------------------------------------------------------------------
     # Parameterizations
@@ -214,8 +256,8 @@ class MITIMgeqdsk:
 
     def get_MXH_coeff_new(self, n_coeff=7, plotYN=False): 
 
-        psis = self.psi_pol_norm
-        flux_surfaces = self.g.fluxsurfaces["psi"]
+        psis = self.g["AuxQuantities"]["PSI_NORM"]
+        flux_surfaces = self.g['fluxSurfaces']['flux']
         
         # Cannot parallelize because different number of points?
         kappa, rmin, rmaj, zmag, sn, cn = [],[],[],[],[],[]
@@ -224,7 +266,7 @@ class MITIMgeqdsk:
             if flux == len(flux_surfaces)-1:
                 Rf, Zf = self.Rb, self.Yb
             else:
-                Rf, Zf = self.g.fluxsurfaces["R"][flux], self.g.fluxsurfaces["Z"][flux]
+                Rf, Zf = flux_surfaces[flux]['R'],flux_surfaces[flux]['Z']
 
             # Perform the MXH decompositionusing the MITIM surface class
             surfaces = mitim_flux_surfaces()
@@ -269,22 +311,24 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
+    
     def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
 
         # -------------------------------------------------------------------------------------------------------
         # Quantities from the equilibrium
         # -------------------------------------------------------------------------------------------------------
 
-        rhotor = self.g.derived['rho_tor']
-        psi = self.g.derived['psi']                           # Wb/rad
-        torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
-        q = self.g.raw['qpsi']
-        pressure = self.g.raw['pres']       # Pa
-        Ip = self.g.raw['current']*1E-6     # MA
+        rhotor = self.g['RHOVN']
+        psi = self.g['AuxQuantities']['PSI']                           # Wb/rad
+        torfluxa =  self.g['AuxQuantities']['PHI'][-1] / (2*np.pi)      # Wb/rad
+        q = self.g['QPSI']
+        pressure = self.g['PRES']       # Pa
+        Ip = self.g['CURRENT']*1E-6     # MA
 
         RZ = np.array([self.Rb,self.Yb]).T
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
-        B0 = self.g.raw['rcentr']*self.g.raw['bcentr'] / R0
+        
+        B0 = self.g['RCENTR']*self.g['BCENTR'] / R0
 
         # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
         rhotor = np.array([np.abs(i) for i in rhotor])
@@ -499,7 +543,6 @@ class mitim_flux_surfaces:
         self.cn = np.zeros((self.R.shape[0],n_coeff))
         self.sn = np.zeros((self.R.shape[0],n_coeff))
         self.gn = np.zeros((self.R.shape[0],4))
-        self.gn[-1] = 1.0
         for i in range(self.R.shape[0]):
             self.cn[i,:], self.sn[i,:], self.gn[i,:] = from_RZ_to_mxh(self.R[i,:], self.Z[i,:], n_coeff=n_coeff)
 
@@ -519,8 +562,8 @@ class mitim_flux_surfaces:
 
         # Elongations
 
-        self.kappa_u = (Zmax - self.Z0) / self.a if self.Z.shape[1] > 1 else np.ones(self.Z0.shape)
-        self.kappa_l = (self.Z0 - Zmin) / self.a if self.Z.shape[1] > 1 else np.ones(self.Z0.shape)
+        self.kappa_u = (Zmax - self.Z0) / self.a
+        self.kappa_l = (self.Z0 - Zmin) / self.a
         self.kappa = (self.kappa_u + self.kappa_l) / 2
 
         # Triangularities
