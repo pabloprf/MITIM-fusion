@@ -296,25 +296,34 @@ class NEOoutput(SIMtools.GACODEoutput):
                 # Found the header line, now process the data
                 break
         
-        line = lines[i+2]
-        self.Ge, self.Qe, self.Me = [float(x) for x in line.split()[1:]]
-        
-        self.GiAll, self.QiAll, self.MiAll = [], [], []
-        for i in range(i+3, len(lines)):
+        Z, G, Q, M = [], [], [], []
+        for i in range(i+2, len(lines)):
             line = lines[i]
-            self.GiAll.append(float(line.split()[1]))
-            self.QiAll.append(float(line.split()[2]))
-            self.MiAll.append(float(line.split()[3]))
-
-        self.GiAll = np.array(self.GiAll)
-        self.QiAll = np.array(self.QiAll)
-        self.MiAll = np.array(self.MiAll)
+            Z.append(float(line.split()[0]))
+            G.append(float(line.split()[1]))
+            Q.append(float(line.split()[2]))
+            M.append(float(line.split()[3]))
+        Z = np.array(Z)
+        G = np.array(G)
+        Q = np.array(Q)
+        M = np.array(M)
+        
+        
+        # Find electron line (Z= -1)
+        ie = int(np.where(Z == -1)[0][0])
+        
+        self.Ge = G[ie]
+        self.Qe = Q[ie]
+        self.Me = M[ie]
+        
+        self.GiAll = np.delete(G, ie)
+        self.QiAll = np.delete(Q, ie)
+        self.MiAll = np.delete(M, ie)
 
         self.Qi = self.QiAll.sum()
         self.Mt = self.Me + self.MiAll.sum()
         
         self.roa = float(lines[0].split()[-1])
-
 
         # ------------------------------------------------------------------------
         # Input file
