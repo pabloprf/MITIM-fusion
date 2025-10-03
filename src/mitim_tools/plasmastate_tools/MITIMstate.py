@@ -1385,7 +1385,8 @@ class mitim_state:
         if "vpol(m/s)" in self.profiles:
             vpol = np.sum((mass_density * self.profiles["vpol(m/s)"])[:,np.array(ions_list)-1],axis=1) / np.sum(mass_density[:,np.array(ions_list)-1],axis=1)
         if "vtor(m/s)" in self.profiles:
-            vtor = np.sum((mass_density * self.profiles["vtor(m/s)"])[:,np.array(ions_list)-1],axis=1) / np.sum(mass_density[:,np.array(ions_list)-1],axis=1)
+            mask = np.isclose(np.mean(self.profiles["vtor(m/s)"][:,np.array(ions_list)-1],axis=0),1e-12)
+            vtor = np.sum((mass_density * self.profiles["vtor(m/s)"])[:,np.array(ions_list)-1][:,~mask],axis=1) / np.sum(mass_density[:,np.array(ions_list)-1][:,~mask],axis=1)
 
         print(f"\t\t\t* New lumped impurity has Z={Z:.2f}, A={A:.2f} (calculated as 2*Z)")
 
@@ -1787,7 +1788,7 @@ class mitim_state:
         )  # m/s
 
         self.profiles["w0(rad/s)"] = Vtor_LF / (self.derived["R_LF"])  # rad/s
-
+        
         self.derive_quantities()
 
         if new_file is not None:
