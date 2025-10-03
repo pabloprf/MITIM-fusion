@@ -524,19 +524,20 @@ def plotParameterization(self, axs=None):
     ax.plot(self.g.raw["rmaxis"], self.g.raw["zmaxis"], "+", markersize=10, c="r")
     ax.plot([self.Rmag], [self.Zmag], "o", markersize=5, c="m")
     ax.plot([self.Rmajor], [self.Zmag], "+", markersize=10, c="k")
-    ax.plot(self.g.raw["rlim"], self.g.raw["zlim"], lw=1, c="k")
+    if 'rlim' in self.g.raw and 'zlim' in self.g.raw:
+        ax.plot(self.g.raw["rlim"], self.g.raw["zlim"], lw=1, c="k")
 
-    import matplotlib
+        import matplotlib
 
-    path = matplotlib.path.Path(
-        np.transpose(np.array([self.g.raw["rlim"], self.g.raw["zlim"]]))
-    )
-    patch = matplotlib.patches.PathPatch(path, facecolor="none")
-    ax.add_patch(patch)
-    # for col in cs.collections:
-    #     col.set_clip_path(patch)
-    # for col in csA.collections:
-    #     col.set_clip_path(patch)
+        path = matplotlib.path.Path(
+            np.transpose(np.array([self.g.raw["rlim"], self.g.raw["zlim"]]))
+        )
+        patch = matplotlib.patches.PathPatch(path, facecolor="none")
+        ax.add_patch(patch)
+        # for col in cs.collections:
+        #     col.set_clip_path(patch)
+        # for col in csA.collections:
+        #     col.set_clip_path(patch)
 
     self.plotEnclosingBox(ax=ax)
 
