@@ -607,6 +607,10 @@ def synchrotron(Te_keV, ne20, B_ref, aspect_rat, r_min, r_coeff=0.8):
     f = c2 * ((1.0 - r_coeff) * (1 + c1 / aspect_rat / Te_keV**0.5) / r_min) ** 0.5
     qsync = f * B_ref**2.5 * Te_keV**2.5 * ne20**0.5
 
+    if qsync.isnan().any():
+        print('\t* Synchrotron radiation could not be calculated... assuming zero', typeMsg='w')
+        qsync = torch.zeros(qsync.shape)
+
     return qsync * 1e-7  # from erg
 
 
