@@ -1,6 +1,7 @@
-"Linear":
+"Linear Tokamak":
   # Linear with 10 ky modes
   controls:
+    geo_option: '"miller"'
     nonlinear_mode: false
     hyper: false
     HB_hyper: false
@@ -8,11 +9,24 @@
     nx: 1
     ny: 28
 
-"Nonlinear":
+"Nonlinear Tokamak":
   controls:
+    geo_option: '"miller"'
     nonlinear_mode: true
     hyper: true
     HB_hyper: true
     nperiod: 1
     nx: 192
     ny: 64
+
+"Nonlinear Stellarator":
+  controls:
+    geo_option: '"vmec"'
+    nonlinear_mode: true
+    hyper: true
+    HB_hyper: true
+    nperiod: 1
+    nx: 192
+    ny: 64
+    alpha: 0.0   # Field line label theta - iota*phi. alpha = 0.0 usually corresponds to a field line on the outboard side
+    npol: 6      # Number of poloidal turns. The field line goes from (-npol*PI, npol*PI]
