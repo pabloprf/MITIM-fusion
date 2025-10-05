@@ -46,10 +46,10 @@ dependencies = [
   "pyyaml",
   "megpy>=2.0",
   "fibe>=0.3",
+  "vmecpp",
+  # "quends @ git+https://github.com/sandialabs/quends.git"
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
-  # "vmecpp",
-  # "quends @ git+https://github.com/sandialabs/quends.git"
 ]
 
 [project.optional-dependencies]
