@@ -69,7 +69,13 @@ def initializeProblem(
     # ---- Initialize file to modify and increase resolution
 
     initialization_file = FolderInitialization / "input.gacode"
-    profiles = PROFILEStools.gacode_state(initialization_file)
+    
+    # If it is a profiles class, use it directly
+    if isinstance(fileStart, MITIMstate.mitim_state):
+        profiles = copy.deepcopy(fileStart)
+    # If it is a file, then assume it is a gacode one (#TODO: check type?)
+    else:
+        profiles = PROFILEStools.gacode_state(initialization_file)
 
     # About radial locations
     if portals_fun.portals_parameters["solution"]["predicted_roa"] is not None:
@@ -86,7 +92,7 @@ def initializeProblem(
     if portals_fun.portals_parameters["solution"]["trace_impurity"] is not None:
         position_of_impurity = MITIMstate.impurity_location(profiles, portals_fun.portals_parameters["solution"]["trace_impurity"])
     else:
-        position_of_impurity = 1
+        position_of_impurity = 0
 
     if portals_fun.portals_parameters["solution"]["fZ0_as_weight"] is not None and portals_fun.portals_parameters["solution"]["trace_impurity"] is not None:
         f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
