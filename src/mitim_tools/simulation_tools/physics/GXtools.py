@@ -272,8 +272,8 @@ class GXinput(SIMtools.GACODEinput):
                     [ ['ikpar_init', 'init_field', 'init_amp', 'gaussian_init'], [] ],
                 '[Geometry]':
                     [ 
-                       ['geo_option'],
-                       ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim']
+                       ['geo_option', 'alpha', 'npol', 'vmec_file'],
+                       ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim', 'torflux']
                     ],
                 '[Dissipation]':
                     [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper', 'D_H', 'w_osc', 'p_HB', 'HB_hyper'], [] ],

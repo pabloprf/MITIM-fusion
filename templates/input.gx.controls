@@ -33,6 +33,10 @@
 
 [Geometry]
  geo_option = "miller"           # use Miller geometry (values provided below)
+ 
+ vmec_file = "none"              # if geo_option = "vmec": name of the vmec file
+ alpha = 0.0                     # if geo_option = "vmec": Field line label theta - iota*phi. alpha = 0.0 usually corresponds to a field line on the outboard side
+ npol = 6                        # if geo_option = "vmec": Number of poloidal turns. The field line goes from (-npol*PI, npol*PI]
 
 [Dissipation]
  closure_model = "none"          # no closure assumptions (just truncation)
