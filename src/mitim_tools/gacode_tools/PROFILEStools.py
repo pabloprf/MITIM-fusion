@@ -258,6 +258,10 @@ class gacode_state(MITIMstate.mitim_state):
         self.derived["delta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
         self.derived["delta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"])
+
+        self.derived["zeta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
+
+        self.derived["zeta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
         
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 

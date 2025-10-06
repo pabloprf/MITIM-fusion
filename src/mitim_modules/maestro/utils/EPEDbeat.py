@@ -63,6 +63,12 @@ class eped_beat(beat):
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
 
+        # Whether EPED is going to be run with Zeta
+        if 'zeta_flag' in kwargs:
+            self.zeta_flag = kwargs['zeta_flag']
+        else: 
+            self.zeta_flag = False
+
         self._inform()
 
     def run(self, **kwargs):
@@ -88,6 +94,12 @@ class eped_beat(beat):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
         '''
+
+        # Check to make sure using full EPED if running with squareness
+        if self.zeta_flag and self.nn is not None:
+            print('Warning: zeta_flag is not implemented for NN-based EPED, ignoring it', typeMsg='warning')
+            self.zeta_flag = False 
+
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -119,32 +131,50 @@ class eped_beat(beat):
 
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
+        zeta995 = self.profiles_current.derived['zeta995'] if self.zeta_flag else None
         BetaN = self.profiles_current.derived['BetaN_engineering']
         Tesep_keV = self.profiles_current.profiles['te(keV)'][-1]
         nesep_20 = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*0.1
         
-        if 'kappa995' in self.__dict__ and self.kappa995 is not None:     kappa995 = self.kappa995
-        if 'delta995' in self.__dict__ and self.delta995 is not None:     delta995 = self.delta995
-        if "BetaN" in self.__dict__ and self.BetaN is not None:           BetaN = self.BetaN
-        if "Tesep_keV" in self.__dict__ and self.Tesep_keV is not None:   Tesep_keV = self.Tesep_keV
-        if "nesep_20" in self.__dict__ and self.nesep_20 is not None:     nesep_20 = self.nesep_20
+        if 'kappa995' in self.__dict__ and self.kappa995 is not None:               kappa995 = self.kappa995
+        if 'delta995' in self.__dict__ and self.delta995 is not None:               delta995 = self.delta995
+        if self.zeta_flag and 'zeta995' in self.__dict__ and self.zeta995 is not None:   zeta995 = self.zeta995  
+        if "BetaN" in self.__dict__ and self.BetaN is not None:                     BetaN = self.BetaN
+        if "Tesep_keV" in self.__dict__ and self.Tesep_keV is not None:             Tesep_keV = self.Tesep_keV
+        if "nesep_20" in self.__dict__ and self.nesep_20 is not None:               nesep_20 = self.nesep_20
 
         nesep_ratio = nesep_20 / neped_20
 
         # Store evaluation
-        self.current_evaluation = {
-            'Ip': np.abs(Ip),
-            'Bt': np.abs(Bt),
-            'R': np.abs(R),
-            'a': np.abs(a),
-            'kappa995': np.abs(kappa995),
-            'delta995': np.abs(delta995),
-            'neped_20': np.abs(neped_20),
-            'BetaN': np.abs(BetaN),
-            'zeff': np.abs(zeff),
-            'Tesep_keV': np.abs(Tesep_keV),
-            'nesep_ratio': np.abs(nesep_ratio),
-        }
+        if self.zeta_flag: 
+            self.current_evaluation = {
+                'Ip': np.abs(Ip),
+                'Bt': np.abs(Bt),
+                'R': np.abs(R),
+                'a': np.abs(a),
+                'kappa995': np.abs(kappa995),
+                'delta995': np.abs(delta995),
+                'neped_20': np.abs(neped_20),
+                'BetaN': np.abs(BetaN),
+                'zeff': np.abs(zeff),
+                'Tesep_keV': np.abs(Tesep_keV),
+                'nesep_ratio': np.abs(nesep_ratio),
+                'zeta': np.abs(zeta995)
+            }
+        else: 
+            self.current_evaluation = {
+                'Ip': np.abs(Ip),
+                'Bt': np.abs(Bt),
+                'R': np.abs(R),
+                'a': np.abs(a),
+                'kappa995': np.abs(kappa995),
+                'delta995': np.abs(delta995),
+                'neped_20': np.abs(neped_20),
+                'BetaN': np.abs(BetaN),
+                'zeff': np.abs(zeff),
+                'Tesep_keV': np.abs(Tesep_keV),
+                'nesep_ratio': np.abs(nesep_ratio)
+            }
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
@@ -163,6 +193,7 @@ class eped_beat(beat):
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
+        if self.zeta_flag: print(f'\t\t- zeta: {self.current_evaluation["zeta"]:.3f}')
 
         # -------------------------------------------------------
         # Run NN
@@ -174,19 +205,36 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            inputs_to_eped = (
-                self.current_evaluation["Ip"],
-                self.current_evaluation["Bt"],
-                self.current_evaluation["R"],
-                self.current_evaluation["a"],
-                self.current_evaluation["kappa995"],
-                self.current_evaluation["delta995"],
-                self.current_evaluation["neped_20"]*10,
-                BetaN,
-                self.current_evaluation["zeff"],
-                self.current_evaluation["Tesep_keV"]* 1E3,
-                self.current_evaluation["nesep_ratio"]
-                )
+            if self.zeta_flag: 
+                inputs_to_eped = (
+                    self.current_evaluation["Ip"],
+                    self.current_evaluation["Bt"],
+                    self.current_evaluation["R"],
+                    self.current_evaluation["a"],
+                    self.current_evaluation["kappa995"],
+                    self.current_evaluation["delta995"],
+                    self.current_evaluation["neped_20"]*10,
+                    BetaN,
+                    self.current_evaluation["zeff"],
+                    self.current_evaluation["Tesep_keV"]* 1E3,
+                    self.current_evaluation["nesep_ratio"],
+                    self.current_evaluation["zeta"]
+                    )
+
+            else: 
+                inputs_to_eped = (
+                    self.current_evaluation["Ip"],
+                    self.current_evaluation["Bt"],
+                    self.current_evaluation["R"],
+                    self.current_evaluation["a"],
+                    self.current_evaluation["kappa995"],
+                    self.current_evaluation["delta995"],
+                    self.current_evaluation["neped_20"]*10,
+                    BetaN,
+                    self.current_evaluation["zeff"],
+                    self.current_evaluation["Tesep_keV"]* 1E3,
+                    self.current_evaluation["nesep_ratio"]
+                    )
 
             # -------------------------------------------------------
             # Give the option to override the ptop_kPa and wtop_psipol
@@ -325,27 +373,50 @@ class eped_beat(beat):
 
         return eped_results
 
-    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, nproc_per_run=64, cold_start=True):
+    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, nproc_per_run=64, cold_start=True):
         '''
             Run the full EPED code with the given inputs.
             Returns ptop_kPa and wtop_psipol.
+            If zeta is provided as an extra argument, use it; otherwise set zeta to zero.
         '''
+
+        # Handle optional zeta parameter
+        if len(args) > 0:
+            zeta = args[0]
+        else:
+            zeta = 0.0
 
         eped = EPEDtools.EPED(folder=folder)
 
-        input_params = {
-            'ip': Ip,
-            'bt': Bt,
-            'r': R,
-            'a': a,
-            'kappa': kappa995,
-            'delta': delta995,
-            'neped': neped19,
-            'betan': BetaN,
-            'zeffped': zeff,
-            'nesep': nesep_ratio * neped19,
-            'tesep': Tesep_eV
-        }
+        if int(zeta) != 0:
+            input_params = {
+                'ip': Ip,
+                'bt': Bt,
+                'r': R,
+                'a': a,
+                'kappa': kappa995,
+                'delta': delta995,
+                'neped': neped19,
+                'betan': BetaN,
+                'zeffped': zeff,
+                'nesep': nesep_ratio * neped19,
+                'tesep': Tesep_eV,
+                'zeta': zeta
+            }
+        else: 
+            input_params = {
+                'ip': Ip,
+                'bt': Bt,
+                'r': R,
+                'a': a,
+                'kappa': kappa995,
+                'delta': delta995,
+                'neped': neped19,
+                'betan': BetaN,
+                'zeffped': zeff,
+                'nesep': nesep_ratio * neped19,
+                'tesep': Tesep_eV
+            }
 
         eped.run(
             subfolder = 'case1',
