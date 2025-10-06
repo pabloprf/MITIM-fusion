@@ -1,4 +1,5 @@
 import netCDF4
+import copy
 import matplotlib.pyplot as plt
 from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
@@ -79,8 +80,9 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'gxplasma.gx_geo.log',
             'gxplasma.big.nc',
             'gxplasma.mitim.log',
-            'gxplasma.restart.nc',
+            #'gxplasma.restart.nc',
             ]
+        
 
     '''
     Redefined here so that I handle restart properly and
@@ -97,12 +99,12 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # ------------------------------------
         # If it's a case with VMEC, send the file
         # ------------------------------------
-        
         from mitim_tools.plasmastate_tools.utils import VMECtools
         if isinstance(self.profiles, VMECtools.vmec_state):
             print('- Plasma comes from VMEC file, sending it along the GX run', typeMsg='i')
             
-            vmec_file = Path(self.profiles_original.files[0])
+            # Get the VMEC file path
+            vmec_file = Path(self.profiles.header[0].split('VMEC location')[-1][2:-1])
             
             # Add "vmec_file" to GX namelist
             
@@ -111,6 +113,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             if 'vmec_file' in kwargs_sim_run['extraOptions']:
                 print('\t- Overwriting vmec_file in extraOptions', typeMsg='w')
 
+            kwargs_sim_run['extraOptions']['geo_option'] = f'"vmec"'
             kwargs_sim_run['extraOptions']['vmec_file'] = f'"{vmec_file.name}"'
             
             # Add the file to the list of additional files to send, equal for both radii
@@ -140,8 +143,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self.ResultsFiles.append(restart_name)
             print(f"\t- Saving restart file as {restart_name}")
 
-        if ('Stellarator' in kwargs_sim_run.get('code_settings', 'Linear Tokamak')) or \
-            (kwargs_sim_run.get('extraOptions', {}).get('geo_option', 'miller') == 'vmec'):
+        if (self.profiles.type == 'vmec') or (kwargs_sim_run.get('extraOptions', {}).get('geo_option', 'miller') == 'vmec'):
             self.ResultsFiles.remove('gxplasma.eik.out')
             self.ResultsFiles.remove('gxplasma.eiknc.nc')
 

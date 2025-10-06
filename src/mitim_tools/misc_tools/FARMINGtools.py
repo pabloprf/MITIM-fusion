@@ -878,10 +878,7 @@ class mitim_job:
                 if folder in check_files_in_folder:
                     for file in check_files_in_folder[folder]:
                         if not (self.folder_local / folder / file).exists():
-                            print(
-                                f"\t\t- File {file} not received in folder {folder}",
-                                typeMsg="w",
-                            )
+                            print(f"\t\t- File {file} not received in folder {folder}",typeMsg="w",)
                             received = False
 
         return received

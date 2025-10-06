@@ -68,8 +68,6 @@ class mitim_simulation:
         else:
             self.profiles = mitim_state
             
-        self.profiles_original = copy.deepcopy(self.profiles)
-
         # Keep a copy of the file
         self.profiles.write_state(file=self.FolderGACODE / "input.gacode_torun")
 
@@ -420,11 +418,11 @@ class mitim_simulation:
 
                 if cores_allocated is not None:
                     if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
-                        print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        print(f"\t- Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                         max_cores_per_node = cores_allocated
                 elif cores_in_machine is not None:
                     if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
-                        print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        print(f"\t- Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                         max_cores_per_node = cores_in_machine
                 else:
                     # Default to just 16 just in case
@@ -445,7 +443,7 @@ class mitim_simulation:
             if machineSettings['gpus_per_node'] == 0:
                 max_cores_per_node_compare = max_cores_per_node
             else:
-                print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                print(f"\t- Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                 max_cores_per_node_compare = machineSettings['gpus_per_node']
 
             if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
@@ -461,7 +459,7 @@ class mitim_simulation:
             if type_of_submission == "bash":
 
                 if cores_per_code_call > max_cores_per_node:
-                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                     max_cores_per_node = cores_per_code_call
                 
                 max_parallel_execution = max_cores_per_node // cores_per_code_call # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
