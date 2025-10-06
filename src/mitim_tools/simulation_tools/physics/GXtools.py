@@ -1,5 +1,6 @@
 import netCDF4
 import matplotlib.pyplot as plt
+from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
@@ -83,7 +84,8 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     '''
     Redefined here so that I handle restart properly and
-    I can choose numerical setup based on plasma
+        I can choose numerical setup based on plasma and
+        I can send VMEC file if needed
     '''
     def run(
         self,
@@ -92,6 +94,35 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         **kwargs_sim_run
     ):
         
+        # ------------------------------------
+        # If it's a case with VMEC, send the file
+        # ------------------------------------
+        
+        from mitim_tools.plasmastate_tools.utils import VMECtools
+        if isinstance(self.profiles, VMECtools.vmec_state):
+            print('- Plasma comes from VMEC file, sending it along the GX run', typeMsg='i')
+            
+            vmec_file = Path(self.profiles_original.files[0])
+            
+            # Add "vmec_file" to GX namelist
+            
+            if 'extraOptions' not in kwargs_sim_run:
+                kwargs_sim_run['extraOptions'] = {}
+            if 'vmec_file' in kwargs_sim_run['extraOptions']:
+                print('\t- Overwriting vmec_file in extraOptions', typeMsg='w')
+
+            kwargs_sim_run['extraOptions']['vmec_file'] = f'"{vmec_file.name}"'
+            
+            # Add the file to the list of additional files to send, equal for both radii
+            
+            if 'additional_files_to_send' not in kwargs_sim_run:
+                kwargs_sim_run['additional_files_to_send'] = {}
+            for rho in self.rhos:
+                if rho not in kwargs_sim_run['additional_files_to_send']:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)] = []
+                if vmec_file not in kwargs_sim_run['additional_files_to_send'][rho]:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)].append(vmec_file)
+            
         # ------------------------------------
         # Check about restarts
         # ------------------------------------

@@ -67,6 +67,8 @@ class mitim_simulation:
             self.profiles = PROFILEStools.gacode_state(mitim_state)
         else:
             self.profiles = mitim_state
+            
+        self.profiles_original = copy.deepcopy(self.profiles)
 
         # Keep a copy of the file
         self.profiles.write_state(file=self.FolderGACODE / "input.gacode_torun")
