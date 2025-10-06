@@ -109,6 +109,11 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self.ResultsFiles.append(restart_name)
             print(f"\t- Saving restart file as {restart_name}")
 
+        if ('Stellarator' in kwargs_sim_run.get('code_settings', 'Linear Tokamak')) or \
+            (kwargs_sim_run.get('extraOptions', {}).get('geo_option', 'miller') == 'vmec'):
+            self.ResultsFiles.remove('gxplasma.eik.out')
+            self.ResultsFiles.remove('gxplasma.eiknc.nc')
+
         # ------------------------------------
         # Add numerical setup based on plasma
         # ------------------------------------
