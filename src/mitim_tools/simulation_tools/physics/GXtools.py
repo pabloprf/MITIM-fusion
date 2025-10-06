@@ -1,5 +1,5 @@
 import netCDF4
-import copy
+import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
@@ -27,6 +27,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             slurm_settings = {
                 "name": name,
                 "minutes": minutes,
+                "memory_req_by_job": "100GB", # Otherwise it would allocate something like... 4GB/core (not GPU!)
             }
 
             # Gather if this is a GPU enabled machine
@@ -39,7 +40,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
                     print("[MITIM] Warning: GX needs GPUs to run, but the selected machine does not have any GPU configured. Running without GPUs, but this will likely fail.", typeMsg="w")
 
             if type_of_submission == "slurm_standard":
-                
+
                 slurm_settings['ntasks'] = total_cores_required
                 slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
                 slurm_settings['job_array'] = None
@@ -87,12 +88,14 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
     '''
     Redefined here so that I handle restart properly and
         I can choose numerical setup based on plasma and
-        I can send VMEC file if needed
+        I can send VMEC file if needed and
+        I can send restarts too
     '''
     def run(
         self,
         subfolder,
-        numerics_based_on_plasma = None, # A dictionary with the parameters to match
+        numerics_based_on_plasma = None,    # A dictionary with the parameters to match
+        restart_files = None,               # If provided, dictionary with rhos as keys and restart file paths as values
         **kwargs_sim_run
     ):
         
@@ -150,6 +153,32 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # ------------------------------------
         # Add numerical setup based on plasma
         # ------------------------------------
+        
+        if restart_files is not None:
+            if 'extraOptions' not in kwargs_sim_run:
+                kwargs_sim_run['extraOptions'] = {}
+
+            kwargs_sim_run['extraOptions']['restart'] = True
+            kwargs_sim_run['extraOptions']['restart_from_file'] = []
+            
+            for rho in self.rhos:
+                if rho not in restart_files:
+                    raise Exception(f"[MITIM] You provided restart_files dictionary but {rho = } is missing.")
+                
+                # Add restart file specification
+                kwargs_sim_run['extraOptions']['restart_from_file'].append(f'"{Path(restart_files[rho]).name}"')
+                
+                # Add the file to the list of additional files to sendi
+                if 'additional_files_to_send' not in kwargs_sim_run:
+                    kwargs_sim_run['additional_files_to_send'] = {}
+                if rho not in kwargs_sim_run['additional_files_to_send']:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)] = []
+
+                kwargs_sim_run['additional_files_to_send'][float(rho)].append(Path(restart_files[rho]))
+
+        # ------------------------------------
+        # Add numerical setup based on plasma
+        # ------------------------------------
         if numerics_based_on_plasma is not None:
             pass
         #TODO
@@ -169,6 +198,9 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         colors=None,
         ):
         
+        # If it has radii, we need to correct the labels
+        labels = self._correct_rhos_labels(labels)
+        
         if fn is None:
             self.fn = GUItools.FigureNotebook("GX MITIM Notebook", geometry="1700x900", vertical=True)
         else:
@@ -179,98 +211,188 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Fluxes
         fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes", tab_color=fn_color)
+        axsFluxes_t = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+        # Fluxes (ky)
+        fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes (ky)")
+        axsFluxes_ky = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax2 = fig.add_subplot(grid[0, 1])
-        ax3 = fig.add_subplot(grid[0, 2])
+        # Turbulence
+        fig = self.fn.add_figure(label="Turbulence (linear)")
+        axsTurbulence = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
+        colors = GRAPHICStools.listColors()
+
+        for j in range(len(labels)):
+            
+            self.plot_fluxes(
+                axs=axsFluxes_t,
+                label=labels[j],
+                c=colors[j],
+                plotLegend=j == len(labels) - 1,
+            )
+
+            self.plot_fluxes_ky(
+                axs=axsFluxes_ky,
+                label=labels[j],
+                c=colors[j],
+                plotLegend=j == len(labels) - 1,
+            )
+
+            self.plot_turbulence(
+                axs=axsTurbulence,
+                label=labels[j],
+                c=colors[j],
+            )
+
+
+        # grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+
+        # ax1 = fig.add_subplot(grid[0, 0])
+        # ax2 = fig.add_subplot(grid[0, 1])
+        # ax3 = fig.add_subplot(grid[0, 2])
+
+        # i = 0
+        # for label in labels:
+        #     for irho in range(len(self.rhos)):
+        #         c = self.results[label]['output'][irho]
                 
-                typeLs = '-' if c.t.shape[0]>20 else '-s'
+        #         typeLs = '-' if c.t.shape[0]>20 else '-s'
                 
-                self._plot_trace(ax1,self.results[label]['output'][irho],"Qe",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
-                self._plot_trace(ax2,self.results[label]['output'][irho],"Qi",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
-                self._plot_trace(ax3,self.results[label]['output'][irho],"Ge",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        #         self._plot_trace(ax1,self.results[label]['output'][irho],"Qe",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        #         self._plot_trace(ax2,self.results[label]['output'][irho],"Qi",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        #         self._plot_trace(ax3,self.results[label]['output'][irho],"Ge",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
 
-                i += 1
+        #         i += 1
 
-        for ax in [ax1, ax2, ax3]:
-            ax.set_xlabel("Time ($L_{ref}/c_s$)")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
+        # for ax in [ax1, ax2, ax3]:
+        #     ax.set_xlabel("Time ($L_{ref}/c_s$)")
+        #     ax.set_xlim(left=0)
+        #     GRAPHICStools.addDenseAxis(ax)
 
-        ax1.set_title('Electron heat flux')
-        ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
-        ax1.legend(loc='best', prop={'size': 12})
+        # ax1.set_title('Electron heat flux')
+        # ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
+        # ax1.legend(loc='best', prop={'size': 12})
 
-        ax2.set_title('Ion heat flux')
-        ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
-        ax2.legend(loc='best', prop={'size': 12})
+        # ax2.set_title('Ion heat flux')
+        # ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
+        # ax2.legend(loc='best', prop={'size': 12})
 
-        ax3.set_title('Electron particle flux')
-        ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
-        ax3.legend(loc='best', prop={'size': 12})
+        # ax3.set_title('Electron particle flux')
+        # ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
+        # ax3.legend(loc='best', prop={'size': 12})
         
-        plt.tight_layout()
+        # plt.tight_layout()
 
             
-        # Linear stability
-        fig = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
+        # # Linear stability
+        # fig = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
         
-        grid = plt.GridSpec(2, 2, hspace=0.7, wspace=0.2)
+        # grid = plt.GridSpec(2, 2, hspace=0.7, wspace=0.2)
 
 
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax2 = fig.add_subplot(grid[1, 0])
+        # ax1 = fig.add_subplot(grid[0, 0])
+        # ax2 = fig.add_subplot(grid[1, 0])
         
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
+        # i = 0
+        # for label in labels:
+        #     for irho in range(len(self.rhos)):
+        #         c = self.results[label]['output'][irho]
                 
-                typeLs = '-' if c.t.shape[0]>20 else '-s'
+        #         typeLs = '-' if c.t.shape[0]>20 else '-s'
                 
-                for iky in range(len(c.ky)):
-                    ax1.plot(c.t, c.w[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
-                    ax2.plot(c.t, c.g[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
-                    i += 1
+        #         for iky in range(len(c.ky)):
+        #             ax1.plot(c.t, c.w[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
+        #             ax2.plot(c.t, c.g[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
+        #             i += 1
                     
-        for ax in [ax1, ax2]:
-            ax.set_xlabel("Time ($L_{ref}/c_s$)")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
-        ax1.set_ylabel("Real frequency")
-        ax1.legend(loc='best', prop={'size': 4})
-        ax2.set_ylabel("Growth rate")
+        # for ax in [ax1, ax2]:
+        #     ax.set_xlabel("Time ($L_{ref}/c_s$)")
+        #     ax.set_xlim(left=0)
+        #     GRAPHICStools.addDenseAxis(ax)
+        # ax1.set_ylabel("Real frequency")
+        # ax1.legend(loc='best', prop={'size': 4})
+        # ax2.set_ylabel("Growth rate")
 
-        ax3 = fig.add_subplot(grid[0, 1])
-        ax4 = fig.add_subplot(grid[1, 1])
+        # ax3 = fig.add_subplot(grid[0, 1])
+        # ax4 = fig.add_subplot(grid[1, 1])
 
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
-                ax3.plot(c.ky, c.w[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                ax4.plot(c.ky, c.g[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                i += 1
+        # i = 0
+        # for label in labels:
+        #     for irho in range(len(self.rhos)):
+        #         c = self.results[label]['output'][irho]
+        #         ax3.plot(c.ky, c.w[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+        #         ax4.plot(c.ky, c.g[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
+        #         i += 1
 
-        for ax in [ax3, ax4]:
-            ax.set_xlabel("$k_\\theta\\rho_s$")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
+        # for ax in [ax3, ax4]:
+        #     ax.set_xlabel("$k_\\theta\\rho_s$")
+        #     ax.set_xlim(left=0)
+        #     GRAPHICStools.addDenseAxis(ax)
 
-        ax3.set_ylabel("Real frequency")
-        ax3.legend(loc='best', prop={'size': 12})
-        ax3.axhline(y=0, color='k', linestyle='--', linewidth=1)
-        ax4.set_ylabel("Growth rate")
-        ax4.set_ylim(bottom=0)
+        # ax3.set_ylabel("Real frequency")
+        # ax3.legend(loc='best', prop={'size': 12})
+        # ax3.axhline(y=0, color='k', linestyle='--', linewidth=1)
+        # ax4.set_ylabel("Growth rate")
+        # ax4.set_ylim(bottom=0)
 
-        plt.tight_layout()
+        # plt.tight_layout()
+
+        # # Fluxes per key
+        # fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes (ky)", tab_color=fn_color)
+
+        # grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+
+        # ax1 = fig.add_subplot(grid[0, 0])
+        # ax2 = fig.add_subplot(grid[0, 1])
+        # ax3 = fig.add_subplot(grid[0, 2])
+
+        # i = 0
+        # for label in labels:
+        #     for irho in range(len(self.rhos)):
+        #         c = self.results[label]['output'][irho]
+                
+        #         typeLs = '-' if c.t.shape[0]>20 else '-s'
+                
+        #         self._plot_trace(ax1,self.results[label]['output'][irho],"Qe",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        #         self._plot_trace(ax2,self.results[label]['output'][irho],"Qi",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        #         self._plot_trace(ax3,self.results[label]['output'][irho],"Ge",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+
+        #         i += 1
+
+        # for ax in [ax1, ax2, ax3]:
+        #     ax.set_xlabel("Time ($L_{ref}/c_s$)")
+        #     ax.set_xlim(left=0)
+        #     GRAPHICStools.addDenseAxis(ax)
+
+        # ax1.set_title('Electron heat flux')
+        # ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
+        # ax1.legend(loc='best', prop={'size': 12})
+
+        # ax2.set_title('Ion heat flux')
+        # ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
+        # ax2.legend(loc='best', prop={'size': 12})
+
+        # ax3.set_title('Electron particle flux')
+        # ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
+        # ax3.legend(loc='best', prop={'size': 12})
+        
+        # plt.tight_layout()
 
 
 class GXinput(SIMtools.GACODEinput):
@@ -462,33 +584,58 @@ class GXoutput(SIMtools.GACODEoutput):
         data = netCDF4.Dataset(self.FolderGACODE / f"gxplasma.out.nc{self.suffix}")
         
         self.t = data.groups['Grids'].variables['time'][:] # (time)
+        self.theta = data.groups['Grids'].variables['theta'][:]
         
         # Growth rates
         ikx = 0
-        self.ky = data.groups['Grids'].variables['ky'][1:]   # (ky)
-        self.w = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,0]    # (time, ky)
-        self.g = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,1]    # (time, ky)
+        self.ky = data.groups['Grids'].variables['ky'][:]   # (ky)
+        self.f = np.transpose(data.groups['Diagnostics'].variables['omega_kxkyt'][:,:,ikx,0])    # (ky, time)
+        self.g = np.transpose(data.groups['Diagnostics'].variables['omega_kxkyt'][:,:,ikx,1])    # (ky, time)
 
         # Fluxes
         Q = data.groups['Diagnostics'].variables['HeatFlux_st']     # (time, species)
         G = data.groups['Diagnostics'].variables['ParticleFlux_st'] # (time, species)
+        
+        # Fluxes per ky
+        Q_ky = data.groups['Diagnostics'].variables['HeatFlux_kyst'][:,:,:]   # (time, species, ky)
+        G_ky = data.groups['Diagnostics'].variables['ParticleFlux_kyst'][:,:,:]   # (time, species, ky)
 
         # Assume electrons are always last
         self.Qe = Q[:,-1]
-        self.QiAll = Q[:,:-1]
-        self.Qi = self.QiAll.sum(axis=1)
+        self.Qi_all = Q[:,:-1]
+        self.Qi = self.Qi_all.sum(axis=1)
         self.Ge = G[:,-1]
-        self.GiAll = G[:,:-1]
-        self.Gi = self.GiAll.sum(axis=1)
+        self.Gi_all = G[:,:-1]
+        self.Gi = self.Gi_all.sum(axis=1)
 
+        self.Qe_ky = np.transpose(Q_ky[:,-1,:])   # (ky, time)
+        self.Qi_all_ky = np.transpose(Q_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
+        self.Qi_ky = self.Qi_all_ky.sum(axis=0)  # (ky, time)
+        self.Ge_ky = np.transpose(G_ky[:,-1,:])   # (time, ky)
+        self.Gi_all_ky = np.transpose(G_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
+        self.Gi_ky = self.Gi_all_ky.sum(axis=0)  # (time, ky)
+        
+        self.ions_flags = [i for i in range(1, self.Qi_all.shape[1])]
+        self.all_names = [f'i{i}' for i in range(1, self.Qi_all.shape[1]+1)]
+        
+        # If linear, last tmin
+        if not bool(data.groups['Inputs'].groups['Controls'].variables['nonlinear_mode'][:]):
+            self.tmin = self.t[-1]
+            print(f"\t- Linear simulation, setting tmin to last time", typeMsg='i')
+        
         self._signal_analysis()
 
     def _signal_analysis(self):
         
         flags = [
+            'g',
+            'f',
             'Qe',
             'Qi',
             'Ge',
+            'Qe_ky',
+            'Qi_ky',
+            'Ge_ky',
         ]
         
         for iflag in flags:
