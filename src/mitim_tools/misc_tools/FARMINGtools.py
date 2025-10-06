@@ -163,12 +163,15 @@ class mitim_job:
             removeScratchFolders_goingIn=None,
             check_if_files_received=True,
             attempts_execution=1,
+            execute_case_flag=True,
             helper_lostconnection=False,
             ):
         
         '''
+        execute_case_flag is a master flag to execute or not the commands. If False, the commands will not be executed.
+        
         if helper_lostconnection is True, it means that the connection to the remote machine was lost, but the files are there,
-        so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
+            so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
         '''
 
         removeScratchFolders_goingOut = removeScratchFolders
@@ -220,7 +223,7 @@ class mitim_job:
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
             attempts_execution=attempts_execution,
-            execute_flag=not helper_lostconnection
+            execute_flag=execute_case_flag and (not helper_lostconnection)
         )
 
         # Get jobid
@@ -292,7 +295,7 @@ class mitim_job:
                 )
             else:
                 output, error = b"", b""
-                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="i")
+                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
 
             # ~~~~~~ Retrieve
             received = self.retrieve(
@@ -1390,7 +1393,6 @@ def retrieve_files_from_remote(
         for file in ['mitim_bash.src', 'mitim_shell_executor.sh', 'paramiko.log', 'mitim.out']:
             (folder_local / file).unlink(missing_ok=True)
     
-
     # Return local addresses
     folders = [folder_local / IOtools.reducePathLevel(folder)[-1] for folder in folders_remote]
     files = [folder_local / IOtools.reducePathLevel(file)[-1] for file in files_remote]

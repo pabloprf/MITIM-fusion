@@ -37,7 +37,7 @@ class gyrokinetic_model:
             **simulation_options["run"]
             )
         
-        if run_type in ['normal', 'submit']:
+        if run_type in ['normal', 'submit', 'send']:
             
             if run_type in ['submit']:
                 gk_object.check(every_n_minutes=10)

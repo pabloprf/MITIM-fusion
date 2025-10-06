@@ -170,7 +170,7 @@ transport:
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
       
       read:
@@ -195,7 +195,7 @@ transport:
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
       
       read:

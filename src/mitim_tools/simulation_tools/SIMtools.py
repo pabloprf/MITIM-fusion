@@ -115,7 +115,7 @@ class mitim_simulation:
         slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
-        run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
+        run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
@@ -555,12 +555,13 @@ class mitim_simulation:
             )
 
             # Submit run and wait
-            if run_type == 'normal':
+            if run_type in ['normal', 'send']:
             
                 self.simulation_job.run(
                     removeScratchFolders=True,
                     attempts_execution=attempts_execution,
-                    helper_lostconnection=kwargs_run.get("helper_lostconnection", False)
+                    helper_lostconnection=kwargs_run.get("helper_lostconnection", False),
+                    execute_case_flag = run_type == 'normal'
                     )
                     
                 self._organize_results(code_executor, tmpFolder, filesToRetrieve)

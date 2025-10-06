@@ -86,7 +86,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.restart",
             "input.cgyro",
             "input.cgyro.gen",
-            "mitim.out",
             "out.cgyro.egrid",
             "out.cgyro.equilibrium",
             "out.cgyro.freq",
@@ -102,6 +101,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
+            "mitim.out",
         ]
 
         self.output_files_test = [
