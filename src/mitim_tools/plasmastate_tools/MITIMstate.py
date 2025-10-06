@@ -2847,11 +2847,11 @@ class mitim_state:
                     'shift':    self._deriv_gacode(self.profiles["rmaj(m)"]),
                     'qinp':     np.abs(self.profiles["q(-)"]),
                     'shat':     self.derived["s_hat"],
-                    'akappa':    self.profiles["kappa(-)"],
+                    'akappa':   self.profiles["kappa(-)"],
                     'akappri':  s_kappa,
-                    'tri':    self.profiles["delta(-)"],
+                    'tri':      self.profiles["delta(-)"],
                     'tripri':   s_delta,
-                    'betaprim':    betaprim,
+                    'betaprim': betaprim,
                 }
             elif self.type == 'vmec':
                 parameters_geometry = {
