@@ -1,4 +1,5 @@
 import netCDF4
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
