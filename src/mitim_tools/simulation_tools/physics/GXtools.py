@@ -18,7 +18,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log"
+            return f"cd {folder}; gx -n {n} gxplasma.in > gxplasma.mitim.log"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, raise_warning=True,array_list=None):
 
