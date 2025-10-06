@@ -273,14 +273,20 @@ class GKplotting:
         ax.set_title('Real Frequency vs time')
         ax.legend(loc='best', prop={'size': 8},)
 
+        positive_f_mask = self.results[label].f_mean>0.0
+
         # Mean+Std Growth rate as function of ky
         ax = axs["C"]
-        ax.errorbar(self.results[label].ky, self.results[label].g_mean, yerr=self.results[label].g_std, fmt='-o', markersize=5, color=c, label=label+' (mean+std)')
+        ax.errorbar(self.results[label].ky, self.results[label].g_mean, yerr=self.results[label].g_std, fmt='-', markersize=5, color=c, label=label+' (mean+std)')
+        # filled circle for positive frequency, empty square for negative frequency
+        ax.plot(self.results[label].ky[positive_f_mask], self.results[label].g_mean[positive_f_mask], 'o', color=c)
+        ax.plot(self.results[label].ky[~positive_f_mask], self.results[label].g_mean[~positive_f_mask], 's', mfc='none', color=c)
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\gamma$ (norm.)")
         ax.set_title('Saturated Growth Rate')
         GRAPHICStools.addDenseAxis(ax)
         ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
         
         # Mean+Std Frequency as function of ky
         ax = axs["D"]
@@ -290,5 +296,6 @@ class GKplotting:
         ax.set_title('Saturated Real Frequency')
         GRAPHICStools.addDenseAxis(ax)
         ax.legend(loc='best', prop={'size': 8},)
+        ax.axhline(0.0, color='k', ls='--', lw=1)
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
