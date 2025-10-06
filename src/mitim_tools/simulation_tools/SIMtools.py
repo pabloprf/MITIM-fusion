@@ -501,20 +501,18 @@ class mitim_simulation:
 
                 print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
 
-                # As a pre-command, organize all folders in a simpler way
-                shellPreCommands = []
-                shellPostCommands = []
+                folders_list = "FOLDERS=( "
                 array_list = []
                 for i, folder in enumerate(folders_red):
                     array_list.append(f"{i}")
-                    folder_temp_array = f"run{i}"
-                    folder_actual = folder
-                    shellPreCommands.append(f"mkdir {self.simulation_job.folderExecution}/{folder_temp_array}; cp {self.simulation_job.folderExecution}/{folder_actual}/*  {self.simulation_job.folderExecution}/{folder_temp_array}/.")
-                    shellPostCommands.append(f"cp {self.simulation_job.folderExecution}/{folder_temp_array}/* {self.simulation_job.folderExecution}/{folder_actual}/.; rm -r {self.simulation_job.folderExecution}/{folder_temp_array}")
+                    folders_list += f"{folder} "
+                folders_list += ")"
 
                 # Code launches
-                indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-                GACODEcommand = code_call(
+                GACODEcommand = folders_list + "\n\n"
+                
+                indexed_folder = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
+                GACODEcommand += code_call(
                     folder = indexed_folder,
                     n = cores_per_code_call,
                     p = self.simulation_job.folderExecution,
