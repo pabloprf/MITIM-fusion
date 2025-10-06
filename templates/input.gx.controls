@@ -29,7 +29,7 @@
  gaussian_init = true            # initial perturbation is a gaussian in theta
  ikpar_init = 0                  # parallel wavenumber of initial perturbation
  init_field = "density"          # initial condition set in density
- init_amp = 1.0e-3               # amplitude of initial condition
+ init_amp = 1.0e-5               # amplitude of initial condition
 
 [Geometry]
  geo_option = "miller"           # use Miller geometry (values provided below)
