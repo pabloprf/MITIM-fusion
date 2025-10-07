@@ -277,9 +277,10 @@ class mitim_simulation:
             multipliers=multipliers,
             addControlFunction=self.run_specifications['control_function'],
             controls_file=self.run_specifications['controls_file'],
+            slurm_setup=slurm_setup,
             **kwargs_control
         )
-
+        
         code_executor_full[subfolder_simulation] = {}
         code_executor[subfolder_simulation] = {}
         for irho in self.rhos:
@@ -667,6 +668,11 @@ class mitim_simulation:
                     final_destination.unlink(missing_ok=True)
 
                     temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                    
+                    if not temp_file.exists():
+                        print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
+                        continue
+                    
                     temp_file.replace(final_destination)
 
                     fineall = fineall and final_destination.exists()
@@ -985,6 +991,7 @@ def change_and_write_code(
             addControlFunction=addControlFunction,
             controls_file=controls_file,
             NS=inputs[rho].num_recorded,
+            slurm_setup=kwargs.get("slurm_setup", None),
         )
 
         input_file = input_sim_rho.file.name.split('_')[0]
@@ -1096,7 +1103,7 @@ def modifyInputs(
     # -------------------------------------------
 
     if code_settings is not None:
-        CodeOptions = addControlFunction(code_settings, **kwargs_to_function)
+        CodeOptions = addControlFunction(code_settings, extraOptions=extraOptions,**kwargs_to_function)
 
         # ~~~~~~~~~~ Change with presets
         print(f" \t- Using presets code_settings = {code_settings}", typeMsg="i")

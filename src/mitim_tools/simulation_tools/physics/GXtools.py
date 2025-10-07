@@ -467,11 +467,11 @@ class GXoutput(SIMtools.GACODEoutput):
 
         # Assume electrons are always last
         self.Qe = Q[:,-1]
-        self.Qi_all = Q[:,:-1]
-        self.Qi = self.Qi_all.sum(axis=1)
+        self.Qi_all = np.transpose(Q[:,:-1]) # (species-1, time)
+        self.Qi = self.Qi_all.sum(axis=0) # (time)
         self.Ge = G[:,-1]
-        self.Gi_all = G[:,:-1]
-        self.Gi = self.Gi_all.sum(axis=1)
+        self.Gi_all = np.transpose(G[:,:-1]) # (species-1, time)
+        self.Gi = self.Gi_all.sum(axis=0) # (time)
 
         self.Qe_ky = np.transpose(Q_ky[:,-1,:])   # (ky, time)
         self.Qi_all_ky = np.transpose(Q_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
@@ -480,8 +480,8 @@ class GXoutput(SIMtools.GACODEoutput):
         self.Gi_all_ky = np.transpose(G_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
         self.Gi_ky = self.Gi_all_ky.sum(axis=0)  # (time, ky)
         
-        self.ions_flags = [i for i in range(1, self.Qi_all.shape[1])]
-        self.all_names = [f'i{i}' for i in range(1, self.Qi_all.shape[1]+1)]
+        self.ions_flags = [i for i in range(1, self.Qi_all.shape[0])]
+        self.all_names = [f'i{i}' for i in range(1, self.Qi_all.shape[0]+1)]
         
         # If linear, last tmin
         if not bool(data.groups['Inputs'].groups['Controls'].variables['nonlinear_mode'][:]):
@@ -496,9 +496,11 @@ class GXoutput(SIMtools.GACODEoutput):
             'g',
             'f',
             'Qe',
+            'Qi_all',
             'Qi',
             'Ge',
             'Qe_ky',
+            'Qi_all_ky',
             'Qi_ky',
             'Ge_ky',
         ]
