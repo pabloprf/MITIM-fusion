@@ -81,7 +81,7 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'gxplasma.gx_geo.log',
             'gxplasma.big.nc',
             'gxplasma.mitim.log',
-            #'gxplasma.restart.nc',
+            'gxplasma.restart.nc',
             ]
         
 
@@ -303,7 +303,7 @@ class GXinput(SIMtools.GACODEinput):
                 '[Dissipation]':
                     [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper', 'D_H', 'w_osc', 'p_HB', 'HB_hyper'], [] ],
                 '[Restart]':
-                    [ ['save_for_restart', 'nsave','restart_to_file', 'restart', 'restart_from_file'], [] ],
+                    [ ['save_for_restart', 'nsave','restart_to_file', 'restart', 'restart_from_file', 'append_on_restart'], [] ],
                 '[Diagnostics]':
                     [ ['nwrite', 'omega', 'fluxes', 'fields', 'moments'], [] ]
             }
