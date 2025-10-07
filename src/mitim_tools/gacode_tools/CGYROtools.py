@@ -99,6 +99,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
+        ]
+        
+        self.ResultsFiles = self.ResultsFiles_minimal + [
+            "bin.cgyro.restart",
+            "out.cgyro.tag",
             "mitim.out",
         ]
         
