@@ -16,9 +16,10 @@ from IPython import embed
 import pandas as pd
 
 class CGYROlinear_scan:
-    def __init__(self, labels, results):   
+    def __init__(self, labels, results, irho = 0):   
 
         self.labels = labels
+        self.irho = irho
 
         # Store the data in a structured way        
         self.aLTi = []
@@ -32,16 +33,16 @@ class CGYROlinear_scan:
         self.Qi_mean = []
 
         for label in labels:
-            self.ky.append(results[label]['output'][0].ky[0])
-            self.aLTi.append(results[label]['output'][0].aLTi)
-            self.g_mean.append(results[label]['output'][0].g_mean[0])
-            self.f_mean.append(results[label]['output'][0].f_mean[0])
+            self.ky.append(results[label]['output'][irho].ky[0])
+            self.aLTi.append(results[label]['output'][irho].aLTi)
+            self.g_mean.append(results[label]['output'][irho].g_mean[0])
+            self.f_mean.append(results[label]['output'][irho].f_mean[0])
             
-            self.Qe_mean.append(results[label]['output'][0].Qe_mean)
-            self.Qi_mean.append(results[label]['output'][0].Qi_mean)
+            self.Qe_mean.append(results[label]['output'][irho].Qe_mean)
+            self.Qi_mean.append(results[label]['output'][irho].Qi_mean)
 
             try:
-                self.neTe_mean.append(results[label]['output'][0].neTe_kx0_mean[0])
+                self.neTe_mean.append(results[label]['output'][irho].neTe_kx0_mean[0])
             except:
                 self.neTe_mean.append(np.nan)
 
@@ -127,6 +128,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
+        
+        self.roa = self.cgyrodata.rmin
     
 
         # ************************

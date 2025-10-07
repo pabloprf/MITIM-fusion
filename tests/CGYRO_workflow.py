@@ -59,6 +59,7 @@ cgyro.run_scan(
     },
     variable='KY',
     varUpDown=[0.3,0.4],
+    relativeChanges=False,
     slurm_setup={
         'cores':16
         },
@@ -67,9 +68,14 @@ cgyro.run_scan(
     run_type=run_type
     )
 
+# Plot results as normal runs
 cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
 
-fig = cgyro.fn.add_figure(label="Quick linear")
-cgyro.plot_quick_linear(labels=["scan1_KY_0.3","scan1_KY_0.4"], fig = fig)
+# Plot results as scan of KY
+cgyro.read_linear_scan(label="scan1", variable='KY', store_as_label="scan1_rho0", irho=0)
+cgyro.read_linear_scan(label="scan1", variable='KY', store_as_label="scan1_rho1", irho=1)
+
+fig = cgyro.fn.add_figure(label="Quick linear", tab_color=1)
+cgyro.plot_quick_linear(labels=["scan1_rho0", "scan1_rho1"], fig = fig)
 
 cgyro.fn.show()
