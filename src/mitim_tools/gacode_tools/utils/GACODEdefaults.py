@@ -52,10 +52,49 @@ def addNEOcontrol(code_settings,*args, **kwargs):
     
     return options
 
-def addGXcontrol(code_settings,*args, **kwargs):
+def addGXcontrol(code_settings, *args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
     options = add_code_settings(options, code_settings, models_file="input.gx.models.yaml")
+
+    '''
+    Check right number of GPUs, as per GX documentation: https://gx.readthedocs.io/en/latest/MultiGPU.html
+    '''
+
+    if "slurm_setup" in kwargs and kwargs["slurm_setup"] is not None:
+        Ngpu = kwargs["slurm_setup"].get("cores", 1)
+        
+        Nsp = kwargs["NS"]
+        
+        Nm = options['nhermite']
+        
+        if 'extraOptions' in kwargs and kwargs['extraOptions'] is not None:
+            if 'nhermite' in kwargs['extraOptions']:
+                Nm = kwargs['extraOptions']['nhermite']
+                
+        problematic = False
+        
+        if Ngpu <= Nsp:
+            # Is Nsp an integer multiple of Ngpu?
+            Nsp_multiple_Ngpu = Nsp % Ngpu == 0
+            if not Nsp_multiple_Ngpu:
+                print(f"\t- Number of species ({Nsp}) is not an integer multiple of number of GPUs ({Ngpu})", typeMsg="w")
+                problematic = True
+        else:
+            # Is Ngpu an integer multiple of Nsp?
+            Ngpu_multiple_Nsp = Ngpu % Nsp == 0
+            # Is Nm an integer multiple of (Ngpu/Nsp)?
+            Nm_multiple_Ngpu_per_Nsp = Nm % (Ngpu // Nsp) == 0
+            
+            if not Ngpu_multiple_Nsp:
+                print(f"\t- Number of GPUs ({Ngpu}) is not an integer multiple of number of species ({Nsp})", typeMsg="w")
+                problematic = True
+            if not Nm_multiple_Ngpu_per_Nsp:
+                print(f"\t- Number of Hermite polynomials ({Nm}) is not an integer multiple of (Ngpu/Nsp) ({Ngpu//Nsp})", typeMsg="w")
+                problematic = True
+
+        if problematic:
+            print(f"\t- This will likely lead to problems in GX runs", typeMsg="q")
 
     return options
 
