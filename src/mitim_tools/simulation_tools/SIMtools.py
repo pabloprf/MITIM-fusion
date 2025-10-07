@@ -524,7 +524,7 @@ class mitim_simulation:
             # ---------------------------------------------
 
             slurm_settings = code_slurm_settings(
-                name=code,
+                name=code+'_sim',
                 minutes=minutes,
                 total_cores_required=total_cores_required,
                 cores_per_code_call=cores_per_code_call,

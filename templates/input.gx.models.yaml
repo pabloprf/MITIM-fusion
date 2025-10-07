@@ -1,5 +1,6 @@
 "Linear Tokamak":
   controls:
+    t_max: 250.0
     geo_option: '"miller"'
     nonlinear_mode: false
     hyper: false
@@ -9,6 +10,7 @@
 
 "Nonlinear Tokamak":
   controls:
+    t_max: 1000.0
     geo_option: '"miller"'
     nonlinear_mode: true
     hyper: true
@@ -18,6 +20,7 @@
 
 "Linear Stellarator":
   controls:
+    t_max: 250.0
     geo_option: '"vmec"'
     nonlinear_mode: false
     hyper: false
@@ -29,6 +32,7 @@
 
 "Nonlinear Stellarator":
   controls:
+    t_max: 1000.0
     geo_option: '"vmec"'
     nonlinear_mode: true
     hyper: true
