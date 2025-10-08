@@ -2,7 +2,7 @@ import copy
 import numpy as np
 import matplotlib.pyplot as plt
 import dill as pickle_dill
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 

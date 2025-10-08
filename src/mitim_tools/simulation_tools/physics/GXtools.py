@@ -429,12 +429,15 @@ class GXinput(SIMtools.GACODEinput):
 
 class GXoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", tmin = 0.0,  **kwargs):
+        '''
+        tmin can be used to indicate from which time onwards I want to do the signal analysis
+        if negative, it represents the relative time from the end of the simulation. e.g.
+        -0.25 means I want to consider the last 25% of the simulation time
+        '''
         super().__init__()
         
         self.FolderGACODE, self.suffix = Path(FolderGACODE), suffix
         
-        self.tmin = tmin
-
         if suffix == "":
             print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
         else:
@@ -442,9 +445,9 @@ class GXoutput(SIMtools.GACODEoutput):
 
         self.inputclass = GXinput(file=self.FolderGACODE / f"gxplasma.in{self.suffix}")
 
-        self.read()
+        self.read(tmin)
 
-    def read(self):
+    def read(self, tmin):
 
         data = netCDF4.Dataset(self.FolderGACODE / f"gxplasma.out.nc{self.suffix}")
         
@@ -488,6 +491,12 @@ class GXoutput(SIMtools.GACODEoutput):
             self.tmin = self.t[-1]
             print(f"\t- Linear simulation, setting tmin to last time", typeMsg='i')
         
+        if tmin >= 0.0:
+            self.tmin = tmin
+        else:
+            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
+            print(f"\t- Negative tmin provided, setting tmin to {self.tmin:.3f}", typeMsg='i')
+
         self._signal_analysis()
 
     def _signal_analysis(self):
