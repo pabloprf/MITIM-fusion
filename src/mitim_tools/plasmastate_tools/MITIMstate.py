@@ -1427,9 +1427,9 @@ class mitim_state:
         # Contributions to dilution and to Zeff
         print(f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
-    def lumpImpurities(self):
+    def lumpImpurities(self, forcename=None):
 
-        self.lumpSpecies(ions_list=self.ion_list_impurities)
+        self.lumpSpecies(ions_list=self.ion_list_impurities, forcename=forcename)
 
     def lumpIons(self):
 
