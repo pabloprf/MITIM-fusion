@@ -226,6 +226,20 @@ class MITIMgeqdsk:
             else:
                 Rf, Zf = self.g.fluxsurfaces["R"][flux], self.g.fluxsurfaces["Z"][flux]
 
+            # To avoid the following code to fail if only one point is found
+            if Rf.shape[0] == 1:
+                
+                min_value = 1E-7
+                
+                kappa.append(min_value)
+                rmin.append(min_value)
+                rmaj.append(Rf[0])
+                zmag.append(Zf[0])
+
+                sn.append(np.ones(n_coeff)*min_value)
+                cn.append(np.ones(n_coeff)*min_value)
+                continue
+
             # Perform the MXH decompositionusing the MITIM surface class
             surfaces = mitim_flux_surfaces()
             surfaces.reconstruct_from_RZ(Rf,Zf)
@@ -538,7 +552,7 @@ class mitim_flux_surfaces:
         for i in range(self.R0.shape[0]):
             try:
                 Ri, Zi, zeta_uo = find_squareness_points(self.R[i,:], self.Z[i,:])
-            except AttributeError:
+            except:
                 zeta_uo = np.nan
             self.zeta[i] = zeta_uo
 
