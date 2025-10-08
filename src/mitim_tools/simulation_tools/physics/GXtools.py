@@ -14,7 +14,7 @@ from IPython import embed
 class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def __init__(
         self,
-        rhos=[0.4, 0.6],  # rho locations of interest
+        rhos=[None],  # List of rho locations of interest
     ):
         
         super().__init__(rhos=rhos)
