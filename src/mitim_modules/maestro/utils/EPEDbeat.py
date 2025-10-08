@@ -66,6 +66,7 @@ class eped_beat(beat):
         # Whether EPED is going to be run with Zeta
         if 'zeta_flag' in kwargs:
             self.zeta_flag = kwargs['zeta_flag']
+            print('zeta_flag set to True')
         else: 
             self.zeta_flag = False
 
@@ -383,12 +384,14 @@ class eped_beat(beat):
         # Handle optional zeta parameter
         if len(args) > 0:
             zeta = args[0]
+            print('Let of args > 0, using zeta =', zeta)
         else:
             zeta = 0.0
+            print('No zeta provided, setting zeta = 0.0')
 
         eped = EPEDtools.EPED(folder=folder)
 
-        if int(zeta) != 0:
+        if len(args) > 0:
             input_params = {
                 'ip': Ip,
                 'bt': Bt,
@@ -403,6 +406,7 @@ class eped_beat(beat):
                 'tesep': Tesep_eV,
                 'zeta': zeta
             }
+            print('_run_full_eped input_params with zeta:', input_params)
         else: 
             input_params = {
                 'ip': Ip,
@@ -417,6 +421,7 @@ class eped_beat(beat):
                 'nesep': nesep_ratio * neped19,
                 'tesep': Tesep_eV
             }
+            print('_run_full_eped input_params without zeta:', input_params)
 
         eped.run(
             subfolder = 'case1',
