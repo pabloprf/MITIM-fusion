@@ -70,11 +70,15 @@ class CGYROlinear_scan:
 
 class CGYROoutput(SIMtools.GACODEoutput):
     def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
+        '''
+        tmin can be used to indicate from which time onwards I want to do the signal analysis
+        if negative, it represents the relative time from the end of the simulation. e.g.
+        -0.25 means I want to consider the last 25% of the simulation time
+        '''
         
         super().__init__()
 
         self.folder = folder
-        self.tmin = tmin
         
         if isinstance(self.folder, str):
             self.folder = Path(self.folder)
@@ -104,7 +108,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.linear = True
             if last_tmin_for_linear:
                 print('\t- Forcing tmin to the last time point', typeMsg='i')
-                self.tmin = self.cgyrodata.t[-1]
+                tmin = self.cgyrodata.t[-1]
             
         else:
             self.linear = False
@@ -137,6 +141,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # ************************
         
         self.t = self.cgyrodata.tnorm
+        
+        if tmin >= 0.0:
+            self.tmin = tmin
+        else:
+            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
+            print(f"\t- Negative tmin provided, setting tmin to {self.tmin:.3f}", typeMsg='i')
+        
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
         self.theta = self.cgyrodata.theta

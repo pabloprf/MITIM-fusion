@@ -174,7 +174,7 @@ transport:
         run_type: "prep"
       
       read:
-        tmin: 0.0
+        tmin: -0.3 # Last 30% of the simulation
       
       # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
       Qi_stable_criterion: 0.01
@@ -199,7 +199,7 @@ transport:
         run_type: "prep"
       
       read:
-        tmin: 0.0
+        tmin: -0.3 # Last 30% of the simulation
 
   # Function to post-process input.gacode only *before* passing to transport codes
   profiles_postprocessing_fun: null
