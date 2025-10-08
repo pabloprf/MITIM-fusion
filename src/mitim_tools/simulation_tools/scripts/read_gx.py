@@ -1,8 +1,5 @@
 import argparse
-import pickle
 from mitim_tools.simulation_tools.physics import GXtools
-from xml.etree.ElementInclude import include
-import matplotlib.pyplot as plt
 from IPython import embed
 import os
 
@@ -39,7 +36,6 @@ def main():
     c = GXtools.GX()
 
     labels = []
-    output_pickle = {}
     for i, folder in enumerate(folders):
         labels.append(f"case {i + 1}")
         
