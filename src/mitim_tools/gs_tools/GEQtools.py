@@ -108,7 +108,7 @@ class MITIMgeqdsk:
         # Core values
         vp = np.array(self.g.fluxsurfaces["Vprime"]).flatten()
         ir = np.array(self.g.fluxsurfaces["1/R"]).flatten()
-        self.cx_area = cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0)
+        self.cx_area = abs(cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0))
         self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
 
         self.kappa995 = np.interp(
