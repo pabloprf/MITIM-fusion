@@ -431,7 +431,7 @@ class GXoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", tmin = 0.0,  **kwargs):
         super().__init__()
         
-        self.FolderGACODE, self.suffix = FolderGACODE, suffix
+        self.FolderGACODE, self.suffix = Path(FolderGACODE), suffix
         
         self.tmin = tmin
 
