@@ -1101,6 +1101,7 @@ def create_slurm_execution_files(
     cpuspertask = slurm_settings.setdefault("cpuspertask", None)
     ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
     gpuspertask = slurm_settings.setdefault("gpuspertask", None)
+    qos = slurm_settings.setdefault("qos", None)
 
     job_array = slurm_settings.setdefault("job_array", None)
     job_array_limit = slurm_settings.setdefault("job_array_limit", None)
@@ -1116,6 +1117,7 @@ def create_slurm_execution_files(
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
     request_exclusive_node = slurm.setdefault("exclusive", False)
+    
     
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
@@ -1159,6 +1161,8 @@ def create_slurm_execution_files(
         commandSBATCH.append(f"#SBATCH --partition {partition}")
     if account is not None:
         commandSBATCH.append(f"#SBATCH --account {account}")
+    if qos is not None:
+        commandSBATCH.append(f"#SBATCH --qos {qos}")
     if constraint is not None:
         commandSBATCH.append(f"#SBATCH --constraint {constraint}")
     if memory_req is not None:
