@@ -770,7 +770,7 @@ class powerstate:
         If var in MW/m^3, this gives as output the MW/m^2 profile
         """
         
-        r = self.plasma['roa']*self.plasma['a']
+        r = self.plasma['roa']*self.plasma['a'].reshape(-1, 1)
         surface_used = self.plasma["volp"] # IMPORTANT Note: This is the GACODE definition, acknowledging that volp=dV/dr is not equal to the surface area
 
         if force_dim is None:
