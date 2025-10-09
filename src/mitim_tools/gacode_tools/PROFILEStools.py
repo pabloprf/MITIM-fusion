@@ -511,8 +511,6 @@ class gacode_state(MITIMstate.mitim_state):
         # Set equal aspect ratio
         ax.set_aspect("equal")
 
-
-
 def calculateGeometricFactors(profiles, n_theta=1001):
 
     # ----------------------------------------
@@ -529,6 +527,8 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     q = profiles.profiles["q(-)"]
 
     shape_coeffs = profiles.shape_cos + profiles.shape_sin
+    
+    signb = np.sign(profiles.profiles['torfluxa(Wb/radian)'][0])
 
     # ----------------------------------------
     # Derivatives as defined in expro_util.f90
@@ -590,6 +590,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         dzmag,
         dRmag,
         q,
+        geo_signb_in=signb,
         n_theta=n_theta,
     )
 
@@ -619,17 +620,14 @@ def volp_surf_geo_vectorized(
     geo_dzmag_in,
     geo_drmaj_in,
     geo_q_in,
+    geo_signb_in = 1.0,
     n_theta=1001):
     """
     Completety from f2py/geo/geo.f90
     """
 
-    geo_rmin_in = geo_rmin_in.clip(
-        1e-10
-    )  # To avoid problems at 0 (Implemented by PRF, not sure how TGYRO deals with this)
-
+    geo_rmin_in = geo_rmin_in.clip(1e-10)  # To avoid problems at 0 (Implemented by PRF, not sure how TGYRO deals with this)
     geo_q_in = geo_q_in.clip(1e-2) # To avoid problems at 0 with some geqdsk files that are corrupted...
-
 
     [
         geo_shape_cos0_in,
@@ -665,8 +663,6 @@ def volp_surf_geo_vectorized(
         geo_shape_s_sin6_in,
     ] = np.array(cos_sin_s).astype(float).T
 
-    geo_signb_in = 1.0
-
     geov_theta = np.zeros((n_theta,geo_rmin_in.shape[0]))
     geov_bigr = np.zeros((n_theta,geo_rmin_in.shape[0]))
     geov_bigr_r = np.zeros((n_theta,geo_rmin_in.shape[0]))
@@ -691,7 +687,7 @@ def volp_surf_geo_vectorized(
         #! Generalized Miller-type parameterization
         #!-----------------------------------------
 
-        theta = -0.5 * pi_2 + (i - 1) * d_theta
+        theta = -0.5 * pi_2 + i * d_theta
 
         geov_theta[i] = theta
 
@@ -709,7 +705,6 @@ def volp_surf_geo_vectorized(
             + geo_shape_cos4_in * np.cos(4 * theta)
             + geo_shape_cos5_in * np.cos(5 * theta)
             + geo_shape_cos6_in * np.cos(6 * theta)
-            + geo_shape_sin3_in * np.sin(3 * theta)
             + x * np.sin(theta)
             - geo_zeta_in * np.sin(2 * theta)
             + geo_shape_sin3_in * np.sin(3 * theta)
@@ -791,16 +786,11 @@ def volp_surf_geo_vectorized(
         bigz[i] = geo_zmag_in + geo_kappa_in * geo_rmin_in * np.sin(a)
         bigz_r[i] = geo_dzmag_in + geo_kappa_in * (1.0 + geo_s_kappa_in) * np.sin(a)
         bigz_t[i] = geo_kappa_in * geo_rmin_in * np.cos(a) * a_t
-        bigz_tt = (
-            -geo_kappa_in * geo_rmin_in * np.sin(a) * a_t**2
-            + geo_kappa_in * geo_rmin_in * np.cos(a) * a_tt
-        )
+        bigz_tt = (-geo_kappa_in * geo_rmin_in * np.sin(a) * a_t**2+ geo_kappa_in * geo_rmin_in * np.cos(a) * a_tt)
 
         g_tt = geov_bigr_t[i] ** 2 + bigz_t[i] ** 2
 
-        geov_jac_r[i] = geov_bigr[i] * (
-            geov_bigr_r[i] * bigz_t[i] - geov_bigr_t[i] * bigz_r[i]
-        )
+        geov_jac_r[i] = geov_bigr[i] * (geov_bigr_r[i] * bigz_t[i] - geov_bigr_t[i] * bigz_r[i])
 
         geov_grad_r[i] = geov_bigr[i] * np.sqrt(g_tt) / geov_jac_r[i]
 
@@ -814,13 +804,11 @@ def volp_surf_geo_vectorized(
 
         geov_l_r[i] = bigz_l[i] * bigz_r[i] + bigr_l[i] * geov_bigr_r[i]
 
-        geov_nsin[i] = (
-            geov_bigr_r[i] * geov_bigr_t[i] + bigz_r[i] * bigz_t[i]
-        ) / geov_l_t[i]
+        geov_nsin[i] = (geov_bigr_r[i] * geov_bigr_t[i] + bigz_r[i] * bigz_t[i]) / geov_l_t[i]
 
     c = 0.0
-    for i in range(n_theta):
-        c = c + geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
+    for i in range(n_theta - 1):
+        c += geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
 
     f = geo_rmin_in / (c * d_theta / pi_2)
 
@@ -836,20 +824,15 @@ def volp_surf_geo_vectorized(
         geo_surf = geo_surf + geov_l_t[i] * geov_bigr[i]
     geo_surf = pi_2 * geo_surf * d_theta
 
-    # -----
-    c = 0.0
-    for i in range(n_theta - 1):
-        c = c + geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
-    f = geo_rmin_in / (c * d_theta / pi_2)
-
     geov_b = np.zeros((n_theta,geo_rmin_in.shape[0]))
+    geov_bp = np.zeros((n_theta,geo_rmin_in.shape[0]))
     geov_g_theta = np.zeros((n_theta,geo_rmin_in.shape[0]))
     geov_bt = np.zeros((n_theta,geo_rmin_in.shape[0]))
     for i in range(n_theta):
         geov_bt[i] = f / geov_bigr[i]
-        geov_bp = (geo_rmin_in / geo_q_in) * geov_grad_r[i] / geov_bigr[i]
+        geov_bp[i] = (geo_rmin_in / geo_q_in) * geov_grad_r[i] / geov_bigr[i]
 
-        geov_b[i] = geo_signb_in * (geov_bt[i] ** 2 + geov_bp**2) ** 0.5
+        geov_b[i] = geo_signb_in * (geov_bt[i] ** 2 + geov_bp[i] ** 2) ** 0.5
         geov_g_theta[i] = (
             geov_bigr[i]
             * geov_b[i]
@@ -866,7 +849,8 @@ def volp_surf_geo_vectorized(
     z = (x0 - x1) / dx
     if i2 == n_theta:
         i2 -= 1
-    bt_geo0 = geov_bt[i1] + (geov_bt[i2] - geov_bt[i1]) * z
+    # bt_geo0 = geov_bt[i1] + (geov_bt[i2] - geov_bt[i1]) * z
+    bt_geo0 = geov_bt[n_theta // 2]
 
     denom = 0
     for i in range(n_theta - 1):
@@ -879,21 +863,21 @@ def volp_surf_geo_vectorized(
             + geov_grad_r[i] * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    geo_fluxsurfave__bp2 = 0
+    geo_fluxsurfave_bp2 = 0
     for i in range(n_theta - 1):
-        geo_fluxsurfave__bp2 = (
-            geo_fluxsurfave__bp2
-            + geov_bt[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
+        geo_fluxsurfave_bp2 = (
+            geo_fluxsurfave_bp2
+            + geov_bp[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
         )
 
     geo_fluxsurfave_bt2 = 0
     for i in range(n_theta - 1):
         geo_fluxsurfave_bt2 = (
             geo_fluxsurfave_bt2
-            + geov_bp ** 2 * geov_g_theta[i] / geov_b[i] / denom
+            + geov_bt[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave__bp2, geo_fluxsurfave_bt2, bt_geo0
+    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0
 
 def xsec_area_RZ(R,Z):
     # calculates the cross-sectional area of the plasma for each flux surface
