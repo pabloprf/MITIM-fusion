@@ -40,6 +40,8 @@ class beat:
             self.initialize = initializer_from_previous(self)
         elif initializer == 'freegs':
             self.initialize = initializer_from_freegs(self)
+        elif initializer == 'fibe':
+            self.initialize = initializer_from_fibe(self)
         elif initializer == 'geqdsk':
             self.initialize = initializer_from_geqdsk(self)
         elif initializer == 'profiles':
@@ -268,6 +270,68 @@ class initializer_from_freegs(initializer_from_geqdsk):
 
         # Call the geqdsk initializer
         super().__call__(geqdsk_file = self.folder / 'freegs.geqdsk',**kwargs_geqdsk)
+
+# --------------------------------------------------------------------------------------------
+# Initializer from FiBE: create the equilibrium, convert to geqdsk and call the geqdsk initializer
+# --------------------------------------------------------------------------------------------
+
+class initializer_from_fibe(initializer_from_geqdsk):
+    '''
+    Idea is to write geqdsk and then call the geqdsk initializer
+    '''
+    def __init__(self, beat_instance, label = 'fibe'):
+        super().__init__(beat_instance, label = label)
+            
+    def __call__(self,
+        R,
+        a,
+        kappa_sep,
+        delta_sep,
+        zeta_sep,
+        z0,
+        p0_MPa = 1.0,
+        Ip_MA = 1.0,
+        B_T = 5.4,
+        **kwargs_geqdsk
+        ):
+
+        p0 = p0_MPa * 1.0e6
+        Ip = Ip_MA * 1.0e6
+        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
+        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
+            print('\t- Using ne profile instead of the ne0 guess')
+            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
+            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
+            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
+            p0 = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20)
+        # If betaN provided, use it to estimate the pressure
+        elif 'BetaN' in kwargs_geqdsk:
+            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
+            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
+            p0 = pvol_MPa * 3.0 * 1.0e6
+
+        # Run FiBE to generate equilibrium
+        from fibe import FixedBoundaryEquilibrium
+        eq = FixedBoundaryEquilibrium()
+        eq.define_grid_and_boundary_from_mxh(
+            nr=129,
+            nz=129,
+            rgeo=R,
+            zgeo=z0,
+            rminor=a,
+            kappa=kappa_sep,
+            cos_coeffs=[0.0, 0.0, 0.0],
+            sin_coeffs=[0.0, np.arcsin(delta_sep), -zeta_sep)
+        )
+        eq.initialize_profiles_with_minimal_input(p0, Ip, B_T)
+        eq.initialize_psi()
+        eq.solve_psi()
+
+        # Convert to geqdsk and write it to initialization folder
+        eq.to_geqdsk(self.folder / 'fibe.geqdsk')
+
+        # Call the geqdsk initializer
+        super().__call__(geqdsk_file = self.folder / 'fibe.geqdsk',**kwargs_geqdsk)
 
 # --------------------------------------------------------------------------------------------
 # [Generic] Profile creator: Insert profiles
