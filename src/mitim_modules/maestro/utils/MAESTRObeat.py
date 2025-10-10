@@ -321,8 +321,7 @@ class initializer_from_fibe(initializer_from_geqdsk):
             rminor=a,
             kappa=kappa_sep,
             cos_coeffs=[0.0, 0.0, 0.0],
-            sin_coeffs=[0.0, np.arcsin(delta_sep), -zeta_sep)
-        )
+            sin_coeffs=[0.0, np.arcsin(delta_sep), -zeta_sep])
         eq.initialize_profiles_with_minimal_input(p0, Ip, B_T)
         eq.initialize_psi()
         eq.solve_psi()
