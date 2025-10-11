@@ -7,7 +7,7 @@ from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
-def addTGLFcontrol(code_settings, NS=2, minimal=False):
+def addTGLFcontrol(code_settings, NS=2, minimal=False, **kwargs):
     """
     ********************************************************************************
     Define dictionary to start with
