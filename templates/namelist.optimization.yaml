@@ -63,13 +63,20 @@ surrogate_options:
   TypeKernel: 0
   TypeMean: 0
   surrogate_selection: null
+  
+  additional_constraints: null
+
+  # Noise treatment options
   FixedNoise: true
   ExtraNoise: false
-  additional_constraints: null
   ConstrainNoise: -0.001
   MinimumRelativeNoise: null
-  stds_outside: null
-  stds_outside_checker: 5
+
+  # Capability to remove outliers
+  stds_outside: null      # Standard deviations outside the mean to consider a point as an outlier
+  stds_outside_checker: 5 # Check for outliers only if there are at least these many points
+
+  # Capability to add points to surrogates based on files
   extrapointsFile: null
   extrapointsModels: null
   extrapointsModelsAvoidContent: null

@@ -302,6 +302,11 @@ optimization_options:
     # Function to select the GP parameters depending on each channel/radius (superseeds the main optimization namelist)
     surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"
 
+    # To avoid messing surrogates with exploiding fluxes, remove them from the training set if they are outside of 100 std from the rest of points
+    stds_outside: 100       # Standard deviations outside the mean to consider a point as an outlier
+    stds_outside_checker: 5 # Check for outliers only if there are at least these many points
+
+
   strategy_options:
 
     # Allow excursions from the bounds
