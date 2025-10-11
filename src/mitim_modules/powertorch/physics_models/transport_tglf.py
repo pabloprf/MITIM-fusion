@@ -60,7 +60,7 @@ class tglf_model:
                 "minutes": 2,
                 },
             attempts_execution=2,
-            only_minimal_files=keep_tglf_files in ['minimal'],
+            only_minimal_files=keep_tglf_files in ['none'],
             **simulation_options["run"]
         )
     
@@ -117,7 +117,7 @@ class tglf_model:
                 extra_name=self.name,
                 cores_per_tglf_instance=cores_per_tglf_instance,
                 Qi_includes_fast=Qi_includes_fast,
-                only_minimal_files=keep_tglf_files in ['minimal', 'base'],
+                only_minimal_files=keep_tglf_files in ['none', 'base'],
                 reuse_scan_ball_file=reuse_scan_ball_file,
                 **simulation_options["run"]
                 )
