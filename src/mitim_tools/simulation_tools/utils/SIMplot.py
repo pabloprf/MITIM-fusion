@@ -303,11 +303,13 @@ class GKplotting:
         
     def save_pickle(self, file):
         
-        print('...Pickling GX class...')
+        print('...Pickling simulation class...')
     
         with open(file, "wb") as handle:
             pickle_dill.dump(self, handle, protocol=4)
             
 def restore_class_pickle(file):
+    
+    print('...Restoring pickled simulation class...')
     
     return IOtools.unpickle_mitim(file)

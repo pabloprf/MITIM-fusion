@@ -541,16 +541,17 @@ class mitim_simulation:
             )
             
             # I would like the mitim_job to check if the retrieved folders were complete
-            check_files_in_folder = {}
+            files_we_care_about = {}
             for folder in folders_red:
-                check_files_in_folder[folder] = filesToRetrieve
+                files_we_care_about[folder] = filesToRetrieve
             # ---------------------------------------------
 
             self.simulation_job.prep(
                 GACODEcommand,
                 input_folders=folders,
                 output_folders=folders_red,
-                check_files_in_folder=check_files_in_folder,
+                output_folders_selective=files_we_care_about,
+                check_files_in_folder=files_we_care_about,
                 shellPreCommands=shellPreCommands,
                 shellPostCommands=shellPostCommands,
             )
