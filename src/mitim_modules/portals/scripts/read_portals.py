@@ -47,7 +47,8 @@ def main():
             "Outputs/optimization_extra.pkl",
             "Outputs/optimization_object.pkl",
             "Outputs/optimization_results.out",
-            "Outputs/optimization_log.txt"]
+            "Outputs/optimization_log.txt",
+            "Outputs/timing.jsonl",]
         
         # Bring back also if we were in simple relaxation stage
         fold = "Initialization/initialization_simple_relax"
