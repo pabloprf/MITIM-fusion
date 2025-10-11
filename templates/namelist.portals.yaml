@@ -185,6 +185,9 @@ transport:
       # If True, always run base TGLF to keep track of discrepancies
       run_base_tglf: True
 
+      # Files to keep from simulation (none: all runs will only keep minimal files; all: retrieve all files)
+      keep_files: "none" 
+
     # *********************************************************************************************************
     # GX
     # *********************************************************************************************************
@@ -200,6 +203,9 @@ transport:
       
       read:
         tmin: -0.3 # Last 30% of the simulation
+
+      # Files to keep from simulation (none: all runs will only keep minimal files; all: retrieve all files)
+      keep_files: "none" 
 
   # Function to post-process input.gacode only *before* passing to transport codes
   profiles_postprocessing_fun: null
