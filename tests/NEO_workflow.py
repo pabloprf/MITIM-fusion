@@ -23,9 +23,9 @@ neo.run('neo2/', cold_start=cold_start, extraOptions={'N_ENERGY':5,'N_XI': 11, '
 neo.read('NEO low res')
 
 neo.run('neo3/', cold_start=cold_start, extraOptions={'N_ENERGY':5,'N_XI': 11, 'N_THETA': 11}, multipliers={'DLNTDR_1': 1.5})
-neo.read('NEO low res + 50% aLTe')
+neo.read('NEO low res + 50% aLTi1')
 
-neo.plot(labels=['NEO default', 'NEO low res', 'NEO low res + 50% aLTe'])
+neo.plot(labels=['NEO default', 'NEO low res', 'NEO low res + 50% aLTi1'])
 
 neo.run_scan('scan1', cold_start=cold_start, variable='DLNTDR_1', varUpDown=np.linspace(0.5, 1.5, 4))
 neo.read_scan(label='scan1',variable = 'DLNTDR_1')
