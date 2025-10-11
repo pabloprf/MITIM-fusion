@@ -15,7 +15,8 @@ class gyrokinetic_model:
         cold_start = self.cold_start
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
-        run_type = simulation_options["run"]["run_type"]        
+        run_type = simulation_options["run"]["run_type"]    
+        keep_gk_files = simulation_options.get("keep_files", 'all')
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare object
@@ -34,6 +35,7 @@ class gyrokinetic_model:
             subfolder_name,
             cold_start=cold_start,
             forceIfcold_start=True,
+            only_minimal_files=keep_gk_files in ['none'],
             **simulation_options["run"]
             )
         
