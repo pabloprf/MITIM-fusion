@@ -125,6 +125,7 @@ class mitim_job:
         output_files=None,
         output_folders=None,
         check_files_in_folder={},
+        output_folders_selective={},  # New parameter for selective folder content
         shellPreCommands=None,
         shellPostCommands=None,
         label_log_files="",
@@ -136,6 +137,9 @@ class mitim_job:
 
         check_files_in_folder is a dictionary with the folder name as key and a list of files to check as value, optionally.
             Otherwise, it will just check if the folder was received, but not the files inside it.
+
+        output_folders_selective is a dictionary with folder name as key and list of specific files/patterns to include as value.
+            e.g., {'results': ['*.dat', '*.log'], 'plots': ['figure1.png']}
 
         """
 
@@ -154,6 +158,8 @@ class mitim_job:
         self.shellPreCommands = shellPreCommands if isinstance(shellPreCommands, list) else []
         self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
+
+        self.output_folders_selective = output_folders_selective if isinstance(output_folders_selective, dict) else {}
 
     def run(
             self,
@@ -674,13 +680,30 @@ class mitim_job:
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remote side)")
+
+        # Build tar command with selective folder content
+        tar_items = []
+
+        # Add all output files
+        tar_items.extend(self.output_files)
+
+        # Add folders - either full folders or selective content
+        for folder in self.output_folders:
+            if folder in self.output_folders_selective:
+                # Add specific files from this folder
+                for pattern in self.output_folders_selective[folder]:
+                    tar_items.append(f"{folder}/{pattern}")
+            else:
+                # Add entire folder
+                tar_items.append(folder)
+
         self.execute(
             "tar -czf "
             + f'{self.folderExecution}/mitim_receive.tar.gz'
             + " -C "
             + f'{self.folderExecution}'
             + " "
-            + " ".join(self.output_files + self.output_folders)
+            + " ".join(tar_items)
         )
 
         # Download the tarball

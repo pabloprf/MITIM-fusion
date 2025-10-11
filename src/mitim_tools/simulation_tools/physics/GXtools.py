@@ -1,6 +1,5 @@
 import netCDF4
 import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
