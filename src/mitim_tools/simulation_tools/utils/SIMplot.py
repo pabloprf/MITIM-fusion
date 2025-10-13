@@ -1,8 +1,7 @@
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-import dill as pickle_dill
-from mitim_tools.misc_tools import GRAPHICStools, IOtools
+from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -301,15 +300,3 @@ class GKplotting:
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
         
-    def save_pickle(self, file):
-        
-        print('...Pickling simulation class...')
-    
-        with open(file, "wb") as handle:
-            pickle_dill.dump(self, handle, protocol=4)
-            
-def restore_class_pickle(file):
-    
-    print('...Restoring pickled simulation class...')
-    
-    return IOtools.unpickle_mitim(file)

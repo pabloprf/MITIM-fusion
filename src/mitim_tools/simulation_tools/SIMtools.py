@@ -4,6 +4,7 @@ import time
 import os
 import copy
 import numpy as np
+import dill as pickle_dill
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.gacode_tools import PROFILEStools
@@ -953,6 +954,19 @@ class mitim_simulation:
 
         for ikey2 in variable_mapping | variable_mapping_unn:
             self.scans[label][ikey2] = np.atleast_2d(np.transpose(scan[ikey2]))
+
+    def save_pickle(self, file):
+        
+        print('...Pickling simulation class...')
+    
+        with open(file, "wb") as handle:
+            pickle_dill.dump(self, handle, protocol=4)
+            
+def restore_class_pickle(file):
+    
+    print('...Restoring pickled simulation class...')
+    
+    return IOtools.unpickle_mitim(file)
 
 def change_and_write_code(
     rhos,
