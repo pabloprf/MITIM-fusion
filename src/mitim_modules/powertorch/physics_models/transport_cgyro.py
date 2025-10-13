@@ -1,4 +1,5 @@
 import json
+from mitim_tools.misc_tools import IOtools
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -35,7 +36,7 @@ class gyrokinetic_model:
             subfolder_name,
             cold_start=cold_start,
             forceIfcold_start=True,
-            only_minimal_files=keep_gk_files in ['none'],
+            only_minimal_files=keep_gk_files in ['none', 'pickle'],
             **simulation_options["run"]
             )
         
@@ -49,6 +50,18 @@ class gyrokinetic_model:
                 label=subfolder_name,
                 **simulation_options["read"]
                 )
+            
+            # Special case to keep only the pickle file but remove everything else
+            if keep_gk_files in ['pickle']:
+                
+                # Remove the contents of subfolder_name
+                IOtools.shutil_rmtree(self.folder / f"{subfolder_name}")
+                
+                # Create the folder again
+                IOtools.mkdir(self.folder / f"{subfolder_name}")
+                
+                # Save the gk_object as pickle
+                gk_object.save_pickle(gk_object.folder / f"{subfolder_name}" / "gk_object.pkl")
         
             # ------------------------------------------------------------------------------------------------------------------------
             # Pass the information to what power_transport expects
