@@ -188,8 +188,11 @@ transport:
       # If True, always run base TGLF to keep track of discrepancies
       run_base_tglf: True
 
-      # Files to keep from simulation (none: all runs will only keep minimal files; all: retrieve all files)
-      keep_files: "none" 
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
 
     # *********************************************************************************************************
     # GX
