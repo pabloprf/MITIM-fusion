@@ -210,8 +210,11 @@ transport:
       read:
         tmin: -0.3 # Last 30% of the simulation
 
-      # Files to keep from simulation (none: all runs will only keep minimal files; all: retrieve all files)
-      keep_files: "none" 
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
 
   # Function to post-process input.gacode only *before* passing to transport codes
   profiles_postprocessing_fun: null
