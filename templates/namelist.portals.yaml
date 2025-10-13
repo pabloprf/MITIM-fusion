@@ -136,7 +136,10 @@ transport:
       # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
       reuse_scan_ball: false
 
-      # Files to keep from simulation (none: all runs will only keep minimal files; base: minimal files for scans only; all: retrieve all files)
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     base: minimal files for scans only, base TGLF will be kept
+      #     all: retrieve all files from all runs
       keep_files: "base" 
 
       # Number of cores to use per TGLF instance
