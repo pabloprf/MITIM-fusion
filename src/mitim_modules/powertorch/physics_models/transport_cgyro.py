@@ -58,7 +58,7 @@ class gyrokinetic_model:
                 IOtools.shutil_rmtree(self.folder / f"{subfolder_name}")
                 
                 # Create the folder again
-                IOtools.mkdir(self.folder / f"{subfolder_name}")
+                (self.folder / f"{subfolder_name}").mkdir(parents=True, exist_ok=True)
                 
                 # Save the gk_object as pickle
                 gk_object.save_pickle(gk_object.folder / f"{subfolder_name}" / "gk_object.pkl")
