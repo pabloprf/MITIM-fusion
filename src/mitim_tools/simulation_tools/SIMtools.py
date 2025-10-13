@@ -955,12 +955,28 @@ class mitim_simulation:
         for ikey2 in variable_mapping | variable_mapping_unn:
             self.scans[label][ikey2] = np.atleast_2d(np.transpose(scan[ikey2]))
 
-    def save_pickle(self, file):
+    def prepare_for_save(self, class_to_store = None):
+        """
+        Remove potential unpickleable objects
+        """
+
+        if class_to_store is None:
+            class_to_store = self
+
+        if 'fn' in class_to_store.__dict__:
+            print('\t- Removing Qt object before pickling')
+            del class_to_store.fn
+
+        return class_to_store
+
+    def save_pickle(self, file, class_to_store = None):
         
         print('...Pickling simulation class...')
-    
+                
+        class_to_store = self.prepare_for_save(class_to_store=class_to_store)
+
         with open(file, "wb") as handle:
-            pickle_dill.dump(self, handle, protocol=4)
+            pickle_dill.dump(class_to_store, handle, protocol=4)
             
 def restore_class_pickle(file):
     

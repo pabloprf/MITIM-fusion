@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import copy
 import matplotlib.pyplot as plt
 from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
@@ -219,6 +220,24 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         self.results[main_label] = CGYROutils.CGYROlinear_scan(labelsD, self.results, irho=irho)
 
+    # Redefined to remove potential large objects
+    def save_pickle(self, file, **kwargs):
+        
+        class_to_store = super().prepare_for_save()
+        
+        # Remove heavy objects
+        
+        class_to_store = copy.deepcopy(class_to_store)
+        
+        for key in class_to_store.results:
+            for irho in range(len(class_to_store.results[key]['output'])):
+                if 'cgyrodata' in class_to_store.results[key]['output'][irho].__dict__:
+                    print(f'\t- Removing cgyrodata object before pickling for {key}, irho={irho}')
+                    del class_to_store.results[key]['output'][irho].cgyrodata
+            
+        super().save_pickle(file, class_to_store = class_to_store, **kwargs)
+                
+                
     def plot(
         self,
         labels=[""],
