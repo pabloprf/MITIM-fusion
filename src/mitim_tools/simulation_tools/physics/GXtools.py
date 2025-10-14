@@ -427,7 +427,7 @@ class GXinput(SIMtools.GACODEinput):
         return param_written
 
 class GXoutput(SIMtools.GACODEoutput):
-    def __init__(self, FolderGACODE, suffix="", tmin = 0.0,  **kwargs):
+    def __init__(self, FolderGACODE, suffix="", tmin = 0.0, minimal = False,  **kwargs):
         '''
         tmin can be used to indicate from which time onwards I want to do the signal analysis
         if negative, it represents the relative time from the end of the simulation. e.g.

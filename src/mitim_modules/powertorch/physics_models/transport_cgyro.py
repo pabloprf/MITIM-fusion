@@ -70,17 +70,16 @@ class gyrokinetic_model:
 
                 gk_object.read(
                     label=subfolder_name,
+                    minimal=True,  # In case I pickle, I don't want to be extra heavy
                     **simulation_options["read"]
                     )
                 
-                # Special case to keep only the pickle file but remove everything else
+                # Special case to keep only the pickle file but remove all heavy files
                 if keep_gk_files in ['pickle']:
                     
-                    # Remove the contents of subfolder_name
-                    IOtools.shutil_rmtree(self.folder / f"{subfolder_name}")
-                    
-                    # Create the folder again
-                    (self.folder / f"{subfolder_name}").mkdir(parents=True, exist_ok=True)
+                    # Remove results files in subfolder
+                    for file in gk_object.ResultsFiles:
+                        (self.folder / f"{subfolder_name}" / file).unlink(missing_ok=True)
                     
                     # Save the gk_object as pickle
                     gk_object.save_pickle(pickle_file)
