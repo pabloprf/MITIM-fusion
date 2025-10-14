@@ -106,12 +106,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.tag",
             "mitim.out",
         ]
-        
-        self.ResultsFiles = self.ResultsFiles_minimal + [
-            "bin.cgyro.restart",
-            "out.cgyro.tag",
-            "mitim.out",
-        ]
 
         self.output_files_test = [
             "out.cgyro.equilibrium",
