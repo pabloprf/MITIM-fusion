@@ -313,7 +313,7 @@ class initializer_from_fibe(initializer_from_geqdsk):
         # Run FiBE to generate equilibrium
         from fibe import FixedBoundaryEquilibrium
         eq = FixedBoundaryEquilibrium()
-        eq.define_grid_and_boundary_from_mxh(
+        eq.define_grid_and_boundary_with_mxh(
             nr=129,
             nz=129,
             rgeo=R,
@@ -327,7 +327,7 @@ class initializer_from_fibe(initializer_from_geqdsk):
         eq.solve_psi()
 
         # Convert to geqdsk and write it to initialization folder
-        eq.to_geqdsk(self.folder / 'fibe.geqdsk')
+        eq.to_geqdsk(str(self.folder.absolute()) + '/fibe.geqdsk')
 
         # Call the geqdsk initializer
         super().__call__(geqdsk_file = self.folder / 'fibe.geqdsk',**kwargs_geqdsk)
