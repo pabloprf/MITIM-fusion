@@ -115,14 +115,16 @@ class prompting_context:
             key = sys.stdin.read(1)
         return key
 
+class InteractiveTerminalError(Exception):
+    pass
+
 def query_yes_no(question, extra=""):
     '''
     From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input 
     '''
 
     if not sys.stdin.isatty():
-        raise Exception("Interactive terminal response required - something is wrong with this run")
-
+        raise InteractiveTerminalError("Interactive terminal response required - something is wrong with this run")
 
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
