@@ -251,9 +251,7 @@ class TGYRO:
         Tepred, Tipred, nepred = PredictionSet
 
         self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE / subFolderTGYRO)
-        self.FolderTGYRO_tmp = (
-            self.FolderTGYRO / "tmp_tgyro_run"
-        )  # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
+        self.FolderTGYRO_tmp = self.FolderTGYRO / "tmp_tgyro_run" # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
 
         inputclass_TGYRO = TGYROinput(
             input_profiles=self.profiles,

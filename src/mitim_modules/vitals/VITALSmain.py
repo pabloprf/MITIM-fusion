@@ -74,6 +74,8 @@ class vitals(STRATEGYtools.opt_evaluator):
         if not classLoaded:
             with open(tglf_class_file, "rb") as f:
                 tglf_read = pickle.load(f)
+                tglf_tmp = TGLFtools.TGLF()
+                tglf_read.run_specifications = tglf_tmp.run_specifications
             self.tglf = TGLFtools.TGLF(alreadyRun=tglf_read)
             self.tglf.FolderGACODE, self.tglf.rhos = self.folder, [rho]
 
@@ -214,16 +216,10 @@ class vitals(STRATEGYtools.opt_evaluator):
                     value = tglf.results["tglf1"]["output"][0].neTeSpectrum_level
 
                 dictOFs[iquant]["value"] = value
-                dictOFs[iquant]["error"] = np.abs(
-                    dictOFs[iquant]["value"] * self.VITALSparameters["rel_error"]
-                )
+                dictOFs[iquant]["error"] = np.abs(dictOFs[iquant]["value"] * self.VITALSparameters["rel_error"])
             else:
-                dictOFs[iquant]["value"] = self.VITALSparameters["experimentalVals"][
-                    iquant[:-4]
-                ]
-                dictOFs[iquant]["error"] = self.VITALSparameters["std_deviation"][
-                    iquant[:-4]
-                ]
+                dictOFs[iquant]["value"] = self.VITALSparameters["experimentalVals"][iquant[:-4]]
+                dictOFs[iquant]["error"] = self.VITALSparameters["std_deviation"][iquant[:-4]]
 
         # Write stuff
         self.write(dictOFs, resultsfile)
@@ -287,7 +283,7 @@ def runTGLF(
 
     numSim = self.folder.name
 
-    variation = TGLFtools.completeVariation(variation, tglf.inputs_files[tglf.rhos[0]])
+    variation = TGLFtools.completeVariation_TGLF(variation, tglf.inputs_files[tglf.rhos[0]])
 
     extraOptions = self.TGLFparameters["extraOptions"]
     multipliers = {}

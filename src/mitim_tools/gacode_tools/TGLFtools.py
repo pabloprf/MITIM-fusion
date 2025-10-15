@@ -362,6 +362,8 @@ class TGLF(SIMtools.mitim_simulation):
             if "convolution_fun_fluct" in tglf_copy.results[label]:
                 tglf_copy.results[label]["convolution_fun_fluct"] = None
 
+        del tglf_copy.run_specifications
+
         return tglf_copy
 
     def save_pkl(self, file):
@@ -407,6 +409,8 @@ class TGLF(SIMtools.mitim_simulation):
                 
                 # If inputgacode is already a PROFILEStools object, just use it
                 profiles = inputgacode
+        else:
+            profiles = None
 
         # TGYRO class. It checks existence and creates input.profiles/input.gacode
 
