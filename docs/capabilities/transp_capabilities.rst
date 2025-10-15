@@ -123,24 +123,5 @@ If TRANSP has already been run and the .CDF results file already exists (``cdf_f
 TRANSP aliases
 --------------
 
-MITIM provides a few useful aliases, including for the TRANSP tools:
-
-- To read TRANSP results in CDF files (which stores the results in the ``cdfs`` list. First run can be plotted with ``cdfs[0].plot``):
-    
-    .. code-block:: bash
-        
-        mitim_read_transp 12345A01.CDF 12345A02.CDF
-
-- To interact with the TRANSP globus grid:
-
-    .. code-block:: bash
-        
-		# To check status of runs under username pablorf
-		mitim_trcheck pablorf
-
-		# To remove from the grid CMOD run numbers 88664P01, 88664P03 from user pablorf
-		mitim_trclean 88664P CMOD --numbers 1,3
-
-		# To get results file (intermediate or final) from CMOD run 152895P01 from user pablorf
-		mitim_trlook 152895P01 CMOD
+MITIM provides a few useful aliases, including for the TRANSP tools: :ref:`Shell Scripts`
 

@@ -83,7 +83,7 @@ Now TGYRO can be run:
                PredictionSet         = PredictionSet,
                TGLFsettings          = TGLFsettings,
                TGYRO_solver_options  = solver,
-               Physics_options = physics_options)
+               TGYRO_physics_options = physics_options)
 
 Read:
 
@@ -133,11 +133,5 @@ Plot results:
 TGYRO aliases
 -------------
 
-MITIM provides a few useful aliases, including for the TGYRO tools:
-
-- To plot results that exist in a folder ``run1/``:
-    
-    .. code-block:: bash
-        
-        mitim_plot_tgyro run1/
+MITIM provides a few useful aliases, including for the TGYRO tools: :ref:`Shell Scripts`
 

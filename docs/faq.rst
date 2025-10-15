@@ -30,7 +30,7 @@ Issues during MITIM installation
    
    .. code-block:: console
       
-      pip3 install -e MITIM-fusion\[pyqt\] --no-cache
+      pip3 install -e MITIM-fusion\[pyqt\] --no-cache-dir
 
 Issues during MITIM tests
 -------------------------
@@ -61,9 +61,3 @@ Issues during MITIM tests
 
    Make sure you that, if you have keys, you have added them to authorized_keys in both server and tunnel machines.
    
-
-
-Issues during PORTALS simulations
----------------------------------
-
-Nothing here yet.

@@ -10,7 +10,7 @@ Miscellaneous
 Interpret Tokamak equilibrium
 -----------------------------
 
-MITIM has a quick g-eqdsk file reader and visualizer that is based on the ``omfit-classes`` package.
+MITIM has a quick g-eqdsk file reader and visualizer that is based on the ``megpy`` package.
 
 To open and plot a g-eqdsk file:
 

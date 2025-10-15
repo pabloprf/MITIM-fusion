@@ -38,8 +38,8 @@ As a starting point of VITALS, you need to prepare and run TGLF for the base cas
 	rho              = 0.5
 	
 	tglf = TGLFtools.TGLF( rhos = [ rho ] )
-	cdf = tglf.prep( folder, inputgacode = inputgacode_file)
-	tglf.run( subfolder = 'run_base', code_settings = 5)
+	cdf = tglf.prep( inputgacode_file, folder )
+	tglf.run( subfolder = 'run_base', code_settings = 'SAT3')
 	tglf.read( label = 'run_base' )
 
 
@@ -120,7 +120,7 @@ Once the VITALS object has been created, parameters such as the TGLF control inp
 
 .. code-block:: python
 
-	vitals_fun.TGLFparameters['code_settings']  = 5
+	vitals_fun.TGLFparameters['code_settings']  = 'SAT3'
 	vitals_fun.TGLFparameters['extraOptions']  = {}
 
 .. note::
