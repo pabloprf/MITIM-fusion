@@ -9,7 +9,7 @@ from pathlib import Path
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEdefaults, NORMtools
-from mitim_tools.misc_tools import FARMINGtools, IOtools
+from mitim_tools.misc_tools import FARMINGtools, IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -560,12 +560,20 @@ class mitim_simulation:
             # Submit run and wait
             if run_type in ['normal', 'send']:
             
-                self.simulation_job.run(
-                    removeScratchFolders=True,
-                    attempts_execution=attempts_execution,
-                    helper_lostconnection=kwargs_run.get("helper_lostconnection", False),
-                    execute_case_flag = run_type == 'normal'
-                    )
+                run_status_int = 0
+                while run_status_int < 2:
+                    
+                    try:
+                        self.simulation_job.run(
+                            removeScratchFolders=True,
+                            attempts_execution=attempts_execution,
+                            helper_lostconnection=kwargs_run.get("helper_lostconnection", False),
+                            execute_case_flag = run_type == 'normal'
+                            )
+                        run_status_int = 2
+                    except LOGtools.InteractiveTerminalError:
+                        print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
+                        run_status_int += 1
                     
                 self._organize_results(code_executor, tmpFolder, filesToRetrieve)
 
