@@ -260,6 +260,9 @@ class mitim_simulation:
         if len(rhosEvaluate) == len(rhos):
             # All radii need to be evaluated
             IOtools.askNewFolder(Folder_sim, force=forceIfcold_start)
+            
+        # Once created, expand here
+        Folder_sim = IOtools.expandPath(Folder_sim)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Change this specific run

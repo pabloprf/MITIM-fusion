@@ -208,8 +208,8 @@ class mitim_job:
         self.output_files = curateOutFiles(self.output_files)
 
         # Relative paths
-        self.input_files = [path.relative_to(self.folder_local) for path in self.input_files]
-        self.input_folders = [path.relative_to(self.folder_local) for path in self.input_folders]
+        self.input_files = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_files]
+        self.input_folders = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_folders]
 
         # Process
         self.full_process(
