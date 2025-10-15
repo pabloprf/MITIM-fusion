@@ -327,7 +327,7 @@ class initializer_from_fibe(initializer_from_geqdsk):
         eq.solve_psi()
 
         # Convert to geqdsk and write it to initialization folder
-        eq.to_geqdsk(str(self.folder.absolute()) + '/fibe.geqdsk')
+        eq.to_geqdsk(str(self.folder / 'fibe.geqdsk'))
 
         # Call the geqdsk initializer
         super().__call__(geqdsk_file = self.folder / 'fibe.geqdsk',**kwargs_geqdsk)
