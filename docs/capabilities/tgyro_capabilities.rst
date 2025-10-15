@@ -35,7 +35,7 @@ Create a PROFILES class from the input.gacode file:
 
 .. code-block:: python
 
-	profiles = PROFILEStools.PROFILES_GACODE(gacode_file)
+	profiles = PROFILEStools.gacode_state(gacode_file)
 
 .. tip::
 
@@ -83,7 +83,7 @@ Now TGYRO can be run:
                PredictionSet         = PredictionSet,
                TGLFsettings          = TGLFsettings,
                TGYRO_solver_options  = solver,
-               Physics_options = physics_options)
+               TGYRO_physics_options = physics_options)
 
 Read:
 
@@ -120,7 +120,7 @@ Create a profiles class with the `input.gacode` file that TGYRO used to run and 
 	gacode_file = Path('MITIM-fusion/tests/data/input.gacode')
 	folder      = Path('MITIM-fusion/tests/scratch/tgyro_tut/run1')
 
-	profiles    = PROFILEStools.PROFILES_GACODE(gacode_file)
+	profiles    = PROFILEStools.gacode_state(gacode_file)
 	tgyro_out   = TGYROtools.TGYROoutput(folder,profiles=profiles)
 
 Plot results:
@@ -133,11 +133,5 @@ Plot results:
 TGYRO aliases
 -------------
 
-MITIM provides a few useful aliases, including for the TGYRO tools:
-
-- To plot results that exist in a folder ``run1/``:
-    
-    .. code-block:: bash
-        
-        mitim_plot_tgyro run1/
+MITIM provides a few useful aliases, including for the TGYRO tools: :ref:`Shell Scripts`
 

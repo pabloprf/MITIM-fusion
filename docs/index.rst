@@ -1,8 +1,8 @@
 MITIM: a toolbox for modeling tasks in plasma physics and fusion energy
 =======================================================================
 
-The **MITIM** (MIT Integrated Modeling) is a versatile and user-friendly Python library designed for *plasma physics* and *fusion energy* researchers, distributed as the `MITIM-fusion  <https://github.com/pabloprf/MITIM-fusion>`_ GitHub repository.
-Developed in 2018 by `Pablo Rodriguez-Fernandez <https://www.pablorf.com/>`_ at the MIT Plasma Science and Fusion Center, this light-weight, command-line,
+The **MITIM** (MIT Integrated Modeling) is a versatile and user-friendly Python library designed for plasma physics and fusion energy researchers, distributed as the `MITIM-fusion  <https://github.com/pabloprf/MITIM-fusion>`_ GitHub repository.
+Spearheaded by `Pablo Rodriguez-Fernandez <https://www.pablorf.com/>`_ at the MIT Plasma Science and Fusion Center, this light-weight, command-line,
 object-oriented toolbox streamlines the execution and interpretation of physics models and simplifies complex optimization tasks.
 
 MITIM stands out for its modular nature, making it particularly useful for integrating models with optimization workflows.
@@ -28,7 +28,7 @@ Overview
 --------
 
 Developed at the MIT Plasma Science and Fusion Center, MITIM emerged in 2023 as a progression from the PORTALS project (*Performance Optimization of Reactors via Training of Active Learning Surrogates*).
-This evolution marks a significant enhancement in our approach to transport and optimization in plasma physics research.
+This evolution marked a significant enhancement in our approach to transport and optimization in plasma physics research.
 
 MITIM's core functionality revolves around the standalone execution of codes and the nuanced interpretation of results through object-oriented Python scripts.
 This enables researchers to seamlessly integrate these scripts into custom surrogate-based optimization frameworks,

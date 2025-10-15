@@ -6,21 +6,37 @@
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",
         "tglf":             "engaging",
+        "neo":              "engaging",
         "cgyro":            "engaging",
+        "gx":               "engaging",
         "astra":            "engaging",
         "eq":               "mfews",
         "scruncher":        "mfews",
         "ntcc":             "mfews",
         "get_fbm":          "mfews",
         "transp":           "globus", 
-        "idl":              "mfews"
+        "idl":              "mfews",
+        "eped":             "engaging"
     },
     "local": {
         "machine":    "local",
         "username":   "exampleusername",
         "scratch":    "/Users/exampleusername/scratch/",
         "modules":    "",
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
+    },
+    "engaging": {
+        "machine":          "orcd-login001.mit.edu", 
+        "username":         "exampleusername",
+        "slurm": {
+            "partition":    "sched_mit_psfc",
+            "exclusive":    false
+        },
+        "scratch":          "/orcd/pool/003/exampleusername/scratch/",
+        "modules":    "",
+        "cores_per_node":  64,
+        "gpus_per_node": 0
     },
     "perlmutter": {
         "machine":          "perlmutter.nersc.gov", 
@@ -35,18 +51,8 @@
             "exclusive":    false,
             "email":      "optional@email"
         },
-        "cores_per_node":  32
-    },
-    "engaging": {
-        "machine":          "eofe7.mit.edu", 
-        "username":         "exampleusername",
-        "slurm": {
-            "partition":    "sched_mit_psfc",
-            "exclusive":    true
-        },
-        "scratch":          "/nobackup1/exampleusername/",
-        "modules":    "",
-        "cores_per_node":  32
+        "cores_per_node":  32,
+        "gpus_per_node": 0
     },
     "mfews": {
         "machine":    "mfews02.psfc.mit.edu", 
@@ -54,7 +60,8 @@
         "port":            9224,
         "scratch":    "/home/exampleusername/scratch/",
         "modules":    "",
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
     },
     "globus": {
         "username":   "exampleusername",
@@ -75,6 +82,7 @@
             "email":      "optional@email",
             "exclude":      "node584"
         },
-        "cores_per_node":  8
+        "cores_per_node":  8,
+        "gpus_per_node": 0
     }
 }

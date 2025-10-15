@@ -1,7 +1,8 @@
-from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from mitim_tools.plasmastate_tools.utils import state_plotting
 
 def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, compare_to_state=None, c_orig = "b"):
     
@@ -12,10 +13,10 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     if figs is not None:
 
         # Insert profiles with the latest powerstate
-        profiles_new = self.to_gacode(insert_highres_powers=True)
+        profiles_new = self.from_powerstate(insert_highres_powers=True)
 
         # Plot the inserted profiles together with the original ones
-        _ = PROFILEStools.plotAll([self.profiles, profiles_new], figs=figs)
+        _ = state_plotting.plotAll([self.profiles, profiles_new], figs=figs)
 
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot plasma state
@@ -23,59 +24,47 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
     set_plots = [ ]
 
-    if "te" in self.ProfilesPredicted:
+    if "te" in self.predicted_channels:
         set_plots.append(
-            [   'te', 'aLte', 'Pe_tr', 'Pe',
+            [   'te', 'aLte', 'QeMWm2_tr', 'QeMWm2',
                 'Electron Temperature','$T_e$ (keV)','$a/LT_e$','$Q_e$ (GB)','$Q_e$ ($MW/m^2$)',
                 1.0,"Qgb"])
-    if "ti" in self.ProfilesPredicted:
+    if "ti" in self.predicted_channels:
         set_plots.append(
-            [   'ti', 'aLti', 'Pi_tr', 'Pi',
+            [   'ti', 'aLti', 'QiMWm2_tr', 'QiMWm2',
                 'Ion Temperature','$T_i$ (keV)','$a/LT_i$','$Q_i$ (GB)','$Q_i$ ($MW/m^2$)',
                 1.0,"Qgb"])
-    if "ne" in self.ProfilesPredicted:
+    if "ne" in self.predicted_channels:
 
         # If this model provides the raw particle flux, go for it
-        if 'Ce_raw_tr' in self.plasma:
+        if 'Ge1E20m2_tr' in self.plasma:
             set_plots.append(
-                [   'ne', 'aLne', 'Ce_raw_tr', 'Ce_raw',
+                [   'ne', 'aLne', 'Ge1E20m2_tr', 'Ge1E20m2',
                     'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
-            if self.useConvectiveFluxes:
-                set_plots.append(
-                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
-                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
-                        1E-1,"Qgb"])
-            else:
-                set_plots.append(
-                    [   'ne', 'aLne', 'Ce_tr', 'Ce',
-                        'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$\\Gamma_e$ (GB)','$\\Gamma_e$ ($10^{20}m^{-3}/s$)',
-                        1E-1,"Ggb"])
+            set_plots.append(
+                [   'ne', 'aLne', 'Ce_tr', 'Ce',
+                    'Electron Density','$n_e$ ($10^{20}m^{-3}$)','$a/Ln_e$','$Q_{conv,e}$ (GB)','$Q_{conv,e}$ ($MW/m^2$)',
+                    1E-1,"Qgb"])
 
-    if "nZ" in self.ProfilesPredicted:
+    if "nZ" in self.predicted_channels:
 
         # If this model provides the raw particle flux, go for it
-        if 'CZ_raw_tr' in self.plasma:
+        if 'GZ1E20m2_tr' in self.plasma:
             set_plots.append(
-                [   'nZ', 'aLnZ', 'CZ_raw_tr', 'CZ_raw',
+                [   'nZ', 'aLnZ', 'GZ1E20m2_tr', 'GZ1E20m2',
                     'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
                     1E-1,"Ggb"])
         else:
-            if self.useConvectiveFluxes:
-                set_plots.append(
-                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
-                        1E-1,"Qgb"])
-            else:
-                set_plots.append(
-                    [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
-                        'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\Gamma_Z$ (GB)','$\\Gamma_Z$ ($10^{20}m^{-3}/s$)',
-                        1E-1,"Ggb"])
+            set_plots.append(
+                [   'nZ', 'aLnZ', 'CZ_tr', 'CZ',
+                    'Impurity Density','$n_Z$ ($10^{20}m^{-3}$)','$a/Ln_Z$','$\\widehat{Q}_{conv,Z}$ (GB)','$\\widehat{Q}_{conv,Z}$ ($MW/m^2$)',
+                    1E-1,"Qgb"])
 
-    if "w0" in self.ProfilesPredicted:
+    if "w0" in self.predicted_channels:
         set_plots.append(
-            [   'w0', 'aLw0', 'Mt_tr', 'Mt',
+            [   'w0', 'aLw0', 'MtJm2_tr', 'MtJm2',
                 'Rotation','$\\omega_0$ ($krad/s$)','$-d\\omega_0/dr$ ($krad/s/cm$)','$\\Pi$ (GB)','$\\Pi$ ($J/m^2$)',
                 1E-3,"Pgb"])
 
@@ -115,7 +104,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
         colors = GRAPHICStools.listColors()
 
         cont = 0
-        for i in range(len(self.ProfilesPredicted)):
+        for i in range(len(self.predicted_channels)):
 
             # Plot gradient evolution
             ax = axsRes[1+cont]
@@ -123,14 +112,14 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
                 position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
-                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j]:.2f}",markersize=0.5)
+                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j+1]:.2f}",markersize=0.5)
                 if self.bounds_current is not None:
                     for u in [0,1]:
                         ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
 
             ax.set_ylabel(self.labelsFM[i][0])
             
-            if i == len(self.ProfilesPredicted)-1:
+            if i == len(self.predicted_channels)-1:
                 GRAPHICStools.addLegendApart(ax, ratio=1.0,extraPad=0.05, size=9)
 
             # Plot residual evolution
@@ -240,7 +229,7 @@ def plot_metrics_powerstates(axsM, powerstates, profiles=None, profiles_color='b
     x , y = [], []
     for h in range(len(powerstates)):
         x.append(h)
-        Pfus = powerstates[h].volume_integrate(
+        Pfus = powerstates[h].from_density_to_flux(
             (powerstates[h].plasma["qfuse"] + powerstates[h].plasma["qfusi"]) * 5.0
             ) * powerstates[h].plasma["volp"]
         y.append(Pfus[..., -1].item())

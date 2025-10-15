@@ -36,13 +36,6 @@ Use ``pip`` to install all the required MITIM requirements:
    The optional argument ``[pyqt]`` added in the intallation command above must only be used if the machine allows for graphic interfaces.
    If running in a computing cluster, remove that flag.
    The ``pyqt`` package is used to create condensed figures into a single notebook when interpreting and plotting simulation results.
-   
-   If you wish to install all capabilities (including compatibility with `OMFIT <https://omfit.io/>`_), it is recommended that ``pip`` is run as follows:
-
-   .. code-block:: console
-
-      pip3 install -e MITIM-fusion[pyqt,omfit]
-
 
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
 
@@ -53,11 +46,11 @@ User configuration
 In ``MITIM-fusion/templates/``, there is a ``config_user_example.json`` with specifications of where to run certain codes and what the login requirements are.
 There are also options to specify the default verbose level and the default DPI for the figures in notebooks.
 Users need to specify their own configurations in a file that follows the same structure.
-There are different options to handle this config file.
+There are different options to handle this config file:
 
 1. Create a new file named ``config_user.json`` **in the same folder** ``MITIM-fusion/templates/``. MITIM will automatically look for this file when running the code.
 2. Create a new file anywhere in your machine. Then, **set the environment variable** ``MITIM_CONFIG`` to the path of this file. MITIM will automatically look for this file when running the code.
-3. Create a new file anywhere in your machine. **Do this at the beginning of your script**:
+3. Create a new file anywhere in your machine. Then, **add these lines at the beginning of your script**:
 
    .. code-block:: python
 
@@ -87,16 +80,29 @@ In this example, the ``identity`` option is only required if you are running in 
    {
       "preferences": {
          "tglf":             "engaging",
+         "neo":              "local",
          "tgyro":            "perlmutter",
          "verbose_level":    "5",
          "dpi_notebook":     "80"
       },
+    "local": {
+        "machine":    "local",
+        "username":   "YOUR_USERNAME",
+        "scratch":    "/Users/YOUR_USERNAME/scratch/",
+        "modules":    "",
+        "cores_per_node":  8,
+        "gpus_per_node": 0
+    },
       "engaging": {
          "machine":          "eofe7.mit.edu", 
          "username":         "YOUR_USERNAME",
          "scratch":          "/pool001/YOUR_USERNAME/scratch/",
+         "modules":          "",
+         "cores_per_node":   64,
+         "gpus_per_node":     0,
          "slurm": {
             "partition":    "sched_mit_psfc",
+            "exclusive":    false,
             "exclude":      "node584"
             }
       },
@@ -104,12 +110,16 @@ In this example, the ``identity`` option is only required if you are running in 
          "machine":          "perlmutter.nersc.gov", 
          "username":         "YOUR_USERNAME",
          "scratch":          "/pscratch/sd/p/YOUR_USERNAME/scratch/",
+         "modules":          "",
          "identity":         "/Users/YOUR_USERNAME/.ssh/id_rsa_nersc",
+         "cores_per_node":   32,
+         "gpus_per_node":     4,
          "slurm": {
                "account":      "YOUR_ACCOUNT",
                "partition":    "YOUR_PARTITION",
                "constraint":   "gpu",
-               "mem":          "4GB" 
+               "mem":          "4GB",
+               "email":        "optional@email"
             }
       }
    }
@@ -119,20 +129,15 @@ MITIM will attempt to create SSH and SFTP connections to that machine, and will 
 
 .. attention::
 
-   Note that MITIM does not maintain or develop the simulation codes that are used within it, such as those from `GACODE <http://gafusion.github.io/doc/index.html>`_ or `TRANSP <hhttps://transp.pppl.gov/index.html>`_. It assumes that proper permissions have been obtained and that working versions of those codes exist in the machine configured to run them.
+   Note that MITIM does not maintain or develop the simulation codes that are used within it, such as those from `GACODE <https://gacode.io/>`_ or `TRANSP <https://transp.pppl.gov/index.html>`_. It assumes that proper permissions have been obtained and that working versions of those codes exist in the machine configured to run them.
 
 Please note that MITIM will try to run the codes with standard commands that the shell must understand.
 For example, to run the TGLF code, MITIM will want to execute the command ``tglf`` in the *eofe7.mit.edu* machine as specified in the example above.
 There are several ways to make sure that the shell understands the command:
 
-.. dropdown:: 1. Source at shell initialization (recommended)
+.. dropdown:: 1. Send specific commands per code (recommended)
 
-   Is the commands are available upon login in that machine (e.g. in your personal ``.bashrc`` file), MITIM will be able to run them.
-   Please note that aliases are usually not available in non-interactive shells, and it is recommended to use full paths and to avoid print (echo) statements.
-
-.. dropdown:: 2. Send specific commands per code
-
-   Finally, you can populate the ``modules`` option per machine in your ``config_user.json`` file. For example:
+   You can populate the ``modules`` option per machine in your ``config_user.json`` file. For example:
 
    .. code-block:: console
 
@@ -142,10 +147,13 @@ There are several ways to make sure that the shell understands the command:
          ...
       }
 
-
    Note that you can the same machine listed several times in your ``config_user.json`` file, with different ``modules`` options per code.
    You just need to give it a different name per code.
 
+.. dropdown:: 2. Source at shell initialization
+
+   If the commands are available upon login in that machine (e.g. in your personal ``.bashrc`` file), MITIM will be able to run them.
+   Please note that aliases are usually not available in non-interactive shells, and it is recommended to use full paths and to avoid print (echo) statements.
 
 
 License and contributions

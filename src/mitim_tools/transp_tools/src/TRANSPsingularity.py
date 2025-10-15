@@ -445,6 +445,9 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
         shellPreCommands=shellPreCommands,
     )
 
+    if 'exclusive' not in transp_job.machineSettings["slurm"] or not transp_job.machineSettings["slurm"]["exclusive"]:
+        print("\tTRANSP typically requires exclusive node allocation, but that has not been requested, prone to failure", typeMsg="w")
+
     transp_job.run(waitYN=False)
 
     IOtools.shutil_rmtree(folderWork / 'tmp_inputs')
@@ -472,7 +475,7 @@ def interpretRun(infoSLURM, log_file):
         Case is not running (finished or failed)
         """
 
-        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file):
+        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
             status = 1
             info["info"]["status"] = "finished"
         elif ("Error termination" in "\n".join(log_file)) or (
@@ -489,10 +492,7 @@ def interpretRun(infoSLURM, log_file):
             status = -1
             info["info"]["status"] = "stopped"
         else:
-            print(
-                "\t- No error nor termination found, assuming it is still running",
-                typeMsg="w",
-            )
+            print("\t- No error nor termination found, assuming it is still running",typeMsg="w",)
             pringLogTail(log_file, typeMsg="i")
             status = 0
             info["info"]["status"] = "running"
@@ -517,6 +517,7 @@ def pringLogTail(log_file, howmanylines=100, typeMsg="w"):
     print(txt, typeMsg=typeMsg)
 
 def runSINGULARITY_finish(folderWork, runid, tok, job_name):
+
     transp_job = FARMINGtools.mitim_job(folderWork)
 
     transp_job.define_machine(
@@ -568,7 +569,7 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         if item.is_file():
             shutil.copy2(item, folderWork)
         elif item.is_dir():
-            shutil.copytree(item, folderWork / item.name)
+            shutil.copytree(item, folderWork / item.name, dirs_exist_ok=True)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 

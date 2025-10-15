@@ -51,7 +51,7 @@ class vitals(STRATEGYtools.opt_evaluator):
         # Default (please change to your desire after instancing the object)
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.TGLFparameters = {"TGLFsettings": 2, "extraOptions": {}}
+        self.TGLFparameters = {"code_settings": 2, "extraOptions": {}}
 
         self.VITALSparameters = {
             "rel_error": 0.02,  # Standard deviation (relative to value)
@@ -74,6 +74,8 @@ class vitals(STRATEGYtools.opt_evaluator):
         if not classLoaded:
             with open(tglf_class_file, "rb") as f:
                 tglf_read = pickle.load(f)
+                tglf_tmp = TGLFtools.TGLF()
+                tglf_read.run_specifications = tglf_tmp.run_specifications
             self.tglf = TGLFtools.TGLF(alreadyRun=tglf_read)
             self.tglf.FolderGACODE, self.tglf.rhos = self.folder, [rho]
 
@@ -199,31 +201,25 @@ class vitals(STRATEGYtools.opt_evaluator):
         for iquant in dictOFs:
             if "_exp" not in iquant:
                 if iquant == "Qe":
-                    value = tglf.results["tglf1"]["TGLFout"][0].Qe_unn
+                    value = tglf.results["tglf1"]["output"][0].Qe_unn
                 elif iquant == "Qi":
-                    value = tglf.results["tglf1"]["TGLFout"][0].Qi_unn
+                    value = tglf.results["tglf1"]["output"][0].Qi_unn
                 elif iquant == "TeFluct":
-                    value = tglf.results["tglf1"]["TGLFout"][
+                    value = tglf.results["tglf1"]["output"][
                         0
                     ].AmplitudeSpectrum_Te_level
                 elif iquant == "neFluct":
-                    value = tglf.results["tglf1"]["TGLFout"][
+                    value = tglf.results["tglf1"]["output"][
                         0
                     ].AmplitudeSpectrum_ne_level
                 elif iquant == "neTe":
-                    value = tglf.results["tglf1"]["TGLFout"][0].neTeSpectrum_level
+                    value = tglf.results["tglf1"]["output"][0].neTeSpectrum_level
 
                 dictOFs[iquant]["value"] = value
-                dictOFs[iquant]["error"] = np.abs(
-                    dictOFs[iquant]["value"] * self.VITALSparameters["rel_error"]
-                )
+                dictOFs[iquant]["error"] = np.abs(dictOFs[iquant]["value"] * self.VITALSparameters["rel_error"])
             else:
-                dictOFs[iquant]["value"] = self.VITALSparameters["experimentalVals"][
-                    iquant[:-4]
-                ]
-                dictOFs[iquant]["error"] = self.VITALSparameters["std_deviation"][
-                    iquant[:-4]
-                ]
+                dictOFs[iquant]["value"] = self.VITALSparameters["experimentalVals"][iquant[:-4]]
+                dictOFs[iquant]["error"] = self.VITALSparameters["std_deviation"][iquant[:-4]]
 
         # Write stuff
         self.write(dictOFs, resultsfile)
@@ -287,7 +283,7 @@ def runTGLF(
 
     numSim = self.folder.name
 
-    variation = TGLFtools.completeVariation(variation, tglf.inputsTGLF[tglf.rhos[0]])
+    variation = TGLFtools.completeVariation_TGLF(variation, tglf.inputs_files[tglf.rhos[0]])
 
     extraOptions = self.TGLFparameters["extraOptions"]
     multipliers = {}
@@ -302,9 +298,9 @@ def runTGLF(
         folder_label = label
 
     tglf.run(
-        subFolderTGLF=f"{folder_label}",
+        subfolder=f"{folder_label}",
         cold_start=cold_start,
-        TGLFsettings=self.TGLFparameters["TGLFsettings"],
+        code_settings=self.TGLFparameters["code_settings"],
         forceIfcold_start=True,
         extraOptions=extraOptions,
         multipliers=multipliers,

@@ -22,15 +22,15 @@ ls = "o-"
 
 # TGYRO
 t = TGYROtools.TGYROoutput(folderTGYRO)
-t.profiles.deriveQuantities()
+t.profiles.derive_quantities()
 
 t.useFineGridTargets()
 
 
 # STATE
-s = STATEtools.powerstate(t.profiles, EvolutionOptions={"rhoPredicted": t.rho[0,1:]})
+s = STATEtools.powerstate(t.profiles, evolution_options={"rhoPredicted": t.rho[0,1:]})
 s.calculateProfileFunctions()
-# s.TargetOptions['ModelOptions']['TypeTarget'] = 1
+# s.target_options['options']['targets_evolve'] = 1
 s.calculateTargets()
 #
 
@@ -99,7 +99,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         label="TGYRO " + label,
         markersize=markersize,
     )
-    P = s.volume_integrate(stateQuantity, dim=2) * s.plasma["volp"]
+    P = s.from_density_to_flux(stateQuantity, dim=2) * s.plasma["volp"]
     ax.plot(
         s.plasma["rho"][0],
         P[0],
@@ -132,7 +132,7 @@ for tgyroQuantity, stateQuantity, label in zip(tgyroQuantitys, stateQuantitys, l
         label="TGYRO " + label,
         markersize=markersize,
     )
-    P = s.volume_integrate(stateQuantity, dim=2) * s.plasma["volp"]
+    P = s.from_density_to_flux(stateQuantity, dim=2) * s.plasma["volp"]
     ax.plot(
         s.plasma["rho"][0],
         P[0],
@@ -154,13 +154,13 @@ ax.legend()
 ax = axs[0, 2]
 
 ax.plot(t.rho[0], t.Qe_tar[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
-P = s.plasma["Pe"]
+P = s.plasma["QeMWm2"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tar[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
-P = s.plasma["Pi"]
+P = s.plasma["QiMWm2"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
@@ -178,13 +178,13 @@ ax.legend()
 ax = axs[1, 2]
 
 ax.plot(t.rho[0], t.Qe_tarMW[0], "s-", lw=0.5, label="TGYRO Pe", markersize=markersize)
-P = s.plasma["Pe"] * s.plasma["volp"]
+P = s.plasma["QeMWm2"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pe", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qe_tarMW[0] - P[0].cpu().numpy()) / t.Qe_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")
 
 ax.plot(t.rho[0], t.Qi_tarMW[0], "s-", lw=0.5, label="TGYRO Pi", markersize=markersize)
-P = s.plasma["Pi"] * s.plasma["volp"]
+P = s.plasma["QiMWm2"] * s.plasma["volp"]
 ax.plot(s.plasma["rho"][0], P[0], ls, lw=0.5, label="STATE Pi", markersize=markersize)
 MaxError = np.nanmax(np.abs(t.Qi_tarMW[0] - P[0].cpu().numpy()) / t.Qi_tarMW[0] * 100.0)
 print(f"{MaxError = :.3f} %")

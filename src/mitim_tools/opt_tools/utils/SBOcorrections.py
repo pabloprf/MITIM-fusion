@@ -520,24 +520,12 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
     Yvar = torch.from_numpy(self.train_Ystd).to(self.dfT) ** 2
 
     if "steps" in self.__dict__:
-        self.BOmetrics["overall"]["Residual"] = (
-            -self.steps[-1].evaluators["objective"](Y).detach().cpu().numpy()
-        )
-        self.BOmetrics["overall"]["ResidualModeledLast"] = (
-            -self.steps[-1].evaluators["residual_function"](X).detach().cpu().numpy()
-        )
-
+        self.BOmetrics["overall"]["Residual"] = -self.steps[-1].evaluators["objective"](Y).detach().cpu().numpy()
+        self.BOmetrics["overall"]["ResidualModeledLast"] = -self.steps[-1].evaluators["residual_function"](X).detach().cpu().numpy()
     else:
-        print(
-            "\t~ Cannot perform prediction at this iteration step, returning objective evaluation as acquisition",
-            typeMsg="w",
-        )
-        self.BOmetrics["overall"]["Residual"] = (
-            -self.scalarized_objective(Y)[2].detach().cpu().numpy()
-        )
-        self.BOmetrics["overall"]["ResidualModeledLast"] = self.BOmetrics["overall"][
-            "Residual"
-        ]
+        print("\t~ Cannot perform prediction at this iteration step, returning objective evaluation as acquisition",typeMsg="i",)
+        self.BOmetrics["overall"]["Residual"] = -self.scalarized_objective(Y)[2].detach().cpu().numpy()
+        self.BOmetrics["overall"]["ResidualModeledLast"] = self.BOmetrics["overall"]["Residual"]
 
     resi = self.BOmetrics["overall"]["Residual"]
     resiM = self.BOmetrics["overall"]["ResidualModeledLast"]
@@ -547,50 +535,29 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
     self.BOmetrics["overall"]["indBest"] = np.nanargmin(resi, axis=0)
     self.BOmetrics["overall"]["indBestModel"] = np.nanargmin(resiM, axis=0)
 
-    self.BOmetrics["overall"]["xBest"] = (
-        X[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
-    )
-    self.BOmetrics["overall"]["yBest"] = (
-        Y[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
-    )
-    self.BOmetrics["overall"]["yVarBest"] = (
-        Yvar[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
-    )
+    self.BOmetrics["overall"]["xBest"] = X[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
+    self.BOmetrics["overall"]["yBest"] = Y[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
+    self.BOmetrics["overall"]["yVarBest"] = Yvar[self.BOmetrics["overall"]["indBest"], :].detach().cpu()
 
     # Best from last iteration
     zA = np.nanmin(resi[-evaluatedPoints:], axis=0)
-    self.BOmetrics["overall"]["indBestLast"] = np.nanargmin(
-        resi[-evaluatedPoints:], axis=0
-    )
+    self.BOmetrics["overall"]["indBestLast"] = np.nanargmin(resi[-evaluatedPoints:], axis=0)
     zM = np.nanmin(resiM[-evaluatedPoints:], axis=0)
-    self.BOmetrics["overall"]["indBestModelLast"] = np.nanargmin(
-        resiM[-evaluatedPoints:], axis=0
-    )
+    self.BOmetrics["overall"]["indBestModelLast"] = np.nanargmin(resiM[-evaluatedPoints:], axis=0)
 
-    self.BOmetrics["overall"]["xBestLast"] = X[
-        self.BOmetrics["overall"]["indBestLast"], :
-    ]
-    self.BOmetrics["overall"]["yBestLast"] = Y[
-        self.BOmetrics["overall"]["indBestLast"], :
-    ]
+    self.BOmetrics["overall"]["xBestLast"] = X[self.BOmetrics["overall"]["indBestLast"], :]
+    self.BOmetrics["overall"]["yBestLast"] = Y[self.BOmetrics["overall"]["indBestLast"], :]
 
     # Metric tracking of previous iterations
 
-    if (
-        len(self.BOmetrics["overall"]["ResidualModeledLast"])
-        == self.Originalinitial_training
-    ):
+    if len(self.BOmetrics["overall"]["ResidualModeledLast"]) == self.Originalinitial_training:
         ratio, metric = np.inf, 0.0
         label = "\t(Initial batch only)"
     else:
         zA_prev = np.nanmin(resi[:-evaluatedPoints], axis=0)
-        self.BOmetrics["overall"]["indBestExceptLast"] = np.nanargmin(
-            resi[:-evaluatedPoints], axis=0
-        )
+        self.BOmetrics["overall"]["indBestExceptLast"] = np.nanargmin(resi[:-evaluatedPoints], axis=0)
         zM_prev = np.nanmin(resiM[:-evaluatedPoints], axis=0)
-        self.BOmetrics["overall"]["indBestModelExceptLast"] = np.nanargmin(
-            resiM[:-evaluatedPoints], axis=0
-        )
+        self.BOmetrics["overall"]["indBestModelExceptLast"] = np.nanargmin(resiM[:-evaluatedPoints], axis=0)
 
         ratio, metric, label = constructMetricsTR(zA, zM, zA_prev, zM_prev)
 
@@ -609,9 +576,7 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
     elif IsThisAFreshIteration:
         print(f"- BO fitness ratio = {ratio:.3f}, metric = {metric} ({label})")
     else:
-        print(
-            "- Note that this one was not fresh (e.g. post-correction), do not track metrics"
-        )
+        print("- Note that this one was not fresh (e.g. post-correction), do not track metrics")
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     # ------------------------------------------------------------------------------------------------------------
@@ -630,13 +595,9 @@ def updateMetrics(self, evaluatedPoints=1, IsThisAFreshIteration=True, position=
         self.BOmetrics["xBest_track"][position] = self.BOmetrics["overall"]["xBest"]
 
         self.BOmetrics["yBest_track"][position] = self.BOmetrics["overall"]["yBest"]
-        self.BOmetrics["yVarBest_track"][position] = self.BOmetrics["overall"][
-            "yVarBest"
-        ]
+        self.BOmetrics["yVarBest_track"][position] = self.BOmetrics["overall"]["yVarBest"]
 
-        self.BOmetrics["BOmetric_it"][position] = (
-            X.shape[0] - 1
-        )  # Evaluation position until now
+        self.BOmetrics["BOmetric_it"][position] = X.shape[0] - 1    # Evaluation position until now
 
 
 def constructMetricsTR(zA, zM, zA_prev, zM_prev):
@@ -660,9 +621,7 @@ def constructMetricsTR(zA, zM, zA_prev, zM_prev):
 
     """
 
-    label = "Evaluated previous = {2:.2e} --> Predicted new = {1:.2e} --> Evaluated new = {0:.2e}; ".format(
-        zA, zM, zA_prev, zM_prev
-    )
+    label = f"Evaluated previous = {zA_prev:.2e} --> Predicted new = {zM:.2e} --> Evaluated new = {zA:.2e}; "
 
     # Relative improvements (Positive if it has gotten better = lower residual)
     zA = (zA_prev - zA) / np.abs(zA_prev)
@@ -753,26 +712,10 @@ def plotTrustRegionInformation(self, fig=None):
 
     ratio = ratio[:lim]
 
-    metrics = np.array(
-        [self.BOmetrics["BOmetric"][i] for i in self.BOmetrics["BOmetric_it"]]
-    )[
-        :lim
-    ]  # self.BOmetrics['BOmetric']#[1:]
-    boundsX1 = np.array(
-        [self.BOmetrics["BoundsStorage"][i] for i in self.BOmetrics["BOmetric_it"]]
-    )[
-        :lim
-    ]  # self.BOmetrics['BoundsStorage']
-    operat = np.array(
-        [self.BOmetrics["TRoperation"][i] for i in self.BOmetrics["BOmetric_it"]]
-    )[
-        :lim
-    ]  # self.BOmetrics['TRoperation'] #[1:]
-    evaluations = np.array(
-        [self.BOmetrics["BOmetric_it"][i] for i in self.BOmetrics["BOmetric_it"]]
-    )[
-        :lim
-    ]  # [1:]
+    metrics = np.array([self.BOmetrics["BOmetric"][i] for i in self.BOmetrics["BOmetric_it"]])[:lim]            # self.BOmetrics['BOmetric']#[1:]
+    boundsX1 = np.array([self.BOmetrics["BoundsStorage"][i] for i in self.BOmetrics["BOmetric_it"]])[:lim]      # self.BOmetrics['BoundsStorage']
+    operat = np.array([self.BOmetrics["TRoperation"][i] for i in self.BOmetrics["BOmetric_it"]])[:lim]          # self.BOmetrics['TRoperation'] #[1:]
+    evaluations = np.array([self.BOmetrics["BOmetric_it"][i] for i in self.BOmetrics["BOmetric_it"]])[:lim]     # [1:]
 
     size, center = [], []
     va = list(boundsX1[0].keys())[0]

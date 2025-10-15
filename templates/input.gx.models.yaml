@@ -1,0 +1,18 @@
+"Linear":
+  # Linear with 10 ky modes
+  controls:
+    nonlinear_mode: false
+    hyper: false
+    HB_hyper: false
+    nperiod: 2
+    nx: 1
+    ny: 28
+
+"Nonlinear":
+  controls:
+    nonlinear_mode: true
+    hyper: true
+    HB_hyper: true
+    nperiod: 1
+    nx: 192
+    ny: 64

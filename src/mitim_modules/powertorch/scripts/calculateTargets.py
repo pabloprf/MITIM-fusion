@@ -1,5 +1,5 @@
 """
-calculateTargets.py input.gacode 1
+calculateTargets.py input.gacode run1
 """
 
 import sys
@@ -7,88 +7,46 @@ import numpy as np
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch import STATEtools
-from mitim_modules.powertorch.physics import TRANSPORTtools,TARGETStools
+from mitim_modules.powertorch.physics_models import targets_analytic
 from IPython import embed
 
 def calculator(
     input_gacode,
-    typeCalculation=2,
-    TypeTarget=3,
+    targets_evolve=["qie", "qrad", "qfus"],
     folder="~/scratch/",
     cold_start=True,
-    rho_vec=np.linspace(0.1, 0.9, 9),
+    file_name = "input.gacode.new.powerstate",
+    rho_vec=np.linspace(0.01, 0.94, 50),
     profProvided=False,
-    fineTargetsResolution = None,
+    targets_resolution = None,
 ):
-    profiles = (
-        input_gacode if profProvided else PROFILEStools.PROFILES_GACODE(input_gacode)
-    )
+    profiles = input_gacode if profProvided else PROFILEStools.gacode_state(input_gacode)
 
-    # Calculate using TGYRO
-    if typeCalculation == 1:
-        p = STATEtools.powerstate(
-            profiles,
-            EvolutionOptions={
-                "rhoPredicted": rho_vec,
-                'fineTargetsResolution': fineTargetsResolution,
-            },
-            TargetOptions={
-                "targets_evaluator": TARGETStools.analytical_model,
-                "ModelOptions": {
-                    "TypeTarget": TypeTarget,
-                    "TargetCalc":  "tgyro"},
-            },
-            TransportOptions={
-                "transport_evaluator": TRANSPORTtools.tgyro_model,
-                "ModelOptions": {
-                    "cold_start": cold_start,
-                    "launchSlurm": True,
-                    "MODELparameters": {
-                        "Physics_options": {
-                            "TypeTarget": 3,
-                            "TurbulentExchange": 0,
-                            "PtotType": 1,
-                            "GradientsType": 0,
-                            "InputType": 1,
-                        },
-                        "ProfilesPredicted": ["te", "ti", "ne"],
-                        "RhoLocations": rho_vec,
-                        "applyCorrections": {
-                            "Tfast_ratio": False,
-                            "Ti_thermals": True,
-                            "ni_thermals": True,
-                            "recompute_ptot": False,
-                        },
-                        "transport_model": {"turbulence": 'TGLF',"TGLFsettings": 5, "extraOptionsTGLF": {}},
-                    },
-                    "includeFastInQi": False,
+    p = STATEtools.powerstate(
+        profiles,
+        evolution_options={
+            "rhoPredicted": rho_vec,
+        },
+        target_options={
+            "evaluator": targets_analytic.analytical_model,
+            "options": {
+                "targets_evolve": targets_evolve,
+                "target_evaluator_method":  "powerstate",
+                "targets_resolution": targets_resolution
                 },
-            },
-        )
-
-    # Calculate using powerstate
-    elif typeCalculation == 2:
-        p = STATEtools.powerstate(
-            profiles,
-            EvolutionOptions={
-                "rhoPredicted": rho_vec,
-                'fineTargetsResolution': fineTargetsResolution,
-            },
-            TargetOptions={
-                "targets_evaluator": TARGETStools.analytical_model,
-                "ModelOptions": {
-                    "TypeTarget": TypeTarget,
-                    "TargetCalc":  "powerstate"},
-            },
-            TransportOptions={
-                "transport_evaluator": None,
-                "ModelOptions": {}
-            },
-        )
+        },
+        transport_options={
+            "evaluator": None,
+            "options": {}
+        },
+    )
 
     # Determine performance
     nameRun="test"
     folder=IOtools.expandPath(folder)
+
+    if not folder.exists():
+        folder.mkdir(parents=True)
 
     # ************************************
     # Calculate state
@@ -101,44 +59,39 @@ def calculator(
     # ************************************
 
     p.plasma["Pfus"] = (
-        p.volume_integrate(
+        p.from_density_to_flux(
             (p.plasma["qfuse"] + p.plasma["qfusi"]) * 5.0
         )
         * p.plasma["volp"]
     )[..., -1]
     p.plasma["Prad"] = (
-        p.volume_integrate(p.plasma["qrad"]) * p.plasma["volp"]
+        p.from_density_to_flux(p.plasma["qrad"]) * p.plasma["volp"]
     )[..., -1]
 
-    p.profiles.deriveQuantities()
+    p.profiles.derive_quantities()
     
-    p.to_gacode(
-        write_input_gacode=folder / "input.gacode.new.powerstate",
+    p.from_powerstate(
+        write_input_gacode=folder / file_name,
         position_in_powerstate_batch=0,
         postprocess_input_gacode={
             "Tfast_ratio": False,
             "Ti_thermals": False,
             "ni_thermals": False,
-            "recompute_ptot": False,
-            "ensureMachNumber": None,
+            "recalculate_ptot": False,
+            "force_mach": None,
         },
         insert_highres_powers=True,
         rederive_profiles=False,
     )
 
-    p.plasma["Pin"] = (
-        (p.plasma["Paux_e"] + p.plasma["Paux_i"]) * p.plasma["volp"]
-    )[..., -1]
-    p.plasma["Q"] = p.plasma["Pfus"] / p.plasma["Pin"]
+    p.plasma["Q"] = p.profiles.derived["Q"]
+    p.plasma['Prad'] = p.profiles.derived['Prad']
 
     # ************************************
     # Print Info
     # ************************************
 
-    print(
-        f"Q = {p.plasma['Q'].item():.2f} (Pfus = {p.plasma['Pfus'].item():.2f}MW, Pin = {p.plasma['Pin'].item():.2f}MW)"
-    )
-
+    print(f"Q = {p.plasma['Q'].item():.2f}")
     print(f"Prad = {p.plasma['Prad'].item():.2f}MW")
 
     return p
@@ -146,6 +99,6 @@ def calculator(
 
 if __name__ == "__main__":
     input_gacode = IOtools.expandPath(sys.argv[1])
-    typeCalculation = int(sys.argv[2])
+    folder = IOtools.expandPath(sys.argv[2])
 
-    calculator(input_gacode, typeCalculation=typeCalculation)
+    calculator(input_gacode, folder=folder)

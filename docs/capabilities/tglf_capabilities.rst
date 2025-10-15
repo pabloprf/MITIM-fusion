@@ -68,30 +68,31 @@ To generate the input files (input.tglf) to TGLF at each radial location, MITIM 
 
 .. code-block:: python
 
-    cdf = tglf.prep(folder,inputgacode=inputgacode_file,cold_start=False )
+    _ = tglf.prep(inputgacode_file,folder,cold_start=False)
 
-.. tip::
 
-    The ``.prep()`` method, when applied to a case that starts with an input.gacode file, launches a `TGYRO` run for a "zero" iteration to generate *input.tglf* at specific ``rho`` locations from the *input.gacode*. This method to generate input files is inspired by how the `OMFIT framework <https://omfit.io/index.html>`_ works.
+Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions.
+That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``cold_start`` flag can be provided.
 
-Now, we are ready to run TGLF. Once the ``prep()`` command has finished, one can run TGLF with different settings and assumptions. That is why, at this point, a sub-folder name for this specific run can be provided. Similarly to the ``prep()`` command, a ``cold_start`` flag can be provided.
-The set of control inputs to TGLF (like saturation rule, electromagnetic effects, etc.) are provided in two ways.
-First, the argument ``TGLFsettings`` indicates the base case to start with.
-The user is referred to ``templates/input.tglf.models.json`` to understand the meaning of each setting, and ``templates/input.tglf.controls`` for the default setup.
-Second, the argument ``extraOptions`` can be passed as a dictionary of variables to change.
+The set of control inputs to TGLF (saturation rule, electromagnetic effects, basis functions, etc.) are provided following the following sequential logic:
+
+1. Each code has a set of default settings, which for TGLF are specified in ``templates/input.tglf.controls``. This is the base namelist of settings that will be used if no other specification is provided.
+2. Then, a ``code_settings`` argument can be provided to the ``run()`` command. This argument refers to a specific set of settings that are specified in ``templates/input.tglf.models.yaml``, and that will overwrite the default settings in ``input.tglf.controls``.
+3. Finally, an ``extraOptions`` argument can be provided to the ``run()`` command, which is a dictionary of specific settings to change from the previous two steps.
+
 For example, the following two commands will run TGLF with saturation rule number 2 with and without electromagnetic effets. After each ``run()`` command, a ``read()`` is needed, to populate the *tglf.results* dictionary with the TGLF outputs (``label`` refers to the dictionary key for each run):
 
 .. code-block:: python
 
-    tglf.run( subFolderTGLF = 'yes_em_folder', 
-              TGLFsettings  = 5,
-              extraOptions  = {},
+    tglf.run( subfolder = 'yes_em_folder', 
+              code_settings  = 'SAT2',
+              extraOptions  = {'USE_BPER':True},
               cold_start       = False )
 
     tglf.read( label = 'yes_em' )
 
-    tglf.run( subFolderTGLF = 'no_em_folder', 
-              TGLFsettings  = 5,
+    tglf.run( subfolder = 'no_em_folder', 
+              code_settings  = 'SAT2',
               extraOptions  = {'USE_BPER':False},
               cold_start       = False )
 
@@ -139,7 +140,7 @@ Similarly as in the previous section, you need to run the ``prep()`` command, bu
 
 .. code-block:: python
 
-    cdf = tglf.prep(folder,cold_start=False)
+    cdf = tglf.prep_using_tgyro(folder,cold_start=False)
 
 .. note::
 
@@ -168,7 +169,7 @@ If you have a input.tglf file already, you can still use this script to run it.
     inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf( folder, inputtglf_file, input_gacode = inputgacode_file )
+    tglf.prep_from_file( folder, inputtglf_file, input_gacode = inputgacode_file )
 
 The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.plot()``.
 
@@ -190,7 +191,7 @@ The rest of the workflow is identical, including ``.run()``, ``.read()`` and ``.
         inputtglf_file   = Path('MITIM-fusion/tests/data/input.tglf')
 
         tglf = TGLFtools.TGLF()
-        tglf.prep_from_tglf( folder, inputtglf_file )
+        tglf.prep_from_file( folder, inputtglf_file )
         tglf.read (folder = f'{folder}/', label = 'yes_em' )
         tglf.plot( labels = ['yes_em'] )
 
@@ -215,26 +216,4 @@ Run 1D scans of TGLF input parameter
 TGLF aliases
 ------------
 
-MITIM provides a few useful aliases, including for the TGLF tools:
-
-- To plot results that exist in a folder ``run1/``, with or without a suffix and with or without an input.gacode file (for normalizations):
-    
-    .. code-block:: bash
-        
-        mitim_plot_tglf run1/
-        mitim_plot_tglf run1/ --suffix _0.55 --gacode input.gacode
-
-
-- To run TGLF in a folder ``run1/`` using input file ``input.tglf``, with or without an input.gacode file (for normalizations):
-    
-    .. code-block:: bash
-        
-        mitim_run_tglf --folder run1/ --tglf input.tglf
-        mitim_run_tglf --folder run1/ --tglf input.tglf --gacode input.gacode
-
-- To run a parameter scan in a folder ``scan1/`` using input file ``input.tglf``, with or without an input.gacode file (for normalizations):
-    
-    .. code-block:: bash
-        
-        mitim_run_tglf --folder scan1/ --tglf input.tglf --gacode input.gacode --scan RLTS_2
-
+MITIM provides a few useful aliases, including for the TGLF tools: :ref:`Shell Scripts`

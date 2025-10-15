@@ -19,8 +19,9 @@ from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 MAESTRO:
     Modular and Accelerated Engine for Simulation of Transport and Reactor Optimization
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
-
 '''
+
+ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging
 
 class maestro:
 
@@ -52,13 +53,15 @@ class maestro:
         
         self.folder_output = self.folder / "Outputs"
         self.folder_logs = self.folder_output / "Logs"
+        self.folder_performance = self.folder_output / "Performance"
         self.folder_beats = self.folder / "Beats"
 
         self.folder_logs.mkdir(parents=True, exist_ok=True)
         self.folder_beats.mkdir(parents=True, exist_ok=True)
+        self.folder_performance.mkdir(parents=True, exist_ok=True)
 
         # If terminal outputs, I also want to keep track of what has happened in a log file
-        if terminal_outputs and overall_log_file:
+        if terminal_outputs and overall_log_file and not ENABLE_EMBED:
             sys.stdout = LOGtools.Logger(logFile=self.folder_output / "maestro.log", writeAlsoTerminal=True)
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
@@ -121,7 +124,7 @@ class maestro:
         '''
         To initialize some profile functional form
         '''
-        if method == 'eped':
+        if method == 'eped' or method == 'eped' or 'eped_initializer':
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
@@ -134,7 +137,7 @@ class maestro:
     # Beat operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer('\t\t* Checker', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
     def check(self, beat_check = None, cold_start = False, **kwargs):
         '''
         Note:
@@ -149,7 +152,7 @@ class maestro:
 
         print('\t- Checking...')
         log_file = self.folder_logs / f'beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             output_file = None
             if not cold_start:
@@ -169,13 +172,14 @@ class maestro:
 
         return output_file is not None
 
-    @mitim_timer('\t\t* Initializer', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Initializer',
+        log_file = lambda self: self.folder_performance / "timing.jsonl")
     def initialize(self, *args, **kwargs):
 
         print('\t- Initializing...')
         if self.beat.run_flag:
             log_file = self.folder_logs / f'beat_{self.counter_current}_ini.log' if (not self.terminal_outputs) else None
-            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 # Initialize: produce self.profiles_current
                 self.beat.initialize(*args, **kwargs)
 
@@ -183,7 +187,7 @@ class maestro:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
 
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
             # Initializer can also save important parameters
             self.beat.initialize._inform_save()
 
@@ -193,15 +197,16 @@ class maestro:
 
             if self.profiles_with_engineering_parameters is None:
                 # First initialization, freeze engineering parameters
-                self._freeze_parameters(profiles = PROFILEStools.PROFILES_GACODE(self.beat.initialize.folder / 'input.gacode'))
+                self._freeze_parameters(profiles = PROFILEStools.gacode_state(self.beat.initialize.folder / 'input.gacode'))
 
-    @mitim_timer('\t\t* Preparation', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Preparation',
+        log_file = lambda self: self.folder_performance / "timing.jsonl")    
     def prepare(self, *args, **kwargs):
 
         print('\t- Preparing...')
         if self.beat.run_flag:
             log_file = self.folder_logs / f'beat_{self.counter_current}_prep.log' if (not self.terminal_outputs) else None
-            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 
                 # Initialize if necessary
                 if not self.beat.initialize_called:
@@ -209,20 +214,21 @@ class maestro:
                     self.beat.initialize()
                 # -----------------------------
 
-                self.beat.profiles_current.deriveQuantities()
+                self.beat.profiles_current.derive_quantities()
                 
                 self.beat.prepare(*args, **kwargs)
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
 
-    @mitim_timer('\t\t* Run + finalization', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
+        log_file = lambda self: self.folder_performance / "timing.jsonl")
     def run(self, **kwargs):
 
         # Run 
         print('\t- Running...')
         if self.beat.run_flag:
             log_file = self.folder_logs / f'beat_{self.counter_current}_run.log' if (not self.terminal_outputs) else None
-            with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+            with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
                 self.beat.run(**kwargs)
         else:
             print('\t\t- Skipping beat run because this beat was already run', typeMsg = 'i')
@@ -230,7 +236,7 @@ class maestro:
         # Finalize, merging and freezing should occur even if the run has not been performed because the results are already there
         print('\t- Finalizing beat...')
         log_file = self.folder_logs / f'beat_{self.counter_current}_finalize.log' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             # Finalize
             self.beat.finalize(**kwargs)
@@ -244,7 +250,7 @@ class maestro:
 
         # Inform next beats
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file):
+        with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
             self.beat._inform_save()
 
         # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
@@ -255,23 +261,24 @@ class maestro:
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
-            profiles = PROFILEStools.PROFILES_GACODE(self.beat.folder_output / 'input.gacode')
+            profiles = PROFILEStools.gacode_state(self.beat.folder_output / 'input.gacode')
 
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
-        self.profiles_with_engineering_parameters.writeCurrentStatus(file= (self.folder_output / 'input.gacode_frozen'))
+        self.profiles_with_engineering_parameters.write_state(file= (self.folder_output / 'input.gacode_frozen'))
 
-    @mitim_timer('\t\t* Finalizing', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Finalizing',
+        log_file = lambda self: self.folder_performance / "timing.jsonl")
     def finalize(self):
 
         print(f'- MAESTRO finalizing ******************************* {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
+        with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
             final_file= (self.folder_output / 'input.gacode_final')
 
-            self.beat.profiles_output.writeCurrentStatus(file= final_file)
+            self.beat.profiles_output.write_state(file= final_file)
 
             print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
@@ -279,7 +286,7 @@ class maestro:
     # Plotting operations
     # --------------------------------------------------------------------------------------------
     
-    @mitim_timer('\t\t* Plotting', name_timer=None)
+    @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
     def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
 
         print('*** Plotting MAESTRO ******************************************************************** ')
@@ -291,11 +298,14 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        self._plot_results(self.fn)
+        if num_beats>0:
+            self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
+        ps, ps_lab = self._plot_results(self.fn)
 
         if not wasProvided:
             self.fn.show()
+            
+        return ps, ps_lab
 
     def _plot_beats(self, fn, num_beats = 2, only_beats = None, full_plot = True):
 
@@ -306,7 +316,7 @@ class maestro:
 
                 print(f'\t- Plotting beat #{counter}...')
                 log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
-                with LOGtools.conditional_log_to_file(log_file=log_file):
+                with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
                     msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
                 print(msg)
 
@@ -314,7 +324,7 @@ class maestro:
 
         print('\t- Plotting MAESTRO results...')
 
-        MAESTROplot.plot_results(self, fn)
+        return MAESTROplot.plot_results(self, fn)
 
 
 

@@ -1,5 +1,6 @@
 import argparse
-import shutil
+from pathlib import Path
+from functools import partial
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -8,9 +9,18 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools import PLASMAtools
 from IPython import embed
 
+def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
+    p = PROFILEStools.gacode_state(file_profs)
+    if lumpImpurities:
+        p.lumpImpurities()
+    if enforce_same_density_gradients:
+        p.enforce_same_density_gradients()
+    p.write_state(file=file_profs)
+    return p
+
 def parse_maestro_nml(file_path):
     # Extract engineering parameters, initializations, and desired beats to run
-    maestro_namelist = IOtools.read_mitim_nml(file_path)
+    maestro_namelist = IOtools.read_mitim_yaml(file_path)
 
     if "seed" in maestro_namelist:
         seed = maestro_namelist["seed"]
@@ -78,6 +88,14 @@ def parse_maestro_nml(file_path):
         delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
         n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
         geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    elif separatrix_type == 'fibe': 
+        R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
+        a = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
+        kappa_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
+        delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
+        zeta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["zeta_sep"]
+        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
     elif separatrix_type == "geqdsk":
         # Initialize geometry from geqdsk file
         geqdsk_file = maestro_namelist["machine"]["separatrix"]["parameters"]["geqdsk_file"]
@@ -92,7 +110,7 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped", "transp", "transp_soft", "portals", "portals_soft"]:
+    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 
@@ -121,6 +139,8 @@ def parse_maestro_nml(file_path):
 
                 beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
 
+
+
             # ***************************************************************************
             # Nothin yet
             # ***************************************************************************
@@ -138,14 +158,11 @@ def parse_maestro_nml(file_path):
                 enforce_same_density_gradients = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["enforce_same_density_gradients"]
 
                 # add postprocessing function
-                def profiles_postprocessing_fun(file_profs):
-                    p = PROFILEStools.PROFILES_GACODE(file_profs)
-                    if lumpImpurities:
-                        p.lumpImpurities()
-                    if enforce_same_density_gradients:
-                        p.enforce_same_density_gradients()
-                    p.writeCurrentStatus(file=file_profs)
-                beat_namelist['PORTALSparameters']['profiles_postprocessing_fun'] = profiles_postprocessing_fun
+                beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
+
+        elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
+                print('Using the eped_beat namelist for the eped_initializer')
+                beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
         else:
             raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
@@ -156,7 +173,7 @@ def parse_maestro_nml(file_path):
 
     return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
 
-@mitim_timer('\t\t* MAESTRO')
+@mitim_timer('MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
         parameters_initialize, 
@@ -178,7 +195,13 @@ def run_maestro_local(
     if folder is None:
         folder = IOtools.expandPath('./')
 
-    m = maestro(folder, master_seed = seed, terminal_outputs = terminal_outputs, master_cold_start = force_cold_start, keep_all_files = keep_all_files)
+    m = maestro(
+        folder, 
+        master_seed = seed, 
+        terminal_outputs = terminal_outputs, 
+        overall_log_file = True,
+        master_cold_start = force_cold_start, 
+        keep_all_files = keep_all_files)
 
     # -------------------------------------------------------------------------
     # Loop through beats
@@ -205,10 +228,10 @@ def run_maestro_local(
         # ****************************************************************************
         if not creator_added:
             m.define_creator(
-                'eped', 
+                'eped_initializer', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
                 nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped"],
+                **beat_namelists["eped_initializer"],
                 **parameters_engineering
                 )
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
@@ -221,6 +244,8 @@ def run_maestro_local(
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
             run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+        elif maestro_beats["beats"][0] in ["eped", "eped_initializer"]:
+            run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
         m.prepare(**beat_namelists[maestro_beats["beats"][0]])
         m.run(**run_namelist)
@@ -234,21 +259,22 @@ def run_maestro_local(
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
     parser.add_argument('folder', type=str, help='Folder to run MAESTRO')
-    parser.add_argument('file_path', type=str, help='Path to MAESTRO namelist file')
-    parser.add_argument('cpus', type=int, help='Number of CPUs to use')
+    parser.add_argument("--namelist", type=str, required=False, default=None) # namelist.maestro.yaml file, otherwise what's in the current folder
+    parser.add_argument('--cpus', type=int, required=False, default=8, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     args = parser.parse_args()
+    
     folder = IOtools.expandPath(args.folder)
-    file_path = args.file_path
+    maestro_namelist = args.namelist
     cpus = args.cpus
     terminal_outputs = args.terminal
+
+    maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    shutil.copy2(file_path, folder / 'maestro_namelist.json')
-
-    run_maestro_local(*parse_maestro_nml(file_path),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
+    run_maestro_local(*parse_maestro_nml(maestro_namelist),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 
 if __name__ == "__main__":

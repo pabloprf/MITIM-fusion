@@ -25,18 +25,20 @@ class portals_beat(beat):
             use_previous_surrogate_data = False,
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
-            additional_params_in_surrogate = [],
-            exploration_ranges = {
-                'ymax_rel': 1.0,
-                'ymin_rel': 1.0,
-                'hardGradientLimits': [0,2]
-            },
-            PORTALSparameters = {},
-            MODELparameters = {},
-            optimization_options = {},
-            INITparameters = {},
+            portals_namelist_location = None,
+            portals_parameters = None,
+            initialization_parameters = None,
+            optimization_options = None,
             enforce_impurity_radiation_existence = True,
             ):
+        
+        if portals_parameters is None:
+            portals_parameters = {}
+        if initialization_parameters is None:
+            initialization_parameters = {}
+        if optimization_options is None:
+            optimization_options = {}
+
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
 
@@ -44,7 +46,7 @@ class portals_beat(beat):
 
             profiles = self.profiles_current
             for i in range(len(profiles.Species)):
-                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics" / "radiation_chebyshev.csv")
+                data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
                 if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
                     print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
                     # Find closest Z
@@ -56,23 +58,20 @@ class portals_beat(beat):
 
                     new_name = data_df['Ion'][iZ]
 
-                    print(f"\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})")
+                    print(f'\t\t\t- Changing name of ion from {profiles.Species[i]["N"]} ({profiles.Species[i]["Z"]}) to {new_name} ({Z[iZ]})')
 
                     profiles.profiles['name'][i] = profiles.Species[i]["N"] = new_name
 
             self.profiles_current = profiles
 
 
-        self.profiles_current.writeCurrentStatus(file = self.fileGACODE)
+        self.profiles_current.write_state(file = self.fileGACODE)
 
-        self.PORTALSparameters = PORTALSparameters
-        self.MODELparameters = MODELparameters
+        self.portals_parameters = portals_parameters
+        self.portals_namelist_location = portals_namelist_location
         self.optimization_options = optimization_options
-        self.INITparameters = INITparameters
+        self.initialization_parameters = initialization_parameters
 
-        self.additional_params_in_surrogate = additional_params_in_surrogate
-
-        self.exploration_ranges = exploration_ranges
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
@@ -87,14 +86,23 @@ class portals_beat(beat):
 
         cold_start = kwargs.get('cold_start', False)
 
-        portals_fun  = PORTALSmain.portals(self.folder, additional_params_in_surrogate = self.additional_params_in_surrogate)
+        # Read the namelist if explicitly given in the MAESTRO namelist (variable: portals_namelist_location)
+        portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_namelist_location)
 
-        modify_dictionary(portals_fun.PORTALSparameters, self.PORTALSparameters)
-        modify_dictionary(portals_fun.MODELparameters, self.MODELparameters)
-        modify_dictionary(portals_fun.optimization_options, self.optimization_options)
-        modify_dictionary(portals_fun.INITparameters, self.INITparameters)
+        # Update the namelist with the parameters in the MAESTRO namelist (variable: portals_parameters)
+        portals_fun.portals_parameters = IOtools.deep_dict_update(portals_fun.portals_parameters, self.portals_parameters)
+        if 'optimization_options' in self.portals_parameters:
+            portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.portals_parameters['optimization_options'])
+        
+        # MAESTRO beat may receive optimization options changes from previous beats, so allow that too
+        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
 
-        portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
+        # Initialization now happens by the user
+        from mitim_tools.gacode_tools.PROFILEStools import gacode_state
+        p = gacode_state(self.fileGACODE)
+        p.correct(options=self.initialization_parameters)
+
+        portals_fun.prep(p,askQuestions=False)
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False)
 
@@ -107,7 +115,7 @@ class portals_beat(beat):
             if len(self.mitim_bo.optimization_data.data) == 0:
                 self._flux_match_for_first_point()
 
-            portals_fun.prep(self.fileGACODE,askQuestions=False,**self.exploration_ranges)
+            portals_fun.prep(self.fileGACODE,askQuestions=False)
 
             self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
@@ -115,7 +123,7 @@ class portals_beat(beat):
 
     def _flux_match_for_first_point(self):
 
-        print('\t- Running flux match for first point')
+        print('\n\t- Running flux match for first point')
 
         # Flux-match first
         folder_fm = self.folder / 'flux_match'
@@ -123,7 +131,13 @@ class portals_beat(beat):
 
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
-        _ = PORTALSoptimization.flux_match_surrogate(portals.step,p,file_write_csv=folder_fm / 'optimization_data.csv')
+        _ = PORTALSoptimization.flux_match_surrogate(
+            portals.step,
+            p,
+            target_options_use = self.mitim_bo.optimization_object.powerstate.target_options,   # Use the target_options of the new run, not the old one (which may be with fixed targets if soft)
+            file_write_csv=folder_fm / 'optimization_data.csv'
+            )
+
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
@@ -155,7 +169,7 @@ class portals_beat(beat):
             print('\t\t- PORTALS probably converged in training, so analyzing a bit differently')
             self.profiles_output = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
 
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         '''
@@ -172,7 +186,7 @@ class portals_beat(beat):
         '''
 
         # Write the pre-merge input.gacode before modifying it
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode_pre_merge')
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode_pre_merge')
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
@@ -220,18 +234,19 @@ class portals_beat(beat):
 
         # Insert powers
         opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
-        if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 1:
-            # Insert exchange
+        if 'qie' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
-            if opt_fun.MODELparameters['Physics_options']["TypeTarget"] > 2:
-                # Insert radiation and fusion
-                for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
-                    self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
+        if 'qrad' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
+            for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)']:
+                self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
+        if 'qfus' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
+            for key in ['qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
+                self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]       
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
-        self.profiles_output.deriveQuantities()
-        self.profiles_output.writeCurrentStatus(file=self.folder_output / 'input.gacode')
+        self.profiles_output.derive_quantities()
+        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def grab_output(self, full = False):
 
@@ -241,7 +256,7 @@ class portals_beat(beat):
 
         opt_fun = STRATEGYtools.opt_evaluator(folder) if full else PORTALSanalysis.PORTALSanalyzer.from_folder(folder)
 
-        profiles = PROFILEStools.PROFILES_GACODE(self.folder_output / 'input.gacode') if isitfinished else None
+        profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode') if isitfinished else None
         
         return opt_fun, profiles
 
@@ -299,7 +314,7 @@ class portals_beat(beat):
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
-            if 'RoaLocations' in self.MODELparameters:
+            if 'predicted_roa' in self.portals_parameters['solution']:
 
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in r/a)')
 
@@ -311,40 +326,40 @@ class portals_beat(beat):
                 #roatop = roatop.round(3)
                 
                 # set the last value of the radial locations to the interpolated value
-                roatop_old = copy.deepcopy(self.MODELparameters["RoaLocations"][-1])
-                self.MODELparameters["RoaLocations"][-1] = roatop
-                print(f'\t\t\t* Last radial location moved from r/a = {roatop_old} to {self.MODELparameters["RoaLocations"][-1]}')
-                print(f'\t\t\t* RoaLocations: {self.MODELparameters["RoaLocations"]}')
+                roatop_old = copy.deepcopy(self.portals_parameters['solution']["predicted_roa"][-1])
+                self.portals_parameters['solution']["predicted_roa"][-1] = roatop
+                print(f'\t\t\t* Last radial location moved from r/a = {roatop_old} to {self.portals_parameters["solution"]["predicted_roa"][-1]}')
+                print(f'\t\t\t* predicted_roa: {self.portals_parameters["solution"]["predicted_roa"]}')
 
-                strKeys = 'RoaLocations'
+                strKeys = 'predicted_roa'
 
             else:
 
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in rho)')
 
                 # set the last value of the radial locations to the interpolated value
-                rhotop_old = copy.deepcopy(self.MODELparameters["RhoLocations"][-1])
-                self.MODELparameters["RhoLocations"][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
-                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.MODELparameters["RhoLocations"][-1]}')
+                rhotop_old = copy.deepcopy(self.portals_parameters['solution']['predicted_rho'][-1])
+                self.portals_parameters['solution']['predicted_rho'][-1] = self.maestro_instance.parameters_trans_beat['rhotop']
+                print(f'\t\t\t* Last radial location moved from rho = {rhotop_old} to {self.portals_parameters["solution"]["predicted_rho"][-1]}')
 
-                strKeys = 'RhoLocations'
+                strKeys = 'predicted_rho'
 
             last_radial_location_moved = True
 
             # Check if I changed it previously and it hasn't moved
             if strKeys in self.maestro_instance.parameters_trans_beat:
                 print(f'\t\t\t* {strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
-                print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.MODELparameters[strKeys]}')
+                print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.portals_parameters["solution"][strKeys]}')
 
-                if abs(self.MODELparameters[strKeys][-1]-self.maestro_instance.parameters_trans_beat[strKeys][-1]) / self.maestro_instance.parameters_trans_beat[strKeys][-1] < minimum_relative_change_in_x:
+                if abs(self.portals_parameters['solution'][strKeys][-1]-self.maestro_instance.parameters_trans_beat[strKeys][-1]) / self.maestro_instance.parameters_trans_beat[strKeys][-1] < minimum_relative_change_in_x:
                     print('\t\t\t* Last radial location was not moved')
                     last_radial_location_moved = False
-                    self.MODELparameters[strKeys][-1] = self.maestro_instance.parameters_trans_beat[strKeys][-1]
+                    self.portals_parameters['solution'][strKeys][-1] = self.maestro_instance.parameters_trans_beat[strKeys][-1]
 
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['Tar',f'_{len(self.MODELparameters[strKeys])}']
+            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
@@ -357,41 +372,28 @@ class portals_beat(beat):
         # Standard PORTALS output
         try:
             stepSettings = portals_output.step.stepSettings
-            MODELparameters = portals_output.MODELparameters
+            portals_parameters = portals_output.portals_parameters
         # Converged in training case
         except AttributeError:
             stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
-            MODELparameters =portals_output.opt_fun_full.mitim_model.optimization_object.MODELparameters
+            portals_parameters =portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
 
         max_value_neg_residual = stepSettings['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
         self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
         print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
 
-        fileTraining = stepSettings['folderOutputs'] / 'surrogate_data.csv'
+        fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
         
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 
-        if 'RoaLocations' in MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RoaLocations'] = MODELparameters['RoaLocations']
-            print(f'\t\t* RoaLocations saved for future beats: {MODELparameters["RoaLocations"]}')
-        elif 'RhoLocations' in MODELparameters:
-            self.maestro_instance.parameters_trans_beat['RhoLocations'] = MODELparameters['RhoLocations']
-            print(f'\t\t* RhoLocations saved for future beats: {MODELparameters["RhoLocations"]}')
-
-
-def modify_dictionary(original, new):
-    for key in new:
-        # If something on the new dictionary is not in the original, add it
-        if key not in original:
-            original[key] = new[key]
-        # If it is a dictionary, go deeper
-        elif isinstance(new[key], dict):
-                modify_dictionary(original[key], new[key])
-        # If it is not a dictionary, just replace the value
-        else:
-            original[key] = new[key]
+        if 'predicted_roa' in portals_parameters['solution']:
+            self.maestro_instance.parameters_trans_beat['predicted_roa'] = portals_parameters['solution']['predicted_roa']
+            print(f'\t\t* predicted_roa saved for future beats: {portals_parameters["solution"]["predicted_roa"]}')
+        elif 'predicted_rho' in portals_parameters['solution']:
+            self.maestro_instance.parameters_trans_beat['predicted_rho'] = portals_parameters['solution']['predicted_rho']
+            print(f'\t\t* predicted_rho saved for future beats: {portals_parameters["solution"]["predicted_rho"]}')
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
@@ -414,9 +416,11 @@ def portals_beat_soft_criteria(portals_namelist):
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
     portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
 
-    if 'MODELparameters' not in portals_namelist_soft:
-        portals_namelist_soft['MODELparameters'] = {}
+    if 'target' not in portals_namelist_soft["portals_parameters"]:
+        portals_namelist_soft["portals_parameters"]['target'] = {}
+    if 'options' not in portals_namelist_soft["portals_parameters"]['target']:
+        portals_namelist_soft["portals_parameters"]['target']['options'] = {}
 
-    portals_namelist_soft["MODELparameters"]["Physics_options"] = {"TypeTarget": 2}
+    portals_namelist_soft["portals_parameters"]["target"]["options"]["targets_evolve"] = ["qie"]
 
     return portals_namelist_soft

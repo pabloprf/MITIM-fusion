@@ -18,11 +18,11 @@ if cold_start and folder.exists():
     os.system(f"rm -r {folder}")
 
 tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0.8]))
-_ = tglf.prep(folder, cold_start=cold_start)
+_ = tglf.prep_using_tgyro(folder, cold_start=cold_start)
 
 tglf.run(
-    subFolderTGLF="runSAT2",
-    TGLFsettings=5,
+    subfolder="runSAT2",
+    code_settings=5,
     runWaveForms=[0.1,0.3],
     cold_start=cold_start,
     forceIfcold_start=True,
@@ -30,8 +30,8 @@ tglf.run(
 tglf.read(label="runSAT2", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
-    subFolderTGLF="runSAT0",
-    TGLFsettings=2,
+    subfolder="runSAT0",
+    code_settings=2,
     runWaveForms=[0.5],
     cold_start=cold_start,
     forceIfcold_start=True,
@@ -39,8 +39,8 @@ tglf.run(
 tglf.read(label="runSAT0", d_perp_cm={0.6: 0.5, 0.8: 0.5})
 
 tglf.run(
-    subFolderTGLF="runSAT3",
-    TGLFsettings=6,
+    subfolder="runSAT3",
+    code_settings=6,
     runWaveForms=[0.5],
     cold_start=cold_start,
     forceIfcold_start=True,

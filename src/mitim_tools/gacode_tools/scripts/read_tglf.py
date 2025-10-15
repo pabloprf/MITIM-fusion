@@ -31,7 +31,7 @@ def main():
             suffixes[i] = ""
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf(
+    tglf.prep_from_file(
         folders[0], folders[0] / f"input.tglf{suffixes[0]}", input_gacode=input_gacode
     )
     for i, folder in enumerate(folders):

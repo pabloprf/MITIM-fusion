@@ -1,0 +1,302 @@
+# (**************************************************************************************************************)
+#
+# This is a complete template for a PORTALS-TGLF+NEO profile prediction.
+# The user is welcomed to change any of the parameters below to fit their specific use case,
+# by copying this template namelist and instantiating the PORTALS object with its path:
+#
+#          portals_fun = PORTALSmain.portals(folder, portals_namelist=PATH_TO_NAMELIST)
+#
+# Alternatively, you can simply use the default parameters provided in this template by not 
+# specifying a namelist and then, in the launching script change the dictionary values
+# (*before* you perform the portals_fun.prep() command):
+#
+#          portals_fun = PORTALSmain.portals(folder)
+#          portals_fun.portals_parameters["solution"]['predicted_roa'] = [0.25, 0.45, 0.65, 0.85]
+#          portals_fun.portals_parameters["solution"]['predicted_channels'] = ["te", "ti", "ne", "nZ", 'w0']
+#          ...
+#
+# The dictionary follows the same structure as the YAML namelist, except the optimization_options that must
+# be passed as a separate dictionary (because they are common among optimization problems):
+#
+#          portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 10
+#
+# (**************************************************************************************************************)
+
+# -----------------------------------------------------------------
+# Main solver parameters
+# -----------------------------------------------------------------
+
+solution:
+
+  # Specification of radial locations (if both provided, predicted_roa is used instead of predicted_rho)
+  predicted_roa: null
+  predicted_rho: [0.35, 0.55, 0.75, 0.875, 0.9]
+
+  # Channels to be predicted (Options: ["te", "ti", "ne", "nZ", "w0"])
+  predicted_channels: ["te", "ti", "ne"]
+
+  # Run turbulent exchange as surrogate
+  turbulent_exchange_as_surrogate: false
+
+  # Impurity to do flux-matching for if nZ enabled (name of first impurity instance AFTER postprocessing), e.g. "W"
+  trace_impurity: null
+
+  # Options that define boundaries for the optimization
+  exploration_ranges:
+    
+    # Are ymax and ymin relative or absolute
+    limits_are_relative: true
+    
+    # Bounds for the input parameters. ymax/ymin can be float (common for all radii, channels) or a dictionary::
+    #       ymax:
+    #           'te': [1.0, 0.5, 0.5, 0.5]
+    #           'ti': [0.5, 0.5, 0.5, 0.5]
+    #           ...
+    ymax: 1.0
+    ymin: 1.0
+    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
+
+    # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
+    enforce_finite_aLT: null
+
+    define_ranges_from_profiles: null
+
+    # start_from_folder is a folder from which to grab optimization_data and optimization_extra
+    # (if used with reevaluate_targets>0, change targets by reevaluating with different parameters)
+    start_from_folder: null
+
+    reevaluate_targets: 0
+
+    # DEPCRECATED, #TOREMOVE
+    fixed_gradients: null
+
+  # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
+  keep_full_model_folder: true
+
+  # If True, fit surrogate model to GZ/nZ instead of GZ, valid on the trace limit
+  impurity_trick: true
+
+  # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
+  fZ0_as_weight: null
+  fImp_orig: 1.0
+
+  # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
+  scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
+
+  # Physics-informed parameters to fit surrogates (numbers are the last iteration to consider that line; keys are the physics-informed parameters
+  # and the values are the corresponding variables to check if they have varied, that affect that input)
+  portals_transformation_variables:
+    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
+    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
+    10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne]}
+
+  # Physics-informed parameters to fit surrogates for trace impurities
+  portals_transformation_variables_trace:
+    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
+    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
+    10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne], aLnZ: [aLnZ]}
+
+# -----------------------------------------------------------------
+# Transport model parameters
+# -----------------------------------------------------------------
+
+transport:
+
+  # Transport model class
+  evaluator: "import::mitim_modules.powertorch.utils.TRANSPORTtools.portals_transport_model"
+
+  # Select transport models (when instantiating the evaluator, assign these parameters)
+  evaluator_instance_attributes:
+
+    # Turbulent transport model
+    turbulence_model: "tglf"
+
+    # Neoclassical transport model
+    neoclassical_model: "neo"
+
+  # Simulation kwargs to be passed directly to run and read commands (defaults here)
+  options:
+
+    # *********************************************************************************************************
+    # TGLF
+    # *********************************************************************************************************
+    tglf:
+
+      # Kwargs to be passed to the run command
+      run:
+        code_settings: "SAT3"
+        extraOptions: {}
+
+      # Kwargs to be passed to the read command
+      read: {}
+
+      # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
+      use_scan_trick_for_stds: 0.02
+
+      # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
+      reuse_scan_ball: false
+
+      # Files to keep from simulation (none: all runs will only keep minimal files; base: minimal files for scans only; all: retrieve all files)
+      keep_files: "base" 
+
+      # Number of cores to use per TGLF instance
+      cores_per_tglf_instance: 1
+
+      # (%) Error (std, in percent) of model evaluation TGLF if not scan trick
+      percent_error: 5.0
+
+      # If True, and fast ions have been included, sum fast. This only occurs if the specie is considered fast by TGLF (it could be fast in input.gacode but thermal for TGLF)
+      Qi_includes_fast: false
+
+    # *********************************************************************************************************
+    # NEO
+    # *********************************************************************************************************
+    neo:
+
+      run: 
+        code_settings: "Sonic"
+
+      read: {}
+
+      # (%) Error (std, in percent) of model evaluation
+      percent_error: 10.0
+
+    # *********************************************************************************************************
+    # CGYRO
+    # *********************************************************************************************************
+    cgyro:
+
+      run:
+        code_settings: "Nonlinear"
+        extraOptions: {}
+
+        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        run_type: "prep"
+      
+      read:
+        tmin: 0.0
+      
+      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
+      Qi_stable_criterion: 0.01
+
+      # (%) For CGYRO runs, minimum error based on target if case is considered stable
+      Qi_stable_percent_error: 5.0
+
+      # If True, always run base TGLF to keep track of discrepancies
+      run_base_tglf: True
+
+    # *********************************************************************************************************
+    # GX
+    # *********************************************************************************************************
+    gx:
+
+      run:
+
+        code_settings: "Nonlinear"
+        extraOptions: {}
+
+        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        run_type: "prep"
+      
+      read:
+        tmin: 0.0
+
+  # Function to post-process input.gacode only *before* passing to transport codes
+  profiles_postprocessing_fun: null
+
+  # Corrections to be applied to each iteration input.gacode file
+  applyCorrections:
+    Ti_thermals: true       # Keep all thermal ion temperatures equal to the main Ti
+    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+    recalculate_ptot: true  # Recompute PTOT to insert in input file each time
+    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
+    force_mach: null        # Change w0 to match this Mach number when Ti varies
+
+
+# -----------------------------------------------------------------
+# Target model parameters
+# -----------------------------------------------------------------
+
+target:
+
+  # Target model evaluator
+  evaluator: "import::mitim_modules.powertorch.physics_models.targets_analytic.analytical_model"
+
+  options:
+
+    # Targets to evolve (Options: ["qie", "qrad", "qfus"])
+    targets_evolve: ["qie", "qrad", "qfus"]
+
+    # Method to calculate targets (tgyro or powerstate)
+    target_evaluator_method: "powerstate"
+
+    # If True, ignore particle flux profile and assume zero for all radii
+    force_zero_particle_flux: false
+
+    # If not None, calculate targets with this radial resolution
+    targets_resolution: 20
+
+    # (%) Error (std, in percent) of model evaluation
+    percent_error: 1
+
+# -----------------------------------------------------------------
+# Optimization options namelist
+# -----------------------------------------------------------------
+
+optimization_namelist_location: null # If null, it will grab the default at: __mitimroot__ / "templates" / "namelist.optimization.yaml"
+
+# -----------------------------------------------------------------
+# Optimization options (to change the main optimization namelist)
+# -----------------------------------------------------------------
+
+optimization_options:
+
+  initialization_options: 
+
+    # PORTALS works well with 5 initial training points obtained with simple relaxation
+    initial_training: 5
+    initialization_fun: "import::mitim_modules.portals.utils.PORTALSoptimization.initialization_simple_relax"
+
+  # Convergence options for the optimization process
+  convergence_options:
+
+    # Criterion 1: Maximum iterations
+    maximum_iterations: 50
+
+    # Stopping function for the rest of criteria
+    stopping_criteria: "import::mitim_modules.portals.PORTALStools.stopping_criteria_portals"
+    
+    stopping_criteria_parameters:
+
+      # Criterion 2: Residual reduction
+      maximum_value: 5.e-3                # Reducing residual by 200x is enough for most PORTALS runs
+      maximum_value_is_rel: true          # Indicates that maximum_value is relative to iteration #0
+
+      # Criterion 3: Variation of input parameters
+      minimum_inputs_variation: [10, 5, 0.1] # After iteration 10, Check if 5 consecutive DVs are varying less than 0.1% from the rest that has been evaluated
+
+      # Criterion 4: Ricci metric
+      ricci_value: 0.05
+      ricci_d0: 2.0
+      ricci_lambda: 0.5
+
+  acquisition_options:
+
+    # Relative improvement for stopping criteria of the acquisition optimization
+    relative_improvement_for_stopping: 1.e-2    # Reducing residual by 100x is enough
+
+    # Type of acquisition function (Options: ["posterior_mean", "noisy_logei_mc", ...])
+    type:  "posterior_mean"
+
+    # Optimizers to apply sequentially (Options: ["sr", "root", "botorch"])
+    optimizers: ["sr", "root"]
+
+  surrogate_options:
+
+    # Function to select the GP parameters depending on each channel/radius (superseeds the main optimization namelist)
+    surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"
+
+  strategy_options:
+
+    # Allow excursions from the bounds
+    AllowedExcursions: [0.0, 0.0]

@@ -1,0 +1,201 @@
+# (**************************************************************************************************************)
+#
+# This is a complete template for a MAESTRO simulation
+#
+# (**************************************************************************************************************)
+
+# ------------------------------------------------------------------------------------------------------------
+# Plasma
+# ------------------------------------------------------------------------------------------------------------
+
+# Name of this simulation
+flag: SPARC PRD
+
+# Master random seed for reproducibility, to be sent to all beats that can receive seed
+seed: 0
+
+# Machine parameters
+machine:
+
+  # Engineering parameters (if using values in geqdsk, these must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk)
+  Bt: 12.2
+  Ip: 8.7
+
+  # Separatrix specification
+  separatrix:
+
+    # Type of separatrix (freegs, geqdsk)
+    type: freegs
+
+    # Parameters for this type of separatrix
+    parameters:
+
+      # If the separatrix type receives boundary parameterization, parameters here
+      R: 1.85
+      a: 0.57
+      delta_sep: 0.57
+      kappa_sep: 1.97
+
+      # If the separatrix type receives a geqdsk file directly, provide path here
+      geqdsk_file: ""
+
+      # For both geqdsk and freegs, number of MXH coefficients to parametrize the boundary
+      n_mxh: 5
+
+  # Heating parameters
+  heating:
+
+    # Only ICRH heating supported for now
+    type: ICRH
+
+    parameters:
+
+      # ICRF input power
+      P_icrh: 11.0
+      # Minority species [Z,A]
+      minority: [2, 3]
+      # Minority fraction to be added to the mix
+      fmini: 0.05
+
+# Simulation assumptions
+assumptions:
+
+  # Impurities
+  Zeff: 1.5
+  mix:
+    fmain: 0.85
+    ZW: 50
+    fW: 1.5e-5
+    
+  # Edge parameters
+  Tesep_eV: 75.0
+
+  # Initialization of profiles
+  initialization:
+
+    # neped as the input (engineering) parameter
+    assume_neped: true
+    neped_20: 2.5
+
+    # ne_sep / ne_ped ratio to assume (e.g. for EPED) and construct profiles with
+    nesep_ratio: 0.3
+    
+    # Profiles will be initialized such that these parameters are matched as close as possible
+    BetaN: 1.0
+    density_peaking: 1.3
+
+# ------------------------------------------------------------------------------------------------------------
+# MAESTRO workflow parameters
+# ------------------------------------------------------------------------------------------------------------
+
+maestro:
+
+  # Sequence of beats
+  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+
+  # Remove intermediate files to avoid heavy MAESTRO simulation folders
+  keep_all_files: true
+
+  # ---------------------------------------------------------------------------
+  # Each individual beat parameters
+  # ---------------------------------------------------------------------------
+
+  eped_beat:
+
+    use_default: false
+
+    eped_namelist:
+
+      # Location of EPED NN files (if null, use full EPED)
+      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
+      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+
+      # Corrections set for EPED indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
+      corrections_set:
+        Bt: 12.2
+        R: 1.85
+        a: 0.57
+
+      # Operations after EPED pressure predictions
+      ptop_multiplier: 1.0  # Multiplies ptop
+      TioverTe: 1.0         # Ti/Te assumption at the pedestal top
+
+  eped_initializer_beat:
+    use_default: false
+    eped_initializer_namelist:
+      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
+      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+      corrections_set:
+        Bt: 12.2
+        R: 1.85
+        a: 0.57
+      ptop_multiplier: 1.0
+      TioverTe: 1.0
+
+  portals_beat:
+
+    use_default: false
+
+    portals_namelist:
+
+      # If null, it will use the default namelist at: __mitimroot__ / "templates" / "namelist.portals.yaml"
+      portals_namelist_location: null
+
+      # ------------------------------------------------------------------------------------------------
+      # PORTALS parameters (only those parameters to change the main PORTALS namelist)
+      # ------------------------------------------------------------------------------------------------
+      portals_parameters:
+        solution:
+          predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
+          keep_full_model_folder: false
+          exploration_ranges:
+            ymax: 1.0
+            ymin: 4.0
+            yminymax_atleast: [null, 4]
+        transport:
+          options:
+            tglf:
+              run:
+                code_settings: "SAT2astra"
+                extraOptions:
+                  USE_BPER: true
+              keep_files: "none" 
+        target:
+          options:
+            force_zero_particle_flux: true
+
+        optimization_options:
+          convergence_options:
+            maximum_iterations: 30
+          strategy_options:
+            AllowedExcursions: [0.25, 0.0]
+      
+      # Operations to do to mitim_state before passing it to PORTALS
+      initialization_parameters:
+        thermalize_fast: true
+        quasineutrality: true
+
+      # If the width of the pedestal has changed, modify the BC (last in predicted_rX) for PORTALS accordingly
+      change_last_radial_call: true
+
+      # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
+      use_previous_surrogate_data: true
+
+      # If surrogates exist, use them to find the first training point (and limit to only one point)
+      try_flux_match_only_for_first_point: true
+
+    # Operations that will be included as part of the profiles_postprocessing_fun 
+    transport_preprocessing:
+      # By default, run PORTALS with all impurities lumped into one species
+      lumpImpurities: true
+      # By default, enforce that all species have the same density gradient
+      enforce_same_density_gradients: true
+
+  portals_soft_beat:
+    use_default: true
+
+  transp_beat:
+    use_default: true
+
+  transp_soft_beat:
+    use_default: true

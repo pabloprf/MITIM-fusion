@@ -62,7 +62,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 # ----- Inputs
 # -----------------------------------------------------------------------------------------------------
 
-namelist = __mitimroot__ / "templates" / "main.namelist.json"
+namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
 folderWork = __mitimroot__ / "tests" / "scratch" / "opt_test"
 
 if cold_start and os.path.exists(folderWork):
@@ -75,7 +75,7 @@ if cold_start and os.path.exists(folderWork):
 # Initialize class
 opt_fun1D = opt_class(folderWork, namelist)
 
-# Changes to namelist in templates/main.namelist.json
+# Changes to namelist in templates/namelist.optimization.yaml
 opt_fun1D.optimization_options["initialization_options"]["initial_training"] = 2
 
 # Initialize BO framework

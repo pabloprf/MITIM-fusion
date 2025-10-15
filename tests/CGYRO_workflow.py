@@ -12,37 +12,64 @@ if cold_start and folder.exists():
 
 folder.mkdir(parents=True, exist_ok=True)
 
-cgyro = CGYROtools.CGYRO()
+cgyro = CGYROtools.CGYRO(rhos = [0.5, 0.7])
 
-cgyro.prep(folder,gacode_file)
+cgyro.prep(gacode_file,folder)
+
+# ---------------
+# Standalone run
+# ---------------
+
+run_type = 'submit' # 'normal': submit and wait; 'submit': Just prepare and submit, do not wait [requies cgyro.check() and cgyro.fetch()]
 
 cgyro.run(
     'linear',
-    roa = 0.55,
-    CGYROsettings=0,
+    code_settings="Linear",
     extraOptions={
-        'KY':0.3
-    })
+        'KY':0.5,
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
+    },
+    slurm_setup={
+        'cores':16, # Each CGYRO instance (each radius will have this number of cores or gpus)
+        'minutes': 10,
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    run_type=run_type, 
+    )
+
+if run_type == 'submit':
+    cgyro.check(every_n_minutes=1)
+    cgyro.fetch()
+
 cgyro.read(label="cgyro1")
+cgyro.plot(labels=["cgyro1"])
 
-cgyro.run(
-    'linear',
-    roa = 0.55,
-    CGYROsettings=0,
+# ---------------
+# Scan of KY
+# ---------------
+
+run_type = 'normal'
+
+cgyro.run_scan(
+    'scan1',
+    code_settings="Linear",
     extraOptions={
-        'KY':0.5
-    })
-cgyro.read(label="cgyro2")
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
+    },
+    variable='KY',
+    varUpDown=[0.3,0.4],
+    slurm_setup={
+        'cores':16
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    run_type=run_type
+    )
 
-cgyro.run(
-    'linear',
-    roa = 0.55,
-    CGYROsettings=0,
-    extraOptions={
-        'KY':0.7
-    })
-cgyro.read(label="cgyro3")
+cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
 
+fig = cgyro.fn.add_figure(label="Quick linear")
+cgyro.plot_quick_linear(labels=["scan1_KY_0.3","scan1_KY_0.4"], fig = fig)
 
-cgyro.plotLS()
-cgyro.fnLS.show()
+cgyro.fn.show()

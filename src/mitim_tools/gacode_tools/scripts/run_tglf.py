@@ -28,9 +28,7 @@ def main():
     parser.add_argument("--gacode", required=False, type=str, default=None)
     parser.add_argument("--scan", required=False, type=str, default=None)
     parser.add_argument("--drives", required=False, default=False, action="store_true")
-    parser.add_argument(
-        "--cold_start", "-r", required=False, default=False, action="store_true"
-    )
+    parser.add_argument("--cold_start", "-r", required=False, default=False, action="store_true")
 
 
     args = parser.parse_args()
@@ -47,29 +45,29 @@ def main():
 # ------------------------------------------------------------------------------
 
     tglf = TGLFtools.TGLF()
-    tglf.prep_from_tglf(folder, input_tglf, input_gacode=input_gacode)
+    tglf.prep_from_file(folder, input_tglf, input_gacode=input_gacode)
 
 # ------------------------------------------------------------------------------
 # Workflow
 # ------------------------------------------------------------------------------
 
     if drives:
-        tglf.runScanTurbulenceDrives(subFolderTGLF="scan_turb", TGLFsettings=None)
+        tglf.runScanTurbulenceDrives(subfolder="scan_turb", code_settings=None)
         tglf.plotScanTurbulenceDrives(label="scan_turb")
 
     elif scan is not None:
         tglf.runScan(
-            subFolderTGLF="scan1",
+            subfolder="scan1",
             variable=scan,
             varUpDown=np.linspace(0.2, 2.0, 5),
-            TGLFsettings=None,
+            code_settings=None,
             cold_start=cold_start,
         )
         tglf.readScan(label="scan1", variable=scan)
         tglf.plotScan(labels=["scan1"], variableLabel=scan)
 
     else:
-        tglf.run(subFolderTGLF="run1", TGLFsettings=None, cold_start=cold_start)
+        tglf.run(subfolder="run1", code_settings=None, cold_start=cold_start)
         tglf.read(label="run1")
         tglf.plot(labels=["run1"])
 

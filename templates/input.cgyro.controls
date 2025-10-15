@@ -1,15 +1,4 @@
-#=============================================================
-#CGYRO ion-scale input file 
-#=============================================================
-# 
-#Simulation notes: ITER Baseline Scenario  ~134 x 118 rho_s_D box ;
-#0.053 < k_theta rhos_D <1.2. Focused on r/a=0.55
-#ExB shear on and new profiles set at 430 acs
-#Startup phase starts with ExB shear on.  Profiles adopted from
-#Holland JPP 2023 and Mantica PPCF 2020
-#-------------------------------------------------------------
-
-#============================
+#========================
 #Basic Simulation Parameters
 #============================
 
@@ -17,10 +6,9 @@
 NONLINEAR_FLAG=1
 
 #Radius used for simulation
-RMIN=0.55
 
-#Use Experimental or Specified Inputs
-PROFILE_MODEL=2
+#Data source
+PROFILE_MODEL=1 # 1: Use inputs in this file; 2: Useinput.gacode (indicate RMIN=<r/a value>)
 
 #Geometry type (1=s-alpha,2=MXH)
 EQUILIBRIUM_MODEL=2
@@ -30,6 +18,9 @@ N_FIELD=3
 
 #Data field output flag
 MOMENT_PRINT_FLAG=1
+
+#Make EM fields available as output
+FIELD_PRINT_FLAG=1
 
 #Velocity Order
 #VELOCITY_ORDER=2
@@ -99,6 +90,9 @@ PRINT_STEP=100
 #Max simulation time (units a/c_s)
 MAX_TIME=100 #900
 
+#Frequency Tolerance
+FREQ_TOL=0.001
+
 #Number of data outputs before saving a cold_start (DELTA_T*PRINT_STEP is one data output)
 RESTART_STEP=10
 
@@ -113,22 +107,20 @@ COLLISION_MODEL=4
 #Rotation Scaling of Exp. Values
 ROTATION_MODEL=2
 SHEAR_METHOD=2
-GAMMA_E_SCALE=0.0
-GAMMA_P_SCALE=0.0
-MACH_SCALE=0.0
+GAMMA_E_SCALE=1.0
+GAMMA_P_SCALE=1.0
+MACH_SCALE=1.0
 
 #Scaling of Electron beta and Lambda Debye
 BETAE_UNIT_SCALE=1.0
 BETA_STAR_SCALE=1.0
 LAMBDA_STAR_SCALE=1.0
 
-
-#==============================
-#Species Specification
-#==============================
-
-#Number of gyrokinetic species
-N_SPECIES=2
-
 EXCH_FLAG=1
 
+# Gradient scalings
+DLNTDR_SCALE_1 = 1.0
+DLNTDR_SCALE_2 = 1.0
+DLNTDR_SCALE_3 = 1.0
+DLNTDR_SCALE_4 = 1.0
+DLNTDR_SCALE_5 = 1.0

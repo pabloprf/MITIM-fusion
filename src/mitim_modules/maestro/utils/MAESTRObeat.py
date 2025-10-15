@@ -40,6 +40,8 @@ class beat:
             self.initialize = initializer_from_previous(self)
         elif initializer == 'freegs':
             self.initialize = initializer_from_freegs(self)
+        elif initializer == 'fibe':
+            self.initialize = initializer_from_fibe(self)
         elif initializer == 'geqdsk':
             self.initialize = initializer_from_geqdsk(self)
         elif initializer == 'profiles':
@@ -92,7 +94,7 @@ class beat_initializer:
     def __call__(self, profiles_file = None, Vsurf = None,   **kwargs_beat):
 
         # Load profiles
-        self.profiles_current = PROFILEStools.PROFILES_GACODE(profiles_file)
+        self.profiles_current = PROFILEStools.gacode_state(profiles_file)
 
         # --------------------------------------------------------------------------------------------
         # Operations
@@ -112,7 +114,7 @@ class beat_initializer:
         # --------------------------------------------------------------------------------------------
 
         # Write it to initialization folder
-        self.profiles_current.writeCurrentStatus(file=self.folder / 'input.gacode')
+        self.profiles_current.write_state(file=self.folder / 'input.gacode')
 
         # Pass the profiles to the beat instance
         self.beat_instance.profiles_current = self.profiles_current
@@ -177,8 +179,29 @@ class initializer_from_geqdsk(beat_initializer):
         print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
         p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
 
+        # Sometimes I may want to change Ip and Bt
+        if 'Ip_MA' in kwargs_profiles and kwargs_profiles['Ip_MA'] is not None:
+            Ip_in_geqdsk = p.profiles['current(MA)'][0]
+            if Ip_in_geqdsk != kwargs_profiles['Ip_MA']:
+                print(f'\t- Requested to ignore geqdsk current and use user-specified one, changing Ip from {Ip_in_geqdsk} to {kwargs_profiles["Ip_MA"]}', typeMsg = 'w')
+                p.profiles['current(MA)'][0] = kwargs_profiles['Ip_MA']
+                print(f'\t\t* Scaling poloidal flux by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
+                p.profiles['polflux(Wb/radian)'] *= kwargs_profiles['Ip_MA'] / Ip_in_geqdsk
+                print(f'\t\t* Scaling q-profile by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
+                p.profiles['q(-)'] *= 1/(kwargs_profiles['Ip_MA'] / Ip_in_geqdsk)
+
+        if 'B_T' in kwargs_profiles and kwargs_profiles['B_T'] is not None:
+            Bt_in_geqdsk = p.profiles['bcentr(T)'][0]
+            if Bt_in_geqdsk != kwargs_profiles['B_T']:
+                print(f'\t- Requested to ignore geqdsk B and use user-specified one, changing Bt from {Bt_in_geqdsk} to {kwargs_profiles["B_T"]}', typeMsg = 'w')
+                p.profiles['bcentr(T)'][0] = kwargs_profiles['B_T']
+                print(f'\t\t* Scaling toroidal flux by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
+                p.profiles['torfluxa(Wb/radian)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
+                print(f'\t\t* Scaling q-profile by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
+                p.profiles['q(-)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
+
         # Write it to initialization folder
-        p.writeCurrentStatus(file=self.folder / 'input.geqdsk.gacode')
+        p.write_state(file=self.folder / 'input.geqdsk.gacode')
 
         # Copy original geqdsk for reference use
         shutil.copy2(geqdsk_file, self.folder / "input.geqdsk")
@@ -249,6 +272,67 @@ class initializer_from_freegs(initializer_from_geqdsk):
         super().__call__(geqdsk_file = self.folder / 'freegs.geqdsk',**kwargs_geqdsk)
 
 # --------------------------------------------------------------------------------------------
+# Initializer from FiBE: create the equilibrium, convert to geqdsk and call the geqdsk initializer
+# --------------------------------------------------------------------------------------------
+
+class initializer_from_fibe(initializer_from_geqdsk):
+    '''
+    Idea is to write geqdsk and then call the geqdsk initializer
+    '''
+    def __init__(self, beat_instance, label = 'fibe'):
+        super().__init__(beat_instance, label = label)
+            
+    def __call__(self,
+        R,
+        a,
+        kappa_sep,
+        delta_sep,
+        zeta_sep,
+        z0,
+        p0_MPa = 1.0,
+        Ip_MA = 1.0,
+        B_T = 5.4,
+        **kwargs_geqdsk
+        ):
+
+        p0 = p0_MPa * 1.0e6
+        Ip = Ip_MA * 1.0e6
+        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
+        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
+            print('\t- Using ne profile instead of the ne0 guess')
+            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
+            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
+            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
+            p0 = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20)
+        # If betaN provided, use it to estimate the pressure
+        elif 'BetaN' in kwargs_geqdsk:
+            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
+            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
+            p0 = pvol_MPa * 3.0 * 1.0e6
+
+        # Run FiBE to generate equilibrium
+        from fibe import FixedBoundaryEquilibrium
+        eq = FixedBoundaryEquilibrium()
+        eq.define_grid_and_boundary_with_mxh(
+            nr=129,
+            nz=129,
+            rgeo=R,
+            zgeo=z0,
+            rminor=a,
+            kappa=kappa_sep,
+            cos_coeffs=[0.0, 0.0, 0.0],
+            sin_coeffs=[0.0, np.arcsin(delta_sep), -zeta_sep])
+        eq.initialize_profiles_with_minimal_input(p0, Ip, B_T)
+        eq.initialize_psi()
+        eq.solve_psi()
+
+        # Convert to geqdsk and write it to initialization folder
+        eq.to_geqdsk(str(self.folder / 'fibe.geqdsk'))
+
+        # Call the geqdsk initializer
+        super().__call__(geqdsk_file = self.folder / 'fibe.geqdsk',**kwargs_geqdsk)
+
+# --------------------------------------------------------------------------------------------
 # [Generic] Profile creator: Insert profiles
 # --------------------------------------------------------------------------------------------
 
@@ -290,7 +374,7 @@ class creator:
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
             # Update derived
-            self.initialize_instance.profiles_current.deriveQuantities()
+            self.initialize_instance.profiles_current.derive_quantities()
 
         def _inform_save(self, **kwargs):
             pass
@@ -440,7 +524,8 @@ class creator_from_eped(creator_from_parameterization):
         self.beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        eped_results = self.beat_eped._run(loopBetaN = 1)
+        nproc_per_run = 64 #TODO: make it a parameter to be received from MAESTRO namelist
+        eped_results = self.beat_eped._run(loopBetaN = 1, nproc_per_run=nproc_per_run, cold_start=True) # Assume always cold start for a creator
 
         # Potentially save variables
         np.save(self.beat_eped.folder_output / 'eped_results.npy', eped_results)

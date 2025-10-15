@@ -8,19 +8,11 @@ from mitim_tools.misc_tools import (
     GRAPHICStools,
     PLASMAtools,
 )
-from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
+from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.gacode_tools.utils import GACODEinterpret, GACODEdefaults, GACODErun
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
-import time
-
-try:
-    from mitim_tools.gacode_tools.utils import PORTALSinteraction
-except:
-    print(
-        "- I could not import PORTALSinteraction, likely a consequence of botorch incompatbility",
-        typeMsg="w",
-    )
 
 """
 Same philosophy as the TGLFtools
@@ -149,7 +141,8 @@ class TGYRO:
             )
 
             self.file_input_profiles = self.FolderGACODE / "input.gacode"
-            self.profiles = PROFILEStools.PROFILES_GACODE(self.file_input_profiles)
+            from mitim_tools.gacode_tools import PROFILEStools
+            self.profiles = PROFILEStools.gacode_state(self.file_input_profiles)
 
             if correctPROFILES:
                 self.profiles.correct(write=True)
@@ -258,9 +251,7 @@ class TGYRO:
         Tepred, Tipred, nepred = PredictionSet
 
         self.FolderTGYRO = IOtools.expandPath(self.FolderGACODE / subFolderTGYRO)
-        self.FolderTGYRO_tmp = (
-            self.FolderTGYRO / "tmp_tgyro_run"
-        )  # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
+        self.FolderTGYRO_tmp = self.FolderTGYRO / "tmp_tgyro_run" # Folder to run TGYRO on (or to retrieve the raw outputs from a cluster)
 
         inputclass_TGYRO = TGYROinput(
             input_profiles=self.profiles,
@@ -375,20 +366,19 @@ class TGYRO:
             f"\t\t- Creating only-controls input.tglf file in {IOtools.clipstr(str(self.FolderTGYRO_tmp.resolve()))}input.tglf"
         )
         inputclass_TGLF = TGLFtools.TGLFinput()
-        inputclass_TGLF = GACODErun.modifyInputs(
+        inputclass_TGLF = SIMtools.modifyInputs(
             inputclass_TGLF,
-            Settings=TGLFsettings,
+            code_settings=TGLFsettings,
             extraOptions=extraOptionsTGLF,
             addControlFunction=GACODEdefaults.addTGLFcontrol,
             NS=self.loc_n_ion + 1,
         )
-        inputclass_TGLF.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tglf")
+        inputclass_TGLF.write_state(file=self.FolderTGYRO_tmp / "input.tglf")
 
         # -----------------------------------
         # ------ Write input profiles
         # -----------------------------------
 
-        print(f"\t\t- Using input.profiles from {IOtools.clipstr(self.profiles.file)}")
         fil = "input.gacode"
 
         if self.profiles.profiles['rho(-)'][0] > 0.0:
@@ -399,7 +389,7 @@ class TGYRO:
         if "z_eff(-)" not in self.profiles.profiles:
             self.profiles.profiles["z_eff(-)"] = self.profiles.derived["Zeff"]
 
-        self.profiles.writeCurrentStatus(file=self.FolderTGYRO_tmp / f"{fil}")
+        self.profiles.write_state(file=self.FolderTGYRO_tmp / f"{fil}")
 
         # -----------------------------------
         # ------ Create TGYRO file
@@ -418,7 +408,7 @@ class TGYRO:
             special_radii=special_radii_mod,
         )
 
-        inputclass_TGYRO.writeCurrentStatus(file=self.FolderTGYRO_tmp / "input.tgyro")
+        inputclass_TGYRO.write_state(file=self.FolderTGYRO_tmp / "input.tgyro")
 
         # -----------------------------------
         # ------ Check density for problems
@@ -468,14 +458,10 @@ class TGYRO:
 			------------------------------------------------------------------------------------------------------------------------
 			"""
             if modify_inputgacodenew:
-                print(
-                    "\t- It was requested that input.gacode.new is modified according to what TypeTarget was",
-                    typeMsg="i",
-                )
+                print("\t- It was requested that input.gacode.new is modified according to what TypeTarget was",typeMsg="i",)
 
-                inputgacode_new = PROFILEStools.PROFILES_GACODE(
-                    self.FolderTGYRO_tmp / "input.gacode.new"
-                )
+                from mitim_tools.gacode_tools import PROFILEStools
+                inputgacode_new = PROFILEStools.gacode_state(self.FolderTGYRO_tmp / "input.gacode.new")
 
                 if TGYRO_physics_options["TypeTarget"] < 3:
                     for ikey in [
@@ -511,7 +497,7 @@ class TGYRO:
                                 inputgacode_new.profiles["rho(-)"] * 0.0
                             )
 
-                inputgacode_new.writeCurrentStatus()
+                inputgacode_new.write_state()
             # ------------------------------------------------------------------------------------------------------------------------
 
             # Copy those files that I'm interested in, plus the extra file, into the main folder
@@ -549,7 +535,8 @@ class TGYRO:
             else:
                 prof = self.profiles
         else:
-            prof = PROFILEStools.PROFILES_GACODE(file_input_profiles)
+            from mitim_tools.gacode_tools import PROFILEStools
+            prof = PROFILEStools.gacode_state(file_input_profiles)
 
         self.results[label] = TGYROoutput(folder, profiles=prof)
 
@@ -646,7 +633,7 @@ class TGYRO:
             inputsTGLF[rho] = inputclass
 
         tglf = TGLFtools.TGLF(rhos=rhos)
-        tglf.prep(
+        tglf.prep_using_tgyro(
             self.FolderGACODE / subfolder,
             specificInputs=inputsTGLF,
             inputgacode=self.FolderTGYRO / "input.gacode",
@@ -672,7 +659,7 @@ class TGYRO:
         label = f"{self.nameRuns_default}_tglf1"
 
         self.tglf[fromlabel].run(
-            subFolderTGLF=f"{label}",
+            subfolder=f"{label}",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,
@@ -701,7 +688,7 @@ class TGYRO:
         )
 
         self.tglf[fromlabel].runScanTurbulenceDrives(
-            subFolderTGLF=f"{self.nameRuns_default}_tglf",
+            subfolder=f"{self.nameRuns_default}_tglf",
             TGLFsettings=None,
             ApplyCorrections=False,
             cold_start=cold_start,
@@ -719,7 +706,7 @@ class TGYRO:
         cold_start=False,
         label="tgyro1",
         donotrun=False,
-        recalculatePTOT=True,
+        recalculate_ptot=True,
     ):
         """
         onlyThermal will remove from the TGYRO run the fast species, so the resulting input.tglf files will not have
@@ -751,7 +738,7 @@ class TGYRO:
             "onlyThermal": onlyThermal,
             "quasineutrality": quasineutrality,
             "neoclassical": 0,  # Do not run or check NEOTGYRO canno
-            "PtotType": int(not recalculatePTOT), # Recalculate Ptot or use what's there
+            "PtotType": int(not recalculate_ptot), # Recalculate Ptot or use what's there
         }
         # ------------------------------------------------------------
 
@@ -1059,9 +1046,7 @@ class TGYRO:
             ax.plot(res.roa[-1], res.Qi_sim[-1], "-o", c="b", markersize=3)
             axE.plot(res.roa[-1], res.Qi_res[-1], "-o", c="b", markersize=3)
 
-            ax.plot(
-                res.roa[-1], res.Ce_tar[-1], "--o", c="m", label="Qconv", markersize=3
-            )
+            ax.plot(res.roa[-1], res.Ce_tar[-1], "--o", c="m", label="Qconv", markersize=3)
             ax.plot(res.roa[-1], res.Ce_sim[-1], "-o", c="m", markersize=3)
             axE.plot(res.roa[-1], np.abs(res.Ce_res[-1]), "-o", c="m", markersize=3)
 
@@ -1212,10 +1197,9 @@ class TGYROoutput:
     def __init__(self, FolderTGYRO, profiles=None):
         self.FolderTGYRO = FolderTGYRO
 
-        if (profiles is None) and (FolderTGYRO / f"input.gacode").exists():
-            profiles = PROFILEStools.PROFILES_GACODE(
-                FolderTGYRO / f"input.gacode", calculateDerived=False
-            )
+        from mitim_tools.gacode_tools import PROFILEStools
+        if (profiles is None) and (FolderTGYRO / "input.gacode").exists():
+            profiles = PROFILEStools.gacode_state(FolderTGYRO / f"input.gacode", derive_quantities=False)
 
         self.profiles = profiles
 
@@ -1227,12 +1211,9 @@ class TGYROoutput:
         self.readNu()
         self.readProfiles()
 
-        calculateDerived = True
+        derive_quantities = True
         try:
-            self.profiles_final = PROFILEStools.PROFILES_GACODE(
-                self.FolderTGYRO / f"input.gacode.new",
-                calculateDerived=calculateDerived,
-            )
+            self.profiles_final = PROFILEStools.gacode_state(self.FolderTGYRO / "input.gacode.new",derive_quantities=derive_quantities,)
         except:
             self.profiles_final = None
 
@@ -1441,14 +1422,14 @@ class TGYROoutput:
         # Errors - Constructed outside of TGYRO call (e.g. powerstate)
         # ***************************************************************
 
-        if not (self.FolderTGYRO / f"out.tgyro.flux_e_stds").exists():
+        if not (self.FolderTGYRO / "out.tgyro.flux_e_stds").exists():
             self.tgyro_stds = False
 
         else:
             print("\t- Errors in TGYRO fluxes and targets found, adding to class")
             self.tgyro_stds = True
 
-            file = self.FolderTGYRO / f"out.tgyro.flux_e_stds"
+            file = self.FolderTGYRO / "out.tgyro.flux_e_stds"
             (
                 _,
                 self.GeGB_sim_neo_stds,
@@ -2100,9 +2081,7 @@ class TGYROoutput:
 			Note: This is only valid in the converged case???????????????
 		"""
 
-        if (self.profiles_final is not None) and (
-            "derived" in self.profiles_final.__dict__
-        ):
+        if (self.profiles_final is not None) and ("derived" in self.profiles_final.__dict__):
             prof = self.profiles_final
         elif (self.profiles is not None) and ("derived" in self.profiles.__dict__):
             prof = self.profiles
@@ -2116,9 +2095,7 @@ class TGYROoutput:
 
         self.Q_better = self.P_fusT_tgyro / self.P_inT
 
-        if (self.profiles_final is not None) and (
-            "derived" in self.profiles_final.__dict__
-        ):
+        if (self.profiles_final is not None) and ("derived" in self.profiles_final.__dict__):
             self.Q_best = self.profiles_final.derived["Q"]
 
         """
@@ -2170,10 +2147,7 @@ class TGYROoutput:
             )
             # Profiles do not include ion fluxes
             for j in range(self.Gi_tar.shape[0]):
-                self.Gi_tar[j, i, :], self.Ci_tar[j, i, :] = (
-                    self.Ce_tar[i, :] * 0.0,
-                    self.Ce_tar[i, :] * 0.0,
-                )
+                self.Gi_tar[j, i, :], self.Ci_tar[j, i, :] = self.Ce_tar[i, :] * 0.0, self.Ce_tar[i, :] * 0.0
 
             self.Mt_tar[i, :] = np.interp(
                 rho_coarse, rho_fine, self.profiles_final.derived["mt_Jm2"]
@@ -2184,9 +2158,6 @@ class TGYROoutput:
         self.Qi_tarMW = self.Qi_tar * self.dvoldr
         self.Ge_tarMW = self.Ge_tar * self.dvoldr
         self.Ce_tarMW = self.Ce_tar * self.dvoldr
-
-    def TGYROmodeledVariables(self, *args, **kwargs):
-        return PORTALSinteraction.TGYROmodeledVariables(self, *args, **kwargs)
 
     def plot(self, fn=None, label="", prelabel="", fn_color=None):
         if fn is None:
@@ -3666,7 +3637,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_fus_MWmiller"]
+            P = self.profiles.derived["qe_fus_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3674,7 +3645,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_fus_MWmiller"]
+            P = self.profiles_final.derived["qe_fus_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3707,7 +3678,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_aux_MWmiller"]
+            P = self.profiles.derived["qe_aux_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3715,7 +3686,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_aux_MWmiller"]
+            P = self.profiles_final.derived["qe_aux_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3788,7 +3759,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -1 * sign * self.profiles.derived["qe_rad_MWmiller"]
+            P = -1 * sign * self.profiles.derived["qe_rad_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -3796,7 +3767,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_rad_MWmiller"]
+            P = self.profiles_final.derived["qe_rad_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3860,14 +3831,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -self.profiles.derived["qe_exc_MWmiller"]
+            P = -self.profiles.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = -self.profiles_final.derived["qe_exc_MWmiller"]
+            P = -self.profiles_final.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3905,14 +3876,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_MWmiller"]
+            P = self.profiles.derived["qe_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_MWmiller"]
+            P = self.profiles_final.derived["qe_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         ax.legend(prop={"size": 6})
@@ -3946,14 +3917,14 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_fus_MWmiller"]
+            P = self.profiles.derived["qi_fus_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_fus_MWmiller"]
+            P = self.profiles_final.derived["qi_fus_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -3995,20 +3966,20 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_aux_MWmiller"]
+            P = self.profiles.derived["qi_aux_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
             roa = (
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_aux_MWmiller"]
+            P = self.profiles_final.derived["qi_aux_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
             ax.plot(
                 roa,
-                self.profiles_final.derived["qi_aux_MWmiller"]
-                + self.profiles_final.derived["qe_aux_MWmiller"],
+                self.profiles_final.derived["qi_aux_MW"]
+                + self.profiles_final.derived["qe_aux_MW"],
                 "-.",
                 c="y",
                 lw=0.5,
@@ -4034,8 +4005,8 @@ class TGYROoutput:
                 / self.profiles.profiles["rmin(m)"][-1]
             )
             P = (
-                self.profiles.derived["qe_fus_MWmiller"]
-                + self.profiles.derived["qi_fus_MWmiller"]
+                self.profiles.derived["qe_fus_MW"]
+                + self.profiles.derived["qi_fus_MW"]
             )
             ax.plot(roa, 5 * P, "--", c="green", label="profiles (miller)", lw=1.0)
         if self.profiles_final is not None:
@@ -4044,8 +4015,8 @@ class TGYROoutput:
                 / self.profiles_final.profiles["rmin(m)"][-1]
             )
             P = (
-                self.profiles_final.derived["qe_fus_MWmiller"]
-                + self.profiles_final.derived["qi_fus_MWmiller"]
+                self.profiles_final.derived["qe_fus_MW"]
+                + self.profiles_final.derived["qi_fus_MW"]
             )
             ax.plot(roa, 5 * P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
@@ -4085,7 +4056,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qe_exc_MWmiller"]
+            P = self.profiles.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -4093,7 +4064,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qe_exc_MWmiller"]
+            P = self.profiles_final.derived["qe_exc_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -4119,7 +4090,7 @@ class TGYROoutput:
                 self.profiles.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles.derived["qi_MWmiller"]
+            P = self.profiles.derived["qi_MW"]
             ax.plot(roa, P, "--", c="green", label="profiles (miller)", lw=1.0)
 
         if self.profiles_final is not None:
@@ -4127,7 +4098,7 @@ class TGYROoutput:
                 self.profiles_final.profiles["rmin(m)"]
                 / self.profiles.profiles["rmin(m)"][-1]
             )
-            P = self.profiles_final.derived["qi_MWmiller"]
+            P = self.profiles_final.derived["qi_MW"]
             ax.plot(roa, P, "--", c="k", label="profiles_new (miller)", lw=1.0)
 
         GRAPHICStools.addDenseAxis(ax)
@@ -4366,7 +4337,7 @@ class TGYROoutput:
         axs.append(fig.add_subplot(grid[1, 1]))
         axs.append(fig.add_subplot(grid[1, 2]))
 
-        self.profiles_final.plotBalance(
+        self.profiles_final.plot_flows(
             axs=axs, limits=[self.roa[-1, 1], self.roa[-1, -1]]
         )
 
@@ -4439,20 +4410,12 @@ class TGYROoutput:
         )
 
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
-        GRAPHICStools.addLegendApart(
-            ax, ratio=0.9, withleg=False, extraPad=0, loc="center left", size=6
-        )
-        # GRAPHICStools.addLegendApart(ax2,ratio=0.9,withleg=False,extraPad=0,loc='center left',size=6)
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, withleg=False, extraPad=0, loc="center left", size=6)
 
         ax = ax10
-        colsE = (
-            GRAPHICStools.listColors()
-        )  # GRAPHICStools.colorTableFade(self.radii-1,startcolor='b',endcolor='b',alphalims=[0.3,1.0])
-        colsI = (
-            GRAPHICStools.listColors()
-        )  # GRAPHICStools.colorTableFade(self.radii-1,startcolor='r',endcolor='r',alphalims=[0.3,1.0])
+        colsE = GRAPHICStools.listColors()
+        colsI = GRAPHICStools.listColors() 
         for i in range(self.radii - 1):
             label = f"r/a={self.roa[0, i + 1]:.4f}"
 
@@ -4501,26 +4464,17 @@ class TGYROoutput:
         ax.set_xlim(left=0)
         ax.set_ylabel("Individual Residuals (GB)")
         ax.set_yscale("log")
-        # ax.legend(loc='best',prop={'size':5})
-        GRAPHICStools.addLegendApart(
-            ax, ratio=0.9, withleg=True, extraPad=0, loc="center left", size=6
-        )
-        # ax2 = GRAPHICStools.addXaxis(ax,self.iterations,self.calls_solver,label='Calls to transport solver',whichticks=whichticks)
-
+        GRAPHICStools.addLegendApart(ax, ratio=0.9, withleg=True, extraPad=0, loc="center left", size=6)
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
         ax = ax01
-        ax.plot(
-            self.iterations, self.residual_manual_real, "-s", color="b", markersize=5
-        )
+        ax.plot(self.iterations, self.residual_manual_real, "-s", color="b", markersize=5)
         ax.set_xlabel("Iterations")
         ax.set_xlim(left=0)
         ax.set_ylabel("Residual (real)")
         ax.set_yscale("log")
 
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
 
         _ = GRAPHICStools.addXaxis(
             ax,
@@ -4564,11 +4518,7 @@ class TGYROoutput:
         ax.set_ylabel("Individual Residuals (real)")
         ax.set_yscale("log")
 
-        # ax2 = GRAPHICStools.addXaxis(ax,self.iterations,self.calls_solver,label='Calls to transport solver',whichticks=whichticks)
-
         GRAPHICStools.addDenseAxis(ax)
-        # GRAPHICStools.autoscale_y(ax)
-
 
 def plotAll(TGYROoutputs, labels=None, fn=None):
     if fn is None:
@@ -4596,7 +4546,7 @@ class TGYROinput:
         else:
             self.file_txt = ""
 
-        self.input_dict = GACODErun.buildDictFromInput(self.file_txt)
+        self.input_dict = SIMtools.buildDictFromInput(self.file_txt)
 
         # Species
         self.species = input_profiles.Species
@@ -4611,7 +4561,7 @@ class TGYROinput:
         )
         self.loc_n_ion = spec["LOC_N_ION"]
 
-    def writeCurrentStatus(self, file=None):
+    def write_state(self, file=None):
         print("\t- Writting TGYRO input file")
 
         if file is None:

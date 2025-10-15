@@ -130,7 +130,7 @@ class transp_output:
 
         # Capability to provide folder and just find the CDF in there
         if self.LocationCDF.is_dir(): 
-            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True)
+            self.LocationCDF = IOtools.findFileByExtension(self.LocationCDF, ".CDF", agnostic_to_case=True,do_not_consider_files=['PH.CDF'])
             if self.LocationCDF is None:
                 raise ValueError(f"[MITIM] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
@@ -513,7 +513,7 @@ class transp_output:
 		"""
 
         # ****** Settings *********
-        TGLFsettings = 5
+        code_settings = 5
         d_perp_cm = {0.7: 0.757 / np.sqrt(2) / (np.cos(11 * (np.pi / 180)))}
         # *************************
 
@@ -540,7 +540,7 @@ class transp_output:
                             quantity=quantity,
                             rho=location,
                             time=self.t[index],
-                            TGLFsettings=TGLFsettings,
+                            code_settings=code_settings,
                             d_perp_cm=d_perp_cm,
                         )
                         success = success and True
@@ -7682,12 +7682,14 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.2)
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0, 0])
         ax2 = fig.add_subplot(grid[0, 1], sharex=ax1)
         ax3 = fig.add_subplot(grid[1, 0], sharex=ax1)
         ax4 = fig.add_subplot(grid[1, 1], sharex=ax1)
+        ax5 = fig.add_subplot(grid[0, 2], sharex=ax1)
+        ax6 = fig.add_subplot(grid[1, 2], sharex=ax1)
 
         # ELECTRONS
         ax = ax1
@@ -7774,10 +7776,10 @@ class transp_output:
 
         # ax.plot(self.x_lw,tot,lw=3,label='$P_{ICH}$')
         ax.plot(self.t, self.PichT, c="r", lw=3, label="$P_{ICH}$")
-        ax.plot(self.t, self.PichT_min, lw=2, label="$P_{ICH->min}$")
         ax.plot(self.t, self.PiichT_dir, lw=2, label="$P_{ICH->i}$")
         ax.plot(self.t, self.PeichT_dir, lw=2, label="$P_{ICH->e}$")
         ax.plot(self.t, self.PfichT_dir, lw=2, label="$P_{ICH->fast}$")
+        ax.plot(self.t, self.PichT_min, lw=2, label="$P_{ICH->min}$")
         ax.plot(self.t, self.PichT_check, lw=2, ls="--", c="y", label="check (sum)")
 
         ax.set_title("Total Balance")
@@ -7787,6 +7789,26 @@ class transp_output:
 
         GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
         GRAPHICStools.addDenseAxis(ax)
+
+        # TOTAL
+        ax = ax6
+
+        ax.plot(self.t, self.PichT, c="r", lw=3, label="$P_{ICH}$")
+        ax.plot(self.t, self.PiichT, lw=2, label="$P_{ICH,i}$")
+        ax.plot(self.t, self.PeichT, lw=2, label="$P_{ICH,e}$")
+        ax.plot(self.t, self.PfichT_dir, lw=2, label="$P_{ICH,fast}$")
+        ax.plot(self.t, self.GainminT, lw=2, label="$dW_{min}/dt$")
+        P = self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT
+        ax.plot(self.t, P, lw=2, ls="--", c="y", label="check (sum)")
+
+        ax.set_title("Total Balance (after thermalization)")
+        ax.set_ylabel("Power (MW)")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylim(bottom=0)
+
+        GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
+        GRAPHICStools.addDenseAxis(ax)
+
 
     def plotRelevantResonances(self, ax, Fich, time=None, legendYN=False, lw=3):
         if time is None:
@@ -8195,13 +8217,11 @@ class transp_output:
         if np.sum(self.PichT) > 1.0e-5:
             for i in range(len(self.PichT_ant)):
                 ax.plot(self.t, self.PichT_ant[i], lw=2, label=f"{i + 1}")
-            ax.plot(
-                self.t, self.PeichT + self.PiichT, c="y", ls="--", label="to species"
-            )
+            ax.plot(self.t, self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT, c="y", ls="--", label="to species (e+i+f+dWmin/dt)")
 
             timeb = 0.25
             it1 = np.argmin(np.abs(self.t - (self.t[-1] - timeb)))
-            mean = np.mean(self.PeichT[it1:] + self.PiichT[it1:])
+            mean = np.mean(self.PeichT[it1:] + self.PiichT[it1:] + self.PfichT_dir[it1:] + self.GainminT[it1:])
             ax.axhline(
                 y=mean,
                 alpha=0.5,
@@ -8213,7 +8233,7 @@ class transp_output:
 
             ax.plot(
                 self.t,
-                self.PeichT + self.PiichT + self.PichTOrbLoss,
+                self.PeichT + self.PiichT + self.PfichT_dir + self.GainminT + self.PichTOrbLoss,
                 c="c",
                 ls="--",
                 label="+ orb losses",
@@ -8462,7 +8482,7 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(nrows=2, ncols=4, hspace=0.3, wspace=0.2)
+        grid = plt.GridSpec(nrows=2, ncols=4, hspace=0.3, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0, 0])
         ax2 = fig.add_subplot(grid[0, 1])
@@ -8478,9 +8498,7 @@ class transp_output:
         ax1.plot(self.t, self.PichT, "r", ls="-", lw=2, label="$P_{ICH}$")
         ax1.plot(self.t, self.PeichT, "b", ls="-", lw=1, label="$P_{ICH,e}$")
         ax1.plot(self.t, self.PiichT, "g", ls="-", lw=1, label="$P_{ICH,i}$")
-        ax1.plot(
-            self.t, self.PeichT + self.PiichT, "y", ls="--", lw=1, label="$P_{ICH,e+i}$"
-        )
+        ax1.plot(self.t, self.PeichT + self.PiichT, "y", ls="--", lw=1, label="$P_{ICH,e+i}$")
 
         ax1.plot(self.t, self.PichT_min, "r", ls="--", lw=1, label="$P_{min}$")
         ax1.plot(self.t, self.PeichT_dir, "r", ls="-.", lw=1, label="$P_{dir,e}$")
@@ -14023,13 +14041,13 @@ class transp_output:
         cold_startPreparation=False,
         plotCompare=True,
         extraflag="",
-        onlyThermal_TGYRO=False,
+        remove_fast=False,
         forceIfcold_start=True,
         **kwargs_TGLFrun,
     ):
         """
         Note: If this plasma had fast paricles but not at the time I'm running TGLF, then it will fail if I
-        set onlyThermal_TGYRO=False because at that time the particles are zero
+        set remove_fast=False because at that time the particles are zero
         """
 
         if time is None:
@@ -14060,7 +14078,7 @@ class transp_output:
         cdf = self.TGLFstd[nameF].prep(
             folderGACODE,
             cold_start=cold_startPreparation,
-            onlyThermal_TGYRO=onlyThermal_TGYRO,
+            remove_fast=remove_fast,
             cdf_open=self,
             forceIfcold_start=forceIfcold_start,
         )
@@ -14068,7 +14086,7 @@ class transp_output:
         labelTGLF = kwargs_TGLFrun.get("label", "tglf1")
 
         self.TGLFstd[nameF].run(
-            subFolderTGLF=labelTGLF,
+            subfolder=labelTGLF,
             forceIfcold_start=forceIfcold_start,
             **kwargs_TGLFrun,
         )
@@ -14104,7 +14122,7 @@ class transp_output:
         rho=0.50,
         time=None,
         avTime=0.0,
-        TGLFsettings=1,
+        code_settings=1,
         d_perp_cm=None,
     ):
         if time is None:
@@ -14126,10 +14144,10 @@ class transp_output:
 
         if typeAnalysis == "CHIPERT":
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="chi_per",
+                subfolder="chi_per",
                 label="chi_pert",
                 analysisType="e",
-                TGLFsettings=TGLFsettings,
+                code_settings=code_settings,
             )
 
             value = self.TGLFstd[int(time * 1000)].scans["chi_pert"]["chi_inc"][0]
@@ -14139,10 +14157,10 @@ class transp_output:
                 addTrace = [40, 173]
 
             self.TGLFstd[int(time * 1000)].runAnalysis(
-                subFolderTGLF="impurity",
+                subfolder="impurity",
                 label="impurity",
                 analysisType="Z",
-                TGLFsettings=TGLFsettings,
+                code_settings=code_settings,
                 trace=addTrace,
             )
 
@@ -14155,8 +14173,8 @@ class transp_output:
 
         if "FLUC" in typeAnalysis:
             self.TGLFstd[int(time * 1000)].run(
-                subFolderTGLF="fluctuations",
-                TGLFsettings=TGLFsettings,
+                subfolder="fluctuations",
+                code_settings=code_settings,
                 forceIfcold_start=True,
             )
 
@@ -14204,13 +14222,13 @@ class transp_output:
             TGLFstd_x = self.TGLFstd[int(time * 1000)].results[tglfRun]["x"]
             TGLFstd_Qe, TGLFstd_Qi = [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_Qe.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].Qe_unn
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].Qe_unn
                 )
                 TGLFstd_Qi.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].Qi_unn
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].Qi_unn
                 )
 
             TGLFstd_Qe, TGLFstd_Qi = np.array(TGLFstd_Qe), np.array(TGLFstd_Qi)
@@ -14343,16 +14361,16 @@ class transp_output:
         else:
             TGLFstd_ky, TGLFstd_gamma, TGLFstd_freq = [], [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_ky.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].ky
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].ky
                 )
                 TGLFstd_gamma.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].g[0]
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].g[0]
                 )
                 TGLFstd_freq.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].f[0]
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].f[0]
                 )
 
             TGLFstd_ky, TGLFstd_gamma, TGLFstd_freq = (
@@ -14500,19 +14518,19 @@ class transp_output:
         else:
             TGLFstd_ky, TGLFstd_te, TGLFstd_ne = [], [], []
             for i in range(
-                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"])
+                len(self.TGLFstd[int(time * 1000)].results[tglfRun]["output"])
             ):
                 TGLFstd_ky.append(
-                    self.TGLFstd[int(time * 1000)].results[tglfRun]["TGLFout"][i].ky
+                    self.TGLFstd[int(time * 1000)].results[tglfRun]["output"][i].ky
                 )
                 TGLFstd_te.append(
                     self.TGLFstd[int(time * 1000)]
-                    .results[tglfRun]["TGLFout"][i]
+                    .results[tglfRun]["output"][i]
                     .AmplitudeSpectrum_Te
                 )
                 TGLFstd_ne.append(
                     self.TGLFstd[int(time * 1000)]
-                    .results[tglfRun]["TGLFout"][i]
+                    .results[tglfRun]["output"][i]
                     .AmplitudeSpectrum_ne
                 )
 
@@ -14658,7 +14676,7 @@ class transp_output:
         time=None,
         rhoRange=[0.4, 0.8],
         timeRange=0.5,
-        TGLFsettings=1,
+        code_settings=1,
         cold_start=False,
         plotYN=True,
     ):
@@ -14679,10 +14697,10 @@ class transp_output:
         self.ChiPert_tglf = TGLFtools.TGLF(cdf=self.LocationCDF, time=time, rhos=rhos)
         self.ChiPert_tglf.prep(self.FolderCDF / "chi_per_calc", cold_start=cold_start)
         self.ChiPert_tglf.runAnalysis(
-            subFolderTGLF="chi_per",
+            subfolder="chi_per",
             label="chi_pert",
             analysisType="e",
-            TGLFsettings=TGLFsettings,
+            code_settings=code_settings,
             cold_start=cold_start,
             cdf_open=self,
         )
@@ -15425,7 +15443,7 @@ class transp_output:
         for key in ['ne(10^19/m^3)', 'ni(10^19/m^3)', 'te(keV)', 'ti(keV)', 'rmin(m)']:
             profiles[key] = profiles[key].clip(min=minimum)
 
-        p = PROFILEStools.PROFILES_GACODE.scratch(profiles)
+        p = PROFILEStools.gacode_state.scratch(profiles)
 
         return p
 

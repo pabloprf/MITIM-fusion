@@ -89,13 +89,15 @@ def plotTGLFspectrum(
     elif limity:
         ax.set_ylim(bottom=0)
 
+    freq_coeff = 0 # The real frequencies should not be normalized by ky
+
     if freq is not None and type(axs) == list:
         plot_spec(
             axF,
             kys,
             freq,
             markers=markers,
-            coeff=coeff,
+            coeff=freq_coeff,
             c=c,
             lw=lw,
             label=label,
@@ -105,9 +107,9 @@ def plotTGLFspectrum(
         )
 
         if ylabel:
-            axF.set_ylabel(decorateLabel("$\\omega$", coeff))
+            axF.set_ylabel(decorateLabel("$\\omega$", freq_coeff))
 
-        if coeff == 0:
+        if freq_coeff == 0:
             axF.set_yscale("symlog", linthresh=thr_symlog)
         elif limity:
             axF.set_ylim(bottom=0)

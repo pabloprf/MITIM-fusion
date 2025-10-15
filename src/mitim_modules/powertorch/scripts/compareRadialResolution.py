@@ -28,21 +28,21 @@ args = parser.parse_args()
 inputgacode = IOtools.expandPath(args.file)
 rho = np.array([float(i) for i in args.rhos])
 
-profiles = PROFILEStools.PROFILES_GACODE(inputgacode)
+profiles = PROFILEStools.gacode_state(inputgacode)
 
 markersize_coarse = 6
 markersize_fine = 3
 
 ls = "o-"
 
-sC = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho},)
+sC = STATEtools.powerstate(profiles,evolution_options={"rhoPredicted": rho},)
 sC.calculateProfileFunctions()
 sC.calculateTargets()
 
 # Full state
 rho = np.linspace(rho[0], rho[-1], args.res)
 
-sF = STATEtools.powerstate(profiles,EvolutionOptions={"rhoPredicted": rho})
+sF = STATEtools.powerstate(profiles,evolution_options={"rhoPredicted": rho})
 sF.calculateProfileFunctions()
 sF.calculateTargets()
 
@@ -151,7 +151,7 @@ ax.set_ylabel("$MW/m^3$")
 ax.legend()
 
 ax = axs[0, 1]
-varsS = ["Pe", "Pi"]
+varsS = ["QeMWm2", "QiMWm2"]
 
 s, lab = sF, "Fine "
 for var in varsS:

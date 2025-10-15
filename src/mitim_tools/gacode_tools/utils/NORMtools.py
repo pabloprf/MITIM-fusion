@@ -87,6 +87,8 @@ def normalizations_tgyro(tgyro, rho, roa):
         "rho": rho,
         "q_gb": np.interp(rho, x_tgyro, tgyro.Q_GB[iteration]),
         "g_gb": np.interp(rho, x_tgyro, tgyro.Gamma_GB[iteration]),
+        "pi_gb": np.interp(rho, x_tgyro, tgyro.Pi_GB[iteration]),
+        "s_gb": np.interp(rho, x_tgyro, tgyro.S_GB[iteration]),
         "c_s": np.interp(rho, x_tgyro, tgyro.c_s[iteration]),
     }
 
@@ -94,6 +96,7 @@ def normalizations_tgyro(tgyro, rho, roa):
 
 
 def normalizations_profiles(profiles):
+
     if profiles is not None:
         Set_norm = {
             "rho": profiles.profiles["rho(-)"],
@@ -101,26 +104,18 @@ def normalizations_profiles(profiles):
             "rmin": np.abs(profiles.profiles["rmin(m)"]),
             "q_gb": np.abs(profiles.derived["q_gb"]),
             "g_gb": np.abs(profiles.derived["g_gb"]),
-            "exp_Qe": np.abs(profiles.derived["qe"]),
-            "exp_Qi": np.abs(profiles.derived["qi"]),
-            "exp_Ge": np.abs(profiles.derived["ge"]),
+            "pi_gb": np.abs(profiles.derived["pi_gb"]),
+            "s_gb": np.abs(profiles.derived["s_gb"]),
             "B_unit": np.abs(profiles.derived["B_unit"]),
             "rho_s": np.abs(profiles.derived["rho_s"]),
             "c_s": np.abs(profiles.derived["c_s"]),
-            "Te_keV": np.abs(
-                profiles.profiles[
-                    "te(keV)" if "te(keV)" in profiles.profiles else "Te(keV)"
-                ]
-            ),
+            "Te_keV": np.abs(profiles.profiles["te(keV)"]),
             "ne_20": np.abs(profiles.profiles["ne(10^19/m^3)"]) * 1e-1,
             "Ti_keV": np.abs(profiles.profiles["ti(keV)"][:, 0]),
             "ni_20": np.abs(profiles.derived["ni_thrAll"]) * 1e-1,
-            "exp_Qe": profiles.derived["qe_MWmiller"]
-            / profiles.derived["surfGACODE_miller"],  # This is the same as qe_MWm2
-            "exp_Qi": profiles.derived["qi_MWmiller"]
-            / profiles.derived["surfGACODE_miller"],
-            "exp_Ge": profiles.derived["ge_10E20miller"]
-            / profiles.derived["surfGACODE_miller"],
+            "exp_Qe": profiles.derived["qe_MW"] / profiles.derived["surfGACODE_geo"],  # This is the same as qe_MWm2
+            "exp_Qi": profiles.derived["qi_MW"] / profiles.derived["surfGACODE_geo"],
+            "exp_Ge": profiles.derived["ge_10E20"] / profiles.derived["surfGACODE_geo"],
             "mi_ref": profiles.derived["mi_ref"],
         }
 
@@ -252,6 +247,7 @@ def plotNormalizations(
     colors=["b", "r", "g"],
     legYN=True,
     extralab="",
+    fn = None,
 ):
     if NormalizationSets is not None:
         if axs is None:

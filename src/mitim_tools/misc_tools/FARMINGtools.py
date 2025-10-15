@@ -2,6 +2,7 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
+from math import log
 from tqdm import tqdm
 import os
 import shutil
@@ -56,18 +57,24 @@ New handling of jobs in remote or local clusters. Example use:
 """
 
 class mitim_job:
-    def __init__(self, folder_local):
+    def __init__(
+            self,
+            folder_local,
+            log_simulation_file = None # If not None, log information of how the simulation went to this file
+            ):
+        
         if not isinstance(folder_local, (str, Path)):
             raise TypeError('MITIM job folder must be a valid string or pathlib.Path object to a local directory')
         self.folder_local = IOtools.expandPath(folder_local)
         self.jobid = None
+        self.log_simulation_file = log_simulation_file
 
     def define_machine(
         self,
         code,
         nameScratch,
         launchSlurm=True,
-        slurm_settings={},
+        slurm_settings=None,
     ):
         # Separated in case I need to quickly grab the machine settings
         self.define_machine_quick(code, nameScratch, slurm_settings=slurm_settings)
@@ -81,7 +88,7 @@ class mitim_job:
         # Print Slurm info
         if self.launchSlurm:
             print("\t- Slurm Settings:")
-            print("\t\t- Job settings:")
+            print("\t\t- Job settings (different than MITIM default):")
             for key in self.slurm_settings:
                 if self.slurm_settings[key] is not None:
                     print(f"\t\t\t- {key}: {self.slurm_settings[key]}")
@@ -91,20 +98,13 @@ class mitim_job:
             for key in self.machineSettings["slurm"]:
                 print(f'\t\t\t- {key}: {self.machineSettings["slurm"][key]}')
 
-    def define_machine_quick(self, code, nameScratch, slurm_settings={}):
-        self.slurm_settings = slurm_settings
+    def define_machine_quick(self, code, nameScratch, slurm_settings=None):
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Defaults for slurm
+        self.slurm_settings = slurm_settings if slurm_settings is not None else {}
+        
+        # In case there's no name, I need it
         self.slurm_settings.setdefault("name", "mitim_job")
-        self.slurm_settings.setdefault("minutes", 10)
-        self.slurm_settings.setdefault("cpuspertask", 1)
-        self.slurm_settings.setdefault("ntasks", 1)
-        self.slurm_settings.setdefault("nodes", None)
-        self.slurm_settings.setdefault("job_array", None)
-        self.slurm_settings.setdefault("mem", None)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+        
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
@@ -141,6 +141,10 @@ class mitim_job:
 
         # Pass to class
         self.command = command
+
+        if not isinstance(self.command, list):
+            self.command = [self.command]
+
         self.input_files = input_files if isinstance(input_files, list) else []
         self.input_folders = input_folders if isinstance(input_folders, list) else []
         self.output_files = output_files if isinstance(output_files, list) else []
@@ -156,35 +160,43 @@ class mitim_job:
             waitYN=True,
             timeoutSecs=1e6,
             removeScratchFolders=True,
+            removeScratchFolders_goingIn=None,
             check_if_files_received=True,
             attempts_execution=1,
+            helper_lostconnection=False,
             ):
+        
+        '''
+        if helper_lostconnection is True, it means that the connection to the remote machine was lost, but the files are there,
+        so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
+        '''
+
+        removeScratchFolders_goingOut = removeScratchFolders
+        if removeScratchFolders_goingIn is None:
+            removeScratchFolders_goingIn = removeScratchFolders
 
         if not waitYN:
-            removeScratchFolders = False
+            removeScratchFolders_goingOut = False
 
         # Always start by going to the folder (inside sbatch file)
-        command_str_mod = [f"cd {self.folderExecution}", f"{self.command}"]
+        command_str_mod = [f"cd {self.folderExecution}"]
 
+        for command in self.command:
+            command_str_mod += [command]
+            
         # ****** Prepare SLURM job *****************************
         comm, fileSBATCH, fileSHELL = create_slurm_execution_files(
             command_str_mod,
             self.folderExecution,
             modules_remote=self.machineSettings["modules"],
-            job_array=self.slurm_settings["job_array"] if "job_array" in self.slurm_settings else None,
             folder_local=self.folder_local,
             shellPreCommands=self.shellPreCommands,
             shellPostCommands=self.shellPostCommands,
-            nameJob=self.slurm_settings["name"] if "name" in self.slurm_settings else "test",
-            minutes=self.slurm_settings["minutes"] if "minutes" in self.slurm_settings else 5,
-            nodes=self.slurm_settings["nodes"] if "nodes" in self.slurm_settings else None,
-            ntasks=self.slurm_settings["ntasks"] if "ntasks" in self.slurm_settings else 1,
-            cpuspertask=self.slurm_settings["cpuspertask"] if "cpuspertask" in self.slurm_settings else 4,
-            slurm=self.machineSettings["slurm"],
-            memory_req_by_job=self.slurm_settings["mem"] if "mem" in self.slurm_settings else None,
-            launchSlurm=self.launchSlurm,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
+            slurm=self.machineSettings["slurm"],
+            launchSlurm=self.launchSlurm,
+            slurm_settings=self.slurm_settings,
         )
         # ******************************************************
 
@@ -196,21 +208,19 @@ class mitim_job:
         self.output_files = curateOutFiles(self.output_files)
 
         # Relative paths
-        self.input_files = [
-            path.relative_to(self.folder_local) for path in self.input_files
-        ]
-        self.input_folders = [
-            path.relative_to(self.folder_local) for path in self.input_folders
-        ]
+        self.input_files = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_files]
+        self.input_folders = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_folders]
 
         # Process
         self.full_process(
             comm,
-            removeScratchFolders=removeScratchFolders,
+            removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
+            removeScratchFolders_goingOut=removeScratchFolders_goingOut,
             timeoutSecs=timeoutSecs,
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
             attempts_execution=attempts_execution,
+            execute_flag=not helper_lostconnection
         )
 
         # Get jobid
@@ -234,15 +244,22 @@ class mitim_job:
         self,
         comm,
         timeoutSecs=1e6,
-        removeScratchFolders=True,
+        removeScratchFolders_goingIn=True,
+        removeScratchFolders_goingOut=True,
         check_if_files_received=True,
         check_files_in_folder={},
         attempts_execution = 1,
+        execute_flag=True,
     ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
         to not wait, that's handled by a slurm submission without --wait, but I still
         want to finish the sbatch launch process.
+        
+        Notes:
+         - If execute_flag is False, the commands will not be executed. This is useful,
+            together with removeScratchFolders_goingIn=False if the results exist in the remote
+            but the connection failed with your local machine. You can then just retrieve the results.
         """
         wait_for_all_commands = True
 
@@ -253,7 +270,7 @@ class mitim_job:
         self.connect(log_file=self.folder_local / "paramiko.log")
 
         # ~~~~~~ Prepare scratch folder
-        if removeScratchFolders:
+        if removeScratchFolders_goingIn:
             self.remove_scratch_folder()
         self.create_scratch_folder()
 
@@ -264,12 +281,18 @@ class mitim_job:
         execution_counter = 0
 
         while execution_counter < attempts_execution:
-            output, error = self.execute(
-                comm,
-                wait_for_all_commands=wait_for_all_commands,
-                printYN=True,
-                timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-            )
+            
+            if execute_flag:
+                output, error = self.execute(
+                    comm,
+                    wait_for_all_commands=wait_for_all_commands,
+                    printYN=True,
+                    timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+                    log_file=self.log_simulation_file
+                )
+            else:
+                output, error = b"", b""
+                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="i")
 
             # ~~~~~~ Retrieve
             received = self.retrieve(
@@ -286,14 +309,14 @@ class mitim_job:
 
         # ~~~~~~ Remove scratch folder
         if received:
-            if wait_for_all_commands and removeScratchFolders:
+            if wait_for_all_commands and removeScratchFolders_goingOut:
                 self.remove_scratch_folder()
         else:
 
             # If not received, write output and error to files
             self._write_debugging_files(output, error)
 
-            cont = print("\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written)",typeMsg="q")
+            cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
             if not cont:
                 print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
                 embed()
@@ -362,7 +385,7 @@ class mitim_job:
                 self.target_host,
                 username=self.target_user,
                 disabled_algorithms=disabled_algorithms,
-                key_filename=self.key_filename,
+                key_filename=str(self.key_filename) if self.key_filename is not None else None,
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
@@ -374,7 +397,7 @@ class mitim_job:
                 self.target_host,
                 username=self.target_user,
                 disabled_algorithms=disabled_algorithms,
-                key_filename=self.key_filename,
+                key_filename=str(self.key_filename) if self.key_filename is not None else None,
                 port=self.port,
                 sock=self.sock,
                 allow_agent=True,
@@ -466,9 +489,7 @@ class mitim_job:
         return output, error
 
     def send(self):
-        print(
-            f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:'
-        )
+        print(f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the local directory
         print("\t\t- Tarballing (local side)")
@@ -515,12 +536,87 @@ class mitim_job:
         print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
-    def execute(self, command_str, **kwargs):
+    def execute(self, command_str, log_file=None, **kwargs):
 
         if self.ssh is not None:
-            return self.execute_remote(command_str, **kwargs)
+            output, error = self.execute_remote(command_str, **kwargs)
         else:
-            return self.execute_local(command_str, **kwargs)
+            output, error = self.execute_local(command_str, **kwargs)
+
+        # Write information file about where and how the run took place
+        if log_file is not None:
+            self.write_information_file(command_str, output, error, file=log_file)
+
+        return output, error
+
+    def write_information_file(self, command, output, error, file = 'mitim_simulation.log'):
+        """
+        Write a log file with information about where the simulation happened (local/remote),
+        user, host, ssh settings if remote, and head/tail of output and error.
+        """
+        import getpass
+        import platform
+        from datetime import datetime
+
+        # Prepare context info
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        is_remote = self.ssh is not None
+        lines = []
+        lines.append("==================== MITIM Simulation Execution Log ====================\n")
+        lines.append(f"Date (finished): {now}")
+        lines.append(f"Execution Type: {'Remote' if is_remote else 'Local'}\n")
+        lines.append("--- Execution Details ---")
+        if is_remote:
+            lines.append(f"SSH User: {getattr(self, 'target_user', 'N/A')}")
+            lines.append(f"SSH Host: {getattr(self, 'target_host', 'N/A')}")
+            lines.append(f"Remote Folder: {self.folderExecution}")
+        else:
+            lines.append(f"User: {getpass.getuser()}")
+            lines.append(f"Host: {platform.node()}")
+        lines.append(f"Folder: {self.folderExecution}")
+        lines.append("")
+
+        def get_head_tail(data, n=20):
+            try:
+                text = data.decode("utf-8", errors="replace")
+            except Exception:
+                text = str(data)
+            lines_ = text.splitlines()
+            head = lines_[:n]
+            tail = lines_[-n:] if len(lines_) > n else []
+            return head, tail
+
+        out_head, out_tail = get_head_tail(output)
+        err_head, err_tail = get_head_tail(error)
+
+        lines.append("--- Output (Head) ---")
+        lines.extend(out_head if out_head else ["<no output>"])
+        lines.append("")
+        lines.append("--- Output (Tail) ---")
+        lines.extend(out_tail if out_tail else ["<no output>"])
+        lines.append("")
+        lines.append("--- Error (Head) ---")
+        lines.extend(err_head if err_head else ["<no error>"])
+        lines.append("")
+        lines.append("--- Error (Tail) ---")
+        lines.extend(err_tail if err_tail else ["<no error>"])
+        lines.append("")
+        lines.append(f"--- Command ---")
+        lines.append(f"{command}")
+        lines.append(f"\n--- Input Files ---")
+        lines.extend([str(file) for file in self.input_files])
+        lines.append(f"\n--- Input Folders ---")
+        lines.extend([str(folder) for folder in self.input_folders])
+        lines.append(f"\n--- Output Files ---")
+        lines.extend([str(file) for file in self.output_files])
+        lines.append(f"\n--- Output Folders ---")
+        lines.extend([str(folder) for folder in self.output_folders])
+        lines.append("\n=======================================================================\n")
+
+        # Write to file (file can be Path or str)
+        file_path = file if isinstance(file, (str, Path)) else str(file)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     def execute_remote(
         self,
@@ -563,14 +659,10 @@ class mitim_job:
         return output, error
 
     def retrieve(self, check_if_files_received=True, check_files_in_folder={}):
-        print(
-            f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:'
-        )
+        print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the output files & folders on the remote machine
-        print(
-            "\t\t- Removing local output files & folders that potentially exist from previous runs"
-        )
+        print("\t\t- Removing local output files & folders that potentially exist from previous runs")
         for file in self.output_files:
             (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
@@ -627,7 +719,7 @@ class mitim_job:
             if received:
                 print("\t\t- All correct", typeMsg="i")
             else:
-                print("\t* Not all received, trying once again", typeMsg="w")
+                print("\t* Not all received, trying once again", typeMsg="i")
                 time.sleep(10)
                 _ = self.retrieve(check_if_files_received=False)
                 received = self.check_all_received(check_files_in_folder=check_files_in_folder)
@@ -724,9 +816,7 @@ class mitim_job:
         else:
             self.infoSLURM = {}
             for i in range(len(output_squeue[0].split())):
-                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[
-                    i
-                ]
+                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
 
             self.jobid_found = self.infoSLURM["JOBID"]
 
@@ -736,9 +826,7 @@ class mitim_job:
 
         if self.infoSLURM["STATE"] == "PENDING":
             self.status = 0
-        elif (self.infoSLURM["STATE"] == "RUNNING") or (
-            self.infoSLURM["STATE"] == "COMPLETING"
-        ):
+        elif (self.infoSLURM["STATE"] == "RUNNING") or (self.infoSLURM["STATE"] == "COMPLETING"):
             self.status = 1
         elif self.infoSLURM["STATE"] == "NOT FOUND":
             self.status = 2
@@ -981,39 +1069,46 @@ def SerialProcedure(Function, Params, howmany):
 
 def create_slurm_execution_files(
     command,
-    folder_remote,
+    folderExecution,
     modules_remote=None,
-    slurm={},
     folder_local=None,
     shellPreCommands=None,
     shellPostCommands=None,
-    launchSlurm=True,
-    nameJob="test",
-    minutes=5,
-    ntasks=1,
-    cpuspertask=4,
-    memory_req_by_job=None,
-    job_array=None,
-    nodes=None,
     label_log_files="",
     wait_until_sbatch=True,
+    slurm={},
+    launchSlurm=True,
+    slurm_settings = None
 ):
-    if isinstance(command, str):
-        command = [command]
-
-    if shellPostCommands is None:
-        shellPostCommands = []
-
-    if shellPreCommands is None:
-        shellPreCommands = []
-
-    folderExecution = folder_remote
+    
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
     fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
+    
+    # ---------------------------------------------------
+    # slurm_settings indicate the job resource allocation   
+    #  ---------------------------------------------------
 
-    minutes = int(minutes)
+    if slurm_settings is None:
+        slurm_settings = {}
 
+    nameJob = slurm_settings.setdefault("name", "mitim_job")
+    minutes = int(slurm_settings.setdefault("minutes", 10))
+    memory_req_by_job = slurm_settings.setdefault("memory_req_by_job", None)
+
+    nodes = slurm_settings.setdefault("nodes", None)
+    ntasks = slurm_settings.setdefault("ntasks", None)
+    cpuspertask = slurm_settings.setdefault("cpuspertask", None)
+    ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
+    gpuspertask = slurm_settings.setdefault("gpuspertask", None)
+
+    job_array = slurm_settings.setdefault("job_array", None)
+    job_array_limit = slurm_settings.setdefault("job_array_limit", None)
+
+    # ---------------------------------------------------
+    # slurm indicate the machine specifications as given by the config instead of individual job
+    # ---------------------------------------------------
+    
     partition = slurm.setdefault("partition", None)
     email = slurm.setdefault("email", None)
     exclude = slurm.setdefault("exclude", None)
@@ -1021,7 +1116,7 @@ def create_slurm_execution_files(
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
     request_exclusive_node = slurm.setdefault("exclusive", False)
-
+    
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
         memory_req = memory_req_by_job
@@ -1032,13 +1127,7 @@ def create_slurm_execution_files(
         if memory_req_by_config is not None:
             print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
-
-    """
-	********************************************************************************************
-	Write mitim_bash.src file to execute
-	********************************************************************************************
-	"""
-
+    
     if minutes >= 60:
         hours = minutes // 60
         minutes = minutes - hours * 60
@@ -1046,77 +1135,73 @@ def create_slurm_execution_files(
     else:
         time_com = f"{str(minutes).zfill(2)}:00"
 
+    """
+	********************************************************************************************
+	Write mitim_bash.src file to execute
+	********************************************************************************************
+	"""
+
+    command = [command] if isinstance(command, str) else command
+    shellPreCommands = [] if shellPreCommands is None else shellPreCommands
+    shellPostCommands = [] if shellPostCommands is None else shellPostCommands
+
+    # ~~~~ Construct SLURM header ~~~~~~~~~~~~~~~
     commandSBATCH = []
 
-    # ******* Basics
     commandSBATCH.append("#!/usr/bin/env bash")
     commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
-    commandSBATCH.append(
-        f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat"
-    )
-    commandSBATCH.append(
-        f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat"
-    )
+    commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
+    commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
+    commandSBATCH.append(f"#SBATCH --time {time_com}")
     if email is not None:
         commandSBATCH.append("#SBATCH --mail-user=" + email)
-
-    # ******* Partition / Billing
-    commandSBATCH.append(f"#SBATCH --partition {partition}")
-
+    if partition is not None:
+        commandSBATCH.append(f"#SBATCH --partition {partition}")
     if account is not None:
         commandSBATCH.append(f"#SBATCH --account {account}")
     if constraint is not None:
         commandSBATCH.append(f"#SBATCH --constraint {constraint}")
-
     if memory_req is not None:
         commandSBATCH.append(f"#SBATCH --mem {memory_req}")
-
-    commandSBATCH.append(f"#SBATCH --time {time_com}")
-
     if job_array is not None:
-        commandSBATCH.append(f"#SBATCH --array={job_array}")
+        commandSBATCH.append(f"#SBATCH --array={job_array}{f'%{job_array_limit} ' if job_array_limit is not None else ''}")
     elif request_exclusive_node:
         commandSBATCH.append("#SBATCH --exclusive")
-
-    # ******* CPU setup
     if nodes is not None:
         commandSBATCH.append(f"#SBATCH --nodes {nodes}")
-    commandSBATCH.append(f"#SBATCH --ntasks {ntasks}")
-    commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
-
+    if ntasks is not None:
+        commandSBATCH.append(f"#SBATCH --ntasks {ntasks}")
+    if ntaskspernode is not None:
+        commandSBATCH.append(f"#SBATCH --ntasks-per-node {ntaskspernode}")
+    if cpuspertask is not None:
+        commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
+    if gpuspertask is not None:
+        commandSBATCH.append(f"#SBATCH --gpus-per-task {gpuspertask}")
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
 
     commandSBATCH.append("#SBATCH --profile=all")
-    
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
+    # ~~~~ Commands ~~~~~~~~~~~~~~~
+    commandSBATCH.append("")
     commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
-
-    # ******* Commands
-    commandSBATCH.append("")
-    commandSBATCH.append(
-        'echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"'
-    )
-    commandSBATCH.append(
-        'echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"'
-    )
-    commandSBATCH.append(
-        'echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"'
-    )
-    commandSBATCH.append(
-        'echo "***********************************************************************************************"'
-    )
-    commandSBATCH.append(
-        'echo ""'
-    )
+    commandSBATCH.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
+    commandSBATCH.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
+    commandSBATCH.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
+    commandSBATCH.append('echo "***********************************************************************************************"')
+    commandSBATCH.append('echo ""')
     commandSBATCH.append("")
 
-    full_command = [modules_remote] if (modules_remote is not None) else []
+    # If modules, add them, but also make sure I expand the potential aliases that they may have!
+    full_command = ["shopt -s expand_aliases",modules_remote] if (modules_remote is not None) else []
+    
     full_command.extend(command)
     for c in full_command:
         commandSBATCH.append(c)
 
     commandSBATCH.append("")
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
     wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
@@ -1135,10 +1220,13 @@ def create_slurm_execution_files(
 	"""
 
     commandSHELL = ["#!/usr/bin/env bash"]
-    commandSHELL.extend(copy.deepcopy(shellPreCommands))
+
     commandSHELL.append("")
     if modules_remote is not None:
         commandSHELL.append(modules_remote)
+
+    commandSHELL.extend(copy.deepcopy(shellPreCommands))
+
     commandSHELL.append(f"{launch} {fileSBATCH_remote}")
     commandSHELL.append("")
     for i in range(len(shellPostCommands)):
@@ -1154,7 +1242,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folder_remote} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
+    comm = f"cd {folderExecution} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBATCH.resolve(), fileSHELL.resolve()
 
@@ -1236,7 +1324,15 @@ def perform_quick_remote_execution(
     job.run(check_if_files_received=check_if_files_received)
 
 
-def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders_remote = [], purge_tmp_files = False, ensure_files = True):
+def retrieve_files_from_remote(
+    folder_local,
+    machine,
+    files_remote = [],
+    folders_remote = [],
+    only_folder_structure_with_files = None, # If not None, only the folder structure is retrieved, with files in the list
+    purge_tmp_files = False,
+    ensure_files = True
+    ):
     '''
     Quick routine for file retrieval from remote machine (assumes remote machine is linux)
 
@@ -1263,7 +1359,19 @@ def retrieve_files_from_remote(folder_local, machine, files_remote = [], folders
         output_files.append(file0)
     for folder in folders_remote:
         folder0 = f'{IOtools.expandPath(folder)}'.split('/')[-1]
-        command += f'cp -r {folder} {machineSettings["folderWork"]}/{folder0}\n'
+        
+        folder_source = folder
+        folder_destination = f'{machineSettings["folderWork"]}/{folder0}'
+        if only_folder_structure_with_files is None:
+            # Normal full copy
+            command += f'cp -r {folder_source} {folder_destination}\n'
+        else:
+            retrieve_files = ''
+            for file in only_folder_structure_with_files:
+                retrieve_files += f'-f"+ {file}" '
+            # Only copy the folder structure with a few files
+            command += f'rsync -av -f"+ */" {retrieve_files}-f"- *" {folder_source}/ {folder_destination}/\n'
+            
         output_folders.append(folder0)
 
     # ------------------------------------------------

@@ -180,7 +180,7 @@ class transp_nml:
         self.grTGLF = transp_params.get("grTGLF",False)
         self.Te_edge = transp_params.get("Te_edge",80.0)
         self.Ti_edge = transp_params.get("Ti_edge",80.0)
-        self.TGLFsettings = transp_params.get("TGLFsettings",5)
+        self.code_settings = transp_params.get("code_settings",5)
 
     def populate(self, **transp_params):
 
@@ -1335,10 +1335,8 @@ class transp_nml:
         self.contents_ptr_glf23 = "\n".join(lines) + "\n"
 
     def addTGLF(self):
-        TGLFoptions, label = GACODEdefaults.TGLFinTRANSP(self.TGLFsettings)
-        print(
-            f"\t- Adding TGLF control parameters with TGLFsettings = {self.TGLFsettings} ({label})"
-        )
+        TGLFoptions = GACODEdefaults.TGLFinTRANSP(self.code_settings)
+        print(f"\t- Adding TGLF control parameters with code_settings = {self.code_settings}")
 
         lines = [
             "!------ TGLF namelist",

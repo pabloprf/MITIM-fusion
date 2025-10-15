@@ -94,7 +94,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
     p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
 
-    p.deriveQuantities()
+    p.derive_quantities()
 
     # Change Zeff
     p.changeZeff(Zeff, ion_pos=3)
@@ -116,7 +116,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20)
         
         # Derive quantities
-        p.deriveQuantities(rederiveGeometry=False)
+        p.derive_quantities(rederiveGeometry=False)
 
         BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
 
@@ -135,10 +135,10 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
         raise Exception('BetaN error too high')
 
     # Power
-    power = STATEtools.powerstate(p,EvolutionOptions={"rhoPredicted": np.linspace(0.0, 0.9, 50)[1:]})
+    power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 50)[1:]})
 
     power.calculate(None, folder='~/scratch/power/')
-    profiles_new = power.to_gacode(insert_highres_powers=True)
+    profiles_new = power.from_powerstate(insert_highres_powers=True)
 
     return ptop_kPa,profiles_new, eped_evaluation
 
@@ -229,6 +229,13 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     if vertical_at_nominal:
         axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
         axs[1,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+        
+        fG_nominal = results1['fG'][np.argmin(np.abs(results1['x']- (nominal_parameters[xparam] if not relative else nominal_parameters[xparam])))]
+        axs[0,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+        axs[1,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+
+
+
 
     axs[0,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
     axs[1,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
@@ -316,7 +323,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
             resultsS,
             ['r','b','g'],
             ):
-        results['profs'][0].plotGeometry(ax=ax, surfaces_rho=[1.0], color=c)
+        results['profs'][0].plot_state_flux_surfaces(ax=ax, surfaces_rho=[1.0], color=c)
 
     GRAPHICStools.addDenseAxis(ax)
     ax.set_xlabel("R (m)")

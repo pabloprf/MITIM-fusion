@@ -273,6 +273,57 @@ def integrate_definite(x, y, rangex=None):
         return 0
 
 
+def integrateQuadPoly(r, s):
+    """
+    (batch,dim)
+
+    Computes int(s*dr), so if s is s*dV/dr, then int(s*dV), which is the full integral
+
+    From tgyro_volume_int.f90
+    r - minor radius
+    s - s*volp
+
+    (Modified to avoid if statements and for loops)
+
+    """
+
+    if isinstance(s, torch.Tensor):
+        p = torch.zeros((r.shape[0], r.shape[1])).to(r)
+    else:
+        p = np.zeros((r.shape[0], r.shape[1]))
+
+    # First point
+
+    x1, x2, x3 = r[..., 0], r[..., 1], r[..., 2]
+    f1, f2, f3 = s[..., 0], s[..., 1], s[..., 2]
+
+    p[..., 1] = (x2 - x1) * (
+        (3 * x3 - x2 - 2 * x1) * f1 / 6 / (x3 - x1)
+        + (3 * x3 - 2 * x2 - x1) * f2 / 6 / (x3 - x2)
+        - (x2 - x1) ** 2 * f3 / 6 / (x3 - x1) / (x3 - x2)
+    )
+
+    # Next points
+    x1, x2, x3 = r[..., :-2], r[..., 1:-1], r[..., 2:]
+    f1, f2, f3 = s[..., :-2], s[..., 1:-1], s[..., 2:]
+
+    p[..., 2:] = (
+        (x3 - x2)
+        / (x3 - x1)
+        / 6
+        * (
+            (2 * x3 + x2 - 3 * x1) * f3
+            + (x3 + 2 * x2 - 3 * x1) * f2 * (x3 - x1) / (x2 - x1)
+            - (x3 - x2) ** 2 * f1 / (x2 - x1)
+        )
+    )
+
+    if isinstance(p, torch.Tensor):
+        return torch.cumsum(p, 1)
+    else:
+        return np.cumsum(p, 1)
+
+
 def extrapolate(x, xp, yp, order=3):
     s = InterpolatedUnivariateSpline(xp, yp, k=order)
 

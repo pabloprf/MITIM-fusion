@@ -102,9 +102,7 @@ class surrogate_model:
         # Points to be added from file
         if ("extrapointsFile" in self.surrogate_options) and (self.surrogate_options["extrapointsFile"] is not None) and (self.output is not None) and (self.output in self.surrogate_options["extrapointsModels"]):
 
-            print(
-                f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}"
-            )
+            print(f"\t* Requested extension of training set by points in file {self.surrogate_options['extrapointsFile']}")
 
             df = pd.read_csv(self.surrogate_options["extrapointsFile"])
             df_model = df[df['Model'] == self.output]
@@ -114,6 +112,7 @@ class surrogate_model:
                 continueAdding = False
             else:
                 continueAdding = True
+                print(f"\t\t- Found {len(df_model)} points for this output in the file, adding them to the training set", typeMsg="i")
         else:
             continueAdding = False
 
@@ -299,6 +298,11 @@ class surrogate_model:
         self.surrogate_transformation_variables = None
         if ("surrogate_transformation_variables_alltimes" in self.surrogate_parameters) and (self.surrogate_parameters["surrogate_transformation_variables_alltimes"] is not None):
 
+            # Make sure that I can read both int or str as keys to surrogate_transformation_variables_alltimes
+            # Change the dictionary keys to be always integers
+            if not isinstance(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[0], int):
+                self.surrogate_parameters["surrogate_transformation_variables_alltimes"] = {int(k): v for k, v in self.surrogate_parameters["surrogate_transformation_variables_alltimes"].items()}
+
             transition_position = list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())[
                     np.where(self.num_training_points < np.array(list(self.surrogate_parameters["surrogate_transformation_variables_alltimes"].keys())))[0][0]]
 
@@ -334,17 +338,13 @@ class surrogate_model:
         outcome_transform_normalization._is_trained = torch.tensor(True)
 
     def fit(self):
-        print(
-            f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points"
-        )
+        print(f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points")
 
         # ---------------------------------------------------------------------------------------------------
         # Define loss Function to minimize
         # ---------------------------------------------------------------------------------------------------
 
-        mll = gpytorch.mlls.ExactMarginalLogLikelihood(
-            self.gpmodel.likelihood, self.gpmodel
-        )
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gpmodel.likelihood, self.gpmodel)
 
         # ---------------------------------------------------------------------------------------------------
         # Prepare for training
@@ -397,17 +397,11 @@ class surrogate_model:
         (train_x,) = mll.model.train_inputs
         approx_mll = len(train_x) > 2000
         if approx_mll:
-            print(
-                f"\t* Using approximate MLL because x has {len(train_x)} elements",
-            )
+            print(f"\t* Using approximate MLL because x has {len(train_x)} elements")
         # --------------------------------------------------
 
         # Store first MLL value
-        track_fval = [
-            -mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets)
-            .detach()
-            .item()
-        ]
+        track_fval = [-mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets).detach().item()]
 
         def callback(x, y, mll=mll):
             track_fval.append(y.fval)
@@ -447,12 +441,18 @@ class surrogate_model:
                 - Samples if nSamples not None
         """
 
-        # Fast
-        # with gpytorch.settings.fast_computations(), gpytorch.settings.fast_pred_samples(), \
-        # 	 gpytorch.settings.fast_pred_var(), gpytorch.settings.lazily_evaluate_kernels():
+        
         # Accurate
         # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
         # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
+
+        # # Fast
+        # with gpytorch.settings.fast_computations(), \
+        #     gpytorch.settings.fast_pred_samples(), \
+        #     gpytorch.settings.fast_pred_var(), \
+        #     gpytorch.settings.lazily_evaluate_kernels(True), \
+        #     (fundamental_model_context(self) if produceFundamental else contextlib.nullcontext(self)) as surrogate_model:
+        #     posterior = surrogate_model.gpmodel.posterior(X)
 
         with (
             fundamental_model_context(self)

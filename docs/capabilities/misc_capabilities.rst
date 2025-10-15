@@ -10,7 +10,7 @@ Miscellaneous
 Interpret Tokamak equilibrium
 -----------------------------
 
-MITIM has a quick g-eqdsk file reader and visualizer that is based on the ``omfit-classes`` package.
+MITIM has a quick g-eqdsk file reader and visualizer that is based on the ``megpy`` package.
 
 To open and plot a g-eqdsk file:
 
@@ -47,7 +47,7 @@ To open and plot an ``input.gacode`` file:
 .. code-block:: python
 
 	from mitim_tools.gacode_tools import PROFILEStools
-	p = PROFILEStools.PROFILES_GACODE(file)
+	p = PROFILEStools.gacode_state(file)
 	p.plot()
 
 It will plot results in a notebook-like plot with different tabs:
