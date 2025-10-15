@@ -427,7 +427,9 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
 
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
-        if self.neoclassical_model == 'neo':
+        if self.neoclassical_model is None:
+            print('Neoclassical model chosen', typeMsg='w')
+        elif self.neoclassical_model == 'neo':
             return neo_model.evaluate_neoclassical(self)
         else:
             raise Exception(f"Unknown neoclassical model {self.neoclassical_model}")

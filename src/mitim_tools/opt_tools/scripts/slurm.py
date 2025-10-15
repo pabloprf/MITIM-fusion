@@ -20,6 +20,7 @@ def run_slurm(
     mem=None,
     exclusive=False, 
     wait=False,
+    qos=None,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -53,7 +54,8 @@ def run_slurm(
                 'minutes': int(60 * hours),
                 'ntasks': 1,
                 'cpuspertask': n,
-                'memory_req_by_job': mem
+                'memory_req_by_job': mem,
+                'qos': qos
             }
         )
 

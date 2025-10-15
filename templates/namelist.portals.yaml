@@ -136,7 +136,10 @@ transport:
       # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
       reuse_scan_ball: false
 
-      # Files to keep from simulation (none: all runs will only keep minimal files; base: minimal files for scans only; all: retrieve all files)
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     base: minimal files for scans only, base TGLF will be kept
+      #     all: retrieve all files from all runs
       keep_files: "base" 
 
       # Number of cores to use per TGLF instance
@@ -170,11 +173,11 @@ transport:
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
       
       read:
-        tmin: 0.0
+        tmin: -0.3 # Last 30% of the simulation
       
       # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
       Qi_stable_criterion: 0.01
@@ -184,6 +187,12 @@ transport:
 
       # If True, always run base TGLF to keep track of discrepancies
       run_base_tglf: True
+
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
 
     # *********************************************************************************************************
     # GX
@@ -195,11 +204,17 @@ transport:
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
       
       read:
-        tmin: 0.0
+        tmin: -0.3 # Last 30% of the simulation
+
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
 
   # Function to post-process input.gacode only *before* passing to transport codes
   profiles_postprocessing_fun: null
@@ -295,6 +310,11 @@ optimization_options:
 
     # Function to select the GP parameters depending on each channel/radius (superseeds the main optimization namelist)
     surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"
+
+    # To avoid messing surrogates with exploiding fluxes, remove them from the training set if they are outside of 100 std from the rest of points
+    stds_outside: 100       # Standard deviations outside the mean to consider a point as an outlier
+    stds_outside_checker: 5 # Check for outliers only if there are at least these many points
+
 
   strategy_options:
 

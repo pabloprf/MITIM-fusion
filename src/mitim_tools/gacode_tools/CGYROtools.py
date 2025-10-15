@@ -1,6 +1,6 @@
-import copy
 from pathlib import Path
 import numpy as np
+import copy
 import matplotlib.pyplot as plt
 from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
@@ -70,7 +70,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t CGYRO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.ResultsFiles = self.ResultsFiles_minimal = [
+        self.ResultsFiles_minimal = [
             "bin.cgyro.geo",
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
@@ -83,10 +83,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.phib",
             "bin.cgyro.aparb",
             "bin.cgyro.bparb",
-            "bin.cgyro.restart",
             "input.cgyro",
             "input.cgyro.gen",
-            "mitim.out",
             "out.cgyro.egrid",
             "out.cgyro.equilibrium",
             "out.cgyro.freq",
@@ -98,10 +96,15 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.prec",
             "out.cgyro.rotation",
             "out.cgyro.startups",
-            "out.cgyro.tag",
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
+        ]
+        
+        self.ResultsFiles = self.ResultsFiles_minimal + [
+            "bin.cgyro.restart",
+            "out.cgyro.tag",
+            "mitim.out",
         ]
 
         self.output_files_test = [
@@ -164,29 +167,20 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             last_tmin_for_linear = last_tmin_for_linear,
             **kwargs)
 
-    # Re-defined to make allowing reading a scan of KY linear runs easily
-    def read_scan(
-        self,
-        label="scan1",
-        cgyro_linear_scan = False,
-        **kwargs
-    ):
-    
-        super().read_scan(label=label,**kwargs)
-        
-        if cgyro_linear_scan:
-            self.results[label] = CGYROutils.CGYROlinear_scan(list(self.results.keys()), self.results)
-            print(f"\t- Created a linear scan object with label {label} from all the read cases", typeMsg='i')
-
     def read_linear_scan(
         self,
         folder=None,
         preffix="scan",
+        store_as_label=None,
+        irho = 0,
         **kwargs
     ):
         '''
         Useful utility for when a folder contains subfolders like... scan0, scan1, scan2... with different ky
         '''
+        
+        if folder is None:
+            folder = self.FolderGACODE
         
         main_label = kwargs.get('label', 'run1')
         del kwargs['label']
@@ -215,8 +209,29 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 base_name = '_'.join(parts[0:-2])               
                 labelsD.append(label)
 
-        self.results[main_label] = CGYROutils.CGYROlinear_scan(labelsD, self.results)
+        if store_as_label is not None:
+            main_label = store_as_label
 
+        self.results[main_label] = CGYROutils.CGYROlinear_scan(labelsD, self.results, irho=irho)
+
+    # Redefined to remove potential large objects
+    def save_pickle(self, file, **kwargs):
+        
+        class_to_store = super().prepare_for_save()
+        
+        # Remove heavy objects
+        
+        class_to_store = copy.deepcopy(class_to_store)
+        
+        for key in class_to_store.results:
+            for irho in range(len(class_to_store.results[key]['output'])):
+                if 'cgyrodata' in class_to_store.results[key]['output'][irho].__dict__:
+                    print(f'\t- Removing cgyrodata object before pickling for {key}, irho={irho}')
+                    del class_to_store.results[key]['output'][irho].cgyrodata
+            
+        super().save_pickle(file, class_to_store = class_to_store, **kwargs)
+                
+                
     def plot(
         self,
         labels=[""],
@@ -225,15 +240,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         common_colorbar=True):
         
         # If it has radii, we need to correct the labels
-        self.results_all = copy.deepcopy(self.results)
-        self.results = {}
-        labels_with_rho = []
-        for label in labels:
-            for i,rho in enumerate(self.rhos):
-                labels_with_rho.append(f"{label}_{rho}")
-                self.results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
-        labels = labels_with_rho
-        # ------------------------------------------------
+        labels = self._correct_rhos_labels(labels)
     
         if fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
@@ -472,139 +479,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         GRAPHICStools.addDenseAxis(ax)
         if legadded:
             ax.legend(loc='best')
-
-    def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
-        if axs is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-            axs = fig.subplot_mosaic(
-                """
-				AB
-                CD
-				"""
-            )
-
-        ls = GRAPHICStools.listLS()
-
-        # Electron energy flux
-        ax = axs["A"]
-        self._plot_trace(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_trace(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$Q_e$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Electron energy flux')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-
-        # Electron particle flux
-        ax = axs["B"]
-        self._plot_trace(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_trace(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$\\Gamma_e$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Electron particle flux')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-
-        # Ion energy fluxes
-        ax = axs["C"]
-        self._plot_trace(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        self._plot_trace(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-
-        # Ion species energy fluxes
-        ax = axs["D"]
-        for j, i in enumerate(self.results[label].ions_flags):
-            self._plot_trace(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
-            
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes (separate species)')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-
-        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
-
-    def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1, plotLegend=True):
-        if axs is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-            axs = fig.subplot_mosaic(
-                """
-                AC
-                BD
-                """
-            )
-            
-        ls = GRAPHICStools.listLS()
-
-        # Electron energy flux
-        ax = axs["A"]
-        ax.plot(self.results[label].ky, self.results[label].Qe_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].Qe_ky_mean-self.results[label].Qe_ky_std, self.results[label].Qe_ky_mean+self.results[label].Qe_ky_std, color=c, alpha=0.2)
-
-        ax.set_xlabel("$k_{\\theta} \\rho_s$")
-        ax.set_ylabel("$Q_e$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Electron energy flux vs. $k_\\theta\\rho_s$')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-        ax.axhline(0.0, color='k', ls='--', lw=1)
-
-        # Electron particle flux
-        ax = axs["B"]
-        ax.plot(self.results[label].ky, self.results[label].Ge_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].Ge_ky_mean-self.results[label].Ge_ky_std, self.results[label].Ge_ky_mean+self.results[label].Ge_ky_std, color=c, alpha=0.2)
-    
-        ax.set_xlabel("$k_{\\theta} \\rho_s$")
-        ax.set_ylabel("$\\Gamma_e$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Electron particle flux vs. $k_\\theta\\rho_s$')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-        ax.axhline(0.0, color='k', ls='--', lw=1)
-
-        # Ion energy flux
-        ax = axs["C"]
-        ax.plot(self.results[label].ky, self.results[label].Qi_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].Qi_ky_mean-self.results[label].Qi_ky_std, self.results[label].Qi_ky_mean+self.results[label].Qi_ky_std, color=c, alpha=0.2)
-
-        ax.set_xlabel("$k_{\\theta} \\rho_s$")
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes vs. $k_\\theta\\rho_s$')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-        ax.axhline(0.0, color='k', ls='--', lw=1)
-        
-        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
-
-        # Ion species energy fluxes
-        ax = axs["D"]
-        for j, i in enumerate(self.results[label].ions_flags):
-            ax.plot(self.results[label].ky, self.results[label].Qi_all_ky_mean[j],ls[j]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[i]}")
-
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$Q_i$ (GB)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Ion energy fluxes vs. $k_\\theta\\rho_s$(separate species)')
-        if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
-
-        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
     def plot_intensities(self, axs = None, label= "cgyro1", c="b", addText=True):
         
@@ -1055,90 +929,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
-    def plot_turbulence(self, axs = None, label= "cgyro1", c="b", kys = None):
-        
-        if axs is None:
-            plt.ion()
-            fig = plt.figure(figsize=(18, 9))
-
-            axs = fig.subplot_mosaic(
-                """
-                AC
-                BD
-                """
-            )
-
-        # Is no kys provided, select just 3: first, last and middle
-        if kys is None:
-            ikys = [0]
-            if len(self.results[label].ky) > 1:
-                ikys.append(-1)
-            if len(self.results[label].ky) > 2:
-                ikys.append(len(self.results[label].ky) // 2)
-                
-            ikys = np.unique(ikys)            
-        else:
-            ikys = [self.results[label].ky.index(ky) for ky in kys if ky in self.results[label].ky]    
-
-        # Growth rate as function of time
-        ax = axs["A"]
-        for i,ky in enumerate(ikys):
-            self._plot_trace(
-                ax,
-                label,
-                self.results[label].g[ky, :],
-                c=c,
-                ls = GRAPHICStools.listLS()[i],
-                lw=1,
-                label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
-                var_meanstd = [self.results[label].g_mean[ky], self.results[label].g_std[ky]],
-            )
-            
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$\\gamma$ (norm.)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Growth rate vs time')
-        ax.legend(loc='best', prop={'size': 8},)
-
-        # Frequency as function of time
-        ax = axs["B"]
-        for i,ky in enumerate(ikys):
-            self._plot_trace(
-                ax,
-                label,
-                self.results[label].f[ky, :],
-                c=c,
-                ls = GRAPHICStools.listLS()[i],
-                lw=1,
-                label_plot=f"$k_{{\\theta}}\\rho_s={np.abs(self.results[label].ky[ky]):.2f}$",
-                var_meanstd = [self.results[label].f_mean[ky], self.results[label].f_std[ky]],
-            )
-            
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
-        ax.set_ylabel("$\\omega$ (norm.)")
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title('Real Frequency vs time')
-        ax.legend(loc='best', prop={'size': 8},)
-
-        # Mean+Std Growth rate as function of ky
-        ax = axs["C"]
-        ax.errorbar(self.results[label].ky, self.results[label].g_mean, yerr=self.results[label].g_std, fmt='-o', markersize=5, color=c, label=label+' (mean+std)')
-        ax.set_xlabel("$k_{\\theta} \\rho_s$")
-        ax.set_ylabel("$\\gamma$ (norm.)")
-        ax.set_title('Saturated Growth Rate')
-        GRAPHICStools.addDenseAxis(ax)
-        ax.legend(loc='best', prop={'size': 8},)
-        
-        # Mean+Std Frequency as function of ky
-        ax = axs["D"]
-        ax.errorbar(self.results[label].ky, self.results[label].f_mean, yerr=self.results[label].f_std, fmt='-o', markersize=5, color=c, label=label+' (mean+std)')
-        ax.set_xlabel("$k_{\\theta} \\rho_s$")
-        ax.set_ylabel("$\\omega$ (norm.)")
-        ax.set_title('Saturated Real Frequency')
-        GRAPHICStools.addDenseAxis(ax)
-        ax.legend(loc='best', prop={'size': 8},)
-        
-        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
     def plot_cross_phases(self, axs = None, label= "cgyro1", c="b"):
 
@@ -1526,6 +1316,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def plot_quick_linear(self, labels=["cgyro1"], fig=None):
  
         colors = GRAPHICStools.listColors()
+        ls = GRAPHICStools.listLS()
 
         if fig is None:
             fig = plt.figure(figsize=(15,9))
@@ -1539,8 +1330,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             
         def _plot_linear_stability(axs, labels, label_base,col_lin ='b', start_cont=0):
 
+            irho = self.results[label_base].irho
+
             for cont, label in enumerate(labels):
-                c = self.results[label]['output'][0]
+                c = self.results[label]['output'][irho]
                 baseColor = colors[cont+start_cont+1]
                 colorsC, _ = GRAPHICStools.colorTableFade(
                     len(c.ky),
@@ -1555,7 +1348,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                         c.t,
                         c.g[ky,:],
                         color=colorsC[ky],
-                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$, $r/a={c.roa:.2f}$",
+                        ls = ls[irho]
                     )
 
                 ax = axs['2']
@@ -1564,19 +1358,22 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                         c.t,
                         c.f[ky,:],
                         color=colorsC[ky],
-                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$",
+                        label=f"$k_{{\\theta}}\\rho_s={np.abs(c.ky[ky]):.2f}$, $r/a={c.roa:.2f}$",
+                        ls = ls[irho]
                     )
+
+            roa = self.results[self.results[label_base].labels[0]]['output'][irho].roa
 
             GACODEplotting.plotTGLFspectrum(
                 [axs['3'], axs['4']],
-                self.results[label_base].ky,
+                abs(self.results[label_base].ky),
                 self.results[label_base].g_mean,
                 freq=self.results[label_base].f_mean,
                 coeff=0.0,
                 c=col_lin,
                 ls="-",
                 lw=1,
-                label="",
+                label=f"r/a = {roa}",
                 facecolors=colors,
                 markersize=50,
                 alpha=1.0,
@@ -1584,6 +1381,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 removeLow=1e-4,
                 ylabel=True,
             )
+            axs['3'].legend(loc='best', prop={'size': 8},)
             
             return cont
 

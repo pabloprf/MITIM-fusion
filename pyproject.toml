@@ -46,10 +46,10 @@ dependencies = [
   "pyyaml",
   "megpy>=2.0",
   "fibe>=0.3",
+  "vmecpp",
+  # "quends @ git+https://github.com/sandialabs/quends.git"
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
-  # "vmecpp",
-  # "quends @ git+https://github.com/sandialabs/quends.git"
 ]
 
 [project.optional-dependencies]
@@ -72,6 +72,7 @@ mitim_plot_gacode = "mitim_tools.gacode_tools.scripts.read_gacode:main"
 mitim_plot_tgyro = "mitim_tools.gacode_tools.scripts.read_tgyro:main"
 mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--suffix _0.55] [--gacode input.gacode]
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
+mitim_plot_gx = "mitim_tools.simulation_tools.scripts.read_gx:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
 mitim_plot_eped = "mitim_tools.eped_tools.scripts.plot_eped:main"

@@ -16,9 +16,10 @@ from IPython import embed
 import pandas as pd
 
 class CGYROlinear_scan:
-    def __init__(self, labels, results):   
+    def __init__(self, labels, results, irho = 0):   
 
         self.labels = labels
+        self.irho = irho
 
         # Store the data in a structured way        
         self.aLTi = []
@@ -32,16 +33,16 @@ class CGYROlinear_scan:
         self.Qi_mean = []
 
         for label in labels:
-            self.ky.append(results[label]['output'][0].ky[0])
-            self.aLTi.append(results[label]['output'][0].aLTi)
-            self.g_mean.append(results[label]['output'][0].g_mean[0])
-            self.f_mean.append(results[label]['output'][0].f_mean[0])
+            self.ky.append(results[label]['output'][irho].ky[0])
+            self.aLTi.append(results[label]['output'][irho].aLTi)
+            self.g_mean.append(results[label]['output'][irho].g_mean[0])
+            self.f_mean.append(results[label]['output'][irho].f_mean[0])
             
-            self.Qe_mean.append(results[label]['output'][0].Qe_mean)
-            self.Qi_mean.append(results[label]['output'][0].Qi_mean)
+            self.Qe_mean.append(results[label]['output'][irho].Qe_mean)
+            self.Qi_mean.append(results[label]['output'][irho].Qi_mean)
 
             try:
-                self.neTe_mean.append(results[label]['output'][0].neTe_kx0_mean[0])
+                self.neTe_mean.append(results[label]['output'][irho].neTe_kx0_mean[0])
             except:
                 self.neTe_mean.append(np.nan)
 
@@ -69,11 +70,15 @@ class CGYROlinear_scan:
 
 class CGYROoutput(SIMtools.GACODEoutput):
     def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
+        '''
+        tmin can be used to indicate from which time onwards I want to do the signal analysis
+        if negative, it represents the relative time from the end of the simulation. e.g.
+        -0.25 means I want to consider the last 25% of the simulation time
+        '''
         
         super().__init__()
 
         self.folder = folder
-        self.tmin = tmin
         
         if isinstance(self.folder, str):
             self.folder = Path(self.folder)
@@ -103,7 +108,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.linear = True
             if last_tmin_for_linear:
                 print('\t- Forcing tmin to the last time point', typeMsg='i')
-                self.tmin = self.cgyrodata.t[-1]
+                tmin = self.cgyrodata.t[-1]
             
         else:
             self.linear = False
@@ -127,6 +132,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
+        
+        self.roa = self.cgyrodata.rmin
     
 
         # ************************
@@ -134,6 +141,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # ************************
         
         self.t = self.cgyrodata.tnorm
+        
+        if tmin >= 0.0:
+            self.tmin = tmin
+        else:
+            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
+            print(f"\t- Negative tmin provided, setting tmin to {self.tmin:.3f}", typeMsg='i')
+        
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
         self.theta = self.cgyrodata.theta

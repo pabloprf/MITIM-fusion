@@ -1,6 +1,8 @@
 import json
+from mitim_tools.misc_tools import IOtools
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
+from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -15,38 +17,72 @@ class gyrokinetic_model:
         cold_start = self.cold_start
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
-        run_type = simulation_options["run"]["run_type"]        
+        run_type = simulation_options["run"]["run_type"]    
+        keep_gk_files = simulation_options.get("keep_files", 'all')
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare object
         # ------------------------------------------------------------------------------------------------------------------------
-                
-        gk_object = gk_object(rhos=rho_locations)
-
-        _ = gk_object.prep(
-            self.powerstate.profiles_transport,
-            self.folder,
-            )
-
+               
         subfolder_name = f"base_{code}"
-
-        _ = gk_object.run(
-            subfolder_name,
-            cold_start=cold_start,
-            forceIfcold_start=True,
-            **simulation_options["run"]
-            )
-        
-        if run_type in ['normal', 'submit']:
             
-            if run_type in ['submit']:
-                gk_object.check(every_n_minutes=10)
-                gk_object.fetch()
+        # <><><><><><>
+        # If the way to store data is in pickle, try first to read the stored pickled in the folder (e.g. for SR stage)
+        # <><><><><><>
+        gk_object_unpickled = False
+        if keep_gk_files in ['pickle']:
+            try:
+                pickle_file = self.folder / f"{subfolder_name}" / "gk_object.pkl"
+                gk_object = SIMtools.restore_class_pickle(pickle_file)
+                gk_object_unpickled = True
+                print('\t- Pickle file with GK object information has been restored successfully', typeMsg='i')
+            except Exception as e:
+                gk_object_unpickled = False
+                print('\t- Pickle file could not be read, with error:', typeMsg='w')
+                print(e)
+                
+        # <><><><><><>
+        # Standard run
+        # <><><><><><>
+        if not gk_object_unpickled:
+            gk_object = gk_object(rhos=rho_locations)
 
-            gk_object.read(
-                label=subfolder_name,
-                **simulation_options["read"]
+            _ = gk_object.prep(
+                self.powerstate.profiles_transport,
+                self.folder,
                 )
+
+            _ = gk_object.run(
+                subfolder_name,
+                cold_start=cold_start,
+                forceIfcold_start=True,
+                only_minimal_files=keep_gk_files in ['none', 'pickle'],
+                **simulation_options["run"]
+                )
+        
+        if run_type in ['normal', 'submit', 'send']:
+            
+            if not gk_object_unpickled:
+                
+                if run_type in ['submit']:
+                    gk_object.check(every_n_minutes=10)
+                    gk_object.fetch()
+
+                gk_object.read(
+                    label=subfolder_name,
+                    minimal=True,  # In case I pickle, I don't want to be extra heavy
+                    **simulation_options["read"]
+                    )
+                
+                # Special case to keep only the pickle file but remove all heavy files
+                if keep_gk_files in ['pickle']:
+                    
+                    # Remove results files in subfolder
+                    for file in gk_object.ResultsFiles:
+                        (self.folder / f"{subfolder_name}" / file).unlink(missing_ok=True)
+                    
+                    # Save the gk_object as pickle
+                    gk_object.save_pickle(pickle_file)
         
             # ------------------------------------------------------------------------------------------------------------------------
             # Pass the information to what power_transport expects

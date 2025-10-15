@@ -6,7 +6,7 @@ from types import MethodType
 import matplotlib.pyplot as plt
 import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
-from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
 from mitim_tools.opt_tools.optimizers import multivariate_tools
@@ -84,7 +84,7 @@ class powerstate:
 
         # Default options
         self.predicted_channels = evolution_options.get("ProfilePredicted", ["te", "ti", "ne"])
-        self.impurityPosition = evolution_options.get("impurityPosition", 1)
+        self.impurityPosition = evolution_options.get("impurityPosition", 0)
         self.impurityPosition_transport = copy.deepcopy(self.impurityPosition)
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
         self.fImp_orig = evolution_options.get("fImp_orig", 1.0)
@@ -146,7 +146,7 @@ class powerstate:
         # Object type (e.g. input.gacode)
         # -------------------------------------------------------------------------------------
 
-        if isinstance(profiles_object, PROFILEStools.gacode_state):
+        if isinstance(profiles_object, MITIMstate.mitim_state):
             self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
@@ -770,15 +770,16 @@ class powerstate:
         If var in MW/m^3, this gives as output the MW/m^2 profile
         """
         
+        r = self.plasma['roa']*self.plasma['a'].reshape(-1, 1)
         surface_used = self.plasma["volp"] # IMPORTANT Note: This is the GACODE definition, acknowledging that volp=dV/dr is not equal to the surface area
 
         if force_dim is None:
             return CALCtools.volume_integration(
-                var, self.plasma["rmin"], self.plasma["volp"]
+                var, r, self.plasma["volp"]
                 ) / surface_used
         else:
             return CALCtools.volume_integration(
-                var, self.plasma["rmin"][0,:].repeat(force_dim,1), self.plasma["volp"][0,:].repeat(force_dim,1)
+                var,r[0,:].repeat(force_dim,1), self.plasma["volp"][0,:].repeat(force_dim,1)
                 ) / surface_used[0,:].repeat(force_dim,1)            
 
 def add_axes_powerstate_plot(figMain, num_kp=3):

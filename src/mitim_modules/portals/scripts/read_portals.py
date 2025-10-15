@@ -42,7 +42,23 @@ def main():
 
     only_folder_structure_with_files = None
     if args.remote_minimal:
-        only_folder_structure_with_files = ["Outputs/optimization_data.csv","Outputs/optimization_extra.pkl","Outputs/optimization_object.pkl","Outputs/optimization_results.out"]
+        only_folder_structure_with_files = [
+            "Outputs/optimization_data.csv",
+            "Outputs/optimization_extra.pkl",
+            "Outputs/optimization_object.pkl",
+            "Outputs/optimization_results.out",
+            "Outputs/optimization_log.txt",
+            "Outputs/timing.jsonl",]
+        
+        # Bring back also if we were in simple relaxation stage
+        fold = "Initialization/initialization_simple_relax"
+        for i in range(10):
+            only_folder_structure_with_files.append(f"{fold}/portals_sr_ev_{i}/powerstate.pkl")            
+            
+        # Bring back portals profiles
+        fold = "Outputs/portals_profiles"
+        for i in range(100):
+            only_folder_structure_with_files.append(f"{fold}/input.gacode.{i}")            
             
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 

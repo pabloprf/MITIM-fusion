@@ -113,9 +113,9 @@ def normalizations_profiles(profiles):
             "ne_20": np.abs(profiles.profiles["ne(10^19/m^3)"]) * 1e-1,
             "Ti_keV": np.abs(profiles.profiles["ti(keV)"][:, 0]),
             "ni_20": np.abs(profiles.derived["ni_thrAll"]) * 1e-1,
-            "exp_Qe": profiles.derived["qe_MW"] / profiles.derived["surfGACODE_geo"],  # This is the same as qe_MWm2
-            "exp_Qi": profiles.derived["qi_MW"] / profiles.derived["surfGACODE_geo"],
-            "exp_Ge": profiles.derived["ge_10E20"] / profiles.derived["surfGACODE_geo"],
+            "exp_Qe": profiles.derived["qe_MWm2"] ,  # This is the same as qe_MWm2
+            "exp_Qi": profiles.derived["qi_MWm2"] ,
+            "exp_Ge": profiles.derived["ge_10E20m2"],
             "mi_ref": profiles.derived["mi_ref"],
         }
 

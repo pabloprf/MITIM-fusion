@@ -145,7 +145,9 @@ class gacode_state(MITIMstate.mitim_state):
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
-                    varT = [float(j) if (j[-4].upper() == "E" or "." in j) else 0.0for j in var0[1:]]
+                    if var0[1] == 'nan':
+                        raise Exception('[MITIM] There is a NaN in input.gacode, cannot continue')
+                    varT = [float(j) if (j[-4].upper() == "E" or "." in j) else 0.0 for j in var0[1:]]
 
                     var.append(varT)
 

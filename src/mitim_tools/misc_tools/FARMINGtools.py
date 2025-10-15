@@ -125,6 +125,7 @@ class mitim_job:
         output_files=None,
         output_folders=None,
         check_files_in_folder={},
+        output_folders_selective={},  # New parameter for selective folder content
         shellPreCommands=None,
         shellPostCommands=None,
         label_log_files="",
@@ -136,6 +137,9 @@ class mitim_job:
 
         check_files_in_folder is a dictionary with the folder name as key and a list of files to check as value, optionally.
             Otherwise, it will just check if the folder was received, but not the files inside it.
+
+        output_folders_selective is a dictionary with folder name as key and list of specific files/patterns to include as value.
+            e.g., {'results': ['*.dat', '*.log'], 'plots': ['figure1.png']}
 
         """
 
@@ -155,6 +159,8 @@ class mitim_job:
         self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
+        self.output_folders_selective = output_folders_selective if isinstance(output_folders_selective, dict) else {}
+
     def run(
             self,
             waitYN=True,
@@ -163,12 +169,15 @@ class mitim_job:
             removeScratchFolders_goingIn=None,
             check_if_files_received=True,
             attempts_execution=1,
+            execute_case_flag=True,
             helper_lostconnection=False,
             ):
         
         '''
+        execute_case_flag is a master flag to execute or not the commands. If False, the commands will not be executed.
+        
         if helper_lostconnection is True, it means that the connection to the remote machine was lost, but the files are there,
-        so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
+            so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
         '''
 
         removeScratchFolders_goingOut = removeScratchFolders
@@ -220,7 +229,7 @@ class mitim_job:
             check_if_files_received=waitYN and check_if_files_received,
             check_files_in_folder=self.check_files_in_folder,
             attempts_execution=attempts_execution,
-            execute_flag=not helper_lostconnection
+            execute_flag=execute_case_flag and (not helper_lostconnection)
         )
 
         # Get jobid
@@ -292,7 +301,7 @@ class mitim_job:
                 )
             else:
                 output, error = b"", b""
-                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="i")
+                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
 
             # ~~~~~~ Retrieve
             received = self.retrieve(
@@ -671,13 +680,30 @@ class mitim_job:
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remote side)")
+
+        # Build tar command with selective folder content
+        tar_items = []
+
+        # Add all output files
+        tar_items.extend(self.output_files)
+
+        # Add folders - either full folders or selective content
+        for folder in self.output_folders:
+            if folder in self.output_folders_selective:
+                # Add specific files from this folder
+                for pattern in self.output_folders_selective[folder]:
+                    tar_items.append(f"{folder}/{pattern}")
+            else:
+                # Add entire folder
+                tar_items.append(folder)
+
         self.execute(
             "tar -czf "
             + f'{self.folderExecution}/mitim_receive.tar.gz'
             + " -C "
             + f'{self.folderExecution}'
             + " "
-            + " ".join(self.output_files + self.output_folders)
+            + " ".join(tar_items)
         )
 
         # Download the tarball
@@ -878,10 +904,7 @@ class mitim_job:
                 if folder in check_files_in_folder:
                     for file in check_files_in_folder[folder]:
                         if not (self.folder_local / folder / file).exists():
-                            print(
-                                f"\t\t- File {file} not received in folder {folder}",
-                                typeMsg="w",
-                            )
+                            print(f"\t\t- File {file} not received in folder {folder}",typeMsg="w",)
                             received = False
 
         return received
@@ -1101,6 +1124,7 @@ def create_slurm_execution_files(
     cpuspertask = slurm_settings.setdefault("cpuspertask", None)
     ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
     gpuspertask = slurm_settings.setdefault("gpuspertask", None)
+    qos = slurm_settings.setdefault("qos", None)
 
     job_array = slurm_settings.setdefault("job_array", None)
     job_array_limit = slurm_settings.setdefault("job_array_limit", None)
@@ -1116,6 +1140,7 @@ def create_slurm_execution_files(
     constraint = slurm.setdefault("constraint", None)
     memory_req_by_config = slurm.setdefault("mem", None)
     request_exclusive_node = slurm.setdefault("exclusive", False)
+    
     
     if memory_req_by_job == 0 :
         print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
@@ -1159,6 +1184,8 @@ def create_slurm_execution_files(
         commandSBATCH.append(f"#SBATCH --partition {partition}")
     if account is not None:
         commandSBATCH.append(f"#SBATCH --account {account}")
+    if qos is not None:
+        commandSBATCH.append(f"#SBATCH --qos {qos}")
     if constraint is not None:
         commandSBATCH.append(f"#SBATCH --constraint {constraint}")
     if memory_req is not None:
@@ -1393,7 +1420,6 @@ def retrieve_files_from_remote(
         for file in ['mitim_bash.src', 'mitim_shell_executor.sh', 'paramiko.log', 'mitim.out']:
             (folder_local / file).unlink(missing_ok=True)
     
-
     # Return local addresses
     folders = [folder_local / IOtools.reducePathLevel(folder)[-1] for folder in folders_remote]
     files = [folder_local / IOtools.reducePathLevel(file)[-1] for file in files_remote]

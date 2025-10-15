@@ -4,11 +4,12 @@ import time
 import os
 import copy
 import numpy as np
+import dill as pickle_dill
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gacode_tools.utils import GACODEdefaults, NORMtools
-from mitim_tools.misc_tools import FARMINGtools, IOtools
+from mitim_tools.misc_tools import FARMINGtools, IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -67,7 +68,7 @@ class mitim_simulation:
             self.profiles = PROFILEStools.gacode_state(mitim_state)
         else:
             self.profiles = mitim_state
-
+            
         # Keep a copy of the file
         self.profiles.write_state(file=self.FolderGACODE / "input.gacode_torun")
 
@@ -115,7 +116,7 @@ class mitim_simulation:
         slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
         attempts_execution=1,
         only_minimal_files=False,
-        run_type = 'normal', # 'normal': submit and wait; 'submit': submit and do not wait; 'prep': do not submit
+        run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
@@ -277,9 +278,10 @@ class mitim_simulation:
             multipliers=multipliers,
             addControlFunction=self.run_specifications['control_function'],
             controls_file=self.run_specifications['controls_file'],
+            slurm_setup=slurm_setup,
             **kwargs_control
         )
-
+        
         code_executor_full[subfolder_simulation] = {}
         code_executor[subfolder_simulation] = {}
         for irho in self.rhos:
@@ -418,11 +420,11 @@ class mitim_simulation:
 
                 if cores_allocated is not None:
                     if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
-                        print(f"\t - Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        print(f"\t- Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                         max_cores_per_node = cores_allocated
                 elif cores_in_machine is not None:
                     if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
-                        print(f"\t - Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                        print(f"\t- Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                         max_cores_per_node = cores_in_machine
                 else:
                     # Default to just 16 just in case
@@ -443,7 +445,7 @@ class mitim_simulation:
             if machineSettings['gpus_per_node'] == 0:
                 max_cores_per_node_compare = max_cores_per_node
             else:
-                print(f"\t - Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                print(f"\t- Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                 max_cores_per_node_compare = machineSettings['gpus_per_node']
 
             if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
@@ -459,7 +461,7 @@ class mitim_simulation:
             if type_of_submission == "bash":
 
                 if cores_per_code_call > max_cores_per_node:
-                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified)",typeMsg="i")
+                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                     max_cores_per_node = cores_per_code_call
                 
                 max_parallel_execution = max_cores_per_node // cores_per_code_call # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
@@ -501,20 +503,18 @@ class mitim_simulation:
 
                 print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
 
-                # As a pre-command, organize all folders in a simpler way
-                shellPreCommands = []
-                shellPostCommands = []
+                folders_list = "FOLDERS=( "
                 array_list = []
                 for i, folder in enumerate(folders_red):
                     array_list.append(f"{i}")
-                    folder_temp_array = f"run{i}"
-                    folder_actual = folder
-                    shellPreCommands.append(f"mkdir {self.simulation_job.folderExecution}/{folder_temp_array}; cp {self.simulation_job.folderExecution}/{folder_actual}/*  {self.simulation_job.folderExecution}/{folder_temp_array}/.")
-                    shellPostCommands.append(f"cp {self.simulation_job.folderExecution}/{folder_temp_array}/* {self.simulation_job.folderExecution}/{folder_actual}/.; rm -r {self.simulation_job.folderExecution}/{folder_temp_array}")
+                    folders_list += f"{folder} "
+                folders_list += ")"
 
                 # Code launches
-                indexed_folder = 'run"$SLURM_ARRAY_TASK_ID"'
-                GACODEcommand = code_call(
+                GACODEcommand = folders_list + "\n\n"
+                
+                indexed_folder = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
+                GACODEcommand += code_call(
                     folder = indexed_folder,
                     n = cores_per_code_call,
                     p = self.simulation_job.folderExecution,
@@ -525,7 +525,7 @@ class mitim_simulation:
             # ---------------------------------------------
 
             slurm_settings = code_slurm_settings(
-                name=code,
+                name=code+'_sim',
                 minutes=minutes,
                 total_cores_required=total_cores_required,
                 cores_per_code_call=cores_per_code_call,
@@ -542,36 +542,43 @@ class mitim_simulation:
             )
             
             # I would like the mitim_job to check if the retrieved folders were complete
-            check_files_in_folder = {}
+            files_we_care_about = {}
             for folder in folders_red:
-                check_files_in_folder[folder] = filesToRetrieve
+                files_we_care_about[folder] = filesToRetrieve
             # ---------------------------------------------
 
             self.simulation_job.prep(
                 GACODEcommand,
                 input_folders=folders,
                 output_folders=folders_red,
-                check_files_in_folder=check_files_in_folder,
+                output_folders_selective=files_we_care_about,
+                check_files_in_folder=files_we_care_about,
                 shellPreCommands=shellPreCommands,
                 shellPostCommands=shellPostCommands,
             )
 
             # Submit run and wait
-            if run_type == 'normal':
+            if run_type in ['normal', 'send']:
             
-                self.simulation_job.run(
-                    removeScratchFolders=True,
-                    attempts_execution=attempts_execution,
-                    helper_lostconnection=kwargs_run.get("helper_lostconnection", False)
-                    )
+                run_status_int = 0
+                while run_status_int < 2:
+                    
+                    try:
+                        self.simulation_job.run(
+                            removeScratchFolders=True,
+                            attempts_execution=attempts_execution,
+                            helper_lostconnection=kwargs_run.get("helper_lostconnection", False),
+                            execute_case_flag = run_type == 'normal'
+                            )
+                        run_status_int = 2
+                    except LOGtools.InteractiveTerminalError:
+                        print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
+                        run_status_int += 1
                     
                 self._organize_results(code_executor, tmpFolder, filesToRetrieve)
 
             # Submit run but do not wait; the user should do checks and fetch results
             elif run_type == 'submit':
-            
-                if type_of_submission == "slurm_array":
-                    raise Exception("[MITIM] run_type='submit' with slurm_array not implemented yet because of issues about folders being moved around, TBD")
             
                 self.simulation_job.run(
                     waitYN=False,
@@ -668,6 +675,11 @@ class mitim_simulation:
                     final_destination.unlink(missing_ok=True)
 
                     temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                    
+                    if not temp_file.exists():
+                        print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
+                        continue
+                    
                     temp_file.replace(final_destination)
 
                     fineall = fineall and final_destination.exists()
@@ -951,6 +963,35 @@ class mitim_simulation:
         for ikey2 in variable_mapping | variable_mapping_unn:
             self.scans[label][ikey2] = np.atleast_2d(np.transpose(scan[ikey2]))
 
+    def prepare_for_save(self, class_to_store = None):
+        """
+        Remove potential unpickleable objects
+        """
+
+        if class_to_store is None:
+            class_to_store = self
+
+        if 'fn' in class_to_store.__dict__:
+            print('\t- Removing Qt object before pickling')
+            del class_to_store.fn
+
+        return class_to_store
+
+    def save_pickle(self, file, class_to_store = None):
+        
+        print('...Pickling simulation class...')
+                
+        class_to_store = self.prepare_for_save(class_to_store=class_to_store)
+
+        with open(file, "wb") as handle:
+            pickle_dill.dump(class_to_store, handle, protocol=4)
+            
+def restore_class_pickle(file):
+    
+    print('...Restoring pickled simulation class...')
+    
+    return IOtools.unpickle_mitim(file)
+
 def change_and_write_code(
     rhos,
     inputs0,
@@ -986,6 +1027,7 @@ def change_and_write_code(
             addControlFunction=addControlFunction,
             controls_file=controls_file,
             NS=inputs[rho].num_recorded,
+            slurm_setup=kwargs.get("slurm_setup", None),
         )
 
         input_file = input_sim_rho.file.name.split('_')[0]
@@ -1097,7 +1139,7 @@ def modifyInputs(
     # -------------------------------------------
 
     if code_settings is not None:
-        CodeOptions = addControlFunction(code_settings, **kwargs_to_function)
+        CodeOptions = addControlFunction(code_settings, extraOptions=extraOptions,**kwargs_to_function)
 
         # ~~~~~~~~~~ Change with presets
         print(f" \t- Using presets code_settings = {code_settings}", typeMsg="i")

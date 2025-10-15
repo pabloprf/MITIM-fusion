@@ -486,30 +486,22 @@ class OPTstep:
 
         # Info
         if len(self.outliers) > 0:
-            print(f"\t* OUTLIERS in positions: {self.outliers}. Adding to avoid points")
+            print(f"\t- Points {self.outliers} are considered outliers, so they are added to the list of points to avoid")
 
         try:
             self.avoidPoints.extend(self.outliers)
         except:
-            self.avoidPoints = [
-                int(i) for i in np.append(self.avoidPoints, self.outliers)
-            ]
-
-        if len(self.avoidPoints) > 0:
-            print(f"\t ~~ Avoiding {len(self.avoidPoints)} points: ", self.avoidPoints)
-
+            self.avoidPoints = [int(i) for i in np.append(self.avoidPoints, self.outliers)]
 
 def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]):
     """
     This routine finds outliers to be removed
     """
 
+    avoidPoints = []
     if stds_outside is not None:
-        print(
-            f"\t Checking outliers by +-{stds_outside}sigma from the rest (min number of {stds_outside_checker})"
-        )
+        print(f"\t- Checking outliers (outside +-{stds_outside}sigma) from the rest (if at least {stds_outside_checker} points)")
 
-        avoidPoints = []
         for i in range(y.shape[0]):
             outlier = False
             for j in range(y.shape[1]):
@@ -522,13 +514,10 @@ def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[])
                 outlier = outlier or outlier_this
 
                 if outlier_this:
-                    print(f"\t Point #{i} is an outlier in position {j}: {y[i,j]:.5f}")
+                    print(f"\t\t* Point #{i} is an outlier in outputs position {j}: {y[i,j]:.5f}")
 
             if outlier and i not in alreadyAvoided:
                 avoidPoints.append(i)
-
-    else:
-        avoidPoints = []
 
     return avoidPoints
 

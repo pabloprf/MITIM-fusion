@@ -1052,7 +1052,12 @@ class mitim_state:
             self.derived["mi_ref"],
             self.derived["B_unit"]
             )
-        self.derived['s_hat'] =  self.derived["r"]*self._deriv_gacode( np.log(abs(self.profiles["q(-)"])) )
+        # In the calculation of s_hat, avoid the singularity if q=0
+        self.derived['s_hat'] = np.where(
+            np.abs(self.profiles["q(-)"]) < 1e-10,
+            0.0,
+            self.derived["r"] * self._deriv_gacode(np.log(np.abs(self.profiles["q(-)"])))
+        )
         self.derived['s_q'] = (self.profiles["q(-)"] / self.derived['roa'])**2 * self.derived['s_hat']
         self.derived['s_q'][0] = 0.0 # infinite in first location
 
@@ -1422,9 +1427,9 @@ class mitim_state:
         # Contributions to dilution and to Zeff
         print(f'\t\t\t* New plasma has Zeff_vol={self.derived["Zeff_vol"]:.2f}, QN error={self.derived["QN_Error"]:.4f}')
 
-    def lumpImpurities(self):
+    def lumpImpurities(self, forcename=None):
 
-        self.lumpSpecies(ions_list=self.ion_list_impurities)
+        self.lumpSpecies(ions_list=self.ion_list_impurities, forcename=forcename)
 
     def lumpIons(self):
 
@@ -2515,7 +2520,7 @@ class mitim_state:
 
             #TODO  Does this work with no deuterium first ion?
             factor_nu = species[1]['Z']**4 * species[1]['DENS'] * (species[ie]['MASS']/species[1]['MASS'])**0.5 * species[1]['TEMP']**(-1.5)
-            
+
             plasma = {
                 'N_SPECIES': len(species),
                 'IPCCW': sign_bt,
@@ -2734,7 +2739,7 @@ class mitim_state:
 
         return input_parameters
 
-    def to_gx(self, r=[0.5], r_is_rho = True, code_settings = 'Linear'):
+    def to_gx(self, r=[0.5], r_is_rho = True, code_settings = 'Linear Tokamak'):
 
         # <> Function to interpolate a curve <> 
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
@@ -2831,21 +2836,32 @@ class mitim_state:
 
             parameters = {
                 'beta':     self.derived['betae'],
-                'rhoc':     self.derived['roa'],
-                'Rmaj':     self.derived['Rmajoa'],
-                'R_geo':    self.derived['Rmajoa'] / abs(self.derived['B_unit'] / self.derived['B0']),
-                'shift':    self._deriv_gacode(self.profiles["rmaj(m)"]),
-                'qinp':     np.abs(self.profiles["q(-)"]),
-                'shat':     self.derived["s_hat"],
-                'akappa':    self.profiles["kappa(-)"],
-                'akappri':  s_kappa,
-                'tri':    self.profiles["delta(-)"],
-                'tripri':   s_delta,
-                'betaprim':    betaprim,
             }
             
-            for k in parameters:
-                par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
+            # Standard geometry specification
+            if self.type == 'input.gacode':
+                parameters_geometry = {
+                    'rhoc':     self.derived['roa'],
+                    'Rmaj':     self.derived['Rmajoa'],
+                    'R_geo':    self.derived['Rmajoa'] / abs(self.derived['B_unit'] / self.derived['B0']),
+                    'shift':    self._deriv_gacode(self.profiles["rmaj(m)"]),
+                    'qinp':     np.abs(self.profiles["q(-)"]),
+                    'shat':     self.derived["s_hat"],
+                    'akappa':   self.profiles["kappa(-)"],
+                    'akappri':  s_kappa,
+                    'tri':      self.profiles["delta(-)"],
+                    'tripri':   s_delta,
+                    'betaprim': betaprim,
+                }
+            elif self.type == 'vmec':
+                parameters_geometry = {
+                    'torflux': self.profiles['rho(-)']**2,
+                }
+            
+            params = parameters | parameters_geometry
+            
+            for k in params:
+                par = torch.nan_to_num(torch.from_numpy(params[k]) if type(params[k]) is np.ndarray else params[k], nan=0.0, posinf=1E10, neginf=-1E10)
                 plasma[k] = interpolator(par)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
