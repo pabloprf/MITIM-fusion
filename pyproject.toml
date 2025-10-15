@@ -45,7 +45,7 @@ dependencies = [
   "f90nml",
   "pyyaml",
   "megpy @ git+https://github.com/gsnoep/megpy.git@unstable",
-  # "fibe @ git+https://github.com/aaronkho/fibe.git",
+  "fibe @ git+https://github.com/aaronkho/fibe.git",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
   # "vmecpp",

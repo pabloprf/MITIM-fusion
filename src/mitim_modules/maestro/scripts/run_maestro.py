@@ -88,6 +88,14 @@ def parse_maestro_nml(file_path):
         delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
         n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
         geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    elif separatrix_type == 'fibe': 
+        R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
+        a = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
+        kappa_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
+        delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
+        zeta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["zeta_sep"]
+        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
     elif separatrix_type == "geqdsk":
         # Initialize geometry from geqdsk file
         geqdsk_file = maestro_namelist["machine"]["separatrix"]["parameters"]["geqdsk_file"]
