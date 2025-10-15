@@ -1,5 +1,4 @@
 import json
-from mitim_tools.misc_tools import IOtools
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
@@ -79,7 +78,11 @@ class gyrokinetic_model:
                     
                     # Remove results files in subfolder
                     for file in gk_object.ResultsFiles:
-                        (self.folder / f"{subfolder_name}" / file).unlink(missing_ok=True)
+                        
+                        for rho in gk_object.rhos:
+                            fileN = self.FolderGACODE / f"{file}_{rho:.4f}"
+                        
+                            (self.folder / f"{subfolder_name}" / fileN).unlink(missing_ok=True)
                     
                     # Save the gk_object as pickle
                     gk_object.save_pickle(pickle_file)
