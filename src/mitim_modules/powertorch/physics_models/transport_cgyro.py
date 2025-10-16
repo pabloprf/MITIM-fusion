@@ -80,7 +80,7 @@ class gyrokinetic_model:
                     for file in gk_object.ResultsFiles:
                         
                         for rho in gk_object.rhos:
-                            fileN = self.FolderGACODE / f"{file}_{rho:.4f}"
+                            fileN = f"{file}_{rho:.4f}"
                         
                             (self.folder / f"{subfolder_name}" / fileN).unlink(missing_ok=True)
                     
