@@ -6,7 +6,6 @@ from mitim_tools.misc_tools import LOGtools, GRAPHICStools, IOtools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-import json, re
 from pathlib import Path
 import matplotlib.pyplot as plt
 from IPython import embed

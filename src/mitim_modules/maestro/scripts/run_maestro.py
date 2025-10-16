@@ -1,4 +1,6 @@
 import argparse
+import json
+import numpy as np
 from pathlib import Path
 from functools import partial
 from mitim_tools.misc_tools import IOtools
@@ -34,9 +36,9 @@ def parse_maestro_nml(file_path):
     Ip = maestro_namelist["machine"]["Ip"]
     Bt = maestro_namelist["machine"]["Bt"]
     
-    if maestro_namelist["assumptions"]["initialization"]["assume_neped"]:
-        neped = maestro_namelist["assumptions"]["initialization"]["neped_20"]
-        nesepratio = maestro_namelist["assumptions"]["initialization"]["nesep_ratio"]
+    if maestro_namelist["assumptions"]["pedestal"]["assume_neped"]:
+        neped = maestro_namelist["assumptions"]["pedestal"]["neped_20"]
+        nesepratio = maestro_namelist["assumptions"]["pedestal"]["nesep_ratio"]
         nesep = neped * nesepratio
     else:
         raise ValueError("[MITIM] Only assume_neped is supported for now")
@@ -46,8 +48,31 @@ def parse_maestro_nml(file_path):
         Zmini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][0]
         Amini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][1]
         fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
+        
+        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
+        
+    if maestro_namelist["machine"]["heating"]["type"] == "gaussian_sources":
+        Pe = maestro_namelist["machine"]["heating"]["parameters"]["Pe"]
+        Pi = maestro_namelist["machine"]["heating"]["parameters"]["Pi"]
+        nu_source = maestro_namelist["machine"]["heating"]["parameters"]["nu_source"]
+
+        from mitim_tools.misc_tools import PLASMAtools
+        def P_auxiliary(rhotor):
+            _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
+            return y
+    
+        force_auxiliary_heating_at_output = {
+            'Pe': [P_auxiliary, Pe],
+            'Pi': [P_auxiliary, Pi],
+            }
+        
+        Pich = Pe + Pi
+        Zmini = 1
+        Amini = 2
+        fmini = 0.0
+
     else:
-        raise ValueError("[MITIM] Only ICRH heating is supported for now")
+        raise ValueError("[MITIM] Heating type not supported")
     
     Zeff = maestro_namelist["assumptions"]["Zeff"]
     Tsep = maestro_namelist["assumptions"]["Tesep_eV"]*1E-3
@@ -71,10 +96,23 @@ def parse_maestro_nml(file_path):
     # ---------------------------------------------------------------------------------------
 
     separatrix_type = maestro_namelist["machine"]["separatrix"]["type"]
-    parameters_initialize = {
-        'BetaN_initialization': maestro_namelist["assumptions"]["initialization"]["BetaN"],
-        'peaking_initialization': maestro_namelist["assumptions"]["initialization"]["density_peaking"],
-        "initializer":separatrix_type}
+    
+    initialization_type = maestro_namelist["assumptions"]["initialization"]["type"]
+    
+    if initialization_type == 'eped_initializer':    
+        parameters_initialize = {
+            'type': initialization_type,
+            'BetaN_initialization': maestro_namelist["assumptions"]["initialization"]["options"]["BetaN"],
+            'peaking_initialization': maestro_namelist["assumptions"]["initialization"]["options"]["density_peaking"],
+            "initializer":separatrix_type
+            }
+    elif initialization_type == 'fixed_profiles':
+        parameters_initialize = {
+            'type': initialization_type,
+            'profiles_file': maestro_namelist["assumptions"]["initialization"]["options"]["profiles_file"],
+            'BetaN_initialization': maestro_namelist["assumptions"]["initialization"]["options"]["BetaN"],
+            "initializer":separatrix_type,
+            }
 
     # ---------------------------------------------------------------------------------------
     # Geometry parameters
@@ -171,13 +209,14 @@ def parse_maestro_nml(file_path):
 
     maestro_beats = maestro_namelist["maestro"]
 
-    return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
+    return parameters_engineering, parameters_initialize, geometry, force_auxiliary_heating_at_output, beat_namelists, maestro_beats, seed
 
 @mitim_timer('MAESTRO')
 def run_maestro_local(    
         parameters_engineering, 
         parameters_initialize, 
         geometry, 
+        force_auxiliary_heating_at_output,
         beat_namelists, 
         maestro_beats,
         seed,
@@ -227,13 +266,30 @@ def run_maestro_local(
         # Define creator
         # ****************************************************************************
         if not creator_added:
-            m.define_creator(
-                'eped_initializer', 
-                BetaN = parameters_initialize["BetaN_initialization"], 
-                nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped_initializer"],
-                **parameters_engineering
-                )
+            
+            # Standard EPED initializer
+            if parameters_initialize["type"] == "eped_initializer":
+
+                m.define_creator(
+                    'eped_initializer', 
+                    BetaN = parameters_initialize["BetaN_initialization"], 
+                    nu_ne = parameters_initialize["peaking_initialization"], 
+                    **beat_namelists["eped_initializer"],
+                    **parameters_engineering
+                    )
+            
+            # Fixed profiles from JSON file
+            elif parameters_initialize["type"] == "fixed_profiles":
+                
+                # Read from JSON
+                profiles_insert = read_fixed_profiles(parameters_initialize["profiles_file"])
+                
+                # Define creator
+                m.define_creator(
+                    'profiles', 
+                    profiles_insert = profiles_insert
+                    )
+                
             m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
             creator_added = True
 
@@ -243,7 +299,10 @@ def run_maestro_local(
 
         run_namelist = {}
         if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
-            run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
+            run_namelist = {
+                'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1},
+                'force_auxiliary_heating_at_output': force_auxiliary_heating_at_output
+                }
         elif maestro_beats["beats"][0] in ["eped", "eped_initializer"]:
             run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
 
@@ -255,6 +314,21 @@ def run_maestro_local(
     m.finalize()
 
     return m
+
+def read_fixed_profiles(file):
+    
+    with open(file, 'r') as f:
+        profiles_inserted_tmp = json.load(f)
+    
+    profiles_inserted = {
+        'rho': np.array(profiles_inserted_tmp['rho']),
+        'Te': np.array(profiles_inserted_tmp['Te_keV']),
+        'Ti': np.array(profiles_inserted_tmp['Ti_keV']),
+        'ne': np.array(profiles_inserted_tmp['ne_1e20m3']),
+    }
+    
+    return profiles_inserted
+
 
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')
