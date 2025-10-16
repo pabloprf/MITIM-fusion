@@ -124,7 +124,8 @@ class maestro:
         '''
         To initialize some profile functional form
         '''
-        if method == 'eped' or method == 'eped' or 'eped_initializer':
+
+        if method == 'eped' or method == 'eped_initializer':
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
