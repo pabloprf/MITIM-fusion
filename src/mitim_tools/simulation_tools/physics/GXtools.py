@@ -258,6 +258,9 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 label=labels[j],
                 c=colors[j],
             )
+           
+        # Back to the original labels before _correct_rhos_labels
+        self.results = self.results_all
 
 class GXinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
