@@ -19,7 +19,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         super().__init__(**kwargs)
 
-        def code_call(folder, p, n = 1, nomp = 1, additional_command="", **kwargs):
+        def code_call(folder, p, n = 1, additional_command="", **kwargs):
+            
+            # machineSettings = CONFIGread.machineSettings(code='cgyro')
+            
+            # nomp = 32 if n>=32 else (16 if n>=16 else (8 if n>=8 else (4 if n>=4 else 2)))
+            # numa = machineSettings['cores_per_node'] // nomp if n >= machineSettings['cores_per_node'] else 1
+            # mpinuma = 1
+
+            # return f"cgyro -e {folder} -n {n} -nomp {nomp} -numa {numa} -mpinuma {mpinuma} -p {p} {additional_command}"
+        
+            nomp = 1
             return f"cgyro -e {folder} -n {n} -nomp {nomp} -p {p} {additional_command}"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
@@ -27,6 +37,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             slurm_settings = {
                 "name": name,
                 "minutes": minutes,
+                'job_array_limit': None,    # Limit to this number at most running jobs at the same time?
             }
 
             # Gather if this is a GPU enabled machine
@@ -35,20 +46,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             if type_of_submission == "slurm_standard":
                 
                 slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
-                
-                if machineSettings['gpus_per_node'] > 0:
-                    slurm_settings['gpuspertask'] = cores_per_code_call
-                else:
-                    slurm_settings['cpuspertask'] = cores_per_code_call
 
             elif type_of_submission == "slurm_array":
 
                 slurm_settings['ntasks'] = 1
-                if machineSettings['gpus_per_node'] > 0:
-                    slurm_settings['gpuspertask'] = cores_per_code_call
-                else:
-                    slurm_settings['cpuspertask'] = cores_per_code_call
+                
                 slurm_settings['job_array'] = ",".join(array_list)
+
+            # Each simulation call will use these resources (must match what the code_call requests)
+            if machineSettings['gpus_per_node'] > 0:
+                slurm_settings['gpuspertask'] = cores_per_code_call
+            slurm_settings['cpuspertask'] = cores_per_code_call 
 
             return slurm_settings
 

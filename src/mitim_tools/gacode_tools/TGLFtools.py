@@ -54,14 +54,16 @@ class TGLF(SIMtools.mitim_simulation):
 
             if type_of_submission == "slurm_standard":
                 
-                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
-                slurm_settings['cpuspertask'] = cores_per_code_call
+                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call  # How many independent TGLF calls is this?
 
             elif type_of_submission == "slurm_array":
 
-                slurm_settings['ntasks'] = 1
-                slurm_settings['cpuspertask'] = cores_per_code_call
+                slurm_settings['ntasks'] = 1                                            # Each job in the array is one TGLF call
+                
                 slurm_settings['job_array'] = ",".join(array_list)
+
+            # Each simulation call will use these resources (must match what the code_call requests)
+            slurm_settings['cpuspertask'] = cores_per_code_call 
 
             return slurm_settings
 
