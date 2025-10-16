@@ -41,14 +41,17 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             if type_of_submission == "slurm_standard":
 
                 slurm_settings['ntasks'] = total_cores_required
-                slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
+                
                 slurm_settings['job_array'] = None
 
             elif type_of_submission == "slurm_array":
 
                 slurm_settings['ntasks'] = cores_per_code_call
-                slurm_settings['gpuspertask'] = 1
+
                 slurm_settings['job_array'] = ",".join(array_list)
+
+            # Each simulation call will use these resources (must match what the code_call requests)
+            slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
 
             return slurm_settings
 
