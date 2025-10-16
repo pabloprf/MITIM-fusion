@@ -438,6 +438,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                         cb.update_ticks()
                         #cb.set_label(f"{var} (common range)")
 
+        # Back to the original labels before _correct_rhos_labels
         self.results = self.results_all
 
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):

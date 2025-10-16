@@ -9,13 +9,15 @@ class GKplotting:
     def _correct_rhos_labels(self, labels):
         # If it has radii, we need to correct the labels
         self.results_all = copy.deepcopy(self.results)
-        self.results = {}
+        results = {}
         labels_with_rho = []
         for label in labels:
             for i,rho in enumerate(self.rhos):
                 labels_with_rho.append(f"{label}_{rho}")
-                self.results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
+                results[f'{label}_{rho}'] = self.results_all[label]['output'][i]
         labels = labels_with_rho
+        print(f"\t- Corrected labels for rhos: {labels}", typeMsg='i')
+        self.results = results
         # ------------------------------------------------
         
         return labels
