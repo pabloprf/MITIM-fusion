@@ -1,11 +1,9 @@
-#========================
-#Basic Simulation Parameters
-#============================
+# ========================
+# Simulation Parameters
+# ============================
 
 #Simulation Type (0=Linear, 1=Nonlinear)
 NONLINEAR_FLAG=1
-
-#Radius used for simulation
 
 #Data source
 PROFILE_MODEL=1 # 1: Use inputs in this file; 2: Useinput.gacode (indicate RMIN=<r/a value>)
@@ -28,9 +26,16 @@ FIELD_PRINT_FLAG=1
 #Toroidal modes per processor
 TOROIDALS_PER_PROC=1
 
-#===================================
-#Numerical Resolutions and Box Setup
-#===================================
+# Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugama #5 = Fast diagonal Lorentz)
+COLLISION_MODEL=4
+
+#Rotation
+ROTATION_MODEL=2
+SHEAR_METHOD=2
+
+# ===================================
+# Numerical Parameters
+# ===================================
 
 #Minimum Simulated Ky
 KY=3
@@ -74,9 +79,9 @@ NUP_RADIAL=3
 UP_ALPHA=0.0
 NUP_ALPHA=3
 
-#================================
-#Time Stepping/Data Output Setup
-#================================
+# ================================
+# Time Stepping/Data Output Setup
+# ================================
 
 #Adaptive(1) or fixed time step (0)
 DELTA_T_METHOD=1
@@ -88,7 +93,7 @@ DELTA_T=0.01
 PRINT_STEP=100
 
 #Max simulation time (units a/c_s)
-MAX_TIME=100 #900
+MAX_TIME=100
 
 #Frequency Tolerance
 FREQ_TOL=0.001
@@ -96,29 +101,21 @@ FREQ_TOL=0.001
 #Number of data outputs before saving a cold_start (DELTA_T*PRINT_STEP is one data output)
 RESTART_STEP=10
 
-#===============================
-#Physics Flags
-#===============================
+# Output turbulent energy exchange terms
+EXCH_FLAG=1
 
-# Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugma
-#5 = Fast diagonal Lorentz)
-COLLISION_MODEL=4
+# ===============================
+# Scaling Factors
+# ===============================
 
-#Rotation Scaling of Exp. Values
-ROTATION_MODEL=2
-SHEAR_METHOD=2
 GAMMA_E_SCALE=1.0
 GAMMA_P_SCALE=1.0
 MACH_SCALE=1.0
 
-#Scaling of Electron beta and Lambda Debye
 BETAE_UNIT_SCALE=1.0
 BETA_STAR_SCALE=1.0
 LAMBDA_STAR_SCALE=1.0
 
-EXCH_FLAG=1
-
-# Gradient scalings
 DLNTDR_SCALE_1 = 1.0
 DLNTDR_SCALE_2 = 1.0
 DLNTDR_SCALE_3 = 1.0
