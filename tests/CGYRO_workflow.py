@@ -16,9 +16,9 @@ cgyro = CGYROtools.CGYRO(rhos = [0.5, 0.7])
 
 cgyro.prep(gacode_file,folder)
 
-# ---------------
-# Standalone run
-# ---------------
+# ---------------------------------------------------------------------------
+# Linear: standalone run and using the submit/check/fetch functionality
+# ---------------------------------------------------------------------------
 
 run_type = 'submit' # 'normal': submit and wait; 'submit': Just prepare and submit, do not wait [requies cgyro.check() and cgyro.fetch()]
 
@@ -38,16 +38,15 @@ cgyro.run(
     run_type=run_type, 
     )
 
-if run_type == 'submit':
-    cgyro.check(every_n_minutes=1)
-    cgyro.fetch()
+cgyro.check(every_n_minutes=1)
+cgyro.fetch()
 
+# Read results
 cgyro.read(label="cgyro1")
-cgyro.plot(labels=["cgyro1"])
 
-# ---------------
-# Scan of KY
-# ---------------
+# ---------------------------------------------------------------------------
+# Linear: scan of KY and using the normal run functionality
+# ---------------------------------------------------------------------------
 
 run_type = 'normal'
 
@@ -61,21 +60,65 @@ cgyro.run_scan(
     varUpDown=[0.3,0.4],
     relativeChanges=False,
     slurm_setup={
-        'cores':16
+        'cores':16,
+        'minutes': 10,
         },
     cold_start=cold_start,
     forceIfcold_start=True,
     run_type=run_type
     )
 
-# Plot results as normal runs
-cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
-
-# Plot results as scan of KY
+# Read scan results
 cgyro.read_linear_scan(label="scan1", variable='KY', store_as_label="scan1_rho0", irho=0)
 cgyro.read_linear_scan(label="scan1", variable='KY', store_as_label="scan1_rho1", irho=1)
 
+# ---------------------------------------------------------------------------
+# Nonlinear (super coarse run to be fast!)
+# ---------------------------------------------------------------------------
+
+run_type = 'normal'
+
+cgyro.run(
+    'Nonlinear',
+    code_settings="Nonlinear",
+    extraOptions={
+        'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
+        'KY': 0.1,
+        'N_TOROIDAL': 12,
+        'TOROIDALS_PER_PROC': 3,
+        'BOX_SIZE': 3,
+        'N_RADIAL': 48,
+        'N_XI': 8,
+        'N_THETA': 8,
+        'N_ENERGY': 4,
+        'COLLISION_MODEL': 5,
+        'ROTATION_MODEL': 1,
+    },
+    slurm_setup={
+        'cores':16, # Each CGYRO instance (each radius will have this number of cores or gpus)
+        'minutes': 10,
+        },
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    run_type=run_type, 
+    )
+
+cgyro.read(label="cgyro2")
+
+
+# ---------------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------------
+
+# Plot results of the linear runs, as normal ones
+cgyro.plot(labels=["cgyro1"])
+cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
+
+# Special plot type: quick linear plot
 fig = cgyro.fn.add_figure(label="Quick linear", tab_color=1)
 cgyro.plot_quick_linear(labels=["scan1_rho0", "scan1_rho1"], fig = fig)
+
+# Plot results of the nonlinear run
+cgyro.plot(labels=["cgyro2"], fn = cgyro.fn)
 
 cgyro.fn.show()
