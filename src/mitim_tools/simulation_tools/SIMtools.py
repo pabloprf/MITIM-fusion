@@ -243,15 +243,15 @@ class mitim_simulation:
         Folder_sim = self.FolderGACODE / subfolder_simulation
 
         output_files_new = []
-        for i in self.output_files_simulation['complete']:
+        for i in self.output_files_simulation["complete"]:
             if "mitim.out" not in i:
                 output_files_new.append(i)
-        self.output_files_simulation['complete'] = output_files_new
+        self.output_files_simulation["complete"] = output_files_new
 
         if only_minimal_files:
-            filesToRetrieve = self.output_files_simulation['minimal']
+            filesToRetrieve = self.output_files_simulation["minimal"]
         else:
-            filesToRetrieve = self.output_files_simulation['complete']
+            filesToRetrieve = self.output_files_simulation["complete"]
 
         # Do I need to run all radii?
         rhosEvaluate = cold_start_checker(
@@ -328,9 +328,9 @@ class mitim_simulation:
         """
         
         if kwargs_run.get("only_minimal_files", False):
-            filesToRetrieve = self.output_files_simulation['minimal']
+            filesToRetrieve = self.output_files_simulation["minimal"]
         else:
-            filesToRetrieve = self.output_files_simulation['complete']
+            filesToRetrieve = self.output_files_simulation["complete"]
 
         c = 0
         for subfolder_simulation in code_executor:

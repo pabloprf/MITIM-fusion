@@ -78,7 +78,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t CGYRO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.output_files_simulation['minimal'] = [
+        self.output_files_simulation["minimal"] = [
             "bin.cgyro.geo",
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
@@ -105,24 +105,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.freq",       # Sometimes not there?
         ]
 
-        self.output_files_simulation['complete'] = self.output_files_simulation['minimal'] + [
+        self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
             "bin.cgyro.restart",    # I may not want to bring restarts always
             "out.cgyro.tag",        # Related to the restart
             "mitim.out",
             "bin.cgyro.phib",       # Only available in linear runs?
             "bin.cgyro.aparb",      # Only available in linear runs?
             "bin.cgyro.bparb",      # Only available in linear runs?
-        ]
-
-        self.output_files_test = [
-            "out.cgyro.equilibrium",
-            "out.cgyro.info",
-            "out.cgyro.mpi",
-            "input.cgyro.gen",
-            "out.cgyro.egrid",
-            "out.cgyro.grids",
-            "out.cgyro.memory",
-            "out.cgyro.rotation",
         ]
 
     # Redefine to raise warning

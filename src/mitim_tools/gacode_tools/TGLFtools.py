@@ -92,11 +92,11 @@ class TGLF(SIMtools.mitim_simulation):
             print("* Readying previously-run TGLF class", typeMsg="i")
         else:
             
-            self.output_files_simulation['minimal'] = [
+            self.output_files_simulation["minimal"] = [
                 "out.tglf.gbflux",
             ]
             
-            self.output_files_simulation['complete'] = self.output_files_simulation['minimal'] + [
+            self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
                 "out.tglf.run",
                 "out.tglf.eigenvalue_spectrum",
                 "out.tglf.sum_flux_spectrum",
@@ -181,8 +181,8 @@ class TGLF(SIMtools.mitim_simulation):
             del kwargs_TGLFrun["multipliers"]
 
         self.ky_single = kys
-        output_files_simulation_backup = copy.deepcopy(self.output_files_simulation['complete'])
-        self.output_files_simulation['complete'] = copy.deepcopy(self.output_files_simulation['WF'])
+        output_files_simulation_backup = copy.deepcopy(self.output_files_simulation["complete"])
+        self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation['WF'])
 
         self.FoldersTGLF_WF = {}
         if self.ky_single is not None:
@@ -260,8 +260,8 @@ class TGLF(SIMtools.mitim_simulation):
             )
 
         # Recover previous stuff
-        self.output_files_simulation['WF'] = copy.deepcopy(self.output_files_simulation['complete'])
-        self.output_files_simulation['complete'] = output_files_simulation_backup
+        self.output_files_simulation['WF'] = copy.deepcopy(self.output_files_simulation["complete"])
+        self.output_files_simulation["complete"] = output_files_simulation_backup
         # -----------
 
     def prepare_for_save_TGLF(self):

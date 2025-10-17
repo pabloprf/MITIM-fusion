@@ -73,11 +73,11 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t GX class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.output_files_simulation['minimal'] = [
+        self.output_files_simulation["minimal"] = [
             'gxplasma.out.nc'
         ]
 
-        self.output_files_simulation['complete'] = self.output_files_simulation['minimal'] + [
+        self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
             'gxplasma.eik.out',
             'gxplasma.eiknc.nc',
             'gxplasma.gx_geo.log',
@@ -138,19 +138,19 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Assume every template writes a restart file named "gxplasma.restart.nc"
         # If extraOptions indicate not to write a restart, remove the file
         if not kwargs_sim_run.get('extraOptions', {}).get('save_for_restart', True):
-            self.output_files_simulation['complete'].remove("gxplasma.restart.nc")
+            self.output_files_simulation["complete"].remove("gxplasma.restart.nc")
             print("\t- Not saving restart file")
 
         # If the name has changed, update the results files list
         if kwargs_sim_run.get('extraOptions', {}).get('restart_to_file', None) is not None:
             restart_name = kwargs_sim_run['extraOptions']['restart_to_file']
-            self.output_files_simulation['complete'].remove("gxplasma.restart.nc")
-            self.output_files_simulation['complete'].append(restart_name)
+            self.output_files_simulation["complete"].remove("gxplasma.restart.nc")
+            self.output_files_simulation["complete"].append(restart_name)
             print(f"\t- Saving restart file as {restart_name}")
 
         if (self.profiles.type == 'vmec') or (kwargs_sim_run.get('extraOptions', {}).get('geo_option', 'miller') == 'vmec'):
-            self.output_files_simulation['complete'].remove('gxplasma.eik.out')
-            self.output_files_simulation['complete'].remove('gxplasma.eiknc.nc')
+            self.output_files_simulation["complete"].remove('gxplasma.eik.out')
+            self.output_files_simulation["complete"].remove('gxplasma.eiknc.nc')
 
         # ------------------------------------
         # Add numerical setup based on plasma
