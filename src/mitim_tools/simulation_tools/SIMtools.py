@@ -25,8 +25,11 @@ class mitim_simulation:
     ):
         self.rhos = np.array(rhos) if rhos is not None else None
 
-        self.ResultsFiles = []
-        self.ResultsFiles_minimal = []
+        # A simulation may have multiple ways to run (e.g. linear, nonlinear, etc) with different outputs, or not desirable to bring everything locally
+        self.output_files_simulation = {
+            'complete': [],
+            'minimal': [],
+        } 
         
         self.nameRunid = "0"
         
@@ -239,16 +242,16 @@ class mitim_simulation:
         inputs = copy.deepcopy(self.inputs_files)
         Folder_sim = self.FolderGACODE / subfolder_simulation
 
-        ResultsFiles_new = []
-        for i in self.ResultsFiles:
+        output_files_new = []
+        for i in self.output_files_simulation['complete']:
             if "mitim.out" not in i:
-                ResultsFiles_new.append(i)
-        self.ResultsFiles = ResultsFiles_new
+                output_files_new.append(i)
+        self.output_files_simulation['complete'] = output_files_new
 
         if only_minimal_files:
-            filesToRetrieve = self.ResultsFiles_minimal
+            filesToRetrieve = self.output_files_simulation['minimal']
         else:
-            filesToRetrieve = self.ResultsFiles
+            filesToRetrieve = self.output_files_simulation['complete']
 
         # Do I need to run all radii?
         rhosEvaluate = cold_start_checker(
@@ -325,9 +328,9 @@ class mitim_simulation:
         """
         
         if kwargs_run.get("only_minimal_files", False):
-            filesToRetrieve = self.ResultsFiles_minimal
+            filesToRetrieve = self.output_files_simulation['minimal']
         else:
-            filesToRetrieve = self.ResultsFiles
+            filesToRetrieve = self.output_files_simulation['complete']
 
         c = 0
         for subfolder_simulation in code_executor:
@@ -1079,7 +1082,7 @@ def inputToVariable(folder, rhos, file='input.tglf'):
 
 def cold_start_checker(
     rhos,
-    ResultsFiles,
+    output_files_simulation_select,
     Folder_sim,
     cold_start=False,
     print_each_time=False,
@@ -1094,7 +1097,7 @@ def cold_start_checker(
         rhosEvaluate = []
         for ir in rhos:
             existsRho = True
-            for j in ResultsFiles:
+            for j in output_files_simulation_select:
                 ffi = Folder_sim / f"{j}_{ir:.4f}"
                 existsThis = ffi.exists()
                 existsRho = existsRho and existsThis

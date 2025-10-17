@@ -78,7 +78,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t CGYRO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.ResultsFiles_minimal = [
+        self.output_files_simulation['minimal'] = [
             "bin.cgyro.geo",
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
@@ -104,8 +104,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.version",
             "bin.cgyro.freq",       # Sometimes not there?
         ]
-        
-        self.ResultsFiles = self.ResultsFiles_minimal + [
+
+        self.output_files_simulation['complete'] = self.output_files_simulation['minimal'] + [
             "bin.cgyro.restart",    # I may not want to bring restarts always
             "out.cgyro.tag",        # Related to the restart
             "mitim.out",

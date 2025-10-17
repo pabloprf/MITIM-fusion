@@ -77,7 +77,7 @@ class gyrokinetic_model:
                 if keep_gk_files in ['pickle']:
                     
                     # Remove results files in subfolder
-                    for file in gk_object.ResultsFiles:
+                    for file in gk_object.output_files_simulation['complete']:
                         
                         for rho in gk_object.rhos:
                             fileN = f"{file}_{rho:.4f}"

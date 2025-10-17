@@ -59,7 +59,7 @@ class NEO(SIMtools.mitim_simulation):
         print("\t\t\t NEO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.ResultsFiles = self.ResultsFiles_minimal = ['out.neo.transport_flux']
+        self.output_files_simulation['complete'] = self.output_files_simulation['minimal'] = ['out.neo.transport_flux']
         
     def plot(
         self,
