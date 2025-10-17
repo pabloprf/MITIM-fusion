@@ -88,14 +88,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.kxky_v",
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
-            "bin.cgyro.phib",
-            "bin.cgyro.aparb",
-            "bin.cgyro.bparb",
             "input.cgyro",
             "input.cgyro.gen",
             "out.cgyro.egrid",
             "out.cgyro.equilibrium",
-            "out.cgyro.freq",
             "out.cgyro.grids",
             "out.cgyro.hosts",
             "out.cgyro.info",
@@ -107,12 +103,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
+            "bin.cgyro.freq",       # Sometimes not there?
         ]
         
         self.ResultsFiles = self.ResultsFiles_minimal + [
-            "bin.cgyro.restart",
-            "out.cgyro.tag",
+            "bin.cgyro.restart",    # I may not want to bring restarts always
+            "out.cgyro.tag",        # Related to the restart
             "mitim.out",
+            "bin.cgyro.phib",       # Only available in linear runs?
+            "bin.cgyro.aparb",      # Only available in linear runs?
+            "bin.cgyro.bparb",      # Only available in linear runs?
         ]
 
         self.output_files_test = [
