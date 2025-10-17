@@ -102,19 +102,32 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
-            "bin.cgyro.freq",       # Sometimes not there?
+            
         ]
 
-        self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
+        self.output_files_simulation["complete_base"] = self.output_files_simulation["minimal"] + [   
             "bin.cgyro.restart",    # I may not want to bring restarts always
             "out.cgyro.tag",        # Related to the restart
             "mitim.out",
-            "bin.cgyro.phib",       # Only available in linear runs?
-            "bin.cgyro.aparb",      # Only available in linear runs?
-            "bin.cgyro.bparb",      # Only available in linear runs?
         ]
 
-    # Redefine to raise warning
+        # Nonlinear sim
+        self.output_files_simulation["complete_nonlinear"] = self.output_files_simulation["complete_base"] + [
+            "bin.cgyro.freq"
+            ]
+
+        # Linear sim
+        self.output_files_simulation["complete_linear"] = self.output_files_simulation["complete_base"] + [
+            "out.cgyro.freq",
+            "bin.cgyro.phib", 
+            "bin.cgyro.aparb",
+            "bin.cgyro.bparb",
+            ]
+        
+        # Make sure, just in case, that "complete" is populated from this __init__, even if it will be re-defined later
+        self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
+
+    # Redefine to raise warning and allow selection of output files
     def _run_prepare(
         self,
         subfolder_simulation,
@@ -140,6 +153,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 print(f"The use of *_SCALE_* is discouraged, please use the appropriate variable instead.", typeMsg='q')
             
         # ---------------------------------------------
+            
+        # Check if it's linear
+        if 'Linear' in kwargs.get('code_settings', ''):
+            self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_linear"])
+        else:
+            self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
             
         return super()._run_prepare(
             subfolder_simulation,

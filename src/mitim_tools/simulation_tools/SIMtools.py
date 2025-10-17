@@ -248,6 +248,10 @@ class mitim_simulation:
                 output_files_new.append(i)
         self.output_files_simulation["complete"] = output_files_new
 
+        # ------------------------------------------------
+        # Selection of files to retrieve
+        # ------------------------------------------------
+        
         if only_minimal_files:
             filesToRetrieve = self.output_files_simulation["minimal"]
         else:
