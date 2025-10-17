@@ -254,8 +254,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
                         self.linear_converged = True
                         break
         
-            self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
-            self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            if 'fnorm' in self.cgyrodata.__dict__.keys():
+                self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
+                self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            else:
+                self.f = self.cgyrodata.freq[0,:,:]                # (ky, time)
+                self.g = self.cgyrodata.freq[1,:,:]                # (ky, time)
+                
             if self.g is np.nan or self.f is np.nan:
                 raise ValueError(f"[MITIM] Could not find f or g in CGYRO data at {info_file}. Please check the folder path or run CGYRO first.")
 
