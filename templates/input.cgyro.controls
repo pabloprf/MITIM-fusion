@@ -26,7 +26,7 @@ FIELD_PRINT_FLAG=1
 #VELOCITY_ORDER=2
 
 #Toroidal modes per processor
-#TOROIDALS_PER_PROC=1
+TOROIDALS_PER_PROC=1
 
 #===================================
 #Numerical Resolutions and Box Setup
