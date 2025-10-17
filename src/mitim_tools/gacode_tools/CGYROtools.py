@@ -88,7 +88,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.kxky_v",
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
-            "input.cgyro",
             "input.cgyro.gen",
             "out.cgyro.egrid",
             "out.cgyro.equilibrium",
