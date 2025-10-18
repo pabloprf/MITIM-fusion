@@ -78,7 +78,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t CGYRO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.output_files_simulation["minimal"] = [
+        self.output_files_simulation["minimal_base"] = [
             "bin.cgyro.geo",
             "bin.cgyro.kxky_e",
             "bin.cgyro.kxky_n",
@@ -102,30 +102,33 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.time",
             "out.cgyro.timing",
             "out.cgyro.version",
-            
         ]
 
-        self.output_files_simulation["complete_base"] = self.output_files_simulation["minimal"] + [   
+        self.output_files_simulation["complete_base"] = self.output_files_simulation["minimal_base"] + [   
             "bin.cgyro.restart",    # I may not want to bring restarts always
             "out.cgyro.tag",        # Related to the restart
             "mitim.out",
         ]
 
         # Nonlinear sim
-        self.output_files_simulation["complete_nonlinear"] = self.output_files_simulation["complete_base"] + [
-            "bin.cgyro.freq"
-            ]
+        for key in ['minimal', 'complete']:
+            self.output_files_simulation[f"{key}_nonlinear"] = self.output_files_simulation[f"{key}_base"] + [
+                "bin.cgyro.freq"
+                ]
 
         # Linear sim
-        self.output_files_simulation["complete_linear"] = self.output_files_simulation["complete_base"] + [
-            "out.cgyro.freq",
-            "bin.cgyro.phib", 
-            "bin.cgyro.aparb",
-            "bin.cgyro.bparb",
-            ]
+        for key in ['minimal', 'complete']:
+            self.output_files_simulation[f"{key}_linear"] = self.output_files_simulation[f"{key}_base"] + [
+                "out.cgyro.freq",
+                "bin.cgyro.phib", 
+                "bin.cgyro.aparb",
+                "bin.cgyro.bparb",
+                ]
         
-        # Make sure, just in case, that "complete" is populated from this __init__, even if it will be re-defined later
+        # Make sure, just in case, that "complete" and "minimal" are populated from this __init__, even if it will be re-defined later
         self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
+        self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
+        
 
     # Redefine to raise warning and allow selection of output files
     def _run_prepare(
@@ -150,15 +153,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         for key in dictionary_check:
             if '_SCALE_' in key:
-                print(f"The use of *_SCALE_* is discouraged, please use the appropriate variable instead.", typeMsg='q')
+                print("The use of *_SCALE_* is discouraged, please use the appropriate variable instead.", typeMsg='q')
             
         # ---------------------------------------------
             
         # Check if it's linear
-        if 'Linear' in kwargs.get('code_settings', ''):
+        if 'Nonlinear' not in kwargs.get('code_settings', ''):
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_linear"])
+            self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_linear"])
         else:
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
+            self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
+            
             
         return super()._run_prepare(
             subfolder_simulation,
