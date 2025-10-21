@@ -227,6 +227,7 @@ class transp_beat(beat):
         self.profiles_output.profiles['ne(10^19/m^3)'] = p_frozen.profiles['ne(10^19/m^3)']
         self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
         self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
+        self.profiles_output.profiles['w0(rad/s)'] = p_frozen.profiles['w0(rad/s)']
 
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
         profiles_output_pre_merge.changeResolution(rho_new = p_frozen.profiles['rho(-)'])

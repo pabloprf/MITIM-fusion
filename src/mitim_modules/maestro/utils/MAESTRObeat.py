@@ -359,8 +359,8 @@ class creator:
                     print('\t- Both psin and rho provided to insert profiles, using psin',typeMsg = 'w')
                 self.profiles_insert['rho'] = np.interp(self.profiles_insert['psin'], self.initialize_instance.profiles_current.derived['psi_pol_n'], self.initialize_instance.profiles_current.profiles['rho(-)'])
 
-            rho, Te, Ti, ne = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne']
-            
+            rho, Te, Ti, ne, w0 = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne'], self.profiles_insert['w0']
+
             # Update profiles
             self.initialize_instance.profiles_current.changeResolution(rho_new = rho)
 
@@ -372,6 +372,8 @@ class creator:
             old_density = copy.deepcopy(self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'])
             self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
+
+            self.initialize_instance.profiles_current.profiles['w0(rad/s)'] = w0
 
             # Update derived
             self.initialize_instance.profiles_current.derive_quantities()
@@ -397,6 +399,7 @@ class creator_from_parameterization(creator):
             nu_ne = None,
             aLn = None,
             aLT = None,
+            w0 = None,
             label = 'parameterization',
             nresol = 501
             ):
@@ -407,6 +410,8 @@ class creator_from_parameterization(creator):
             self.netop_20 = netop_20
             self.Tsep_keV = Tsep_keV
             self.nesep_20 = nesep_20
+            
+            self.w0 = w0
 
             # Initialization parameters
             self.BetaN = BetaN
@@ -424,7 +429,7 @@ class creator_from_parameterization(creator):
             rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne}
+            self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne, 'w0': np.zeros_like(rho)}
             super().__call__()
 
             return ((self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne) ** 2
@@ -438,7 +443,7 @@ class creator_from_parameterization(creator):
             rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne, 'w0': np.zeros_like(rho)}
             super().__call__()
 
             return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
@@ -476,12 +481,16 @@ class creator_from_parameterization(creator):
 
             # Create profiles
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a,nx = self.nresol)
+            rho = np.linspace(0, 1, self.nresol)
+            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,x = rho)
+            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,x = rho)
+            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a,x = rho)
+
+            # Rotation must be provided
+            w0 = self.w0 if self.w0 is not None else np.zeros_like(rho)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne, 'w0': w0}
             super().__call__()
 
 
@@ -499,6 +508,7 @@ class creator_from_eped(creator_from_parameterization):
         nu_ne = None,
         aLT = None,
         aLn = None,
+        w0 = None,
         nresol = 501,
         **kwargs_eped
         ):
@@ -510,6 +520,7 @@ class creator_from_eped(creator_from_parameterization):
         self.aLn_guess = aLn
         self.parameters = kwargs_eped
         self.nresol = nresol
+        self.w0 = w0
         if self.BetaN is None:
             raise ValueError('[MITIM] BetaN must be provided in the current implementation of EPED creator')
 
