@@ -39,7 +39,7 @@ class TGYRO:
         so that the name can be grabbed and be used as the nameJob
         """
 
-        self.LocationCDF = cdf
+        self.LocationCDF = Path(cdf)
         if cdf is not None:
             _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
         else:
@@ -4656,7 +4656,7 @@ def produceInputs_TGYROworkflow(
 ):
     folderWork = IOtools.expandPath(tmpFolder)
     try:
-        nameRunid = LocationCDF.stem
+        nameRunid = Path(LocationCDF.stem)
     except:
         # This is in case I have given a None to the location of the cdf because I just want
         # to prep() from .cdf and .geq directly
