@@ -51,12 +51,11 @@ def parse_maestro_nml(file_path):
         
         force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
         
-    if maestro_namelist["machine"]["heating"]["type"] == "gaussian_sources":
+    elif maestro_namelist["machine"]["heating"]["type"] == "gaussian_sources":
         Pe = maestro_namelist["machine"]["heating"]["parameters"]["Pe"]
         Pi = maestro_namelist["machine"]["heating"]["parameters"]["Pi"]
         nu_source = maestro_namelist["machine"]["heating"]["parameters"]["nu_source"]
 
-        from mitim_tools.misc_tools import PLASMAtools
         def P_auxiliary(rhotor):
             _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
             return y
@@ -325,6 +324,7 @@ def read_fixed_profiles(file):
         'Te': np.array(profiles_inserted_tmp['Te_keV']),
         'Ti': np.array(profiles_inserted_tmp['Ti_keV']),
         'ne': np.array(profiles_inserted_tmp['ne_1e20m3']),
+        'w0': np.array(profiles_inserted_tmp['w0_rads']),
     }
     
     return profiles_inserted
