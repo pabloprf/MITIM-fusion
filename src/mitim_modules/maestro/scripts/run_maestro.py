@@ -319,13 +319,20 @@ def read_fixed_profiles(file):
     with open(file, 'r') as f:
         profiles_inserted_tmp = json.load(f)
     
-    profiles_inserted = {
-        'rho': np.array(profiles_inserted_tmp['rho']),
-        'Te': np.array(profiles_inserted_tmp['Te_keV']),
-        'Ti': np.array(profiles_inserted_tmp['Ti_keV']),
-        'ne': np.array(profiles_inserted_tmp['ne_1e20m3']),
-        'w0': np.array(profiles_inserted_tmp['w0_rads']),
+    profiles_inserted = {}
+    
+    variables_to_extract = {
+        'rho': 'rho',
+        'roa': 'roa',
+        'Te_keV': 'Te',
+        'Ti_keV': 'Ti',
+        'ne_1e20m3': 'ne',
+        'w0_rads': 'w0',
     }
+    
+    for key, new_key in variables_to_extract.items():
+        if key in profiles_inserted_tmp:
+            profiles_inserted[new_key] = np.array(profiles_inserted_tmp[key])
     
     return profiles_inserted
 
