@@ -72,8 +72,8 @@ class portals(STRATEGYtools.opt_evaluator):
     ):
 
         # Grab exploration ranges
-        ymax = self.portals_parameters["solution"]["exploration_ranges"]["ymax"]
-        ymin = self.portals_parameters["solution"]["exploration_ranges"]["ymin"]
+        ymax = float(self.portals_parameters["solution"]["exploration_ranges"]["ymax"])
+        ymin = float(self.portals_parameters["solution"]["exploration_ranges"]["ymin"])
         limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
         fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
         yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
