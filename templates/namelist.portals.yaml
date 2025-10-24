@@ -52,9 +52,9 @@ solution:
     #           'te': [1.0, 0.5, 0.5, 0.5]
     #           'ti': [0.5, 0.5, 0.5, 0.5]
     #           ...
-    ymax: 1.0
-    ymin: 1.0
-    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
+    ymin: 1.0 # Means it will explore -1x from the original gradients, i.e. from 0.0
+    ymax: 3.0 # Means it will explore +3x from the original gradients, i.e. up to 3 x aLT_original
+    yminymax_atleast: [0,2] # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
 
     # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
     enforce_finite_aLT: null
@@ -67,7 +67,7 @@ solution:
 
     reevaluate_targets: 0
 
-    # DEPCRECATED, #TOREMOVE
+    # DEPCRECATED, #TODO: REMOVE
     fixed_gradients: null
 
   # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
@@ -86,14 +86,14 @@ solution:
   # Physics-informed parameters to fit surrogates (numbers are the last iteration to consider that line; keys are the physics-informed parameters
   # and the values are the corresponding variables to check if they have varied, that affect that input)
   portals_transformation_variables:
-    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
-    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
+    10:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
+    30:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
     10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne]}
 
   # Physics-informed parameters to fit surrogates for trace impurities
   portals_transformation_variables_trace:
-    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
-    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
+    10:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
+    30:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
     10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne], aLnZ: [aLnZ]}
 
 # -----------------------------------------------------------------
@@ -113,6 +113,17 @@ transport:
 
     # Neoclassical transport model
     neoclassical_model: "neo"
+
+  # Function to post-process input.gacode only *before* passing to transport codes
+  profiles_postprocessing_fun: null
+
+  # Corrections to be applied to each iteration input.gacode file
+  applyCorrections:
+    Ti_thermals: true       # Keep all *thermal* ion temperatures equal to the main Ti
+    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+    recalculate_ptot: true  # Recompute PTOT to insert in input file each time (careful if you have made fast ions thermal)
+    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
+    force_mach: null        # Change w0 to match this Mach number when Ti varies
 
   # Simulation kwargs to be passed directly to run and read commands (defaults here)
   options:
@@ -215,18 +226,6 @@ transport:
       #     all: retrieve all files from all runs
       #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
       keep_files: "pickle" 
-
-  # Function to post-process input.gacode only *before* passing to transport codes
-  profiles_postprocessing_fun: null
-
-  # Corrections to be applied to each iteration input.gacode file
-  applyCorrections:
-    Ti_thermals: true       # Keep all thermal ion temperatures equal to the main Ti
-    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
-    recalculate_ptot: true  # Recompute PTOT to insert in input file each time
-    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
-    force_mach: null        # Change w0 to match this Mach number when Ti varies
-
 
 # -----------------------------------------------------------------
 # Target model parameters
