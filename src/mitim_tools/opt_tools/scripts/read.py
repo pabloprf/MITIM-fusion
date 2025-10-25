@@ -66,12 +66,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     xes = []
     resS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
-        res = BOgraphics.optimization_results(
-            folderWork / "Outputs" / "optimization_results.out"
-        )
-        res.readClass(
-            STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
-        )
+        res = BOgraphics.optimization_results(folderWork / "Outputs" / "optimization_results.out")
+        res.readClass(STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl"))
         res.read()
 
         plotAllmembers = len(folderWorks) <= 3

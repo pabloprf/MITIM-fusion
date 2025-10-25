@@ -153,7 +153,7 @@ class gyrokinetic_model:
         
         for i in range(len(radii_stable)):
             if radii_stable[i]:
-                print(f"\t- Qi considered stable at radius #{i}, ({QiMWm2[i]:.2f} < {Qi_stable_criterion:.2f})", typeMsg='i')
+                print(f"\t- Qi considered stable at radius #{i}, ({QiMWm2[i]:.2f} < {Qi_stable_criterion:.2f})", typeMsg='q')
                 Qi_std = QiGB_target[i] * Qi_stable_percent_error / 100
                 print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target as standard deviation: {Qi_std:.2f} instead of {self.QiGB_turb_stds[i]}", typeMsg='i')
                 self.QiGB_turb_stds[i] = Qi_std
@@ -223,11 +223,14 @@ def post_checks(self, rtol = 1e-3):
         print(f"\t- Additional info found in fluxes_turb.json:", typeMsg='i')
         for k, v in additional_info_from_json.items():
             vP = self.powerstate.plasma[k].cpu().numpy()[0,1:]
-            print(f"\t   {k} from JSON      : {[round(i,4) for i in v]}", typeMsg='i')
-            print(f"\t   {k} from POWERSTATE: {[round(i,4) for i in vP]}", typeMsg='i')
+            
+            crit = not np.allclose(v, vP, rtol=rtol)
 
-            if not np.allclose(v, vP, rtol=rtol):
-                all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.2f}%:", typeMsg='q')
+            print(f"\t   {k} from JSON      : {[round(float(i),4) for i in v]}", typeMsg='' if not crit else 'i')
+            print(f"\t   {k} from POWERSTATE: {[round(float(i),4) for i in vP]}", typeMsg='' if not crit else 'i')
+
+            if crit:
+                all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.3f}%:", typeMsg='q')
 
     return all_good
 
