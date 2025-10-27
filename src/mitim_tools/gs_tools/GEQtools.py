@@ -10,6 +10,7 @@ from mitim_tools.gs_tools.utils import GEQplotting
 from shapely.geometry import LineString
 from scipy.integrate import quad, cumulative_trapezoid
 import megpy
+from megpy import fluxsurface # Not sure why it fails without this
 import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -134,7 +135,7 @@ class MITIMgeqdsk:
 
         psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
         contour995 = megpy.tracer.contour(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995)
-        fs995 = megpy.fluxsurface.FluxSurface()
+        fs995 = fluxsurface.FluxSurface()
         fs995.from_RZ(contour995['X'],contour995['Y'])
         fs995.to_turnbull()
         #fs995.to_toq9()
