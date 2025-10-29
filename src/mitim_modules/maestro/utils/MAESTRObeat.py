@@ -218,8 +218,9 @@ class initializer_from_geqdsk(beat_initializer):
 
         self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
         self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.delta995
+        self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.zeta995
 
-        print('\t\t- 0.995 flux surface kappa and delta saved for future beats -> ', f.kappa995, f.delta995)
+        print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', f.kappa995, f.delta995, f.zeta995)
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FreeGS: load the equilibrium, convert to geqdsk and call the geqdsk initializer
