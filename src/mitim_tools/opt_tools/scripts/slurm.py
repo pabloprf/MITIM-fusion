@@ -91,6 +91,7 @@ def run_slurm_array(
     machine="local",
     exclude=None,
     mem=None, 
+    qos=None,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -118,14 +119,18 @@ def run_slurm_array(
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
             command=command,
-            folder_remote=folder,
+            folderExecution=folder,
             folder_local=folder,
             nameJob=nameJob,
             slurm={"partition": partition, 'exclude': exclude},
-            minutes=int(60 * hours),
-            ntasks=1,
-            cpuspertask=n,
-            memory_req_by_job=mem,
+            slurm_settings = {
+                'name': nameJob,
+                'minutes': int(60 * hours),
+                'ntasks': 1,
+                'cpuspertask': n,
+                'memory_req_by_job': mem,
+                'qos': qos
+            },
             job_array=f'{string_of_array_input}%{max_concurrent_jobs}',
 
         )
