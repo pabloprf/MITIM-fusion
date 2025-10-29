@@ -44,7 +44,7 @@ dependencies = [
   "tensorflow", 
   "f90nml",
   "pyyaml",
-  "megpy>=2.0",
+  "megpy>=2.0.3",
   "fibe>=0.3",
   "vmecpp",
   # "quends @ git+https://github.com/sandialabs/quends.git"
