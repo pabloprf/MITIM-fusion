@@ -111,16 +111,20 @@ class MITIMgeqdsk:
         self.cx_area = abs(cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0))
         self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
 
-        #self.kappa995 = np.interp(
-        #    0.995,
-        #    self.psi_pol_norm,
-        #    self.g.derived["miller_geo"]["kappa"],
-        #)
-        #self.delta995 = np.interp(
-        #    0.995,
-        #    self.psi_pol_norm,
-        #    self.g.derived["miller_geo"]["delta"],
-        #)
+        # convert 995 contour to Turnbull
+        psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
+        fs995 = megpy.fluxsurface.FluxSurface()
+        fs995.from_tracer(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995,analytic_shape=True)
+        fs995.to_turnbull(initial=fs995.shape_analytic)
+        #fs995.to_toq9()
+
+        # extract shape coefficients
+        self.kappa995 = fs995.shape[3]
+        self.delta995 = fs995.shape[4]
+        self.zeta995 = fs995.shape[5]
+        #self.zeta995_in = fs995.shape[5]
+        #self.zeta995_out = fs995.shape[6]
+
         self.kappa95 = np.interp(
             0.95,
             self.psi_pol_norm,
@@ -131,19 +135,6 @@ class MITIMgeqdsk:
             self.psi_pol_norm,
             self.g.derived["miller_geo"]["delta"],
         )
-
-        psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
-        contour995 = megpy.tracer.contour(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995)
-        fs995 = megpy.fluxsurface.FluxSurface()
-        fs995.from_RZ(contour995['X'],contour995['Y'])
-        fs995.to_turnbull()
-        #fs995.to_toq9()
-
-        self.kappa995 = fs995.shape[3]
-        self.delta995 = fs995.shape[4]
-        self.zeta995 = fs995.shape[5]
-        #self.zeta995_in = fs995.shape[5]
-        #self.zeta995_out = fs995.shape[6]
 
         """
         --------------------------------------------------------------------------------------------------------------------------------------
