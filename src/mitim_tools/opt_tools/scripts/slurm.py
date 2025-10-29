@@ -121,7 +121,6 @@ def run_slurm_array(
             command=command,
             folderExecution=folder,
             folder_local=folder,
-            nameJob=nameJob,
             slurm={"partition": partition, 'exclude': exclude},
             slurm_settings = {
                 'name': nameJob,
@@ -129,9 +128,10 @@ def run_slurm_array(
                 'ntasks': 1,
                 'cpuspertask': n,
                 'memory_req_by_job': mem,
-                'qos': qos
+                'qos': qos, 
+                'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
             },
-            job_array=f'{string_of_array_input}%{max_concurrent_jobs}',
+
 
         )
 
