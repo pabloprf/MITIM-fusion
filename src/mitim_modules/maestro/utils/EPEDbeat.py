@@ -580,7 +580,7 @@ class eped_beat(beat):
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
         # From a geqdsk initialization
-        if 'zeta995' in self.maestro_instance.parameters
+        if 'zeta995' in self.maestro_instance.parameters:
             self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
             print(f"\t\t- Using previous zeta995: {self.zeta995}")
 
