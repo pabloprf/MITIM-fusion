@@ -154,13 +154,13 @@ class eped_beat(beat):
                 'R': np.abs(R),
                 'a': np.abs(a),
                 'kappa995': np.abs(kappa995),
-                'delta995': np.abs(delta995),
+                'delta995': delta995,
                 'neped_20': np.abs(neped_20),
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
                 'nesep_ratio': np.abs(nesep_ratio),
-                'zeta': np.abs(zeta995)
+                'zeta': zeta995
             }
         else: 
             self.current_evaluation = {
@@ -580,7 +580,7 @@ class eped_beat(beat):
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
         # From a geqdsk initialization
-        if 'zeta995' in self.maestro_instance.parameters:
+        if 'zeta995' in self.maestro_instance.parameters_trans_beat:
             self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
             print(f"\t\t- Using previous zeta995: {self.zeta995}")
 
