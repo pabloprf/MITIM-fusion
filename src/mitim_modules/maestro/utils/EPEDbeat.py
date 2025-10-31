@@ -579,10 +579,16 @@ class eped_beat(beat):
             self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
+        # From a geqdsk initialization
+        if 'zeta995' in self.maestro_instance.parameters
+            self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
+            print(f"\t\t- Using previous zeta995: {self.zeta995}")
+
         # From a previous EPED beat, grab the rhotop
         if 'rhotop' in self.maestro_instance.parameters_trans_beat:
             self.rhotop = self.maestro_instance.parameters_trans_beat['rhotop']
             print(f"\t\t- Using previous rhotop: {self.rhotop}")
+
             
     def _inform_save(self, eped_output = None):
 
