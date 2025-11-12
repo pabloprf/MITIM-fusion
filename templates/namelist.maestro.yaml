@@ -91,7 +91,7 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+  beats: ["transp_soft", "lengyel", "eped", "portals", "lengyel", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
@@ -131,6 +131,18 @@ maestro:
         a: 0.57
       ptop_multiplier: 1.0
       TioverTe: 1.0
+
+  lengyel_beat:
+
+    use_default: false
+
+    # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
+    lengyel_namelist_location: null
+
+    seed_impurity_species: 
+      name: ["Neon"]
+      Z : [10]
+      ratio_sep_top: [1.0]
 
   portals_beat:
 

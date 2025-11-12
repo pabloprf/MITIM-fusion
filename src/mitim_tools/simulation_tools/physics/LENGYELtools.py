@@ -38,8 +38,8 @@ class Lengyel():
         params = {
             'major_radius': ['profiles', 'rcentr(m)', 'm', 0],
             'minor_radius': ['derived', 'a', 'm', None],
-            'elongation_psi95': ['derived', 'kappa95', '', None],
-            'triangularity_psi95': ['derived', 'delta95', '', None],
+            'elongation_psi95': ['derived', 'kappa95', ' ', None],
+            'triangularity_psi95': ['derived', 'delta95', ' ', None],
             'magnetic_field_on_axis': ['profiles', 'bcentr(T)', 'T', 0],
             'plasma_current': ['profiles', 'current(MA)', 'MA', 0],
             'ion_mass': ['derived', 'mbg_main', 'amu', None],
@@ -73,7 +73,7 @@ class Lengyel():
             folder.mkdir(parents=True, exist_ok=True)
         elif cold_start:
             print(f"\t- Cold starting Lengyel run; cleaning folder '{folder}'")
-            os.system(f'rm -rf {folder}')
+            os.system(f'rm -rf {folder}/*')
         
         # Potentially modify namelist with input_dict
         for key in input_dict:

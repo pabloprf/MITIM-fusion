@@ -13,6 +13,7 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 
 MARKERSIZE = 1
 LW = 1.0
@@ -31,6 +32,8 @@ def grabMAESTRO(folder):
             beat_types.append('portals')
         elif (folder_beats / f'{beats[beat]}' / 'run_eped').exists():
             beat_types.append('eped')
+        elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
+            beat_types.append('lengyel')
 
     # First initializer
     beat_initializer = None
@@ -90,6 +93,8 @@ def plot_results(self, fn):
             key = f'PORTALS b#{i+1}'
         elif isinstance(beat, eped_beat):
             key = f'EPED b#{i+1}'
+        elif isinstance(beat, lengyel_beat):
+            key = f'Lengyel b#{i+1}'
         
         objs[key] = profs
 

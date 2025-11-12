@@ -47,7 +47,7 @@ dependencies = [
   "megpy>=2.0.3",
   "fibe>=0.3",
   "vmecpp",
-  "extended-lengyel @ git+https://github.com/cfs-energy/extended-lengyel.git",
+  #"extended-lengyel @ git+https://github.com/cfs-energy/extended-lengyel.git",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
   # "quends @ git+https://github.com/sandialabs/quends.git"
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models

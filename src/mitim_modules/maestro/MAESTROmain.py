@@ -9,9 +9,10 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __version__, __mitimroot__
 from IPython import embed
 
+from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
-from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
@@ -110,6 +111,9 @@ class maestro:
         elif beat == 'eped':
             print(f'\n- Beat {self.counter_current}: EPED ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = eped_beat(self)
+        elif beat == 'lengyel':
+            print(f'\n- Beat {self.counter_current}: LENGYEL ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = lengyel_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
