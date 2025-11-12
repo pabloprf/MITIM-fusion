@@ -80,7 +80,7 @@ class lengyel_beat(beat):
         
         # Modify input.gacode
         p = copy.deepcopy(self.profiles_current)
-        self._apply_Lengyel_to_profiles(p, impurity_name, impurity_z, Tesep, fZ_top)
+        self._apply_Lengyel_to_profiles(p, impurity_name, impurity_z, Tesep, fZ_sep, fZ_top)
         
         # Enforce quasineutrality
         p.enforceQuasineutrality()
@@ -88,7 +88,7 @@ class lengyel_beat(beat):
         # Write modified input.gacode.lengyel
         p.write_state(file=self.folder / 'input.gacode.lengyel')
         
-    def _apply_Lengyel_to_profiles(self, p, impurity_name, impurity_z, Tesep, fZ_top):
+    def _apply_Lengyel_to_profiles(self, p, impurity_name, impurity_z, Tesep, fZ_sep, fZ_top):
     
         i_Z = 3
     
@@ -117,17 +117,26 @@ class lengyel_beat(beat):
     
         print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_z}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
         
-        nZ_sep = fZ_top * p.profiles['ne(10^19/m^3)'][-1]
         p.profiles['z'][i_Z] = impurity_z
         p.profiles['name'][i_Z] = impurity_name[:2]
         
         if self.rhotop is None:
-            print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly')
-            p.profiles['ni(10^19/m^3)'][:, i_Z] *= nZ_sep / p.profiles['ni(10^19/m^3)'][-1, i_Z]
+            print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly by the top (after applying enrichment) value, exact from ne profile')
+            p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
+        
         else:
-            print(f'\t\t- Using rhotop = {self.rhotop:.3f} to scale impurity density profiles only from rhotop to the new separatrix value')
+            print(f'\t\t- Using rhotop = {self.rhotop:.3f} to scale impurity density profiles')
+            
+            # First, scale impurity density profile entirely by the desired top value
+            nZ_top_new = fZ_top * p.profiles['ne(10^19/m^3)'][-1]
+            ix = np.argmin(np.abs(p.profiles['rho(-)'] - self.rhotop))
+            nZ_top_old = p.profiles['ni(10^19/m^3)'][ix, i_Z]
+            
+            p.profiles['ni(10^19/m^3)'][:, i_Z] *= nZ_top_new / nZ_top_old
+            
+            # Then modify the edge such that it goes to nZ_sep (Apply quadratic scaling from rhotop to separatrix)
+            nZ_sep = fZ_sep * p.profiles['ne(10^19/m^3)'][-1]
             _scale_quadratic(p, p.profiles['ni(10^19/m^3)'][:, i_Z], self.rhotop, nZ_sep)
-
 
     def finalize(self, *args, **kwargs):
         
@@ -157,7 +166,7 @@ def _scale_quadratic(p, var, rhotop, val_sep, plotYN=False):
     ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
     factor_array = np.ones_like( p.profiles['rho(-)'] )
 
-    # Create a non-linear scaling that starts slowly and accelerates
+    # Create a non-linear scaling that starts,io9slowly and accelerates
     n_points = len(p.profiles['rho(-)']) - ix
     t = np.linspace(0, 1, n_points)  # Normalized parameter from 0 to 1
     factor_array[ix:] = 1.0 + (val_sep / var_orig[-1] - 1.0) * t**2  # Quadratic profile
