@@ -156,10 +156,7 @@ class TGYRO:
             self.profiles = profilesclass_custom
 
         if remove_tmp:
-            print(
-                "\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",
-                typeMsg="i",
-            )
+            print("\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",typeMsg="i",)
             IOtools.shutil_rmtree(self.FolderGACODE_tmp)
 
     def run(

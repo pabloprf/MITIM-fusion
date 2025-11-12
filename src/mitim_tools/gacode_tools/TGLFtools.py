@@ -311,6 +311,7 @@ class TGLF(SIMtools.mitim_simulation):
                 If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
                 Optionally, I can give tgyro_results for further info in such a case
         """
+        print('[MITIM DEPRECATION NOTICE] The option of initializing TGLF runs using TGYRO on an input.gacode will be removed in a future release', typeMsg="w")
 
         print("> Preparation of TGLF run")
 
