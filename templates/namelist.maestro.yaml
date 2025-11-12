@@ -91,7 +91,7 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "transp", "lengyel", "eped", "portals", "lengyel", "eped", "portals"]
+  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
