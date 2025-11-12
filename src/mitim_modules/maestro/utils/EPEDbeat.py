@@ -351,6 +351,7 @@ class eped_beat(beat):
                 scan_results[key]['wtop_psipol'] = np.array(scan_results[key]['wtop_psipol'])
                 scan_results[key]['value'] = np.array(scan_results[key]['value'])
 
+                self.nn.force_within_range = None # Do not throw warnings during the scan
                 scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped)
 
         # ---------------------------------
