@@ -128,8 +128,8 @@ def plot_results(self, fn):
     fig = fn.add_figure(label='MAESTRO init', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHK
+        AEFGIJ
         """
     )
     axs = [ ax for ax in axs.values() ]
@@ -158,8 +158,8 @@ def plot_results(self, fn):
         fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=2)
         axs = fig.subplot_mosaic(
             """
-            ABCDH
-            AEFGI
+            ABCDHJ
+            AEFGIK
             """
         )
         axs = [ ax for ax in axs.values() ]
@@ -176,8 +176,8 @@ def plot_results(self, fn):
     fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHJ
+        AEFGIK
         """
     )
     axs = [ ax for ax in axs.values() ]
