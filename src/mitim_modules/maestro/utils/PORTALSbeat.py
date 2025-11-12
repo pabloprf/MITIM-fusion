@@ -299,7 +299,7 @@ class portals_beat(beat):
 
         reusing_surrogate_data = False
         self.folder_starting_point = None
-        if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat):
+        if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and ('portals_last_run_folder' in self.maestro_instance.parameters_trans_beat):
             if 'surrogate_options' not in self.optimization_options:
                 self.optimization_options['surrogate_options'] = {}
             self.optimization_options['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
