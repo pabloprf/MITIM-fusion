@@ -91,7 +91,7 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "lengyel", "eped", "portals", "lengyel", "eped", "portals"]
+  beats: ["transp_soft", "transp", "lengyel", "eped", "portals", "lengyel", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
@@ -136,13 +136,18 @@ maestro:
 
     use_default: false
 
-    # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
-    lengyel_namelist_location: null
+    lengyel_namelist:
 
-    seed_impurity_species: 
-      name: ["Neon"]
-      Z : [10]
-      ratio_sep_top: [1.0]
+      # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
+      lengyel_namelist_location: null
+
+      # Path to radas directory. If null, it will use $RADAS_DIR environement variable
+      radas_dir: null
+
+      seed_impurity_species: 
+        name: ["Neon"]
+        Z : [10]
+        ratio_sep_top: [1.0]
 
   portals_beat:
 
