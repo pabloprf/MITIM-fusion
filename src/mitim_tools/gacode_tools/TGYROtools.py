@@ -33,13 +33,16 @@ for the normalization:
 
 
 class TGYRO:
-    def __init__(self, cdf=None, time=100.0, avTime=0.0):
+    def __init__(self, cdf='.', time=100.0, avTime=0.0):
         """
         cdf is not required if later I provide the input.gacode directly. However, it is best to give a "dummy location"
         so that the name can be grabbed and be used as the nameJob
         """
+        if cdf == None: 
+            self.LocationCDF = None
+        else:
+            self.LocationCDF = Path(cdf) # Path cannot take a nonetype
 
-        self.LocationCDF = Path(cdf)
         if cdf is not None:
             _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
         else:
