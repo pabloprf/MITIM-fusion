@@ -476,8 +476,8 @@ class eped_beat(beat):
         fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
-            ABCDH
-            AEFGI
+            ABCDHJ
+            AEFGIK
             """
         )
         axs = [ ax for ax in axs.values() ]
