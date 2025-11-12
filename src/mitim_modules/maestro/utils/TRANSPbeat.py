@@ -42,7 +42,6 @@ class transp_beat(beat):
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
-        
         **transp_namelist
         ):
         '''
@@ -294,6 +293,13 @@ class transp_beat(beat):
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4, 1.0
         
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+
+    # -----------------------------------------------------------------------------------------------------------------------
+    # MAESTRO interface
+    # -----------------------------------------------------------------------------------------------------------------------
+    def _inform_save(self, *args, **kwargs):
+        
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
