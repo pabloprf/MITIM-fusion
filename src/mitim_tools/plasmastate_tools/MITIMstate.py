@@ -2048,11 +2048,11 @@ class mitim_state:
             fig = plt.figure()
             axs = fig.subplot_mosaic(
                 """
-                    ABCDH
-                    AEFGI
+                    ABCDHJ
+                    AEFGIK
                 """
             )
-            axs = [axs['A'], axs['B'], axs['C'], axs['D'], axs['E'], axs['F'], axs['G'], axs['H'], axs['I']]
+            axs = [axs['A'], axs['B'], axs['C'], axs['D'], axs['E'], axs['F'], axs['G'], axs['H'], axs['I'], axs['J'], axs['K']]
 
         # ----------------------------------
         # Equilibria
@@ -2138,38 +2138,26 @@ class mitim_state:
         # Powers
         # ----------------------------------
 
-        # RF
+        # RF and Ohmic
         ax = axs[5]
 
-        ax.plot(self.profiles['rho(-)'], self.profiles['qrfe(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
-        ax.plot(self.profiles['rho(-)'], self.profiles['qrfi(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfe(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label+', ICH e', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qrfi(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', ICH i', color=color)
+        ax.plot(self.profiles['rho(-)'], self.profiles['qohme(MW/m^3)'], '-.s', markersize=ms, lw = lw, label=label+', Ohmic', color=color)
 
         ax.set_xlabel("$\\rho_N$")
-        ax.set_ylabel("$P_{ich}$ (MW/m$^3$)")
+        ax.set_ylabel("$P$ (MW/m$^3$)")
         #ax.set_ylim(bottom = 0)
         ax.set_xlim(0,1)
         ax.legend(prop={'size':8})
         GRAPHICStools.addDenseAxis(ax)
-        ax.set_title("ICH Power Deposition")
-
-        # Ohmic
-        ax = axs[6]
-
-        ax.plot(self.profiles['rho(-)'], self.profiles['qohme(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label, color=color)
-
-        ax.set_xlabel("$\\rho_N$")
-        ax.set_ylabel("$P_{oh}$ (MW/m$^3$)")
-        #ax.set_ylim(bottom = 0)
-        ax.set_xlim(0,1)
-        ax.legend(prop={'size':8})
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title("Ohmic Power Deposition")
+        ax.set_title("Power Deposition")
 
         # ----------------------------------
         # Heat fluxes
         # ----------------------------------
 
-        ax = axs[7]
+        ax = axs[6]
 
         ax.plot(self.profiles['rho(-)'], self.derived['qe_MWm2'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
         ax.plot(self.profiles['rho(-)'], self.derived['qi_MWm2'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
@@ -2186,7 +2174,7 @@ class mitim_state:
         # Dynamic targets
         # ----------------------------------
 
-        ax = axs[8]
+        ax = axs[7]
 
         ax.plot(self.profiles['rho(-)'], self.derived['qrad'], '-o', markersize=ms, lw = lw, label=label+', rad', color=color)
         ax.plot(self.profiles['rho(-)'], self.profiles['qei(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', exc', color=color)
@@ -2200,6 +2188,77 @@ class mitim_state:
         ax.legend(prop={'size':8})
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Dynamic Targets")
+
+        # ----------------------------------
+        # Ions: Main
+        # ----------------------------------
+
+        ls = GRAPHICStools.listmarkersLS()
+
+        ax = axs[8]
+        cont = 0
+        addedSpecies = []
+        sumFi = np.zeros(self.profiles['rho(-)'].shape)
+        if self.Dion is not None:
+            ax.plot(self.profiles['rho(-)'], self.derived['fi'][:,self.Dion], ls[cont], markersize=ms, lw = lw, label=label+', D', color=color)
+            addedSpecies.append(self.Dion)
+            sumFi += self.derived['fi'][:,self.Dion]
+            cont += 1
+        if self.Tion is not None:
+            ax.plot(self.profiles['rho(-)'], self.derived['fi'][:,self.Tion], ls[cont], markersize=ms, lw = lw, label=label+', T', color=color)
+            addedSpecies.append(self.Tion)
+            sumFi += self.derived['fi'][:,self.Tion]
+            cont += 1
+        if 'Mion' in self.__dict__ and self.Mion is not None:
+            ax.plot(self.profiles['rho(-)'], self.derived['fi'][:,self.Mion], ls[cont], markersize=ms, lw = lw, label=label+', Main', color=color)
+            addedSpecies.append(self.Mion)
+            sumFi += self.derived['fi'][:,self.Mion]
+            cont += 1
+            
+        ax.plot(self.profiles['rho(-)'], sumFi, ls[cont], markersize=ms, lw = lw*2.0, label=label+', Sum Main', color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("Concentration ($f_i$)")
+        ax.set_ylim([0,1])
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Main Ions")
+
+        # ----------------------------------
+        # Ions: Others
+        # ----------------------------------
+
+        ax = axs[9]
+        cont = 0
+        for i in range(len(self.Species)):
+            if i not in addedSpecies:
+                ax.plot(self.profiles['rho(-)'], self.derived['fi'][:,i], ls[cont], markersize=ms, lw = lw, label=label+f', {self.profiles["name"][i]}', color=color)
+                cont += 1
+        
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("Concentration ($f_i$)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_yscale('log')
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Impurity Ions")
+
+        # ----------------------------------
+        # Ions: Zeff
+        # ----------------------------------
+        
+        ax = axs[10]
+        ax.plot(self.profiles['rho(-)'], self.derived['Zeff'], '-o', markersize=ms, lw = lw, label=label, color=color)
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("Zeff")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Zeff Profile")
+
 
     def csv(self, file="input.gacode.xlsx"):
         dictExcel = IOtools.OrderedDict()
