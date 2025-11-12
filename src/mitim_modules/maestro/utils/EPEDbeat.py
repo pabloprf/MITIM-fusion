@@ -30,11 +30,14 @@ class eped_beat(beat):
             BetaN = None,           # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
             Tesep_keV = None,       # Force this Te at the separatrix, otherwise from the profiles_current
             nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
-            corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
+            corrections_set = None,   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
             ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
             TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
             **kwargs
             ):
+
+        if corrections_set is None:
+            corrections_set = {}
 
         if nn_location is not None:
 
