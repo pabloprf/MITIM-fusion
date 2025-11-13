@@ -2,6 +2,7 @@ import os
 import io
 import tempfile
 import copy
+from matplotlib.pylab import geometric
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
@@ -14,6 +15,8 @@ import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from torch import ge
+
 
 """
 Note that this module relies on megpy to intrepret the content of g-eqdsk files.
@@ -84,18 +87,7 @@ class MITIMgeqdsk:
         self.Jerror = np.abs(self.Jt - self.Jt_fb)
 
         self.Ip = self.g.raw["current"]
-
-        # Parameterizations of LCFS
-        self.kappa = self.g.derived["miller_geo"]["kappa"][-1]
-        self.kappaU = self.g.derived["miller_geo"]["kappa_u"][-1]
-        self.kappaL = self.g.derived["miller_geo"]["kappa_l"][-1]
-
-        self.delta = self.g.derived["miller_geo"]["delta"][-1]
-        self.deltaU = self.g.derived["miller_geo"]["delta_u"][-1]
-        self.deltaL = self.g.derived["miller_geo"]["delta_l"][-1]
-
-        self.zeta = self.g.derived["miller_geo"]["zeta"][-1]
-
+        
         self.a = self.g.derived["r"][-1]
         self.Rmag = self.g.derived["Ro"][0]
         self.Zmag = self.g.derived["Zo"][0]
@@ -111,30 +103,7 @@ class MITIMgeqdsk:
         self.cx_area = abs(cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0))
         self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
 
-        # convert 995 contour to Turnbull
-        psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
-        fs995 = megpy.fluxsurface.FluxSurface()
-        fs995.from_tracer(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995,analytic_shape=True)
-        fs995.to_turnbull(initial=fs995.shape_analytic)
-        #fs995.to_toq9()
-
-        # extract shape coefficients
-        self.kappa995 = fs995.shape[3]
-        self.delta995 = fs995.shape[4]
-        self.zeta995 = fs995.shape[5]
-        #self.zeta995_in = fs995.shape[5]
-        #self.zeta995_out = fs995.shape[6]
-
-        self.kappa95 = np.interp(
-            0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["kappa"],
-        )
-        self.delta95 = np.interp(
-            0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["delta"],
-        )
+        self.grab_geo_parameters()
 
         """
         --------------------------------------------------------------------------------------------------------------------------------------
@@ -177,6 +146,72 @@ class MITIMgeqdsk:
             ax.set_ylabel("Z [m]")
 
             plt.show()
+
+    def grab_geo_parameters(self):
+
+        self.geometric_parameters = {}
+        
+        # ------------------------------------------------------------------------------------------------------
+        # Geometric definitions
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.geometric_parameters["geo"] = {}
+        self.geometric_parameters["geo"]["kappa_sep"] = self.g.derived["miller_geo"]["kappa"][-1]
+        self.geometric_parameters["geo"]["kappaU_sep"] = self.g.derived["miller_geo"]["kappa_u"][-1]
+        self.geometric_parameters["geo"]["kappaL_sep"] = self.g.derived["miller_geo"]["kappa_l"][-1]
+        self.geometric_parameters["geo"]["delta_sep"] = self.g.derived["miller_geo"]["delta"][-1]
+        self.geometric_parameters["geo"]["deltaU_sep"] = self.g.derived["miller_geo"]["delta_u"][-1]
+        self.geometric_parameters["geo"]["deltaL_sep"] = self.g.derived["miller_geo"]["delta_l"][-1]
+        self.geometric_parameters["geo"]["zeta_sep"] = self.g.derived["miller_geo"]["zeta"][-1]
+        
+        for var in ['kappa', 'delta']:
+            for psin in [0.95, 0.995]:
+                self.geometric_parameters["geo"][f"{var}_{str(psin).split('.')[-1]}"] = np.interp(
+                    psin,
+                    self.psi_pol_norm,
+                    self.g.derived["miller_geo"][var],
+                )
+
+        # ------------------------------------------------------------------------------------------------------
+        # Turnbull-Miller parameterization (minimization)
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.geometric_parameters["turnbull"] = {}
+
+        # convert 995 contour to Turnbull
+        psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
+        fs995 = megpy.fluxsurface.FluxSurface()
+        fs995.from_tracer(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995,analytic_shape=True)
+        fs995.to_turnbull(initial=fs995.shape_analytic)
+        #fs995.to_toq9()
+
+        # extract shape coefficients
+        self.geometric_parameters["turnbull"]["kappa995"] = fs995.shape[3]
+        self.geometric_parameters["turnbull"]["delta995"] = fs995.shape[4]
+        self.geometric_parameters["turnbull"]["zeta995"] = fs995.shape[5]
+        #self.zeta995_in = fs995.shape[5]
+        #self.zeta995_out = fs995.shape[6]
+        
+        # ------------------------------------------------------------------------------------------------------
+        # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.kappa = self.geometric_parameters["geo"]["kappa_sep"]
+        self.kappaU = self.geometric_parameters["geo"]["kappaU_sep"]
+        self.kappaL = self.geometric_parameters["geo"]["kappaL_sep"]
+        
+        self.delta = self.geometric_parameters["geo"]["delta_sep"]
+        self.deltaU = self.geometric_parameters["geo"]["deltaU_sep"]
+        self.deltaL = self.geometric_parameters["geo"]["deltaL_sep"]
+        
+        self.zeta = self.geometric_parameters["geo"]["zeta_sep"]
+        
+        self.kappa95 = self.geometric_parameters["geo"]["kappa_95"]
+        self.delta95 = self.geometric_parameters["geo"]["delta_95"]
+        
+        self.kappa995 = self.geometric_parameters["geo"]["kappa_995"]
+        self.delta995 = self.geometric_parameters["geo"]["delta_995"]
+        
 
     def plotEnclosingBox(self, ax=None, c= "k"):
         if ax is None:
