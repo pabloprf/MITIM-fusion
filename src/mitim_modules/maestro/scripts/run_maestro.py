@@ -7,6 +7,7 @@ from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import TRANSPbeat, PORTALSbeat
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools import PLASMAtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
@@ -163,7 +164,8 @@ def parse_maestro_nml(file_path):
                 beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
         else:
-            raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
+            beat_namelist = None
+            print(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist", typeMsg='w')
 
         beat_namelists[beat_type] = beat_namelist
 
