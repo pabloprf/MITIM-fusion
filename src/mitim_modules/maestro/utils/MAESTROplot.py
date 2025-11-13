@@ -22,7 +22,7 @@ def grabMAESTRO(folder):
 
     # Find beat results from folders
     folder_beats = Path(folder) / 'Beats'
-    beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
+    beats = sorted([item.name for item in folder_beats.glob('*') if item.name.startswith("Beat")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):

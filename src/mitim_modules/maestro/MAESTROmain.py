@@ -319,10 +319,14 @@ class maestro:
             if only_beats is None or only_beats == beat.name:
 
                 print(f'\t- Plotting beat #{counter}...')
-                log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
-                with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
-                    msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
-                print(msg)
+                try:
+                    log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
+                    with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
+                        msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
+                    print(msg)
+                except FileNotFoundError:
+                    print(f'\t\t- Could not plot beat #{counter} because some files are missing', typeMsg = 'w')
+                
 
     def _plot_results(self, fn):
 
