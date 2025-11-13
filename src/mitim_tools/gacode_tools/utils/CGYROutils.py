@@ -170,7 +170,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             if 'kxky_phi' in self.cgyrodata.__dict__:
                 try:
                     self._process_fluctuations()
-                except ValueError as e:
+                except Exception as e:
                     print(f'\t- Error processing fluctuations: {e}', typeMsg='w')
             else:
                 print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
@@ -179,7 +179,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         try:
             self._process_fluxes()
-        except ValueError as e:
+        except Exception as e:
                 print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
         #self._process_fluxes()        
         self._saturate_signals()
@@ -268,8 +268,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         if 'phib' in self.cgyrodata.__dict__:
             self.phi_ballooning = self.cgyrodata.phib       # (ball, time)
             self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
-            self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
-            self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
+            #self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
+            #self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
     def _process_fluctuations(self):
         # Fluctuations (complex numbers)
@@ -730,7 +730,6 @@ def quends_analysis(t, S, debug = False):
     window_size = 10
     
     trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
-    
     mean = trimmed_df.mean(window_size=window_size)['signal']
     std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
     
@@ -778,7 +777,7 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delet
                 remote_files
                 )
     
-    # read pickle file as cgyroOutput object
+    # read pickle file as CGYROoutput object
     c={}
     for i, folder_remote in enumerate(folders_remote):
         with open(f"{folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl", "rb") as f:
@@ -792,8 +791,3 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delet
             print(f"Deleted local pickle file {folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl")
 
     return c
-
-if __name__ == "__main__":
-    c = fetch_CGYROoutput(folder_local=".", folders_remote=["/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_+20%_alne_sugama", "/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_-20%_alne_sugama"], machine="cosmos", minimal=True)
-    c
-    embed()
