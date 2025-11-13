@@ -79,64 +79,17 @@ class lengyel_beat(beat):
         fZ_top = fZ_sep / self.impurities_enrichment[i_leng]
         
         # Modify input.gacode
+        print(f'\t- Applying Lengyel outputs to profiles:')
         p = copy.deepcopy(self.profiles_current)
-        self._apply_Lengyel_to_profiles(p, impurity_name, impurity_z, Tesep, fZ_sep, fZ_top)
+                                                                     
+        _modify_temperatures(p, Tesep, self.rhotop)        
+        _modify_impurity_density(p, impurity_name, impurity_z, fZ_sep, fZ_top, self.rhotop, i_Z = 3)        #TODO!!!!!!!!!!!!!! AND NAME TO MATCH
         
         # Enforce quasineutrality
         p.enforceQuasineutrality()
         
         # Write modified input.gacode.lengyel
         p.write_state(file=self.folder / 'input.gacode.lengyel')
-        
-    def _apply_Lengyel_to_profiles(self, p, impurity_name, impurity_z, Tesep, fZ_sep, fZ_top):
-    
-        i_Z = 3
-    
-        print(f'\t- Applying Lengyel outputs to profiles:')
-        
-        # ******************************************************************************************
-        # Change Temperatures
-        # ******************************************************************************************
-        
-        print(f'\t\t* Setting electron and ion temperature at separatrix to {Tesep*1E3:.1f} eV')
-        
-        if self.rhotop is None:
-            print('\t\t- No rhotop available at this beat, scaling the entire profile uniformly')
-            p.profiles['te(keV)'] *= Tesep / p.profiles['te(keV)'][-1]
-            p.profiles['ti(keV)'] *= Tesep / p.profiles['ti(keV)'][-1, :]
-        else:
-            print(f'\t\t- Using rhotop = {self.rhotop:.3f} to scale temperature profiles only from rhotop to the new separatrix value')
-            
-            _scale_quadratic(p, p.profiles['te(keV)'], self.rhotop, Tesep)
-            for ion in range(len(p.profiles['ti(keV)'][0, :])):
-                _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], self.rhotop, Tesep)
-            
-        # ******************************************************************************************
-        # Change density of fourth impurity                                                             #TODO!!!!!!!!!!!!!! AND NAME TO MATCH
-        # ******************************************************************************************
-    
-        print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_z}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
-        
-        p.profiles['z'][i_Z] = impurity_z
-        p.profiles['name'][i_Z] = impurity_name[:2]
-        
-        if self.rhotop is None:
-            print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly by the top (after applying enrichment) value, exact from ne profile')
-            p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
-        
-        else:
-            print(f'\t\t- Using rhotop = {self.rhotop:.3f} to scale impurity density profiles')
-            
-            # First, scale impurity density profile entirely by the desired top value
-            nZ_top_new = fZ_top * p.profiles['ne(10^19/m^3)'][-1]
-            ix = np.argmin(np.abs(p.profiles['rho(-)'] - self.rhotop))
-            nZ_top_old = p.profiles['ni(10^19/m^3)'][ix, i_Z]
-            
-            p.profiles['ni(10^19/m^3)'][:, i_Z] *= nZ_top_new / nZ_top_old
-            
-            # Then modify the edge such that it goes to nZ_sep (Apply quadratic scaling from rhotop to separatrix)
-            nZ_sep = fZ_sep * p.profiles['ne(10^19/m^3)'][-1]
-            _scale_quadratic(p, p.profiles['ni(10^19/m^3)'][:, i_Z], self.rhotop, nZ_sep)
 
     def finalize(self, *args, **kwargs):
         
@@ -157,9 +110,55 @@ class lengyel_beat(beat):
             
     def _inform_save(self, *args, **kwargs):
         
-        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None # If I have run Lengyel, I cannot reuse surrogate data #TODO: Maybe not always true?
+        # If I have run Lengyel, I cannot reuse surrogate data #TODO: Maybe not always true?
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None 
+
+def _modify_temperatures(p, Tesep, rhotop):
+    
+    print(f'\t\t* Setting electron and ion temperature at separatrix to {Tesep*1E3:.1f} eV')
+    
+    if rhotop is None:
+        print('\t\t- No rhotop available at this beat, scaling the entire profile uniformly')
+        p.profiles['te(keV)'] *= Tesep / p.profiles['te(keV)'][-1]
+        p.profiles['ti(keV)'] *= Tesep / p.profiles['ti(keV)'][-1, :]
+    else:
+        print(f'\t\t- Using rhotop = {rhotop:.3f} to scale temperature profiles only from rhotop to the new separatrix value')
+        
+        _scale_quadratic(p, p.profiles['te(keV)'], rhotop, Tesep)
+        for ion in range(len(p.profiles['ti(keV)'][0, :])):
+            _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
+
+
+def _modify_impurity_density(p, impurity_name, impurity_z, fZ_sep, fZ_top, rhotop, i_Z):
+
+    print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_z}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
+    
+    p.profiles['z'][i_Z] = impurity_z
+    p.profiles['mass'][i_Z] = impurity_z * 2.0
+    p.profiles['name'][i_Z] = impurity_name[:2]    #TODO: Make it more robust
+    
+    if rhotop is None:
+        print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly by the top (after applying enrichment) value, exact from ne profile')
+        p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
+    
+    else:
+        print(f'\t\t- Using rhotop = {rhotop:.3f} to scale impurity density profiles')
+        
+        # First, scale impurity density profile entirely by the desired top value
+        nZ_top_new = fZ_top * p.profiles['ne(10^19/m^3)'][-1]
+        ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
+        nZ_top_old = p.profiles['ni(10^19/m^3)'][ix, i_Z]
+        
+        p.profiles['ni(10^19/m^3)'][:, i_Z] *= nZ_top_new / nZ_top_old
+        
+        # Then modify the edge such that it goes to nZ_sep (Apply quadratic scaling from rhotop to separatrix)
+        nZ_sep = fZ_sep * p.profiles['ne(10^19/m^3)'][-1]
+        _scale_quadratic(p, p.profiles['ni(10^19/m^3)'][:, i_Z], rhotop, nZ_sep)
 
 def _scale_quadratic(p, var, rhotop, val_sep, plotYN=False):
+    '''
+    I use a quadratic scaling from rhotop to separatrix instead of a linear one, to have a smoother transition.
+    '''
 
     var_orig = copy.deepcopy(var)
 
