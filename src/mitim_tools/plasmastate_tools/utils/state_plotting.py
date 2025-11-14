@@ -19,7 +19,6 @@ def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
     return figs
 
-
 def add_axes(figs):
 
     fig1, fig2, fig3, fig4, fig5, fig6, fig7 = figs
@@ -1337,6 +1336,8 @@ def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
         else:
             extralab = f"{extralabs[i]}, "
             
+        if profiles is None:
+            continue
         profiles.plot(
             axs1=axsProf_1,axs2=axsProf_2,axs3=axsProf_3,axs4=axsProf_4,axsFlows=axsFlows,axs6=axsProf_6,axsImps=axsImps,
             color=colors[i],legYN=True,extralab=extralab,lsFlows=ls[i],legFlows=i == 0,showtexts=False,lastRhoGradients=lastRhoGradients,
