@@ -3,6 +3,8 @@ from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools.utils import remote_tools
+from mitim_tools.plasmastate_tools.utils import state_plotting
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pathlib import Path
 from IPython import embed
 
@@ -115,9 +117,11 @@ def main():
         
         colors = GRAPHICStools.listColors()
             
+
     ms = []
     x, scripts = [], []
     x0, scripts0 = [], []
+    ps_final = []
     for i,folder in enumerate(folders):
         m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
         ms.append(m)
@@ -132,6 +136,16 @@ def main():
         if len(x0) > len(x):
             x = x0
             scripts = scripts0
+            
+        ps_final.append(m.final_state)
+
+    # Plot all profiles
+    if any(ps_final):
+        figsProfs = state_plotting.add_figures(fn,fnlab_pre = "MAESTRO Profiles ALL - ", tab_color=4)
+        state_plotting.plotAll(ps_final, figs=figsProfs)
+    else:
+        print("No final profiles to plot, no simulation finished", typeMsg="w")
+            
     
     if len(folders) > 1:
         for let in ['A','B']:
