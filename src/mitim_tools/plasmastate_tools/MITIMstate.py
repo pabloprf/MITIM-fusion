@@ -355,8 +355,10 @@ class mitim_state:
 
         if self.profiles["q(-)"].min() > 1.0: 
             self.derived["rho_saw"] = np.nan
+            self.derived["roa_saw"] = np.nan
         else:
             self.derived["rho_saw"] = np.interp(1.0, self.profiles["q(-)"], self.profiles["rho(-)"])
+            self.derived["roa_saw"] = np.interp(1.0, self.profiles["q(-)"], self.derived["roa"])
 
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 

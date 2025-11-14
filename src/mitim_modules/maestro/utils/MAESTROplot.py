@@ -245,7 +245,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         nu_ne.append(p.derived['ne_peaking0.2'])
         q95.append(p.derived['q95'])
         q0.append(p.derived['q0'])
-        xsaw.append(p.derived['rho_saw'])
+        xsaw.append(p.derived['roa_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
     def _special(ax,x):
@@ -355,7 +355,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
     if legYN:
         ax.legend()
-    ax.set_ylim(bottom = 0)
+    #ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
     
@@ -363,7 +363,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
 
     ax = axs['J']
     ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
-    ax.set_ylabel('Inversion radius (rho)')
+    ax.set_ylabel('Inversion radius (roa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     
