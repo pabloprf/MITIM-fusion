@@ -93,7 +93,7 @@ class gacode_state(MITIMstate.mitim_state):
         # Ensure that we also have the shape coefficients
         num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
         if "shape_cos0(-)" not in self.profiles:
-            self.profiles["shape_cos0(-)"] = np.ones(self.profiles["rmaj(m)"].shape)
+            self.profiles["shape_cos0(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
         for i in range(num_moments):
             if f"shape_cos{i + 1}(-)" not in self.profiles:
                 self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
