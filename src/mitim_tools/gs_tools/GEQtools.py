@@ -122,6 +122,12 @@ class MITIMgeqdsk:
             self.Rb = self.Rb_gfile.copy()
             self.Yb = self.Yb_gfile.copy()
 
+        if len(self.Rb_gfile) > 150:
+            print("\t- MITIM > Using explicit boundary in g-eqdsk file, since resolution is high enough",typeMsg='i')
+
+            self.Rb = self.Rb_gfile.copy()
+            self.Yb = self.Yb_gfile.copy()
+
         if debug:
             fig, ax = plt.subplots()
 
