@@ -203,7 +203,7 @@ class mitim_job:
             shellPostCommands=self.shellPostCommands,
             label_log_files=self.label_log_files,
             wait_until_sbatch=waitYN,
-            slurm=self.machineSettings["slurm"],
+            slurm_allocation=self.machineSettings["slurm"],
             launchSlurm=self.launchSlurm,
             slurm_settings=self.slurm_settings,
         )
@@ -1099,7 +1099,7 @@ def create_slurm_execution_files(
     shellPostCommands=None,
     label_log_files="",
     wait_until_sbatch=True,
-    slurm={},
+    slurm_allocation={},
     launchSlurm=True,
     slurm_settings = None
 ):
@@ -1124,22 +1124,22 @@ def create_slurm_execution_files(
     cpuspertask = slurm_settings.setdefault("cpuspertask", None)
     ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
     gpuspertask = slurm_settings.setdefault("gpuspertask", None)
-    qos = slurm_settings.setdefault("qos", None)
 
     job_array = slurm_settings.setdefault("job_array", None)
     job_array_limit = slurm_settings.setdefault("job_array_limit", None)
 
     # ---------------------------------------------------
-    # slurm indicate the machine specifications as given by the config instead of individual job
+    # slurm_allocation indicate the machine specifications as given by the config instead of individual job
     # ---------------------------------------------------
     
-    partition = slurm.setdefault("partition", None)
-    email = slurm.setdefault("email", None)
-    exclude = slurm.setdefault("exclude", None)
-    account = slurm.setdefault("account", None)
-    constraint = slurm.setdefault("constraint", None)
-    memory_req_by_config = slurm.setdefault("mem", None)
-    request_exclusive_node = slurm.setdefault("exclusive", False)
+    partition = slurm_allocation.setdefault("partition", None)
+    qos = slurm_allocation.setdefault("qos", None)
+    email = slurm_allocation.setdefault("email", None)
+    exclude = slurm_allocation.setdefault("exclude", None)
+    account = slurm_allocation.setdefault("account", None)
+    constraint = slurm_allocation.setdefault("constraint", None)
+    memory_req_by_config = slurm_allocation.setdefault("mem", None)
+    request_exclusive_node = slurm_allocation.setdefault("exclusive", False)
     
     
     if memory_req_by_job == 0 :
