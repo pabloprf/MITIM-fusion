@@ -12,18 +12,20 @@ def run_slurm(
     # For where and how to launch the job:
         partition,
         venv,
-        machine="local",
-        exclude=None,
-        mem=None,
-        exclusive=False, 
-        wait=False,
-        qos=None,
+        machine = "local",
+        exclude = None,
+        mem = None,
+        exclusive = False, 
+        qos = None,
     # Job size:
-        n=32,
-        hours=8,
+        n = 32,
+        hours = 8,
+        are_n_threads = True,
     # For farming different seeds that the script understands:
-        seeds=None,    # If not None, assume that the script is able to receive --seeds #
-        seed_specific=0,
+        seeds = None,    # If not None, assume that the script is able to receive --seeds #
+        seed_specific = 0,
+    # Interaction settings:
+        wait = False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -55,13 +57,16 @@ def run_slurm(
         
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Slurm job information  (settings for sbatch)
+        
+        if are_n_threads: ntask, cpuspertask = 1, n
+        else:             ntask, cpuspertask = n, 1
+        
         slurm_settings = {
             'name': nameJob,
             'minutes': int(60 * hours),
-            'ntasks': 1,
-            'cpuspertask': n,
+            'ntasks': ntask,
+            'cpuspertask': cpuspertask,
             'memory_req_by_job': mem,
-            
         }
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
@@ -72,7 +77,7 @@ def run_slurm(
             slurm_settings = slurm_settings
         )
 
-        if wait == True:
+        if wait:
             print('* Waiting for job to complete...')
             command_execution = f"sbatch --wait {fileSBATCH}"
         else: 
