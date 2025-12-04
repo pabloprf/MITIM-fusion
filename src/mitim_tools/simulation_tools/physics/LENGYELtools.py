@@ -7,8 +7,6 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __mitimroot__
 from IPython import embed
 
-from extended_lengyel.cli import run_extended_lengyel
-
 class Lengyel():
     def __init__(
         self
@@ -86,6 +84,7 @@ class Lengyel():
         
         # Run
         output_file = folder / 'output.lengyel.results.yml'
+        from extended_lengyel.cli import run_extended_lengyel
         run_extended_lengyel(
             config_file = nml_file,
             output_file = output_file,
