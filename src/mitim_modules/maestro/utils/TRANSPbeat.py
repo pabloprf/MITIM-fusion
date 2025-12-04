@@ -151,18 +151,6 @@ class transp_beat(beat):
             shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
-            
-            # Remove any existing files in the output folder (to avoid multiple CDFs)
-            for cdf_file in self.folder_output.glob("*.CDF"):
-                if cdf_file.name != f"{self.shot}{self.runid}.CDF":
-                    os.remove(cdf_file)
-            for trlog_file in self.folder_output.glob("*tr.log"):
-                if trlog_file.name != f"{self.shot}{self.runid}tr.log":
-                    os.remove(trlog_file)
-            for trdat_file in self.folder_output.glob("*TR.DAT"):
-                if trdat_file.name != f"{self.shot}{self.runid}TR.DAT":
-                    os.remove(trdat_file)
-            
         except FileNotFoundError:
             print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
             
@@ -179,6 +167,17 @@ class transp_beat(beat):
             shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
             shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
             shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+
+        # Remove any existing files in the output folder (to avoid multiple CDFs)
+        for cdf_file in self.folder_output.glob("*.CDF"):
+            if cdf_file.name != f"{self.shot}{self.runid}.CDF":
+                os.remove(cdf_file)
+        for trlog_file in self.folder_output.glob("*tr.log"):
+            if trlog_file.name != f"{self.shot}{self.runid}tr.log":
+                os.remove(trlog_file)
+        for trdat_file in self.folder_output.glob("*TR.DAT"):
+            if trdat_file.name != f"{self.shot}{self.runid}TR.DAT":
+                os.remove(trdat_file)
 
         # Extract output
         cdf_results = CDFtools.transp_output(self.folder_output / f"{self.shot}{self.runid}.CDF")
