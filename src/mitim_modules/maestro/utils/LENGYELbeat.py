@@ -144,6 +144,10 @@ class lengyel_beat(beat):
         # Enforce quasineutrality
         p.enforceQuasineutrality()
         
+        # Check if the plasma just had too much impurity
+        if p.profiles['ni(10^19/m^3)'].min() < 0:
+            raise ValueError(f"[MAESTRO][LENGYELbeat] After applying Lengyel outputs, negative ions densities were found in input.gacode.lengyel; please check the impurity concentrations and/or the Lengyel settings.")
+        
         # Write modified input.gacode.lengyel
         p.write_state(file=self.folder / 'input.gacode.lengyel')
 
