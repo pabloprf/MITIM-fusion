@@ -945,7 +945,7 @@ def findFileByExtension(
         if len(allfiles) > 1:
             # print(allfiles)
             if not ForceFirst:
-                raise Exception("More than one file with same extension in the folder!")
+                raise Exception("More than one file with same extension in the folder: ", fpath)
             else:
                 allfiles = [allfiles[0]]
 
