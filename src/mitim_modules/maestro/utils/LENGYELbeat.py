@@ -14,13 +14,25 @@ from IPython import embed
 
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+from sympy import im
 
+def element_to_lengyel(symbol):
+    
+    import periodictable as pt
+    e = pt.elements.symbol(symbol)                      # 'W'
+    
+    name = e.name                                       # 'tungsten'
+    charge = e.number                                   # 74
+    mass = e.mass                                       # 183.84
+    
+    return name[0].upper() + name[1:].lower(), charge, mass   # 'Tungsten', 74, 183.84
+    
 class lengyel_beat(beat):
 
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, radas_dir = None, seed_impurity_species = None, rhotop=None, **kwargs):
+    def prepare(self, *args, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, **kwargs):
 
         self.rhotop = rhotop
 
@@ -34,25 +46,49 @@ class lengyel_beat(beat):
         # Initialize Lengyel object
         self.l = Lengyel()
 
-        # Use seed impurity species from maestro namelist
-        self.impurities_names = seed_impurity_species["name"]
-        self.impuritites_Z = seed_impurity_species["Z"]
-        self.impurities_enrichment = seed_impurity_species["ratio_sep_top"]
+        # Use seed impurity species from maestro namelist        
+        seed_impurity_symbol = seed_impurity_species["name"]
+        seed_impurity_ratio_sep_top = seed_impurity_species["ratio_sep_top"]
+        seed_impurity_name, seed_impurity_Z, seed_impurity_A = element_to_lengyel( seed_impurity_symbol )
+
+        # High-Z impurity search
+        fixed_impurity_symbol = fixed_impurity_species
+        fixed_impurity_name, fixed_impurity_Z, fixed_impurity_A = element_to_lengyel( fixed_impurity_symbol )
         
-        # Change high-Z impurit #TODO: Right now it assumes it is always W
-        i_W = np.where(self.profiles_current.profiles['name']=='W')[0][0]
-        fW = self.profiles_current.derived['fi_vol'][i_W]
+        try:
+            i_W = np.where(self.profiles_current.profiles['name']==fixed_impurity_symbol)[0][0]
+        except IndexError:
+            raise ValueError(f"[MAESTRO][LENGYELbeat] The high-Z impurity species '{fixed_impurity_symbol}' was not found in the input.gacode profiles; please ensure it is present to keep its concentration fixed during the Lengyel beat.")
         
+        fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
+
         # Prepare Lengyel with default inputs and changes from GACODE
         self.l.prep(
             radas_dir = radas_dir_env,
             input_gacode = self.profiles_current,
             )
 
-        # TO pass to the run
-        self.seed_impurity_species = self.impurities_names
-        self.fixed_impurity_weights = [fW]
+        # ----------------------------------------------------
+        # To pass to the run
+        # ----------------------------------------------------
         
+        self.lengyel_args = {
+            'seed_impurity_species': [ seed_impurity_name ],
+            'seed_impurity_weights': [ 1.0 ],
+            'fixed_impurity_species': [fixed_impurity_name],
+            'fixed_impurity_weights': [fixed_impurity_weights]
+        }
+        
+        # ----------------------------------------------------
+        # Other impurity information for post-processing
+        # ----------------------------------------------------
+        self.seed_impurity_enrichment = seed_impurity_ratio_sep_top
+        
+        self.seed_impurity_symbol = seed_impurity_symbol
+        self.seed_impurity_Z = seed_impurity_Z
+        self.seed_impurity_A = seed_impurity_A
+        
+        self.fixed_impurity_symbol = fixed_impurity_symbol
         
         self._inform()
 
@@ -61,29 +97,49 @@ class lengyel_beat(beat):
         # Run Lengyel standalone
         self.l.run(
             self.folder,
-            cold_start=True, # It is to cheap that, if I have come to the run() command, I'll just repeat
-            seed_impurity_species = self.seed_impurity_species,
-            fixed_impurity_weights = self.fixed_impurity_weights
+            cold_start=True, # It is so cheap that, if I have come to the run() command, I'll just repeat
+            **self.lengyel_args
             )
         
-        i_leng = 0
+        # Grab important parameters from the inputs
+        impurity_name = self.lengyel_args['seed_impurity_species'][0] # Assume only one seed impurity in Lengyel run
+        impurity_symbol = self.seed_impurity_symbol
+        impurity_Z = self.seed_impurity_Z
+        impurity_A = self.seed_impurity_A
         
-        # Grab important params -> Inputs
-        impurity_name = self.impurities_names[i_leng]
-        impurity_z = self.impuritites_Z[i_leng]
-        
-        # Grab important params -> Outputs
+        # Grab important parameters from the outputs
         Tesep = float(self.l.results['separatrix_electron_temp'].split()[0])*1E-3
         
-        fZ_sep = self.l.results['impurity_fraction']['seed_impurity'][self.impurities_names[i_leng]] 
-        fZ_top = fZ_sep / self.impurities_enrichment[i_leng]
+        fZ_sep = self.l.results['impurity_fraction']['seed_impurity'][impurity_name] 
+        fZ_top = fZ_sep / self.seed_impurity_enrichment
         
+        # ------------------------------------------------
         # Modify input.gacode
+        # ------------------------------------------------
         print(f'\t- Applying Lengyel outputs to profiles:')
         p = copy.deepcopy(self.profiles_current)
-                                                                     
-        _modify_temperatures(p, Tesep, self.rhotop)        
-        _modify_impurity_density(p, impurity_name, impurity_z, fZ_sep, fZ_top, self.rhotop, i_Z = 3)        #TODO!!!!!!!!!!!!!! AND NAME TO MATCH
+                   
+        # Modify temperature profiles                     
+        _modify_temperatures(p, Tesep, self.rhotop)
+        
+        # Modify impurity density profile
+        
+        # Find impurity index: if I have transp beat before Lengyel, I know the order of the impuritites
+        if "impurity_order_transp" in self.maestro_instance.parameters_trans_beat:
+            # Impurities ordered as in TRANSP
+            impurities_in_transp =  list(self.maestro_instance.parameters_trans_beat['impurity_order_transp'].keys())
+        
+            # Do not consider the high-Z impurity, which is fixed
+            impurities_in_transp.remove( self.fixed_impurity_symbol )
+            
+            # Get index of the FIRST (unique for now) seed impurity in TRANSP
+            i_Z = self.maestro_instance.parameters_trans_beat['impurity_order_transp'][impurities_in_transp[0]]
+        # Else, assume impurity is in position 3 (after D and He)
+        else:
+            i_Z = 3
+            print(f"\t\t- No impurity order from TRANSP beat found, assuming impurity '{impurity_symbol}' is in position #{i_Z} in input.gacode", typeMsg='w')
+        
+        _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z)
         
         # Enforce quasineutrality
         p.enforceQuasineutrality()
@@ -129,13 +185,13 @@ def _modify_temperatures(p, Tesep, rhotop):
             _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
 
 
-def _modify_impurity_density(p, impurity_name, impurity_z, fZ_sep, fZ_top, rhotop, i_Z):
+def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z):
 
-    print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_z}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
+    print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_Z}, A={impurity_A}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
     
-    p.profiles['z'][i_Z] = impurity_z
-    p.profiles['mass'][i_Z] = impurity_z * 2.0
-    p.profiles['name'][i_Z] = impurity_name[:2]    #TODO: Make it more robust
+    p.profiles['z'][i_Z] = impurity_Z
+    p.profiles['mass'][i_Z] = impurity_A
+    p.profiles['name'][i_Z] = impurity_name[:2] 
     
     if rhotop is None:
         print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly by the top (after applying enrichment) value, exact from ne profile')

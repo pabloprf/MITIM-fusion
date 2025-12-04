@@ -1,6 +1,7 @@
 import os
 import shutil
 import copy
+from typing import OrderedDict
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
@@ -63,7 +64,6 @@ class transp_beat(beat):
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files
-
 
         # Write TRANSP from profiles
         times = [self.time_transition,self.time_end+1.0]
@@ -299,7 +299,25 @@ class transp_beat(beat):
     # -----------------------------------------------------------------------------------------------------------------------
     def _inform_save(self, *args, **kwargs):
         
-        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
+        c, _ = self.grab_output()
+        
+        # Grab the oder of user-specified impuritites in the TRANSP ions list
+        
+        transp_impurities = c.nZs.keys()
+        profiles_species = [i['N'] for i in self.profiles_output.Species]
+        
+        impurity_order_transp = OrderedDict()
+        for z in transp_impurities:
+            for i,spec in enumerate(profiles_species):
+                if spec == z:
+                    impurity_order_transp[spec] = i
+                    break
+        
+        self.maestro_instance.parameters_trans_beat['impurity_order_transp'] = impurity_order_transp
+
+        # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
+        
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None 
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO

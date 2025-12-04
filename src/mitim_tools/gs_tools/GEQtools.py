@@ -27,7 +27,10 @@ class MITIMgeqdsk:
     def __init__(self, filename):
 
         self.g = megpy.Equilibrium()
-        self.g.read_geqdsk(f_path=filename)
+        try:
+            self.g.read_geqdsk(f_path=filename)
+        except ValueError:
+            raise ValueError("-> MITIMgeqdsk: Problem reading g-eqdsk file ", filename)
         self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True)
 
         # Extra derivations in MITIM
