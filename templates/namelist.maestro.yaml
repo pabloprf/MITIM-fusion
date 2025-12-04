@@ -91,7 +91,7 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+  beats: ["transp_soft", "eped", "portals", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
@@ -145,9 +145,10 @@ maestro:
       radas_dir: null
 
       seed_impurity_species: 
-        name: ["Neon"]
-        Z : [10]
-        ratio_sep_top: [1.0]
+        name: "Ne"
+        ratio_sep_top: 1.0
+
+      fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
   portals_beat:
 
@@ -162,6 +163,8 @@ maestro:
       # PORTALS parameters (only those parameters to change the main PORTALS namelist)
       # ------------------------------------------------------------------------------------------------
       portals_parameters:
+
+        # Same structure as the PORTALS namelist, here indicate only the parameters to change from default portals_namelist_location
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
