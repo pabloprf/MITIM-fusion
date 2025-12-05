@@ -98,6 +98,9 @@ maestro:
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
+  #       use_default: true/false
+  #       ****_namelist: Parameters that are passed to the run() command
+  #       #TODO
   # ---------------------------------------------------------------------------
 
   eped_beat:
@@ -121,7 +124,9 @@ maestro:
       TioverTe: 1.0         # Ti/Te assumption at the pedestal top
 
   eped_initializer_beat:
+
     use_default: false
+
     eped_initializer_namelist:
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
@@ -129,6 +134,7 @@ maestro:
         Bt: 12.2
         R: 1.85
         a: 0.57
+
       ptop_multiplier: 1.0
       TioverTe: 1.0
 
@@ -168,10 +174,6 @@ maestro:
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
-          exploration_ranges:
-            ymax: 4.0
-            ymin: 1.0
-            yminymax_atleast: [null, 4]
         transport:
           options:
             tglf:
@@ -191,7 +193,6 @@ maestro:
             AllowedExcursions: [0.25, 0.0]
           acquisition_options:
             optimizers: ["sr"]
-
 
       # Operations to do to mitim_state before passing it to PORTALS
       initialization_parameters:
