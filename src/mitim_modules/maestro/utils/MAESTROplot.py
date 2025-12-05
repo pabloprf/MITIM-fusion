@@ -13,6 +13,7 @@ from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 
 MARKERSIZE = 1
 LW = 1.0
@@ -21,7 +22,7 @@ def grabMAESTRO(folder):
 
     # Find beat results from folders
     folder_beats = Path(folder) / 'Beats'
-    beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
+    beats = sorted([item.name for item in folder_beats.glob('*') if item.name.startswith("Beat")], key=lambda x: int(x.split('_')[1]))
 
     beat_types = [] 
     for beat in range(len(beats)):
@@ -31,6 +32,8 @@ def grabMAESTRO(folder):
             beat_types.append('portals')
         elif (folder_beats / f'{beats[beat]}' / 'run_eped').exists():
             beat_types.append('eped')
+        elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
+            beat_types.append('lengyel')
 
     # First initializer
     beat_initializer = None
@@ -46,6 +49,13 @@ def grabMAESTRO(folder):
     m = maestro(folder, terminal_outputs = True, overall_log_file = False)
     for i,beat in enumerate(beat_types):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
+
+    # Add final if exists
+    folder_output = Path(folder) / 'Outputs'
+    if (folder_output / 'input.gacode_final').exists():
+        m.final_state = PROFILEStools.gacode_state(folder_output / 'input.gacode_final')
+    else:
+        m.final_state = None
 
     return m
 
@@ -90,6 +100,8 @@ def plot_results(self, fn):
             key = f'PORTALS b#{i+1}'
         elif isinstance(beat, eped_beat):
             key = f'EPED b#{i+1}'
+        elif isinstance(beat, lengyel_beat):
+            key = f'Lengyel b#{i+1}'
         
         objs[key] = profs
 
@@ -123,8 +135,8 @@ def plot_results(self, fn):
     fig = fn.add_figure(label='MAESTRO init', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHK
+        AEFGIJ
         """
     )
     axs = [ ax for ax in axs.values() ]
@@ -153,8 +165,8 @@ def plot_results(self, fn):
         fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=2)
         axs = fig.subplot_mosaic(
             """
-            ABCDH
-            AEFGI
+            ABCDHJ
+            AEFGIK
             """
         )
         axs = [ ax for ax in axs.values() ]
@@ -171,8 +183,8 @@ def plot_results(self, fn):
     fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=2)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHJ
+        AEFGIK
         """
     )
     axs = [ ax for ax in axs.values() ]
@@ -233,7 +245,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         nu_ne.append(p.derived['ne_peaking0.2'])
         q95.append(p.derived['q95'])
         q0.append(p.derived['q0'])
-        xsaw.append(p.derived['rho_saw'])
+        xsaw.append(p.derived['roa_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
     def _special(ax,x):
@@ -343,7 +355,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
     if legYN:
         ax.legend()
-    ax.set_ylim(bottom = 0)
+    #ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
     
@@ -351,7 +363,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
 
     ax = axs['J']
     ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
-    ax.set_ylabel('Inversion radius (rho)')
+    ax.set_ylabel('Inversion radius (roa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     

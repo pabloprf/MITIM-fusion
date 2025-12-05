@@ -106,7 +106,11 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False)
 
-        if self.use_previous_surrogate_data and self.try_flux_match_only_for_first_point and self.folder_starting_point is not None:
+        if self.use_previous_surrogate_data and \
+            self.try_flux_match_only_for_first_point and \
+            self.folder_starting_point is not None and \
+            ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and \
+            self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] is not None:
 
             # PORTALS just with one point
             portals_fun.optimization_options['initialization_options']['initial_training'] = 1

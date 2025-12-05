@@ -7,6 +7,7 @@ from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import TRANSPbeat, PORTALSbeat
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools import PLASMAtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
@@ -110,7 +111,7 @@ def parse_maestro_nml(file_path):
 
     beat_namelists = {}
 
-    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft"]:
+    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft", "lengyel"]:
 
         if f"{beat_type}_beat" in maestro_namelist["maestro"]:
 
@@ -139,8 +140,6 @@ def parse_maestro_nml(file_path):
 
                 beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
 
-
-
             # ***************************************************************************
             # Nothin yet
             # ***************************************************************************
@@ -165,7 +164,8 @@ def parse_maestro_nml(file_path):
                 beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
 
         else:
-            raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist")
+            beat_namelist = None
+            print(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist", typeMsg='w')
 
         beat_namelists[beat_type] = beat_namelist
 
@@ -220,6 +220,8 @@ def run_maestro_local(
             label_beat = "eped"
         elif maestro_beats["beats"][0] in ["portals", "portals_soft"]:
             label_beat = "portals"
+        elif maestro_beats["beats"][0] in ["lengyel"]:
+            label_beat = "lengyel"
 
         m.define_beat(label_beat, initializer=None if creator_added else parameters_initialize["initializer"])
 

@@ -91,13 +91,16 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+  beats: ["transp_soft", "eped", "portals", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
+  #       use_default: true/false
+  #       ****_namelist: Parameters that are passed to the run() command
+  #       #TODO
   # ---------------------------------------------------------------------------
 
   eped_beat:
@@ -121,7 +124,9 @@ maestro:
       TioverTe: 1.0         # Ti/Te assumption at the pedestal top
 
   eped_initializer_beat:
+
     use_default: false
+
     eped_initializer_namelist:
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
@@ -129,8 +134,27 @@ maestro:
         Bt: 12.2
         R: 1.85
         a: 0.57
+
       ptop_multiplier: 1.0
       TioverTe: 1.0
+
+  lengyel_beat:
+
+    use_default: false
+
+    lengyel_namelist:
+
+      # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
+      lengyel_namelist_location: null
+
+      # Path to radas directory. If null, it will use $RADAS_DIR environement variable
+      radas_dir: null
+
+      seed_impurity_species: 
+        name: "Ne"
+        ratio_sep_top: 1.0
+
+      fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
   portals_beat:
 
@@ -145,13 +169,11 @@ maestro:
       # PORTALS parameters (only those parameters to change the main PORTALS namelist)
       # ------------------------------------------------------------------------------------------------
       portals_parameters:
+
+        # Same structure as the PORTALS namelist, here indicate only the parameters to change from default portals_namelist_location
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
-          exploration_ranges:
-            ymax: 4.0
-            ymin: 1.0
-            yminymax_atleast: [null, 4]
         transport:
           options:
             tglf:
@@ -171,7 +193,6 @@ maestro:
             AllowedExcursions: [0.25, 0.0]
           acquisition_options:
             optimizers: ["sr"]
-
 
       # Operations to do to mitim_state before passing it to PORTALS
       initialization_parameters:
