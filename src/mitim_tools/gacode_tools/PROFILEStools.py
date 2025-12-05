@@ -436,7 +436,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax3D
         self.plot_plasma_boundary(ax=ax, color=color)
         
-    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
+    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0, reflect = False):
         
         if ax is None:
             plt.ion()
@@ -456,6 +456,15 @@ class gacode_state(MITIMstate.mitim_state):
                     lw=lw if rho<1.0 else lw1,
                     c=color,
                 )
+                if reflect:
+                    # Reflect the surface across the midplane
+                    ax.plot(
+                        self.derived["R_surface"][i_toroidal,ir, :] * -1,
+                        self.derived["Z_surface"][i_toroidal,ir, :],
+                        "-",
+                        lw=lw if rho<1.0 else lw1,
+                        c=color,
+                    )
 
         ax.axhline(y=0, ls="--", lw=0.2, c="k")
         ax.plot(
