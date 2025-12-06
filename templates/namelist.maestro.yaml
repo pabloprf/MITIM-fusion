@@ -56,6 +56,9 @@ machine:
       # Minority fraction to be added to the mix
       fmini: 0.05
 
+      # Antenna frequency (if null, estimate on-axis deposition based on field and minority)
+      freq_ICH: null
+
 # Simulation assumptions
 assumptions:
 
@@ -63,7 +66,7 @@ assumptions:
   Zeff: 1.5
   mix:
     fmain: 0.85
-    highZ: 'W'
+    highZ: W
     fhighZ: 1.5e-5
     CShighZ_estimate: 50 #Estimate charge state in this plasma to compute the low-Z impurity at initialization
     
@@ -129,7 +132,8 @@ maestro:
       TioverTe: 1.0         # Ti/Te assumption at the pedestal top
 
     preprocess_prepare: null
-    preprocess_prepare_parameters: {}
+    preprocess_prepare_parameters:
+      max_cpus: null  # Use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.EPEDbeat.preprocess_run_eped
 
   eped_initializer_beat:
@@ -218,6 +222,9 @@ maestro:
       # If surrogates exist, use them to find the first training point (and limit to only one point)
       try_flux_match_only_for_first_point: true
 
+      # If element is not exactly in radiation database, search for closest one
+      enforce_impurity_radiation_existence: true
+
     # Operations that will be included as part of the profiles_postprocessing_fun 
     transport_preprocessing:
       # By default, run PORTALS with all impurities lumped into one species
@@ -277,8 +284,8 @@ maestro:
     # Function to modify parameters of the namelist based on the rest of namelist
     preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
     preprocess_prepare_parameters:
-      max_cpus_toric: null  # Use as many as available
-      max_cpus_nubeam: null # Use as many as available
+      max_cpus_toric: null  # Use as many as available for this MAESTRO job
+      max_cpus_nubeam: null # Use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_run_transp
 
   transp_soft_beat:

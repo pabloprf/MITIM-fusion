@@ -351,6 +351,7 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
     
     if transp_namelist['Pich']:
         transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
+        transp_namelist['freq_ICH'] = maestro_namelist['machine']['heating']['parameters']['freq_ICH']
 
     # High-Z
     import periodictable as pt
