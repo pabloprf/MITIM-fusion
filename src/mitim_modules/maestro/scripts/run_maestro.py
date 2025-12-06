@@ -1,107 +1,80 @@
 import argparse
 from pathlib import Path
-from functools import partial
 from mitim_tools.misc_tools import IOtools
-from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.maestro.MAESTROmain import maestro
-from mitim_modules.maestro.utils import TRANSPbeat, PORTALSbeat
 from mitim_tools.misc_tools.IOtools import mitim_timer
-from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
-    p = PROFILEStools.gacode_state(file_profs)
-    if lumpImpurities:
-        p.lumpImpurities()
-    if enforce_same_density_gradients:
-        p.enforce_same_density_gradients()
-    p.write_state(file=file_profs)
-    return p
-
-def parse_maestro_nml(file_path):
-    # Extract engineering parameters, initializations, and desired beats to run
+@mitim_timer('MAESTRO')
+def run_maestro_local(    
+        file_path,
+        folder              = None,
+        terminal_outputs    = False,
+        force_cold_start    = False,
+        cpus                = 8,
+        keep_all_files      = True,
+        ):
+    
+    
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
-
-    if "seed" in maestro_namelist:
-        seed = maestro_namelist["seed"]
-    else:
-        seed = 0
-
-    # ---------------------------------------------------------------------------------------
-    # Engineering parameters
-    # ---------------------------------------------------------------------------------------
-
-    Ip = maestro_namelist["machine"]["Ip"]
-    Bt = maestro_namelist["machine"]["Bt"]
     
-    if maestro_namelist["assumptions"]["initialization"]["assume_neped"]:
-        neped = maestro_namelist["assumptions"]["initialization"]["neped_20"]
-        nesepratio = maestro_namelist["assumptions"]["initialization"]["nesep_ratio"]
-        nesep = neped * nesepratio
-    else:
-        raise ValueError("[MITIM] Only assume_neped is supported for now")
+    # ****************************************************************************************************************
+    # ****************************************************************************************************************
+    # Parse namelist
+    # ****************************************************************************************************************
+    # ****************************************************************************************************************
     
-    if maestro_namelist["machine"]["heating"]["type"] == "ICRH":
-        Pich = maestro_namelist["machine"]["heating"]["parameters"]["P_icrh"]
-        Zmini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][0]
-        Amini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][1]
-        fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
-    else:
-        raise ValueError("[MITIM] Only ICRH heating is supported for now")
+    seed = maestro_namelist["seed"] if "seed" in maestro_namelist else 0
+
+    # ---------------------------------------------------------------------------------------
+    # Read problem parameters
+    # ---------------------------------------------------------------------------------------
+
+    parameters_engineering = {
+        'Ip_MA':        maestro_namelist["machine"]["Ip"],
+        'B_T':          maestro_namelist["machine"]["Bt"],
+        'Zeff':         maestro_namelist["assumptions"]["Zeff"],
+        'PichT_MW':     maestro_namelist["machine"]["heating"]["parameters"]["P_icrh"],
+        'neped_20' :    maestro_namelist["assumptions"]["initialization"]["neped_20"] ,
+        'Tesep_keV':    maestro_namelist["assumptions"]["Tesep_eV"]*1E-3,
+        'nesep_20':     maestro_namelist["assumptions"]["initialization"]["neped_20"] * maestro_namelist["assumptions"]["initialization"]["nesep_ratio"]
+        }
     
-    Zeff = maestro_namelist["assumptions"]["Zeff"]
-    Tsep = maestro_namelist["assumptions"]["Tesep_eV"]*1E-3
-
-    parameters_engineering = {'Ip_MA': Ip, 'B_T': Bt, 'Zeff': Zeff, 'PichT_MW': Pich, 'neped_20' : neped , 'Tesep_keV': Tsep, 'nesep_20': nesep}
-    
-    # ---------------------------------------------------------------------------------------
-    # Plasma mix and impurity parameters
-    # ---------------------------------------------------------------------------------------
-
-    fmain = maestro_namelist["assumptions"]["mix"]["fmain"]
-    fW = maestro_namelist["assumptions"]["mix"]["fW"]
-    ZW = maestro_namelist["assumptions"]["mix"]["ZW"]
-
-    LowZ, Wratio = PLASMAtools.estimateLowZ(fmain,Zeff,Zmini,fmini,ZW,fW)
-
-    parameters_mix = {'DTplasma': True, 'lowZ_impurity': LowZ, 'impurity_ratio_WtoZ': Wratio, 'minority': [Zmini,Amini,fmini]}
-
-    # ---------------------------------------------------------------------------------------
-    # Initialization parameters
-    # ---------------------------------------------------------------------------------------
-
     separatrix_type = maestro_namelist["machine"]["separatrix"]["type"]
+    
     parameters_initialize = {
-        'BetaN_initialization': maestro_namelist["assumptions"]["initialization"]["BetaN"],
-        'peaking_initialization': maestro_namelist["assumptions"]["initialization"]["density_peaking"],
-        "initializer":separatrix_type}
+        'BetaN_initialization':     maestro_namelist["assumptions"]["initialization"]["BetaN"],
+        'peaking_initialization':   maestro_namelist["assumptions"]["initialization"]["density_peaking"],
+        "initializer":              separatrix_type
+        }
 
-    # ---------------------------------------------------------------------------------------
-    # Geometry parameters
-    # ---------------------------------------------------------------------------------------
-
+    # Initialize geometry from first 4 MXH moments
     if separatrix_type == "freegs":
-        # Initialize geometry from first 4 MXH moments
-        R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
-        a = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
-        kappa_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
-        delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
-        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
-        geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+        
+        R           = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
+        a           = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
+        kappa_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
+        delta_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
+        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    
     elif separatrix_type == 'fibe': 
-        R = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
-        a = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
-        kappa_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
-        delta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
-        zeta_sep = maestro_namelist["machine"]["separatrix"]["parameters"]["zeta_sep"]
-        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
-        geometry = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+        R           = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
+        a           = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
+        kappa_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
+        delta_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
+        zeta_sep    = maestro_namelist["machine"]["separatrix"]["parameters"]["zeta_sep"]
+        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
+    
+    # Initialize geometry from geqdsk file
     elif separatrix_type == "geqdsk":
-        # Initialize geometry from geqdsk file
+        
         geqdsk_file = maestro_namelist["machine"]["separatrix"]["parameters"]["geqdsk_file"]
-        n_mxh = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
-        geometry = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
+        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geometry    = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
+    
     else:
         raise ValueError('[MITIM] Only "freegs" (mxh) or "geqdsk" are supported')
 
@@ -109,85 +82,67 @@ def parse_maestro_nml(file_path):
     # Read user settings and default namelists for individual Beats
     # ---------------------------------------------------------------------------------------
 
-    beat_namelists = {}
+    potential_beats = maestro_namelist["maestro"]["beats"] + ["eped_initializer"] # The ones that I want to use plus the special one
 
-    for beat_type in ["eped","eped_initializer", "transp", "transp_soft", "portals", "portals_soft", "lengyel"]:
 
-        if f"{beat_type}_beat" in maestro_namelist["maestro"]:
+    beat_prepare_namelists, beat_run_namelists = {}, {}
+    for beat in potential_beats:
+        
+        # Read beat parameters
+        beat_parameters = maestro_namelist["maestro"][f"{beat}_beat"]
 
-            # ***************************************************************************
-            # Do I want a default namelist?
-            # ***************************************************************************
-            if maestro_namelist["maestro"][f"{beat_type}_beat"]["use_default"]:
-
-                if beat_type == "transp":
-                    beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix)
-                elif beat_type == "transp_soft":
-                    beat_namelist = TRANSPbeat.transp_beat_default_nml(parameters_engineering,parameters_mix,only_current_diffusion=True)
-                elif beat_type == "portals_soft":
-                    # PORTALS soft requires right now that portals namelist is defined
-                    if "portals_beat" in maestro_namelist["maestro"]:
-                        beat_namelist = PORTALSbeat.portals_beat_soft_criteria(maestro_namelist["maestro"]["portals_beat"]["portals_namelist"])
-                    else:
-                        raise ValueError("[MITIM] For PORTALS soft default I need PORTALS namelist")
-                else:
-                    raise ValueError(f"[MITIM] {beat_type} beat does not have a default namelist yet")
-
-            # ***************************************************************************
-            # Read user namelist
-            # ***************************************************************************
-            elif f"{beat_type}_namelist" in maestro_namelist["maestro"][f"{beat_type}_beat"]:
-
-                beat_namelist = maestro_namelist["maestro"][f"{beat_type}_beat"][f"{beat_type}_namelist"]
-
-            # ***************************************************************************
-            # Nothin yet
-            # ***************************************************************************
-            else:
-                raise ValueError(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist nor you wanted default")
-
-            # ***************************************************************************
-            # Additional modifications that are required but not in JSON
-            # ***************************************************************************
-
-            # soft portals namelist
-            if beat_type in ["portals","portals_soft"]:
-
-                lumpImpurities = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["lumpImpurities"]
-                enforce_same_density_gradients = maestro_namelist["maestro"]["portals_beat"]["transport_preprocessing"]["enforce_same_density_gradients"]
-
-                # add postprocessing function
-                beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
-
-        elif beat_type == "eped_initializer" and "eped_beat" in maestro_namelist["maestro"]: 
-                print('Using the eped_beat namelist for the eped_initializer')
-                beat_namelist = maestro_namelist["maestro"]["eped_beat"]["eped_namelist"]
-
+        # ********
+        # ******** Prepare the prepare() parameters
+        # ********
+        
+        beat_prepare_namelist_mod = beat_parameters["parameters_prepare"]
+        
+        # I can also provide a "base namelist" from another beat so that I don't repeat all the inputs and I have just indicated the changes
+        beat_base = beat_parameters["base_beat"]
+        if beat_base is not None:
+            beat_base_namelist = maestro_namelist["maestro"][beat_base]["parameters_prepare"]
+            beat_prepare_namelist = IOtools.deep_dict_update(beat_base_namelist, beat_prepare_namelist_mod)
         else:
-            beat_namelist = None
-            print(f"[MITIM] {beat_type} beat not found in the MAESTRO namelist", typeMsg='w')
+            beat_prepare_namelist = beat_prepare_namelist_mod
+        
+        # Potentially modify namelist based on rest of the namelist
+        preprocess_prepare_function = None
+        
+        if "preprocess_prepare" in beat_parameters:
+            preprocess_prepare_function = beat_parameters["preprocess_prepare"]
+            preprocess_prepare_parameters = beat_parameters["preprocess_prepare_parameters"]
+        elif beat_base is not None:
+            preprocess_prepare_function = maestro_namelist["maestro"][beat_base]["preprocess_prepare"]
+            preprocess_prepare_parameters = maestro_namelist["maestro"][beat_base]["preprocess_prepare_parameters"]
+            
+        if preprocess_prepare_function is not None:
+            beat_prepare_namelist = preprocess_prepare_function(
+                beat_prepare_namelist,
+                maestro_namelist,
+                preprocess_prepare_parameters
+                )
 
-        beat_namelists[beat_type] = beat_namelist
+        # ********
+        # ******** Prepare the run() parameters
+        # ********
 
-    maestro_beats = maestro_namelist["maestro"]
+        # Run 
+        if "preprocess_run" in beat_parameters and beat_parameters["preprocess_run"] is not None: 
+            beat_run_namelist = beat_parameters["preprocess_run"]({}, maestro_namelist, cpus, force_cold_start)
+        elif beat_base is not None:
+            beat_run_namelist = maestro_namelist["maestro"][beat_base]["preprocess_run"]({}, maestro_namelist, cpus, force_cold_start)
+        else:
+            beat_run_namelist = {}
 
-    return parameters_engineering, parameters_initialize, geometry, beat_namelists, maestro_beats, seed
+        beat_prepare_namelists[beat] = beat_prepare_namelist
+        beat_run_namelists[beat] = beat_run_namelist
 
-@mitim_timer('MAESTRO')
-def run_maestro_local(    
-        parameters_engineering, 
-        parameters_initialize, 
-        geometry, 
-        beat_namelists, 
-        maestro_beats,
-        seed,
-        folder=None,
-        terminal_outputs = False,
-        force_cold_start = False,
-        cpus = 8,
-        keep_all_files = True,
-        ):
-    
+    # ****************************************************************************************************************
+    # ****************************************************************************************************************
+    # Execute MAESTRO
+    # ****************************************************************************************************************
+    # ****************************************************************************************************************    
+
     # -------------------------------------------------------------------------
     # Initialize object
     # -------------------------------------------------------------------------
@@ -208,51 +163,57 @@ def run_maestro_local(
     # -------------------------------------------------------------------------
 
     creator_added = False
-
-    while maestro_beats["beats"]:
-
+    
+    for beat in maestro_namelist["maestro"]["beats"]:
+        
+        beat_parameters = maestro_namelist["maestro"][f"{beat}_beat"]
+        
         # ****************************************************************************
         # Define beat
         # ****************************************************************************
-        if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
-            label_beat = "transp"
-        elif maestro_beats["beats"][0] in ["eped"]:
-            label_beat = "eped"
-        elif maestro_beats["beats"][0] in ["portals", "portals_soft"]:
-            label_beat = "portals"
-        elif maestro_beats["beats"][0] in ["lengyel"]:
-            label_beat = "lengyel"
-
-        m.define_beat(label_beat, initializer=None if creator_added else parameters_initialize["initializer"])
+        
+        m.define_beat(
+            beat_parameters["beat_type"],
+            initializer = None if creator_added else parameters_initialize["initializer"]
+            )
 
         # ****************************************************************************
         # Define creator
         # ****************************************************************************
+        
         if not creator_added:
+            
             m.define_creator(
                 'eped_initializer', 
                 BetaN = parameters_initialize["BetaN_initialization"], 
                 nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_namelists["eped_initializer"],
+                **beat_prepare_namelists["eped_initializer"],
                 **parameters_engineering
                 )
-            m.initialize(BetaN = parameters_initialize["BetaN_initialization"], **geometry, **parameters_engineering)
+            
+            m.initialize(
+                BetaN = parameters_initialize["BetaN_initialization"],
+                **geometry,
+                **parameters_engineering
+                )
+            
             creator_added = True
 
         # ****************************************************************************
-        # Define preparation and run
+        # Prepare beat
         # ****************************************************************************
-
-        run_namelist = {}
-        if maestro_beats["beats"][0] in ["transp", "transp_soft"]:
-            run_namelist = {'mpisettings' : {"trmpi": cpus, "toricmpi": cpus, "ptrmpi": 1}}
-        elif maestro_beats["beats"][0] in ["eped", "eped_initializer"]:
-            run_namelist = {'cold_start': force_cold_start, 'cpus': cpus}
-
-        m.prepare(**beat_namelists[maestro_beats["beats"][0]])
-        m.run(**run_namelist)
-
-        maestro_beats["beats"].pop(0)
+        
+        m.prepare(**beat_prepare_namelists[beat])
+        
+        # ****************************************************************************
+        # Run beat
+        # ****************************************************************************
+        
+        m.run(**beat_run_namelists[beat])
+        
+    # ****************************************************************************
+    # Finalize MAESTRO run
+    # ****************************************************************************
 
     m.finalize()
 
@@ -276,8 +237,7 @@ def main():
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    run_maestro_local(*parse_maestro_nml(maestro_namelist),folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
-
+    run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
 import shutil
 import copy
 import pandas as pd
+from functools import partial
 import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
@@ -403,28 +404,21 @@ class portals_beat(beat):
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
 
-def portals_beat_soft_criteria(portals_namelist):
+def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
+    p = PROFILEStools.gacode_state(file_profs)
+    if lumpImpurities:
+        p.lumpImpurities()
+    if enforce_same_density_gradients:
+        p.enforce_same_density_gradients()
+    p.write_state(file=file_profs)
+    return p
 
-    portals_namelist_soft = copy.deepcopy(portals_namelist)
+def preprocess_prepare_portals(beat_namelist,maestro_namelist, preprocess_prepare_parameters):
+    
+    lumpImpurities = preprocess_prepare_parameters["lumpImpurities"]
+    enforce_same_density_gradients = preprocess_prepare_parameters["enforce_same_density_gradients"]
 
-    # Relaxation of stopping criteria
-    if 'optimization_options' not in portals_namelist_soft:
-        portals_namelist_soft['optimization_options'] = {}
-    if 'convergence_options' not in portals_namelist_soft['optimization_options']:
-        portals_namelist_soft['optimization_options']['convergence_options'] = {}
-    if 'stopping_criteria_parameters' not in portals_namelist_soft['optimization_options']['convergence_options']:
-        portals_namelist_soft['optimization_options']['convergence_options']['stopping_criteria_parameters'] = {}
+    # add postprocessing function
+    beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
 
-    portals_namelist_soft['optimization_options']['convergence_options']["maximum_iterations"] = 15
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["maximum_value"] = 10e-3
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
-
-    if 'target' not in portals_namelist_soft["portals_parameters"]:
-        portals_namelist_soft["portals_parameters"]['target'] = {}
-    if 'options' not in portals_namelist_soft["portals_parameters"]['target']:
-        portals_namelist_soft["portals_parameters"]['target']['options'] = {}
-
-    portals_namelist_soft["portals_parameters"]["target"]["options"]["targets_evolve"] = ["qie"]
-
-    return portals_namelist_soft
+    return beat_namelist

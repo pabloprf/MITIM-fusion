@@ -1,18 +1,13 @@
-# (**************************************************************************************************************)
-#
-# This is a complete template for a MAESTRO simulation
-#
-# (**************************************************************************************************************)
+# **************************************************************************************************************
+# MAESTRO simulation template
+# **************************************************************************************************************
+
+# Master random seed for reproducibility, to be sent to all beats that can receive seed
+seed: 0
 
 # ------------------------------------------------------------------------------------------------------------
 # Plasma
 # ------------------------------------------------------------------------------------------------------------
-
-# Name of this simulation
-flag: SPARC PRD
-
-# Master random seed for reproducibility, to be sent to all beats that can receive seed
-seed: 0
 
 # Machine parameters
 machine:
@@ -24,7 +19,7 @@ machine:
   # Separatrix specification
   separatrix:
 
-    # Type of separatrix (freegs, geqdsk)
+    # Type of separatrix (freegs, geqdsk, fibe)
     type: freegs
 
     # Parameters for this type of separatrix
@@ -52,13 +47,17 @@ machine:
 
       # ICRF input power
       P_icrh: 11.0
+
       # Minority species [Z,A]
       minority: [2, 3]
+
       # Minority fraction to be added to the mix
       fmini: 0.05
 
 # Simulation assumptions
 assumptions:
+
+  DTplasma: True
 
   # Impurities
   Zeff: 1.5
@@ -98,16 +97,21 @@ maestro:
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
-  #       use_default: true/false
-  #       ****_namelist: Parameters that are passed to the run() command
-  #       #TODO
+  #       beat_type:          Used to map this beat to what MAESTRO understands
+  #       base_beat:          Pointer to another beat to use as base for the to start from (and only provide the modifications)
+  #       parameters_prepare: Parameters that are passed to the prepare() method of the beat class
+  #       preprocess_prepare: [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
+  #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
+  #       preprocess_run:     [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
   # ---------------------------------------------------------------------------
 
   eped_beat:
 
-    use_default: false
+    beat_type: eped
 
-    eped_namelist:
+    base_beat: null
+
+    parameters_prepare:
 
       # Location of EPED NN files (if null, use full EPED)
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
@@ -123,26 +127,25 @@ maestro:
       ptop_multiplier: 1.0  # Multiplies ptop
       TioverTe: 1.0         # Ti/Te assumption at the pedestal top
 
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: import::mitim_modules.maestro.utils.EPEDbeat.preprocess_run_eped
+
   eped_initializer_beat:
 
-    use_default: false
+    beat_type: eped
+   
+    base_beat: eped_beat # Same as EPED beat
 
-    eped_initializer_namelist:
-      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
-      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
-      corrections_set:
-        Bt: 12.2
-        R: 1.85
-        a: 0.57
-
-      ptop_multiplier: 1.0
-      TioverTe: 1.0
+    parameters_prepare: {}
 
   lengyel_beat:
 
-    use_default: false
+    beat_type: lengyel
 
-    lengyel_namelist:
+    base_beat: null
+
+    parameters_prepare:
 
       # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
       lengyel_namelist_location: null
@@ -156,11 +159,17 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: null
+
   portals_beat:
 
-    use_default: false
+    beat_type: portals
 
-    portals_namelist:
+    base_beat: null
+
+    parameters_prepare:
 
       # If null, it will use the default namelist at: __mitimroot__ / "templates" / "namelist.portals.yaml"
       portals_namelist_location: null
@@ -215,11 +224,78 @@ maestro:
       # By default, enforce that all species have the same density gradient
       enforce_same_density_gradients: true
 
+    preprocess_prepare: import::mitim_modules.maestro.utils.PORTALSbeat.preprocess_prepare_portals
+    preprocess_prepare_parameters:
+      # By default, run PORTALS with all impurities lumped into one species
+      lumpImpurities: true
+      # By default, enforce that all species have the same density gradient
+      enforce_same_density_gradients: true
+    preprocess_run: null
+
   portals_soft_beat:
-    use_default: true
+
+    beat_type: portals
+
+    base_beat: portals_beat
+
+    parameters_prepare:
+
+      portals_parameters:
+        target:
+          options:
+            targets_evolve: ["qie"]
+        optimization_options:
+          convergence_options:
+            maximum_iterations: 15
+          stopping_criteria_parameters:
+            maximum_value: 10.e-3
+            minimum_dvs_variation: [10, 3, 1.0]
+            ricci_value: 0.15
 
   transp_beat:
-    use_default: true
+
+    beat_type: transp
+
+    base_beat: null
+
+    parameters_prepare:
+
+      flattop_window: 2.5      
+      extractAC: False     
+      dtOut_ms : 0.01
+      dtIn_ms : 0.01
+      nzones : 60
+      nzones_energetic : 20
+      nzones_distfun : 10    
+      MCparticles : 1.e+4
+      toric_ntheta : 64  
+      toric_nrho : 128
+      useNUBEAMforAlphas: True
+
+    # Function to modify parameters of the namelist based on the rest of namelist
+    preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
+    preprocess_prepare_parameters:
+      max_cpus_toric: null  # Use as many as available
+      max_cpus_nubeam: null # Use as many as available
+    preprocess_run: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_run_transp
 
   transp_soft_beat:
-    use_default: true
+
+    beat_type: transp
+
+    base_beat: transp_beat
+
+    # A soft TRANSP beat must be just for current diffusion, no alphas nor ICRF
+    parameters_prepare:
+
+        flattop_window: 20.0 # 20 seconds flattop
+
+        dtEquilMax_ms: 100.0
+        dtHeating_ms: 100.0
+        dtCurrentDiffusion_ms: 100.0
+        dtOut_ms: 100.0
+        dtIn_ms: 100.0
+        
+        useNUBEAMforAlphas: False
+        Pich: False
+
