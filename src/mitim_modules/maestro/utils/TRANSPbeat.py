@@ -343,21 +343,37 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
     fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
     Zeff = maestro_namelist["assumptions"]["Zeff"]
     fmain = maestro_namelist["assumptions"]["mix"]["fmain"]
-    fW = maestro_namelist["assumptions"]["mix"]["fW"]
-    ZW = maestro_namelist["assumptions"]["mix"]["ZW"]
-    
-    transp_namelist['Pich'] =    maestro_namelist['machine']['heating']['type'] == 'ICRH' and \
-                                 maestro_namelist['machine']['heating']['parameters']['P_icrh'] > 0.0
+
+    # Only correct Pich from the maestro namelist if it's not already False    
+    if transp_namelist['Pich']:
+        transp_namelist['Pich'] =   maestro_namelist['machine']['heating']['type'] == 'ICRH' and \
+                                    maestro_namelist['machine']['heating']['parameters']['P_icrh'] > 0.0
     
     if transp_namelist['Pich']:
         transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
 
-    LowZ, Wratio = PLASMAtools.estimateLowZ(fmain,Zeff,Zmini,fmini,ZW,fW)
+    # High-Z
+    import periodictable as pt
+    symbol_highZ = maestro_namelist["assumptions"]["mix"]["highZ"]
+    fhighZ = maestro_namelist["assumptions"]["mix"]["fhighZ"] 
+    e = pt.elements.symbol(symbol_highZ)
+    charge = e.number
+    mass = e.mass    
+    # ------ 
+
+    LowZ, Wratio = PLASMAtools.estimateLowZ(
+        fmain,
+        Zeff,
+        Zmini,
+        fmini,
+        maestro_namelist["assumptions"]["mix"]["CShighZ_estimate"],
+        fhighZ)
     
-    transp_namelist["zlump"] =[  [74.0, 184.0, 0.1*Wratio],
+    
+    transp_namelist["zlump"] =[  [charge, mass, 0.1*Wratio],
                                  [LowZ, LowZ*2, 0.1] ]
 
-    transp_namelist['DTplasma'] = maestro_namelist["assumptions"]['DTplasma']
+    transp_namelist['DTplasma'] = maestro_namelist["machine"]['fuel'] == ['D', 'T'] #TODO: generalize TRANSP module
 
     return transp_namelist
 

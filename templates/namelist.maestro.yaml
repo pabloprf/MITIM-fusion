@@ -12,6 +12,8 @@ seed: 0
 # Machine parameters
 machine:
 
+  fuel: ['D', 'T'] # Only DT or D allowed for now
+
   # Engineering parameters (if using values in geqdsk, these must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk)
   Bt: 12.2
   Ip: 8.7
@@ -57,14 +59,13 @@ machine:
 # Simulation assumptions
 assumptions:
 
-  DTplasma: True
-
-  # Impurities
+  # Impurities (apart from minority)
   Zeff: 1.5
   mix:
     fmain: 0.85
-    ZW: 50
-    fW: 1.5e-5
+    highZ: 'W'
+    fhighZ: 1.5e-5
+    CShighZ_estimate: 50 #Estimate charge state in this plasma to compute the low-Z impurity at initialization
     
   # Edge parameters
   Tesep_eV: 75.0
@@ -271,6 +272,7 @@ maestro:
       toric_ntheta : 64  
       toric_nrho : 128
       useNUBEAMforAlphas: True
+      Pich: True
 
     # Function to modify parameters of the namelist based on the rest of namelist
     preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
@@ -298,4 +300,3 @@ maestro:
         
         useNUBEAMforAlphas: False
         Pich: False
-
