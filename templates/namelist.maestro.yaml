@@ -47,11 +47,11 @@ plasma:
       delta_sep: 0.57
       kappa_sep: 1.97
 
-      # If geqdsk: Boundary parameterization 
-      geqdsk_file: ""
-
-      # If geqdsk, freegs: Boundary parameterization number of MXH coefficients to parametrize the boundary
+      # If geqdsk, freegs: Number of MXH coefficients to parametrize the boundary
       n_mxh: 5
+
+      # If geqdsk: path to file 
+      geqdsk_file: ""
 
   # Plasma mix
   species:

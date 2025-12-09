@@ -1,6 +1,9 @@
 import copy
+from pathlib import Path
 import sys
+import re
 import datetime
+from typing import OrderedDict
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -63,7 +66,12 @@ class maestro:
 
         # If terminal outputs, I also want to keep track of what has happened in a log file
         if terminal_outputs and overall_log_file and not ENABLE_EMBED:
-            sys.stdout = LOGtools.Logger(logFile=self.folder_output / "maestro.log", writeAlsoTerminal=True)
+            self.master_log_file = self.folder_output / "maestro.log"
+            sys.stdout = LOGtools.Logger(logFile=self.master_log_file, writeAlsoTerminal=True)
+        else:
+            self.master_log_file = None
+            
+        self.warnings_log_file = self.folder_output / "warnings.log"
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')
@@ -262,6 +270,69 @@ class maestro:
             for item in self.beat.folder .iterdir():
                 IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
 
+
+    def interpret(self):
+        
+        self.warnings_dict = OrderedDict()
+        
+        # Once each beat is finished, collect all "Warnings" that were in the logs into a single file
+        print('\t- Collecting warnings...')
+        
+        # If master logger exists (run was done with terminal outputs enabled), read from it
+        if self.master_log_file is not None:
+            
+            read_warning(self.master_log_file, self.warnings_dict, 'master')
+            
+        # If not, check all logs
+        else:
+                    
+            order_flags = ["check", "ini", "prep", "run", "inform", "finalize"]
+            order_index = {flag: i for i, flag in enumerate(order_flags)}
+
+            files = [item.name for item in self.folder_logs.glob('*')]
+
+            pattern = re.compile(r"beat_(\d+)_(\w+)\.log")
+
+            def sort_key(name):
+                m = pattern.match(name)
+                if not m:
+                    return (float('inf'), float('inf'))  # unknown pattern → sort last
+
+                beat = int(m.group(1))
+                flag = m.group(2)
+
+                return (beat, order_index.get(flag, float('inf')))
+                
+            sorted_files = sorted(files, key=sort_key)
+            
+            # Read all in order
+            for file in sorted_files:
+                
+                read_warning(self.folder_logs / Path(file), self.warnings_dict, file)  
+            
+        # Organize per group
+        log_group = {}
+        for key in self.warnings_dict:
+            group = key.split('_$')[0]
+            line = key.split('_$')[1]
+            if group not in log_group:
+                log_group[group] = {}
+            log_group[group][line] = self.warnings_dict[key]
+            
+        # Write file
+        with open(self.warnings_log_file, 'a') as f:
+            
+            f.write('\n')
+            f.write(f'   Writing warnings @ time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            f.write('\n')
+            
+            for group in log_group:
+                f.write(f'\n------------------------------------------------------------\n')
+                f.write(f'   Warnings in section: {group}\n')
+                f.write(f'------------------------------------------------------------\n')
+                for line in log_group[group]:
+                    f.write(log_group[group][line]+'\n')
+
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
@@ -335,4 +406,14 @@ class maestro:
         return MAESTROplot.plot_results(self, fn)
 
 
+def read_warning(file, d, label):
+            
+    # Read contents
+    with open(file, 'r') as f:
+        log_lines = f.readlines()
+        
+    for i in range(len(log_lines)):
+        if '*WARNING*' in log_lines[i]:
+            d[f'{label}_${i}']= log_lines[i].replace('\t','').replace('\n','').replace('[*WARNING*]','')
 
+    return d
