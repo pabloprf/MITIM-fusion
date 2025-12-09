@@ -763,9 +763,9 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
 
 def preprocess_run_eped(run_namelist, maestro_namelist, cpus, cold_start):
     
-    max_cpus = maestro_namelist["maestro"]["eped_beat"]["preprocess_prepare_parameters"]["max_cpus"]
+    cpus_eped = maestro_namelist["maestro"]["eped_beat"]["preprocess_prepare_parameters"]["cpus"]
 
     run_namelist['cold_start'] = cold_start
-    run_namelist['cpus'] = np.min([cpus, max_cpus]) if max_cpus is not None else cpus
+    run_namelist['cpus'] = cpus_eped if cpus_eped is not None else cpus
     
     return run_namelist

@@ -342,25 +342,25 @@ class transp_beat(beat):
 
 def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepare_parameters):
     
-    Zmini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][0]
-    Amini = maestro_namelist["machine"]["heating"]["parameters"]["minority"][1]
-    fmini = maestro_namelist["machine"]["heating"]["parameters"]["fmini"]
-    Zeff = maestro_namelist["assumptions"]["Zeff"]
-    fmain = maestro_namelist["assumptions"]["mix"]["fmain"]
+    Zmini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][0]
+    Amini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][1]
+    fmini = maestro_namelist["plasma"]["heating"]["parameters"]["fmini"]
+    Zeff = maestro_namelist["plasma"]["species"]["Zeff"]
+    fmain = maestro_namelist["plasma"]["species"]["mix"]["fmain"]
 
     # Only correct Pich from the maestro namelist if it's not already False    
     if transp_namelist['Pich']:
-        transp_namelist['Pich'] =   maestro_namelist['machine']['heating']['type'] == 'ICRH' and \
-                                    maestro_namelist['machine']['heating']['parameters']['P_icrh'] > 0.0
+        transp_namelist['Pich'] =   maestro_namelist["plasma"]['heating']['type'] == 'ICRH' and \
+                                    maestro_namelist["plasma"]['heating']['parameters']['P_icrh'] > 0.0
     
     if transp_namelist['Pich']:
         transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
-        transp_namelist['freq_ICH'] = maestro_namelist['machine']['heating']['parameters']['freq_ICH']
+        transp_namelist['freq_ICH'] = maestro_namelist["plasma"]['heating']['parameters']['freq_ICH']
 
     # High-Z
     import periodictable as pt
-    symbol_highZ = maestro_namelist["assumptions"]["mix"]["highZ"]
-    fhighZ = maestro_namelist["assumptions"]["mix"]["fhighZ"] 
+    symbol_highZ = maestro_namelist["plasma"]["species"]["mix"]["highZ"]
+    fhighZ = maestro_namelist["plasma"]["species"]["mix"]["fhighZ"] 
     e = pt.elements.symbol(symbol_highZ)
     charge = e.number
     mass = e.mass    
@@ -371,14 +371,14 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
         Zeff,
         Zmini,
         fmini,
-        maestro_namelist["assumptions"]["mix"]["CShighZ_estimate"],
+        maestro_namelist["plasma"]["species"]["mix"]["CShighZ_estimate"],
         fhighZ)
     
     
     transp_namelist["zlump"] =[  [charge, mass, 0.1*Wratio],
                                  [LowZ, LowZ*2, 0.1] ]
 
-    transp_namelist['DTplasma'] = maestro_namelist["machine"]['fuel'] == ['D', 'T'] #TODO: generalize TRANSP module
+    transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T'] #TODO: generalize TRANSP module
 
     return transp_namelist
 
@@ -386,16 +386,16 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
     
     toric = maestro_namelist["maestro"]["transp_beat"]["parameters_prepare"]["Pich"]
     nubeam = maestro_namelist["maestro"]["transp_beat"]["parameters_prepare"]["useNUBEAMforAlphas"]
-    max_cpus_toric = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["max_cpus_toric"]
-    max_cpus_nubeam = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["max_cpus_nubeam"]
+    cpus_toric = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["cpus_toric"]
+    cpus_nubeam = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["cpus_nubeam"]
     
     if toric:
-        toricmpi = min([max_cpus_toric, cpus]) if max_cpus_toric is not None else cpus
+        toricmpi = cpus_toric if cpus_toric is not None else cpus
     else:
         toricmpi = 1
         
     if nubeam:
-        trmpi = min([max_cpus_nubeam, cpus]) if max_cpus_nubeam is not None else cpus
+        trmpi = cpus_nubeam if cpus_nubeam is not None else cpus
     else:
         trmpi = 1
     

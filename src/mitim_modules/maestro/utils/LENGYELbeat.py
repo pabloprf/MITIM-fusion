@@ -48,7 +48,7 @@ class lengyel_beat(beat):
 
         # Use seed impurity species from maestro namelist        
         seed_impurity_symbol = seed_impurity_species["name"]
-        seed_impurity_ratio_sep_top = seed_impurity_species["ratio_sep_top"]
+        seed_impurity_ratio_sep_top = seed_impurity_species["ratio_nZ_sep_top"]
         seed_impurity_name, seed_impurity_Z, seed_impurity_A = element_to_lengyel( seed_impurity_symbol )
 
         # High-Z impurity search

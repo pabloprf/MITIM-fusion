@@ -196,7 +196,7 @@ class maestro:
             self.beat.initialize._inform_save()
 
             # Creator can also save important parameters
-            if self.beat.initialize.profile_creator is not None:
+            if ("profile_creator" in self.beat.initialize.__dict__) and (self.beat.initialize.profile_creator is not None):
                 self.beat.initialize.profile_creator._inform_save()
 
             if self.profiles_with_engineering_parameters is None:

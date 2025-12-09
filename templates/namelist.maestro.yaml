@@ -9,36 +9,64 @@ seed: 0
 # Plasma
 # ------------------------------------------------------------------------------------------------------------
 
-# Machine parameters
-machine:
+plasma:
 
-  fuel: ['D', 'T'] # Only DT or D allowed for now
+  # Initialization of profiles
+  profiles_initialization:
 
-  # Engineering parameters (if using values in geqdsk, these must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk)
-  Bt: 12.2
-  Ip: 8.7
+    # How to initialize the plasma
+    initialization_type: freegs       # profiles, freegs, geqdsk, fibe 
 
-  # Separatrix specification
-  separatrix:
+    # How to initialize the profiles
+    creator_type: eped_initializer  # eped_initializer (must exist as beat namelist below) or null
 
-    # Type of separatrix (freegs, geqdsk, fibe)
-    type: freegs
-
-    # Parameters for this type of separatrix
     parameters:
 
-      # If the separatrix type receives boundary parameterization, parameters here
+      # If initialization_type = file: path to input.gacode to initialize with
+      profiles_file: null 
+
+      # If creator_type = eped_initializer: Profiles will be initialized such that these parameters are matched as close as possible
+      BetaN: 1.0
+      density_peaking: 1.3
+
+  parameters:
+
+    Bt: 12.2 # if using values in geqdsk, this must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk
+    Ip: 8.7  # if using values in geqdsk, this must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk
+
+    neped_20: 2.5
+    ne_ratio_sep_ped: 0.3
+    Tesep_eV: 75.0
+
+    # Separatrix specification (parameters determined depending on initialization_type)
+    separatrix:
+
+      # If freegs, fibe: Boundary parameterization 
       R: 1.85
       a: 0.57
       delta_sep: 0.57
       kappa_sep: 1.97
 
-      # If the separatrix type receives a geqdsk file directly, provide path here
+      # If geqdsk: Boundary parameterization 
       geqdsk_file: ""
 
-      # For both geqdsk and freegs, number of MXH coefficients to parametrize the boundary
+      # If geqdsk, freegs: Boundary parameterization number of MXH coefficients to parametrize the boundary
       n_mxh: 5
 
+  # Plasma mix
+  species:
+  
+    fuel: ['D', 'T'] # Only DT or D allowed for now
+      
+    # Impurities (apart from minority)
+    Zeff: 1.5
+    
+    mix:
+      fmain: 0.85
+      highZ: W
+      fhighZ: 1.5e-5
+      CShighZ_estimate: 50 #Estimate charge state in this plasma to compute the low-Z impurity at initialization
+      
   # Heating parameters
   heating:
 
@@ -59,34 +87,6 @@ machine:
       # Antenna frequency (if null, estimate on-axis deposition based on field and minority)
       freq_ICH: null
 
-# Simulation assumptions
-assumptions:
-
-  # Impurities (apart from minority)
-  Zeff: 1.5
-  mix:
-    fmain: 0.85
-    highZ: W
-    fhighZ: 1.5e-5
-    CShighZ_estimate: 50 #Estimate charge state in this plasma to compute the low-Z impurity at initialization
-    
-  # Edge parameters
-  Tesep_eV: 75.0
-
-  # Initialization of profiles
-  initialization:
-
-    # neped as the input (engineering) parameter
-    assume_neped: true
-    neped_20: 2.5
-
-    # ne_sep / ne_ped ratio to assume (e.g. for EPED) and construct profiles with
-    nesep_ratio: 0.3
-    
-    # Profiles will be initialized such that these parameters are matched as close as possible
-    BetaN: 1.0
-    density_peaking: 1.3
-
 # ------------------------------------------------------------------------------------------------------------
 # MAESTRO workflow parameters
 # ------------------------------------------------------------------------------------------------------------
@@ -101,12 +101,12 @@ maestro:
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
-  #       beat_type:          Used to map this beat to what MAESTRO understands
-  #       base_beat:          Pointer to another beat to use as base for the to start from (and only provide the modifications)
-  #       parameters_prepare: Parameters that are passed to the prepare() method of the beat class
-  #       preprocess_prepare: [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
+  #       beat_type:                     Used to map this beat to what MAESTRO understands
+  #       base_beat:                     Pointer to another beat to use as base for the to start from (and only provide the modifications)
+  #       parameters_prepare:            Parameters that are passed to the prepare() method of the beat class
+  #       preprocess_prepare:            [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
   #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
-  #       preprocess_run:     [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
+  #       preprocess_run:                [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
   # ---------------------------------------------------------------------------
 
   eped_beat:
@@ -133,7 +133,7 @@ maestro:
 
     preprocess_prepare: null
     preprocess_prepare_parameters:
-      max_cpus: null  # Use as many as available for this MAESTRO job
+      cpus: null  # if null: use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.EPEDbeat.preprocess_run_eped
 
   eped_initializer_beat:
@@ -160,7 +160,7 @@ maestro:
 
       seed_impurity_species: 
         name: "Ne"
-        ratio_sep_top: 1.0
+        ratio_nZ_sep_top: 1.0
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
@@ -225,13 +225,6 @@ maestro:
       # If element is not exactly in radiation database, search for closest one
       enforce_impurity_radiation_existence: true
 
-    # Operations that will be included as part of the profiles_postprocessing_fun 
-    transport_preprocessing:
-      # By default, run PORTALS with all impurities lumped into one species
-      lumpImpurities: true
-      # By default, enforce that all species have the same density gradient
-      enforce_same_density_gradients: true
-
     preprocess_prepare: import::mitim_modules.maestro.utils.PORTALSbeat.preprocess_prepare_portals
     preprocess_prepare_parameters:
       # By default, run PORTALS with all impurities lumped into one species
@@ -284,8 +277,8 @@ maestro:
     # Function to modify parameters of the namelist based on the rest of namelist
     preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
     preprocess_prepare_parameters:
-      max_cpus_toric: null  # Use as many as available for this MAESTRO job
-      max_cpus_nubeam: null # Use as many as available for this MAESTRO job
+      cpus_toric: null  # if null: use as many as available for this MAESTRO job
+      cpus_nubeam: null # if null: use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_run_transp
 
   transp_soft_beat:

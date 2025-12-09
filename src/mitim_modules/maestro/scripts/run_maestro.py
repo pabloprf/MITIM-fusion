@@ -32,51 +32,48 @@ def run_maestro_local(
     # ---------------------------------------------------------------------------------------
 
     parameters_engineering = {
-        'Ip_MA':        maestro_namelist["machine"]["Ip"],
-        'B_T':          maestro_namelist["machine"]["Bt"],
-        'Zeff':         maestro_namelist["assumptions"]["Zeff"],
-        'PichT_MW':     maestro_namelist["machine"]["heating"]["parameters"]["P_icrh"],
-        'neped_20' :    maestro_namelist["assumptions"]["initialization"]["neped_20"] ,
-        'Tesep_keV':    maestro_namelist["assumptions"]["Tesep_eV"]*1E-3,
-        'nesep_20':     maestro_namelist["assumptions"]["initialization"]["neped_20"] * maestro_namelist["assumptions"]["initialization"]["nesep_ratio"]
+        'Ip_MA':        maestro_namelist["plasma"]["parameters"]["Ip"],
+        'B_T':          maestro_namelist["plasma"]["parameters"]["Bt"],
+        'Zeff':         maestro_namelist["plasma"]["species"]["Zeff"],
+        'PichT_MW':     maestro_namelist["plasma"]["heating"]["parameters"]["P_icrh"],
+        'neped_20' :    maestro_namelist["plasma"]["parameters"]["neped_20"] ,
+        'Tesep_keV':    maestro_namelist["plasma"]["parameters"]["Tesep_eV"]*1E-3,
+        'nesep_20':     maestro_namelist["plasma"]["parameters"]["neped_20"] * maestro_namelist["plasma"]["parameters"]["ne_ratio_sep_ped"]
         }
     
-    separatrix_type = maestro_namelist["machine"]["separatrix"]["type"]
+    initialization_type =  maestro_namelist["plasma"]["profiles_initialization"]["initialization_type"]
     
-    parameters_initialize = {
-        'BetaN_initialization':     maestro_namelist["assumptions"]["initialization"]["BetaN"],
-        'peaking_initialization':   maestro_namelist["assumptions"]["initialization"]["density_peaking"],
-        "initializer":              separatrix_type
-        }
+    initialization_creator_type = maestro_namelist["plasma"]["profiles_initialization"]["creator_type"]
+    parameters_initialize =  maestro_namelist["plasma"]["profiles_initialization"]["parameters"]
 
     # Initialize geometry from first 4 MXH moments
-    if separatrix_type == "freegs":
+    if initialization_type == "freegs":
         
-        R           = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
-        a           = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
-        kappa_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
-        delta_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
-        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        R           = maestro_namelist["plasma"]["parameters"]["separatrix"]["R"]
+        a           = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
+        kappa_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["kappa_sep"]
+        delta_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["delta_sep"]
+        n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
         geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
     
-    elif separatrix_type == 'fibe': 
-        R           = maestro_namelist["machine"]["separatrix"]["parameters"]["R"]
-        a           = maestro_namelist["machine"]["separatrix"]["parameters"]["a"]
-        kappa_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["kappa_sep"]
-        delta_sep   = maestro_namelist["machine"]["separatrix"]["parameters"]["delta_sep"]
-        zeta_sep    = maestro_namelist["machine"]["separatrix"]["parameters"]["zeta_sep"]
-        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+    elif initialization_type == 'fibe': 
+        R           = maestro_namelist["plasma"]["parameters"]["separatrix"]["R"]
+        a           = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
+        kappa_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["kappa_sep"]
+        delta_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["delta_sep"]
+        zeta_sep    = maestro_namelist["plasma"]["parameters"]["separatrix"]["zeta_sep"]
+        n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
         geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
     
     # Initialize geometry from geqdsk file
-    elif separatrix_type == "geqdsk":
+    elif initialization_type == "geqdsk":
         
-        geqdsk_file = maestro_namelist["machine"]["separatrix"]["parameters"]["geqdsk_file"]
-        n_mxh       = maestro_namelist["machine"]["separatrix"]["parameters"]["n_mxh"]
+        geqdsk_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["geqdsk_file"]
+        n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
         geometry    = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
     
     else:
-        raise ValueError('[MITIM] Only "freegs" (mxh) or "geqdsk" are supported')
+        geometry = {}
 
     # ---------------------------------------------------------------------------------------
     # Read user settings and default namelists for individual Beats
@@ -129,7 +126,7 @@ def run_maestro_local(
         # Run 
         if "preprocess_run" in beat_parameters and beat_parameters["preprocess_run"] is not None: 
             beat_run_namelist = beat_parameters["preprocess_run"]({}, maestro_namelist, cpus, force_cold_start)
-        elif beat_base is not None:
+        elif (beat_base is not None) and (maestro_namelist["maestro"][beat_base]["preprocess_run"] is not None):
             beat_run_namelist = maestro_namelist["maestro"][beat_base]["preprocess_run"]({}, maestro_namelist, cpus, force_cold_start)
         else:
             beat_run_namelist = {}
@@ -172,9 +169,12 @@ def run_maestro_local(
         # Define beat
         # ****************************************************************************
         
+        # Initialization chosen (profiles, freegs, geqdsk, fibe) for the first beat
+        initialize_this_beat_with = initialization_type if (not creator_added) else None
+        
         m.define_beat(
             beat_parameters["beat_type"],
-            initializer = None if creator_added else parameters_initialize["initializer"]
+            initializer = initialize_this_beat_with
             )
 
         # ****************************************************************************
@@ -183,16 +183,16 @@ def run_maestro_local(
         
         if not creator_added:
             
-            m.define_creator(
-                'eped_initializer', 
-                BetaN = parameters_initialize["BetaN_initialization"], 
-                nu_ne = parameters_initialize["peaking_initialization"], 
-                **beat_prepare_namelists["eped_initializer"],
-                **parameters_engineering
-                )
+            if initialization_creator_type is not None:
+                m.define_creator(
+                    initialization_creator_type, # e.g. 'eped_initializer', 
+                    **parameters_initialize,
+                    **beat_prepare_namelists[initialization_creator_type],
+                    **parameters_engineering
+                    )
             
             m.initialize(
-                BetaN = parameters_initialize["BetaN_initialization"],
+                **parameters_initialize,
                 **geometry,
                 **parameters_engineering
                 )
