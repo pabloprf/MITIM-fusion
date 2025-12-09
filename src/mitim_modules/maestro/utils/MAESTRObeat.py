@@ -210,7 +210,8 @@ class initializer_from_geqdsk(beat_initializer):
         self._inform_save()
 
         # Call the profiles initializer
-        super().__call__(self.folder / 'input.geqdsk.gacode', **kwargs_profiles)
+        kwargs_profiles["profiles_file"] = self.folder / 'input.geqdsk.gacode'
+        super().__call__(**kwargs_profiles)
 
     def _inform_save(self):
 
@@ -454,26 +455,26 @@ class creator_from_parameterization(creator):
             else:
                 aLn_guess = 0.2
                 # Find the density gradient that matches the peaking
-                print('\n\t -Optimizing aLn to match ne peaking')
+                print(f'\n\t- Optimizing aLn to match ne peaking = {self.nu_ne}')
                 bounds = [(0.0,3.0)]
                 res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLn = res.x[0]
-                print(f'\n\t - Gradient: aLn = {aLn:.2f}')
-                print(f'\t - ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
+                print(f'\n\t- Gradient: aLn = {aLn:.2f}')
+                print(f'\t- ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
 
             # Find the temperature gradient that matches the BetaN
             if (self.aLT_guess is not None) or (self.BetaN is None):
                 aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
-                print(f'\n\t - Using aLT = {aLT}')
+                print(f'\n\t- Using aLT = {aLT}')
             else:
                 aLT_guess = 2.0
                 # Find the temperature gradient that matches the BetaN
-                print('\n\t -Optimizing aLT to match BetaN')
+                print(f'\n\t- Optimizing aLT to match BetaN = {self.BetaN}')
                 bounds = [(0.5,3.0)]
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
-                print(f'\n\t - Gradient: aLT = {aLT:.2f}')
-                print(f'\t - BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+                print(f'\n\t- Gradient: aLT = {aLT:.2f}')
+                print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
 

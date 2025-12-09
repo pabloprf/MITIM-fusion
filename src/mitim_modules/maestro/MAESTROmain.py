@@ -22,7 +22,7 @@ MAESTRO:
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
 '''
 
-ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging
+ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log)
 
 class maestro:
 
@@ -128,7 +128,7 @@ class maestro:
         '''
         To initialize some profile functional form
         '''
-        if method == 'eped' or method == 'eped' or 'eped_initializer':
+        if method in ['eped', 'eped_initializer']:
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
