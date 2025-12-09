@@ -229,6 +229,7 @@ class transp_beat(beat):
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
+        print('\t\t\t* Bringing resolution of frozen plasma state to new plasma state')
         self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
 
         # --------------------------------------------------------------------------------------------
@@ -236,6 +237,7 @@ class transp_beat(beat):
         # --------------------------------------------------------------------------------------------
 
         # Insert kinetic profiles from frozen
+        print('\t\t\t* Bringing kinetic profiles of frozen plasma state to new plasma state')
         self.profiles_output.profiles['ne(10^19/m^3)'] = p_frozen.profiles['ne(10^19/m^3)']
         self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
         self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
@@ -245,10 +247,12 @@ class transp_beat(beat):
         self.profiles_output.scaleAllThermalDensities(scaleFactor = self.profiles_output.profiles['ne(10^19/m^3)']/profiles_output_pre_merge.profiles['ne(10^19/m^3)'])
 
         # Insert engineering parameters (except shape)
+        print('\t\t\t* Bringing Bt and Ip of frozen plasma state to new plasma state')
         for key in ['current(MA)', 'bcentr(T)']:
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
+        print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
         self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
         self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
 
