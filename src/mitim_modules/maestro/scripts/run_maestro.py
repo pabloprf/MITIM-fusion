@@ -1,4 +1,5 @@
 import argparse
+import copy
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -85,7 +86,7 @@ def run_maestro_local(
     for beat in potential_beats:
         
         # Read beat parameters
-        beat_parameters = maestro_namelist["maestro"][f"{beat}_beat"]
+        beat_parameters = copy.deepcopy(maestro_namelist["maestro"][f"{beat}_beat"])
 
         # ********
         # ******** Prepare the prepare() parameters
@@ -96,7 +97,7 @@ def run_maestro_local(
         # I can also provide a "base namelist" from another beat so that I don't repeat all the inputs and I have just indicated the changes
         beat_base = beat_parameters["base_beat"]
         if beat_base is not None:
-            beat_base_namelist = maestro_namelist["maestro"][beat_base]["parameters_prepare"]
+            beat_base_namelist = copy.deepcopy(maestro_namelist["maestro"][beat_base]["parameters_prepare"])
             beat_prepare_namelist = IOtools.deep_dict_update(beat_base_namelist, beat_prepare_namelist_mod)
         else:
             beat_prepare_namelist = beat_prepare_namelist_mod

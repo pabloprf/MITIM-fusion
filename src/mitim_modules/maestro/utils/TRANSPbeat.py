@@ -379,7 +379,7 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
                                  [LowZ, LowZ*2, 0.1] ]
 
     transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T'] #TODO: generalize TRANSP module
-
+    
     return transp_namelist
 
 def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
