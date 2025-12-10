@@ -47,24 +47,17 @@ def run_maestro_local(
     parameters_initialize =  maestro_namelist["plasma"]["profiles_initialization"]["parameters"]
 
     # Initialize geometry from first 4 MXH moments
-    if initialization_type == "freegs":
+    if initialization_type in ['fibe','separatrix',"freegs"]:
         
-        R           = maestro_namelist["plasma"]["parameters"]["separatrix"]["R"]
-        a           = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
-        kappa_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["kappa_sep"]
-        delta_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["delta_sep"]
-        n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
-        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
-    
-    elif initialization_type == 'fibe': 
         R           = maestro_namelist["plasma"]["parameters"]["separatrix"]["R"]
         a           = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
         kappa_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["kappa_sep"]
         delta_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["delta_sep"]
         zeta_sep    = maestro_namelist["plasma"]["parameters"]["separatrix"]["zeta_sep"]
         n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
-        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': 0.0, 'z0': 0.0, 'coeffs_MXH' : n_mxh}
-    
+        rz_boundary_file = maestro_namelist["plasma"]["parameters"]["separatrix"].get("rz_boundary_file", None)
+        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file}
+
     # Initialize geometry from geqdsk file
     elif initialization_type == "geqdsk":
         

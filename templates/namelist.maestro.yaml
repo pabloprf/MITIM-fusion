@@ -15,7 +15,7 @@ plasma:
   profiles_initialization:
 
     # How to initialize the plasma
-    initialization_type: freegs       # profiles, freegs, geqdsk, fibe 
+    initialization_type: freegs       # profiles (input.gacode file), freegs, geqdsk, fibe, separatrix 
 
     # How to initialize the profiles
     creator_type: eped_initializer  # eped_initializer (must exist as beat namelist below) or null
@@ -41,13 +41,16 @@ plasma:
     # Separatrix specification (parameters determined depending on initialization_type)
     separatrix:
 
-      # If freegs, fibe: Boundary parameterization 
+      # If freegs, fibe, separatrix: Boundary parameterization (or, alternatively, path to RZ boundary file if "separatrix" mode)
       R: 1.85
       a: 0.57
       delta_sep: 0.57
       kappa_sep: 1.97
+      zeta_sep: 0.0
 
-      # If geqdsk, freegs: Number of MXH coefficients to parametrize the boundary
+      rz_boundary_file: null # file containing the separatrix R,Z points
+
+      # If geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary
       n_mxh: 5
 
       # If geqdsk: path to file 

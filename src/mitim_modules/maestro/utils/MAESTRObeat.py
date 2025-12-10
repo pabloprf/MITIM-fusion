@@ -1,10 +1,13 @@
 import shutil
 import copy
+import csv
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
+from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from pyro import factor
 from scipy.optimize import minimize
 from IPython import embed
 
@@ -44,6 +47,8 @@ class beat:
             self.initialize = initializer_from_fibe(self)
         elif initializer == 'geqdsk':
             self.initialize = initializer_from_geqdsk(self)
+        elif initializer == 'separatrix':
+            self.initialize = initializer_from_separatrix(self)
         elif initializer == 'profiles':
             self.initialize = beat_initializer(self)
         else:
@@ -124,6 +129,25 @@ class beat_initializer:
 
     def _inform_save(self):
         pass
+
+    # Useful for some child classes
+    def _produce_p0guess(self, kwargs_geqdsk, Ip_MA = 1.0, a = 0.5, B_T = 5.4):
+        
+        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
+        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
+            print('\t- Using ne profile instead of the ne0 guess')
+            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
+            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
+            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
+            p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
+        # If betaN provided, use it to estimate the pressure
+        elif 'BetaN' in kwargs_geqdsk:
+            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
+            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
+            p0_MPa = pvol_MPa * 3.0
+            
+        return p0_MPa
+            
 
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
@@ -214,7 +238,7 @@ class initializer_from_geqdsk(beat_initializer):
         super().__call__(**kwargs_profiles)
 
     def _inform_save(self):
-
+        
         f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
 
         self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
@@ -222,6 +246,221 @@ class initializer_from_geqdsk(beat_initializer):
         self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.zeta995
 
         print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', f.kappa995, f.delta995, f.zeta995)
+
+# --------------------------------------------------------------------------------------------
+# Initializer from separatrix + guesses: convert to profiles and call the profiles initializer
+# --------------------------------------------------------------------------------------------
+
+class initializer_from_separatrix(beat_initializer):
+    '''
+    Idea is to write geqdsk to profile and then call the profiles initializer
+    '''
+    def __init__(self, beat_instance, label = 'separatrix'):
+        super().__init__(beat_instance, label = label)
+
+    def __call__(
+        self,
+        PichT_MW = 1.0,
+        Zeff = 1.5,
+        netop_20 = 1.0,
+        coeffs_MXH = 5,
+        **kwargs
+        ):
+        
+        if 'rz_boundary_file' in kwargs and kwargs['rz_boundary_file'] is not None:
+            boundary_parameters = {'file': kwargs['rz_boundary_file'], 'B_T': kwargs['B_T'], 'Ip_MA': kwargs['Ip_MA'], 'coeffs_MXH': coeffs_MXH}
+            separatrix_parameters = None
+        else:
+            boundary_parameters = None
+            separatrix_parameters = {
+                'BT': kwargs['B_T'],
+                'Ip': kwargs['Ip_MA'],
+                'R0': kwargs['R'],
+                'a': kwargs['a'],
+                'z0': 0.0,
+                'kappa_sep': kwargs['kappa_sep'],
+                'delta_sep': kwargs['delta_sep'],
+                'zeta_sep': kwargs['zeta_sep']
+            }
+            
+        # From separatrix parameters to guess of profiles
+        B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure = separatrix_to_equilibrium(
+            boundary_parameters=boundary_parameters,
+            separatrix_parameters=separatrix_parameters,
+            resol = 501
+            )
+        
+        # Write to profiles
+        self.p = GEQtools.equilibrium_to_profiles(
+            rho, psi, q, pressure, torfluxa, R0, B0, Ip,
+            kappa, delta, zeta, rmin, rmaj, z0, sn[:,:coeffs_MXH], cn[:,:coeffs_MXH],
+            ne0_20 = netop_20,
+            Zeff = Zeff,
+            Z = 9,
+            PichT = PichT_MW
+        )
+        
+        # [Optional] Use the freegs to correct the profiles (keeping the shaping)
+        self._correct_profiles_withfreegs(PichT_MW = PichT_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+        
+        # Write it to initialization folder
+        self.p.write_state(file=self.folder / 'input.separatrix.gacode')
+
+        # Save parameters also here in case they are needed already at this beat (e.g. for EPED)
+        self._inform_save()
+
+        # Call the profiles initializer
+        kwargs["profiles_file"] = self.folder / 'input.separatrix.gacode'
+        super().__call__(**kwargs)
+
+    def _correct_profiles_withfreegs(self,
+            PichT_MW = 1.0, Zeff = 1.5, netop_20 = 1.0, coeffs_MXH = 5,
+            Ip_MA = 1.0, a = 0.5, B_T = 5.4, R = 1.5, kappa_sep = 1.7, delta_sep = 0.3, zeta_sep = 0.0, z0 = 0.0, **kwargs):
+        '''
+        This runs freegs to copy all but the shapings
+        '''
+        
+        p0_MPa = self._produce_p0guess(kwargs, Ip_MA, a, B_T)
+
+        # Run freegs to generate equilibrium
+        f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
+        f.prep(p0_MPa, Ip_MA, B_T)
+        f.solve()
+        f.derive()
+        
+        f.write(self.folder / 'freegs.geqdsk.helper')
+
+        f = GEQtools.MITIMgeqdsk(self.folder / 'freegs.geqdsk.helper')
+        
+        # Use old shaping
+        
+        p_old = copy.deepcopy(self.p)
+        self.p = f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
+
+        for i in ['kappa(-)', 'delta(-)', 'zeta(-)', 'rmin(m)', 'rmaj(m)', 'zmag(m)']:
+            self.p.profiles[i] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[i])
+        
+        for i in range(coeffs_MXH):
+            self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
+        for i in range(coeffs_MXH-3):
+            self.p.profiles[f'shape_sin{i+3}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_sin{i+3}(-)'])
+        
+    def _inform_save(self):
+        
+        kappa995, delta995, zeta995 = self.p.derived["kappa995"], self.p.derived["delta995"], self.p.derived["zeta995"]
+
+        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = kappa995
+        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = delta995
+        self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = zeta995
+
+        print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', kappa995, delta995, zeta995)
+
+def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=None, resol = 101):
+
+    if ( (separatrix_parameters is None) and (boundary_parameters is None) or (separatrix_parameters is not None and boundary_parameters is not None) ):
+        raise ValueError('Either separatrix_parameters or boundary_parameters must be provided')
+
+    if boundary_parameters is not None:
+        # Load boundary from file
+        print('\t- Loading separatrix parameters from file:', boundary_parameters['file'])
+        separatrix_parameters = load_separatrix_from_file(boundary_parameters)
+    else:
+        print('\t- Using provided separatrix parameters dictionary')
+    
+    B0 = separatrix_parameters['BT']
+    Ip = separatrix_parameters['Ip']
+    
+    R0 = separatrix_parameters['R0']
+    a = separatrix_parameters['a']
+    z0 = separatrix_parameters['z0']
+    
+    kappa_sep = separatrix_parameters['kappa_sep']
+    delta_sep = separatrix_parameters['delta_sep']
+    zeta_sep = separatrix_parameters['zeta_sep']
+    
+    # Other parameters (not important, not passed to TRANSP beat and/or updated later)
+    torflux_total = 1.0
+    polflux_total = 1.0
+    p0 = 1.0 #separatrix_parameters['p0_MPa']
+    
+    qstar_sep = PLASMAtools.evaluate_qstar(Ip, R0, kappa_sep, B0, a / R0, delta_sep, isInputIp=True) 
+    factor_qstar = 1.4
+    qstar = qstar_sep * factor_qstar
+    
+    # Internal equilibrium guess
+    
+    rmin = np.linspace(0, a, resol)
+    rmaj = R0*np.ones_like(rmin)
+    rho = np.linspace(0, 1, resol)
+    z0 = z0*np.ones_like(rmin)
+    kappa = np.linspace(1, kappa_sep, resol)
+    delta = np.linspace(0, delta_sep, resol)
+    zeta = np.linspace(0, zeta_sep, resol)
+    
+    coeffs_MXH = 7
+    sn = np.zeros((resol, coeffs_MXH))
+    cn = np.zeros((resol, coeffs_MXH))
+    
+    torfluxa = torflux_total
+    psi = np.linspace(0, polflux_total, resol)
+    
+    pressure = guess_pressure_profile(rho, p0)
+    q = guess_q_profile(rho, qstar)
+    
+    return B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure
+    
+def guess_q_profile(rho, qstar, q0 = 1.0):
+    
+    nu_q = 2.0
+    
+    _, iota = PLASMAtools.parabolicProfile( q0/nu_q, nu_q, rho, 1/qstar)
+    q = 1/iota
+    
+    return q    
+
+def guess_pressure_profile(rho, p0, pedge = 0.0):
+    
+    nu_p = 2.5
+    
+    _, pressure = PLASMAtools.parabolicProfile( p0/nu_p, nu_p, rho, pedge)
+    
+    return pressure
+
+def load_separatrix_from_file(boundary_parameters):
+    '''
+    Load separatrix parameters from a file
+    '''
+    
+    # Read R, Z from CSV
+    R, Z = [], []
+    with open(boundary_parameters['file'], 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            R.append(float(row['R']))
+            Z.append(float(row['Z']))
+
+    R = np.array(R)
+    Z = np.array(Z)
+    
+    # Get MXH coefficients
+    surfaces = GEQtools.mitim_flux_surfaces()
+    surfaces.reconstruct_from_RZ(R,Z)
+    surfaces._to_mxh(n_coeff=boundary_parameters['coeffs_MXH'])
+
+    
+    separatrix_parameters = {
+        'BT': boundary_parameters['B_T'],
+        'Ip': boundary_parameters['Ip_MA'],
+        'R0': surfaces.R0[0],
+        'a': surfaces.a[0],
+        'z0': surfaces.Z0[0],
+        'kappa_sep': surfaces.kappa[0],
+        'delta_sep': surfaces.delta[0],
+        'zeta_sep': surfaces.zeta[0]
+    }
+    
+    return separatrix_parameters
+
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FreeGS: load the equilibrium, convert to geqdsk and call the geqdsk initializer
@@ -233,7 +472,7 @@ class initializer_from_freegs(initializer_from_geqdsk):
     '''
     def __init__(self, beat_instance, label = 'freegs'):
         super().__init__(beat_instance, label = label)
-            
+
     def __call__(self,
         R,
         a,
@@ -247,19 +486,7 @@ class initializer_from_freegs(initializer_from_geqdsk):
         **kwargs_geqdsk
         ):
         
-        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
-        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
-            print('\t- Using ne profile instead of the ne0 guess')
-            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][1][0]
-            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
-            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][1][0]
-            p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
-        # If betaN provided, use it to estimate the pressure
-        elif 'BetaN' in kwargs_geqdsk:
-            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
-            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
-            p0_MPa = pvol_MPa * 3.0
-
+        p0_MPa = self._produce_p0guess(kwargs_geqdsk, Ip_MA, a, B_T)
 
         # Run freegs to generate equilibrium
         f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
