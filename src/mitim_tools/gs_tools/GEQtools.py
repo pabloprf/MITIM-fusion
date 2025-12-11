@@ -216,7 +216,7 @@ class MITIMgeqdsk:
         self.delta995 = self.geometric_parameters["geo"]["delta_995"]
         
         #TODO: Placeholder for now: zeta from Turnbull
-        self.zeta995 = self.geometric_parameters["turnbull"]["zeta995"]
+        self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]
         
 
     def plotEnclosingBox(self, ax=None, c= "k"):
