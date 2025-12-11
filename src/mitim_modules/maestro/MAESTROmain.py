@@ -72,6 +72,7 @@ class maestro:
             self.master_log_file = None
             
         self.warnings_log_file = self.folder_output / "warnings.log"
+        self.warnings_log_file_new = True
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')
@@ -320,8 +321,22 @@ class maestro:
                 log_group[group] = {}
             log_group[group][line] = self.warnings_dict[key]
             
+        # If file exist, make sure I keep its contents by appending it to the beginning
+        self.previous_contents = ''
+        if self.warnings_log_file_new and self.warnings_log_file.exists():
+            with open(self.warnings_log_file, 'r') as f:
+                self.previous_contents = f.read()
+            
+        self.warnings_log_file_new = False
+            
         # Write file
-        with open(self.warnings_log_file, 'a') as f:
+        with open(self.warnings_log_file, 'w') as f:
+            
+            f.write('\n')
+            f.write(f'   Writing warnings @ time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} from previous runs')
+            f.write('\n')
+            
+            f.write(self.previous_contents)
             
             f.write('\n')
             f.write(f'   Writing warnings @ time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
