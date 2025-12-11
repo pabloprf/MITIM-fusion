@@ -96,6 +96,13 @@ class beat_initializer:
         if len(label) > 0:
             self.folder.mkdir(parents=True, exist_ok=True)
 
+    def _minimal_call(self, *args, **kwargs):
+        '''
+        This function should be used to pre-define parameters before calling the main __call__
+        because if I'm skipping some execution upon restart, I still may want some variables
+        '''
+        pass
+
     def __call__(self, profiles_file = None, Vsurf = None,   **kwargs_beat):
 
         # Load profiles
@@ -181,6 +188,11 @@ class initializer_from_geqdsk(beat_initializer):
     def __init__(self, beat_instance, label = 'geqdsk'):
         super().__init__(beat_instance, label = label)
 
+    def _minimal_call(self, *args, **kwargs):
+     
+        if 'extract_995_from' in kwargs:
+            self.extract_995_from = kwargs['extract_995_from']
+
     def __call__(
         self,
         geqdsk_file = None,
@@ -200,7 +212,7 @@ class initializer_from_geqdsk(beat_initializer):
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
         
-        self.extract_995_from = extract_995_from
+        self._minimal_call(extract_995_from=extract_995_from)
 
         # Convert to profiles
         print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')

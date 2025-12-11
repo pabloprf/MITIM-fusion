@@ -197,6 +197,7 @@ class maestro:
 
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
+            self.beat.initialize._minimal_call(*args, **kwargs)
 
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
