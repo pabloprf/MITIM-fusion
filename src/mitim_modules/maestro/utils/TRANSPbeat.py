@@ -342,11 +342,10 @@ class transp_beat(beat):
 
 def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepare_parameters):
     
+    # Minority
     Zmini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][0]
     Amini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][1]
     fmini = maestro_namelist["plasma"]["heating"]["parameters"]["fmini"]
-    Zeff = maestro_namelist["plasma"]["species"]["Zeff"]
-    fmain = maestro_namelist["plasma"]["species"]["mix"]["fmain"]
 
     # Only correct Pich from the maestro namelist if it's not already False    
     if transp_namelist['Pich']:
@@ -357,28 +356,27 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
         transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
         transp_namelist['freq_ICH'] = maestro_namelist["plasma"]['heating']['parameters']['freq_ICH']
 
-    # High-Z
+    # Grab Z and A of high-Z
     import periodictable as pt
-    symbol_highZ = maestro_namelist["plasma"]["species"]["mix"]["highZ"]
-    fhighZ = maestro_namelist["plasma"]["species"]["mix"]["fhighZ"] 
-    e = pt.elements.symbol(symbol_highZ)
-    charge = e.number
-    mass = e.mass    
+    e = pt.elements.symbol(maestro_namelist["plasma"]["species"]["mix"]["highZ"])
+    highZ = e.number
+    highA = e.mass    
     # ------ 
 
     LowZ, Wratio = PLASMAtools.estimateLowZ(
-        fmain,
-        Zeff,
+        maestro_namelist["plasma"]["species"]["mix"]["fmain"],
+        maestro_namelist["plasma"]["species"]["Zeff"],
         Zmini,
         fmini,
         maestro_namelist["plasma"]["species"]["mix"]["CShighZ_estimate"],
-        fhighZ)
+        maestro_namelist["plasma"]["species"]["mix"]["fhighZ"] )
     
+    lowA = 2*LowZ   # Approximation
     
-    transp_namelist["zlump"] =[  [charge, mass, 0.1*Wratio],
-                                 [LowZ, LowZ*2, 0.1] ]
+    transp_namelist["zlump"] =[  [highZ, highA, 0.1*Wratio],
+                                 [ LowZ,  lowA, 0.1       ] ]
 
-    transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T'] #TODO: generalize TRANSP module
+    transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T']   #TODO: generalize TRANSP module
     
     return transp_namelist
 

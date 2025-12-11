@@ -283,7 +283,7 @@ optimization_options:
     stopping_criteria_parameters:
 
       # Criterion 2: Residual reduction
-      maximum_value: 5.e-3                # Reducing residual by 200x is enough for most PORTALS runs
+      maximum_value: 5.e-3                # Reducing residual by 1/0.005 = 200x is usually enough for most PORTALS runs
       maximum_value_is_rel: true          # Indicates that maximum_value is relative to iteration #0
 
       # Criterion 3: Variation of input parameters

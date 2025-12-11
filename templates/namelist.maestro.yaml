@@ -202,6 +202,7 @@ maestro:
                 extraOptions:
                   USE_BPER: true
               keep_files: "none" 
+              reuse_scan_ball: true # Store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
         target:
           options:
             force_zero_particle_flux: true
@@ -209,6 +210,10 @@ maestro:
         optimization_options:
           convergence_options:
             maximum_iterations: 30
+            stopping_criteria_parameters:
+              maximum_value: 5.e-3                 # Explicit, because of "use_previous_residual" functionality
+              maximum_value_is_rel: true           # Explicit, because of "use_previous_residual" functionality
+
           strategy_options:
             AllowedExcursions: [0.25, 0.0]
           acquisition_options:
@@ -221,6 +226,9 @@ maestro:
 
       # If the width of the pedestal has changed, modify the BC (last in predicted_rX) for PORTALS accordingly
       change_last_radial_call: true
+
+      # Keep the absolute value of the original case as the base to compute relative residuals in subsequent optimizations
+      use_previous_residual: true # Should be set to false if an absolute residual convergence metric is defined in optimization_options
 
       # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
       use_previous_surrogate_data: true
@@ -254,10 +262,10 @@ maestro:
         optimization_options:
           convergence_options:
             maximum_iterations: 15
-          stopping_criteria_parameters:
-            maximum_value: 10.e-3
-            minimum_dvs_variation: [10, 3, 1.0]
-            ricci_value: 0.15
+            stopping_criteria_parameters:
+              maximum_value: 10.e-3                 # Reducing residual by 1/0.01 = 100x sufficient for a soft PORTALS run
+              minimum_dvs_variation: [10, 3, 1.0]   # A more relaxed variation for soft PORTALS run
+              ricci_value: 0.15                     # A more relaxed Ricci value for soft PORTALS run
 
   transp:
 
