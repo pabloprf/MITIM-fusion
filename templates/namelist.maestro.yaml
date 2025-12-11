@@ -108,18 +108,18 @@ maestro:
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
   #       beat_type:                     Used to map this beat to what MAESTRO understands
-  #       base_beat:                     Pointer to another beat to use as base for the to start from (and only provide the modifications)
+  #       base_module:                   Pointer to another beat to use as base for the to start from (and only provide the modifications)
   #       parameters_prepare:            Parameters that are passed to the prepare() method of the beat class
   #       preprocess_prepare:            [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
   #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
   #       preprocess_run:                [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
   # ---------------------------------------------------------------------------
 
-  eped_beat:
+  eped:
 
     beat_type: eped
 
-    base_beat: null
+    base_module: null
 
     parameters_prepare:
 
@@ -142,19 +142,19 @@ maestro:
       cpus: null  # if null: use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.EPEDbeat.preprocess_run_eped
 
-  eped_initializer_beat:
+  eped_initializer:
 
     beat_type: eped
    
-    base_beat: eped_beat # Same as EPED beat
+    base_module: eped
 
     parameters_prepare: {}
 
-  lengyel_beat:
+  lengyel:
 
     beat_type: lengyel
 
-    base_beat: null
+    base_module: null
 
     parameters_prepare:
 
@@ -174,11 +174,11 @@ maestro:
     preprocess_prepare_parameters: {}
     preprocess_run: null
 
-  portals_beat:
+  portals:
 
     beat_type: portals
 
-    base_beat: null
+    base_module: null
 
     parameters_prepare:
 
@@ -239,11 +239,11 @@ maestro:
       enforce_same_density_gradients: true
     preprocess_run: null
 
-  portals_soft_beat:
+  portals_soft:
 
     beat_type: portals
 
-    base_beat: portals_beat
+    base_module: portals
 
     parameters_prepare:
 
@@ -259,18 +259,18 @@ maestro:
             minimum_dvs_variation: [10, 3, 1.0]
             ricci_value: 0.15
 
-  transp_beat:
+  transp:
 
     beat_type: transp
 
-    base_beat: null
+    base_module: null
 
     parameters_prepare:
 
       flattop_window: 2.5      
       extractAC: False     
-      dtOut_ms : 0.01
-      dtIn_ms : 0.01
+      dtOut_ms : 10.0
+      dtIn_ms : 10.0
       nzones : 60
       nzones_energetic : 20
       nzones_distfun : 10    
@@ -287,11 +287,11 @@ maestro:
       cpus_nubeam: null # if null: use as many as available for this MAESTRO job
     preprocess_run: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_run_transp
 
-  transp_soft_beat:
+  transp_soft:
 
     beat_type: transp
 
-    base_beat: transp_beat
+    base_module: transp
 
     # A soft TRANSP beat must be just for current diffusion, no alphas nor ICRF
     parameters_prepare:

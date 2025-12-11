@@ -81,7 +81,7 @@ def run_maestro_local(
     for beat in potential_beats:
         
         # Read beat parameters
-        beat_parameters = copy.deepcopy(maestro_namelist["maestro"][f"{beat}_beat"])
+        beat_parameters = copy.deepcopy(maestro_namelist["maestro"][beat])
 
         # ********
         # ******** Prepare the prepare() parameters
@@ -90,7 +90,7 @@ def run_maestro_local(
         beat_prepare_namelist_mod = beat_parameters["parameters_prepare"]
         
         # I can also provide a "base namelist" from another beat so that I don't repeat all the inputs and I have just indicated the changes
-        beat_base = beat_parameters["base_beat"]
+        beat_base = beat_parameters["base_module"]
         if beat_base is not None:
             beat_base_namelist = copy.deepcopy(maestro_namelist["maestro"][beat_base]["parameters_prepare"])
             beat_prepare_namelist = IOtools.deep_dict_update(beat_base_namelist, beat_prepare_namelist_mod)
@@ -158,7 +158,7 @@ def run_maestro_local(
     
     for beat in maestro_namelist["maestro"]["beats"]:
         
-        beat_parameters = maestro_namelist["maestro"][f"{beat}_beat"]
+        beat_parameters = maestro_namelist["maestro"][beat]
         
         # ****************************************************************************
         # Define beat
