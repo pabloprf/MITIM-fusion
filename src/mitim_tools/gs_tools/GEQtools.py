@@ -189,9 +189,9 @@ class MITIMgeqdsk:
         #fs995.to_toq9()
 
         # extract shape coefficients
-        self.geometric_parameters["turnbull"]["kappa995"] = fs995.shape[3]
-        self.geometric_parameters["turnbull"]["delta995"] = fs995.shape[4]
-        self.geometric_parameters["turnbull"]["zeta995"] = fs995.shape[5]
+        self.geometric_parameters["turnbull"]["kappa_995"] = fs995.shape[3]
+        self.geometric_parameters["turnbull"]["delta_995"] = fs995.shape[4]
+        self.geometric_parameters["turnbull"]["zeta_995"] = fs995.shape[5]
         #self.zeta995_in = fs995.shape[5]
         #self.zeta995_out = fs995.shape[6]
         
