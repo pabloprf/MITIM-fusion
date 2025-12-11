@@ -384,10 +384,10 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
 
 def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
     
-    toric = maestro_namelist["maestro"]["transp_beat"]["parameters_prepare"]["Pich"]
-    nubeam = maestro_namelist["maestro"]["transp_beat"]["parameters_prepare"]["useNUBEAMforAlphas"]
-    cpus_toric = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["cpus_toric"]
-    cpus_nubeam = maestro_namelist["maestro"]["transp_beat"]["preprocess_prepare_parameters"]["cpus_nubeam"]
+    toric = maestro_namelist["maestro"]["transp"]["parameters_prepare"]["Pich"]
+    nubeam = maestro_namelist["maestro"]["transp"]["parameters_prepare"]["useNUBEAMforAlphas"]
+    cpus_toric = maestro_namelist["maestro"]["transp"]["preprocess_prepare_parameters"]["cpus_toric"]
+    cpus_nubeam = maestro_namelist["maestro"]["transp"]["preprocess_prepare_parameters"]["cpus_nubeam"]
     
     if toric:
         toricmpi = cpus_toric if cpus_toric is not None else cpus
