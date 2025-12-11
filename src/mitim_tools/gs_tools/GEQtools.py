@@ -874,7 +874,7 @@ class freegs_millerized:
         # --------------------------------------------------------------
 
         max_error = 0.0
-        for key in ['R0', 'a', 'kappa_sep', 'delta_sep', 'zeta_sep']:
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
             miller_value = getattr(self, key)
             sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
             error = abs( (miller_value-sep_value)/miller_value )

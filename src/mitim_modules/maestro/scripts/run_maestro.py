@@ -55,15 +55,17 @@ def run_maestro_local(
         delta_sep   = maestro_namelist["plasma"]["parameters"]["separatrix"]["delta_sep"]
         zeta_sep    = maestro_namelist["plasma"]["parameters"]["separatrix"]["zeta_sep"]
         n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
-        rz_boundary_file = maestro_namelist["plasma"]["parameters"]["separatrix"].get("rz_boundary_file", None)
-        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file}
+        extract_995_from = maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"]
+        rz_boundary_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["rz_boundary_file"]
+        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file, 'extract_995_from': extract_995_from}
 
     # Initialize geometry from geqdsk file
     elif initialization_type == "geqdsk":
         
         geqdsk_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["geqdsk_file"]
         n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
-        geometry    = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh}
+        extract_995_from = maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"]
+        geometry    = {'geqdsk_file':geqdsk_file,'coeffs_MXH' : n_mxh, 'extract_995_from': extract_995_from}
     
     else:
         geometry = {}

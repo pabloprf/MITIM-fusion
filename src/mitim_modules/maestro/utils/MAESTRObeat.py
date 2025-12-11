@@ -188,6 +188,7 @@ class initializer_from_geqdsk(beat_initializer):
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
+        extract_995_from='geo',
         **kwargs_profiles
         ):
         '''
@@ -198,6 +199,8 @@ class initializer_from_geqdsk(beat_initializer):
         
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
+        
+        self.extract_995_from = extract_995_from
 
         # Convert to profiles
         print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
@@ -239,13 +242,26 @@ class initializer_from_geqdsk(beat_initializer):
 
     def _inform_save(self):
         
+        if self.extract_995_from is None:
+            return
+        
         f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
 
-        self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.kappa995
-        self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.delta995
-        self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.zeta995
+        if self.extract_995_from == 'geo':
+            print('\t- Extracting 0.995 flux surface parameters from "geo"')
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["geo"]["kappa_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["geo"]["delta_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["turnbull"]["zeta_995"] #TODO
+        elif self.extract_995_from == 'turnbull':
+            print('\t- Extracting 0.995 flux surface parameters from "turnbull"')
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["turnbull"]["kappa_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["turnbull"]["delta_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["turnbull"]["zeta_995"]
 
-        print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', f.kappa995, f.delta995, f.zeta995)
+        print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', 
+              self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'], 
+              self.beat_instance.maestro_instance.parameters_trans_beat['delta995'],   
+                self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] )
 
 # --------------------------------------------------------------------------------------------
 # Initializer from separatrix + guesses: convert to profiles and call the profiles initializer
@@ -264,6 +280,7 @@ class initializer_from_separatrix(beat_initializer):
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
+        extract_995_from='geo',
         **kwargs
         ):
         
@@ -282,6 +299,8 @@ class initializer_from_separatrix(beat_initializer):
                 'delta_sep': kwargs['delta_sep'],
                 'zeta_sep': kwargs['zeta_sep']
             }
+            
+        self.extract_995_from = extract_995_from
             
         # From separatrix parameters to guess of profiles
         B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure = separatrix_to_equilibrium(
@@ -346,6 +365,9 @@ class initializer_from_separatrix(beat_initializer):
             self.p.profiles[f'shape_sin{i+3}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_sin{i+3}(-)'])
         
     def _inform_save(self):
+        
+        if self.extract_995_from is None:
+            return
         
         kappa995, delta995, zeta995 = self.p.derived["kappa995"], self.p.derived["delta995"], self.p.derived["zeta995"]
 

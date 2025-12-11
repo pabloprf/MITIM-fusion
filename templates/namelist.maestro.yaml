@@ -53,6 +53,9 @@ plasma:
       # If geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary
       n_mxh: 5
 
+      # If geqdsk, freegs, fibe: How to extract the 995 flux surface parameters (kappa, delta, zeta)
+      freeze_995_from: geo  # geo, turnbull, null (if null: no trans_beat parameters will be set)
+
       # If geqdsk: path to file 
       geqdsk_file: ""
 
