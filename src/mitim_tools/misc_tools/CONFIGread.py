@@ -169,9 +169,7 @@ def machineSettings(
     # ************************************************************************************************************************
 
     if machineSettings["machine"] == "local":
-        machineSettings["folderWork"] = IOtools.expandPath(
-            machineSettings["folderWork"]
-        )
+        machineSettings["folderWork"] = IOtools.expandPath(machineSettings["folderWork"])
 
     if forceUsername is not None:
         machineSettings["identity"] = f"~/.ssh/id_rsa_{forceUsername}"

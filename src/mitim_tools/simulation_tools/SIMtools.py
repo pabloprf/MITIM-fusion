@@ -423,8 +423,20 @@ class mitim_simulation:
                 not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
                 
                 cores_in_machine = int(os.cpu_count())
-                cores_allocated = int(os.environ.get('SLURM_CPUS_PER_TASK')) if os.environ.get('SLURM_CPUS_PER_TASK') is not None else None
-
+                
+                # Understand the SLURM allocated cores if any
+                slurm_ntasks = os.environ.get('SLURM_NTASKS')
+                slurm_cpus_per_task = os.environ.get('SLURM_CPUS_PER_TASK')
+                if (slurm_cpus_per_task is not None) and (slurm_ntasks is not None):
+                    cores_allocated = int(slurm_cpus_per_task) * int(slurm_ntasks)
+                elif slurm_cpus_per_task is not None:
+                    cores_allocated = int(slurm_cpus_per_task)
+                elif slurm_ntasks is not None:
+                    cores_allocated = int(slurm_ntasks)
+                else:
+                    cores_allocated = None
+                # ------
+                
                 if cores_allocated is not None:
                     if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
                         print(f"\t- Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
