@@ -437,6 +437,27 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
         else:
             self.Ge_ky = self.Ge_ES_ky
+
+
+
+        # Ions particle flux
+
+        i_species, i_moment = self.ions_flags, 0
+        for i_field, field in enumerate(fields):
+            if field == 'phi':
+                self.Gi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                # sum over species
+                self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
+            elif field == 'apar':
+                self.Gi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Gi_all_EM_ky = self.Gi_all_EM_apar_ky.copy()
+                # sum over species
+                self.Gi_EM_apar_ky = self.Gi_EM_apar_ky.sum(axis=0)
+            elif field == 'bpar':
+                self.Gi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Gi_all_EM_ky += self.Gi_all_EM_aper_ky
+                # sum over species
+                self.Gi_EM_aper_ky = self.Gi_all_EM_aper_ky.sum(axis=0)
         
         # Ions energy flux
         
@@ -457,6 +478,22 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 # sum over species
                 self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
 
+        # If electromagnetic contributions exist, sum them to get total fluxes
+        if 'Ge_EM_ky' in self.__dict__:
+            self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
+        else:
+            self.Ge_ky = self.Ge_ES_ky
+        
+        if 'Gi_EM_ky' in self.__dict__:
+            self.Gi_all_ky = self.Gi_all_ES_ky + self.Gi_all_EM_ky
+            # sum over species
+            self.Gi_ky = self.Gi_all_ky.sum(axis=0)
+            self.Gi_EM_ky = self.Gi_all_EM_ky.sum(axis=0)
+        else:
+            self.Gi_all_ky = self.Gi_all_ES_ky
+            # sum over species
+            self.Gi_ky = self.Gi_all_ky.sum(axis=0)
+            self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
 
         if 'Qi_all_EM_ky' in self.__dict__:
             self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
@@ -470,7 +507,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # ************************
         # Sum total 
         # ************************
-        variables = ['Qe','Ge','Qi','Qi_all']
+        variables = ['Qe','Ge','Gi','Qi','Qi_all']
         for var in variables:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
                 if var+i+'_ky' in self.__dict__:
