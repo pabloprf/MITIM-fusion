@@ -181,7 +181,7 @@ class EPED:
              'shot': shot,
              'timeid': timeid,
              'runid': 0,
-             'm': 2,
+             'm': 2.5,
              'z': 1,
              'mi': 20,
              'zi': 10,
