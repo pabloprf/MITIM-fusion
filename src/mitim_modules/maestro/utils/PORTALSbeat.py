@@ -1,6 +1,7 @@
 import shutil
 import copy
 import pandas as pd
+from functools import partial
 import numpy as np
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
@@ -28,7 +29,6 @@ class portals_beat(beat):
             portals_namelist_location = None,
             portals_parameters = None,
             initialization_parameters = None,
-            optimization_options = None,
             enforce_impurity_radiation_existence = True,
             ):
         
@@ -36,8 +36,6 @@ class portals_beat(beat):
             portals_parameters = {}
         if initialization_parameters is None:
             initialization_parameters = {}
-        if optimization_options is None:
-            optimization_options = {}
 
 
         self.fileGACODE = self.initialize.folder / 'input.gacode'
@@ -48,7 +46,7 @@ class portals_beat(beat):
             for i in range(len(profiles.Species)):
                 data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
                 if not (data_df['Ion'].str.lower()==profiles.Species[i]["N"].lower()).any():
-                    print(f"\t\t- {profiles.Species[i]['N']} not found in radiation table, looking for closest Z (+- 5) USING THE Z SPECIFIED IN THE INPUT.GACODE (fully stripped assumption)",typeMsg='w')
+                    print(f"\t\t- '{profiles.Species[i]['N']}' species not found in radiation table, looking for closest Z (+- 5) using the Z specified in the input.gacode (fully stripped assumption)",typeMsg='w')
                     # Find closest Z
                     Z = data_df['Z'].to_numpy()
                     iZ = np.argmin(abs(Z - profiles.Species[i]["Z"]))
@@ -69,13 +67,16 @@ class portals_beat(beat):
 
         self.portals_parameters = portals_parameters
         self.portals_namelist_location = portals_namelist_location
-        self.optimization_options = optimization_options
         self.initialization_parameters = initialization_parameters
 
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
 
         self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
+
+
+        # Initializat optimization options to empty, but may be filled in _inform, from previous beats information
+        self.optimization_options_additional = {}
 
         self._inform(use_previous_residual = use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
@@ -94,8 +95,8 @@ class portals_beat(beat):
         if 'optimization_options' in self.portals_parameters:
             portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.portals_parameters['optimization_options'])
         
-        # MAESTRO beat may receive optimization options changes from previous beats, so allow that too
-        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options)
+        # MAESTRO beat may receive optimization options changes from previous beats (via _inform() inside prepare), so allow that too
+        portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options_additional)
 
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state
@@ -289,24 +290,40 @@ class portals_beat(beat):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
-        if use_previous_residual and ('portals_neg_residual_obj' in self.maestro_instance.parameters_trans_beat):
+        
+        # ----------------------------------------------------------------------------------------------
+        # Use previous residual goal if available from previous PORTALS beat (added in _inform_save)
+        # ----------------------------------------------------------------------------------------------
+        if use_previous_residual and \
+            ('original_residual' in self.maestro_instance.parameters_trans_beat) and \
+            (self.portals_parameters['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel']):
             
-            if 'convergence_options' not in self.optimization_options:
-                self.optimization_options['convergence_options'] = {}
-            if 'stopping_criteria_parameters' not in self.optimization_options['convergence_options']:
-                self.optimization_options['convergence_options']['stopping_criteria_parameters'] = {}
+            if 'convergence_options' not in self.optimization_options_additional:
+                self.optimization_options_additional['convergence_options'] = {}
+            if 'stopping_criteria_parameters' not in self.optimization_options_additional['convergence_options']:
+                self.optimization_options_additional['convergence_options']['stopping_criteria_parameters'] = {}
 
-            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value'] = self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj']
-            self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
+            original_residual = self.maestro_instance.parameters_trans_beat['original_residual']
+            rel_val = self.portals_parameters['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
 
-            print(f"\t\t- Using previous residual goal as maximum value for optimization: {self.optimization_options['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
+            # Make it absolute from now on
+            self.optimization_options_additional['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
+            
+            # Set the absolute value based on the residual
+            self.optimization_options_additional['convergence_options']['stopping_criteria_parameters']['maximum_value'] = original_residual*rel_val
+            
+            print(f"\t\t- Using previous residual goal as maximum value for optimization (not relative): {self.optimization_options_additional['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
+        # Use previous surrogate data if available
         reusing_surrogate_data = False
         self.folder_starting_point = None
-        if use_previous_surrogate_data and ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and ('portals_last_run_folder' in self.maestro_instance.parameters_trans_beat):
-            if 'surrogate_options' not in self.optimization_options:
-                self.optimization_options['surrogate_options'] = {}
-            self.optimization_options['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
+        if use_previous_surrogate_data and \
+            ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and \
+            ('portals_last_run_folder' in self.maestro_instance.parameters_trans_beat):
+                    
+            if 'surrogate_options' not in self.optimization_options_additional:
+                self.optimization_options_additional['surrogate_options'] = {}
+            self.optimization_options_additional['surrogate_options']["extrapointsFile"] = self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file']
 
             self.folder_starting_point = self.maestro_instance.parameters_trans_beat['portals_last_run_folder']
 
@@ -314,7 +331,7 @@ class portals_beat(beat):
 
             reusing_surrogate_data = True
             
-
+        # Change last radial location if requested
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
@@ -363,7 +380,7 @@ class portals_beat(beat):
         # In the situation where the last radial location moves, I cannot reuse that surrogate data
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
-            self.optimization_options['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
+            self.optimization_options_additional['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
             self.try_flux_match_only_for_first_point = False
 
     def _inform_save(self):
@@ -380,11 +397,12 @@ class portals_beat(beat):
         # Converged in training case
         except AttributeError:
             stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
-            portals_parameters =portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
+            portals_parameters = portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
 
-        max_value_neg_residual = stepSettings['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
-        self.maestro_instance.parameters_trans_beat['portals_neg_residual_obj'] = max_value_neg_residual
-        print(f'\t\t* Maximum value of negative residual saved for future beats: {max_value_neg_residual}')
+        # Get maximum value of negative residual (absolute)
+        original_residual = -portals_output.step.BOmetrics["overall"]["Residual"][0].item()
+        self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
+        print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
 
         fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
         
@@ -403,28 +421,21 @@ class portals_beat(beat):
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
 
-def portals_beat_soft_criteria(portals_namelist):
+def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_density_gradients = True):
+    p = PROFILEStools.gacode_state(file_profs)
+    if lumpImpurities:
+        p.lumpImpurities()
+    if enforce_same_density_gradients:
+        p.enforce_same_density_gradients()
+    p.write_state(file=file_profs)
+    return p
 
-    portals_namelist_soft = copy.deepcopy(portals_namelist)
+def preprocess_prepare_portals(beat_namelist,maestro_namelist, preprocess_prepare_parameters):
+    
+    lumpImpurities = preprocess_prepare_parameters["lumpImpurities"]
+    enforce_same_density_gradients = preprocess_prepare_parameters["enforce_same_density_gradients"]
 
-    # Relaxation of stopping criteria
-    if 'optimization_options' not in portals_namelist_soft:
-        portals_namelist_soft['optimization_options'] = {}
-    if 'convergence_options' not in portals_namelist_soft['optimization_options']:
-        portals_namelist_soft['optimization_options']['convergence_options'] = {}
-    if 'stopping_criteria_parameters' not in portals_namelist_soft['optimization_options']['convergence_options']:
-        portals_namelist_soft['optimization_options']['convergence_options']['stopping_criteria_parameters'] = {}
+    # add postprocessing function
+    beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
 
-    portals_namelist_soft['optimization_options']['convergence_options']["maximum_iterations"] = 15
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["maximum_value"] = 10e-3
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["minimum_dvs_variation"] = [10, 3, 1.0]
-    portals_namelist_soft['optimization_options']['convergence_options']["stopping_criteria_parameters"]["ricci_value"] = 0.15
-
-    if 'target' not in portals_namelist_soft["portals_parameters"]:
-        portals_namelist_soft["portals_parameters"]['target'] = {}
-    if 'options' not in portals_namelist_soft["portals_parameters"]['target']:
-        portals_namelist_soft["portals_parameters"]['target']['options'] = {}
-
-    portals_namelist_soft["portals_parameters"]["target"]["options"]["targets_evolve"] = ["qie"]
-
-    return portals_namelist_soft
+    return beat_namelist

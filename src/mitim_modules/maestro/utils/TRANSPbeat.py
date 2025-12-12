@@ -1,10 +1,12 @@
 import os
 import shutil
 import copy
+import numpy as np
 from typing import OrderedDict
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from IPython import embed
@@ -101,7 +103,7 @@ class transp_beat(beat):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self._additional_operations_add_initialization()
-
+        
         # ICRF on
         PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
         
@@ -227,6 +229,7 @@ class transp_beat(beat):
 
         # First, bring back to the resolution of the frozen
         p_frozen = self.maestro_instance.profiles_with_engineering_parameters
+        print('\t\t\t* Bringing resolution of frozen plasma state to new plasma state')
         self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
 
         # --------------------------------------------------------------------------------------------
@@ -234,6 +237,7 @@ class transp_beat(beat):
         # --------------------------------------------------------------------------------------------
 
         # Insert kinetic profiles from frozen
+        print('\t\t\t* Bringing kinetic profiles of frozen plasma state to new plasma state')
         self.profiles_output.profiles['ne(10^19/m^3)'] = p_frozen.profiles['ne(10^19/m^3)']
         self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
         self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
@@ -243,10 +247,12 @@ class transp_beat(beat):
         self.profiles_output.scaleAllThermalDensities(scaleFactor = self.profiles_output.profiles['ne(10^19/m^3)']/profiles_output_pre_merge.profiles['ne(10^19/m^3)'])
 
         # Insert engineering parameters (except shape)
+        print('\t\t\t* Bringing Bt and Ip of frozen plasma state to new plasma state')
         for key in ['current(MA)', 'bcentr(T)']:
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
+        print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
         self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
         self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
 
@@ -334,44 +340,67 @@ class transp_beat(beat):
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
 
-def transp_beat_default_nml(parameters_engineering, parameters_mix, only_current_diffusion = False):
+def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepare_parameters):
+    
+    # Minority
+    Zmini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][0]
+    Amini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][1]
+    fmini = maestro_namelist["plasma"]["heating"]["parameters"]["fmini"]
 
-    duration_s   = 1.0
-    time_step_s = duration_s * 1E-2
+    # Only correct Pich from the maestro namelist if it's not already False    
+    if transp_namelist['Pich']:
+        transp_namelist['Pich'] =   maestro_namelist["plasma"]['heating']['type'] == 'ICRH' and \
+                                    maestro_namelist["plasma"]['heating']['parameters']['P_icrh'] > 0.0
+    
+    if transp_namelist['Pich']:
+        transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
+        transp_namelist['freq_ICH'] = maestro_namelist["plasma"]['heating']['parameters']['freq_ICH']
 
-    transp_namelist = {
-        'flattop_window': 2.5,       
-        'extractAC': False,      
-        'dtOut_ms' : time_step_s*1E3,
-        'dtIn_ms' : time_step_s*1E3,
-        'nzones' : 60,
-        'nzones_energetic' : 20, 
-        'nzones_distfun' : 10,     
-        'MCparticles' : 1e4,
-        'toric_ntheta' : 64,   
-        'toric_nrho' : 128, 
-        'Pich': parameters_engineering['PichT_MW']>0.0,
-        'DTplasma': parameters_mix['DTplasma'],
-        'useNUBEAMforAlphas': True,
-        'Minorities': parameters_mix['minority'],
-        "zlump" :[  [74.0, 184.0, 0.1*parameters_mix['impurity_ratio_WtoZ']],
-                    [parameters_mix['lowZ_impurity'], parameters_mix['lowZ_impurity']*2, 0.1] ],
-        }
+    # Grab Z and A of high-Z
+    import periodictable as pt
+    e = pt.elements.symbol(maestro_namelist["plasma"]["species"]["mix"]["highZ"])
+    highZ = e.number
+    highA = e.mass    
+    # ------ 
 
-    if only_current_diffusion:
+    LowZ, Wratio = PLASMAtools.estimateLowZ(
+        maestro_namelist["plasma"]["species"]["mix"]["fmain"],
+        maestro_namelist["plasma"]["species"]["Zeff"],
+        Zmini,
+        fmini,
+        maestro_namelist["plasma"]["species"]["mix"]["CShighZ_estimate"],
+        maestro_namelist["plasma"]["species"]["mix"]["fhighZ"] )
+    
+    lowA = 2*LowZ   # Approximation
+    
+    transp_namelist["zlump"] =[  [highZ, highA, 0.1*Wratio],
+                                 [ LowZ,  lowA, 0.1       ] ]
 
-        duration_s   = 20.0
-        time_step_s  = 0.1
-
-        transp_namelist['flattop_window'] = duration_s
-        transp_namelist['dtEquilMax_ms'] = time_step_s*1E3
-        transp_namelist['dtHeating_ms'] = time_step_s*1E3
-        transp_namelist['dtCurrentDiffusion_ms'] = time_step_s*1E3
-        transp_namelist['dtOut_ms'] = time_step_s*1E3
-        transp_namelist['dtIn_ms'] = time_step_s*1E3
-        
-        transp_namelist['useNUBEAMforAlphas'] = False
-        transp_namelist['Pich'] = False
-
+    transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T']   #TODO: generalize TRANSP module
+    
     return transp_namelist
 
+def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
+    
+    toric = maestro_namelist["maestro"]["transp"]["parameters_prepare"]["Pich"]
+    nubeam = maestro_namelist["maestro"]["transp"]["parameters_prepare"]["useNUBEAMforAlphas"]
+    cpus_toric = maestro_namelist["maestro"]["transp"]["preprocess_prepare_parameters"]["cpus_toric"]
+    cpus_nubeam = maestro_namelist["maestro"]["transp"]["preprocess_prepare_parameters"]["cpus_nubeam"]
+    
+    if toric:
+        toricmpi = cpus_toric if cpus_toric is not None else cpus
+    else:
+        toricmpi = 1
+        
+    if nubeam:
+        trmpi = cpus_nubeam if cpus_nubeam is not None else cpus
+    else:
+        trmpi = 1
+    
+    run_namelist['mpisettings'] = {
+        "trmpi": trmpi, 
+        "toricmpi": toricmpi,
+        "ptrmpi": 1
+        }
+    
+    return run_namelist

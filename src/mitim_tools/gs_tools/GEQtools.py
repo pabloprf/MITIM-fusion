@@ -189,9 +189,9 @@ class MITIMgeqdsk:
         #fs995.to_toq9()
 
         # extract shape coefficients
-        self.geometric_parameters["turnbull"]["kappa995"] = fs995.shape[3]
-        self.geometric_parameters["turnbull"]["delta995"] = fs995.shape[4]
-        self.geometric_parameters["turnbull"]["zeta995"] = fs995.shape[5]
+        self.geometric_parameters["turnbull"]["kappa_995"] = fs995.shape[3]
+        self.geometric_parameters["turnbull"]["delta_995"] = fs995.shape[4]
+        self.geometric_parameters["turnbull"]["zeta_995"] = fs995.shape[5]
         #self.zeta995_in = fs995.shape[5]
         #self.zeta995_out = fs995.shape[6]
         
@@ -216,7 +216,7 @@ class MITIMgeqdsk:
         self.delta995 = self.geometric_parameters["geo"]["delta_995"]
         
         #TODO: Placeholder for now: zeta from Turnbull
-        self.zeta995 = self.geometric_parameters["turnbull"]["zeta995"]
+        self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]
         
 
     def plotEnclosingBox(self, ax=None, c= "k"):
@@ -335,7 +335,7 @@ class MITIMgeqdsk:
         # -------------------------------------------------------------------------------------------------------
 
         rhotor = self.g.derived['rho_tor']
-        psi = self.g.derived['psi']                           # Wb/rad
+        psi = self.g.derived['psi']                          # Wb/rad
         torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
         q = self.g.raw['qpsi']
         pressure = self.g.raw['pres']       # Pa
@@ -345,104 +345,19 @@ class MITIMgeqdsk:
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
         B0 = self.g.raw['rcentr']*self.g.raw['bcentr'] / R0
 
-        # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
-        rhotor = np.array([np.abs(i) for i in rhotor])
-        psi = np.array([np.abs(i) for i in psi])
-        q = np.array([np.abs(i) for i in q])
-        pressure = np.array([np.abs(i) for i in pressure])
-        
-        torfluxa = np.abs(torfluxa)
-        Ip = np.abs(Ip)
-        B0 = np.abs(B0)
-        # ------------------------------------------
-
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
         delta = np.sin(sn[:,1])
         zeta = -sn[:,2]
 
-        # -------------------------------------------------------------------------------------------------------
-        # Pass to profiles
-        # -------------------------------------------------------------------------------------------------------
-
-        profiles = {}
-
-        profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
-        profiles['nion'] = np.array(['2'])
-        profiles['shot'] = np.array(['12345'])
-
-        # Just one specie
-        profiles['name'] = np.array(['D','F'])
-        profiles['type'] = np.array(['[therm]','[therm]'])
-        profiles['masse'] = np.array([5.4488748e-04])
-        profiles['mass'] = np.array([2.0, Z*2])
-        profiles['ze'] = np.array([-1.0])
-        profiles['z'] = np.array([1.0, Z])
-
-        profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
-        profiles['rcentr(m)'] = np.array([R0])
-        profiles['bcentr(T)'] = np.array([B0])
-        profiles['current(MA)'] = np.array([Ip])
-
-        profiles['rho(-)'] = rhotor
-        profiles['polflux(Wb/radian)'] = psi
-        profiles['q(-)'] = q
-
-        # -------------------------------------------------------------------------------------------------------
-        # Flux surfaces
-        # -------------------------------------------------------------------------------------------------------
-
-        profiles['kappa(-)'] = kappa
-        profiles['delta(-)'] = delta
-        profiles['zeta(-)'] = zeta
-        profiles['rmin(m)'] = rmin
-        profiles['rmaj(m)'] = rmaj
-        profiles['zmag(m)'] = zmag
-
-        sn, cn = np.array(sn), np.array(cn)
-        for i in range(coeffs_MXH):
-            profiles[f'shape_cos{i}(-)'] = cn[:,i]
-        for i in range(coeffs_MXH-3):
-            profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
-
-        '''
-        -------------------------------------------------------------------------------------------------------
-        Kinetic profiles
-        -------------------------------------------------------------------------------------------------------
-        Pressure division into temperature and density
-            p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
-            if T=Te=Ti and ne=ni
-            p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
-            T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
-        '''
-
-        C = 1 / (2 * 1.60217662e-19 * 1e20)
-        _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
-        T_keV = C * (pressure / ne_20) * 1E-3
-
-        fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
-
-        profiles['te(keV)'] = T_keV
-        profiles['ti(keV)'] = np.array([T_keV]*2).T
-        profiles['ne(10^19/m^3)'] = ne_20*10.0
-        profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
-
-        # -------------------------------------------------------------------------------------------------------
-        # Power: insert parabolic and use PROFILES volume integration to find desired power
-        # -------------------------------------------------------------------------------------------------------
-
-        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
-
-        p = PROFILEStools.gacode_state.scratch(profiles)
-
-        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
-        p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
-
-        # -------------------------------------------------------------------------------------------------------
-        # Ready to go
-        # -------------------------------------------------------------------------------------------------------
-
-        p.derive_quantities()
+        p = equilibrium_to_profiles(
+            rhotor, psi, q, pressure, torfluxa, R0, B0, Ip,
+            kappa, delta, zeta, rmin, rmaj, zmag, sn[:,:coeffs_MXH], cn[:,:coeffs_MXH],
+            ne0_20 = ne0_20,
+            Zeff = Zeff,
+            Z = Z,
+            PichT = PichT
+        )
 
         # -------------------------------------------------------------------------------------------------------
         # Plotting
@@ -959,7 +874,7 @@ class freegs_millerized:
         # --------------------------------------------------------------
 
         max_error = 0.0
-        for key in ['R0', 'a', 'kappa_sep', 'delta_sep', 'zeta_sep']:
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
             miller_value = getattr(self, key)
             sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
             error = abs( (miller_value-sep_value)/miller_value )
@@ -1211,3 +1126,112 @@ class freegs_millerized:
         g = MITIMgeqdsk(file_scratch)
 
         return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, PichT_MW=PichT_MW, times=times)
+
+
+def equilibrium_to_profiles(
+        rhotor, psi, q, pressure,torfluxa, R0, B0, Ip,
+        kappa, delta, zeta,rmin, rmaj, zmag,sn, cn,
+        ne0_20 = 1E19,
+        Zeff = 1.5,
+        Z = 1,
+        PichT = 10.0
+        ):
+    
+    # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
+    rhotor = np.array([np.abs(i) for i in rhotor])
+    psi = np.array([np.abs(i) for i in psi])
+    q = np.array([np.abs(i) for i in q])
+    pressure = np.array([np.abs(i) for i in pressure])
+    
+    torfluxa = np.abs(torfluxa)
+    Ip = np.abs(Ip)
+    B0 = np.abs(B0)
+    # ------------------------------------------
+
+
+    # -------------------------------------------------------------------------------------------------------
+    # Pass to profiles
+    # -------------------------------------------------------------------------------------------------------
+
+    profiles = {}
+
+    profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
+    profiles['nion'] = np.array(['2'])
+    profiles['shot'] = np.array(['12345'])
+
+    # Just one specie
+    profiles['name'] = np.array(['D','F'])
+    profiles['type'] = np.array(['[therm]','[therm]'])
+    profiles['masse'] = np.array([5.4488748e-04])
+    profiles['mass'] = np.array([2.0, Z*2])
+    profiles['ze'] = np.array([-1.0])
+    profiles['z'] = np.array([1.0, Z])
+
+    profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
+    profiles['rcentr(m)'] = np.array([R0])
+    profiles['bcentr(T)'] = np.array([B0])
+    profiles['current(MA)'] = np.array([Ip])
+
+    profiles['rho(-)'] = rhotor
+    profiles['polflux(Wb/radian)'] = psi
+    profiles['q(-)'] = q
+
+    # -------------------------------------------------------------------------------------------------------
+    # Flux surfaces
+    # -------------------------------------------------------------------------------------------------------
+
+    profiles['kappa(-)'] = kappa
+    profiles['delta(-)'] = delta
+    profiles['zeta(-)'] = zeta
+    profiles['rmin(m)'] = rmin
+    profiles['rmaj(m)'] = rmaj
+    profiles['zmag(m)'] = zmag
+
+    coeffs_MXH = cn.shape[1]
+
+    sn, cn = np.array(sn), np.array(cn)
+    for i in range(coeffs_MXH):
+        profiles[f'shape_cos{i}(-)'] = cn[:,i]
+    for i in range(coeffs_MXH-3):
+        profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
+
+    '''
+    -------------------------------------------------------------------------------------------------------
+    Kinetic profiles
+    -------------------------------------------------------------------------------------------------------
+    Pressure division into temperature and density
+        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+        if T=Te=Ti and ne=ni
+        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+    '''
+
+    C = 1 / (2 * 1.60217662e-19 * 1e20)
+    _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
+    T_keV = C * (pressure / ne_20) * 1E-3
+
+    fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
+
+    profiles['te(keV)'] = T_keV
+    profiles['ti(keV)'] = np.array([T_keV]*2).T
+    profiles['ne(10^19/m^3)'] = ne_20*10.0
+    profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
+
+    # -------------------------------------------------------------------------------------------------------
+    # Power: insert parabolic and use PROFILES volume integration to find desired power
+    # -------------------------------------------------------------------------------------------------------
+
+    _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
+
+    p = PROFILEStools.gacode_state.scratch(profiles)
+
+    p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
+    p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
+
+    # -------------------------------------------------------------------------------------------------------
+    # Ready to go
+    # -------------------------------------------------------------------------------------------------------
+
+    p.derive_quantities()
+    
+    return p

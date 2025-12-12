@@ -290,7 +290,7 @@ class transp_run:
                 IOtools.changeValue(self.nml, var, self.namelist_variables[var], None, "=", MaintainComments=True)
             print("\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
         else:
-            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='w')
+            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='i')
 
     def ufiles_from(self, folder_original, ufiles):
         '''

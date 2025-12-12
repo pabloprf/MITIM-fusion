@@ -3,7 +3,6 @@ import copy
 import datetime
 import array
 import traceback
-from typing import IO
 import torch
 from pathlib import Path
 from collections import OrderedDict
@@ -1078,7 +1077,7 @@ class MITIM_BO:
 
         if converged:
             self.hard_finish = self.hard_finish or True
-            print("- * Optimization considered converged *", typeMsg="w")
+            print("- * Optimization considered converged *", typeMsg="i")
 
         return y_next, ystd_next
 
