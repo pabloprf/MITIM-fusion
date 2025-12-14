@@ -2635,6 +2635,29 @@ def printParam(param_name, param, extralab=""):
     else:
         printSingleRow(param, extralab=extralab + "  ")
 
+def param_state(mll):
+    
+    dictParam = {}
+    for constraint_name, constraint in mll.model.named_constraints():
+        dictParam[constraint_name.replace("_constraint", "")] = constraint
+    
+    param_raw = {}
+    param_actual = {}
+    for param_name, param in mll.model.named_parameters():
+        
+        # Raw parameter
+        param_raw[param_name] = copy.deepcopy(param.detach().cpu().numpy())
+        
+        # Apply transform if any
+        if param_name in dictParam:
+            param = dictParam[param_name].transform(param)
+            
+        param_name = param_name.replace("raw_", "actual_")
+
+        param_actual[param_name] = copy.deepcopy(param.detach().cpu().numpy())
+        
+    return {'raw': param_raw, 'actual': param_actual}
+
 
 def printSingleRow(param, extralab=""):
     if len(param.shape) > 1:

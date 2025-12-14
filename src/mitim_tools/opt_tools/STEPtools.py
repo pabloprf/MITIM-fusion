@@ -9,14 +9,11 @@ from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
 def identity(X, *args):
     return X, {}
 
-
 def identityOutputs(X, *args):
     return torch.ones(X.shape[:-1]).unsqueeze(-1)
-
 
 class OPTstep:
     def __init__(

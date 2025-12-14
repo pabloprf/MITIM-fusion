@@ -14,34 +14,36 @@ plasma:
   # Initialization of profiles
   profiles_initialization:
 
-    # How to initialize the plasma
-    initialization_type: freegs       # profiles (input.gacode file), freegs, geqdsk, fibe, separatrix 
+    # How to initialize the boundary and q-profile
+    initialization_type: freegs       # Options: geqdsk, freegs, geqdsk, fibe, separatrix, profiles (input.gacode file)
 
     # How to initialize the profiles
-    creator_type: eped_initializer  # eped_initializer (must exist as beat namelist below) or null
+    creator_type: eped_initializer    # Options: eped_initializer (must exist as beat namelist below), null (uses what initialization_type provides)
 
     parameters:
+
+      # If creator_type = eped_initializer: Profiles will be initialized such that these parameters are matched as close as possible
+      BetaN: 1.0    # Normalized global beta
+      nu_ne: 1.3    # Density peaking
 
       # If initialization_type = profiles: path to input.gacode to initialize with
       profiles_file: null 
 
-      # If creator_type = eped_initializer: Profiles will be initialized such that these parameters are matched as close as possible
-      BetaN: 1.0
-      nu_ne: 1.3 # Density peaking
-
   parameters:
 
-    Bt: 12.2 # if using values in geqdsk, this must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk
-    Ip: 8.7  # if using values in geqdsk, this must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk
+    # Global plasma parameters (initialization_type = geqdsk, Bt and Ip must be null, otherwise they will override the geqdsk values)
+    Bt: 12.2 
+    Ip: 8.7 
 
-    neped_20: 2.5
-    ne_ratio_sep_ped: 0.3
-    Tesep_eV: 75.0
+    # Profile boundary conditions
+    neped_20: 2.5           # Density at "ped" location as defined by EPED
+    ne_ratio_sep_ped: 0.3   # Ratio nsep/nped 
+    Tesep_eV: 75.0          # Temperature at separatrix (to potentially change if beat provides physics for this)
 
     # Separatrix specification (parameters determined depending on initialization_type)
     separatrix:
 
-      # If freegs, fibe, separatrix: Boundary parameterization (or, alternatively, path to RZ boundary file if "separatrix" mode)
+      # If initialization_type = freegs, fibe, separatrix: Boundary parameterization (or, alternatively, path to RZ boundary file if "separatrix" mode)
       R: 1.85
       a: 0.57
       delta_sep: 0.57
@@ -50,48 +52,51 @@ plasma:
 
       rz_boundary_file: null # file containing the separatrix R,Z points
 
-      # If geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary
+      # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary, once created
       n_mxh: 5
 
-      # If geqdsk, freegs, fibe: How to extract the 995 flux surface parameters (kappa, delta, zeta)
-      freeze_995_from: geo  # geo, turnbull, null (if null: no trans_beat parameters will be set)
+      # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
+      freeze_995_from: geo    # Options: geo, turnbull, null (if null: no trans_beat parameters will be set)
 
-      # If geqdsk: path to file 
+      # If initialization_type = geqdsk: path to file 
       geqdsk_file: ""
 
   # Plasma mix
   species:
   
-    fuel: ['D', 'T'] # Only DT or D allowed for now
+    # Main fuel species
+    fuel: ['D', 'T']      # Only ['D', 'T'] or ['D'] allowed for now
       
-    # Impurities (apart from minority)
+    # Impurity species
     Zeff: 1.5
     
     mix:
+      # Parameters to be used to find lumped low-Z impurity species that matches Zeff (accounting for minority species as well)
       fmain: 0.85
       highZ: W
       fhighZ: 1.5e-5
-      CShighZ_estimate: 50 #Estimate charge state in this plasma to compute the low-Z impurity at initialization
+      CShighZ_estimate: 50    # Estimate charge state of high-Z impurity, to compute the lumped low-Z impurity at initialization #TODO: estimate with a physics model
       
   # Heating parameters
   heating:
 
-    # Only ICRH heating supported for now
-    type: ICRH
+    # Heating model
+    type: ICRH   # Only ICRH heating supported for now
 
+    # Heating model parameters
     parameters:
 
-      # ICRF input power
+      # If type = ICRH: Total input power
       P_icrh: 11.0
 
-      # Minority species [Z,A]
+      # If type = ICRH: Minority species [Z,A]
       minority: [2, 3]
 
-      # Minority fraction to be added to the mix
+      # If type = ICRH: Minority fraction to be added to the mix
       fmini: 0.05
 
-      # Antenna frequency (if null, estimate on-axis deposition based on field and minority)
-      freq_ICH: null
+      # If type = ICRH: Antenna frequency (in MHz)
+      freq_ICH: null    # If null, estimate on-axis deposition based on field and minority
 
 # ------------------------------------------------------------------------------------------------------------
 # MAESTRO workflow parameters
@@ -123,11 +128,11 @@ maestro:
 
     parameters_prepare:
 
-      # Location of EPED NN files (if null, use full EPED)
+      # Location of EPED-NN files (if null, use full EPED)
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
 
-      # Corrections set for EPED indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
+      # Corrections set for EPED-NN indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
       corrections_set:
         Bt: 12.2
         R: 1.85

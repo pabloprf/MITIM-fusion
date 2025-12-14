@@ -181,14 +181,19 @@ class EPED:
              'shot': shot,
              'timeid': timeid,
              'runid': 0,
-             'm': 2.5,
-             'z': 1,
-             'mi': 20,
-             'zi': 10,
              'tewid': 0.03,
              'ptotwid': 0.03,
              'teped': -1,
              'ptotped': -1,
+            }
+        )
+
+        # Update with fixed parameters that may or not be already set
+        input_params.update(
+            {'m': 2.5,
+             'z': 1,
+             'mi': 20,
+             'zi': 10,
             }
         )
 
