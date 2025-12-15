@@ -2524,10 +2524,13 @@ def plot1D(
     ms=1,
     lw=1.0,
 ):
-    if legendConf:
-        labelMean, labelConf = extralab + "Mean", extralab + "Confidence"
+    if isinstance(legendConf, str):
+        labelMean, labelConf = legendConf, None
     else:
-        labelMean, labelConf = extralab, ""
+        if legendConf:
+            labelMean, labelConf = extralab + "Mean", extralab + "Confidence"
+        else:
+            labelMean, labelConf = extralab, ""
 
     contour = ax.plot(testX, mean, ls, c=color, label=labelMean, markersize=ms, lw=lw)
     if upper is not None:

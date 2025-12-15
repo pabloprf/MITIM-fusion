@@ -308,19 +308,8 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
     return powerstate
 
-
-def stopping_criteria_portals(mitim_bo, parameters = {}):
-
-    # Standard stopping criteria
-    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(mitim_bo, parameters)
-
-    # Ricci metric
-    ricci_value = parameters["ricci_value"]
-    d0 = parameters.get("ricci_d0", 2.0)
-    la = parameters.get("ricci_lambda", 1.0)
-
-    print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
-
+def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0):
+    
     Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
     of, cal, _ = mitim_bo.scalarized_objective(Y)
     
@@ -335,6 +324,22 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
 
     _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
+    
+    return chiR
+
+def stopping_criteria_portals(mitim_bo, parameters = {}):
+
+    # Standard stopping criteria
+    converged_by_default, yvals = STRATEGYtools.stopping_criteria_default(mitim_bo, parameters)
+
+    # Ricci metric
+    ricci_value = parameters["ricci_value"]
+    d0 = parameters.get("ricci_d0", 2.0)
+    la = parameters.get("ricci_lambda", 1.0)
+
+    print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
+
+    chiR = calculate_Ricci_portals_step(mitim_bo, d0=d0, la=la)
 
     print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f})")
 
