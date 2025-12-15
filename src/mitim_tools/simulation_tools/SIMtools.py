@@ -776,11 +776,11 @@ class mitim_simulation:
     def _prepare_scan(
         self,
         subfolder,  # 'scan1',
-        multipliers={},
-        minimum_delta_abs={},
+        multipliers=None,
+        minimum_delta_abs=None,
         variable="RLTS_1",
         varUpDown=[0.5, 1.0, 1.5],
-        variables_scanTogether=[],
+        variables_scanTogether=None,
         relativeChanges=True,
         **kwargs_run,
     ):
@@ -790,6 +790,13 @@ class mitim_simulation:
 
         Set relativeChanges=False if varUpDown contains the exact values to change, not multipleiers
         """
+        
+        if multipliers is None:
+            multipliers = {}
+        if minimum_delta_abs is None:
+            minimum_delta_abs = {}
+        if variables_scanTogether is None:
+            variables_scanTogether = []
         
         completeVariation = self.run_specifications['complete_variation']
         
@@ -814,6 +821,11 @@ class mitim_simulation:
             else:
                 print(f"\n + Value: {mult} ----------------------------------------------------------------------------------------------------------------")
 
+            # If multipliers already had the variable, make sure I account for that variation as well
+            if variable in multipliers:
+                base_mult = multipliers[variable]
+                mult = round(base_mult * mult, 6)
+            
             multipliers_mod[variable] = mult
 
             for variable_scanTogether in variables_scanTogether:
