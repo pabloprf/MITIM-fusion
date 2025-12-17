@@ -13,6 +13,13 @@ from IPython import embed
 class mitim_nn:
 
     def __init__(self, type = 'tf', force_within_range = False):
+        '''
+        force_within_range:
+            None: Do not check ranges
+            True: Raise error if out of range
+            False: Just print warning if out of range
+        '''
+        
         
         if type == 'tf':
             print('Initializing Tensorflow Neural Network')

@@ -9,7 +9,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_postprocessing,eped_profil
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 '''
-        RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
+    RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
 def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
@@ -26,7 +26,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
 
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
-        print(f'>> Evaluating {optional_flag}')
+        print(f'\t\t Evaluating {optional_flag}')
         
         p = copy.deepcopy(p_base)
 
@@ -114,7 +114,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         # Change Zeff
         p.changeZeff(Zeff, ion_pos=3)  # Assuming D as main ion
 
-        def pedestal(p):
+        def pedestal(p, force_within_range=None):
 
             # Calculate new pedestal
             eped_evaluation = p.to_eped()
@@ -124,6 +124,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             eped_evaluation["nesep_ratio"] = nesep_ratio
             eped_evaluation["tesep"] = tesep_eV
 
+            nn.force_within_range = force_within_range
             ptop_kPa, wtop_psipol = nn(**eped_evaluation)
 
             rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
@@ -148,6 +149,9 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
             if error_betaN < thr_beta:
                 break
+        
+        # Run again the last point but with warning
+        p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
 
         if error_betaN > thr_beta:
             raise Exception('BetaN error too high')
