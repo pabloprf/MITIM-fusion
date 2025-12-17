@@ -1,8 +1,9 @@
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools
+from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools, LOGtools
 from mitim_modules.powertorch import STATEtools
+from mitim_modules.powertorch.utils import TRANSFORMtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_modules.maestro.utils.EPEDbeat import eped_postprocessing,eped_profiler
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -17,139 +18,146 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
                      Paux = 0.0,
                      BetaN_multiplier=1.0,
                      thr_beta=0.02,
+                     hide_prints=True,  # -> If True, only print warnings and the case flag
+                     optional_flag="RAPIDS case ",  
                      **kwargs_rederive_geometry):
 
-    p = copy.deepcopy(p_base)
 
-    # -------------------------------------------------------
-    # Main quantities
-    # -------------------------------------------------------
 
-    # Change major radius
-    p.profiles['rcentr(m)'][0] = R
-    p.profiles['rmaj(m)'] *= R/p_base.profiles['rmaj(m)'][0]
-
-    # Change minor radius
-    p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
-
-    # Change elongation
-    if kappa995 is not None:
-        # If 995 available, use that
-        mutilier_kappa = kappa995/p_base.derived['kappa995']
-    else:
-        # Otherwise, use the separatrix value
-        mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
-    p.profiles['kappa(-)'] *= mutilier_kappa
-
-    # Change triangularity
-    if delta995 is not None:
-        # If 995 available, use that
-        mutilier_delta = delta995/p_base.derived['delta995']
-    else:
-        # Otherwise, use the separatrix value
-        mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
-    p.profiles['delta(-)'] *= mutilier_delta
-
-    # Change magnetic field
-    p.profiles['bcentr(T)'][0] = Bt
-    
-    # Change plasma current
-    p.profiles['current(MA)'][0] = Ip
-
-    # -------------------------------------------------------
-    # Derived quantities
-    # -------------------------------------------------------
-
-    kappa_sep = p.profiles['kappa(-)'][-1]
-    delta_sep = p.profiles['delta(-)'][-1]
-
-    # Approximate XS area
-    area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
-    area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
-
-    # Make sure that q95 is roughly consistent
-    p.profiles['q(-)'] *= p_base.profiles['current(MA)'][0] / Ip
-
-    # Make sure that toroidal flux is roughly consistent
-    p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
-    p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
-
-    # -------------------------------------------------------
-    # Others
-    # -------------------------------------------------------
-
-    # Change auxiliary power
-    p.changeRFpower(PrfMW=Paux)
-    for i in ["qohme(MW/m^3)"]:
-        p.profiles[i] *= 0.0
-
-    # -------------------------------------------------------
-    # Gradient-based profiles
-    # -------------------------------------------------------
-
-    rhotop_assume = 0.9
-    Ttop_assume = 4.0
-    ntop_assume = 1.0
-
-    roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
-    roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, aLT)
-    p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
-    p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*TiTe)), p.profiles['ti(keV)'].shape[-1],axis=-1)
-
-    roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, aLn)
-    p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
-    p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
-
-    p.derive_quantities(**kwargs_rederive_geometry)
-
-    # Change Zeff
-    p.changeZeff(Zeff, ion_pos=3)  # Assuming D as main ion
-
-    def pedestal(p):
-
-        # Calculate new pedestal
-        eped_evaluation = p.to_eped()
-
-        eped_evaluation["betan"] *= BetaN_multiplier
-        eped_evaluation["neped"] = neped*10
-        eped_evaluation["nesep_ratio"] = nesep_ratio
-        eped_evaluation["tesep"] = tesep_eV
-
-        ptop_kPa, wtop_psipol = nn(**eped_evaluation)
-
-        rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
-            eped_evaluation["neped"]*0.1,
-            eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
-            ptop_kPa, TioverTe, wtop_psipol, p)
-
-        p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
+    with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
-        # Derive quantities
-        p.derive_quantities(rederiveGeometry=False)
+        print(f'>> Evaluating {optional_flag}')
+        
+        p = copy.deepcopy(p_base)
 
-        BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
+        # -------------------------------------------------------
+        # Main quantities
+        # -------------------------------------------------------
 
-        error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
-        print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+        # Change major radius
+        p.profiles['rcentr(m)'][0] = R
+        p.profiles['rmaj(m)'] *= R/p_base.profiles['rmaj(m)'][0]
 
-        return p, ptop_kPa, error_betaN, eped_evaluation
+        # Change minor radius
+        p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
 
-    # Loop for better beta definition
-    for i in range(10):
-        p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
-        if error_betaN < thr_beta:
-            break
+        # Change elongation
+        if kappa995 is not None:
+            # If 995 available, use that
+            mutilier_kappa = kappa995/p_base.derived['kappa995']
+        else:
+            # Otherwise, use the separatrix value
+            mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
+        p.profiles['kappa(-)'] *= mutilier_kappa
 
-    if error_betaN > thr_beta:
-        raise Exception('BetaN error too high')
+        # Change triangularity
+        if delta995 is not None:
+            # If 995 available, use that
+            mutilier_delta = delta995/p_base.derived['delta995']
+        else:
+            # Otherwise, use the separatrix value
+            mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
+        p.profiles['delta(-)'] *= mutilier_delta
 
-    # Calculate targets
-    power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
-    power.calculateProfileFunctions()
-    power.calculateTargets()
+        # Change magnetic field
+        p.profiles['bcentr(T)'][0] = Bt
+        
+        # Change plasma current
+        p.profiles['current(MA)'][0] = Ip
 
-    # Insert powers back to profiles
-    profiles_new = power.from_powerstate(insert_highres_powers=True)
+        # -------------------------------------------------------
+        # Derived quantities
+        # -------------------------------------------------------
+
+        kappa_sep = p.profiles['kappa(-)'][-1]
+        delta_sep = p.profiles['delta(-)'][-1]
+
+        # Approximate XS area
+        area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
+        area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
+
+        # Make sure that q95 is roughly consistent
+        p.profiles['q(-)'] *= p_base.profiles['current(MA)'][0] / Ip
+
+        # Make sure that toroidal flux is roughly consistent
+        p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
+        p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
+
+        # -------------------------------------------------------
+        # Others
+        # -------------------------------------------------------
+
+        # Change auxiliary power
+        p.changeRFpower(PrfMW=Paux)
+        for i in ["qohme(MW/m^3)"]:
+            p.profiles[i] *= 0.0
+
+        # -------------------------------------------------------
+        # Gradient-based profiles
+        # -------------------------------------------------------
+
+        rhotop_assume = 0.9
+        Ttop_assume = 4.0
+        ntop_assume = 1.0
+
+        roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
+        roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, aLT)
+        p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
+        p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*TiTe)), p.profiles['ti(keV)'].shape[-1],axis=-1)
+
+        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, aLn)
+        p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
+        p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
+
+        p.derive_quantities(**kwargs_rederive_geometry)
+
+        # Change Zeff
+        p.changeZeff(Zeff, ion_pos=3)  # Assuming D as main ion
+
+        def pedestal(p):
+
+            # Calculate new pedestal
+            eped_evaluation = p.to_eped()
+
+            eped_evaluation["betan"] *= BetaN_multiplier
+            eped_evaluation["neped"] = neped*10
+            eped_evaluation["nesep_ratio"] = nesep_ratio
+            eped_evaluation["tesep"] = tesep_eV
+
+            ptop_kPa, wtop_psipol = nn(**eped_evaluation)
+
+            rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
+                eped_evaluation["neped"]*0.1,
+                eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
+                ptop_kPa, TioverTe, wtop_psipol, p)
+
+            p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
+            
+            # Derive quantities
+            p.derive_quantities(rederiveGeometry=False)
+
+            BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
+
+            error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
+            print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+
+            return p, ptop_kPa, error_betaN, eped_evaluation
+
+        # Loop for better beta definition
+        for i in range(10):
+            p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
+            if error_betaN < thr_beta:
+                break
+
+        if error_betaN > thr_beta:
+            raise Exception('BetaN error too high')
+
+        # Calculate targets
+        power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
+        profiles_new = copy.deepcopy(p)
+        TRANSFORMtools.powerstate_to_gacode_powers(power, profiles_new)
+        
+        profiles_new.derive_quantities(rederiveGeometry=False)
 
     return ptop_kPa,profiles_new, eped_evaluation
 
@@ -221,9 +229,16 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         'profs' : [],'eped_inputs': [],'Ptop' : [],
         'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': [], 'H98': [], 'betaN': []
         }
-    for x in results1['x']:
+    for i,x in enumerate(results1['x']):
         values[xparam] = x
-        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, BetaN_multiplier=core['BetaN_multiplier'],Paux=Paux, **values, **kwargs_rederive_geometry)
+        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(
+            nn, core['aLT'], core['aLn'], core['TiTe'],
+            p_base,
+            BetaN_multiplier=core['BetaN_multiplier'],
+            Paux=Paux,
+            **values,
+            **kwargs_rederive_geometry,
+            optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}')
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['eped_inputs'].append(eped_evaluation)

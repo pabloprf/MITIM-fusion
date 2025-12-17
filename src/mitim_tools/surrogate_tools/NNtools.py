@@ -57,17 +57,29 @@ class mitim_nn:
                 self.ranges = None
 
         print(f'\t- Normalization file from {IOtools.clipstr(norm,30)} loaded')
-        print("Norm:", self.normalization)
-        if self.inputs is not None:
-            print("Expected inputs to NN:")
-            print(self.inputs)
-        else:
-            print("No input information found in normalization file")
+        print("\t\t\tNorm:", self.normalization)
         if self.ranges is not None:
-            print("Trained ranges:")
-            print(self.ranges)
+            print("\t\t\tTrained inputs and ranges:")
+
+            # Compute maximum input-name length so that '[' aligns in each line
+            max_name_len = max(len(str(inp)) for inp in self.ranges.keys())
+
+            for inp, bounds in self.ranges.items():
+                name = str(inp)
+                # Expect bounds like [min, max]; fall back gracefully otherwise
+                try:
+                    low, high = bounds
+                    print(f"\t\t\t\t{name:<{max_name_len}}: [{low}, {high}]")
+                except Exception:
+                    print(f"\t\t\t\t{name:<{max_name_len}}: {bounds}")
         else:
-            print("No ranges found in normalization file")
+            print("\t\t\tNo ranges found in normalization file")
+            if self.inputs is not None:
+                print("\t\t\tExpected inputs to NN:")
+                print('\t\t\t\t', self.inputs)
+            else:
+                print("\t\t\tNo input information found in normalization file")
+        
         
     def _evaluate_tf(self, inputs, print_msg=True):
         

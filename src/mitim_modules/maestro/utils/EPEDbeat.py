@@ -1,6 +1,8 @@
 import shutil
 import copy
 import torch
+import warnings
+from scipy.optimize import OptimizeWarning
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
@@ -704,7 +706,10 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
     # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
     pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, nesep_20, 1-rhotop, x=x)[1]
 
-    n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=OptimizeWarning) # Avoid annoying warning from curve_fit
+        n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+        
     netop_20 = n0[0]
 
     # Find factor to account that it's not a pure plasma

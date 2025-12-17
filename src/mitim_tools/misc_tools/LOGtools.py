@@ -155,13 +155,91 @@ class HiddenPrints:
                     printMsg("This will not be printed")
     """
 
+    def __init__(self, show_if_contains=None):
+        """Optionally show only lines that contain given string(s).
+
+        Parameters
+        ----------
+        show_if_contains : str, iterable of str, or None, optional
+            If a string, only lines whose text (after stripping leading
+            whitespace) contains this string are printed. If an iterable
+            of strings, a line is printed if it contains *any* of them.
+            All other output is suppressed. If None (default), all output
+            is suppressed (original behavior of HiddenPrints).
+        """
+
+        # Normalize to a list of substrings or None
+        if show_if_contains is None:
+            self._needles = None
+        elif isinstance(show_if_contains, str):
+            self._needles = [show_if_contains]
+        else:
+            # Assume iterable of strings
+            self._needles = list(show_if_contains)
+
+        # Tracks whether the *current line* should be shown. This is
+        # needed because ``print`` may emit a single logical line via
+        # multiple ``write`` calls (one per argument plus the newline).
+        self._current_line_visible = False
+
     def __enter__(self):
+        # Save the original stdout and create a devnull sink
         self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
+        self._devnull = open(os.devnull, "w")
+
+        # Replace sys.stdout with this object so we can filter writes
+        sys.stdout = self
+
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
+        # Restore original stdout and close the devnull sink
         sys.stdout = self._original_stdout
+        if not self._devnull.closed:
+            self._devnull.close()
+
+    def write(self, message):
+        """Conditionally write to stdout based on the configured prefix.
+
+        If ``show_if_contains`` is None, everything is discarded
+        (fully hidden). Otherwise, for each logical *line*, if any part of
+        that line (after stripping leading whitespace) contains *any* of
+        the configured substrings, the whole line is printed; otherwise
+        the whole line is suppressed.
+        """
+
+        text = str(message)
+
+        if self._needles is None:
+            # Original behavior: hide everything inside the context
+            self._devnull.write(text)
+            return
+
+        # ``print`` may call ``write`` multiple times for a single
+        # logical line (one call per argument and one for the newline).
+        # We therefore process the incoming text line-by-line and keep
+        # state about whether the current line should be visible.
+        for chunk in text.splitlines(keepends=True):
+            # Decide visibility at the start of a (potentially new) line
+            if not self._current_line_visible:
+                stripped = chunk.lstrip()
+                if any(needle in stripped for needle in self._needles):
+                    self._current_line_visible = True
+
+            # Route the chunk based on the current line's visibility
+            if self._current_line_visible:
+                self._original_stdout.write(chunk)
+            else:
+                self._devnull.write(chunk)
+
+            # Reset visibility at end-of-line
+            if chunk.endswith("\n"):
+                self._current_line_visible = False
+
+    def flush(self):
+        # Ensure compatibility with file-like API expected for sys.stdout
+        self._original_stdout.flush()
+        self._devnull.flush()
 
 '''
 Log file utilities
