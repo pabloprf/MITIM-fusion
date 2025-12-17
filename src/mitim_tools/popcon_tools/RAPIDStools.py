@@ -11,7 +11,13 @@ from IPython import embed
         RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3, TioverTe=1.0, Paux = 0.0, BetaN_multiplier=1.0,thr_beta=0.02):
+def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
+                     R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
+                     TioverTe=1.0,
+                     Paux = 0.0,
+                     BetaN_multiplier=1.0,
+                     thr_beta=0.02,
+                     **kwargs_rederive_geometry):
 
     p = copy.deepcopy(p_base)
 
@@ -94,10 +100,10 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
     p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
 
-    p.derive_quantities()
+    p.derive_quantities(**kwargs_rederive_geometry)
 
     # Change Zeff
-    p.changeZeff(Zeff, ion_pos=3)
+    p.changeZeff(Zeff, ion_pos=3)  # Assuming D as main ion
 
     def pedestal(p):
 
@@ -111,9 +117,12 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
 
         ptop_kPa, wtop_psipol = nn(**eped_evaluation)
 
-        rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(eped_evaluation["neped"]*0.1, eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1, ptop_kPa, TioverTe, wtop_psipol, p)
+        rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
+            eped_evaluation["neped"]*0.1,
+            eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
+            ptop_kPa, TioverTe, wtop_psipol, p)
 
-        p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20)
+        p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
         
         # Derive quantities
         p.derive_quantities(rederiveGeometry=False)
@@ -134,10 +143,12 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base, R=None, a=None, Bt=None, Ip=Non
     if error_betaN > thr_beta:
         raise Exception('BetaN error too high')
 
-    # Power
-    power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 50)[1:]})
+    # Calculate targets
+    power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
+    power.calculateProfileFunctions()
+    power.calculateTargets()
 
-    power.calculate(None, folder='~/scratch/power/')
+    # Insert powers back to profiles
     profiles_new = power.from_powerstate(insert_highres_powers=True)
 
     return ptop_kPa,profiles_new, eped_evaluation
@@ -198,7 +209,7 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     ax.set_xlabel(xlabel)
     ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
 
-def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True):
+def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True, **kwargs_rederive_geometry):
     
     if axs is None:
         plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=4,figsize=(20,10))
@@ -212,7 +223,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         }
     for x in results1['x']:
         values[xparam] = x
-        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, BetaN_multiplier=core['BetaN_multiplier'],Paux=Paux, **values)
+        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(nn, core['aLT'], core['aLn'], core['TiTe'], p_base, BetaN_multiplier=core['BetaN_multiplier'],Paux=Paux, **values, **kwargs_rederive_geometry)
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['eped_inputs'].append(eped_evaluation)

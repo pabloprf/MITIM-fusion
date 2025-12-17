@@ -304,7 +304,8 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
+            profiles_pass = copy.deepcopy(self.profiles_current)
+            self.profiles_output = eped_profiler(profiles_pass, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN_engineering']
 
@@ -605,21 +606,21 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', keep_aLx=True, roa = None):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', keep_aLx=True, roa = None, print_msgs = True):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
         roa: needed if I want to keep the aLT profile in the core-predicted region
     '''
 
-    print(f'\t\t- Scaling profile {label} by stretching')
+    if print_msgs: print(f'\t\t- Scaling profile {label} by stretching')
 
     # Find old core
     ibc = np.argmin(np.abs(x-xp_old))
     xcore_old = x[:ibc+1]
     ycore_old = y[:ibc+1]
 
-    print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
+    if print_msgs: print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
 
     # Fit new pedestal
     _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
@@ -643,7 +644,7 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
 
     # Keep old aLT
     if keep_aLx:
-        print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
+        if print_msgs: print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
 
         # Calculate gradient in entire region
         aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
@@ -720,13 +721,11 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
     Titop_keV = Tetop_keV * TioverTe
     print(f'\t\t\t* Tetop_keV: {Tetop_keV:.3f}  Titop_keV: {Titop_keV:.3f}')
 
-
-
     return rhotop, netop_20, Tetop_keV, Titop_keV, rhoped
 
-def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005):
+def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005,print_msgs=True):
 
-    profiles_output = copy.deepcopy(profiles)
+    profiles_output = profiles #copy.deepcopy(profiles)
 
     x = profiles.profiles['rho(-)']
     xroa = profiles.derived['roa']
@@ -738,20 +737,20 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
     n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
     fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n)
 
-    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa)
+    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa, print_msgs = print_msgs)
 
-    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa)
+    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa, print_msgs = print_msgs)
     profiles_output.makeAllThermalIonsHaveSameTemp()
 
     pos = np.argmin(np.abs(x-xp_old))
     factor_keep = profiles_output.profiles['ni(10^19/m^3)'][pos,:]/profiles.profiles['ne(10^19/m^3)'][pos]
 
-    profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
+    profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa, print_msgs = print_msgs)
     
     # Kepp the same ion concentration as before at the top
     for i in range(profiles_output.profiles['ni(10^19/m^3)'].shape[-1]):
         nitop_20 = netop_20*factor_keep[i]
-        profiles_output.profiles['ni(10^19/m^3)'][:,i] = scale_profile_by_stretching(x,profiles_output.profiles['ni(10^19/m^3)'][:,i],rhotop,nitop_20*1E1,xp_old, label = f'ni{i}', roa = xroa)
+        profiles_output.profiles['ni(10^19/m^3)'][:,i] = scale_profile_by_stretching(x,profiles_output.profiles['ni(10^19/m^3)'][:,i],rhotop,nitop_20*1E1,xp_old, label = f'ni{i}', roa = xroa, print_msgs = print_msgs)
 
     # ---------------------------------
     # Re-derive

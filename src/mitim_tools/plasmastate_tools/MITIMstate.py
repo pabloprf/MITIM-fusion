@@ -123,7 +123,7 @@ class mitim_state:
         return instance
 
     @IOtools.hook_method(before=ensure_variables_existence)
-    def derive_quantities_base(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True):
+    def derive_quantities_base(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True, **kwargs_rederive_geometry):
 
         # Make sure the profiles have the required dimensions
         if len(self.profiles["ni(10^19/m^3)"].shape) == 1:
@@ -163,7 +163,7 @@ class mitim_state:
             
             # Avoid division by zero warning by using np.errstate
             with np.errstate(divide='ignore', invalid='ignore'):
-                self.derive_quantities_full(rederiveGeometry=rederiveGeometry)
+                self.derive_quantities_full(rederiveGeometry=rederiveGeometry, **kwargs_rederive_geometry)
 
     def write_state(self, file=None):
         print("\t- Writting input.gacode file")
@@ -317,7 +317,7 @@ class mitim_state:
                 self.nThermal += self.profiles["ni(10^19/m^3)"][:, sp]
                 self.nZThermal += self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
 
-    def derive_quantities_full(self, mi_ref=None, rederiveGeometry=True):
+    def derive_quantities_full(self, mi_ref=None, rederiveGeometry=True, **kwargs_rederive_geometry):
         """
         deriving geometry is expensive, so if I'm just updating profiles it may not be needed
         """
@@ -363,7 +363,7 @@ class mitim_state:
         # --------- Geometry (only if it doesn't exist or if I ask to recalculate)
 
         if rederiveGeometry or ("volp_geo" not in self.derived):
-            self.derive_geometry()
+            self.derive_geometry(**kwargs_rederive_geometry)
 
         # --------------------------------------------------------------------------
         # Reference mass
@@ -1782,7 +1782,6 @@ class mitim_state:
             self.profiles["ni(10^19/m^3)"][:, using_ion] += ne_missing
             new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, using_ion])
 
-
         print(f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)")
 
         self.derive_quantities(rederiveGeometry=False)
@@ -1844,7 +1843,7 @@ class mitim_state:
         for i in ["qrfe(MW/m^3)", "qrfi(MW/m^3)"]:
             self.profiles[i] = self.profiles[i] * PrfMW / self.derived["qRF_MW"][-1]
 
-        self.derive_quantities()
+        self.derive_quantities(rederiveGeometry=False)
 
     def imposeBCtemps(self, TkeV=0.5, rho=0.9, typeEdge="linear", Tesep=0.1, Tisep=0.2):
 

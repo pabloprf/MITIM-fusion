@@ -38,9 +38,9 @@ fig = fn.add_figure(label='Optimization Convergence')
 
 axs = GRAPHICStools.producePlotsGrid(len(step_num), fig=fig, hspace=0.6, wspace=0.3, sharex=False, sharey=False)
 
-for step in step_num:
+for i,step in enumerate(step_num):
 
-	ax = axs[step]
+	ax = axs[i]
 
 	if 'InfoOptimization' not in strat.steps[step].__dict__: break
 
