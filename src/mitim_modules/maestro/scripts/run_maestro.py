@@ -184,8 +184,8 @@ def run_maestro_local(
                 
                 # Special case #TODO: Improve in future
                 if initialization_creator_type == 'fixed_profiles':
-                    profiles_inserted = read_fixed_profiles(parameters_initialize['profiles_file'])
-                    parameters_initialize['profiles_inserted'] = profiles_inserted
+                    profiles_insert = read_fixed_profiles(parameters_initialize['profiles_file'])
+                    parameters_initialize['profiles_insert'] = profiles_insert
                 else:
                     # If normal creator, append the **beat_prepare_namelists[initialization_creator_type],
                     parameters_initialize = IOtools.deep_dict_update(
@@ -236,9 +236,9 @@ def run_maestro_local(
 def read_fixed_profiles(file):
     
     with open(file, 'r') as f:
-        profiles_inserted_tmp = json.load(f)
+        profiles_insert_tmp = json.load(f)
     
-    profiles_inserted = {}
+    profiles_insert = {}
     
     variables_to_extract = {
         'rho': 'rho',
@@ -250,10 +250,10 @@ def read_fixed_profiles(file):
     }
     
     for key, new_key in variables_to_extract.items():
-        if key in profiles_inserted_tmp:
-            profiles_inserted[new_key] = np.array(profiles_inserted_tmp[key])
+        if key in profiles_insert_tmp:
+            profiles_insert[new_key] = np.array(profiles_insert_tmp[key])
     
-    return profiles_inserted
+    return profiles_insert
 
 
 def main():

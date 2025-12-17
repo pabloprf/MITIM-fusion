@@ -46,6 +46,7 @@ class transp_beat(beat):
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
+        transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
         **transp_namelist
         ):
         '''
@@ -60,10 +61,10 @@ class transp_beat(beat):
         '''
 
         # Define timings
-        transition_window     = 0.1     # To prevent equilibrium crashes
+        self.transition_window     = transition_window 
         currentheating_window = 0.001
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
-        self.time_transition = self.time_init+ transition_window            # Transition to new equilibrium (and profiles), also defined at 100.0
+        self.time_transition = self.time_init+ self.transition_window       # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
         self.timeAC = self.time_end - 0.001 if extractAC else None          # Time to extract TORIC and NUBEAM files

@@ -141,7 +141,7 @@ class maestro:
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
-        elif method == 'profiles':
+        elif method in ['profiles', "fixed_profiles"]:
             self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs_creator)
         else:
             raise ValueError(f'[MITIM] Creator method {method} not recognized')
