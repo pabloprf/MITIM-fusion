@@ -1,5 +1,7 @@
 import argparse
 import copy
+import json
+import numpy as np
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools
 from mitim_modules.maestro.MAESTROmain import maestro
@@ -179,10 +181,21 @@ def run_maestro_local(
         if not creator_added:
             
             if initialization_creator_type is not None:
+                
+                # Special case #TODO: Improve in future
+                if initialization_creator_type == 'fixed_profiles':
+                    profiles_inserted = read_fixed_profiles(parameters_initialize['profiles_file'])
+                    parameters_initialize['profiles_inserted'] = profiles_inserted
+                else:
+                    # If normal creator, append the **beat_prepare_namelists[initialization_creator_type],
+                    parameters_initialize = IOtools.deep_dict_update(
+                        beat_prepare_namelists[initialization_creator_type],
+                        parameters_initialize
+                        )
+                
                 m.define_creator(
                     initialization_creator_type, # e.g. 'eped_initializer', 
                     **parameters_initialize,
-                    **beat_prepare_namelists[initialization_creator_type],
                     **parameters_engineering
                     )
             
@@ -219,6 +232,29 @@ def run_maestro_local(
     m.finalize()
 
     return m
+
+def read_fixed_profiles(file):
+    
+    with open(file, 'r') as f:
+        profiles_inserted_tmp = json.load(f)
+    
+    profiles_inserted = {}
+    
+    variables_to_extract = {
+        'rho': 'rho',
+        'roa': 'roa',
+        'Te_keV': 'Te',
+        'Ti_keV': 'Ti',
+        'ne_1e20m3': 'ne',
+        'w0_rads': 'w0',
+    }
+    
+    for key, new_key in variables_to_extract.items():
+        if key in profiles_inserted_tmp:
+            profiles_inserted[new_key] = np.array(profiles_inserted_tmp[key])
+    
+    return profiles_inserted
+
 
 def main():
     parser = argparse.ArgumentParser(description='Parse MAESTRO namelist')

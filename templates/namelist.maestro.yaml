@@ -18,15 +18,16 @@ plasma:
     initialization_type: freegs       # Options: geqdsk, freegs, geqdsk, fibe, separatrix, profiles (input.gacode file)
 
     # How to initialize the profiles
-    creator_type: eped_initializer    # Options: eped_initializer (must exist as beat namelist below), null (uses what initialization_type provides)
+    creator_type: eped_initializer    # Options: eped_initializer (must exist as beat namelist below), fixed_profiles, null (uses what initialization_type provides)
 
     parameters:
 
-      # If creator_type = eped_initializer: Profiles will be initialized such that these parameters are matched as close as possible
+      # If creator_type = eped_initializer, fixed_profiles: Profiles will be initialized such that these parameters are matched as close as possible
       BetaN: 1.0    # Normalized global beta
       nu_ne: 1.3    # Density peaking
 
       # If initialization_type = profiles: path to input.gacode to initialize with
+      # If creator_type = fixed_profiles: path to fixed profiles file
       profiles_file: null 
 
   parameters:
@@ -81,7 +82,7 @@ plasma:
   heating:
 
     # Heating model
-    type: ICRH   # Only ICRH heating supported for now
+    type: ICRH   # Options: ICRH, gaussian_sources
 
     # Heating model parameters
     parameters:
@@ -97,6 +98,11 @@ plasma:
 
       # If type = ICRH: Antenna frequency (in MHz)
       freq_ICH: null    # If null, estimate on-axis deposition based on field and minority
+
+      # Options for gaussian_sources
+      nu_source: 5.0  # Peaking factor for the source profile
+      Pe: 11.0        # Total electron heating power
+      Pi: 5.0         # Total ion heating power
 
 # ------------------------------------------------------------------------------------------------------------
 # MAESTRO workflow parameters

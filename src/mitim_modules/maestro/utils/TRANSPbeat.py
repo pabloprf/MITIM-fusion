@@ -1,4 +1,5 @@
 import os
+from pdb import run
 import shutil
 import copy
 import numpy as np
@@ -397,10 +398,34 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
     else:
         trmpi = 1
     
+    
+    # Force auxiliary heating at output
+    
+    if maestro_namelist["plasma"]["heating"]["type"] == 'gaussian_sources':
+        
+        Pe = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"]
+        Pi = maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
+        nu_source = maestro_namelist["plasma"]["heating"]["parameters"]["nu_source"]
+
+        def P_auxiliary(rhotor):
+            _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
+            return y
+    
+        force_auxiliary_heating_at_output = {
+            'Pe': [P_auxiliary, Pe],
+            'Pi': [P_auxiliary, Pi],
+            }
+        
+    else:
+        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
+    
+    
+    
     run_namelist['mpisettings'] = {
         "trmpi": trmpi, 
         "toricmpi": toricmpi,
         "ptrmpi": 1
         }
+    run_namelist['force_auxiliary_heating_at_output'] = force_auxiliary_heating_at_output
     
     return run_namelist
