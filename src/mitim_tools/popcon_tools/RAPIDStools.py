@@ -150,7 +150,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             if error_betaN < thr_beta:
                 break
         
-        # Run again the last point but with warning
+        # Run again the last point but with warning prints
         p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
 
         if error_betaN > thr_beta:
@@ -158,12 +158,14 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
 
         # Calculate targets
         power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
+        power.calculateProfileFunctions()
+        power.calculateTargets()
         profiles_new = copy.deepcopy(p)
-        TRANSFORMtools.powerstate_to_gacode_powers(power, profiles_new)
+        TRANSFORMtools.powerstate_to_gacode_powers(power, profiles_new, rederive_at_high_res=False)
         
         profiles_new.derive_quantities(rederiveGeometry=False)
 
-    return ptop_kPa,profiles_new, eped_evaluation
+    return ptop_kPa,profiles_new,eped_evaluation
 
 def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
 
@@ -221,7 +223,7 @@ def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
     ax.set_xlabel(xlabel)
     ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
 
-def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True, **kwargs_rederive_geometry):
+def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True):
     
     if axs is None:
         plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=4,figsize=(20,10))
@@ -241,7 +243,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
             BetaN_multiplier=core['BetaN_multiplier'],
             Paux=Paux,
             **values,
-            **kwargs_rederive_geometry,
+            n_theta_geo=101,
             optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}')
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)

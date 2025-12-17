@@ -351,7 +351,7 @@ def powerstate_to_gacode(
 
     return profiles
 
-def powerstate_to_gacode_powers(self, profiles):
+def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
 
     profiles.derive_quantities(rederiveGeometry=False)
 
@@ -359,32 +359,46 @@ def powerstate_to_gacode_powers(self, profiles):
 
     state_temp = self.copy_state()
 
-    # ------------------------------------------------------------------------------------------
-    # Recalculate powers with powerstate on the gacode-original fine grid
-    # ------------------------------------------------------------------------------------------
+    if rederive_at_high_res:
+        # ------------------------------------------------------------------------------------------
+        # Recalculate powers with powerstate on the gacode-original fine grid
+        # ------------------------------------------------------------------------------------------
 
-    # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
-    extra_points = 2  # If I don't allow this, it will fail
-    rhoy = profiles.profiles["rho(-)"][1:-extra_points]
-    with LOGtools.HiddenPrints():
-        state_temp.__init__(
-            profiles,
-            evolution_options={"rhoPredicted": rhoy},
-            target_options={
-                "evaluator": targets_analytic.analytical_model,
-                "options": {
-                    "targets_evolve": self.target_options["options"]["targets_evolve"], # Important to keep the same as in the original
-                    "target_evaluator_method": "powerstate",
-                    "force_zero_particle_flux": self.target_options["options"]["force_zero_particle_flux"],
-                    "percent_error": self.target_options["options"]["percent_error"]
-                    }
-                },
-            increase_profile_resol = False
+        # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
+        extra_points = 2  # If I don't allow this, it will fail
+        rhoy = profiles.profiles["rho(-)"][1:-extra_points]
+        with LOGtools.HiddenPrints():
+            state_temp.__init__(
+                profiles,
+                evolution_options={"rhoPredicted": rhoy},
+                target_options={
+                    "evaluator": targets_analytic.analytical_model,
+                    "options": {
+                        "targets_evolve": self.target_options["options"]["targets_evolve"], # Important to keep the same as in the original
+                        "target_evaluator_method": "powerstate",
+                        "force_zero_particle_flux": self.target_options["options"]["force_zero_particle_flux"],
+                        "percent_error": self.target_options["options"]["percent_error"]
+                        }
+                    },
+                increase_profile_resol = False
+                )
+        state_temp.calculateProfileFunctions()
+        state_temp.target_options["options"]["target_evaluator_method"] = "powerstate"
+        state_temp.calculateTargets()
+        # ------------------------------------------------------------------------------------------
+
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.profiles[conversions[ikey]][:-extra_points] = state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+
+    else:
+        # Just interpolate from powerstate to gacode grid
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.profiles[conversions[ikey]] = interpolation_function(
+                profiles.profiles["rho(-)"],
+                state.plasma["rho"][position_in_powerstate_batch,:].cpu().numpy(),
+                state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
             )
-    state_temp.calculateProfileFunctions()
-    state_temp.target_options["options"]["target_evaluator_method"] = "powerstate"
-    state_temp.calculateTargets()
-    # ------------------------------------------------------------------------------------------
+
 
     conversions = {}
 
@@ -402,10 +416,10 @@ def powerstate_to_gacode_powers(self, profiles):
 
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
-            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
         else:
             profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
-            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
     
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
