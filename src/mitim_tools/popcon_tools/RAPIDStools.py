@@ -14,7 +14,6 @@ from IPython import embed
 
 def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
-                     TioverTe=1.0,
                      Paux = 0.0,
                      BetaN_multiplier=1.0,
                      thr_beta=0.02,
@@ -130,8 +129,8 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
                 eped_evaluation["neped"]*0.1,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
-                ptop_kPa, TioverTe, wtop_psipol, p)
-            
+                ptop_kPa, TiTe, wtop_psipol, p)
+
             if rhotop<0 or rhotop>1.0:
                 print(f'Pedestal calculation returned unphysical values, setting ptop to 0.0', typeMsg='w')
                 rhotop = 0.9
@@ -151,10 +150,16 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             return p, ptop_kPa, error_betaN, eped_evaluation
 
         # Loop for better beta definition
+        profs = []
         for i in range(100):
             p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
+            profs.append(copy.deepcopy(p))
             if error_betaN < thr_beta:
                 break
+        
+        # from mitim_tools.plasmastate_tools.utils import state_plotting
+        # fn = state_plotting.plotAll(profs)
+        # fn.show()
         
         # Run again the last point but with warning prints
         p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)

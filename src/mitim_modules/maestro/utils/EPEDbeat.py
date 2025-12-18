@@ -725,6 +725,7 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
     Tetop_keV = ptop_kPa * 1E3 / ( ( 1 + fi * TioverTe ) * netop_20 * 1e20) / e_J * 1E-3
     Titop_keV = Tetop_keV * TioverTe
     print(f'\t\t\t* Tetop_keV: {Tetop_keV:.3f}  Titop_keV: {Titop_keV:.3f}')
+    print(f'\t\t\t* width (psipol): {wtop_psipol:.5f}  rhotop: {rhotop:.3f}  rhoped: {rhoped:.3f}')
 
     return rhotop, netop_20, Tetop_keV, Titop_keV, rhoped
 
