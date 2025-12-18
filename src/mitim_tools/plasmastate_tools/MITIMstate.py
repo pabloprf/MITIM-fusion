@@ -166,8 +166,6 @@ class mitim_state:
                 self.derive_quantities_full(rederiveGeometry=rederiveGeometry, **kwargs_rederive_geometry)
 
     def write_state(self, file=None):
-        print("\t- Writting input.gacode file")
-
         if file is None:
             file = self.files[0]
 
@@ -202,7 +200,7 @@ class mitim_state:
                             txt = "".join([f"{k:.7e}".rjust(15) for k in val])
                             f.write(f"{pos}{txt}\n")
 
-        print(f"\t\t~ File {IOtools.clipstr(file)} written")
+        print(f"\t\t\t- File {IOtools.clipstr(file)} written")
 
         # Update file
         self.files[0] = file

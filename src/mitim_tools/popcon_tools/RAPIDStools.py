@@ -131,6 +131,12 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
                 eped_evaluation["neped"]*0.1,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
                 ptop_kPa, TioverTe, wtop_psipol, p)
+            
+            if rhotop<0 or rhotop>1.0:
+                print(f'Pedestal calculation returned unphysical values, setting ptop to 0.0', typeMsg='w')
+                rhotop = 0.9
+                Tetop_keV = Titop_keV = 0.0
+                netop_20 = 0.0
 
             p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
             
@@ -145,7 +151,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             return p, ptop_kPa, error_betaN, eped_evaluation
 
         # Loop for better beta definition
-        for i in range(10):
+        for i in range(100):
             p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
             if error_betaN < thr_beta:
                 break
@@ -154,7 +160,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
 
         if error_betaN > thr_beta:
-            raise Exception('BetaN error too high')
+            raise Exception(f'BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
 
         # Calculate targets
         power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
