@@ -75,8 +75,24 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
         area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
 
-        # Make sure that q95 is roughly consistent
-        p.profiles['q(-)'] *= p_base.profiles['current(MA)'][0] / Ip
+        # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
+        
+        factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
+        factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
+        
+        qstar = PLASMAtools.evaluate_qstar(
+            Ip,
+            R,
+            kappa995 * factor_995_to_95_kappa,
+            Bt,
+            a/R,
+            delta995 * factor_995_to_95_delta,
+            isInputIp=True,
+            ITERcorrection=True,
+            includeShaping=True,
+        )
+        
+        p.profiles['q(-)'] *= qstar / p_base.derived['qstar_ITER']
 
         # Make sure that toroidal flux is roughly consistent
         p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
