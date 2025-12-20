@@ -12,16 +12,15 @@ from IPython import embed
     RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
-def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
+def rapids_evaluator(nn, core, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
                      BetaN_multiplier=1.0,
                      thr_beta=0.02,
+                     ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
                      optional_flag="RAPIDS case ",  
                      **kwargs_rederive_geometry):
-
-
 
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
@@ -111,23 +110,46 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         # Gradient-based profiles
         # -------------------------------------------------------
 
-        rhotop_assume = 0.9
-        Ttop_assume = 4.0
-        ntop_assume = 1.0
-
+        rhotop_assume, Ttop_assume, ntop_assume = 0.9, 4.0, 1.0
+        
         roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
-        roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, aLT)
-        p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
-        p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*TiTe)), p.profiles['ti(keV)'].shape[-1],axis=-1)
+        
+        # Option for core specification: aLT, aLn, TiTe
+        if 'TiTe' in core:
+        
+            # Te profile based on aLT
+            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLT'])
+            p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
+            
+            # Ti profile based on TiTe ratio
+            p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*core['TiTe'])), p.profiles['ti(keV)'].shape[-1],axis=-1)
 
-        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, aLn)
+        # Option for core specification: aLTe, aLTi, aLn
+        elif 'aLTe' in core:
+            
+            # Te profile based on aLTe
+            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLTe'])
+            p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
+            
+            # Ti profile based on aLTi (thermal ones)
+            roa, Ti = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLTi'])
+    
+            for i in range(len(p.Species)):
+                if p.Species[i]['S'] == 'therm':
+                    p.profiles['ti(keV)'][:,i] = np.interp(p.derived['roa'], roa, Ti)
+
+        else:
+            raise Exception('Core specification not recognized, provide either TiTe or aLTe, aLTi')
+
+        # ne profile based on aLn
+        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, core['aLn'])
         p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
         p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
-
+        
         p.derive_quantities(**kwargs_rederive_geometry)
 
         # Change Zeff
-        p.changeZeff(Zeff, ion_pos=3)  # Assuming D as main ion
+        p.changeZeff(Zeff, ion_pos=ion_position)
 
         def pedestal(p, force_within_range=None):
 
@@ -191,6 +213,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         TRANSFORMtools.powerstate_to_gacode_powers(power, profiles_new, rederive_at_high_res=False)
         
         profiles_new.derive_quantities(rederiveGeometry=False)
+        profiles_new.selfconsistentPTOT()
 
     return ptop_kPa,wtop_psipol,profiles_new,eped_evaluation
 
@@ -265,7 +288,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
     for i,x in enumerate(results1['x']):
         values[xparam] = x
         ptop_kPa,wtop_psipol,profiles_new, eped_evaluation = rapids_evaluator(
-            nn, core['aLT'], core['aLn'], core['TiTe'],
+            nn, core,
             p_base,
             BetaN_multiplier=core['BetaN_multiplier'],
             Paux=Paux,
