@@ -163,12 +163,12 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
             error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
             print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
 
-            return p, ptop_kPa, error_betaN, eped_evaluation
+            return p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation
 
         # Loop for better beta definition
         profs = []
         for i in range(100):
-            p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p)
+            p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p)
             profs.append(copy.deepcopy(p))
             if error_betaN < thr_beta:
                 break
@@ -178,7 +178,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         # fn.show()
         
         # Run again the last point but with warning prints
-        p, ptop_kPa, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
+        p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
 
         if error_betaN > thr_beta:
             raise Exception(f'BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
@@ -192,7 +192,7 @@ def rapids_evaluator(nn, aLT, aLn, TiTe, p_base,
         
         profiles_new.derive_quantities(rederiveGeometry=False)
 
-    return ptop_kPa,profiles_new,eped_evaluation
+    return ptop_kPa,wtop_psipol,profiles_new,eped_evaluation
 
 def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
 
@@ -264,7 +264,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         }
     for i,x in enumerate(results1['x']):
         values[xparam] = x
-        ptop_kPa,profiles_new, eped_evaluation = rapids_evaluator(
+        ptop_kPa,wtop_psipol,profiles_new, eped_evaluation = rapids_evaluator(
             nn, core['aLT'], core['aLn'], core['TiTe'],
             p_base,
             BetaN_multiplier=core['BetaN_multiplier'],
@@ -274,6 +274,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
             optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}')
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
+        results1['wtop_psipol'] = wtop_psipol
         results1['eped_inputs'].append(eped_evaluation)
 
         # Specific outputs of profiles
