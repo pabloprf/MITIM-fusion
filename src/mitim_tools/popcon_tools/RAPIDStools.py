@@ -15,7 +15,6 @@ from IPython import embed
 def rapids_evaluator(nn, core, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
-                     BetaN_multiplier=1.0,
                      thr_beta=0.02,
                      ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
@@ -124,6 +123,9 @@ def rapids_evaluator(nn, core, p_base,
             # Ti profile based on TiTe ratio
             p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*core['TiTe'])), p.profiles['ti(keV)'].shape[-1],axis=-1)
 
+            # For EPED runs, scale 
+            TiTe_ped = core['TiTe']
+
         # Option for core specification: aLTe, aLTi, aLn
         elif 'aLTe' in core:
             
@@ -138,8 +140,19 @@ def rapids_evaluator(nn, core, p_base,
                 if p.Species[i]['S'] == 'therm':
                     p.profiles['ti(keV)'][:,i] = np.interp(p.derived['roa'], roa, Ti)
 
+            # For EPED runs, scale 
+            TiTe_ped = 1.0
+
         else:
             raise Exception('Core specification not recognized, provide either TiTe or aLTe, aLTi')
+
+
+        # Option for BetaN: provide multiplier
+        if 'BetaN_multiplier' in core:
+            BetaN_multiplier = core['BetaN_multiplier']
+        # Option for BetaN: use same fraction as original
+        else:
+            BetaN_multiplier = p_base.derived['pfast_fraction']
 
         # ne profile based on aLn
         roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, core['aLn'])
@@ -164,10 +177,10 @@ def rapids_evaluator(nn, core, p_base,
             nn.force_within_range = force_within_range
             ptop_kPa, wtop_psipol = nn(**eped_evaluation)
 
-            rhotop, netop_20, Tetop_keV, Titop_keV, rhoped = eped_postprocessing(
+            rhotop, netop_20, Tetop_keV, Titop_keV, _ = eped_postprocessing(
                 eped_evaluation["neped"]*0.1,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
-                ptop_kPa, TiTe, wtop_psipol, p)
+                ptop_kPa, TiTe_ped, wtop_psipol, p)
 
             if rhotop<0 or rhotop>1.0:
                 print(f'Pedestal calculation returned unphysical values, setting ptop to 0.0', typeMsg='w')
@@ -180,7 +193,7 @@ def rapids_evaluator(nn, core, p_base,
             # Derive quantities
             p.derive_quantities(rederiveGeometry=False)
 
-            BetaN_used = p.derived['BetaN_engineering'] * BetaN_multiplier
+            BetaN_used = p.derived["BetaNthr_engineering"] * BetaN_multiplier
 
             error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
             print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
@@ -290,7 +303,6 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         ptop_kPa,wtop_psipol,profiles_new, eped_evaluation = rapids_evaluator(
             nn, core,
             p_base,
-            BetaN_multiplier=core['BetaN_multiplier'],
             Paux=Paux,
             **values,
             n_theta_geo=101,
@@ -306,7 +318,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['vol'].append(profiles_new.derived['volume'])
         results1['qstar_ITER'].append(profiles_new.derived['qstar_ITER'])
         results1['H98'].append(profiles_new.derived['H98'])
-        results1['betaN'].append(profiles_new.derived['BetaN_engineering']*core['BetaN_multiplier'])
+        results1['betaN'].append(profiles_new.derived['BetaNthr_engineering']*core['BetaN_multiplier'])
 
     plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
     if vertical_at_nominal:

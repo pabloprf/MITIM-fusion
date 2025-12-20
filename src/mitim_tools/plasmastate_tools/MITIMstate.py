@@ -908,8 +908,16 @@ class mitim_state:
         )
 
         # Retain the old beta definition for comparison with 0D modeling
-        Beta_old = (self.derived["ptot_manual_vol"]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
-        self.derived["BetaN_engineering"] = (Beta_old / 
+        
+        varBeta = {
+            "BetaN_engineering": "ptot_manual_vol",
+            "BetaNthr_engineering": "pthr_manual_vol",
+        }
+        
+        for var in varBeta:
+            
+            Beta_old = (self.derived[varBeta[var]]* 1e6 / (self.derived["B0"] ** 2 / (2 * 4 * np.pi * 1e-7)))
+            self.derived[var] = (Beta_old / 
                                         (np.abs(float(self.profiles["current(MA)"][-1])) / 
                                          (self.derived["a"] * self.derived["B0"])
                                          )* 100.0
