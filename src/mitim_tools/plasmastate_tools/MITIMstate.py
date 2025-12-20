@@ -1670,16 +1670,10 @@ class mitim_state:
                     int(self.profiles["z"][i]), int(self.profiles["mass"][i])
                 )
                 if name is not None:
-                    print(
-                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',
-                        typeMsg="i",
-                    )
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',typeMsg="i",)
                     self.profiles["name"][i] = name
                 else:
-                    print(
-                        f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',
-                        typeMsg="w",
-                    )
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',typeMsg="w",)
 
         # Correct qione
         if groupQIONE and (np.abs(self.profiles["qione(MW/m^3)"].sum()) > 1e-14):
