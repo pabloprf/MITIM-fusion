@@ -167,7 +167,7 @@ def rapids_evaluator(nn, core, p_base,
         def pedestal(p, force_within_range=None):
 
             # Calculate new pedestal
-            eped_evaluation = p.to_eped()
+            eped_evaluation = p.to_eped(beta_pass = "BetaNthr_engineering")
 
             eped_evaluation["betan"] *= BetaN_multiplier
             eped_evaluation["neped"] = neped*10
@@ -215,6 +215,7 @@ def rapids_evaluator(nn, core, p_base,
         # Run again the last point but with warning prints
         p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
 
+        
         if error_betaN > thr_beta:
             raise Exception(f'BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
 

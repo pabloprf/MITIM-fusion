@@ -73,7 +73,7 @@ def minimize_fusion_and_beta(varS, aLn, ps, roatop = 0.95):
 
     return residuals
 
-def find_core_parameters_RAPIDS(profiles_list, roatop = 0.95, plotYN=False, search_ranges=0.5):
+def find_core_parameters_RAPIDS(profiles_list, provideBetaN_multiplier=True, roatop = 0.95, plotYN=False, search_ranges=0.5):
 
     # --------------------------------------------------------
     # Prepare case
@@ -151,4 +151,7 @@ def find_core_parameters_RAPIDS(profiles_list, roatop = 0.95, plotYN=False, sear
 
         fn.show()
         
-    return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi, 'BetaN_multiplier': BetaN_multiplier}, p_mods
+    if provideBetaN_multiplier:
+        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi, 'BetaN_multiplier': BetaN_multiplier}, p_mods
+    else:
+        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi}, p_mods

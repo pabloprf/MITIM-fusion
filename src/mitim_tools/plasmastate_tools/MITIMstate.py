@@ -2954,7 +2954,7 @@ class mitim_state:
 
         return transp
 
-    def to_eped(self, ped_rho = 0.95):
+    def to_eped(self, ped_rho = 0.95, beta_pass = "BetaN_engineering"):
 
         neped_19 = np.interp(ped_rho, self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)'])
 
@@ -2966,7 +2966,7 @@ class mitim_state:
             'kappa995': np.abs(self.derived['kappa995']),
             'delta995': np.abs(self.derived['delta995']),
             'neped': np.abs(neped_19),
-            'betan': np.abs(self.derived['BetaN_engineering']),
+            'betan': np.abs(self.derived[beta_pass]),
             'zeff': np.abs(self.derived['Zeff_vol']),
             'tesep': np.abs(self.profiles['te(keV)'][-1])*1E3,
             'nesep_ratio': np.abs(self.profiles['ne(10^19/m^3)'][-1] / neped_19),
