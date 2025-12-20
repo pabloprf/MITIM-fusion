@@ -833,33 +833,16 @@ def estimateDensityProfile(mitimNML):
     # Core
     # ~~~~~~~~~~~~~~~~~~~~~~~
 
-    ne0 = netop * estimatePeaking(mitimNML)
+    ne0 = netop * 1.49
 
     ne = MATHtools.fitCoreFunction(ne, x, ne0, netop, ix, coeff=3)
 
     return x, ne
 
 
-def estimatePeaking(mitimNML):
-    ne0_neTop = 1.49
-
-    return ne0_neTop
-
-
-def BaxisBcoil(a, b, rmajor, Bt=None, Bcoil=None):
-    epsilonB = (a + b) / rmajor
-
-    if Bt is None:
-        Bt = Bcoil * (1 - epsilonB)
-    elif Bcoil is None:
-        Bcoil = Bt / (1 - epsilonB)
-
-    return Bt, Bcoil
-
-
-def FrequencyOnAxis(Bt):
-    return Bt * 10.0
-
+def Bcoil_to_Bt(Bcoil, R, a, coil_to_innerleg=1.0):
+    """Estimate Bt from coil field Bcoil."""
+    return Bcoil * (R - a - coil_to_innerleg) / R
 
 def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
