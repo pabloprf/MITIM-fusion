@@ -26,6 +26,7 @@ def run_slurm(
         seed_specific = 0,
     # Interaction settings:
         wait = False,
+        nameJob = None,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -44,7 +45,8 @@ def run_slurm(
         folder.mkdir(parents=True, exist_ok=True)
 
         command = [venv,script + (f" --seed {seed}" if seed is not None else "")]
-        nameJob = f"mitim_{folder.name}{extra_name}"
+        if nameJob is None:
+            nameJob = f"mitim_{folder.name}{extra_name}"
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Allocation information (e.g. partition, node exclusions and exclusivity)

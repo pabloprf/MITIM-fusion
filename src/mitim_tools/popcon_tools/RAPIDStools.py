@@ -152,7 +152,7 @@ def rapids_evaluator(nn, core, p_base,
             BetaN_multiplier = core['BetaN_multiplier']
         # Option for BetaN: use same fraction as original
         else:
-            BetaN_multiplier = p_base.derived['pfast_fraction']
+            BetaN_multiplier = 1+p_base.derived['pfast_fraction']
 
         # ne profile based on aLn
         roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, core['aLn'])
