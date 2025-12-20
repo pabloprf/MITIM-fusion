@@ -1101,7 +1101,8 @@ def create_slurm_execution_files(
     wait_until_sbatch=True,
     slurm_allocation={},
     launchSlurm=True,
-    slurm_settings = None
+    slurm_settings = None,
+    if_array_relabel = False
 ):
     
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
@@ -1174,9 +1175,14 @@ def create_slurm_execution_files(
     commandSBATCH = []
 
     commandSBATCH.append("#!/usr/bin/env bash")
-    commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
-    commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
-    commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
+    if (not if_array_relabel) or (job_array is None):
+        commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
+        commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
+        commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
+    else:
+        commandSBATCH.append(f"#SBATCH --job-name {nameJob}_%A_%a")
+        commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}_%A_%a.dat")
+        commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}_%A_%a.dat")
     commandSBATCH.append(f"#SBATCH --time {time_com}")
     if email is not None:
         commandSBATCH.append("#SBATCH --mail-user=" + email)

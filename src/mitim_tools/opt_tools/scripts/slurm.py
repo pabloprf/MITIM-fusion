@@ -27,6 +27,8 @@ def run_slurm(
     # Interaction settings:
         wait = False,
         nameJob = None,
+    # For job arrays:
+        job_array = None,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -69,6 +71,7 @@ def run_slurm(
             'ntasks': ntask,
             'cpuspertask': cpuspertask,
             'memory_req_by_job': mem,
+            'job_array': job_array
         }
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
@@ -76,7 +79,8 @@ def run_slurm(
             folder,
             folder_local=folder,
             slurm_allocation = slurm_allocation,
-            slurm_settings = slurm_settings
+            slurm_settings = slurm_settings,
+            if_array_relabel=True
         )
 
         if wait:

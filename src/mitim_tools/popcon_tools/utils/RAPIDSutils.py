@@ -141,10 +141,10 @@ def find_core_parameters_RAPIDS(profiles_list, provideBetaN_multiplier=True, roa
         p_mod = p_mods[i]
         p = ps[i]
         print(f'\t* Profile: {i+1} ---')
-        print(f'\t\t- ne_vol20: {p_mod.derived["ne_vol20"]:.2f} (target={p.derived["ne_vol20"]:.2f}) -> rel error = {(p_mod.derived["ne_vol20"] - p.derived["ne_vol20"])/p.derived["ne_vol20"]*100.0:.1f}')
-        print(f'\t\t- Pfus: {p_mod.derived["Pfus"]:.2f} (target={p.derived["Pfus"]:.2f}) -> rel error = {(p_mod.derived["Pfus"] - p.derived["Pfus"])/p.derived["Pfus"]*100.0:.4f}')
-        print(f'\t\t- BetaN: {p_mod.derived["BetaN"]:.2f} (target={p.derived["BetaN"]:.2f}) -> rel error = {(p_mod.derived["BetaN"] - p.derived["BetaN"])/p.derived["BetaN"]*100.0:.4f}')
-        print(f'\t\t- tite_vol: {p_mod.derived["tite_vol"]:.2f} (initial={p.derived["tite_vol"]:.2f}) -> rel change = {(p_mod.derived["tite_vol"] - p.derived["tite_vol"])/p.derived["tite_vol"]*100.0:.1f}')
+        print(f'\t\t- ne_vol20: {p_mod.derived["ne_vol20"]:.2f} (target={p.derived["ne_vol20"]:.2f}) -> rel error = {(p_mod.derived["ne_vol20"] - p.derived["ne_vol20"])/p.derived["ne_vol20"]*100.0:.1f}%')
+        print(f'\t\t- Pfus: {p_mod.derived["Pfus"]:.2f} (target={p.derived["Pfus"]:.2f}) -> rel error = {(p_mod.derived["Pfus"] - p.derived["Pfus"])/p.derived["Pfus"]*100.0:.4f}%')
+        print(f'\t\t- BetaN: {p_mod.derived["BetaN"]:.2f} (target={p.derived["BetaN"]:.2f}) -> rel error = {(p_mod.derived["BetaN"] - p.derived["BetaN"])/p.derived["BetaN"]*100.0:.4f}%')
+        print(f'\t\t- tite_vol: {p_mod.derived["tite_vol"]:.2f} (initial={p.derived["tite_vol"]:.2f}) -> rel change = {(p_mod.derived["tite_vol"] - p.derived["tite_vol"])/p.derived["tite_vol"]*100.0:.1f}%')
 
     if plotYN:
         fn = state_plotting.plotAll(ps+p_mods)
