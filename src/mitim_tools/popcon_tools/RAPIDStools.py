@@ -109,7 +109,7 @@ def rapids_evaluator(nn, core, p_base,
         # Gradient-based profiles
         # -------------------------------------------------------
 
-        rhotop_assume, Ttop_assume, ntop_assume = 0.9, 4.0, 1.0
+        rhotop_assume, Ttop_assume, ntop_assume = 0.9, 20.0, 20.0 # Large values to avoid that Tsep or nsep is higher than this guess
         
         roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
         
