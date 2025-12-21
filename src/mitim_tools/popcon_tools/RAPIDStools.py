@@ -19,6 +19,7 @@ def rapids_evaluator(nn, core, p_base,
                      ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
                      optional_flag="RAPIDS case ",  
+                     analyze_distance_to_pb = False,
                      **kwargs_rederive_geometry):
 
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
@@ -172,7 +173,7 @@ def rapids_evaluator(nn, core, p_base,
             eped_evaluation = p.to_eped(beta_pass = "BetaNthr_engineering")
 
             eped_evaluation["betan"] *= BetaN_multiplier
-            eped_evaluation["neped"] = neped*10
+            eped_evaluation["neped"] = neped*10             # the EPED-NN expects in 10e19m^-3
             eped_evaluation["nesep_ratio"] = nesep_ratio
             eped_evaluation["tesep"] = tesep_eV
 
@@ -231,7 +232,70 @@ def rapids_evaluator(nn, core, p_base,
         profiles_new.derive_quantities(rederiveGeometry=False)
         profiles_new.selfconsistentPTOT()
 
-    return ptop_kPa,wtop_psipol,profiles_new,eped_evaluation
+        neped_transition_estimate = None
+        if analyze_distance_to_pb:
+            neped_transition_estimate_abs = estimate_neped_transition(nn, eped_evaluation)
+            
+            neped_transition_estimate = neped_transition_estimate_abs / eped_evaluation['neped']
+        
+    return ptop_kPa,wtop_psipol,profiles_new,eped_evaluation, neped_transition_estimate
+
+def estimate_neped_transition(nn, eped_evaluation, plotYN=False):
+    # Analyze distance to Peeling balooning transition 
+    
+    neped_base = eped_evaluation['neped']
+    
+    min_rel_search = 0.2
+    max_rel_search = 3.0
+    num = 50
+    
+    # Scan around neped to find transition
+    neped, ptop = [], []
+    for factor in np.linspace(min_rel_search, max_rel_search, num):
+        neped_test = neped_base * factor
+        eped_evaluation_test = copy.deepcopy(eped_evaluation)
+        eped_evaluation_test['neped'] = neped_test
+        ptop_kPa, wtop_psipol = nn(**eped_evaluation_test)
+        neped.append(neped_test)
+        ptop.append(ptop_kPa)
+        
+    neped = np.array(neped)
+    ptop = np.array(ptop)
+    
+    # Calculate derivative
+    dptop_dneped = np.gradient(ptop, neped)
+    
+    # Find where three points in a row have negative derivative
+    transition_index = None
+    for i in range(1, len(dptop_dneped)-1):
+        if dptop_dneped[i-1]<0 and dptop_dneped[i]<0 and dptop_dneped[i+1]<0:
+            transition_index = i
+            break
+    
+    ne_trans = neped[transition_index] if transition_index is not None else np.nan
+        
+    if plotYN:
+        fig, axs = plt.subplots(nrows=2, figsize=(10,8))
+        ax = axs[0]
+        ax.plot(neped, ptop, '-o')
+        ax.set_xlabel('$n_{e,ped}$ (10$^{19}$ m$^{-3}$)')
+        ax.set_ylabel('$p_{top}$ (kPa)')
+        GRAPHICStools.addDenseAxis(ax)
+        
+        ax.axvline(x=neped[transition_index], ls='--', lw=1.0, c='r', label='Estimated transition')
+        
+        ax = axs[1]
+        ax.plot(neped, dptop_dneped, '-o')
+        ax.set_xlabel('$n_{e,ped}$ (10$^{19}$ m$^{-3}$)')
+        ax.set_ylabel('$dp_{top}/dn_{e,ped}$ (kPa/(10$^{19}$ m$^{-3}$))')
+        GRAPHICStools.addDenseAxis(ax)
+        
+        ax.axvline(x=neped[transition_index], ls='--', lw=1.0, c='r', label='Estimated transition')
+        
+        plt.show()
+        embed()
+    
+    return ne_trans
 
 def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
 
@@ -303,7 +367,7 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         }
     for i,x in enumerate(results1['x']):
         values[xparam] = x
-        ptop_kPa,wtop_psipol,profiles_new, eped_evaluation = rapids_evaluator(
+        ptop_kPa,wtop_psipol,profiles_new, eped_evaluation, _ = rapids_evaluator(
             nn, core,
             p_base,
             Paux=Paux,
