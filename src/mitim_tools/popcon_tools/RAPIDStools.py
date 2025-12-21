@@ -272,7 +272,7 @@ def estimate_neped_transition(nn, eped_evaluation, plotYN=False):
             transition_index = i
             break
     
-    ne_trans = neped[transition_index] if transition_index is not None else np.nan
+    ne_trans = neped[transition_index] if transition_index is not None else 0.0
         
     if plotYN:
         fig, axs = plt.subplots(nrows=2, figsize=(10,8))
