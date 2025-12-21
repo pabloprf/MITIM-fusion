@@ -109,17 +109,17 @@ def rapids_evaluator(nn, core, p_base,
         # Gradient-based profiles
         # -------------------------------------------------------
 
-        rhotop_assume = 0.9
-        Ttop_assume = np.max([4.0, (tesep_eV*1E-3) * 1.5]) # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
-        ntop_assume = np.max([1.0, (nesep_ratio*neped*10) * 1.5])   # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
+        rhotop_start = 0.9
+        Ttop_start = np.max([4.0, (tesep_eV*1E-3) * 1.5])              # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
+        ntop_start = np.max([1.0, (nesep_ratio*neped*10) * 1.5])       # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
                 
-        roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
+        roatop = np.interp(rhotop_start, p.profiles['rho(-)'], p.derived['roa'])
         
         # Option for core specification: aLT, aLn, TiTe
         if 'TiTe' in core:
         
             # Te profile based on aLT
-            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLT'])
+            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLT'])
             p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
             
             # Ti profile based on TiTe ratio
@@ -132,11 +132,11 @@ def rapids_evaluator(nn, core, p_base,
         elif 'aLTe' in core:
             
             # Te profile based on aLTe
-            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLTe'])
+            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLTe'])
             p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
             
             # Ti profile based on aLTi (thermal ones)
-            roa, Ti = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_assume, tesep_eV*1E-3, core['aLTi'])
+            roa, Ti = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLTi'])
     
             for i in range(len(p.Species)):
                 if p.Species[i]['S'] == 'therm':
@@ -157,7 +157,7 @@ def rapids_evaluator(nn, core, p_base,
             BetaN_multiplier = 1+p_base.derived['pfast_fraction']
 
         # ne profile based on aLn
-        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_assume*10, nesep_ratio*neped*10, core['aLn'])
+        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_start*10, nesep_ratio*neped*10, core['aLn'])
         p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
         p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
         
@@ -190,7 +190,7 @@ def rapids_evaluator(nn, core, p_base,
                 Tetop_keV = Titop_keV = 0.0
                 netop_20 = 0.0
 
-            p = eped_profiler(p, rhotop_assume, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
+            p = eped_profiler(p, rhotop_start, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
             
             # Derive quantities
             p.derive_quantities(rederiveGeometry=False)
