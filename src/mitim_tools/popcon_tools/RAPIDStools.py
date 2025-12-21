@@ -109,8 +109,10 @@ def rapids_evaluator(nn, core, p_base,
         # Gradient-based profiles
         # -------------------------------------------------------
 
-        rhotop_assume, Ttop_assume, ntop_assume = 0.9, 20.0, 20.0 # Large values to avoid that Tsep or nsep is higher than this guess
-        
+        rhotop_assume = 0.9
+        Ttop_assume = np.max([4.0, (tesep_eV*1E-3) * 1.5]) # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
+        ntop_assume = np.max([1.0, (nesep_ratio*neped*10) * 1.5])   # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
+                
         roatop = np.interp(rhotop_assume, p.profiles['rho(-)'], p.derived['roa'])
         
         # Option for core specification: aLT, aLn, TiTe
