@@ -25,12 +25,12 @@ class EPED:
 
         self.results = {}
 
-        self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'zeta']
+        self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'zeta', 's_three', 's_four']
 
     def run(
             self,
             subfolder = 'run1',
-            input_params = None,    # {'ip': 12.0, 'bt': 12.16, 'r': 1.85, 'a': 0.57, 'kappa': 1.9, 'delta': 0.5, 'neped': 30.0, 'betan': 1.0, 'zeffped': 1.5, 'nesep': 10.0, 'tesep': 100.0, 'zeta': 0},
+            input_params = None,    # {'ip': 12.0, 'bt': 12.16, 'r': 1.85, 'a': 0.57, 'kappa': 1.9, 'delta': 0.5, 'neped': 30.0, 'betan': 1.0, 'zeffped': 1.5, 'nesep': 10.0, 'tesep': 100.0, 'zeta': 0, 's_three': 0.0, 's_four': 0.0},
             scan_param = None,      # {'variable': 'neped', 'values': [10.0, 20.0, 30.0]}
             keep_nsep_ratio = None, # Ratio of neped to nesep
             nproc_per_run = 64,
