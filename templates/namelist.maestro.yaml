@@ -287,6 +287,9 @@ maestro:
               maximum_value: 10.e-3                 # Reducing residual by 1/0.01 = 100x sufficient for a soft PORTALS run
               minimum_dvs_variation: [10, 3, 1.0]   # A more relaxed variation for soft PORTALS run
               ricci_value: 0.15                     # A more relaxed Ricci value for soft PORTALS run
+          strategy_options:
+            AllowedExcursions: [0.0, 0.0]           # In case the soft beat makes things too negative when they shoudn't be
+
 
   transp:
 
