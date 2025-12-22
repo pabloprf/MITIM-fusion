@@ -15,6 +15,7 @@ from IPython import embed
 def rapids_evaluator(nn, core, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
+                     fDT=0.85,
                      thr_beta=0.02,
                      ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
@@ -165,7 +166,7 @@ def rapids_evaluator(nn, core, p_base,
         p.derive_quantities(**kwargs_rederive_geometry)
 
         # Change Zeff
-        p.changeZeff(Zeff, ion_pos=ion_position)
+        p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=True, fmain_force=fDT)
 
         def pedestal(p, force_within_range=None):
 
