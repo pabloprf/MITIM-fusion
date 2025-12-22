@@ -344,6 +344,8 @@ class transp_beat(beat):
 
 def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepare_parameters):
     
+    print('\t- Preprocessing settings for TRANSP beat')
+    
     # Minority
     Zmini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][0]
     Amini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][1]

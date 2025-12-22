@@ -15,7 +15,13 @@ plasma:
   profiles_initialization:
 
     # How to initialize the boundary and q-profile
-    initialization_type: freegs       # Options: geqdsk, freegs, geqdsk, fibe, separatrix, profiles (input.gacode file)
+    # Options:
+    #       geqdsk: use a GEQDSK file directly
+    #       freegs: use FREEGS to create an equilibrium from boundary parameters
+    #       fibe: use FIBE to create an equilibrium from boundary parameters
+    #       separatrix: use internal MAESTRO functionality to create an equilibrium from boundary parameters
+    #       profiles: use an input.gacode file to initialize both equilibrium and profiles
+    initialization_type: freegs      
 
     # How to initialize the profiles
     creator_type: eped_initializer    # Options: eped_initializer (must exist as beat namelist below), fixed_profiles, null (uses what initialization_type provides)
@@ -50,9 +56,12 @@ plasma:
       a: 0.57
       delta_sep: 0.57
       kappa_sep: 1.97
-      zeta_sep: 0.0
+      zeta_sep: 0.0 # Can be left as null to use the squareness of the internal_flux_file
 
       rz_boundary_file: null # file containing the separatrix R,Z points
+
+      # If initialization_type = separatrix: path to input.gacode to simulate internal flux surfaces and other moments
+      internal_flux_file: null
 
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary, once created
       n_mxh: 5

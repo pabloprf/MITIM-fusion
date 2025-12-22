@@ -297,9 +297,11 @@ class initializer_from_separatrix(beat_initializer):
         ):
         
         if 'rz_boundary_file' in kwargs and kwargs['rz_boundary_file'] is not None:
+            print('\t- Using rz_boundary_file to define the boundary parameters', typeMsg = 'i')
             boundary_parameters = {'file': kwargs['rz_boundary_file'], 'B_T': kwargs['B_T'], 'Ip_MA': kwargs['Ip_MA'], 'coeffs_MXH': coeffs_MXH}
             separatrix_parameters = None
         else:
+            print('\t- Using separatrix parameters to define the equilibrium', typeMsg = 'i')
             boundary_parameters = None
             separatrix_parameters = {
                 'BT': kwargs['B_T'],
@@ -312,13 +314,15 @@ class initializer_from_separatrix(beat_initializer):
                 'zeta_sep': kwargs['zeta_sep']
             }
             
+        internal_flux_file = kwargs["internal_flux_file"] if "internal_flux_file" in kwargs else None
+            
         self.extract_995_from = extract_995_from
             
         # From separatrix parameters to guess of profiles
         B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure = separatrix_to_equilibrium(
             boundary_parameters=boundary_parameters,
             separatrix_parameters=separatrix_parameters,
-            resol = 501
+            internal_flux_file=internal_flux_file,
             )
         
         # Write to profiles
@@ -354,7 +358,7 @@ class initializer_from_separatrix(beat_initializer):
         p0_MPa = self._produce_p0guess(kwargs, Ip_MA, a, B_T)
 
         # Run freegs to generate equilibrium
-        f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
+        f = GEQtools.freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep if zeta_sep is not None else 0.0, z0)
         f.prep(p0_MPa, Ip_MA, B_T)
         f.solve()
         f.derive()
@@ -389,7 +393,7 @@ class initializer_from_separatrix(beat_initializer):
 
         print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', kappa995, delta995, zeta995)
 
-def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=None, resol = 101):
+def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=None, internal_flux_file=None):
 
     if ( (separatrix_parameters is None) and (boundary_parameters is None) or (separatrix_parameters is not None and boundary_parameters is not None) ):
         raise ValueError('Either separatrix_parameters or boundary_parameters must be provided')
@@ -421,25 +425,76 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
     factor_qstar = 1.4
     qstar = qstar_sep * factor_qstar
     
-    # Internal equilibrium guess
+    # ---------------------------------------------------------------------------------
+    # Internal equilibrium 
+    # ---------------------------------------------------------------------------------
     
-    rmin = np.linspace(0, a, resol)
-    rmaj = R0*np.ones_like(rmin)
-    rho = np.linspace(0, 1, resol)
-    z0 = z0*np.ones_like(rmin)
-    kappa = np.linspace(1, kappa_sep, resol)
-    delta = np.linspace(0, delta_sep, resol)
-    zeta = np.linspace(0, zeta_sep, resol)
-    
-    coeffs_MXH = 7
-    sn = np.zeros((resol, coeffs_MXH))
-    cn = np.zeros((resol, coeffs_MXH))
-    
-    torfluxa = torflux_total
-    psi = np.linspace(0, polflux_total, resol)
-    
-    pressure = guess_pressure_profile(rho, p0)
-    q = guess_q_profile(rho, qstar)
+    if internal_flux_file is None:
+        
+        resol = 501
+        
+        # Internal equilibrium guess
+        print('\t- Internal flux surfaces will be guessed')
+        
+        rho = np.linspace(0, 1, resol)
+        
+        rmin = np.linspace(0, a, resol)
+        rmaj = R0*np.ones_like(rmin)
+        z0 = z0*np.ones_like(rmin)
+        kappa = np.linspace(1, kappa_sep, resol)
+        delta = np.linspace(0, delta_sep, resol)
+        zeta = np.linspace(0, zeta_sep, resol)
+        
+        coeffs_MXH = 7
+        sn = np.zeros((resol, coeffs_MXH))
+        cn = np.zeros((resol, coeffs_MXH))
+        
+        torfluxa = torflux_total
+        psi = np.linspace(0, polflux_total, resol)
+        
+        pressure = guess_pressure_profile(rho, p0)
+        q = guess_q_profile(rho, qstar)
+        
+    else:
+        
+        print('\t- Internal flux surfaces will be loaded from file:', internal_flux_file)
+        
+        # Read inputgacode
+        p = PROFILEStools.gacode_state(internal_flux_file)
+        
+        rho = p.profiles['rho(-)']
+        
+        rmin = p.profiles['rmin(m)'] * a/p.profiles['rmin(m)'][-1]
+        rmaj = p.profiles['rmaj(m)'] * R0/p.profiles['rmaj(m)'][0]
+        
+        z0 = p.profiles['zmag(m)'] * z0/p.profiles['zmag(m)'][-1]
+        kappa = p.profiles['kappa(-)'] * kappa_sep/p.profiles['kappa(-)'][-1]
+        delta = p.profiles['delta(-)'] * delta_sep/p.profiles['delta(-)'][-1]
+        if zeta_sep is not None:
+            zeta = p.profiles['zeta(-)'] * zeta_sep/p.profiles['zeta(-)'][-1]  
+        else:
+            zeta = p.profiles['zeta(-)']
+        
+        sn, cn = [], []
+        for i in range(len(p.shape_cos)):
+            cn.append( p.profiles[f'shape_cos{i}(-)'])
+            if i > 2:
+                sn.append( p.profiles[f'shape_sin{i}(-)'])
+            else:
+                sn.append( np.zeros_like(rho) )
+                
+        sn = np.array(sn).T
+        cn = np.array(cn).T
+                
+        torfluxa = p.profiles['torfluxa(Wb/radian)'][-1] * B0 / p.profiles['bcentr(T)'][-1]
+        psi = p.profiles['polflux(Wb/radian)'] * Ip / p.profiles['current(MA)'][-1]
+        pressure = p.profiles['ptot(Pa)'] * p0 / p.profiles['ptot(Pa)'][0]
+        
+        factor_sep_to_95_kappa = p.derived['kappa95'] / p.profiles['kappa(-)'][-1]
+        factor_sep_to_95_delta = p.derived['delta95'] / p.profiles['delta(-)'][-1]
+        
+        qstar = PLASMAtools.evaluate_qstar(Ip, R0, kappa_sep*factor_sep_to_95_kappa, B0, a / R0, delta_sep*factor_sep_to_95_delta, isInputIp=True, ITERcorrection=True,includeShaping=True)
+        q = p.profiles['q(-)'] * qstar / p.derived['qstar_ITER']
     
     return B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure
     
