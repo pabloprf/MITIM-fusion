@@ -44,7 +44,7 @@ dependencies = [
   "tensorflow", 
   "f90nml",
   "pyyaml",
-  "megpy>=2.0.3",
+  "megpy>=2.0.5",
   "fibe>=0.3",
   "periodictable",
   "vmecpp",
