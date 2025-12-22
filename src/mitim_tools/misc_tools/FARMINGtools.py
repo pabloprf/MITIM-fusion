@@ -842,7 +842,10 @@ class mitim_job:
         else:
             self.infoSLURM = {}
             for i in range(len(output_squeue[0].split())):
-                self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
+                if i < len(output_squeue[1].split()):
+                    self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
+                else:
+                    self.infoSLURM[output_squeue[0].split()[i]] = None
 
             self.jobid_found = self.infoSLURM["JOBID"]
 
