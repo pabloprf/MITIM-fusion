@@ -180,21 +180,33 @@ class MITIMgeqdsk:
         # ------------------------------------------------------------------------------------------------------
         
         self.geometric_parameters["turnbull"] = {}
+        self.geometric_parameters["mxh"] = {}
 
-        # convert 995 contour to Turnbull
+        # convert 995 contour to MXH and Turnbull
         psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
         fs995 = megpy.fluxsurface.FluxSurface()
         fs995.from_tracer(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995,analytic_shape=True)
-        fs995.to_turnbull(initial=fs995.shape_analytic)
-        #fs995.to_toq9()
-
-        # extract shape coefficients
-        self.geometric_parameters["turnbull"]["kappa_995"] = fs995.shape[3]
-        self.geometric_parameters["turnbull"]["delta_995"] = fs995.shape[4]
-        self.geometric_parameters["turnbull"]["zeta_995"] = fs995.shape[5]
-        #self.zeta995_in = fs995.shape[5]
-        #self.zeta995_out = fs995.shape[6]
         
+        # extract MXH shape coefficients
+        fs995mxh = copy.deepcopy(fs995)
+        fs995mxh.to_mxh(optimize=True)
+        # fs995.shape after to_mxh consists of [R0,Z0,r,kappa,shape_cos0,shape_cos1,shape_sin1,...shape_cos{n},shape_sin{n}]
+        self.geometric_parameters["mxh"]["R0_995"] = copy.deepcopy(fs995mxh.shape[0])
+        self.geometric_parameters["mxh"]["Z0_995"] = copy.deepcopy(fs995mxh.shape[1])
+        self.geometric_parameters["mxh"]["rmin_995"] = copy.deepcopy(fs995mxh.shape[2])
+        self.geometric_parameters["mxh"]["kappa_995"] = copy.deepcopy(fs995mxh.shape[3])
+        self.geometric_parameters["mxh"]["delta_995"] = copy.deepcopy(np.sin(fs995mxh.shape[6]))
+        self.geometric_parameters["mxh"]["zeta_995"] = copy.deepcopy(-fs995mxh.shape[8])
+        self.geometric_parameters["mxh"]["shape_cos_995"] = copy.deepcopy(np.array(([fs995mxh.shape[4]]+list(fs995mxh.shape[5:][::2]))))
+        self.geometric_parameters["mxh"]["shape_sin_995"] = copy.deepcopy(fs995mxh.shape[6:][::2])
+
+        # extract Turnbull-Miller shape coefficients
+        fs995tm = copy.deepcopy(fs995)
+        fs995tm.to_turnbull(initial=fs995tm.shape_analytic)
+        self.geometric_parameters["turnbull"]["kappa_995"] = copy.deepcopy(fs995tm.shape[3])
+        self.geometric_parameters["turnbull"]["delta_995"] = copy.deepcopy(fs995tm.shape[4])
+        self.geometric_parameters["turnbull"]["zeta_995"] = copy.deepcopy(fs995tm.shape[5])
+
         # ------------------------------------------------------------------------------------------------------
         # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now
         # ------------------------------------------------------------------------------------------------------
@@ -216,7 +228,7 @@ class MITIMgeqdsk:
         self.delta995 = self.geometric_parameters["geo"]["delta_995"]
         
         #TODO: Placeholder for now: zeta from Turnbull
-        self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]
+        #self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]
         
 
     def plotEnclosingBox(self, ax=None, c= "k"):
