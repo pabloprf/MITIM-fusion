@@ -269,11 +269,22 @@ class initializer_from_geqdsk(beat_initializer):
             self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["turnbull"]["kappa_995"]
             self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["turnbull"]["delta_995"]
             self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["turnbull"]["zeta_995"]
+        elif self.extract_995_from == 'mxh':
+            print('\t- Extracting 0.995 flux surface parameters from "mxh"')
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["mxh"]["kappa_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["mxh"]["delta_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["mxh"]["zeta_995"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['s_three995'] = f.geometric_parameters["mxh"]["shape_sin_995"][2]
+            self.beat_instance.maestro_instance.parameters_trans_beat['s_four995'] = f.geometric_parameters["mxh"]["shape_sin_995"][3]
 
         print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', 
-              self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'], 
-              self.beat_instance.maestro_instance.parameters_trans_beat['delta995'],   
-                self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] )
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'], 
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'],   
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] )
+        if self.extract_995_from == 'mxh':
+            print('\t\t- 0.995 flux surface s_three and s_four saved for future beats -> ', 
+                self.beat_instance.maestro_instance.parameters_trans_beat['s_three995'],
+                self.beat_instance.maestro_instance.parameters_trans_beat['s_four995'] )
 
 # --------------------------------------------------------------------------------------------
 # Initializer from separatrix + guesses: convert to profiles and call the profiles initializer

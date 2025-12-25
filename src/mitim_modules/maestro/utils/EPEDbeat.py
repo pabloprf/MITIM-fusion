@@ -27,6 +27,7 @@ class eped_beat(beat):
     def prepare(
             self,
             nn_location = None, 
+            use_full_EPED = False,
             norm_location = None,
             neped_20 = None,        # Force this pedestal density (e.g. at creator stage), otherwise from the profiles_current
             BetaN = None,           # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
@@ -37,25 +38,37 @@ class eped_beat(beat):
             TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
             **kwargs
             ):
-
+        self.use_full_EPED = use_full_EPED
         if corrections_set is None:
             corrections_set = {}
 
-        if nn_location is not None:
-
-            print(f'\t- Choice of EPED: NN from {IOtools.clipstr(nn_location)}', typeMsg='i')
-
-            self.nn = NNtools.eped_nn(type='tf')
-            nn_location = IOtools.expandPath(nn_location)
-            norm_location = IOtools.expandPath(norm_location)
-
-            self.nn.load(nn_location, norm=norm_location)
+        if not self.use_full_EPED:
             
-        else:
+            # If running with NN, NN location must be specified
+            if nn_location is None or norm_location is None: 
+                raise ValueError('nn_location and norm_location must be provided if not using full EPED')
             
+            else:
+                print(f'\t- Choice of EPED: NN from {IOtools.clipstr(nn_location)}', typeMsg='i')
+
+                self.nn = NNtools.eped_nn(type='tf')
+                nn_location = IOtools.expandPath(nn_location)
+                norm_location = IOtools.expandPath(norm_location)
+
+                self.nn.load(nn_location, norm=norm_location)
+        else: 
             print('\t- Choice of EPED: full', typeMsg='i')
+
+            if nn_location is None or norm_location is None:
+                self.nn = None
+                print('\t- No NN and/or norm location provided', typeMsg='i')
+            else: 
+                print('\t- NN location provided only for scans, full EPED will determine the final result', typeMsg='w')
+                self.nn = NNtools.eped_nn(type='tf')
+                nn_location = IOtools.expandPath(nn_location)
+                norm_location = IOtools.expandPath(norm_location)
+                self.nn.load(nn_location, norm=norm_location)
             
-            self.nn = None
 
         # Parameters to run EPED with instead of those from the profiles
         self.neped_20 = neped_20
@@ -68,13 +81,22 @@ class eped_beat(beat):
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
 
-        # Whether EPED is going to be run with Zeta
-        if 'zeta_flag' in kwargs:
-            self.zeta_flag = kwargs['zeta_flag']
-            print('zeta_flag set to True')
+        # Which equilibrium model is used by TOQ 
+        if 'toq_eq_choice' in kwargs:
+            print('Using the toq_eq_choice provided:', kwargs['toq_eq_choice'])
+            if kwargs['toq_eq_choice'] == 'standard':  # ishape = 4 (Bondeson Dee formula)
+                self.toq_eq_choice = 'standard'
+            elif kwargs['toq_eq_choice'] == 'full_turnbull_miller': # ishape = 7 (Turnbull-Miller full formula, same as 4 but adding squareness)
+                self.toq_eq_choice = 'full_turnbull_miller'
+                print('Warning: you must have modified EPED and have TOQ set to ishape = 7 to be consistent with this choice', typeMsg='warning')
+            elif kwargs['toq_eq_choice'] == 'mxh':  # ishape = 13 (MXH-based formula)
+                self.toq_eq_choice = 'mxh'
+                print('Warning: you must have modified EPED and have TOQ set to ishape = 13 to be consistent with this choice', typeMsg='warning')
+            else:
+                raise ValueError(f'Unknown toq_eq_choice: {kwargs["toq_eq_choice"]}')
         else: 
-            self.zeta_flag = False
-
+            self.toq_eq_choice = 'standard'
+            print('No toq_eq_choice provided, using standard EPED default (ishape = 4)')
         self._inform()
 
     def run(self, **kwargs):
@@ -102,10 +124,9 @@ class eped_beat(beat):
         '''
 
         # Check to make sure using full EPED if running with squareness
-        if self.zeta_flag and self.nn is not None:
-            print('Warning: zeta_flag is not implemented for NN-based EPED, ignoring it', typeMsg='warning')
-            self.zeta_flag = False 
-
+        if self.toq_eq_choice != 'standard' and self.use_full_EPED:
+            print('Warning: NN-based EPED was trained using ishape = 4, ignoring requested toq_eq_choice', typeMsg='warning')
+            self.toq_eq_choice = 'standard'
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -135,24 +156,39 @@ class eped_beat(beat):
 
         neped_20 = self.neped_20
 
+
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
-        zeta995 = self.profiles_current.derived['zeta995'] if self.zeta_flag else None
+        if (self.toq_eq_choice == 'full_turnbull_miller' or self.toq_eq_choice == 'mxh'): 
+            zeta995 = self.profiles_current.derived['zeta995']
+        else:
+            zeta995 = None
+        if self.toq_eq_choice == 'mxh':
+            s_three995 = self.profiles_current.derived['s_three995']
+            s_four995 = self.profiles_current.derived['s_four995']
+        else: 
+            s_three995 = None
+            s_four995 = None
         BetaN = self.profiles_current.derived['BetaN_engineering']
         Tesep_keV = self.profiles_current.profiles['te(keV)'][-1]
         nesep_20 = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*0.1
         
+        # Don't overwrite the shaping coefficients if they already were input to the simulation
         if 'kappa995' in self.__dict__ and self.kappa995 is not None:               kappa995 = self.kappa995
-        if 'delta995' in self.__dict__ and self.delta995 is not None:               delta995 = self.delta995
-        if self.zeta_flag and 'zeta995' in self.__dict__ and self.zeta995 is not None:   zeta995 = self.zeta995  
+        if 'delta995' in self.__dict__ and self.delta995 is not None:               delta995 = self.delta995 
         if "BetaN" in self.__dict__ and self.BetaN is not None:                     BetaN = self.BetaN
         if "Tesep_keV" in self.__dict__ and self.Tesep_keV is not None:             Tesep_keV = self.Tesep_keV
         if "nesep_20" in self.__dict__ and self.nesep_20 is not None:               nesep_20 = self.nesep_20
+        if self.toq_eq_choice != 'standard':
+            if "zeta995" in self.__dict__ and self.zeta995 is not None:                zeta995 = self.zeta995
+        if self.toq_eq_choice == 'mxh':
+            if "s_three995" in self.__dict__ and self.s_three995 is not None:          s_three995 = self.s_three995
+            if "s_four995" in self.__dict__ and self.s_four995 is not None:            s_four995 = self.s_four995
 
         nesep_ratio = nesep_20 / neped_20
 
         # Store evaluation
-        if self.zeta_flag: 
+        if self.toq_eq_choice == 'standard': 
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
@@ -165,9 +201,8 @@ class eped_beat(beat):
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
                 'nesep_ratio': np.abs(nesep_ratio),
-                'zeta': zeta995
             }
-        else: 
+        elif self.toq_eq_choice == 'full_turnbull_miller':
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
@@ -179,7 +214,25 @@ class eped_beat(beat):
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
-                'nesep_ratio': np.abs(nesep_ratio)
+                'nesep_ratio': np.abs(nesep_ratio), 
+                'zeta': np.abs(zeta995)
+            }
+        elif self.toq_eq_choice == 'mxh':
+            self.current_evaluation = {
+                'Ip': np.abs(Ip),
+                'Bt': np.abs(Bt),
+                'R': np.abs(R),
+                'a': np.abs(a),
+                'kappa995': np.abs(kappa995),
+                'delta995': np.abs(delta995),
+                'neped_20': np.abs(neped_20),
+                'BetaN': np.abs(BetaN),
+                'zeff': np.abs(zeff),
+                'Tesep_keV': np.abs(Tesep_keV),
+                'nesep_ratio': np.abs(nesep_ratio), 
+                'zeta': np.abs(zeta995),
+                's_three': np.abs(s_three995),
+                's_four': np.abs(s_four995)
             }
 
         # --- Sometimes we may need specific EPED inputs
@@ -199,7 +252,11 @@ class eped_beat(beat):
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
-        if self.zeta_flag: print(f'\t\t- zeta: {self.current_evaluation["zeta"]:.3f}')
+        if (self.toq_eq_choice=='full_turnbull_miller' or self.toq_eq_choice=='mxh'):
+            print(f'\t\t- zeta995: {self.current_evaluation["zeta"]:.3f}')
+        if self.toq_eq_choice=='mxh':
+            print(f'\t\t- s_three995: {self.current_evaluation["s_three"]:.3f}')
+            print(f'\t\t- s_four995: {self.current_evaluation["s_four"]:.3f}')
 
         # -------------------------------------------------------
         # Run NN
@@ -211,7 +268,21 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            if self.zeta_flag: 
+            if self.toq_eq_choice == 'standard':
+                inputs_to_eped = (
+                    self.current_evaluation["Ip"],
+                    self.current_evaluation["Bt"],
+                    self.current_evaluation["R"],
+                    self.current_evaluation["a"],
+                    self.current_evaluation["kappa995"],
+                    self.current_evaluation["delta995"],
+                    self.current_evaluation["neped_20"]*10,
+                    BetaN,
+                    self.current_evaluation["zeff"],
+                    self.current_evaluation["Tesep_keV"]* 1E3,
+                    self.current_evaluation["nesep_ratio"]
+                    )
+            elif self.toq_eq_choice == 'full_turnbull_miller': 
                 inputs_to_eped = (
                     self.current_evaluation["Ip"],
                     self.current_evaluation["Bt"],
@@ -226,8 +297,7 @@ class eped_beat(beat):
                     self.current_evaluation["nesep_ratio"],
                     self.current_evaluation["zeta"]
                     )
-
-            else: 
+            elif self.toq_eq_choice == 'mxh': 
                 inputs_to_eped = (
                     self.current_evaluation["Ip"],
                     self.current_evaluation["Bt"],
@@ -239,7 +309,10 @@ class eped_beat(beat):
                     BetaN,
                     self.current_evaluation["zeff"],
                     self.current_evaluation["Tesep_keV"]* 1E3,
-                    self.current_evaluation["nesep_ratio"]
+                    self.current_evaluation["nesep_ratio"], 
+                    self.current_evaluation["zeta"],
+                    self.current_evaluation["s_three"],
+                    self.current_evaluation["s_four"]
                     )
 
             # -------------------------------------------------------
@@ -259,14 +332,14 @@ class eped_beat(beat):
             
             if ptop_kPa is None or wtop_psipol is None:
                 
-                if self.nn is not None:
+                if not self.use_full_EPED:
                     ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
                 else:
                     ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, nproc_per_run=nproc_per_run, cold_start=cold_start)
                     
-                    if store_scan:
+                    if store_scan and self.nn==None:
                         store_scan = False
-                        print('\t- Warning: store_scan is not available for full EPED runs yet, only for NN-based EPED')
+                        print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
             
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
@@ -385,20 +458,48 @@ class eped_beat(beat):
         '''
             Run the full EPED code with the given inputs.
             Returns ptop_kPa and wtop_psipol.
-            If zeta is provided as an extra argument, use it; otherwise set zeta to zero.
+            If further shaping parameters are provided as extra arguments, use them; otherwise set them to zero.
+            Note this is not the parallel to the _run method, the run method uses this where it would otherwise call the EPED NN
         '''
 
-        # Handle optional zeta parameter
+        # Handle further shaping parameters
         if len(args) > 0:
             zeta = args[0]
-            print('Let of args > 0, using zeta =', zeta)
+            print('Len of args > 0, using zeta =', zeta)
+            if len(args) > 1: 
+                s_three = args[1]
+                print('Len of args > 1. Also using s_three =', s_three)
+                if len(args) > 2:
+                    s_four = args[2]
+                    print('Len of args > 2. Also using s_four =', s_four)
+                else: 
+                    s_four = 0.0
+                    print('Len of args <= 2. Setting s_four = 0.0')
+            else: 
+                s_three = 0.0
+                print('Len of args <= 1. Setting s_three = 0.0')
         else:
             zeta = 0.0
             print('No zeta provided, setting zeta = 0.0')
 
         eped = EPEDtools.EPED(folder=folder)
 
-        if len(args) > 0:
+        if self.toq_eq_choice == 'standard': 
+            input_params = {
+                'ip': Ip,
+                'bt': Bt,
+                'r': R,
+                'a': a,
+                'kappa': kappa995,
+                'delta': delta995,
+                'neped': neped19,
+                'betan': BetaN,
+                'zeffped': zeff,
+                'nesep': nesep_ratio * neped19,
+                'tesep': Tesep_eV
+            }
+            print('_run_full_eped with standard TOQ configuration. Parameters used:', input_params)
+        elif self.toq_eq_choice == 'full_turnbull_miller':
             input_params = {
                 'ip': Ip,
                 'bt': Bt,
@@ -413,8 +514,8 @@ class eped_beat(beat):
                 'tesep': Tesep_eV,
                 'zeta': zeta
             }
-            print('_run_full_eped input_params with zeta:', input_params)
-        else: 
+            print('_run_full_eped with full_turnbull_miller TOQ configuration. Parameters used:', input_params)
+        elif self.toq_eq_choice == 'mxh': 
             input_params = {
                 'ip': Ip,
                 'bt': Bt,
@@ -426,9 +527,12 @@ class eped_beat(beat):
                 'betan': BetaN,
                 'zeffped': zeff,
                 'nesep': nesep_ratio * neped19,
-                'tesep': Tesep_eV
+                'tesep': Tesep_eV, 
+                'zeta': zeta,
+                's_three': s_three,
+                's_four': s_four
             }
-            print('_run_full_eped input_params without zeta:', input_params)
+            print('_run_full_eped with mxh TOQ configuration. Parameters used:', input_params)
 
         eped.run(
             subfolder = 'case1',
