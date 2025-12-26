@@ -124,7 +124,7 @@ class eped_beat(beat):
         '''
 
         # Check to make sure using full EPED if running with squareness
-        if self.toq_eq_choice != 'standard' and self.use_full_EPED:
+        if self.toq_eq_choice != 'standard' and not self.use_full_EPED:
             print('Warning: NN-based EPED was trained using ishape = 4, ignoring requested toq_eq_choice', typeMsg='warning')
             self.toq_eq_choice = 'standard'
 
@@ -164,11 +164,12 @@ class eped_beat(beat):
         else:
             zeta995 = None
         if self.toq_eq_choice == 'mxh':
-            s_three995 = self.profiles_current.derived['s_three995']
-            s_four995 = self.profiles_current.derived['s_four995']
+            s_three995 = 0 # TODO: pull from TRANSP (add to PROFILEtools.py)
+            s_four995 = 0 # TODO: pull from TRANSP(add to PROFILEtools.py)
         else: 
             s_three995 = None
             s_four995 = None
+
         BetaN = self.profiles_current.derived['BetaN_engineering']
         Tesep_keV = self.profiles_current.profiles['te(keV)'][-1]
         nesep_20 = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*0.1
@@ -268,8 +269,7 @@ class eped_beat(beat):
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            if self.toq_eq_choice == 'standard':
-                inputs_to_eped = (
+            inputs_to_eped_NN = (
                     self.current_evaluation["Ip"],
                     self.current_evaluation["Bt"],
                     self.current_evaluation["R"],
@@ -282,7 +282,10 @@ class eped_beat(beat):
                     self.current_evaluation["Tesep_keV"]* 1E3,
                     self.current_evaluation["nesep_ratio"]
                     )
-            elif self.toq_eq_choice == 'full_turnbull_miller': 
+            if self.toq_eq_choice == 'standard':
+                inputs_to_eped = inputs_to_eped_NN
+                
+            if self.toq_eq_choice == 'full_turnbull_miller': 
                 inputs_to_eped = (
                     self.current_evaluation["Ip"],
                     self.current_evaluation["Bt"],
@@ -415,10 +418,10 @@ class eped_beat(beat):
 
             scan_results = {}
             for k,key in enumerate(scan_relative):
-                inputs_scan = list(copy.deepcopy(inputs_to_eped))
+                inputs_scan = list(copy.deepcopy(inputs_to_eped_NN))
                 scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
                 for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
-                    inputs_scan[k] = inputs_to_eped[k]*m
+                    inputs_scan[k] = inputs_to_eped_NN[k]*m
                     ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
                     scan_results[key]['ptop_kPa'].append(ptop_kPa0)
                     scan_results[key]['wtop_psipol'].append(wtop_psipol0)
@@ -428,7 +431,7 @@ class eped_beat(beat):
                 scan_results[key]['value'] = np.array(scan_results[key]['value'])
 
                 self.nn.force_within_range = None # Do not throw warnings during the scan
-                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped)
+                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped_NN)
 
         # ---------------------------------
         # Store
