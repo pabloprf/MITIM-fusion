@@ -462,7 +462,7 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         rho = np.linspace(0, 1, resol)
         
         rmin = np.linspace(0, a, resol)
-        rmaj = R0*np.ones_like(rmin)
+        rmaj = R0*np.ones_like(rmin) # Assuming no Shafranov shift for the guess
         z0 = z0*np.ones_like(rmin)
         kappa = np.linspace(1, kappa_sep, resol)
         delta = np.linspace(0, delta_sep, resol)
@@ -487,8 +487,8 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         
         rho = p.profiles['rho(-)']
         
-        rmin = p.profiles['rmin(m)'] * a/p.profiles['rmin(m)'][-1]
-        rmaj = p.profiles['rmaj(m)'] * R0/p.profiles['rmaj(m)'][0]
+        rmin = p.profiles['rmin(m)'] * ( a/p.profiles['rmin(m)'][-1] )
+        rmaj = p.profiles['rmaj(m)'] * ( R0/p.profiles['rcentr(m)'][0] ) # Scale from center, assuming then same Shafranov shift (relative)
         
         z0 = p.profiles['zmag(m)'] * z0/p.profiles['zmag(m)'][-1]
         kappa = p.profiles['kappa(-)'] * kappa_sep/p.profiles['kappa(-)'][-1]
