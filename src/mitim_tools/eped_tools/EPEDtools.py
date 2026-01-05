@@ -241,7 +241,10 @@ class EPED:
 
         print('\t\t> Inputs:')
         for input_param in self.inputs_potential:
-            print(f'\t\t\t{input_param}: {data[input_param].values[0]}')
+            try:
+                print(f'\t\t\t{input_param}: {data[input_param].values[0]}')
+            except:
+                print(f'\t\t\t{input_param}: Not available',typeMsg='w')
 
         
         print('\t\t> Outputs:')

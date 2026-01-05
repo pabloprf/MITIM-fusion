@@ -629,7 +629,10 @@ class eped_beat(beat):
                 )
                 axs = [ ax for ax in axs.values() ]
 
-                self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+                try:
+                    self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+                except:
+                    print(f'\t- Could not plot scan for {ikey}', typeMsg='w')
 
                 GRAPHICStools.adjust_figure_layout(fig)
 

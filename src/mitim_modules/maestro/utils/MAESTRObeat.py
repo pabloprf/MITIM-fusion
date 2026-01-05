@@ -155,7 +155,6 @@ class beat_initializer:
             
         return p0_MPa
             
-
 # --------------------------------------------------------------------------------------------
 # Initializer from previous beat: load the profiles and call the profiles initializer
 # --------------------------------------------------------------------------------------------
@@ -297,6 +296,11 @@ class initializer_from_separatrix(beat_initializer):
     def __init__(self, beat_instance, label = 'separatrix'):
         super().__init__(beat_instance, label = label)
 
+    def _minimal_call(self, *args, **kwargs):
+     
+        if 'extract_995_from' in kwargs:
+            self.extract_995_from = kwargs['extract_995_from']
+
     def __call__(
         self,
         PichT_MW = 1.0,
@@ -306,6 +310,8 @@ class initializer_from_separatrix(beat_initializer):
         extract_995_from='geo',
         **kwargs
         ):
+        
+        self._minimal_call(extract_995_from=extract_995_from)
         
         if 'rz_boundary_file' in kwargs and kwargs['rz_boundary_file'] is not None:
             print('\t- Using rz_boundary_file to define the boundary parameters', typeMsg = 'i')
@@ -386,6 +392,9 @@ class initializer_from_separatrix(beat_initializer):
         for i in ['kappa(-)', 'delta(-)', 'zeta(-)', 'rmin(m)', 'rmaj(m)', 'zmag(m)']:
             self.p.profiles[i] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[i])
         
+        for i in ['rcentr(m)']:
+            self.p.profiles[i] = p_old.profiles[i]
+        
         for i in range(coeffs_MXH):
             self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
         for i in range(coeffs_MXH-3):
@@ -395,6 +404,9 @@ class initializer_from_separatrix(beat_initializer):
         
         if self.extract_995_from is None:
             return
+        
+        if "p" not in dir(self):
+            self.p = PROFILEStools.gacode_state(self.folder / 'input.separatrix.gacode')
         
         kappa995, delta995, zeta995 = self.p.derived["kappa995"], self.p.derived["delta995"], self.p.derived["zeta995"]
 
@@ -560,7 +572,6 @@ def load_separatrix_from_file(boundary_parameters):
     }
     
     return separatrix_parameters
-
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FreeGS: load the equilibrium, convert to geqdsk and call the geqdsk initializer
@@ -812,7 +823,6 @@ class creator_from_parameterization(creator):
             # Call the generic creator
             self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
-
 
 # --------------------------------------------------------------------------------------------
 # Profile creator from EPED: Create parameterization using EPED
