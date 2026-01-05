@@ -17,7 +17,7 @@ plasma:
     # How to initialize the boundary and q-profile. Options:
     #       geqdsk:     use a GEQDSK file directly
     #       freegs:     use FREEGS to create an equilibrium from boundary parameters
-    #       fibe:       use FIBE to create an equilibrium from boundary parameters
+    #       fibe:       use FIBE to create an equilibrium from boundary parameters, requires geqdsk file to specify f and pressure profiles
     #       separatrix: create separatrix from parameters (or RZ file) and guess internal equilibrium or use internal_flux_file
     #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
     initialization_type: freegs      
@@ -70,7 +70,7 @@ plasma:
       # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
       freeze_995_from: geo    # Options: geo, turnbull, null (if null: no trans_beat parameters will be set)
 
-      # If initialization_type = geqdsk: path to file 
+      # If initialization_type = geqdsk or fibe: path to file
       geqdsk_file: ""
 
   # Plasma mix
@@ -147,7 +147,11 @@ maestro:
 
     parameters_prepare:
 
-      # Location of EPED-NN files (if null, use full EPED)
+      # Whether to run with full EPED or EPED-NN
+      use_full_EPED: false
+      toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
+
+      # Location of EPED-NN files 
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
 
