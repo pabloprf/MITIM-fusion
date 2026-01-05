@@ -101,24 +101,35 @@ def run_slurm(
                 )
 
 def run_slurm_array(
-    script,
-    array_input,
-    folder,
-    partition,
-    max_concurrent_jobs, 
-    venv = '',
-    seeds=None,    # If not None, assume that the script is able to receive --seeds #
-    hours=8,
-    n=32,
-    seed_specific=0,
-    machine="local",
-    exclude=None,
-    mem=None, 
-    qos=None,
+        script,
+    # Array information
+        array_input,
+        max_concurrent_jobs, 
+    # Run paths
+        folder,
+        partition,
+        venv = '',
+    # Slurm specifications
+        machine = "local",
+        exclude = None, 
+        mem = None, 
+        exclusive = False, 
+        qos = None,
+    # Job size
+        n = 32, 
+        hours = 8, 
+        are_n_threads = True,
+    # For farming different seeds that the script understands:
+        seeds=None,    # If not None, assume that the script is able to receive --seeds 
+        seed_specific = 0,
+    # Interaction settings:
+        wait = False,
+        nameJob = None,
 ):
 
     folder = IOtools.expandPath(folder)
 
+    # Set seeds_explore variable
     if seeds is not None:
         seeds_explore = [seed_specific] if seeds == 1 else list(range(seeds))
     else:
@@ -138,26 +149,51 @@ def run_slurm_array(
         command = ['echo $SLURM_ARRAY_TASK_ID', venv, script + ' $SLURM_ARRAY_TASK_ID'+ (f" --seed {seed}" if seed is not None else "")]
         string_of_array_input = ','.join([str(i) for i in array_input])
 
-        nameJob = f"mitim_{folder.name}{extra_name}"
+        # Give job default name
+        if nameJob is None:
+            nameJob = f"mitim_{folder.name}{extra_name}"
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Allocation information (e.g. partition, node exclusions and exclusivity)
+        slurm_allocation = {
+            "partition": partition,
+            'qos': qos,
+            'exclude': exclude,
+            'exclusive': exclusive
+            }
+        
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Slurm job information  (settings for sbatch)
+        
+        if are_n_threads: ntask, cpuspertask = 1, n
+        else:             ntask, cpuspertask = n, 1
+        
+        slurm_settings = {
+            'name': nameJob,
+            'minutes': int(60 * hours),
+            'ntasks': 1,
+            'cpuspertask': n,
+            'memory_req_by_job': mem,
+            'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
+        }
+
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
-            command=command,
-            folderExecution=folder,
+            command,
+            folder,
             folder_local=folder,
-            slurm={"partition": partition, 'exclude': exclude, 'qos': qos},
-            slurm_settings = {
-                'name': nameJob,
-                'minutes': int(60 * hours),
-                'ntasks': 1,
-                'cpuspertask': n,
-                'memory_req_by_job': mem,
-                'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
-            },
-
-
+            slurm_allocation=slurm_allocation,
+            slurm_settings = slurm_settings,
+            if_array_relabel=False
         )
 
-        command_execution = f"sbatch {fileSBATCH}"
+        if wait:
+            print('* Waiting for job to complete...')
+            command_execution = f"sbatch --wait {fileSBATCH}"
+        else:
+            command_execution = f"sbatch {fileSBATCH}"
+
+
 
         if machine == "local":
             os.system(command_execution)
