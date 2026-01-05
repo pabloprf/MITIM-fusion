@@ -35,7 +35,7 @@ def rapids_evaluator(nn, core, p_base,
 
         # Change major radius
         p.profiles['rcentr(m)'][0] = R
-        p.profiles['rmaj(m)'] *= R/p_base.profiles['rmaj(m)'][0]
+        p.profiles['rmaj(m)'] *= R / p_base.profiles['rmaj(m)'][-1]
 
         # Change minor radius
         p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
