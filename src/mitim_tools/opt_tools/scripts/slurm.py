@@ -171,8 +171,8 @@ def run_slurm_array(
         slurm_settings = {
             'name': nameJob,
             'minutes': int(60 * hours),
-            'ntasks': 1,
-            'cpuspertask': n,
+            'ntasks': ntask,
+            'cpuspertask': cpuspertask,
             'memory_req_by_job': mem,
             'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
         }
