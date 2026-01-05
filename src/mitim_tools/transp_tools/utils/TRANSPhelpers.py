@@ -453,8 +453,7 @@ class transp_run:
         GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
-
-def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 100, endpoint=True), plotYN = False):
+def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 101, endpoint=True), plotYN = False):
     '''
     TRANSP tends to give troubles with kinks, curvatures and loops in the boundary files.
     This method developed in MITIM helps to smooth the boundary and avoid these issues.
