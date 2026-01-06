@@ -820,12 +820,12 @@ class creator_from_parameterization(creator):
                 bounds = [(0.5,3.0)]
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
-                print(f'\n\t- Gradient: aLT = {aLT:.2f}')
+                print(f'\n\t- Gradient: aLTi = {aLT:.2f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.2f}')
                 print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
 
-            x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
+            x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLT*self.aLTe_to_aLTi_ratio, x_a=x_a,nx = self.nresol)
             x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
             x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a=x_a,nx = self.nresol)
 
