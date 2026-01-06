@@ -183,6 +183,10 @@ def nminfactor(nmin, n):
         return np.array(nminfact)
 
 
+def bootstrap_fraction_estimate(a, R, beta_pol):
+    
+    return 2/3 * (a/R)**0.5 * beta_pol
+
 def convective_flux(Te, Gamma_e):
     # keV and 1E20 m^-3/s (or /m^2)
 

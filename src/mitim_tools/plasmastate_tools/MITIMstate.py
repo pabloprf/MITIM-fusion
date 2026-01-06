@@ -939,7 +939,11 @@ class mitim_state:
         TroyonFactor = np.abs(float(self.profiles["current(MA)"][-1])) / (self.derived["a"] * self.derived["B0"])
 
         self.derived["BetaN"] = self.derived["Beta"] / TroyonFactor * 100.0
+        
+        # Beta poloidal defined using the poloidal field at the plasma edge (using <Bp2>)
+        self.derived["Beta_p_edge"] = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_exp"][-1]
 
+        self.derived["fbootstrap_estimate"] = PLASMAtools.bootstrap_fraction_estimate(self.derived['a'], self.derived['Rgeo'], self.derived["Beta_p_edge"])
         # ---
 
         nG = PLASMAtools.Greenwald_density(

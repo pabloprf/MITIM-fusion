@@ -5007,6 +5007,7 @@ class transp_output:
         ax2.plot(self.x_lw, self.Bp_x[it], lw=2, label="$B^{av LF-HF}_{\\theta,midpl}$")
         ax2.plot(self.x_lw, self.B_av[it], lw=3, label="$\\langle B\\rangle$")
         ax2.plot(self.x_lw, self.TGLF_Bunit[it], lw=3, label="$B_{unit,TGLF}$")
+        ax2.plot(self.x_lw, self.Bpol2[it]**0.5, lw=3, label="$\\sqrt{\\langle B_{\\theta}^2\\rangle}$")
         ax2.plot(self.x_lw, self.Bpol[it], lw=3, label="$\\langle B_{\\theta}\\rangle$")
         ax2.plot(
             self.x_lw,
