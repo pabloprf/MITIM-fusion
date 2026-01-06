@@ -640,7 +640,7 @@ class eped_beat(beat):
 
         return msg
             
-    def _plot_scan(self, ikey, loaded_results = None, axs = None, color = 'b'):
+    def _plot_scan(self, ikey, loaded_results = None, axs = None):
 
         if loaded_results is None:
             loaded_results, _ = self.grab_output()
@@ -658,23 +658,26 @@ class eped_beat(beat):
             axs = [ ax for ax in axs.values() ]
 
         max_val = 0
+        min_val = 1E12
         for i,key in enumerate(loaded_results['scan_results']):
 
-            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
+            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color='b', markersize=3, label=f'NN scan')
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color='m', label='NN nominal')
+            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color='m', ls='-.')
 
-            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results[ikey]], '^', color=color)
-            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results[ikey]], '^', color='r', label='EPED beat', markersize=8)
 
-            axs[i].axvline(loaded_results['inputs_to_eped'][i], color=color, ls='--')
-            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
-
+            axs[i].axvline(loaded_results['inputs_to_eped'][i], color='k', ls='--', label='Nominal input')
+    
             max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
+            min_val = np.min([min_val,np.min(loaded_results['scan_results'][key][ikey])])
         
         for i,key in enumerate(loaded_results['scan_results']):
-            axs[i].set_ylim([0,1.2*max_val])
+            axs[i].set_ylim([min_val*0.9,1.1*max_val])
             axs[i].set_xlabel(key)
             axs[i].set_ylabel(ikey)
             GRAPHICStools.addDenseAxis(axs[i])
+        axs[0].legend(prop={'size': 6},loc='best')
 
     # --------------------------------------------------------------------------------------------
     # Additional EPED utilities
