@@ -155,7 +155,7 @@ maestro:
       # Location of EPED-NN files and transformation function of this specific NN
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
-      transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.engineering_arguments_eped
+      transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
 
       # Corrections set for EPED-NN indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
       corrections_set:

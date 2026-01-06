@@ -168,12 +168,15 @@ def rapids_evaluator(nn, core, p_base,
         # Change Zeff
         p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=True, fmain_force=fDT)
 
-        def pedestal(p, force_within_range=None):
+        def pedestal(p, force_within_range=None, force_betan=None):
 
             # Calculate new pedestal
             eped_evaluation = p.to_eped(beta_pass = "BetaNthr_engineering")
 
-            eped_evaluation["betan"] *= BetaN_multiplier
+            if force_betan is not None:
+                eped_evaluation["betan"] = force_betan
+            else:
+                eped_evaluation["betan"] *= BetaN_multiplier
             eped_evaluation["neped"] = neped*10             # the EPED-NN expects in 10e19m^-3
             eped_evaluation["nesep_ratio"] = nesep_ratio
             eped_evaluation["tesep"] = tesep_eV
@@ -207,7 +210,7 @@ def rapids_evaluator(nn, core, p_base,
         # Loop for better beta definition
         profs = []
         for i in range(100):
-            p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p)
+            p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p, force_betan=1.0 if i==0 else None) # Force to start with a reasonable betaN such that the effect of the initial condition is negligible
             profs.append(copy.deepcopy(p))
             if error_betaN < thr_beta:
                 break
