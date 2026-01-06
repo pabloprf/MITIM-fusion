@@ -737,12 +737,14 @@ class creator_from_parameterization(creator):
             nu_ne = None,
             aLn = None,
             aLT = None,
+            aLTe_to_aLTi_ratio = 1.0,
             label = 'parameterization',
-            nresol = 501
+            nresol = 501,
             ):
             super().__init__(initialize_instance, label = label)
 
-            self.rhotop = rhotop
+            self.rhotop = rhotop            
+
             self.Ttop_keV = Ttop_keV
             self.netop_20 = netop_20
             self.Tsep_keV = Tsep_keV
@@ -756,35 +758,40 @@ class creator_from_parameterization(creator):
             self.aLT_guess = aLT
 
             self.nresol = nresol
+                        
+            self.aLTe_to_aLTi_ratio = aLTe_to_aLTi_ratio
 
-        def _return_profile_peaking_residual(self, aLn, x_a):
+        def _return_profile_peaking_residual(self, aLn, x_a, x_top=None):
 
             # returns the residual of the betaN to match the profile to the EPED guess
 
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
+            x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': ne, 'Ti': ne, 'ne': ne}
+            self.profiles_insert = {'roa': x, 'Te': ne, 'Ti': ne, 'ne': ne}
             super().__call__()
 
             return ((self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne) ** 2
 
-        def _return_profile_betan_residual(self, aLT, x_a, aLn):
+        def _return_profile_betan_residual(self, aLTi, x_a, aLn, x_top=None):
 
             # returns the residual of the betaN to match the profile to the EPED guess
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a,nx = self.nresol)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a = x_a,nx = self.nresol)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
+            x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi*self.aLTe_to_aLTi_ratio, x_a = x_a,nx = self.nresol)
+            x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi, x_a = x_a,nx = self.nresol)
+            x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            self.profiles_insert = {'roa': x, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
             return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
     
         def __call__(self):
 
+            # Gradients must use r/a coordinate but rhotop is in rho
+            x_top = np.interp(self.rhotop, self.initialize_instance.profiles_current.profiles['rho(-)'], self.initialize_instance.profiles_current.derived['roa'])
+            
             x_a = 0.3
 
             if (self.aLn_guess is not None) or (self.nu_ne is None):
@@ -795,7 +802,7 @@ class creator_from_parameterization(creator):
                 # Find the density gradient that matches the peaking
                 print(f'\n\t- Optimizing aLn to match ne peaking = {self.nu_ne}')
                 bounds = [(0.0,3.0)]
-                res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLn = res.x[0]
                 print(f'\n\t- Gradient: aLn = {aLn:.2f}')
                 print(f'\t- ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
@@ -809,19 +816,19 @@ class creator_from_parameterization(creator):
                 # Find the temperature gradient that matches the BetaN
                 print(f'\n\t- Optimizing aLT to match BetaN = {self.BetaN}')
                 bounds = [(0.5,3.0)]
-                res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn), method='Nelder-Mead', tol=1e-3, bounds=bounds)
+                res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
                 print(f'\n\t- Gradient: aLT = {aLT:.2f}')
                 print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
 
-            rho, Te = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
-            rho, Ti = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
-            rho, ne = FunctionalForms.MITIMfunctional_aLyTanh(self.rhotop, self.netop_20, self.nesep_20, aLn, x_a=x_a,nx = self.nresol)
+            x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
+            x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLT, x_a=x_a,nx = self.nresol)
+            x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a=x_a,nx = self.nresol)
 
             # Call the generic creator
-            self.profiles_insert = {'rho': rho, 'Te': Te, 'Ti': Ti, 'ne': ne}
+            self.profiles_insert = {'roa': x, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
 # --------------------------------------------------------------------------------------------

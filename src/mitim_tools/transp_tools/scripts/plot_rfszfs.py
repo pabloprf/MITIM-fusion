@@ -51,16 +51,21 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(ncols=2, figsize=(12,6))
     cols = GRAPHICStools.listColors()
     cont = 0
-    for time_pos in range(rfs.Variables['Z'].shape[0]):
-        for surf_pos in range(rfs.Variables['Z'].shape[2]):
+    for surf_pos in reversed(range(rfs.Variables['Z'].shape[2])):
+        for time_pos in range(rfs.Variables['Z'].shape[0]):
+        
             plot_rfszfs(rfs_file, zfs_file, ax=axs[0], time_pos=time_pos, surf_pos=surf_pos, c=cols[cont])
+            
+            if surf_pos == rfs.Variables['Z'].shape[2]-1:
+                axs[1].plot(time_pos,R[time_pos], 'o-', c=cols[cont])
+                axs[1].plot(time_pos,a[time_pos], 'o--', c=cols[cont])
             
             cont += 1   
             
-    axs[1].plot(R, label='R (m)')
-    axs[1].plot(a, label='a (m)')
+    axs[1].plot(R, '-',label='R (m)',c=cols[0])
+    axs[1].plot(a, '-',label='a (m)',c=cols[1])
     axs[1].set_xlabel('Time index')
-    axs[1].set_ylabel('m')
+    axs[1].set_ylabel('m'); axs[1].set_ylim([0, None])
     axs[1].legend()
     GRAPHICStools.addDenseAxis(axs[1])
     axs[1].set_title('Geometric major and minor radius evolution (Last surface)')
