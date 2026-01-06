@@ -26,9 +26,10 @@ class eped_beat(beat):
 
     def prepare(
             self,
-            nn_location = None, 
             use_full_EPED = False,
+            nn_location = None, 
             norm_location = None,
+            transform_inputs_fun = NNtools.standard_arguments_eped,
             neped_20 = None,        # Force this pedestal density (e.g. at creator stage), otherwise from the profiles_current
             BetaN = None,           # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
             Tesep_keV = None,       # Force this Te at the separatrix, otherwise from the profiles_current
@@ -55,7 +56,7 @@ class eped_beat(beat):
                 nn_location = IOtools.expandPath(nn_location)
                 norm_location = IOtools.expandPath(norm_location)
 
-                self.nn.load(nn_location, norm=norm_location)
+                self.nn.load(nn_location, norm=norm_location, transform_inputs_fun=transform_inputs_fun)
         else: 
             print('\t- Choice of EPED: full', typeMsg='i')
 
@@ -67,7 +68,7 @@ class eped_beat(beat):
                 self.nn = NNtools.eped_nn(type='tf')
                 nn_location = IOtools.expandPath(nn_location)
                 norm_location = IOtools.expandPath(norm_location)
-                self.nn.load(nn_location, norm=norm_location)
+                self.nn.load(nn_location, norm=norm_location, transform_inputs_fun=transform_inputs_fun)
             
 
         # Parameters to run EPED with instead of those from the profiles
