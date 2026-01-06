@@ -844,6 +844,10 @@ def Bcoil_to_Bt(Bcoil, R, a, coil_to_innerleg=1.0):
     """Estimate Bt from coil field Bcoil."""
     return Bcoil * (R - a - coil_to_innerleg) / R
 
+def Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=1.0):
+    """Estimate coil field Bcoil from Bt."""
+    return Bt * R / (R - a - coil_to_innerleg)
+
 def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
     factor1 = 1 - (fDT + Zmini * fmini + Zhigh * fhigh)
