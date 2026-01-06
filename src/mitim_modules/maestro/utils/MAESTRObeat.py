@@ -728,18 +728,20 @@ class creator_from_parameterization(creator):
         def __init__(
             self,
             initialize_instance,
+            label = 'parameterization',
+            # Standard parameters
+            BetaN = None,
+            nu_ne = None,
+            aLn = None,
+            aLT = None,
+            aLTe_to_aLTi_ratio = 1.0, # aLTe = aLTe_to_aLTi_ratio * aLTi for the BetaN optimization
+            nresol = 501,
+            # From a pedestal model
             rhotop = None,
             Ttop_keV = None,
             netop_20 = None,
             Tsep_keV = None,
             nesep_20 = None,
-            BetaN = None,
-            nu_ne = None,
-            aLn = None,
-            aLT = None,
-            aLTe_to_aLTi_ratio = 1.0,
-            label = 'parameterization',
-            nresol = 501,
             ):
             super().__init__(initialize_instance, label = label)
 
@@ -776,7 +778,7 @@ class creator_from_parameterization(creator):
         def _return_profile_betan_residual(self, aLTi, x_a, aLn, x_top=None):
 
             # returns the residual of the betaN to match the profile to the EPED guess
-
+            
             x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi*self.aLTe_to_aLTi_ratio, x_a = x_a,nx = self.nresol)
             x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi, x_a = x_a,nx = self.nresol)
             x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
@@ -814,7 +816,7 @@ class creator_from_parameterization(creator):
             else:
                 aLT_guess = 2.0
                 # Find the temperature gradient that matches the BetaN
-                print(f'\n\t- Optimizing aLT to match BetaN = {self.BetaN}')
+                print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
                 bounds = [(0.5,3.0)]
                 res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
                 aLT = res.x[0]
@@ -845,6 +847,7 @@ class creator_from_eped(creator_from_parameterization):
         nu_ne = None,
         aLT = None,
         aLn = None,
+        aLTe_to_aLTi_ratio = 1.0,
         nresol = 501,
         **kwargs_eped
         ):
@@ -856,6 +859,7 @@ class creator_from_eped(creator_from_parameterization):
         self.aLn_guess = aLn
         self.parameters = kwargs_eped
         self.nresol = nresol
+        self.aLTe_to_aLTi_ratio = aLTe_to_aLTi_ratio
         if self.BetaN is None:
             raise ValueError('[MITIM] BetaN must be provided in the current implementation of EPED creator')
 
