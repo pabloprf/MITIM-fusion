@@ -189,7 +189,7 @@ def rapids_evaluator(nn, core, p_base,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
                 ptop_kPa, TiTe_ped, wtop_psipol, p)
 
-            if rhotop<0 or rhotop>1.0:
+            if rhotop<0 or rhotop>1.0 or Tetop_keV<0.0 or Titop_keV<0.0 or netop_20<0.0:
                 print(f'Pedestal calculation returned unphysical values, setting ptop to 0.0', typeMsg='w')
                 rhotop = 0.9
                 Tetop_keV = Titop_keV = 0.0

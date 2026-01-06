@@ -765,6 +765,16 @@ def getOmegaBC():
 
     return omegaEdge, whereOmega
 
+def BetaN_engineering(pressure_MPa, B0, a_m, Ip_MA):
+    """
+    Calculate BetaN
+    """
+    
+    Beta = pressure_MPa * 1e6 / (B0 ** 2 / (2 * 4 * np.pi * 1e-7))
+    
+    BetaN =  Beta / ( abs(Ip_MA) / ( a_m * np.abs(B0) ) ) * 100.0  # expressed in percent
+    
+    return BetaN
 
 def implementProfileBoost(x, y, y_new_ix, ix=90):
     """
