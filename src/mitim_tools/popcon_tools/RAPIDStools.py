@@ -8,6 +8,7 @@ from mitim_tools.popcon_tools import FunctionalForms
 from mitim_modules.maestro.utils.EPEDbeat import eped_postprocessing,eped_profiler
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
 '''
     RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
@@ -150,7 +151,6 @@ def rapids_evaluator(nn, core, p_base,
         else:
             raise Exception('Core specification not recognized, provide either TiTe or aLTe, aLTi')
 
-
         # Option for BetaN: provide multiplier
         if 'BetaN_multiplier' in core:
             BetaN_multiplier = core['BetaN_multiplier']
@@ -189,42 +189,71 @@ def rapids_evaluator(nn, core, p_base,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
                 ptop_kPa, TiTe_ped, wtop_psipol, p)
 
-            if rhotop<0 or rhotop>1.0 or Tetop_keV<0.0 or Titop_keV<0.0 or netop_20<0.0:
-                print(f'Pedestal calculation returned unphysical values, setting ptop to 0.0', typeMsg='w')
+            # Unphysical values check and # Unrelistic pedestal (SEP>PED)
+            '''
+            Noe that I cannot simply make them equal to zero because the profiler will give weird resultrs
+            '''
+            if (rhotop<0 or rhotop>1.0) or (Tetop_keV<0.0 or netop_20<0.0) or\
+                (Tetop_keV<tesep_eV*1E-3 or netop_20<neped*nesep_ratio):
+                print(f'Pedestal calculation returned unphysical values, assume pedestal does not exist', typeMsg='w')
                 rhotop = 0.9
-                Tetop_keV = Titop_keV = 0.0
-                netop_20 = 0.0
+                Tetop_keV = Titop_keV = tesep_eV*1E-3
+                netop_20 = neped*nesep_ratio
+                failed_case = True
+            else:
+                failed_case = False
 
             p = eped_profiler(p, rhotop_start, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
             
-            # Derive quantities
+            # Derive quantities, but not the geometry again because this is only changing the profiles
             p.derive_quantities(rederiveGeometry=False)
 
             BetaN_used = p.derived["BetaNthr_engineering"] * BetaN_multiplier
 
-            error_betaN = np.abs(BetaN_used - eped_evaluation["betan"])/BetaN_used
-            print(f'BetaN evaluated: {eped_evaluation["betan"]} vs new profiles betaN: {BetaN_used} ({error_betaN*100:.1f}%)',typeMsg = 'i')
-
-            return p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation
+            return p, ptop_kPa, wtop_psipol, eped_evaluation, BetaN_used, eped_evaluation["betan"], failed_case
 
         # Loop for better beta definition
-        profs = []
+        profs, Beta, Beta_EPED, fails = [], [], [], []
         for i in range(100):
-            p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p, force_betan=1.0 if i==0 else None) # Force to start with a reasonable betaN such that the effect of the initial condition is negligible
+            # Force to start with a reasonable betaN such that the effect of the initial condition is negligible
+            p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p, force_betan=1.0 if i==0 else None)
+
+            # Store stuff for debugging
             profs.append(copy.deepcopy(p))
-            if error_betaN < thr_beta:
+            Beta.append(Beta0)
+            Beta_EPED.append(Beta_EPED0)
+            fails.append(failed_case)
+            
+            # Decide if getting out of the loop
+            error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
+            print(f'BetaN evaluated: {Beta_EPED0} vs new profiles betaN: {Beta0} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+        
+            # If the error is small enough, get out of the loop
+            # If more than 5 failed cases, assumed it is in a loop of fail-nofail and get out
+            if (error_betaN < thr_beta) or (np.sum(fails)>5):
                 break
+        
+        # # TO HELP DEBUGGING
+        # fig, ax = plt.subplots()
+        # ax.plot(Beta, '-o', label='From profiles')
+        # ax.plot(Beta_EPED, '-o', label='From EPED evaluation')
+        # ax.set_xlabel('Iteration')
+        # ax.set_ylabel('$\\beta_N$')
+        # ax.legend()
+        # plt.show()
         
         # from mitim_tools.plasmastate_tools.utils import state_plotting
         # fn = state_plotting.plotAll(profs)
         # fn.show()
+        # embed()
         
         # Run again the last point but with warning prints
-        p, ptop_kPa, wtop_psipol, error_betaN, eped_evaluation = pedestal(p, force_within_range=False)
+        p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p, force_within_range=False)
 
-        
-        if error_betaN > thr_beta:
-            raise Exception(f'BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
+        error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
+
+        if error_betaN > thr_beta or failed_case:
+            raise Exception(f'Failed case or BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
 
         # Calculate targets
         power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
