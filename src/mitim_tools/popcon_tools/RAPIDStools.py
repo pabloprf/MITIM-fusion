@@ -270,6 +270,8 @@ def rapids_evaluator(nn, core, p_base,
 
         if error_betaN > thr_beta or failed_case:
             raise Exception(f'Failed case or BetaN relative error too high ({error_betaN} vs {thr_beta}), for parameters: {eped_evaluation}')
+        else:
+            print(f"\t\t- Evaluating {optional_flag} required {i+1} iterations for parameters: {eped_evaluation}")
 
         # Calculate targets
         power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
