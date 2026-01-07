@@ -523,6 +523,11 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_aspect("equal")
 
 def calculateGeometricFactors(profiles, n_theta=1001):
+    '''
+    Note that some tests I did with this in very shaped plasmas (e.g. delta>0.7),  bp2_geo required extremely high n_theta
+    to converge (e.g. n_theta of 100001 was required although still oscillated) in the last few radial points.
+    Although the volume average of converged somewhat faster.
+    '''
 
     # ----------------------------------------
     # Raw parameters from the file

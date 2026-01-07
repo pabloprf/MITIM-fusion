@@ -928,7 +928,7 @@ class mitim_state:
         P = self.derived["bt2_exp"]
         self.derived["bt2_vol_avg"] = CALCtools.volume_integration(P, r, volp)[-1] / self.derived["volume"]
 
-        # calculate beta_poloidal and beta_toroidal using volume averaged values
+        # calculate beta_poloidal and beta_toroidal using volume averaged values. Careful that bp2_exp is extremely sensitive to ntheta
         # mu0 = 4pi x 10^-7, also need to convert MPa to Pa
 
         self.derived["Beta_p"] = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_vol_avg"]
@@ -940,7 +940,7 @@ class mitim_state:
 
         self.derived["BetaN"] = self.derived["Beta"] / TroyonFactor * 100.0
         
-        # Beta poloidal defined using the poloidal field at the plasma edge (using <Bp2>)
+        # Beta poloidal defined using the poloidal field at the plasma edge (using <Bp2>), but careful as extremely sensitive to ntheta
         self.derived["Beta_p_edge"] = (2 * 4 * np.pi * 1e-7)*self.derived["ptot_manual_vol"]* 1e6/self.derived["bp2_exp"][-1]
 
         self.derived["fbootstrap_estimate"] = PLASMAtools.bootstrap_fraction_estimate(self.derived['a'], self.derived['Rgeo'], self.derived["Beta_p_edge"])

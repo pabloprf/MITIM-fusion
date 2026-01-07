@@ -40,6 +40,7 @@ def rapids_evaluator(nn, core, p_base,
 
         # Change minor radius
         p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
+        
 
         # Change elongation
         if kappa995 is not None:
@@ -58,7 +59,7 @@ def rapids_evaluator(nn, core, p_base,
             # Otherwise, use the separatrix value
             mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
         p.profiles['delta(-)'] *= mutilier_delta
-
+        
         # Change magnetic field
         p.profiles['bcentr(T)'][0] = Bt
         
@@ -189,20 +190,23 @@ def rapids_evaluator(nn, core, p_base,
                 eped_evaluation["nesep_ratio"]*eped_evaluation["neped"]*0.1,
                 ptop_kPa, TiTe_ped, wtop_psipol, p)
 
-            # Unphysical values check and # Unrelistic pedestal (SEP>PED)
-            '''
-            Noe that I cannot simply make them equal to zero because the profiler will give weird resultrs
-            '''
-            if (rhotop<0 or rhotop>1.0) or (Tetop_keV<0.0 or netop_20<0.0) or\
-                (Tetop_keV<tesep_eV*1E-3 or netop_20<neped*nesep_ratio):
-                print(f'Pedestal calculation returned unphysical values, assume pedestal does not exist', typeMsg='w')
-                rhotop = 0.9
-                Tetop_keV = Titop_keV = tesep_eV*1E-3
-                netop_20 = neped*nesep_ratio
+            # Unphysical values check
+            if (rhotop<0 or rhotop>1.0) or (Tetop_keV<0.0 or netop_20<0.0):
+                print(f'Pedestal evaluation returned unphysical values, assume pedestal does not exist', typeMsg='w')
+                failed_case = True
+            # Unrealistic pedestal (SEP>PED)
+            elif (Tetop_keV<tesep_eV*1E-3 or netop_20<neped*nesep_ratio):
+                print(f'Pedestal evaluation returned unrealistic values (SEP>PED), assume pedestal does not exist', typeMsg='w')
                 failed_case = True
             else:
                 failed_case = False
-
+            
+            # Note that I cannot simply make them equal to zero because the profiler will give weird resultrs
+            if failed_case:
+                rhotop = 0.9
+                Tetop_keV = Titop_keV = tesep_eV*1E-3
+                netop_20 = neped*nesep_ratio
+            
             p = eped_profiler(p, rhotop_start, rhotop, Tetop_keV, Titop_keV, netop_20, print_msgs=False)
             
             # Derive quantities, but not the geometry again because this is only changing the profiles
@@ -226,17 +230,23 @@ def rapids_evaluator(nn, core, p_base,
             
             # Decide if getting out of the loop
             error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
-            print(f'BetaN evaluated: {Beta_EPED0} vs new profiles betaN: {Beta0} ({error_betaN*100:.1f}%)',typeMsg = 'i')
+            print(f'BetaN evaluated: {Beta_EPED0} vs new profiles betaN: {Beta0} ({error_betaN*100:.3f}%)',typeMsg = 'i')
         
-            # If the error is small enough, get out of the loop
-            # If more than 5 failed cases, assumed it is in a loop of fail-nofail and get out
-            if (error_betaN < thr_beta) or (np.sum(fails)>5):
+            # If the error is small enough and it's not a failed case, get out of the loop
+            if (error_betaN < thr_beta) and (not failed_case):
+                break
+            
+            # If many failed cases, assumed it is in a loop of fail-nofail and get out
+            if np.sum(fails)>3:
                 break
         
         # # TO HELP DEBUGGING
         # fig, ax = plt.subplots()
         # ax.plot(Beta, '-o', label='From profiles')
         # ax.plot(Beta_EPED, '-o', label='From EPED evaluation')
+        # for i in range(len(fails)):
+        #     if fails[i]:
+        #         ax.axvline(x=i, color='r', ls='--', lw=5.0)
         # ax.set_xlabel('Iteration')
         # ax.set_ylabel('$\\beta_N$')
         # ax.legend()
