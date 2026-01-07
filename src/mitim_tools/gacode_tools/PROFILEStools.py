@@ -591,6 +591,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_fluxsurfave_bp2,
         geo_fluxsurfave_bt2,
         bt_geo0,
+        failed_radii,
     ) = volp_surf_geo_vectorized(
         R,
         r,
@@ -609,6 +610,18 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_signb_in=signb,
         n_theta=n_theta,
     )
+    
+    # How to deal with failed radii?
+    if len(failed_radii) > 0:
+        print('Geometric factors calculation failed, '
+              'likely due to very extreme shaping that was not properly run by an equilibrium solver.',
+              f'Radii that failed: {failed_radii}, out of {len(r)-1}',
+              'To avoid use of failed radii, I will zero out <Bpol^2> which is the most sensitive quantity.',
+              'Extreme caution is advised for all other quantities such as dV/dr and <|grad r|>, and calculations relying on them',
+              'such as volume integrations or flux surface averages.',
+              typeMsg='w')
+        
+        geo_fluxsurfave_bp2[:, failed_radii] = 0.0
 
     """
 	from expro_util.f90 we have:
@@ -822,6 +835,14 @@ def volp_surf_geo_vectorized(
 
         geov_nsin[i] = (geov_bigr_r[i] * geov_bigr_t[i] + bigz_r[i] * bigz_t[i]) / geov_l_t[i]
 
+    '''
+    -----------------------------------------------------------------------------------------------------------------
+    The above calculation of the geov_grad_r can sometimes lead to negative values due to extreme shaping and this 
+    method of calculation. In those cases, if a poloidal angle leads to negative values, we flag the radii as failed.
+    '''
+    failed_radii = np.where(np.sum(geov_grad_r<0.0,axis=0) > 0)[0]
+    # ----------------------------------------------------------------------------------------------------------------
+
     c = 0.0
     for i in range(n_theta - 1):
         c += geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
@@ -893,7 +914,7 @@ def volp_surf_geo_vectorized(
             + geov_bt[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0
+    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0, failed_radii
 
 def xsec_area_RZ(R,Z):
     # calculates the cross-sectional area of the plasma for each flux surface
