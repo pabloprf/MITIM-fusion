@@ -845,8 +845,9 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
 
 def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005,print_msgs=True):
 
-    profiles_output = profiles #copy.deepcopy(profiles)
-
+    profiles_output = profiles
+    
+    # Determine coodinates
     x = profiles.profiles['rho(-)']
     xroa = profiles.derived['roa']
 
@@ -854,27 +855,42 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
         print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
         rhotop = xp_old
 
-    n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
-    fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n)
+    # Grab quantities useful for scaling
+    TiTimain_orig = profiles_output.profiles['ti(keV)'] / profiles_output.profiles['ti(keV)'][:, [0]]
+    nine_orig = profiles_output.profiles['ni(10^19/m^3)'] / profiles.profiles['ne(10^19/m^3)'][:, None]
 
+    # -------------------------------------------------------------
+    # Modify profiles
+    # -------------------------------------------------------------
+
+    # Modify Te
     profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa, print_msgs = print_msgs)
 
+    # Modify Ti
     profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa, print_msgs = print_msgs)
-    profiles_output.makeAllThermalIonsHaveSameTemp()
-
-    pos = np.argmin(np.abs(x-xp_old))
-    factor_keep = profiles_output.profiles['ni(10^19/m^3)'][pos,:]/profiles.profiles['ne(10^19/m^3)'][pos]
-
+    
+    # Modify ne
     profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa, print_msgs = print_msgs)
+    
+    # -------------------------------------------------------------
+    # Postprocessing
+    # -------------------------------------------------------------
     
     # Kepp the same ion concentration as before at the top
     for i in range(profiles_output.profiles['ni(10^19/m^3)'].shape[-1]):
-        nitop_20 = netop_20*factor_keep[i]
-        profiles_output.profiles['ni(10^19/m^3)'][:,i] = scale_profile_by_stretching(x,profiles_output.profiles['ni(10^19/m^3)'][:,i],rhotop,nitop_20*1E1,xp_old, label = f'ni{i}', roa = xroa, print_msgs = print_msgs)
+        profiles_output.profiles['ni(10^19/m^3)'][:,i] = profiles_output.profiles['ne(10^19/m^3)'] * nine_orig[:,i]
+    
+    # Make all thermal ions have the same temperature profile
+    profiles_output.makeAllThermalIonsHaveSameTemp()
+    
+    # Keep the same fast ion temperature profile, relative to the thermal ions:
+    for sp in range(len(profiles_output.Species)):
+        if profiles_output.Species[sp]["S"] == "fast":
+            profiles_output.profiles["ti(keV)"][:, sp] = profiles_output.profiles["ti(keV)"][:, 0] * TiTimain_orig[:, sp]
 
-    # ---------------------------------
+    # -------------------------------------------------------------
     # Re-derive
-    # ---------------------------------
+    # -------------------------------------------------------------
 
     profiles_output.derive_quantities(rederiveGeometry=False)
 

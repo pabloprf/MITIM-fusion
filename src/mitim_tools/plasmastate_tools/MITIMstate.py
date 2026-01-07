@@ -1233,9 +1233,7 @@ class mitim_state:
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm" and sp != refIon:
-                print(
-                    f"\t\t\t- Temperature forcing {self.Species[sp]['N']} --> {SpecRef}"
-                )
+                print(f"\t\t\t- Temperature forcing {self.Species[sp]['N']} --> {SpecRef}")
                 self.profiles["ti(keV)"][:, sp] = tiRef
 
     def scaleAllThermalDensities(self, scaleFactor=1.0):
