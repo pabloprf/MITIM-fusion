@@ -61,7 +61,7 @@ def rapids_evaluator(nn, core, p_base,
         p.profiles['delta(-)'] *= mutilier_delta
         
         # Squareness: for now reduce its magnitude proportionally to triangularity change
-        if scale_zeta:
+        if scale_zeta and mutilier_delta > 1.0:
             if np.sign(p.profiles['zeta(-)'][-1]) < 0:
                 p.profiles['zeta(-)'] /= mutilier_delta
             else:
@@ -269,7 +269,7 @@ def rapids_evaluator(nn, core, p_base,
         error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
 
         if error_betaN > thr_beta or failed_case:
-            raise Exception(f'Failed case or BetaN relative error too high: {error_betaN}>{thr_beta}, for parameters: {eped_evaluation}')
+            raise Exception(f'Failed case or BetaN relative error too high ({error_betaN} vs {thr_beta}), for parameters: {eped_evaluation}')
 
         # Calculate targets
         power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
