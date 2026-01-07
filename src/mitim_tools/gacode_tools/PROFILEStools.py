@@ -320,7 +320,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax10c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_cos):
+        for i, s in enumerate(self.shape_sin):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -342,7 +342,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax11c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_sin):
+        for i, s in enumerate(self.shape_cos):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -436,7 +436,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax3D
         self.plot_plasma_boundary(ax=ax, color=color)
         
-    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0, reflect = False):
+    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", color1=None, label = '', lw=1.0, lw1=2.0, reflect = False):
         
         if ax is None:
             plt.ion()
@@ -444,6 +444,9 @@ class gacode_state(MITIMstate.mitim_state):
             provided = False
         else:
             provided = True
+            
+        if color1 is None:
+            color1 = color
 
         for rho in surfaces_rho:
             ir = np.argmin(np.abs(self.profiles["rho(-)"] - rho))
@@ -454,7 +457,7 @@ class gacode_state(MITIMstate.mitim_state):
                     self.derived["Z_surface"][i_toroidal,ir, :],
                     "-",
                     lw=lw if rho<1.0 else lw1,
-                    c=color,
+                    c=color if rho<1.0 else color1,
                 )
                 if reflect:
                     # Reflect the surface across the midplane
@@ -463,7 +466,7 @@ class gacode_state(MITIMstate.mitim_state):
                         self.derived["Z_surface"][i_toroidal,ir, :],
                         "-",
                         lw=lw if rho<1.0 else lw1,
-                        c=color,
+                        c=color if rho<1.0 else color1,
                     )
 
         ax.axhline(y=0, ls="--", lw=0.2, c="k")
@@ -620,8 +623,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
               'Extreme caution is advised for all other quantities such as dV/dr and <|grad r|>, and calculations relying on them',
               'such as volume integrations or flux surface averages.',
               typeMsg='w')
-        
-        geo_fluxsurfave_bp2[:, failed_radii] = 0.0
+        geo_fluxsurfave_bp2[failed_radii] = 0.0
 
     """
 	from expro_util.f90 we have:

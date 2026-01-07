@@ -22,6 +22,7 @@ def rapids_evaluator(nn, core, p_base,
                      hide_prints=True,  # -> If True, only print warnings and the case flag
                      optional_flag="RAPIDS case ",  
                      analyze_distance_to_pb = False,
+                     scale_zeta=True, # Trick for now to fix negative jacobians when moving triangularity too much
                      **kwargs_rederive_geometry):
 
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
@@ -41,7 +42,6 @@ def rapids_evaluator(nn, core, p_base,
         # Change minor radius
         p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
         
-
         # Change elongation
         if kappa995 is not None:
             # If 995 available, use that
@@ -59,6 +59,13 @@ def rapids_evaluator(nn, core, p_base,
             # Otherwise, use the separatrix value
             mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
         p.profiles['delta(-)'] *= mutilier_delta
+        
+        # Squareness: for now reduce its magnitude proportionally to triangularity change
+        if scale_zeta:
+            if np.sign(p.profiles['zeta(-)'][-1]) < 0:
+                p.profiles['zeta(-)'] /= mutilier_delta
+            else:
+                p.profiles['zeta(-)'] *= mutilier_delta
         
         # Change magnetic field
         p.profiles['bcentr(T)'][0] = Bt
@@ -78,7 +85,6 @@ def rapids_evaluator(nn, core, p_base,
         area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
 
         # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
-        
         factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
         factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
         
