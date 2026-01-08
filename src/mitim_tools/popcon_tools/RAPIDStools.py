@@ -22,7 +22,7 @@ def rapids_evaluator(nn, core, p_base,
                      hide_prints=True,  # -> If True, only print warnings and the case flag
                      optional_flag="RAPIDS case ",  
                      analyze_distance_to_pb = False,
-                     scale_zeta=True, # Trick for now to fix negative jacobians when moving triangularity too much
+                     scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
                      **kwargs_rederive_geometry):
 
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
