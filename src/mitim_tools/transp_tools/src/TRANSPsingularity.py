@@ -474,27 +474,26 @@ def interpretRun(infoSLURM, log_file):
         """
         Case is not running (finished or failed)
         """
-        if (
+        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
+            status = 1
+            info["info"]["status"] = "finished"
+        elif (
             "Error termination" in "\n".join(log_file)
             ) or (
-            "Backtrace for this error:" in "\n".join(log_file)
-            ) or (
+            # "Backtrace for this error:" in "\n".join(log_file)
+            # ) or (
             "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
             ) or (
             "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
             ) or (
             "Segmentation fault - invalid memory reference" in "\n".join(log_file)
             ) or (
-            "Backtrace for this error:" in "\n".join(log_file)
-            ) or (
+            # "Backtrace for this error:" in "\n".join(log_file)
+            # ) or (
             "*** End of error message ***" in "\n".join(log_file)
             ):
             status = -1
             info["info"]["status"] = "stopped"
-        # Good case
-        elif "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
-            status = 1
-            info["info"]["status"] = "finished"
         else:
             print("\t- No error nor termination found, assuming it is still running",typeMsg="w",)
             pringLogTail(log_file, typeMsg="i")
