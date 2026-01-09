@@ -41,7 +41,7 @@ plasma:
 
   parameters:
 
-    # Global plasma parameters (initialization_type = geqdsk, Bt and Ip must be null, otherwise they will override the geqdsk values)
+    # Global plasma parameters (if initialization_type = geqdsk, Bt and Ip must be null, otherwise they will override the geqdsk values)
     Bt: 12.2 
     Ip: 8.7 
 
@@ -111,7 +111,7 @@ plasma:
       fmini: 0.05
 
       # If type = ICRH: Antenna frequency (in MHz)
-      freq_ICH: null    # If null, estimate on-axis deposition based on field and minority
+      freq_ICH: null    # If null, estimate on-axis deposition based on field and minority species resonance
 
       # If type = gaussian_sources: Gaussian source parameters
       nu_source: 5.0  # Peaking factor for the source profile
@@ -309,8 +309,9 @@ maestro:
     parameters_prepare:
 
       # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
-      machine_initialization: CMOD 
-      transition_window: 0.1
+      machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
+      transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization
+      currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
 
       # Simulation length
       flattop_window: 2.5   
@@ -329,6 +330,7 @@ maestro:
 
       # Extract TORIC & NUBEAM additional files for post-analysis
       extractAC: False     
+      time_before_end: 0.001
 
     # Function to modify parameters of the namelist based on the rest of namelist
     preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
