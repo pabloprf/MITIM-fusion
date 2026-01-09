@@ -47,6 +47,7 @@ class transp_beat(beat):
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
         transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
+        machine_initialization = 'CMOD',
         **transp_namelist
         ):
         '''
@@ -104,7 +105,7 @@ class transp_beat(beat):
         # Additional operations
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self._additional_operations_add_initialization()
+        self._additional_operations_add_initialization(machine_initialization = machine_initialization)
         
         # ICRF on
         PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]

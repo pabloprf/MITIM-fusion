@@ -308,10 +308,16 @@ maestro:
 
     parameters_prepare:
 
+      # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
+      machine_initialization: CMOD 
       transition_window: 0.1
 
-      flattop_window: 2.5      
-      extractAC: False     
+      # Simulation length
+      flattop_window: 2.5   
+
+      # TRANSP namelist parameters
+      useNUBEAMforAlphas: True
+      Pich: True
       dtOut_ms : 10.0
       dtIn_ms : 10.0
       nzones : 60
@@ -320,8 +326,9 @@ maestro:
       MCparticles : 1.e+4
       toric_ntheta : 64  
       toric_nrho : 128
-      useNUBEAMforAlphas: True
-      Pich: True
+
+      # Extract TORIC & NUBEAM additional files for post-analysis
+      extractAC: False     
 
     # Function to modify parameters of the namelist based on the rest of namelist
     preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
@@ -339,13 +346,25 @@ maestro:
     # A soft TRANSP beat must be just for current diffusion, no alphas nor ICRF
     parameters_prepare:
 
-        flattop_window: 20.0 # 20 seconds flattop
+        flattop_window: 20.0 # Long flattop to allow for current diffusion
 
+        Pich: False
+        useNUBEAMforAlphas: False
+      
         dtEquilMax_ms: 100.0
         dtHeating_ms: 100.0
         dtCurrentDiffusion_ms: 100.0
         dtOut_ms: 100.0
         dtIn_ms: 100.0
+     
+  transp_final:
+
+    beat_type: transp
+
+    base_module: transp
+
+    # A final TRANSP beat must be as a normal TRANSP beat, but extracting AC files
+    parameters_prepare:
+
+        extractAC: True
         
-        useNUBEAMforAlphas: False
-        Pich: False
