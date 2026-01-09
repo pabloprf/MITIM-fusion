@@ -18,7 +18,7 @@ try:
 
     # -----------------------------
 except ImportError:
-    print(" > PyQt6 module or backends could not be loaded by MITIM, notebooks will not work but I let you continue",typeMsg="w",)
+    print(" > PyQt6 module or backends could not be loaded by MITIM, plotting notebooks will not work but I let you continue",typeMsg="w",)
 
     class QTabWidget:
         pass

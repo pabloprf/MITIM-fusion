@@ -223,7 +223,6 @@ class EPED:
 
         for output_file in output_files:
 
-
             with xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4') as ds:
                 data = postprocess_eped(ds, 'G', 0.03)
 
@@ -396,6 +395,10 @@ def setup_array_batch(launch_path, rpaths, maxqueue=5):
 
 
 def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
+    '''
+    Note that this postprocessing uses the diagmanetic stabilization rule to determine stability, may not match EPED
+    '''
+
 
     coords = {k: data[k].values for k in ['dim_height', 'dim_widths', 'dim_nmodes', 'dim_rho', 'dim_three', 'dim_one']}
     data = data.assign_coords(coords)
@@ -437,6 +440,8 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
         if np.any(data['tesep'].data < 0):
             data['tesep'] = (dims, np.array([75.0]))
             data['nesep'] = 0.25 * data['neped']
+    else:
+        print(f'\t> Warning: No stable solution found in EPED postprocessing using the diamagnetic stabilization rule ({diamagnetic_stab_rule} > {stability_threshold}), proceed with caution', typeMsg='w')
 
     return data
 
