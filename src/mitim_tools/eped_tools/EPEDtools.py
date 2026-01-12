@@ -9,13 +9,15 @@ from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools, IOtools, GUItool
 import numpy as np
 import pandas as pd
 import xarray as xr
+from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class EPED:
     def __init__(
             self,
-            folder
+            folder,
+            template_config_file = None,
             ):
         
         self.folder = Path(folder) if folder is not None else None # None for just reading
@@ -26,6 +28,14 @@ class EPED:
         self.results = {}
 
         self.inputs_potential = ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep', 'zeta', 's_three', 's_four']
+
+        if template_config_file:
+            self.template_config_file = IOtools.expandPath(template_config_file)
+        else:
+            self.template_config_file = IOtools.expandPath(__mitimroot__ / "templates" / "eped.config")
+            
+            
+        self.required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
 
     def run(
             self,
@@ -38,8 +48,16 @@ class EPED:
             cold_start = False,
             job_array_limit = 5,
             removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
+            eped_params_override = None,
             ):
-
+        '''
+        Notes:
+            - eped_params_override: dictionary with EPED input parameters to override in the template config file
+                e.g. eped_params_override = {
+                    'NMODES': [5, 6, 8, 10, 15, 20, 30],
+                    'TEPED_BOUND': [0.1, 1.4, 0.01],
+                    }
+        '''
         # ------------------------------------
         # Prepare job
         # ------------------------------------
@@ -119,11 +137,17 @@ class EPED:
 
             # Preparation of the run folder by copying the template files
             eped_input_file = 'eped.input.1'
-            required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
-            shellPreCommands.append(f'cp {required_files_folder}/* {self.eped_job.folderExecution}/{subfolder}/. && mv {self.eped_job.folderExecution}/{subfolder}/{eped_input_file} {self.eped_job.folderExecution}/{subfolder}/eped.input')
-
+            eped_config_file = 'eped.config1'
+            
             # Write input file to EPED, determining the expected output file
-            output_file = self._prep_input_file(folder_case,input_params=input_params_new,eped_input_file=eped_input_file)
+            output_file = self._prep_input_files(folder_case,input_params=input_params_new,eped_input_file=eped_input_file, eped_config_file=eped_config_file, eped_params_override=eped_params_override)
+            
+            # Before running, copy the files from EPED source, and copy the input file to the expected name, and the config file
+            shellPreCommands.append(
+                f'cp {self.required_files_folder}/* {self.eped_job.folderExecution}/{subfolder}/. ' +
+                f'&& mv {self.eped_job.folderExecution}/{subfolder}/{eped_input_file} {self.eped_job.folderExecution}/{subfolder}/eped.input ' +
+                f'&& cp {self.eped_job.folderExecution}/{subfolder}/{eped_config_file} {self.eped_job.folderExecution}/{subfolder}/eped.config'
+                )
 
             output_files.append(output_file.as_posix())
             folder_cases.append(folder_case)
@@ -165,12 +189,18 @@ class EPED:
         for i in range(len(output_files)):
             os.system(f'mv {self.folder_run / output_files[i]} {self.folder_run / f"output_run{i+1}.nc"}')
 
-    def _prep_input_file(
+    def _prep_input_files(
             self,
             folder_case,
             input_params = None,
             eped_input_file = 'eped.input.1', # Do not call it directly 'eped.input' as it may be overwritten by the job script template copying commands
+            eped_config_file = 'eped.config1',
+            eped_params_override = None,
             ):
+        
+        # ----------------------------------------
+        # EPED input file
+        # ----------------------------------------
         
         shot = 0
         timeid = 0
@@ -202,6 +232,15 @@ class EPED:
         
         # Write the input file
         f90nml.write(nml, folder_case / eped_input_file, force=True)
+
+        # ----------------------------------------
+        # EPED config file
+        # ----------------------------------------
+        modify_eped_config(self.template_config_file, folder_case / eped_config_file, eped_params_override)
+            
+        # ----------------------------------------
+        # EPED output file
+        # ----------------------------------------
 
         # What's the expected output file?
         output_file = folder_case.relative_to(self.folder_run) / 'eped' / 'SUMMARY' / f'e{shot:06d}.{timeid:05d}'
@@ -560,6 +599,56 @@ def setup_array_batch(launch_path, rpaths, maxqueue=5):
 
     return batch_file
 
+
+def modify_eped_config(config_file, file_to_write, parameters_to_change=None):
+    """Minimal EPED config editor.
+
+    Replaces lines like "NMODES = ..." with the provided values and writes a new file.
+    Preserves indentation and inline "# ..." comments.
+    """
+
+    config_file = Path(config_file)
+    file_to_write = Path(file_to_write)
+    parameters_to_change = {} if parameters_to_change is None else dict(parameters_to_change)
+
+    text = config_file.read_text()
+
+    def fmt(v):
+        if v is None:
+            return ""
+        try:
+            if isinstance(v, np.generic):
+                v = v.item()
+        except Exception:
+            pass
+        if isinstance(v, (list, tuple, set, np.ndarray)):
+            return " ".join(str(x) for x in v)
+        if isinstance(v, str):
+            s = v.strip()
+            if len(s) >= 2 and s[0] == "{" and s[-1] == "}":
+                s = s[1:-1].replace(",", " ")
+                s = " ".join(s.split())
+                return s
+            return v
+        return str(v)
+
+    for key, value in parameters_to_change.items():
+        rhs = fmt(value)
+        # Replace all occurrences of KEY = ... (any indentation), keep inline comments
+        pattern = re.compile(
+            rf"^(?P<indent>\s*){re.escape(str(key))}\s*=\s*(?P<val>.*?)(?P<comment>\s+#.*)?$",
+            re.M,
+        )
+
+        def _repl(m):
+            indent = m.group("indent")
+            comment = m.group("comment") or ""
+            return f"{indent}{key} = {rhs}{comment}"
+
+        text = pattern.sub(_repl, text)
+
+    file_to_write.parent.mkdir(parents=True, exist_ok=True)
+    file_to_write.write_text(text)
 
 def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
     '''
