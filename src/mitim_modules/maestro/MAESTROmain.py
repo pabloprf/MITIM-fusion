@@ -413,7 +413,8 @@ class maestro:
                     print(msg)
                 except FileNotFoundError:
                     print(f'\t\t- Could not plot beat #{counter} because some files are missing', typeMsg = 'w')
-                
+                except Exception as e:
+                    print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
 
     def _plot_results(self, fn):
 

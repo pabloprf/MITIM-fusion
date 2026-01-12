@@ -1,5 +1,4 @@
 import os
-import matplotlib.pyplot as plt
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools import __mitimroot__
 
@@ -38,9 +37,15 @@ eped.run(
 
 )
 
-eped.read(subfolder='case1')
+eped.read(
+    subfolder='case1'
+    )
 
-eped.plot(labels=['case1'])
+eped.plot(
+    labels=['case1'],
+    scan_params = ['neped'],
+    scan_params_labels=['$n_{e,ped}\\ (10^{19}m^{-3})$']
+    )
 
 eped.fn.show()
 

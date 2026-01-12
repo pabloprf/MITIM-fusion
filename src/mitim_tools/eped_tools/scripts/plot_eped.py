@@ -7,17 +7,19 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
+    parser.add_argument("--param", type=str, default="neped", help="Parameter that was scanned.")
 
     args = parser.parse_args()
 
     folders = [IOtools.expandPath(folder) for folder in args.folders]
+    param = args.param
 
     eped = EPEDtools.EPED(folder=None)
 
     for i, folder in enumerate(folders):
         eped.read(subfolder=folder, label=f"run{i}")
 
-    eped.plot(labels=[f"run{i}" for i in range(len(folders))])
+    eped.plot(labels=[f"run{i}" for i in range(len(folders))], scan_params=[param])
 
     eped.fn.show()
 

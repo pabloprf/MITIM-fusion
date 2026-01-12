@@ -213,11 +213,17 @@ class EPED:
             subfolder = 'run1',
             print_results = True,
             label = None,
+            specific_folder = None,
             ):
 
         self.results[label if label is not None else subfolder] = {}
 
-        where_is_this = self.folder / subfolder if self.folder is not None else Path(subfolder)
+        if specific_folder is not None:
+            folder = Path(specific_folder)
+        else:
+            folder = self.folder
+
+        where_is_this = folder / subfolder if folder is not None else Path(subfolder)
 
         output_files = sorted(list(where_is_this.glob("*.nc")))
 
@@ -254,64 +260,222 @@ class EPED:
             print('\t\t\tptop: Not available',typeMsg='w')
 
     def plot(
+        self,
+        labels = ['run1'],
+        scan_params = ['neped'],
+        scan_params_labels = ['$n_{e,ped}# ($10^{19}m^{-3}$)'],
+        colors = None,
+        fn = None,
+        **kwargs_plot_prediction,
+    ):
+        
+        if fn is None:
+            GRAPHICStools.prep_figure_papers(size=14)
+            self.fn = GUItools.FigureNotebook("EPED",  geometry="1600x900")
+            
+        if colors is None:
+            colors = GRAPHICStools.listColors()
+            
+        # Figure out if labels have the same scan parameter
+        if np.unique(scan_params).shape[0] > 1:
+            scan_params_label = 'X (see legend for parameter that was scanned)'
+            additional_labels = [f' - {label} scan' for label in scan_params_labels]
+        else:
+            scan_params_label = scan_params_labels[0]
+            additional_labels = None
+            
+        
+        fig = self.fn.add_figure(label="Pedestal Top")
+        axs = fig.subplots(2, 1)
+        self.plot_prediction(
+            labels = labels,
+            scan_params = scan_params,
+            scan_params_label = scan_params_label,
+            additional_labels= additional_labels,
+            axs = axs,
+            colors = colors,
+            **kwargs_plot_prediction
+        )
+        
+        for i, label in enumerate(labels):
+            fig = self.fn.add_figure(label="EPED Stability - " + label)
+            self.plot_g_stability(
+                label = label,
+                fig = fig,
+                scan_param = scan_params[i],
+                color = colors[i],
+            )
+
+    def plot_prediction(
             self,
             labels = ['run1'],
+            scan_params =['neped'],
+            scan_params_label = '$n_{e,ped}# ($10^{19}m^{-3}$)',
             axs = None,
             plot_labels = None,
             legend_title = None,
             legend_location = 'best',   
+            ms = 8,
+            colors = None,
+            additional_labels = None,
             ):
 
+        # --------------------
+        # Prepare graphics
+        # --------------------
+        
         if axs is None:
+            GRAPHICStools.prep_figure_papers(size=15)
             self.fn = GUItools.FigureNotebook("EPED",  geometry="900x900")
             fig = self.fn.add_figure(label="Pedestal Top")
             axs = fig.subplots(2, 1)
 
-        colors = GRAPHICStools.listColors()
-
-
+        if colors is None:
+            colors = GRAPHICStools.listColors()
 
         for i,name in enumerate(labels):
 
             data = self.results[name]
 
-            neped, ptop, wtop = [], [], []
+            # --------------------
+            # Graph parameters of this scan
+            # --------------------
+            
+            x, ptop, wtop = [], [], []
             sublabels = data.keys()
             try:  
                 sublabels = sorted(sublabels, key=lambda x: int(x.split('run')[1]))
             except: 
                 print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
+            
             for sublabel in sublabels:
-                neped.append(float(data[sublabel]['neped']))
-                if 'ptop' in data[sublabel].data_vars:
-                    ptop.append(float(data[sublabel]['ptop']))
-                    wtop.append(float(data[sublabel]['wptop']))
-                else:
-                    ptop.append(np.nan)
-                    wtop.append(np.nan)
+                
+                # Grab scanning parameter
+                x.append(float(data[sublabel][scan_params[i]]))
+                
+                # Grab outputs
+                ptop.append(float(data[sublabel]['ptop']))
+                wtop.append(float(data[sublabel]['wptop']))
+            
+            # --------------------
+            # Plot results of the scan
+            # --------------------
 
-            axs[0].plot(neped,ptop,'-s', c = colors[i], ms = 10)
-            axs[1].plot(neped,wtop,'-s', c = colors[i], ms = 10)
+            axs[0].plot(x,ptop,'-s', c = colors[i], ms = ms, label = name + additional_labels[i] if additional_labels is not None else name)
+            axs[1].plot(x,wtop,'-s', c = colors[i], ms = ms)
+        
+            # Plot those with nans as zero with a red cross
+            x_nan = [xj for j,xj in enumerate(x) if np.isnan(ptop[j])]
+            if len(x_nan) > 0:
+                ptop_nan = [0.0 for j,xj in enumerate(x) if np.isnan(ptop[j])]
+                wtop_nan = [0.0 for j,xj in enumerate(x) if np.isnan(wtop[j])]
+                axs[0].plot(x_nan,ptop_nan,'x', c = colors[i], ms = ms, mew=3, label = 'Problematic' + additional_labels[i] if additional_labels is not None else 'Problematic')
+                axs[1].plot(x_nan,wtop_nan,'x', c = colors[i], ms = ms, mew=3)
 
         ax = axs[0]
-        ax.set_xlabel('neped ($10^{19}m^{-3}$)')
-        ax.set_ylabel('ptop (kPa)')
+        ax.set_xlabel(scan_params_label)
+        ax.set_ylabel('$p_{top}$ (kPa)')
         ax.set_ylim(bottom=0)
-        plot_labels = plot_labels if plot_labels is not None else labels
-        ax.legend(plot_labels, loc=legend_location, title =legend_title)
+
+        ax.legend(loc=legend_location, title =legend_title)
 
         GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1]
 
-        ax.set_xlabel('neped ($10^{19}m^{-3}$)')
-        ax.set_ylabel('wptop (psi_pol)')
+        ax.set_xlabel(scan_params_label)
+        ax.set_ylabel('$w_{top}$ ($\\psi_{pol,N}$)')
         ax.set_ylim(bottom=0)
-        ax.legend(plot_labels, loc=legend_location, title=legend_title)
+        ax.legend(loc=legend_location, title=legend_title)
         GRAPHICStools.addDenseAxis(ax)
 
         plt.tight_layout()
+        
+    def plot_g_stability(
+        self,
+        label = 'run1',
+        scan_param = 'neped',
+        fig = None,
+        axs = None,
+        g_base = 0.03,
+        color = 'b',
+    ):
+        
+        data_master = self.results[label]
+        
+        if axs is None:
+            
+            max_sublabels = len(data_master.keys())
 
+            if fig is None:
+                GRAPHICStools.prep_figure_papers(size=14)
+                self.fn = GUItools.FigureNotebook("EPED Stability", geometry="1900x1600")
+                fig = self.fn.add_figure(label="EPED Stability")
+
+            # Arrange panels in a near-square grid, filled left-to-right, top-to-bottom
+            ncols = int(np.ceil(np.sqrt(max_sublabels)))
+            nrows = int(np.ceil(max_sublabels / ncols))
+
+            mosaic = []
+            k = 1
+            for _ in range(nrows):
+                row = []
+                for _ in range(ncols):
+                    if k <= max_sublabels:
+                        row.append(f"ax{k}")
+                        k += 1
+                    else:
+                        row.append(".")
+                mosaic.append(row)
+
+            axs = fig.subplot_mosaic(mosaic, sharex=False, sharey=False)
+            # Extra breathing room between panels
+            fig.subplots_adjust(wspace=0.4, hspace=0.9)
+
+        
+        # Plot each sublabel into its panel index; overlay curves from each label
+        
+        sublabels = data_master.keys()
+        try:  
+            sublabels = sorted(sublabels, key=lambda x: int(x.split('run')[1]))
+        except: 
+            print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
+        
+        for j, sublabel in enumerate(sublabels):
+            
+            ax = axs[f'ax{j+1}']
+            
+            data = data_master[sublabel]
+        
+            n = np.array(data['nmodes'])
+            h = np.array(data['teped_list']) * 1E-3  # to keV
+            
+            g = np.array(data['gamma'])
+            
+            colors = GRAPHICStools.listColors()
+            
+            for mode in range(n.shape[0]):
+                ax.plot(h, g[:, mode], '-', c=colors[mode], lw=0.5, label=f'n = {n[mode]}' if j==0 else None)
+            
+            if j == 0:
+                ax.legend(loc='upper right', fontsize=8)
+            
+            # Plot prediction
+            ax.plot([float(data['tped'])], [g_base], '-s', c=color, ms=12)
+            
+            # Plot criterion
+            ax.axhline(g_base, color='k', ls='--', lw=1.0)
+            
+            # Plot starting point
+            ax.axvline(h[0], color='k', ls='--', lw=0.5)
+            
+            ax.set_xlabel('$T_{e,ped}$ (keV)')
+            ax.set_ylabel('$\\gamma/\\omega_A$')
+            ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
+            ax.set_ylim([0,g_base*2.0])
+            ax.set_xlim(left=0)
+            GRAPHICStools.addDenseAxis(ax)
+            
 # ************************************************************************************************************
 # ************************************************************************************************************
 
@@ -442,6 +606,14 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
             data['nesep'] = 0.25 * data['neped']
     else:
         print(f'\t> Warning: No stable solution found in EPED postprocessing using the diamagnetic stabilization rule ({diamagnetic_stab_rule} > {stability_threshold}), proceed with caution', typeMsg='w')
+        data['stability_index'] = (dims, np.array([-1]))
+        data['pped'] = (dims, np.array([np.nan]))
+        data['tped'] = (dims, np.array([np.nan]))
+        data['ptop'] = (dims, np.array([np.nan]))
+        data['ttop'] = (dims, np.array([np.nan]))
+        data['wpped'] = (dims, np.array([np.nan]))
+        data['wptop'] = (dims, np.array([np.nan]))
+        data['wrped'] = (dims, np.array([np.nan]))
 
     return data
 
