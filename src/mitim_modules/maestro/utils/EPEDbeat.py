@@ -37,6 +37,7 @@ class eped_beat(beat):
             corrections_set = None,   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
             ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
             TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
+            eped_params_override = None
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -78,6 +79,8 @@ class eped_beat(beat):
         self.nesep_20 = nesep_20 
 
         self.corrections_set = corrections_set
+        
+        self.eped_params_override = eped_params_override
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -106,7 +109,7 @@ class eped_beat(beat):
         shutil.copy2(self.initialize.folder / "input.gacode", self.folder / "input.gacode")
 
         # -------------------------------------------------------
-        # Run the NN
+        # Run EPED
         # -------------------------------------------------------
 
         eped_results = self._run(loopBetaN = 1, store_scan=True, nproc_per_run=kwargs.get('cpus', 16), cold_start=kwargs.get('cold_start', False))
@@ -339,7 +342,7 @@ class eped_beat(beat):
                 if not self.use_full_EPED:
                     ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
                 else:
-                    ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, nproc_per_run=nproc_per_run, cold_start=cold_start)
+                    ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=self.eped_params_override, nproc_per_run=nproc_per_run, cold_start=cold_start)
                     
                     if store_scan and self.nn==None:
                         store_scan = False
@@ -458,7 +461,7 @@ class eped_beat(beat):
 
         return eped_results
 
-    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, nproc_per_run=64, cold_start=True):
+    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, eped_params_override=None, nproc_per_run=64, cold_start=True):
         '''
             Run the full EPED code with the given inputs.
             Returns ptop_kPa and wtop_psipol.
@@ -543,6 +546,7 @@ class eped_beat(beat):
             input_params = input_params,
             nproc_per_run = nproc_per_run,
             cold_start = cold_start,
+            eped_params_override = eped_params_override,
         )
 
         eped.read(subfolder='case1')
@@ -629,7 +633,6 @@ class eped_beat(beat):
             axs[3].axhline(loaded_results['ptop_kPa']*1E-3, color='k', ls='--',lw=2)
 
         GRAPHICStools.adjust_figure_layout(fig)
-
 
         # Full EPED?
         if (self.folder_output / 'output_run1.nc').exists():
