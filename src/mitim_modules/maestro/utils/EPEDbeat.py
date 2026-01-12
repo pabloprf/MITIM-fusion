@@ -115,7 +115,7 @@ class eped_beat(beat):
         # Save stuff
         # -------------------------------------------------------
 
-        np.save(self.folder_output / 'eped_results.npy', eped_results)
+        np.save(self.folder / 'eped_results.npy', eped_results)
 
         self.rhotop = eped_results['rhotop']
 
@@ -554,8 +554,21 @@ class eped_beat(beat):
         
     def finalize(self, **kwargs):
         
-        self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
+        # Remove output folders
+        for item in self.folder_output.glob('*'):
+            if item.is_file():
+                item.unlink(missing_ok=True)
+            elif item.is_dir():
+                IOtools.shutil_rmtree(item)
 
+        # Copy eped run to outputs
+        shutil.copytree(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
+        
+        # Copy results to output folder
+        shutil.copy2(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
+        
+        # Write profiles to output folder
+        self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
         self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
@@ -617,6 +630,14 @@ class eped_beat(beat):
 
         GRAPHICStools.adjust_figure_layout(fig)
 
+
+        # Full EPED?
+        if (self.folder_output / 'output_run1.nc').exists():
+            eped = EPEDtools.EPED(folder=self.folder_output)
+            eped.read(subfolder='.', label='full_eped')
+            eped.plot(fn=fn, labels=['full_eped'], tab_color=counter)
+
+        # Scan results?
         if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
             for ikey in ['ptop_kPa', 'wtop_psipol']:
                 fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)

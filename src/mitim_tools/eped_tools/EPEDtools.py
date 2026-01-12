@@ -266,12 +266,15 @@ class EPED:
         scan_params_labels = ['$n_{e,ped}# ($10^{19}m^{-3}$)'],
         colors = None,
         fn = None,
+        tab_color=0,
         **kwargs_plot_prediction,
     ):
         
         if fn is None:
             GRAPHICStools.prep_figure_papers(size=14)
             self.fn = GUItools.FigureNotebook("EPED",  geometry="1600x900")
+        else:
+            self.fn = fn
             
         if colors is None:
             colors = GRAPHICStools.listColors()
@@ -285,7 +288,7 @@ class EPED:
             additional_labels = None
             
         
-        fig = self.fn.add_figure(label="Pedestal Top")
+        fig = self.fn.add_figure(label="Pedestal Top", tab_color=tab_color)
         axs = fig.subplots(2, 1)
         self.plot_prediction(
             labels = labels,
@@ -298,7 +301,7 @@ class EPED:
         )
         
         for i, label in enumerate(labels):
-            fig = self.fn.add_figure(label="EPED Stability - " + label)
+            fig = self.fn.add_figure(label="EPED Stability - " + label, tab_color=tab_color)
             self.plot_g_stability(
                 label = label,
                 fig = fig,

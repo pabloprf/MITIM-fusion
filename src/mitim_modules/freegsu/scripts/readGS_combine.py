@@ -1,5 +1,5 @@
 """
-This script combines runs (using the same principles as in the read optimizaiton command in opt_tools), taking various together
+This script combines runs (using the same principles as in the read optimization command in opt_tools), taking various together
 and joining them in the same one, to be able to do sweep plotting stuff.
 
 e.g.

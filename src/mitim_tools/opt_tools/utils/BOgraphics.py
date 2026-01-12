@@ -2002,7 +2002,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         ms = 3
 
-        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the optimization_results points
+        # Note: Remember that it is possible that the model mean is not the same as during optimization because of the resolution of the optimization_results points
 
         ax = axs[2, 0]
         ax.plot(x, yT.mean(axis=1), "-s", label="mean", c="r", markersize=ms)
