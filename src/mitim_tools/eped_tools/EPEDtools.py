@@ -263,7 +263,7 @@ class EPED:
         self,
         labels = ['run1'],
         scan_params = ['neped'],
-        scan_params_labels = ['$n_{e,ped}# ($10^{19}m^{-3}$)'],
+        scan_params_labels = ['$n_{e,ped}$ ($10^{19}m^{-3}$)'],
         colors = None,
         fn = None,
         tab_color=0,
