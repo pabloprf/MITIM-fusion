@@ -37,7 +37,7 @@ class eped_beat(beat):
             corrections_set = None,   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
             ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
             TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
-            eped_params_override = None
+            eped_params_override = None,
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
