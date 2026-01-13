@@ -1744,7 +1744,7 @@ class mitim_state:
         print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
 
-    def enforceQuasineutrality(self, using_ion = None):
+    def enforceQuasineutrality(self, using_ion = None, threshold_check=1E-10):
         print(f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",typeMsg="i",)
 
         # What's the lack of quasineutrality?
@@ -1772,6 +1772,15 @@ class mitim_state:
             self.profiles["ni(10^19/m^3)"][:, using_ion] += ne_missing
             new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, using_ion])
 
+<<<<<<< Updated upstream
+=======
+        # Check if quasineutrality enforcement led to negative ion densities (e.g. very edge)
+        for i in range(self.profiles["ni(10^19/m^3)"].shape[-1]):
+            if (self.profiles["ni(10^19/m^3)"][:,i]<threshold_check).any():
+                print(f'\t> Negative ion density for ion #{i} found... clipping to {threshold_check}', typeMsg="w")
+                self.profiles["ni(10^19/m^3)"][:,i] = self.profiles["ni(10^19/m^3)"][:,i].clip(threshold_check)
+
+>>>>>>> Stashed changes
         print(f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)")
 
         self.derive_quantities(rederiveGeometry=False)
