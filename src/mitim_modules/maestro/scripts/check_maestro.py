@@ -1,5 +1,4 @@
 # Script created by ChatGPT 4.5
-
 from pathlib import Path
 import argparse
 import re
@@ -7,10 +6,59 @@ import os
 import time
 import subprocess
 from datetime import datetime
-import fnmatch
 from IPython import embed
 
-def check_cases(folders):
+def clipstr(txt, chars=40):
+    if not isinstance(txt, str):
+        txt = f"{txt}"
+    return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
+
+def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
+    """Return a mapping of SLURM jobid -> info by running `squeue` once.
+
+    Keys in the returned dict include: state, submit_time, cores, partition.
+    If `squeue` is unavailable or fails, returns an empty dict.
+    """
+    if user is None:
+        user = os.environ.get("USER")
+    if not user:
+        return {}
+
+    try:
+        # %i: jobid, %T: state, %V: submit time, %C: CPUs, %P: partition
+        squeue_out = subprocess.run(
+            ["squeue", "-u", user, "-o", "%i|%T|%V|%C|%P", "-h"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {}
+
+    if squeue_out.returncode != 0 or not squeue_out.stdout:
+        return {}
+
+    jobs: dict[str, dict[str, str]] = {}
+    for raw_line in squeue_out.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|")
+        if len(parts) != 5:
+            continue
+        job_id, state, submit_time, cores, partition = parts
+        job_id = job_id.strip()
+        if not job_id:
+            continue
+        jobs[job_id] = {
+            "state": state.strip(),
+            "submit_time": submit_time.strip(),
+            "cores": cores.strip(),
+            "partition": partition.strip(),
+        }
+    return jobs
+
+def check_cases(folders, chars_folder_clip=500):
 
     colors = {
         "PORTALS": "\033[31m",        # red
@@ -25,12 +73,29 @@ def check_cases(folders):
 
     folders_clean = []
     for pattern in folders:
-        parent = Path(pattern).parent
-        parent = parent if parent != Path('.') else Path.cwd()
-        matched_folders = [f for f in parent.iterdir() if fnmatch.fnmatch(f.name, Path(pattern).name)]
-        folders_clean.extend(matched_folders)
+        pattern_path = Path(pattern).expanduser()
+        name_pattern = pattern_path.name
 
-    folders = folders_clean
+        has_glob = any(ch in name_pattern for ch in ("*", "?", "["))
+        if has_glob:
+            parent = pattern_path.parent
+            parent = parent if parent != Path(".") else Path.cwd()
+            folders_clean.extend([p for p in parent.glob(name_pattern) if p.is_dir()])
+        else:
+            candidate = pattern_path
+            if not candidate.is_absolute():
+                candidate = Path.cwd() / candidate
+            if candidate.is_dir():
+                folders_clean.append(candidate)
+
+    # De-duplicate while preserving order
+    folders = []
+    seen: set[str] = set()
+    for p in folders_clean:
+        key = str(p)
+        if key not in seen:
+            seen.add(key)
+            folders.append(p)
 
     rows_running = []
     rows_finished = []
@@ -38,12 +103,17 @@ def check_cases(folders):
 
     header = ("Folder", "Last Beat", "Type", "Details", "Job Status")
 
+    # Cache SLURM queue info once (fast) instead of `squeue -j <id>` per folder (slow).
+    squeue_by_jobid = get_squeue_by_jobid()
+
     for folder in folders:
+        if not folder.is_dir():
+            continue
         beats_folder = folder / 'Beats'
 
-        if not safe_exists(beats_folder):
+        if not beats_folder.exists(): #safe_exists(beats_folder):
             mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((str(folder), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
+            rows_failed.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
             continue
 
         pattern = re.compile(r'Beat_(\d+)')
@@ -65,15 +135,22 @@ def check_cases(folders):
                 job_match = re.search(r'SLURM job (\d+)', first_line)
                 if job_match:
                     job_id = job_match.group(1)
-                    squeue_out = subprocess.run(["squeue", "-j", job_id, "-o", "%T|%V|%C|%P", "-h"],
-                                                capture_output=True, text=True)
-                    if squeue_out.stdout.strip():
-                        state, submit_time, cores, partition = squeue_out.stdout.strip().split('|')
-                        submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
-                        time_in_queue = datetime.now() - submit_dt
-                        hours = time_in_queue.days * 24 + time_in_queue.seconds // 3600
-                        minutes = (time_in_queue.seconds % 3600) // 60
-                        job_status = f"{state.strip()} for {hours}h {minutes}m ({cores} cores on {partition})"
+                    job_info = squeue_by_jobid.get(job_id)
+                    if job_info:
+                        state = job_info.get("state", "").strip()
+                        submit_time = job_info.get("submit_time", "").strip()
+                        cores = job_info.get("cores", "").strip()
+                        partition = job_info.get("partition", "").strip()
+
+                        # SLURM submit time formats vary by site/config; keep a safe fallback.
+                        try:
+                            submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
+                            time_in_queue = datetime.now() - submit_dt
+                            hours = time_in_queue.days * 24 + time_in_queue.seconds // 3600
+                            minutes = (time_in_queue.seconds % 3600) // 60
+                            job_status = f"{state} for {hours}h {minutes}m ({cores} cores, {partition})"
+                        except Exception:
+                            job_status = f"{state} (submitted {submit_time}) ({cores} cores on {partition})"
 
         if (outputs_folder / 'beat_final').exists() and slurm_output.exists():
             mod_time = datetime.fromtimestamp((outputs_folder / 'beat_final').stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
@@ -82,12 +159,12 @@ def check_cases(folders):
             for line in lines:
                 if '* MAESTRO took' in line:
                     txt = line.split('* MAESTRO took')[-1].strip()
-            rows_finished.append((str(folder), "FINISHED", last_beat.name, txt, f"completed on {mod_time}"))
+            rows_finished.append((clipstr(folder, chars=chars_folder_clip), "FINISHED", last_beat.name, txt, f"completed on {mod_time}"))
             continue
 
         if not job_status and not (outputs_folder / 'beat_final').exists():
             mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((str(folder), last_beat.name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
+            rows_failed.append((clipstr(folder, chars=chars_folder_clip), last_beat.name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
             continue
 
         if 'run_portals' in run_folder:
@@ -108,7 +185,7 @@ def check_cases(folders):
         else:
             beat = 'UNKNOWN'
 
-        rows_running.append((str(folder), last_beat.name, beat, txt, job_status))
+        rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat.name, beat, txt, job_status))
 
     # Recalculate col_widths after adding labels to ensure proper alignment
     all_rows = rows_running + rows_finished + rows_failed
@@ -120,7 +197,7 @@ def check_cases(folders):
 
     def print_block(rows, title):
         if rows:
-            print(f"\n===== {title} =====")
+            print(f"\n===== {title} ({len(rows)} cases) =====")
             for row in rows:
                 beat_type = row[2] if row[2] else title
                 if title in ["FINISHED", "FAILED"]:
@@ -152,7 +229,7 @@ def main():
 
     folders = args.folders
 
-    check_cases(folders)
+    check_cases(folders, chars_folder_clip=50)
 
 if __name__ == "__main__":
     main()
