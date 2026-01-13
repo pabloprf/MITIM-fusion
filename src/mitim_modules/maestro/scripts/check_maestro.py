@@ -64,6 +64,7 @@ def check_cases(folders, chars_folder_clip=500):
         "PORTALS": "\033[31m",        # red
         "EPED": "\033[35m",           # magenta
         "TRANSP": "\033[33m",         # yellow
+        "PENDING": "\033[36m",        # cyan
         "UNKNOWN": "\033[34m",        # blue
         "FINISHED": "\033[91m",       # bright red
         "POTENTIAL FAIL": "\033[91m", # bright red
@@ -109,35 +110,27 @@ def check_cases(folders, chars_folder_clip=500):
     for folder in folders:
         if not folder.is_dir():
             continue
-        beats_folder = folder / 'Beats'
-
-        if not beats_folder.exists(): #safe_exists(beats_folder):
-            mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
-            continue
-
-        pattern = re.compile(r'Beat_(\d+)')
-        subfolders = [d for d in beats_folder.iterdir() if d.is_dir() and pattern.match(d.name)]
-        sorted_subfolders = sorted(subfolders, key=lambda d: int(pattern.match(d.name).group(1)))
-        last_beat = sorted_subfolders[-1]
-        run_folder = [n.name for n in last_beat.iterdir()]
-
         outputs_folder = folder / 'Outputs'
+        slurm_output = folder / 'slurm_output.dat'
 
         txt = ''
         job_status = ''
-
-        slurm_output = folder / 'slurm_output.dat'
+        job_state = None
         job_id = None
+
+        # Parse SLURM info first so we can correctly label PENDING jobs even
+        # when Maestro hasn't created Beats/ yet.
         if slurm_output.exists():
             with open(slurm_output, 'r') as f:
                 first_line = f.readline()
-                job_match = re.search(r'SLURM job (\d+)', first_line)
+                # Allow array jobs (e.g. 12345_6) and other non-whitespace forms.
+                job_match = re.search(r'SLURM job (\S+)', first_line)
                 if job_match:
                     job_id = job_match.group(1)
                     job_info = squeue_by_jobid.get(job_id)
                     if job_info:
                         state = job_info.get("state", "").strip()
+                        job_state = state
                         submit_time = job_info.get("submit_time", "").strip()
                         cores = job_info.get("cores", "").strip()
                         partition = job_info.get("partition", "").strip()
@@ -152,6 +145,19 @@ def check_cases(folders, chars_folder_clip=500):
                         except Exception:
                             job_status = f"{state} (submitted {submit_time}) ({cores} cores on {partition})"
 
+        beats_folder = folder / 'Beats'
+        pattern = re.compile(r'Beat_(\d+)')
+        last_beat = None
+        run_folder: list[str] = []
+        if beats_folder.exists():
+            subfolders = [d for d in beats_folder.iterdir() if d.is_dir() and pattern.match(d.name)]
+            if subfolders:
+                sorted_subfolders = sorted(subfolders, key=lambda d: int(pattern.match(d.name).group(1)))
+                last_beat = sorted_subfolders[-1]
+                run_folder = [n.name for n in last_beat.iterdir()]
+
+        last_beat_name = last_beat.name if last_beat is not None else "NO BEATS"
+
         if (outputs_folder / 'beat_final').exists() and slurm_output.exists():
             mod_time = datetime.fromtimestamp((outputs_folder / 'beat_final').stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             with open(slurm_output, 'r') as f:
@@ -159,33 +165,51 @@ def check_cases(folders, chars_folder_clip=500):
             for line in lines:
                 if '* MAESTRO took' in line:
                     txt = line.split('* MAESTRO took')[-1].strip()
-            rows_finished.append((clipstr(folder, chars=chars_folder_clip), "FINISHED", last_beat.name, txt, f"completed on {mod_time}"))
+            rows_finished.append((clipstr(folder, chars=chars_folder_clip), "FINISHED", last_beat_name, txt, f"completed on {mod_time}"))
+            continue
+
+        beat = 'UNKNOWN'
+        if last_beat is not None:
+            if 'run_portals' in run_folder:
+                beat = 'PORTALS'
+                exe_folder = last_beat / 'run_portals' / 'Execution'
+                if not exe_folder.exists():
+                    txt = 'no execution folder yet'
+                else:
+                    pattern_eval = re.compile(r'Evaluation.(\d+)')
+                    subfolders_eval = [d for d in exe_folder.iterdir() if d.is_dir() and pattern_eval.match(d.name)]
+                    if subfolders_eval:
+                        sorted_subfolders_eval = sorted(subfolders_eval, key=lambda d: int(pattern_eval.match(d.name).group(1)))
+                        last_ev = sorted_subfolders_eval[-1].name.split('.')[-1]
+                        txt = f"last evaluation: {last_ev}"
+            elif 'run_eped' in run_folder:
+                beat = 'EPED'
+            elif 'run_transp' in run_folder:
+                beat = 'TRANSP'
+
+        # If the job is queued but not started, show it as PENDING (not POTENTIAL FAIL).
+        # This typically happens when SLURM reports state=PENDING.
+        print(folder, job_state)
+        if job_state and job_state.upper() in {"PENDING", "PD"}:
+            details = f"{beat}{(' - ' + txt) if txt else ''}" if (beat != 'UNKNOWN' or txt) else ''
+            rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, "PENDING", details, job_status or "PENDING"))
+            continue
+
+        # If Beats/ isn't created yet, don't flag as failure if a job exists.
+        if last_beat is None:
+            if job_status:
+                rows_running.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "UNKNOWN", "", job_status))
+                continue
+            mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            rows_failed.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
             continue
 
         if not job_status and not (outputs_folder / 'beat_final').exists():
             mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((clipstr(folder, chars=chars_folder_clip), last_beat.name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
+            rows_failed.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
             continue
 
-        if 'run_portals' in run_folder:
-            beat = 'PORTALS'
-            exe_folder = last_beat / 'run_portals' / 'Execution'
-            if not exe_folder.exists():
-                txt = 'no execution folder yet'
-            else:
-                pattern_eval = re.compile(r'Evaluation.(\d+)')
-                subfolders_eval = [d for d in exe_folder.iterdir() if d.is_dir() and pattern_eval.match(d.name)]
-                sorted_subfolders_eval = sorted(subfolders_eval, key=lambda d: int(pattern_eval.match(d.name).group(1)))
-                last_ev = sorted_subfolders_eval[-1].name.split('.')[-1]
-                txt = f"last evaluation: {last_ev}"
-        elif 'run_eped' in run_folder:
-            beat = 'EPED'
-        elif 'run_transp' in run_folder:
-            beat = 'TRANSP'
-        else:
-            beat = 'UNKNOWN'
-
-        rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat.name, beat, txt, job_status))
+        rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, beat, txt, job_status))
 
     # Recalculate col_widths after adding labels to ensure proper alignment
     all_rows = rows_running + rows_finished + rows_failed

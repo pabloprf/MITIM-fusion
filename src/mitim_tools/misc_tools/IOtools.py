@@ -1589,7 +1589,9 @@ def ArrayToString(ll):
 def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
-        assert npath.exists()
+        if not npath.exists():
+            print(f"\t\t~ Path does not exist: {npath} (from {path})", typeMsg="w")
+            raise AssertionError(f"Path does not exist: {npath}")
     return npath.resolve() if npath.exists() else npath # To cover cases in which the path is an environment variable that does not exist as file/dir
 
 
