@@ -137,6 +137,7 @@ class transp_beat(beat):
     def run(self, **kwargs):
 
         mpi_settings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1})
+        
 
         print('\t\t- Running TRANSP beat with MPI settings: ',mpi_settings)
 
@@ -150,7 +151,7 @@ class transp_beat(beat):
             retrieveAC = self.timeAC is not None,
             )
 
-    def finalize(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}, **kwargs):
+    def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
         # Copy to outputs
         try:            
@@ -199,17 +200,23 @@ class transp_beat(beat):
         # Write profiles
         self.profiles_output.write_state(file=self.folder_output / "input.gacode")
 
-    def _add_heating_profiles(self, force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}):
+    def _add_heating_profiles(self, force_auxiliary_heating_at_output = None):
         '''
         force_auxiliary_heating_at_output['Pe'] has the shaping function (takes rho) and the integrated value
         '''
+        if force_auxiliary_heating_at_output is None:
+            force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
+
 
         for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MW', 'qRFi_MW']):
 
             if force_auxiliary_heating_at_output[key] is not None:
+                print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} MW of power')
                 self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
                 self.profiles_output.derive_quantities()
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
+            else:
+                print(f'\t\t- Keeping auxiliary power from TRANSP output')
 
     def merge_parameters(self):
         '''
@@ -406,10 +413,10 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
     else:
         trmpi = 1
     
-    
     # Force auxiliary heating at output
-    
     if maestro_namelist["plasma"]["heating"]["type"] == 'gaussian_sources':
+
+        print('\t- Gaussian sources specified, adding to run_namelist of TRANSP beat')
         
         Pe = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"]
         Pi = maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
@@ -426,9 +433,7 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
         
     else:
         force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
-    
-    
-    
+        
     run_namelist['mpisettings'] = {
         "trmpi": trmpi, 
         "toricmpi": toricmpi,
