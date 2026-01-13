@@ -7,6 +7,7 @@ import time
 import subprocess
 from datetime import datetime
 from IPython import embed
+from mitim_tools.opt_tools.scripts import slurm
 
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
@@ -112,6 +113,7 @@ def check_cases(folders, chars_folder_clip=500):
             continue
         outputs_folder = folder / 'Outputs'
         slurm_output = folder / 'slurm_output.dat'
+        slurm_sbatch_output = folder / 'sbatch_submission.log'
 
         txt = ''
         job_status = ''
@@ -120,30 +122,38 @@ def check_cases(folders, chars_folder_clip=500):
 
         # Parse SLURM info first so we can correctly label PENDING jobs even
         # when Maestro hasn't created Beats/ yet.
-        if slurm_output.exists():
+        job_match = None
+        
+        # Find the job ID from the slurm output file
+        if slurm_sbatch_output.exists():
+            with open(slurm_sbatch_output, 'r') as f:
+                first_line = f.readline()
+                job_match = re.search(r'Submitted batch job (\S+)', first_line)
+        elif slurm_output.exists():
             with open(slurm_output, 'r') as f:
                 first_line = f.readline()
                 # Allow array jobs (e.g. 12345_6) and other non-whitespace forms.
                 job_match = re.search(r'SLURM job (\S+)', first_line)
-                if job_match:
-                    job_id = job_match.group(1)
-                    job_info = squeue_by_jobid.get(job_id)
-                    if job_info:
-                        state = job_info.get("state", "").strip()
-                        job_state = state
-                        submit_time = job_info.get("submit_time", "").strip()
-                        cores = job_info.get("cores", "").strip()
-                        partition = job_info.get("partition", "").strip()
 
-                        # SLURM submit time formats vary by site/config; keep a safe fallback.
-                        try:
-                            submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
-                            time_in_queue = datetime.now() - submit_dt
-                            hours = time_in_queue.days * 24 + time_in_queue.seconds // 3600
-                            minutes = (time_in_queue.seconds % 3600) // 60
-                            job_status = f"{state} for {hours}h {minutes}m ({cores} cores, {partition})"
-                        except Exception:
-                            job_status = f"{state} (submitted {submit_time}) ({cores} cores on {partition})"
+        if job_match:
+            job_id = job_match.group(1)
+            job_info = squeue_by_jobid.get(job_id)
+            if job_info:
+                state = job_info.get("state", "").strip()
+                job_state = state
+                submit_time = job_info.get("submit_time", "").strip()
+                cores = job_info.get("cores", "").strip()
+                partition = job_info.get("partition", "").strip()
+
+                # SLURM submit time formats vary by site/config; keep a safe fallback.
+                try:
+                    submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
+                    time_in_queue = datetime.now() - submit_dt
+                    hours = time_in_queue.days * 24 + time_in_queue.seconds // 3600
+                    minutes = (time_in_queue.seconds % 3600) // 60
+                    job_status = f"{state} for {hours}h {minutes}m ({cores} cores, {partition})"
+                except Exception:
+                    job_status = f"{state} (submitted {submit_time}) ({cores} cores on {partition})"
 
         beats_folder = folder / 'Beats'
         pattern = re.compile(r'Beat_(\d+)')
@@ -189,7 +199,6 @@ def check_cases(folders, chars_folder_clip=500):
 
         # If the job is queued but not started, show it as PENDING (not POTENTIAL FAIL).
         # This typically happens when SLURM reports state=PENDING.
-        print(folder, job_state)
         if job_state and job_state.upper() in {"PENDING", "PD"}:
             details = f"{beat}{(' - ' + txt) if txt else ''}" if (beat != 'UNKNOWN' or txt) else ''
             rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, "PENDING", details, job_status or "PENDING"))

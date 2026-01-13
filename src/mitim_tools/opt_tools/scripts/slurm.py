@@ -80,7 +80,8 @@ def run_slurm(
             folder_local=folder,
             slurm_allocation = slurm_allocation,
             slurm_settings = slurm_settings,
-            if_array_relabel=True
+            if_array_relabel=True,
+            wait_until_sbatch=wait,
         )
 
         if wait:
@@ -90,7 +91,7 @@ def run_slurm(
             command_execution = f"sbatch {fileSBATCH}"
 
         if machine == "local":
-            os.system(command_execution)
+            os.system(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log')
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,
@@ -184,7 +185,8 @@ def run_slurm_array(
             folder_local=folder,
             slurm_allocation=slurm_allocation,
             slurm_settings = slurm_settings,
-            if_array_relabel=False
+            if_array_relabel=False,
+            wait_until_sbatch=wait,
         )
 
         if wait:
@@ -192,8 +194,6 @@ def run_slurm_array(
             command_execution = f"sbatch --wait {fileSBATCH}"
         else:
             command_execution = f"sbatch {fileSBATCH}"
-
-
 
         if machine == "local":
             os.system(command_execution)
