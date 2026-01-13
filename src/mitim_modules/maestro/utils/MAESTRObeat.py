@@ -226,7 +226,7 @@ class initializer_from_geqdsk(beat_initializer):
                 print(f'\t\t* Scaling poloidal flux by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
                 p.profiles['polflux(Wb/radian)'] *= kwargs_profiles['Ip_MA'] / Ip_in_geqdsk
                 print(f'\t\t* Scaling q-profile by same factor as Ip, {kwargs_profiles["Ip_MA"] / Ip_in_geqdsk:.2f}')
-                p.profiles['q(-)'] *= 1/(kwargs_profiles['Ip_MA'] / Ip_in_geqdsk)
+                p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], 1/(kwargs_profiles['Ip_MA'] / Ip_in_geqdsk) )
 
         if 'B_T' in kwargs_profiles and kwargs_profiles['B_T'] is not None:
             Bt_in_geqdsk = p.profiles['bcentr(T)'][0]
@@ -236,7 +236,7 @@ class initializer_from_geqdsk(beat_initializer):
                 print(f'\t\t* Scaling toroidal flux by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
                 p.profiles['torfluxa(Wb/radian)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
                 print(f'\t\t* Scaling q-profile by same factor as Bt, {kwargs_profiles["B_T"] / Bt_in_geqdsk:.2f}')
-                p.profiles['q(-)'] *= kwargs_profiles['B_T'] / Bt_in_geqdsk
+                p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], kwargs_profiles['B_T'] / Bt_in_geqdsk)
 
         # Write it to initialization folder
         p.write_state(file=self.folder / 'input.geqdsk.gacode')
@@ -517,7 +517,7 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         factor_sep_to_95_delta = p.derived['delta95'] / p.profiles['delta(-)'][-1]
         
         qstar = PLASMAtools.evaluate_qstar(Ip, R0, kappa_sep*factor_sep_to_95_kappa, B0, a / R0, delta_sep*factor_sep_to_95_delta, isInputIp=True, ITERcorrection=True,includeShaping=True)
-        q = p.profiles['q(-)'] * qstar / p.derived['qstar_ITER']
+        q = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], qstar / p.derived['qstar_ITER'])
     
     return B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure
     

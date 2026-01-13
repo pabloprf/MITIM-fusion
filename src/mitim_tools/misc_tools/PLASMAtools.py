@@ -187,6 +187,47 @@ def bootstrap_fraction_estimate(a, R, beta_pol):
     
     return 2/3 * (a/R)**0.5 * beta_pol
 
+def q_profile_scale(psin, q, scale_factor, location_pivot = 0.95, location_axis=0.1, debug=False):
+    '''
+    This function scales the q profile such that q(location_pivot in psi_pol_n) is scaled by scale_factor.
+    If None, just full profile is scaled, if value is given, ensure q on axis is maintained, within some range
+    '''
+    
+    if location_pivot is None:
+        scale_factor_array = scale_factor * np.ones_like(q)
+    else:
+        loc_index_axis = np.argmin( np.abs(psin - location_axis) )
+        loc_index = np.argmin( np.abs(psin - location_pivot) )
+        '''
+        The scaling factor is developed as follows:
+        1.0 from axis to loc_index_axis,
+        then linear from there to loc_index (where it reaches scale_factor),
+        and continues that trend to the edge.
+        '''
+        scale_factor_array = np.ones_like(q)
+        for i in range(loc_index_axis, len(q)):
+            scale_factor_array[i] = 1.0 + (scale_factor - 1.0) * (psin[i] - psin[loc_index_axis]) / (psin[loc_index] - psin[loc_index_axis])
+    
+    if debug:
+        fig, axs = plt.subplots(2,1, figsize=(6,8))
+        axs[0].plot(psin, q, label='Original q')
+        axs[0].plot(psin, q * scale_factor_array, label='Scaled q')
+        axs[0].axvline(x=location_pivot, ls='--', c='k', label='Location factor')
+        axs[0].axhline(y=1.0, ls='--', c='r', label='q=1')
+        axs[0].set_xlabel('psi_pol_n')
+        axs[0].set_ylabel('q')
+        axs[0].legend()
+        axs[1].plot(psin, scale_factor_array, label='Scaling factor')
+        axs[1].axvline(x=location_pivot, ls='--', c='k', label='Location factor')
+        axs[1].set_xlabel('psi_pol_n')
+        axs[1].set_ylabel('Scaling factor')
+        axs[1].legend()
+        plt.tight_layout()
+        plt.show()
+        embed()
+    
+    return q * scale_factor_array
+
 def convective_flux(Te, Gamma_e):
     # keV and 1E20 m^-3/s (or /m^2)
 
