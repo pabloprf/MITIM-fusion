@@ -735,42 +735,24 @@ def listColors():
         "dimgrey",
         "indianred",
     ]
-    for i in range(10):
-        col.extend(col)
+    col = col * 10
 
     return col
 
 
 def listLS():
     ls = ["-", "--", "-.", ":", "-", "--", "-.", ":", "-", "--", "-.", ":"]
+    ls = ls * 10
 
     return ls
 
 
 def listmarkers():
-    return [
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-    ]
+    
+    ms = ["o", "s", "^", "v", "+", "<", ">"]
+    ms = ms * 10
+    
+    return ms
 
 
 def listmarkersLS():

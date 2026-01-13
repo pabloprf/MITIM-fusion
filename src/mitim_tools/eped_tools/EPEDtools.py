@@ -18,6 +18,7 @@ class EPED:
             self,
             folder,
             template_config_file = None,
+            eped_repo_files = '$EPED_SOURCE_PATH/template/engaging/eped_run_template',
             ):
         
         self.folder = Path(folder) if folder is not None else None # None for just reading
@@ -34,8 +35,7 @@ class EPED:
         else:
             self.template_config_file = IOtools.expandPath(__mitimroot__ / "templates" / "eped.config")
             
-            
-        self.required_files_folder = '$EPED_SOURCE_PATH/template/engaging/eped_run_template'
+        self.required_files_folder = eped_repo_files
 
     def run(
             self,
