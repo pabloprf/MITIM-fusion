@@ -314,12 +314,15 @@ class mitim_job:
             if received:
                 break
             else:
-                print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating {execution_counter}/{attempts_execution}")
+                if execution_counter < attempts_execution:
+                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
 
         # ~~~~~~ Remove scratch folder
         if received:
+            
             if wait_for_all_commands and removeScratchFolders_goingOut:
                 self.remove_scratch_folder()
+                
         else:
 
             # If not received, write output and error to files
@@ -740,13 +743,14 @@ class mitim_job:
         self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
         # Check if all files were received
+        time_wait = 60
         if check_if_files_received:
             received = self.check_all_received(check_files_in_folder=check_files_in_folder)
             if received:
                 print("\t\t- All correct", typeMsg="i")
             else:
-                print("\t* Not all received, trying once again", typeMsg="i")
-                time.sleep(10)
+                print(f"\t* Not all received, trying retrieval once again after waiting {time_wait} seconds", typeMsg="i")
+                time.sleep(time_wait)
                 _ = self.retrieve(check_if_files_received=False)
                 received = self.check_all_received(check_files_in_folder=check_files_in_folder)
         else:
@@ -888,26 +892,26 @@ class mitim_job:
         print(txt)
 
     def check_all_received(self, check_files_in_folder={}):
-        print("\t* Checking if all expected files & folders were received")
+        print("\t* Checking if all files & folders that are expected were received")
         received = True
 
         # Check if all files were received
         for file in self.output_files:
             if not (self.folder_local / file).exists():
-                print(f"\t\t- File {file} not received", typeMsg="w")
+                print(f"\t\t- File '{file}' not received", typeMsg="w")
                 received = False
 
         for folder in self.output_folders:
             # Check if all folders were received
             if not (self.folder_local / folder).exists():
-                print(f"\t\t- Folder {folder} not received", typeMsg="w")
+                print(f"\t\t- Folder '{folder}/' not received", typeMsg="w")
                 received = False
             # Check if all files in folder were received (optional information provided at job execution)
             else:
                 if folder in check_files_in_folder:
                     for file in check_files_in_folder[folder]:
                         if not (self.folder_local / folder / file).exists():
-                            print(f"\t\t- File {file} not received in folder {folder}",typeMsg="w",)
+                            print(f"\t\t- File '{file}' not received in folder '{folder}/'",typeMsg="w")
                             received = False
 
         return received
