@@ -1772,15 +1772,12 @@ class mitim_state:
             self.profiles["ni(10^19/m^3)"][:, using_ion] += ne_missing
             new_on_axis = copy.deepcopy(self.profiles["ni(10^19/m^3)"][0, using_ion])
 
-<<<<<<< Updated upstream
-=======
         # Check if quasineutrality enforcement led to negative ion densities (e.g. very edge)
         for i in range(self.profiles["ni(10^19/m^3)"].shape[-1]):
             if (self.profiles["ni(10^19/m^3)"][:,i]<threshold_check).any():
                 print(f'\t> Negative ion density for ion #{i} found... clipping to {threshold_check}', typeMsg="w")
                 self.profiles["ni(10^19/m^3)"][:,i] = self.profiles["ni(10^19/m^3)"][:,i].clip(threshold_check)
 
->>>>>>> Stashed changes
         print(f"\t\t\t\t- Changed on-axis density from n0 = {prev_on_axis:.2f} to {new_on_axis:.2f} ({100*(new_on_axis-prev_on_axis)/prev_on_axis:.1f}%)")
 
         self.derive_quantities(rederiveGeometry=False)
