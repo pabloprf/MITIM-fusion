@@ -1256,7 +1256,10 @@ class mitim_state:
             n = int(n)
             rho_new = np.linspace(rho[0], rho[-1], n)
         else:
-            rho_new = np.unique(np.sort(rho_new))
+            rho_new_unique = np.unique(np.sort(rho_new))
+            if rho_new_unique.shape[0] < rho_new.shape[0]:
+                print('\t- Provided rho array has repeated elements, removing them for now, but be careful...', typeMsg='w')
+            rho_new = rho_new_unique
             n = len(rho_new)
 
         self.profiles["nexp"] = [str(n)]
