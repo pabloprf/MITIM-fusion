@@ -566,7 +566,8 @@ class eped_beat(beat):
                 IOtools.shutil_rmtree(item)
 
         # Copy eped run to outputs
-        shutil.copytree(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
+        if self.use_full_EPED:
+            shutil.copytree(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
         
         # Copy results to output folder
         shutil.copy2(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
