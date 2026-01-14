@@ -290,7 +290,6 @@ class EPED:
             except:
                 print(f'\t\t\t{input_param}: Not available',typeMsg='w')
 
-        
         print('\t\t> Outputs:')
         if 'ptop' in data.data_vars:
             print(f'\t\t\tptop: {data["ptop"].values[0]:.2f} kPa')

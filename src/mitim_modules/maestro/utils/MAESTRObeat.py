@@ -40,23 +40,6 @@ class beat:
         
         self.cold_start = False
 
-    def restart(self):
-        '''
-        If the restart has been called (e.g. cold_start=True for this beat), empty the run and results folders
-        This is to avoid conflicting information and files
-        '''
-
-        if self.folder.exists() or self.folder_output.exists():
-            print('\t- Restarting beat: clearing run and output folders', typeMsg = 'i')
-
-            if self.folder.exists():
-                shutil.rmtree(self.folder, ignore_errors=True)
-                self.folder.mkdir(parents=True, exist_ok=True)
-                
-            if self.folder_output.exists():
-                shutil.rmtree(self.folder_output, ignore_errors=True)   
-                self.folder_output.mkdir(parents=True, exist_ok=True)
-
     def define_initializer(self, initializer):
 
         if initializer is None:
@@ -73,6 +56,23 @@ class beat:
             self.initialize = beat_initializer(self)
         else:
             raise ValueError(f'Initializer "{initializer}" not recognized')
+
+    def restart(self):
+        '''
+        If the restart has been called (e.g. cold_start=True for this beat), empty the run and results folders
+        This is to avoid conflicting information and files
+        '''
+
+        if self.folder.exists() or self.folder_output.exists():
+            print('\t- Restarting beat: clearing run and output folders', typeMsg = 'i')
+
+            if self.folder.exists():
+                shutil.rmtree(self.folder, ignore_errors=True)
+                self.folder.mkdir(parents=True, exist_ok=True)
+                
+            if self.folder_output.exists():
+                shutil.rmtree(self.folder_output, ignore_errors=True)   
+                self.folder_output.mkdir(parents=True, exist_ok=True)
 
     def prepare(self, *args, **kwargs):
         pass
@@ -467,6 +467,9 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
     polflux_total = 1.0
     p0 = 1.0 #separatrix_parameters['p0_MPa']
     
+    # Assumed q0
+    q0_assume = 1.5
+    
     # Guess qstar from separatrix parameters
     kappa95 = kappa_sep*0.95
     delta95 = delta_sep*0.95
@@ -502,7 +505,7 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         psi = np.linspace(0, polflux_total, resol)
         
         pressure = guess_pressure_profile(rho, p0)
-        q = guess_q_profile(rho, qstar_sep)
+        q = guess_q_profile(rho, qstar_sep, q0 = q0_assume)
         
     else:
         
