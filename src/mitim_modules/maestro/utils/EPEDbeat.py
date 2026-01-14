@@ -19,6 +19,8 @@ from IPython import embed
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
+from STUDIES.PROJECTS.project_2023.project_2023_SPARClmodes.visualize.plotPeaking_NF22 import Beta
+
 class eped_beat(beat):
 
     def __init__(self, maestro_instance, folder_name = None):
@@ -321,6 +323,10 @@ class eped_beat(beat):
                     self.current_evaluation["s_three"],
                     self.current_evaluation["s_four"]
                     )
+
+            # Some checks before launching EPED
+            if BetaN > 10.0:
+                print(f'\t- Warning: BetaN is very high {BetaN =}, EPED may not converge nor come back with valid files', typeMsg='w')
 
             # -------------------------------------------------------
             # Give the option to override the ptop_kPa and wtop_psipol
