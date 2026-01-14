@@ -474,7 +474,13 @@ def interpretRun(infoSLURM, log_file):
         """
         Case is not running (finished or failed)
         """
-        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
+        if  (
+                "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file)
+            ) or \
+            (
+                ("Finished TRANSP run app." in "\n".join(log_file)) and \
+                ("TRANSP ABORTR SUBROUTINE CALLED" not in "\n".join(log_file))
+            ):  # If abort subroutine, finished transp not valid
             status = 1
             info["info"]["status"] = "finished"
         elif (
