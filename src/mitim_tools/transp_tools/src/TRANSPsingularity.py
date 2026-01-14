@@ -465,22 +465,13 @@ def interpretRun(infoSLURM, log_file):
         status = 0
         info["info"]["status"] = "running"
 
-        print(
-            f"\t- Run '{info['slurm']['NAME']}' is currently in the SLURM grid, with state '{info['slurm']['STATE']}' (jobid {info['slurm']['JOBID']})",
-            typeMsg="i",
-        )
+        print(f"\t- Run '{info['slurm']['NAME']}' is currently in the SLURM grid, with state '{info['slurm']['STATE']}' (jobid {info['slurm']['JOBID']})",typeMsg="i",)
 
     else:
         """
         Case is not running (finished or failed)
         """
-        if  (
-                "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file)
-            ) or \
-            (
-                ("Finished TRANSP run app." in "\n".join(log_file)) and \
-                ("TRANSP ABORTR SUBROUTINE CALLED" not in "\n".join(log_file))
-            ):  # If abort subroutine, finished transp not valid
+        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
             status = 1
             info["info"]["status"] = "finished"
         elif (

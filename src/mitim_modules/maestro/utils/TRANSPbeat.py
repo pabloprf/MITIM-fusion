@@ -62,7 +62,7 @@ class transp_beat(beat):
         - transp_namelist is a dictionary with the keys that I want to be different from the defaults
             (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
-
+        
         # Define timings
         self.transition_window     = transition_window 
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
@@ -138,7 +138,6 @@ class transp_beat(beat):
 
         mpi_settings = kwargs.get("mpisettings",{"trmpi": 32, "toricmpi": 32, "ptrmpi": 1})
         
-
         print('\t\t- Running TRANSP beat with MPI settings: ',mpi_settings)
 
         self.transp.run(
@@ -150,6 +149,15 @@ class transp_beat(beat):
             checkMin = kwargs.get("checkMin",3),
             retrieveAC = self.timeAC is not None,
             )
+        
+        # Check if run went as expected. Sometimes it may come back "just fine" but in reality it
+        # didn't run until the specified time
+        print('\t\t- Checking TRANSP run completeness')
+        cdf_results = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
+        last_time_simulated = cdf_results.t[-1]
+        seconds_check = 0.1
+        if last_time_simulated < self.time_end - seconds_check:   
+            raise RuntimeError(f"[MITIM] TRANSP run did not complete until the expected time_end = {self.time_end} s. Last time simulated was {last_time_simulated} s.")
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
@@ -322,7 +330,7 @@ class transp_beat(beat):
         elif self.machine_run == 'NSTX':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.89, 0.61, 2.5, 0.46, 0.0, 0.0, 0.4, 1.0, 0.5, 1.0
             # says it has no psi-bndry
-        
+
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
 
     # -----------------------------------------------------------------------------------------------------------------------

@@ -42,6 +42,8 @@ if __name__ == "__main__":
     rfs = UFILEStools.UFILEtransp()
     rfs.readUFILE(rfs_file)
     
+    time = rfs.Variables['X']
+    
     R, a = [], []
     for time_pos in range(rfs.Variables['Z'].shape[0]):
     
@@ -57,14 +59,14 @@ if __name__ == "__main__":
             plot_rfszfs(rfs_file, zfs_file, ax=axs[0], time_pos=time_pos, surf_pos=surf_pos, c=cols[cont])
             
             if surf_pos == rfs.Variables['Z'].shape[2]-1:
-                axs[1].plot(time_pos,R[time_pos], 'o-', c=cols[cont])
-                axs[1].plot(time_pos,a[time_pos], 'o--', c=cols[cont])
+                axs[1].plot(time[time_pos],R[time_pos], 'o-', c=cols[cont])
+                axs[1].plot(time[time_pos],a[time_pos], 'o--', c=cols[cont])
             
             cont += 1   
             
-    axs[1].plot(R, '-',label='R (m)',c=cols[0])
-    axs[1].plot(a, '-',label='a (m)',c=cols[1])
-    axs[1].set_xlabel('Time index')
+    axs[1].plot(time, R, '-',label='R (m)',c=cols[0])
+    axs[1].plot(time, a, '-',label='a (m)',c=cols[1])
+    axs[1].set_xlabel('Time (s)')
     axs[1].set_ylabel('m'); axs[1].set_ylim([0, None])
     axs[1].legend()
     GRAPHICStools.addDenseAxis(axs[1])
