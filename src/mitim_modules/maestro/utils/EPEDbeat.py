@@ -19,8 +19,6 @@ from IPython import embed
 # <> Function to interpolate a curve <> 
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-from STUDIES.PROJECTS.project_2023.project_2023_SPARClmodes.visualize.plotPeaking_NF22 import Beta
-
 class eped_beat(beat):
 
     def __init__(self, maestro_instance, folder_name = None):
