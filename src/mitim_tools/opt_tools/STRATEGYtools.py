@@ -232,9 +232,7 @@ class opt_evaluator:
         variations_best = self.res.best_absolute_full["x"]
         variations_original = self.res.evaluations[0]["x"]
 
-        print(
-            f"\t- Best case in MITIM was achieved at evaluation #{self.res.best_absolute_index}:"
-        )
+        print(f"\t- Best case in MITIM was achieved at evaluation #{self.res.best_absolute_index}:")
         for ikey in variations_best:
             print(f"\t\t* {ikey} = {variations_best[ikey]}")
 

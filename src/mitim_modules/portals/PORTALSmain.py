@@ -1,5 +1,6 @@
 import shutil
 import torch
+import datetime
 import copy
 from collections import OrderedDict
 import numpy as np
@@ -30,8 +31,9 @@ class portals(STRATEGYtools.opt_evaluator):
         },
         ):
 
+        time1 = datetime.datetime.now()
         print("\n-----------------------------------------------------------------------------------------")
-        print("\t\t\t PORTALS class module")
+        print(f"\t\t\t PORTALS class module {time1.strftime('%Y-%m-%d %H:%M:%S')}")
         print("-----------------------------------------------------------------------------------------\n")
 
         super().__init__(

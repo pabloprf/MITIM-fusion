@@ -36,6 +36,25 @@ class beat:
         self.folder_output.mkdir(parents=True, exist_ok=True)
 
         self.initialize_called = False
+        
+        self.cold_start = False
+
+    def restart(self):
+        '''
+        If the restart has been called (e.g. cold_start=True for this beat), empty the run and results folders
+        This is to avoid conflicting information and files
+        '''
+
+        if self.folder.exists() or self.folder_output.exists():
+            print('\t- Restarting beat: clearing run and output folders', typeMsg = 'i')
+
+            if self.folder.exists():
+                shutil.rmtree(self.folder, ignore_errors=True)
+                self.folder.mkdir(parents=True, exist_ok=True)
+                
+            if self.folder_output.exists():
+                shutil.rmtree(self.folder_output, ignore_errors=True)   
+                self.folder_output.mkdir(parents=True, exist_ok=True)
 
     def define_initializer(self, initializer):
 

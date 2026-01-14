@@ -171,6 +171,9 @@ class PORTALSanalyzer:
         # runWithImpurity_transport is stored after powerstate has run transport
         self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.predicted_channels else None
 
+        if self.ibest is None:
+            self.ibest = self.ilast
+
         if len(self.powerstates) <= self.ibest:
             print("\t- PORTALS was read after new residual was computed but before pickle was written!",typeMsg="w")
             self.ibest -= 1

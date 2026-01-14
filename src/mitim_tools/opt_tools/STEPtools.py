@@ -138,9 +138,7 @@ class OPTstep:
             with open(self.fileOutputs, "a") as f:
                 f.write("\n\n-----------------------------------------------------")
                 f.write("\n * Fitting GP models to training data...")
-        print(
-            f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n"
-        )
+        print(f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n")
 
         """
 		*********************************************************************************************************************
