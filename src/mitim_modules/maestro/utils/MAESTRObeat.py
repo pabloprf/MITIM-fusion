@@ -372,7 +372,10 @@ class initializer_from_separatrix(beat_initializer):
         )
         
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
-        self._correct_profiles_withfreegs(PichT_MW = PichT_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+        try:
+            self._correct_profiles_withfreegs(PichT_MW = PichT_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+        except:
+            print('\t- Could not run freegs to correct the profiles, proceeding with uncorrected ones', typeMsg = 'w')
         
         # Write it to initialization folder
         self.p.write_state(file=self.folder / 'input.separatrix.gacode')
