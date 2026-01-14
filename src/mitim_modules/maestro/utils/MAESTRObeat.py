@@ -1,6 +1,7 @@
 import shutil
 import copy
 import csv
+import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
@@ -466,9 +467,12 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
     polflux_total = 1.0
     p0 = 1.0 #separatrix_parameters['p0_MPa']
     
-    qstar_sep = PLASMAtools.evaluate_qstar(Ip, R0, kappa_sep, B0, a / R0, delta_sep, isInputIp=True) 
+    # Guess qstar from separatrix parameters
+    kappa95 = kappa_sep*0.95
+    delta95 = delta_sep*0.95
+    qstar = PLASMAtools.evaluate_qstar(Ip, R0, kappa95, B0, a / R0, delta95, isInputIp=True, ITERcorrection=True,includeShaping=True)
     factor_qstar = 1.4
-    qstar = qstar_sep * factor_qstar
+    qstar_sep = qstar * factor_qstar
     
     # ---------------------------------------------------------------------------------
     # Internal equilibrium 
@@ -498,7 +502,7 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         psi = np.linspace(0, polflux_total, resol)
         
         pressure = guess_pressure_profile(rho, p0)
-        q = guess_q_profile(rho, qstar)
+        q = guess_q_profile(rho, qstar_sep)
         
     else:
         
@@ -543,12 +547,33 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
     
     return B0, Ip, R0, rho, rmin, rmaj, z0, kappa, delta, zeta, sn, cn, torfluxa, psi, q, pressure
     
-def guess_q_profile(rho, qstar, q0 = 1.0):
+def guess_q_profile(rho, qstar, q0 = 1.0, debug = False):
     
     nu_q = 2.0
     
     _, iota = PLASMAtools.parabolicProfile( q0/nu_q, nu_q, rho, 1/qstar)
     q = 1/iota
+    
+    if debug:
+        fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(6,8))
+        ax = axs[0]
+        ax.plot(rho, q, label='q profile')
+        ax.axhline(q0, color='k', ls='--', label='q0')
+        ax.axhline(qstar, color='r', ls='--', label='qstar')
+        ax.set_xlabel('rho')
+        ax.set_ylabel('q')
+        ax.legend()
+        
+        ax = axs[1]
+        ax.plot(rho, 1/q, label='iota profile')
+        ax.axhline(1/q0, color='k', ls='--', label='iota0')
+        ax.axhline(1/qstar, color='r', ls='--', label='iotastar')
+        ax.set_xlabel('rho')
+        ax.set_ylabel('iota')
+        ax.legend()
+        
+        plt.show()
+        embed()
     
     return q    
 
