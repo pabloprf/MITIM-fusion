@@ -130,13 +130,21 @@ class maestro:
         # Define initializer
         self.beat.define_initializer(initializer)
 
-        # Check here if the beat has already been performed
-        self.beat.cold_start = cold_start or self.master_cold_start
-        self.check(cold_start = self.beat.cold_start )
+        '''
+        ------------------------------------------------------------------
+        Checker of existence and cold_start handling
+        ------------------------------------------------------------------
+        '''
         
+        self.beat.cold_start = cold_start or self.master_cold_start
+        
+        # If the beat needs to be cold started, remove folders and proceed to restart
         if self.beat.cold_start:
             self.restart()
-        
+        # If not, check if beat needs to run and inform future ones
+        else:
+            self.check()
+                
     def define_creator(self, method, **kwargs_creator):
         '''
         To initialize some profile functional form
@@ -155,7 +163,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
-    def check(self, beat_check = None, cold_start = False, **kwargs):
+    def check(self, beat_check = None, **kwargs):
         '''
         Note:
             After each beat, the results are passed to an output folder.
@@ -171,23 +179,26 @@ class maestro:
         log_file = self.folder_logs / f'beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
-            if cold_start:
-                print('\t\t- Forced cold_starting of beat', typeMsg = 'i')
-                output_file = None
+            # Does the output file already exist? That will inform whether the beat needs to run
+            output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
+            if output_file is not None:
+                print(f'\t\t- Output file {IOtools.clipstr(output_file)} already exists, not running beat', typeMsg = 'i')
             else:
-                output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
-                if output_file is not None:
-                    print(f'\t\t- Output file {IOtools.clipstr(output_file)} already exists, not running beat', typeMsg = 'i')
-                else:
-                    print(f'\t\t- Output file {IOtools.clipstr(output_file)} not found, beat will be run')
+                print(f'\t\t- Output file {IOtools.clipstr(output_file)} not found, beat will be run')
 
             # The beat needs to run if output_file is None
             self.beat.run_flag = output_file is None
 
-        # If this beat needs to be cold_started, all next beats will be cold_started
+        '''
+        If a beat needs to run, all the rest of the beats will need to run from scratch.
+        Inform that such that I call restart() in the next beats.
+        '''
+        
+        # If this beat needs to run
         if self.beat.run_flag:
+            # If not already cold started, inform that all next beats will need to be cold started
             if not self.master_cold_start:
-                print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
+                print('\t\t- Since this step needs to run, all next ones will need to be cold started', typeMsg = 'i')
             self.master_cold_start = True
 
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Initializer',
