@@ -140,7 +140,7 @@ class maestro:
         
         # If the beat needs to be cold started, remove folders and proceed to restart
         if self.beat.cold_start:
-            self.restart()
+            self.beat.restart()
         # If not, check if beat needs to run and inform future ones
         else:
             self.check()
