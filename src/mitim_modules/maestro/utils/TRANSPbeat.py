@@ -105,8 +105,11 @@ class transp_beat(beat):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Additional operations
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        self._additional_operations_add_initialization(machine_initialization = machine_initialization)
+        
+        self._additional_operations_add_initialization(
+            machine_initialization = machine_initialization,
+            modify_Ip_to_match_qstar=self.profiles_current.derived['qstar_ITER']
+            )
         
         # ICRF on
         PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
@@ -314,7 +317,7 @@ class transp_beat(beat):
     # Additional TRANSP utilities
     # --------------------------------------------------------------------------------------------
 
-    def _additional_operations_add_initialization(self, machine_initialization = 'CMOD'):
+    def _additional_operations_add_initialization(self, machine_initialization = 'CMOD', modify_Ip_to_match_qstar = None):
         '''
         ----------------------------------------------------------------------------------------------------------------------
         TRANSP must be initialized with a specific machine, so here I use the trick of changing the equilibrium and parameters
@@ -330,6 +333,23 @@ class transp_beat(beat):
         elif self.machine_run == 'NSTX':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.89, 0.61, 2.5, 0.46, 0.0, 0.0, 0.4, 1.0, 0.5, 1.0
             # says it has no psi-bndry
+
+        if modify_Ip_to_match_qstar is not None:
+            qstar_now = PLASMAtools.evaluate_qstar(
+                Ip_MA,
+                R,
+                kappa_sep*0.95,
+                B_T,
+                a/R,
+                delta_sep*0.95,
+                isInputIp=True,
+                ITERcorrection=True,
+                includeShaping=True,
+            )
+            factor_Ip = qstar_now / modify_Ip_to_match_qstar
+            
+            print(f'\t\t- Modifying Ip of initialization machine from {Ip_MA:.3f} MA to {Ip_MA/factor_Ip:.3f} MA to match target qstar = {modify_Ip_to_match_qstar:.3f}')
+            Ip_MA = Ip_MA / factor_Ip
 
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
 
