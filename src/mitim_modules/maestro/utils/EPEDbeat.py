@@ -348,6 +348,12 @@ class eped_beat(beat):
                         store_scan = False
                         print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
             
+            if (ptop_kPa is None) or \
+                (wtop_psipol is None) or \
+                    (ptop_kPa < 0) or \
+                        (wtop_psipol < 0):
+                raise ValueError('[MITIM] EPED failed to return valid results, cannot continue this simulation')
+            
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
