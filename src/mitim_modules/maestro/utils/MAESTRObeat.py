@@ -371,7 +371,7 @@ class initializer_from_separatrix(beat_initializer):
             Z = 9,
             PichT = PichT_MW
         )
-        
+
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
         try:
             self._correct_profiles_withfreegs(PichT_MW = PichT_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
