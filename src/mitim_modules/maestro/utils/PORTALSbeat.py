@@ -24,6 +24,7 @@ class portals_beat(beat):
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,
+            use_previous_ranges = True,
             try_flux_match_only_for_first_point = True,
             change_last_radial_call = False,
             portals_namelist_location = None,
@@ -69,8 +70,10 @@ class portals_beat(beat):
         self.portals_namelist_location = portals_namelist_location
         self.initialization_parameters = initialization_parameters
 
+        self.use_previous_residual = use_previous_residual
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call
+        self.use_previous_ranges = use_previous_ranges
 
         self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
 
@@ -78,9 +81,10 @@ class portals_beat(beat):
         # Initializat optimization options to empty, but may be filled in _inform, from previous beats information
         self.optimization_options_additional = {}
 
-        self._inform(use_previous_residual = use_previous_residual, 
+        self._inform(use_previous_residual = self.use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
-                     change_last_radial_call = self.change_last_radial_call
+                     change_last_radial_call = self.change_last_radial_call,
+                     use_previous_ranges = self.use_previous_ranges
                      )
 
     def run(self, **kwargs):
@@ -286,7 +290,14 @@ class portals_beat(beat):
     # --------------------------------------------------------------------------------------------
     # Additional PORTALS utilities
     # --------------------------------------------------------------------------------------------
-    def _inform(self, use_previous_residual = True, use_previous_surrogate_data = True, change_last_radial_call = False, minimum_relative_change_in_x = 0.005):
+    def _inform(
+        self,
+        use_previous_residual = True,
+        use_previous_surrogate_data = True,
+        change_last_radial_call = False,
+        minimum_relative_change_in_x = 0.005,
+        use_previous_ranges = True,
+        ):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
@@ -294,6 +305,7 @@ class portals_beat(beat):
         # ----------------------------------------------------------------------------------------------
         # Use previous residual goal if available from previous PORTALS beat (added in _inform_save)
         # ----------------------------------------------------------------------------------------------
+        
         if use_previous_residual and \
             ('original_residual' in self.maestro_instance.parameters_trans_beat) and \
             (self.portals_parameters['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel']):
@@ -314,7 +326,10 @@ class portals_beat(beat):
             
             print(f"\t\t- Using previous residual goal as maximum value for optimization (not relative): {self.optimization_options_additional['convergence_options']['stopping_criteria_parameters']['maximum_value']}")
 
+        # ----------------------------------------------------------------------------------------------
         # Use previous surrogate data if available
+        # ----------------------------------------------------------------------------------------------
+        
         reusing_surrogate_data = False
         self.folder_starting_point = None
         if use_previous_surrogate_data and \
@@ -331,7 +346,10 @@ class portals_beat(beat):
 
             reusing_surrogate_data = True
             
+        # ----------------------------------------------------------------------------------------------
         # Change last radial location if requested
+        # ----------------------------------------------------------------------------------------------
+        
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
@@ -373,7 +391,7 @@ class portals_beat(beat):
                 print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.portals_parameters["solution"][strKeys]}')
 
                 if abs(self.portals_parameters['solution'][strKeys][-1]-self.maestro_instance.parameters_trans_beat[strKeys][-1]) / self.maestro_instance.parameters_trans_beat[strKeys][-1] < minimum_relative_change_in_x:
-                    print('\t\t\t* Last radial location was not moved')
+                    print('\t\t\t* Last radial location was not moved because the change is minimal')
                     last_radial_location_moved = False
                     self.portals_parameters['solution'][strKeys][-1] = self.maestro_instance.parameters_trans_beat[strKeys][-1]
 
@@ -382,6 +400,25 @@ class portals_beat(beat):
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
             self.optimization_options_additional['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
             self.try_flux_match_only_for_first_point = False
+
+        # ----------------------------------------------------------------------------------------------
+        # Change ranges
+        # ----------------------------------------------------------------------------------------------
+        if use_previous_ranges and 'portals_ymin' in self.maestro_instance.parameters_trans_beat:
+            print('\t\t- Freezing original ranges for PORTALS optimization from previous beat')
+
+            solution = {
+                'exploration_ranges': {
+                    'limits_are_relative': False,
+                    'ymin': self.maestro_instance.parameters_trans_beat['portals_ymin'],
+                    'ymax': self.maestro_instance.parameters_trans_beat['portals_ymax'],
+                }
+            }
+            
+            if 'solution' not in self.optimization_options_additional:
+                self.optimization_options_additional['solution'] = solution
+            else:
+                self.optimization_options_additional['solution'] = IOtools.deep_dict_update(self.optimization_options_additional['solution'], solution)
 
     def _inform_save(self):
 
@@ -399,16 +436,34 @@ class portals_beat(beat):
             stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
             portals_parameters = portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
 
+        '''
+        -------------------------------------------------------------------------------------------
+        Store residual for convergence
+        -------------------------------------------------------------------------------------------
+        '''
+        
         # Get maximum value of negative residual (absolute)
         original_residual = -portals_output.step.BOmetrics["overall"]["Residual"][0].item()
         self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
         print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
 
+        '''
+        -------------------------------------------------------------------------------------------
+        Store surrogate data to be reused
+        -------------------------------------------------------------------------------------------
+        '''
+        
         fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
         
         self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
+
+        '''
+        -------------------------------------------------------------------------------------------
+        Store locations to be predicted
+        -------------------------------------------------------------------------------------------
+        '''
 
         if 'predicted_roa' in portals_parameters['solution']:
             self.maestro_instance.parameters_trans_beat['predicted_roa'] = portals_parameters['solution']['predicted_roa']
@@ -416,6 +471,28 @@ class portals_beat(beat):
         elif 'predicted_rho' in portals_parameters['solution']:
             self.maestro_instance.parameters_trans_beat['predicted_rho'] = portals_parameters['solution']['predicted_rho']
             print(f'\t\t* predicted_rho saved for future beats: {portals_parameters["solution"]["predicted_rho"]}')
+
+        '''
+        -------------------------------------------------------------------------------------------
+        Store ranges
+        -------------------------------------------------------------------------------------------
+        '''
+        ymin, ymax = {}, {}
+        cont = 0
+        for channel in portals_parameters['solution']['predicted_channels']:
+            ymin0 = []
+            ymax0 = []
+            for rho in portals_parameters['solution']['predicted_rho']:
+                ymin0.append(stepSettings['optimization_options']['problem_options']['dvs_min'][cont])
+                ymax0.append(stepSettings['optimization_options']['problem_options']['dvs_max'][cont])
+                cont += 1
+            ymin[channel] = ymin0
+            ymax[channel] = ymax0
+            
+        self.maestro_instance.parameters_trans_beat['portals_ymin'] = ymin
+        self.maestro_instance.parameters_trans_beat['portals_ymax'] = ymax
+        print(f'\t\t* ymin saved for future beats: {ymin}')
+        print(f'\t\t* ymax saved for future beats: {ymax}')
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO

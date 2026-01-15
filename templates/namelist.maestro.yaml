@@ -223,7 +223,7 @@ maestro:
       # ------------------------------------------------------------------------------------------------
       portals_parameters:
 
-        # Same structure as the PORTALS namelist, here indicate only the parameters to change from default portals_namelist_location
+        # Same structure as the PORTALS namelist, here indicate only the parameters to change from default "portals_namelist_location"
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
@@ -248,9 +248,9 @@ maestro:
               maximum_value_is_rel: true           # Explicit, because of "use_previous_residual" functionality
 
           strategy_options:
-            AllowedExcursions: [0.25, 0.0]
+            AllowedExcursions: [0.25, 0.0]         # Allow to go 25% beyond the gradients lower bound if needed
           acquisition_options:
-            optimizers: ["sr"]
+            optimizers: ["sr"]                     # Use only SR optimizer for acquisition function optimization (faster)
 
       # Operations to do to mitim_state before passing it to PORTALS
       initialization_parameters:
@@ -265,6 +265,9 @@ maestro:
 
       # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
       use_previous_surrogate_data: true
+
+      # Use previous exploration ranges to limit the new exploration ranges (good to avoid cases in which a portals beat reports a zero gradient)
+      use_previous_ranges: true 
 
       # If surrogates exist, use them to find the first training point (and limit to only one point)
       try_flux_match_only_for_first_point: true
@@ -315,6 +318,7 @@ maestro:
       machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
+      machine_initialization_match_target: false # 
 
       # Simulation length
       flattop_window: 2.5   

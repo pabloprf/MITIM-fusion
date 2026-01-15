@@ -52,9 +52,9 @@ solution:
     #           'te': [1.0, 0.5, 0.5, 0.5]
     #           'ti': [0.5, 0.5, 0.5, 0.5]
     #           ...
-    ymin: 1.0 # Means it will explore -1x from the original gradients, i.e. from 0.0
-    ymax: 3.0 # Means it will explore +3x from the original gradients, i.e. up to 3 x aLT_original
-    yminymax_atleast: [0,2] # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
+    ymin: 1.0               # Means it will explore -1x from the original gradients, i.e. from 0.0 gradient
+    ymax: 3.0               # Means it will explore +3x from the original gradients, i.e. up to 3 x aLT_original
+    yminymax_atleast: [0,2] # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0.0 to 2.0 even if not achieved via the ymin & ymax specification
 
     # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
     enforce_finite_aLT: null
