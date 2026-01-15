@@ -318,7 +318,7 @@ maestro:
       machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
-      machine_initialization_match_target: false # 
+      machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma
 
       # Simulation length
       flattop_window: 2.5   

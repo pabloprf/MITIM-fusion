@@ -50,6 +50,7 @@ class transp_beat(beat):
         currentheating_window = 0.001,
         time_before_end     = 0.001,
         machine_initialization = 'CMOD',
+        machine_initialization_match_target = False,
         **transp_namelist
         ):
         '''
@@ -106,9 +107,17 @@ class transp_beat(beat):
         # Additional operations
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         
+        if machine_initialization_match_target:
+            modify_Ip_to_match_qstar = self.profiles_current.derived['qstar_ITER']
+            modify_p_to_match_pB2 = self.profiles_current.derived['pthr_manual'][0]/self.profiles_current.derived["B0"]**2
+        else:
+            modify_Ip_to_match_qstar = None
+            modify_p_to_match_pB2 = None
+        
         self._additional_operations_add_initialization(
             machine_initialization = machine_initialization,
-            modify_Ip_to_match_qstar=self.profiles_current.derived['qstar_ITER']
+            modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
+            modify_p_to_match_pB2=modify_p_to_match_pB2,
             )
         
         # ICRF on
@@ -317,7 +326,7 @@ class transp_beat(beat):
     # Additional TRANSP utilities
     # --------------------------------------------------------------------------------------------
 
-    def _additional_operations_add_initialization(self, machine_initialization = 'CMOD', modify_Ip_to_match_qstar = None):
+    def _additional_operations_add_initialization(self, machine_initialization = 'CMOD', modify_Ip_to_match_qstar = None, modify_p_to_match_pB2=None):
         '''
         ----------------------------------------------------------------------------------------------------------------------
         TRANSP must be initialized with a specific machine, so here I use the trick of changing the equilibrium and parameters
@@ -348,8 +357,15 @@ class transp_beat(beat):
             )
             factor_Ip = qstar_now / modify_Ip_to_match_qstar
             
-            print(f'\t\t- Modifying Ip of initialization machine from {Ip_MA:.3f} MA to {Ip_MA/factor_Ip:.3f} MA to match target qstar = {modify_Ip_to_match_qstar:.3f}')
-            Ip_MA = Ip_MA / factor_Ip
+            print(f'\t\t- Modifying Ip of initialization machine from {Ip_MA:.3f} MA to {Ip_MA*factor_Ip:.3f} MA to match target qstar = {modify_Ip_to_match_qstar:.3f} (original qstar was {qstar_now:.3f})')
+            Ip_MA = Ip_MA * factor_Ip
+            
+        if modify_p_to_match_pB2 is not None:
+            beta_now = p0_MPa / B_T**2
+            factor_p = beta_now / modify_p_to_match_pB2
+            
+            print(f'\t\t- Modifying p0 of initialization machine from {p0_MPa:.3f} MPa to {p0_MPa/factor_p:.3f} MPa to match target p/B^2 = {modify_p_to_match_pB2:.3f} (original p/B^2 was {beta_now:.3f})')
+            p0_MPa = p0_MPa / factor_p
 
         self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
 

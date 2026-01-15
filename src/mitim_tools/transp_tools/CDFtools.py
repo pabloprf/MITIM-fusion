@@ -14807,7 +14807,7 @@ class transp_output:
                     self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
                     break
         if gf is None:
-            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="w")
+            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="i")
 
         # Try to read boundary too
         if (self.FolderCDF / "MIT12345.RFS").exists():
