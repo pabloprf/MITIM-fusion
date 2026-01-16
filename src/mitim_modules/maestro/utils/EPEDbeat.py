@@ -364,18 +364,24 @@ class eped_beat(beat):
                         store_scan = False
                         print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
             
-            if (ptop_kPa is None) or \
-                (wtop_psipol is None) or \
-                    (ptop_kPa < 0) or \
-                        (wtop_psipol < 0):
+            # Note: NaNs compare unequal to everything (including themselves), so do not use `== np.nan`.
+            # Treat NaN/inf as invalid results.
+            if (
+                (ptop_kPa is None)
+                or (wtop_psipol is None)
+                or (not np.isfinite(ptop_kPa))
+                or (not np.isfinite(wtop_psipol))
+                or (ptop_kPa < 0)
+                or (wtop_psipol < 0)
+            ):
                 raise ValueError('[MITIM] EPED failed to return valid results, cannot continue this simulation')
             
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
-            
-            if ptop_kPa == np.nan or wtop_psipol == np.nan:
-                raise ValueError('[MITIM] EPED returned NaN results, cannot continue this simulation')
+
+            if (not np.isfinite(ptop_kPa)) or (not np.isfinite(wtop_psipol)):
+                raise ValueError('[MITIM] EPED returned NaN/inf results, cannot continue this simulation')
 
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
