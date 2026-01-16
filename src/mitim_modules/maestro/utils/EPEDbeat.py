@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.eped_tools import EPEDtools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -346,8 +346,20 @@ class eped_beat(beat):
                 if not self.use_full_EPED:
                     ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
                 else:
-                    ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=self.eped_params_override, nproc_per_run=nproc_per_run, cold_start=cold_start)
-                    
+                    try:
+                        ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=self.eped_params_override, nproc_per_run=nproc_per_run, cold_start=cold_start)
+                    except LOGtools.InteractiveTerminalError:
+                        # Possibility that EPED could not find any stable solution
+                        if (self.folder / 'case1' / 'mitim.out').exists():
+                            error_line = "all stable or fail to find solution"
+                            # Read file to find line
+                            with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
+                                lines = f.readlines()
+                                for line in lines:
+                                    if error_line in line:
+                                        raise Exception('[MITIM] EPED failed to find any stable solution, cannot continue this simulation')
+                        raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
+                        
                     if store_scan and self.nn==None:
                         store_scan = False
                         print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
@@ -361,6 +373,9 @@ class eped_beat(beat):
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
+            
+            if ptop_kPa == np.nan or wtop_psipol == np.nan:
+                raise ValueError('[MITIM] EPED returned NaN results, cannot continue this simulation')
 
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
