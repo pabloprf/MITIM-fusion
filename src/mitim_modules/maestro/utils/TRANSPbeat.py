@@ -113,12 +113,16 @@ class transp_beat(beat):
         else:
             modify_Ip_to_match_qstar = None
             modify_p_to_match_pB2 = None
+            
+            
+        self.machine_run = machine_initialization
         
-        self._additional_operations_add_initialization(
-            machine_initialization = machine_initialization,
-            modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
-            modify_p_to_match_pB2=modify_p_to_match_pB2,
-            )
+        if transition_window > 0.0:
+            self._additional_operations_add_initialization(
+                machine_initialization = self.machine_run,
+                modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
+                modify_p_to_match_pB2=modify_p_to_match_pB2,
+                )
         
         # ICRF on
         PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
@@ -333,13 +337,12 @@ class transp_beat(beat):
         in time, to make a smooth transition and avoid equilibrium crashes (e.g. quval error)
         ----------------------------------------------------------------------------------------------------------------------
         '''
-        self.machine_run = machine_initialization
 
-        if self.machine_run == 'D3D':
+        if machine_initialization == 'D3D':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 1.67, 0.6, 1.75, 0.38, 0.0, 0.0, 0.074, 1.6, 2.0, 1.0
-        elif self.machine_run == 'CMOD':
+        elif machine_initialization == 'CMOD':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.68, 0.22, 1.5, 0.46, 0.0, 0.0, 0.3, 1.0, 5.4, 1.0
-        elif self.machine_run == 'NSTX':
+        elif machine_initialization == 'NSTX':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.89, 0.61, 2.5, 0.46, 0.0, 0.0, 0.4, 1.0, 0.5, 1.0
             # says it has no psi-bndry
 
