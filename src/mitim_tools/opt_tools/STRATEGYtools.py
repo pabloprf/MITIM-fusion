@@ -391,7 +391,7 @@ class MITIM_BO:
                 try:
                     dictStore = IOtools.unpickle_mitim(self.optimization_extra)
                     exists = True
-                except (ModuleNotFoundError,EOFError):
+                except (ModuleNotFoundError,EOFError,pickle_dill.UnpicklingError):
                     exists = False
                     print('Problem loading "optimization_extra.pkl"',typeMsg="w")
             
