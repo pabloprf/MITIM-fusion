@@ -293,6 +293,9 @@ class NEOoutput(SIMtools.GACODEoutput):
         with open(self.FolderGACODE / ("out.neo.transport_flux" + self.suffix), "r") as f:
             lines = f.readlines()
             
+        if len(lines) == 0:
+            raise ValueError(f"NEO output file {self.FolderGACODE / ('out.neo.transport_flux' + self.suffix)} is empty! NEO run may have failed for these inputs.")
+            
         for i in range(len(lines)):
             if '# Z       pflux_tgyro   eflux_tgyro   mflux_tgyro' in lines[i]:
                 # Found the header line, now process the data
