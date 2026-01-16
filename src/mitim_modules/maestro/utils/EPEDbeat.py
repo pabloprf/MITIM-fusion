@@ -778,7 +778,7 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', keep_aLx=True, roa = None, print_msgs = True):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, label='', keep_aLx=True, roa = None, print_msgs = True, plotYN=False):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
@@ -788,9 +788,9 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
     if print_msgs: print(f'\t\t- Scaling profile {label} by stretching')
 
     # Find old core
-    ibc = np.argmin(np.abs(x-xp_old))
-    xcore_old = x[:ibc+1]
-    ycore_old = y[:ibc+1]
+    ibc_old = np.argmin(np.abs(x-xp_old))
+    xcore_old = x[:ibc_old+1]
+    ycore_old = y[:ibc_old+1]
 
     if print_msgs: print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
 
@@ -816,17 +816,30 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
 
     # Keep old aLT
     if keep_aLx:
-        if print_msgs: print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
+        if print_msgs:
+            print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
 
-        # Calculate gradient in entire region
-        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
+        # Calculate gradient in entire region for old profile
+        aLy = CALCtools.derivation_into_Lx(
+            torch.from_numpy(roa),
+            torch.from_numpy(y)
+            )
 
         # I'm only interested in core region, plus one ghost point with the same gradient
         aLy = torch.cat( (aLy[:ibc+1], aLy[ibc].unsqueeze(0)) )
+        
+        # If the new position is farther out, the region between old and new top needs to be of equal gradient as the last point of old core.
+        # Otherwise, huge gradients appear due to the pedestal of the old profile
+        for i in range(ibc_old+1, ibc+2):
+            aLy[i] = aLy[ibc_old]
 
-        y_mod = CALCtools.integration_Lx( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
+        y_mod = CALCtools.integration_Lx(
+            torch.from_numpy(roa[:ibc+2]).unsqueeze(0),
+            aLy.unsqueeze(0),
+            torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0)
+        ).squeeze().numpy()
+        
         ynew[:ibc+2] = y_mod
-
 
     if plotYN:
         fig, axs = plt.subplots(nrows=2, figsize=(6,10))
