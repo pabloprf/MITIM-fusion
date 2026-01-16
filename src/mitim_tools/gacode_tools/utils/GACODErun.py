@@ -235,7 +235,7 @@ def runTRXPL(
             trxpl_path:  enter "1" for if Btoroidal is ccw:
     """
 
-    commandTRXPL = f"P\n10000\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n10001\nQ\nQ\nQ"
+    commandTRXPL = f"P\n{nameFiles}\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n{nameOutputs}\nQ\nQ\nQ"
     with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
@@ -254,7 +254,7 @@ def runTRXPL(
     if grids[0] > 301:
         raise Exception("~~~~ Max grid for TRXPL is 301")
 
-    print(f"\t\t- testProceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
+    print(f"\t\t- Proceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
 
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
