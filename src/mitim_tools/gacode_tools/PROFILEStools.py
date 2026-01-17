@@ -355,7 +355,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
         ax.set_ylabel(f"cos-shape (>{minShape:.1e})")
-        if legYN:
+        if legYN and cont>0:
             ax.legend(loc="best", fontsize=fs)
             GRAPHICStools.gradientSPAN(ax, -minShape, +minShape, color='k', startingalpha = 0.2, endingalpha = 0.2, orientation='horizontal')
 
