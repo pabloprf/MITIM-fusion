@@ -15790,12 +15790,8 @@ class transp_output:
             "Times",
             "--------------------------",
             f"Thermal energy confinement time:   taue     = {self.taue[ind]:.0f} ms",
-            "Current Diffusion Time:            tau_CD   = {0:.1f} s".format(
-                self.tau_c[ind] / 1000.0
-            ),
-            "Sawtooth Period:                   tau_saw  = {0:.1f} s".format(
-                self.tau_saw[ind] / 1000.0
-            ),
+            "Current Diffusion Time:            tau_CD   = {0:.1f} s".format(self.tau_c[ind] / 1000.0),
+            "Sawtooth Period:                   tau_saw  = {0:.1f} s".format(self.tau_saw[ind] / 1000.0),
             "\n",
         ]
 

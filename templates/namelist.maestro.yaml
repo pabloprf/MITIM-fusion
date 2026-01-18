@@ -322,6 +322,7 @@ maestro:
 
       # Simulation length
       flattop_window: 2.5   
+      ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
 
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
@@ -375,5 +376,9 @@ maestro:
     # A final TRANSP beat must be as a normal TRANSP beat, but extracting AC files
     parameters_prepare:
 
+        ensure_sawtooths: 2
+
         extractAC: True
+        time_before_end: 0.001
+
         

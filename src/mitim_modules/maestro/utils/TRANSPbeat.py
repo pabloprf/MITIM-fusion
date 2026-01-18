@@ -44,6 +44,7 @@ class transp_beat(beat):
     def prepare(
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        ensure_sawtooths    = None,                 # If not None, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
         transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
@@ -70,6 +71,9 @@ class transp_beat(beat):
         self.time_transition = self.time_init+ self.transition_window       # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
         self.time_end = self.time_diffusion + flattop_window                # End
+        
+        self._inform(ensure_sawtooths=ensure_sawtooths)
+        
         self.timeAC = self.time_end - time_before_end if extractAC else None          # Time to extract TORIC and NUBEAM files
 
         # Write TRANSP from profiles
@@ -182,6 +186,7 @@ class transp_beat(beat):
             shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
+
         except FileNotFoundError:
             print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
             
@@ -198,6 +203,15 @@ class transp_beat(beat):
             shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
             shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
             shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+
+        # AC files ----------------------------------------------------------------------------------
+        if (self.folder / "NUBEAM_folder").exists():
+            shutil.copytree(self.folder / "NUBEAM_folder", self.folder_output / "NUBEAM_folder")
+        if (self.folder / "TORIC_folder").exists():
+            shutil.copytree(self.folder / "TORIC_folder", self.folder_output / "TORIC_folder")
+        if (self.folder / "FI_folder").exists():
+            shutil.copytree(self.folder / "FI_folder", self.folder_output / "FI_folder")
+        # --------------------------------------------------------------------------------------------
 
         # Remove any existing files in the output folder (to avoid multiple CDFs)
         for cdf_file in self.folder_output.glob("*.CDF"):
@@ -396,7 +410,36 @@ class transp_beat(beat):
         # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
         
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None 
-
+        
+        # Grab sawtooths if available
+        self.maestro_instance.parameters_trans_beat['sawtooth_times'] = np.array(c.tlastsawU) 
+        
+    def _inform(self, ensure_sawtooths=None):
+        
+        time_end_minimum = 0.0
+        if "sawtooth_times" in self.maestro_instance.parameters_trans_beat and ensure_sawtooths is not None:
+            
+            sawtooth_times = self.maestro_instance.parameters_trans_beat['sawtooth_times']
+            
+            # If simulation already has enough sawtooths, ensure it has at least that duration
+            if len(sawtooth_times) >= ensure_sawtooths:
+                time_end_minimum = sawtooth_times[-1]
+            else:
+                howmany_missing = ensure_sawtooths - len(sawtooth_times)
+                # If the simulation had more than one sawtooth, estimate the period of the last
+                if len(sawtooth_times) >= 2:
+                    last_period = sawtooth_times[-1] - sawtooth_times[-2]
+                    time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.1 # Overestimation factor of 1.1
+                # If the simulation only had one sawtooth, estimate the period assuming the first "sawtooth" was at t=0
+                else:
+                    last_period = sawtooth_times[-1] - 0.0
+                    time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.5 # Overestimation factor of 1.5
+                    
+        if self.time_end < time_end_minimum:
+            print(f'\t- Extending TRANSP simulation time_end from {self.time_end:.4f} s to {time_end_minimum:.4f} s to ensure at least {ensure_sawtooths} sawtooths (estimate)', typeMsg='i')
+                    
+        self.time_end = max(self.time_end, time_end_minimum)
+                    
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------
