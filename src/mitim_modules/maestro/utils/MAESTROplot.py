@@ -226,7 +226,7 @@ def plot_results(self, fn):
                                  A
                                  B
                                  """,sharex=True)
-        IOtools.plot_timings(self.folder_performance / 'timing.jsonl', axs = axs, log=True)
+        IOtools.plot_timings(self.folder_performance / 'timing.jsonl', axs = axs, log=False)
     
     return ps, ps_lab
 

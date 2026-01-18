@@ -1155,13 +1155,13 @@ class mitim_state:
                 ImpurityText += f"{self.Species[i]['N']}({self.Species[i]['Z']:.0f},{self.Species[i]['A']:.0f}) = {self.derived['fi_vol'][i]:.1e}, "
             ImpurityText = ImpurityText[:-2]
     
-            print(f"\n{label}")
-            print(f" _____________________________________________________________________________")
+            print(f"\n{label + '' if label != '' else ', summary:'}")
+            print(f" ________________________________________________________________________________________")
             print("| Engineering Parameters:")
-            print(f"|\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}, q*ITER = {self.derived['qstar_ITER']:.2f}), Pin = {self.derived['qIn']:.2f}MW")
+            print(f"|\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}, q*ITER = {self.derived['qstar_ITER']:.2f})")
             print(f"|\tR  = {self.profiles['rcentr(m)'][0]:.2f}m, a  = {self.derived['a']:.2f}m (eps = {self.derived['eps']:.3f})")
             print(f"|\tkappa_sep = {self.profiles['kappa(-)'][-1]:.2f}, kappa_995 = {self.derived['kappa995']:.2f}, kappa_95 = {self.derived['kappa95']:.2f}, kappa_a = {self.derived['kappa_a']:.2f}")
-            print(f"|\tdelta_sep  = {self.profiles['delta(-)'][-1]:.2f}, delta_995  = {self.derived['delta995']:.2f}, delta_95  = {self.derived['delta95']:.2f}")
+            print(f"|\tdelta_sep = {self.profiles['delta(-)'][-1]:.2f}, delta_995 = {self.derived['delta995']:.2f}, delta_95 = {self.derived['delta95']:.2f}")
             print("| Performance:")
             print("|\tQ     =  {0:.2f}   (Pfus = {1:.1f}MW, Pin = {2:.1f}MW)".format(self.derived["Q"], self.derived["Pfus"], self.derived["qIn"]))
             print("|\tH98y2 =  {0:.2f}   (tauE  = {1:.3f} s)".format(self.derived["H98"], self.derived["tauE"]))
@@ -1176,15 +1176,15 @@ class mitim_state:
             print("| Operational point ( [<ne>, <Te>] = [{0:.2f}, {1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("|\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
             print("|\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
-            print(f"|\tZeff  = {self.derived['Zeff_vol']:.2f}   (M_main = {self.derived['mbg_main']:.2f}, f_main = {self.derived['fmain']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]")
-            print(f"|\tMach  = {self.derived['MachNum_vol']:.2f}   (vol avg)")
+            print(f"|\tZeff  = {self.derived['Zeff_vol']:.2f}   (f_main = {self.derived['fmain']:.2f}, M_main = {self.derived['mbg_main']:.2f}) [QN err = {self.derived['QN_Error']:.1e}]")
+            print(f"|\tMach_vol = {self.derived['MachNum_vol']:.2f}")
             print("| Content:")
             print("|\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]))
             print("|\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20  (N_thr = {2:.1f}*10^20)".format(self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]))
-            print(f"|\ttauE  = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})")
-            print("| Species concentration:")
+            print(f"|\ttauE = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})")
+            print("| Species concentration (volume average):")
             print(f"|\t{ImpurityText}")
-            print(" ----------------------------------------------------------------------------")
+            print(" ------------------------------------------------------------------------------------------\n")
         except KeyError:
             print("\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",typeMsg="w",)
             if reDeriveIfNotFound:

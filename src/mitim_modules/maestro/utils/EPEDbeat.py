@@ -611,7 +611,7 @@ class eped_beat(beat):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine
         pass
 
-    def grab_output(self):
+    def grab_output(self, **kwargs):
 
         isitfinished = self.maestro_instance.check(beat_check=self)
 

@@ -77,7 +77,7 @@ class fbmCDF:
         elif (file.parent / f'{file.name.split(".DATA")[0] + "_birth.cdf1"}').exists():
             birthfile = file.parent / file.name.split(".DATA")[0] + "_birth.cdf1"
         else:
-            print("\t\t- NUBEAM birth cdf file could not be found", typeMsg="w")
+            print("\t\t- NUBEAM birth cdf file could not be found")
 
         if birthfile is not None and self.particle == "D_NBI":
             self.birth = birthCDF(birthfile, particle="D_MCBEAM")
@@ -323,9 +323,8 @@ def runGetFBM(
         launchSlurm=False,
     )
 
-    print("\t\t\t- Running get_fbm command")
     if commandOrder is not None:
-        print("\t\t\t- [First running AC corrector]")
+        print("\t\t\t- Running AC corrector:")
 
         fbm_job.prep(
             f"{commandOrder} && mv {fileonly} {fileonly}_converted",
@@ -342,6 +341,8 @@ def runGetFBM(
             convfile = file.with_name(f"{file.name}_converted")
             file.replace(origfile)
             convfile.replace(file)
+
+    print("\t\t\t- Running get_fbm command")
 
     fbm_job.prep(
         commandMain,
@@ -439,9 +440,7 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
     if ACalreadyConverted is not None:
         if not noHe4:
             try:
-                print(
-                    f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM"
-                )
+                print(f"\t\t\t- File ...{IOtools.clipstr(name)} found, running workflow to get FBM")
                 fbm_He4_po = fbmCDF(
                     name,
                     ACalreadyConverted=ACalreadyConverted,

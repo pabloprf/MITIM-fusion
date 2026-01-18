@@ -297,12 +297,12 @@ class transp_beat(beat):
         self.profiles_output.derive_quantities()
         self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
 
-    def grab_output(self):
+    def grab_output(self, read_ac=False, **kwargs):
 
         isitfinished = self.maestro_instance.check(beat_check=self)
 
         if isitfinished:
-            c = CDFtools.transp_output(self.folder_output)
+            c = CDFtools.transp_output(self.folder_output, readFBM=read_ac, readTORIC=read_ac)
             profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
         else:
             # Trying to see if there's an intermediate CDF in folder
@@ -317,7 +317,7 @@ class transp_beat(beat):
 
     def plot(self,  fn = None, counter = 0, **kwargs):
 
-        c, _ = self.grab_output()
+        c, _ = self.grab_output(read_ac=True)
         
         if c is None:
             return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
