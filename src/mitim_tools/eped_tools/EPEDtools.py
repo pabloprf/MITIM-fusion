@@ -49,6 +49,7 @@ class EPED:
             job_array_limit = 5,
             removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
             eped_params_override = None,
+            teped_guess_eV = -1, # if -1, EPED will choose its own guess
             ):
         '''
         Notes:
@@ -140,7 +141,14 @@ class EPED:
             eped_config_file = 'eped.config1'
             
             # Write input file to EPED, determining the expected output file
-            output_file = self._prep_input_files(folder_case,input_params=input_params_new,eped_input_file=eped_input_file, eped_config_file=eped_config_file, eped_params_override=eped_params_override)
+            output_file = self._prep_input_files(
+                folder_case,
+                input_params=input_params_new,
+                eped_input_file=eped_input_file,
+                eped_config_file=eped_config_file,
+                eped_params_override=eped_params_override,
+                teped_guess=teped_guess_eV,
+                )
             
             # Before running, copy the files from EPED source, and copy the input file to the expected name, and the config file
             shellPreCommands.append(
@@ -196,6 +204,7 @@ class EPED:
             eped_input_file = 'eped.input.1', # Do not call it directly 'eped.input' as it may be overwritten by the job script template copying commands
             eped_config_file = 'eped.config1',
             eped_params_override = None,
+            teped_guess = -1,
             ):
         
         # ----------------------------------------
@@ -213,7 +222,7 @@ class EPED:
              'runid': 0,
              'tewid': 0.03,
              'ptotwid': 0.03,
-             'teped': -1,
+             'teped': teped_guess,
              'ptotped': -1,
             }
         )
@@ -308,6 +317,13 @@ class EPED:
         **kwargs_plot_prediction,
     ):
         
+        if len(scan_params) != len(labels):
+            if len(scan_params) == 1:
+                scan_params = scan_params * len(labels)
+            else:
+                raise ValueError('Length of scan_params must be either 1 or equal to length of labels.')
+
+        
         if fn is None:
             GRAPHICStools.prep_figure_papers(size=14)
             self.fn = GUItools.FigureNotebook("EPED",  geometry="1600x900")
@@ -388,7 +404,7 @@ class EPED:
             colors = None,
             additional_labels = None,
             ):
-
+        
         # --------------------
         # Prepare graphics
         # --------------------
@@ -418,7 +434,7 @@ class EPED:
                 print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
             
             for sublabel in sublabels:
-                
+                                
                 # Grab scanning parameter
                 x.append(float(data[sublabel][scan_params[i]]))
                 
