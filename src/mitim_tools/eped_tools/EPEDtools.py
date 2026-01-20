@@ -591,22 +591,24 @@ class EPED:
             teped = np.array(data['teped_list'])* 1E-3
             teped_base = float(data['tped']) 
             
+            minwidth = 1-data['wptop']
+            
             for iheight in range(p.shape[0]):
                 
                 is_it_on_point = abs(teped[iheight] - teped_base) < 0.001
                 
-                alpha_case = 1.0 if is_it_on_point else (0.5 if teped[iheight] < teped_base else 0.1)
+                alpha_case = 1.0 if is_it_on_point else (0.3 if teped[iheight] < teped_base else 0.05)
                 lw = 2.0 if is_it_on_point else 0.5
                 ax.plot(psin[iheight,:], p[iheight,:], '-', c=color, lw=lw, alpha=alpha_case)
             
             if variable[0] == 'profile_ptot':
-                ax.plot([1-data['wptop']], [data['ptop']], 's', c='k', ms=8)
+                ax.plot([minwidth], [data['ptop']], 's', c='k', ms=8)
                 ax.plot([1-data['wpped']], [data['pped']], 's', c='k', ms=8)
             
             ax.set_xlabel("$\\psi_N$")
             ax.set_ylabel(variable[1])
             ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
-            ax.set_xlim([0.85,1.0])
+            ax.set_xlim([minwidth-0.03,1.0])
             GRAPHICStools.addDenseAxis(ax)
             
 # ************************************************************************************************************
