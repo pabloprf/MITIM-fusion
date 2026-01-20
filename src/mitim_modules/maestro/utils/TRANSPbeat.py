@@ -1,5 +1,4 @@
 import os
-from pdb import run
 import shutil
 import copy
 import numpy as np
@@ -419,27 +418,43 @@ class transp_beat(beat):
         time_end_minimum = 0.0
         if "sawtooth_times" in self.maestro_instance.parameters_trans_beat and ensure_sawtooths is not None:
             
-            sawtooth_times = self.maestro_instance.parameters_trans_beat['sawtooth_times']
-            
-            # If simulation already has enough sawtooths, ensure it has at least that duration
-            if len(sawtooth_times) >= ensure_sawtooths:
-                time_end_minimum = sawtooth_times[-1]
-            else:
-                howmany_missing = ensure_sawtooths - len(sawtooth_times)
-                # If the simulation had more than one sawtooth, estimate the period of the last
-                if len(sawtooth_times) >= 2:
-                    last_period = sawtooth_times[-1] - sawtooth_times[-2]
-                    time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.1 # Overestimation factor of 1.1
-                # If the simulation only had one sawtooth, estimate the period assuming the first "sawtooth" was at t=0
-                else:
-                    last_period = sawtooth_times[-1] - 0.0
-                    time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.5 # Overestimation factor of 1.5
+            time_end_minimum = self._determine_minimum_time(ensure_sawtooths=ensure_sawtooths)
                     
-        if self.time_end < time_end_minimum:
-            print(f'\t- Extending TRANSP simulation time_end from {self.time_end:.4f} s to {time_end_minimum:.4f} s to ensure at least {ensure_sawtooths} sawtooths (estimate)', typeMsg='i')
+            if self.time_end < time_end_minimum:
+                print(f'\t- Extending TRANSP simulation time_end from {self.time_end:.4f} s to {time_end_minimum:.4f} s to ensure at least {ensure_sawtooths} sawtooths (estimate)', typeMsg='i')
                     
         self.time_end = max(self.time_end, time_end_minimum)
-                    
+             
+    def _determine_minimum_time(self, ensure_sawtooths=None):
+            
+        # ---------------------------------------------------------------------------------------
+        # Sawtooth handling
+        # ---------------------------------------------------------------------------------------
+            
+        sawtooth_times = self.maestro_instance.parameters_trans_beat['sawtooth_times']
+        
+        # If simulation already has enough sawtooths, ensure it has at least that duration
+        if len(sawtooth_times) >= ensure_sawtooths:
+            time_end_minimum = sawtooth_times[-1]
+        else:
+            howmany_missing = ensure_sawtooths - len(sawtooth_times)
+            # If the simulation had more than one sawtooth, estimate the period of the last
+            if len(sawtooth_times) >= 2:
+                last_period = sawtooth_times[-1] - sawtooth_times[-2]
+                time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.1 # Overestimation factor of 1.1
+            # If the simulation only had one sawtooth, estimate the period assuming the first "sawtooth" was at t=0
+            else:
+                last_period = sawtooth_times[-1] - 0.0
+                time_end_minimum = sawtooth_times[-1] + howmany_missing * last_period * 1.5 # Overestimation factor of 1.5
+
+        # ---------------------------------------------------------------------------------------
+        # Fast particle transport
+        # ---------------------------------------------------------------------------------------
+        
+        #TODO
+        
+        return time_end_minimum
+             
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO
 # -----------------------------------------------------------------------------------------------------------------------

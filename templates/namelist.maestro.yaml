@@ -373,7 +373,7 @@ maestro:
 
     base_module: transp
 
-    # A final TRANSP beat must be as a normal TRANSP beat, but extracting AC files
+    # A final TRANSP beat must be as a normal TRANSP beat, but extracting AC files and estimating 2 sawtooths
     parameters_prepare:
 
         ensure_sawtooths: 2
