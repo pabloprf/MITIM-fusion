@@ -339,13 +339,41 @@ class EPED:
         )
         
         for i, label in enumerate(labels):
-            fig = self.fn.add_figure(label="EPED Stability - " + label, tab_color=tab_color)
+            fig = self.fn.add_figure(label="EPED Stability (teped) - " + label, tab_color=tab_color)
             self.plot_g_stability(
                 label = label,
                 fig = fig,
                 scan_param = scan_params[i],
                 color = colors[i],
+                variable=['teped_list','$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
             )
+
+            fig = self.fn.add_figure(label="EPED profiles (ptot) - " + label, tab_color=tab_color)
+            self.plot_eped_profiles(
+                    label = label,
+                    fig = fig,
+                    scan_param = scan_params[i],
+                    color = colors[i],
+                    variable = ['profile_ptot','$p_{tot}$ (kPa)']
+                )
+
+            fig = self.fn.add_figure(label="EPED profiles (q) - " + label, tab_color=tab_color)
+            self.plot_eped_profiles(
+                    label = label,
+                    fig = fig,
+                    scan_param = scan_params[i],
+                    color = colors[i],
+                    variable = ['profile_q','$q$']
+                )
+
+            fig = self.fn.add_figure(label="EPED profiles (j) - " + label, tab_color=tab_color)
+            self.plot_eped_profiles(
+                    label = label,
+                    fig = fig,
+                    scan_param = scan_params[i],
+                    color = colors[i],
+                    variable = ['profile_jtot','$J$ ($A/m^2$)']
+                )
 
     def plot_prediction(
             self,
@@ -432,18 +460,13 @@ class EPED:
 
         plt.tight_layout()
         
-    def plot_g_stability(
+    def _grab_axis_sublabels(
         self,
-        label = 'run1',
-        scan_param = 'neped',
+        data_master,
         fig = None,
         axs = None,
-        g_base = 0.03,
-        color = 'b',
-    ):
-        
-        data_master = self.results[label]
-        
+        ):
+
         if axs is None:
             
             max_sublabels = len(data_master.keys())
@@ -473,7 +496,6 @@ class EPED:
             # Extra breathing room between panels
             fig.subplots_adjust(wspace=0.4, hspace=0.9)
 
-        
         # Plot each sublabel into its panel index; overlay curves from each label
         
         sublabels = data_master.keys()
@@ -482,6 +504,27 @@ class EPED:
         except: 
             print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
         
+        return axs, sublabels
+        
+    def plot_g_stability(
+        self,
+        label = 'run1',
+        scan_param = 'neped',
+        fig = None,
+        axs = None,
+        g_base = 0.03,
+        color = 'b',
+        variable = ['teped_list','$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
+    ):
+        
+        data_master = self.results[label]
+        
+        axs, sublabels = self._grab_axis_sublabels(
+            data_master,
+            fig = fig,
+            axs = axs,
+        )
+        
         for j, sublabel in enumerate(sublabels):
             
             ax = axs[f'ax{j+1}']
@@ -489,7 +532,7 @@ class EPED:
             data = data_master[sublabel]
         
             n = np.array(data['nmodes'])
-            h = np.array(data['teped_list']) * 1E-3  # to keV
+            h = np.array(data[variable[0]]) * variable[3]
             
             g = np.array(data['gamma'])
             
@@ -502,7 +545,8 @@ class EPED:
                 ax.legend(loc='upper right', fontsize=8)
             
             # Plot prediction
-            ax.plot([float(data['tped'])], [g_base], '-s', c=color, ms=12)
+            xbase = float(data[variable[2]]) * variable[4]
+            ax.plot([xbase], [g_base], '-s', c=color, ms=12)
             
             # Plot criterion
             ax.axhline(g_base, color='k', ls='--', lw=1.0)
@@ -510,11 +554,59 @@ class EPED:
             # Plot starting point
             ax.axvline(h[0], color='k', ls='--', lw=0.5)
             
-            ax.set_xlabel('$T_{e,ped}$ (keV)')
+            ax.set_xlabel(variable[1])
             ax.set_ylabel('$\\gamma/\\omega_A$')
             ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
             ax.set_ylim([0,g_base*2.0])
             ax.set_xlim(left=0)
+            GRAPHICStools.addDenseAxis(ax)
+            
+    def plot_eped_profiles(
+        self,
+        label = 'run1',
+        scan_param = 'neped',
+        fig = None,
+        axs = None,
+        color = 'b',
+        variable = ['profile_ptot','$p_{tot}$ (kPa)'],
+    ):
+        
+        data_master = self.results[label]
+        
+        axs, sublabels = self._grab_axis_sublabels(
+            data_master,
+            fig = fig,
+            axs = axs,
+        )
+        
+        for j, sublabel in enumerate(sublabels):
+            
+            ax = axs[f'ax{j+1}']
+            
+            data = data_master[sublabel]
+            
+            psin = np.array(data['profile_psin'])
+            p = np.array(data[variable[0]])
+            
+            teped = np.array(data['teped_list'])* 1E-3
+            teped_base = float(data['tped']) 
+            
+            for iheight in range(p.shape[0]):
+                
+                is_it_on_point = abs(teped[iheight] - teped_base) < 0.001
+                
+                alpha_case = 1.0 if is_it_on_point else (0.5 if teped[iheight] < teped_base else 0.1)
+                lw = 2.0 if is_it_on_point else 0.5
+                ax.plot(psin[iheight,:], p[iheight,:], '-', c=color, lw=lw, alpha=alpha_case)
+            
+            if variable[0] == 'profile_ptot':
+                ax.plot([1-data['wptop']], [data['ptop']], 's', c='k', ms=8)
+                ax.plot([1-data['wpped']], [data['pped']], 's', c='k', ms=8)
+            
+            ax.set_xlabel("$\\psi_N$")
+            ax.set_ylabel(variable[1])
+            ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
+            ax.set_xlim([0.85,1.0])
             GRAPHICStools.addDenseAxis(ax)
             
 # ************************************************************************************************************
