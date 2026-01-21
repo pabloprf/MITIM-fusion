@@ -177,6 +177,8 @@ class transp_beat(beat):
         seconds_check = 0.1
         if last_time_simulated < self.time_end - seconds_check:   
             raise RuntimeError(f"[MITIM] TRANSP run did not complete until the expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.")
+        else:
+            print(f'\t\t- TRANSP run completed until expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.')
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 

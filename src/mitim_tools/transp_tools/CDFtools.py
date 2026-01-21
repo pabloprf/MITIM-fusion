@@ -12434,7 +12434,7 @@ class transp_output:
         ax.axvline(x=0, ls="-", lw=1, c="b")
         ax.axvline(x=1, ls="-", lw=1, c="b")
         ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Surface area ($m^{3}$)")
+        ax.set_ylabel("Surface area ($m^{2}$)")
         ax.set_xlim([0, 1])
         ax.set_ylim(bottom=0)
         GRAPHICStools.addDenseAxis(ax)

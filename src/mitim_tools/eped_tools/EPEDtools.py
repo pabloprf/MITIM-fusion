@@ -354,38 +354,42 @@ class EPED:
             **kwargs_plot_prediction
         )
         
+        figs_stability = {}
+        figs_eped_profile_ptot = {}
+        figs_eped_profile_q = {}
+        figs_eped_profile_j = {}
+        for label in labels:
+            figs_stability[label] = self.fn.add_figure(label="EPED Stability (teped) - " + label, tab_color=tab_color)
+            figs_eped_profile_ptot[label] = self.fn.add_figure(label="EPED profiles (ptot) - " + label, tab_color=tab_color)
+            figs_eped_profile_q[label] = self.fn.add_figure(label="EPED profiles (q) - " + label, tab_color=tab_color)
+            figs_eped_profile_j[label] = self.fn.add_figure(label="EPED profiles (J) - " + label, tab_color=tab_color)
+
+        
         for i, label in enumerate(labels):
-            fig = self.fn.add_figure(label="EPED Stability (teped) - " + label, tab_color=tab_color)
             self.plot_g_stability(
                 label = label,
-                fig = fig,
+                fig = figs_stability[label],
                 scan_param = scan_params[i],
                 color = colors[i],
                 variable=['teped_list','$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
             )
-
-            fig = self.fn.add_figure(label="EPED profiles (ptot) - " + label, tab_color=tab_color)
             self.plot_eped_profiles(
                     label = label,
-                    fig = fig,
+                    fig = figs_eped_profile_ptot[label],
                     scan_param = scan_params[i],
                     color = colors[i],
                     variable = ['profile_ptot','$p_{tot}$ (kPa)']
                 )
-
-            fig = self.fn.add_figure(label="EPED profiles (q) - " + label, tab_color=tab_color)
             self.plot_eped_profiles(
                     label = label,
-                    fig = fig,
+                    fig = figs_eped_profile_q[label],
                     scan_param = scan_params[i],
                     color = colors[i],
                     variable = ['profile_q','$q$']
                 )
-
-            fig = self.fn.add_figure(label="EPED profiles (j) - " + label, tab_color=tab_color)
             self.plot_eped_profiles(
                     label = label,
-                    fig = fig,
+                    fig = figs_eped_profile_j[label],
                     scan_param = scan_params[i],
                     color = colors[i],
                     variable = ['profile_jtot','$J$ ($A/m^2$)']
