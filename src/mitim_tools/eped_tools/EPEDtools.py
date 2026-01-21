@@ -84,7 +84,7 @@ class EPED:
             slurm_settings={
                 'name': 'mitim_eped',
                 'minutes': minutes_slurm,
-                'ntasks': nproc_per_run,
+                'ntaskspernode': nproc_per_run,
                 'job_array': job_array, 
                 'job_array_limit': job_array_limit,
             }
@@ -170,12 +170,22 @@ class EPED:
         
         # Submit as a slurm job array
         if self.eped_job.launchSlurm:
-            EPEDcommand  = f'cd {self.eped_job.folderExecution}/run"$SLURM_ARRAY_TASK_ID" && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf' 
+            EPEDcommand  = (
+                f'cd {self.eped_job.folderExecution}/run"$SLURM_ARRAY_TASK_ID" '                                                    # Change to the run folder
+                f'&& export NPROC_EPED={nproc_per_run} '                                                                            # Defines the number of processors for EPED
+                f'&& if [ -z "${{SLURM_JOB_TASKS_PER_NODE:-}}" ]; then export SLURM_JOB_TASKS_PER_NODE={nproc_per_run}; fi '        # Ensure SLURM_JOB_TASKS_PER_NODE is defined
+                f'&& ips.py --config=eped.config --platform=psfc_cluster.conf'                                                      # Run EPED                
+            )
         # Submit locally in parallel
         else:
             EPEDcommand = ""
             for i in job_array.split(','):
-                EPEDcommand += f'cd {self.eped_job.folderExecution}/run{i} && export NPROC_EPED={nproc_per_run} && ips.py --config=eped.config --platform=psfc_cluster.conf & \n'
+                EPEDcommand += (
+                    f'cd {self.eped_job.folderExecution}/run{i} '                                                                   # Change to the run folder              
+                    f'&& export NPROC_EPED={nproc_per_run} '                                                                        # Defines the number of processors for EPED
+                    f'&& if [ -z "${{SLURM_JOB_TASKS_PER_NODE:-}}" ]; then export SLURM_JOB_TASKS_PER_NODE={nproc_per_run}; fi '    # Ensure SLURM_JOB_TASKS_PER_NODE is defined    
+                    f'&& ips.py --config=eped.config --platform=psfc_cluster.conf & \n'                                             # Run EPED in background       
+                )
             EPEDcommand += 'wait\n'
 
         # Prepare the job script

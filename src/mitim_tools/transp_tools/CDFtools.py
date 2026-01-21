@@ -12099,6 +12099,7 @@ class transp_output:
         ax = fig.add_subplot(grid[0, 1])
         ax.plot(self.t, self.Ip, lw=2, c="b", label="$I_p$")
         ax.plot(self.t, self.Ip_eq, lw=2, c="r", label="$I_{p,check}$")
+        ax.plot(self.t, self.Ip_j, lw=1, ls='--', c="m", label="$\\int J dA$")
         if self.isolver is not None and self.isolver.Ip_Anom is not None:
             Ip_red = self.Ip - self.isolver.Ip_Anom
             ax.plot(self.t, Ip_red, lw=2, c="g", label="$I_{p}-I_{ISOLVER err}$")

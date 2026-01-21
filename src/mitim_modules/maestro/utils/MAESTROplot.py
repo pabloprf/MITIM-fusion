@@ -1,3 +1,4 @@
+import re
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
@@ -6,14 +7,12 @@ from mitim_tools.misc_tools import LOGtools, GRAPHICStools, IOtools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-import json, re
 from pathlib import Path
-import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
+from IPython import embed
 
 MARKERSIZE = 1
 LW = 1.0
@@ -22,7 +21,10 @@ def grabMAESTRO(folder):
 
     # Find beat results from folders
     folder_beats = Path(folder) / 'Beats'
-    beats = sorted([item.name for item in folder_beats.glob('*') if item.name.startswith("Beat")], key=lambda x: int(x.split('_')[1]))
+    beats = sorted(
+        [item.name for item in folder_beats.glob('*') if re.match(r"^Beat_\d+$", item.name)],
+        key=lambda x: int(x.split('_')[1]),
+    )
 
     beat_types = [] 
     for beat in range(len(beats)):
