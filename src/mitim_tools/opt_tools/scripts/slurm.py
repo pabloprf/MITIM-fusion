@@ -122,6 +122,7 @@ def run_slurm_array(
         n = 32, 
         hours = 8, 
         are_n_threads = True,
+        ntasks_per_node = None,
     # For farming different seeds that the script understands:
         seeds=None,    # If not None, assume that the script is able to receive --seeds 
         seed_specific = 0,
@@ -175,6 +176,7 @@ def run_slurm_array(
             'name': nameJob,
             'minutes': int(60 * hours),
             'ntasks': ntask,
+            'ntaskspernode': ntasks_per_node,
             'cpuspertask': cpuspertask,
             'memory_req_by_job': mem,
             'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
