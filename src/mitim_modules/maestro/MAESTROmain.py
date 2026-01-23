@@ -267,6 +267,9 @@ class maestro:
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def run(self, **kwargs):
+        
+        # Pass ENABLE_EMBED to the beat run
+        kwargs.update({'ENABLE_EMBED': ENABLE_EMBED})
 
         # Run 
         print('\t- Running...')

@@ -90,6 +90,7 @@ class portals_beat(beat):
     def run(self, **kwargs):
 
         cold_start = kwargs.get('cold_start', False)
+        ENABLE_EMBED = kwargs.get('ENABLE_EMBED', False)
 
         # Read the namelist if explicitly given in the MAESTRO namelist (variable: portals_namelist_location)
         portals_fun  = PORTALSmain.portals(self.folder, portals_namelist = self.portals_namelist_location)
@@ -109,7 +110,7 @@ class portals_beat(beat):
 
         portals_fun.prep(p,askQuestions=False)
 
-        self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False)
+        self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False, ENABLE_EMBED=ENABLE_EMBED)
 
         if self.use_previous_surrogate_data and \
             self.try_flux_match_only_for_first_point and \

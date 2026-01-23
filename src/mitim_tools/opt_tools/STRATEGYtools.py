@@ -339,6 +339,7 @@ class MITIM_BO:
         onlyInitialize=False,
         seed=0,
         askQuestions=True,
+        ENABLE_EMBED=False, # If True, will enable IPython embed, useful for debugging (but won't write .log files)
     ):
         """
         Inputs:
@@ -440,9 +441,10 @@ class MITIM_BO:
    
             self.timings_file = self.folderOutputs / "timing.jsonl"
 
-            # Logger
-            sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
-
+            # Logger            
+            if not ENABLE_EMBED:
+                sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
+                
             print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")
             print("-----------------------------------------------------------------------------------------\n")
