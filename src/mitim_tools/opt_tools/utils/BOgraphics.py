@@ -1,4 +1,5 @@
 import copy
+from turtle import done
 import torch
 import sys
 import pandas as pd
@@ -926,7 +927,49 @@ class optimization_data:
             self.data.to_csv(self.file, index=False)
         else:
             self.data = pd.read_csv(self.file)
+            
+        self._validate()
+    
+    def _validate(self):
+        '''
+        This is done to fix potentially corrupted files
+        '''
+        
+        done_something = False
+        
+        if len(self.data) > 0:
+            
+            num_original = len(self.data)
+            
+            # ------------------------------------------------------------------------------
+            # If a row (a point) starts with NaN in its first coordinate input, remove it
+            # ------------------------------------------------------------------------------
+            
+            
+            first_input = self.inputs[0]
+            self.data = self.data[~self.data[first_input].isna()]
+                
+            num_after = len(self.data)
+            
+            if num_after < num_original:
+                print(f"\t* Removed {num_original - num_after} invalid data points from optimization_data", typeMsg="w")
+                done_something = True
+                
+            # ------------------------------------------------------------------------------
+            # If a row is missing (i.e. Iteration number jump), change the Iteration numbers to be consecutive
+            # ------------------------------------------------------------------------------
 
+            expected_iterations = set(range(len(self.data)))
+            actual_iterations = set(self.data['Iteration'].astype(int).tolist())
+            
+            if expected_iterations != actual_iterations:
+                print(f"\t* Correcting Iteration numbers in optimization_data because of missing iterations ({actual_iterations} -> {expected_iterations})", typeMsg="w")
+                self.data['Iteration'] = range(len(self.data))
+                done_something = True
+                
+        if done_something:
+            self.data.to_csv(self.file, index=False)
+        
     def find_point(self, x):
 
         df_sub = self.data[self.inputs]
@@ -1088,7 +1131,7 @@ class optimization_results:
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
             self.best_absolute = self.best_absolute_index = self.best_absolute_full = None
-
+            
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines
         self.save()

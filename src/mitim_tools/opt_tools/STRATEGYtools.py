@@ -1321,8 +1321,8 @@ class MITIM_BO:
         self.train_X = np.atleast_2d(self.train_X)
 
         """
-		Some initialization strategies may create points outside of the original bounds, but I may want to include them!
-		"""
+        Some initialization strategies may create points outside of the original bounds, but I may want to include them!
+        """
         if self.optimization_options["initialization_options"]["expand_bounds"]:
             for i, ikey in enumerate(self.bounds):
                 self.bounds[ikey][0] = np.min(
