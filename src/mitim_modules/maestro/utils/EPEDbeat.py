@@ -444,7 +444,7 @@ class eped_beat(beat):
                 "a": 0.05,
                 "kappa995": 0.05,
                 "delta995": 0.05,
-                "neped_20": 0.75,
+                "neped_19": 0.75,
                 "BetaN": 0.5,
                 "zeff": 0.3,
                 "Tesep_keV": 0.75,
