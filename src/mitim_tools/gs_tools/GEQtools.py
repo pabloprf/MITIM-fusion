@@ -200,12 +200,26 @@ class MITIMgeqdsk:
         self.geometric_parameters["mxh"]["shape_cos_995"] = copy.deepcopy(np.array(([fs995mxh.shape[4]]+list(fs995mxh.shape[5:][::2]))))
         self.geometric_parameters["mxh"]["shape_sin_995"] = copy.deepcopy(fs995mxh.shape[6:][::2])
 
+        R_param, Z_param, theta_ref = fs995mxh.mxh(fs995mxh.shape, fs995mxh.theta, norm=False)
+        self.geometric_parameters["mxh"]["R_995"] = copy.deepcopy(R_param)
+        self.geometric_parameters["mxh"]["Z_995"] = copy.deepcopy(Z_param)
+
         # extract Turnbull-Miller shape coefficients
         fs995tm = copy.deepcopy(fs995)
         fs995tm.to_turnbull(initial=fs995tm.shape_analytic)
         self.geometric_parameters["turnbull"]["kappa_995"] = copy.deepcopy(fs995tm.shape[3])
         self.geometric_parameters["turnbull"]["delta_995"] = copy.deepcopy(fs995tm.shape[4])
         self.geometric_parameters["turnbull"]["zeta_995"] = copy.deepcopy(fs995tm.shape[5])
+
+        R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False)
+        self.geometric_parameters["turnbull"]["R_995"] = copy.deepcopy(R_param)
+        self.geometric_parameters["turnbull"]["Z_995"] = copy.deepcopy(Z_param)
+
+        # Actual geometric values from the flux surface
+        self.geometric_parameters["actual"] = {
+            "R_995": copy.deepcopy(fs995.R),
+            "Z_995": copy.deepcopy(fs995.Z),
+        }
 
         # ------------------------------------------------------------------------------------------------------
         # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now

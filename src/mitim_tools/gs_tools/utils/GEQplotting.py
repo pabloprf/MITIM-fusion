@@ -163,14 +163,17 @@ def plot(self, fn=None, extraLabel=""):
     # Parameterization
     # -----------------------------------------------------------------------------
     fig = self.fn.add_figure(label=extraLabel + "Parameteriz.")
-    grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.3)
-    ax1 = fig.add_subplot(grid[:, 0])
-    ax2 = fig.add_subplot(grid[0, 1])
-    ax3 = fig.add_subplot(grid[1, 1])
-    ax4 = fig.add_subplot(grid[2, 1])
-    ax5 = fig.add_subplot(grid[:, 2])
+    grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
+    ax1 = fig.add_subplot(grid[:3, 0])
+    ax5 = fig.add_subplot(grid[:3, 1])
+    ax6 = fig.add_subplot(grid[:3, 2])
+    
+    
+    ax2 = fig.add_subplot(grid[3, 0])
+    ax3 = fig.add_subplot(grid[3, 1])
+    ax4 = fig.add_subplot(grid[3, 2])
 
-    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5])
+    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5 , ax6])
 
     # -----------------------------------------------------------------------------
     # Plasma
@@ -513,7 +516,7 @@ def plotChecks(self, axs=None):
 def plotParameterization(self, axs=None):
     if axs is None:
         plt.ion()
-        fig, axs = plt.subplots(ncols=5)
+        fig, axs = plt.subplots(ncols=6)
 
     ax = axs[0]
     cs, csA = self.plotFluxSurfaces(
@@ -545,6 +548,7 @@ def plotParameterization(self, axs=None):
     ax.set_title("Poloidal Flux")
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = axs[1]
     x = self.psi_pol_norm
@@ -557,7 +561,8 @@ def plotParameterization(self, axs=None):
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Elongation $\\kappa$")
-    ax.legend()
+    ax.legend(loc="best")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = axs[2]
     x = self.psi_pol_norm
@@ -570,7 +575,8 @@ def plotParameterization(self, axs=None):
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Triangularity $\\delta$")
-    ax.legend()
+    ax.legend(loc="best")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = axs[3]
     x = self.psi_pol_norm
@@ -587,9 +593,53 @@ def plotParameterization(self, axs=None):
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Squareness $\\zeta$")
-    ax.legend()
+    ax.legend(loc="best")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = axs[4]
+    
+    plotFluxSurfaces(
+        self,
+        ax=ax,
+        fluxes=[],
+        plot1=True,
+        rhoPol=True,
+        sqrt=False,
+        color="k",
+        lw=0.5,
+        label='LCFS'
+    )
+    # -- for legend
+    ax.plot(
+        self.geometric_parameters["actual"]["R_995"],
+        self.geometric_parameters["actual"]["Z_995"],
+        lw=0.5,ls='-',c='k',label="LCFS"
+        )
+    # ----
+    
+    ax.plot(
+        self.geometric_parameters["actual"]["R_995"],
+        self.geometric_parameters["actual"]["Z_995"],
+        lw=1,ls='-',c='b',label="Actual, 99.5%"
+        )
+    ax.plot(
+        self.geometric_parameters["mxh"]["R_995"],
+        self.geometric_parameters["mxh"]["Z_995"],
+        lw=1,ls='-',c='r',label="MXH, 99.5%"
+        )
+    ax.plot(
+        self.geometric_parameters["turnbull"]["R_995"],
+        self.geometric_parameters["turnbull"]["Z_995"],
+        lw=1,ls='-',c='g',label="Turnbull, 99.5%"
+        )
+    ax.set_xlabel("R (m)")
+    ax.set_ylabel("Z (m)")
+    ax.legend()
+    ax.set_title("95.5% Flux Surface")
+    ax.set_aspect("equal")
+    GRAPHICStools.addDenseAxis(ax)
+
+    ax = axs[5]
     ax.text(
         0.0,
         11.0,
@@ -618,10 +668,10 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         9.0,
-        f'------------ Geometric Defintions ------------\n\n'
+        f'------------ Geometric (Miller) Defintions ------------\n\n'
         f'kappa_sep = {self.geometric_parameters["geo"]["kappa_sep"]:.3f}'
-        f' (kU = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
-        f'kL = {self.geometric_parameters["geo"]["kappaL_sep"]:.3f})',
+        f' (upper = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
+        f'lower = {self.geometric_parameters["geo"]["kappaL_sep"]:.3f})',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -645,8 +695,8 @@ def plotParameterization(self, axs=None):
         0.0,
         8.0,
         f'delta_sep = {self.geometric_parameters["geo"]["delta_sep"]:.3f} '
-        f'(dU = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
-        f'dL = {self.geometric_parameters["geo"]["deltaL_sep"]:.3f})',
+        f'(upper = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
+        f'lower = {self.geometric_parameters["geo"]["deltaL_sep"]:.3f})',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -720,7 +770,7 @@ def plotParameterization(self, axs=None):
     )
 
     ax.set_ylim([0, 12])
-    ax.set_xlim([-1, 1])
+    ax.set_xlim([0, 1])
 
     ax.set_axis_off()
 
@@ -1005,14 +1055,10 @@ def plotSurfaces(R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, lwB
     [Rg, Yg] = np.meshgrid(R, Z)
 
     if plot1:
-        csA = ax.contour(
-            Rg, Yg, F, 1000, levels=[1.0], colors=color, alpha=alpha, linewidths=lwB
-        )
+        csA = ax.contour(Rg, Yg, F, 1000, levels=[1.0], colors=color, alpha=alpha, linewidths=lwB)
     else:
         csA = None
-    cs = ax.contour(
-        Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw, label = label
-    )
+    cs = ax.contour(Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw, label = label)
 
     return cs, csA
 
