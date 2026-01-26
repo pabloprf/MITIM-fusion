@@ -24,6 +24,9 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
         for i, g in enumerate(geqdsks):
             _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - ")
 
+    if len(geqdsks) < 2:
+        return None, fn
+    
     # -----------------------------------------------------------------------------
     # Compare in same plot - Surfaces
     # -----------------------------------------------------------------------------
@@ -162,7 +165,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Parameterization
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Parameteriz.")
+    fig = self.fn.add_figure(label=extraLabel + "Parameterization")
     grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
     ax1 = fig.add_subplot(grid[:3, 0])
     ax5 = fig.add_subplot(grid[:3, 1])
@@ -613,7 +616,7 @@ def plotParameterization(self, axs=None):
     ax.plot(
         self.geometric_parameters["actual"]["R_995"],
         self.geometric_parameters["actual"]["Z_995"],
-        lw=0.5,ls='-',c='k',label="LCFS"
+        lw=1.0,ls='-',c='k',label="LCFS Contour"
         )
     # ----
     
@@ -635,7 +638,7 @@ def plotParameterization(self, axs=None):
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
     ax.legend()
-    ax.set_title("95.5% Flux Surface")
+    ax.set_title("99.5% Flux Surface")
     ax.set_aspect("equal")
     GRAPHICStools.addDenseAxis(ax)
 
