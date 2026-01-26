@@ -605,8 +605,23 @@ def plotParameterization(self, axs=None):
     )
     ax.text(
         0.0,
-        10.0,
+        10.5,
         f"a = {self.a:.3f}m, eps = {self.eps:.3f}",
+        color="k",
+        fontsize=10,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        rotation=0,
+    )
+    
+    ax.text(
+        0.0,
+        9.0,
+        f'------------ Geometric Defintions ------------\n\n'
+        f'kappa_sep = {self.geometric_parameters["geo"]["kappa_sep"]:.3f}'
+        f' (kU = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
+        f'kL = {self.geometric_parameters["geo"]["kappaL_sep"]:.3f})',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -616,10 +631,9 @@ def plotParameterization(self, axs=None):
     )
     ax.text(
         0.0,
-        9.0,
-        "kappa = {0:.3f} (kU = {1:.3f}, kL = {2:.3f})".format(
-            self.kappa, self.kappaU, self.kappaL
-        ),
+        8.5,
+        f'    kappa95 = {self.geometric_parameters["geo"]["kappa_95"]:.3f},  '
+        f'kappa995 = {self.geometric_parameters["geo"]["kappa_995"]:.3f}',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -630,7 +644,21 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         8.0,
-        f"    kappa95 = {self.kappa95:.3f},  kappa995 = {self.kappa995:.3f}",
+        f'delta_sep = {self.geometric_parameters["geo"]["delta_sep"]:.3f} '
+        f'(dU = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
+        f'dL = {self.geometric_parameters["geo"]["deltaL_sep"]:.3f})',
+        color="k",
+        fontsize=10,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        rotation=0,
+    )
+    ax.text(
+        0.0,
+        7.5,
+        f'    delta95 = {self.geometric_parameters["geo"]["delta_95"]:.3f},  '
+       f'delta995 = {self.geometric_parameters["geo"]["delta_995"]:.3f}',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -641,7 +669,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         7.0,
-        f"    kappa_areal = {self.kappa_a:.3f}",
+        f'zeta = {self.geometric_parameters["geo"]["zeta_sep"]:.3f}',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -649,12 +677,13 @@ def plotParameterization(self, axs=None):
         verticalalignment="bottom",
         rotation=0,
     )
+
     ax.text(
         0.0,
-        6.0,
-        "delta = {0:.3f} (dU = {1:.3f}, dL = {2:.3f})".format(
-            self.delta, self.deltaU, self.deltaL
-        ),
+        5.5,
+        f'------------ MXH Defintions ------------\n\n'
+        f'kappa995 = {self.geometric_parameters["mxh"]["kappa_995"]:.3f}, '
+        f'delta995 = {self.geometric_parameters["mxh"]["delta_995"]:.3f}',
         color="k",
         fontsize=10,
         fontweight="normal",
@@ -662,21 +691,26 @@ def plotParameterization(self, axs=None):
         verticalalignment="bottom",
         rotation=0,
     )
-    ax.text(
-        0.0,
-        5.0,
-        f"    delta95 = {self.delta95:.3f},  delta995 = {self.delta995:.3f}",
-        color="k",
-        fontsize=10,
-        fontweight="normal",
-        horizontalalignment="left",
-        verticalalignment="bottom",
-        rotation=0,
-    )
+
     ax.text(
         0.0,
         4.0,
-        f"zeta = {self.zeta:.3f}",
+        f'------------ Turnbull Defintions ------------\n\n'
+        f'kappa995 = {self.geometric_parameters["turnbull"]["kappa_995"]:.3f}, '
+        f'delta995 = {self.geometric_parameters["turnbull"]["delta_995"]:.3f}',
+        color="k",
+        fontsize=10,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        rotation=0,
+    )
+
+    ax.text(
+        0.0,
+        2.5,
+        f'------------ Others ------------\n\n'
+        f"kappa_areal = {self.kappa_a:.3f}",
         color="k",
         fontsize=10,
         fontweight="normal",
