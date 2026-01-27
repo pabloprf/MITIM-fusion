@@ -1,3 +1,4 @@
+from tkinter import font
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
@@ -97,6 +98,22 @@ def plot(self, fn=None, extraLabel=""):
     # self.g.plot()
 
     # -----------------------------------------------------------------------------
+    # Parameterization
+    # -----------------------------------------------------------------------------
+    fig = self.fn.add_figure(label=extraLabel + "Shape")
+    grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
+    ax1 = fig.add_subplot(grid[:3, 0])
+    ax5 = fig.add_subplot(grid[:3, 1])
+    ax6 = fig.add_subplot(grid[:3, 2])
+    
+    
+    ax2 = fig.add_subplot(grid[3, 0])
+    ax3 = fig.add_subplot(grid[3, 1])
+    ax4 = fig.add_subplot(grid[3, 2])
+
+    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5 , ax6])
+
+    # -----------------------------------------------------------------------------
     # Flux
     # -----------------------------------------------------------------------------
     fig = self.fn.add_figure(label=extraLabel + "Surfaces")
@@ -162,21 +179,7 @@ def plot(self, fn=None, extraLabel=""):
 
     plotChecks(self,axs=[ax1, ax1E, ax2, ax3, ax4, ax5])
 
-    # -----------------------------------------------------------------------------
-    # Parameterization
-    # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Parameterization")
-    grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
-    ax1 = fig.add_subplot(grid[:3, 0])
-    ax5 = fig.add_subplot(grid[:3, 1])
-    ax6 = fig.add_subplot(grid[:3, 2])
-    
-    
-    ax2 = fig.add_subplot(grid[3, 0])
-    ax3 = fig.add_subplot(grid[3, 1])
-    ax4 = fig.add_subplot(grid[3, 2])
 
-    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5 , ax6])
 
     # -----------------------------------------------------------------------------
     # Plasma
@@ -643,132 +646,141 @@ def plotParameterization(self, axs=None):
     GRAPHICStools.addDenseAxis(ax)
 
     ax = axs[5]
-    ax.text(
-        0.0,
-        11.0,
-        "Rmajor = {0:.3f}m, Rmag = {1:.3f}m (Zmag = {2:.3f}m)".format(
-            self.Rmajor, self.Rmag, self.Zmag
-        ),
-        color="k",
-        fontsize=10,
-        fontweight="normal",
-        horizontalalignment="left",
-        verticalalignment="bottom",
-        rotation=0,
-    )
-    ax.text(
-        0.0,
-        10.5,
-        f"a = {self.a:.3f}m, eps = {self.eps:.3f}",
-        color="k",
-        fontsize=10,
-        fontweight="normal",
-        horizontalalignment="left",
-        verticalalignment="bottom",
-        rotation=0,
-    )
     
+    fontsize = 12
+    toppos = 12.0
+    distance = 0.75
+    
+    cont = 0
     ax.text(
         0.0,
-        9.0,
+        toppos-distance*cont,
+        f"$R_{{geo}}$ = {self.Rmajor:.3f} m,  $R_{{mag}}$ = {self.Rmag:.3f} m ($Z_{{mag}}$ = {self.Zmag:.3f} m)",
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f"a = {self.a:.3f} m, $a/R$ = {self.eps:.3f} ($R/a$ = {1/self.eps:.3f})",
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
         f'------------ Geometric (Miller) Defintions ------------\n\n'
-        f'kappa_sep = {self.geometric_parameters["geo"]["kappa_sep"]:.3f}'
-        f' (upper = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
+        f'$\\kappa_{{sep}}$ = {self.geometric_parameters["geo"]["kappa_sep"]:.3f}'
+        f'    (upper = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
         f'lower = {self.geometric_parameters["geo"]["kappaL_sep"]:.3f})',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1 + 1
     ax.text(
         0.0,
-        8.5,
-        f'    kappa95 = {self.geometric_parameters["geo"]["kappa_95"]:.3f},  '
-        f'kappa995 = {self.geometric_parameters["geo"]["kappa_995"]:.3f}',
+        toppos-distance*cont,
+        f'$\\kappa_{{95}}$ = {self.geometric_parameters["geo"]["kappa_95"]:.3f},  '
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["geo"]["kappa_995"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        8.0,
-        f'delta_sep = {self.geometric_parameters["geo"]["delta_sep"]:.3f} '
-        f'(upper = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
+        toppos-distance*cont,
+        f'$\\delta_{{sep}}$ = {self.geometric_parameters["geo"]["delta_sep"]:.3f} '
+        f'   (upper = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
         f'lower = {self.geometric_parameters["geo"]["deltaL_sep"]:.3f})',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        7.5,
-        f'    delta95 = {self.geometric_parameters["geo"]["delta_95"]:.3f},  '
-       f'delta995 = {self.geometric_parameters["geo"]["delta_995"]:.3f}',
+        toppos-distance*cont,
+        f'$\\delta_{{95}}$ = {self.geometric_parameters["geo"]["delta_95"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["geo"]["delta_995"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        7.0,
+        toppos-distance*cont,
         f'zeta = {self.geometric_parameters["geo"]["zeta_sep"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
-
+    cont += 1.5
     ax.text(
         0.0,
-        5.5,
+        toppos-distance*cont,
         f'------------ MXH Defintions ------------\n\n'
-        f'kappa995 = {self.geometric_parameters["mxh"]["kappa_995"]:.3f}, '
-        f'delta995 = {self.geometric_parameters["mxh"]["delta_995"]:.3f}',
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["mxh"]["kappa_995"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["delta_995"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
-
+    cont += 1 + 1.5
     ax.text(
         0.0,
-        4.0,
+        toppos-distance*cont,
         f'------------ Turnbull Defintions ------------\n\n'
-        f'kappa995 = {self.geometric_parameters["turnbull"]["kappa_995"]:.3f}, '
-        f'delta995 = {self.geometric_parameters["turnbull"]["delta_995"]:.3f}',
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["turnbull"]["kappa_995"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["delta_995"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
-
+    cont += 1 + 1.5
     ax.text(
         0.0,
-        2.5,
+        toppos-distance*cont,
         f'------------ Others ------------\n\n'
-        f"kappa_areal = {self.kappa_a:.3f}",
+        f"$\\kappa_{{areal}}$ = {self.kappa_a:.3f}",
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
 
