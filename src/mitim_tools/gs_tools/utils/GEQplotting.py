@@ -631,22 +631,22 @@ def plotParameterization(self, axs=None):
     ax.plot(
         self.geometric_parameters["actual"]["psin995"]["R"],
         self.geometric_parameters["actual"]["psin995"]["Z"],
-        lw=2,ls='-',c='g',label="Tracer: $\\psi_N=0.95$"
+        lw=2,ls='-',c='g',label="Tracer: $\\psi_N=0.995$"
         )
     ax.plot(
         self.geometric_parameters["mxh"]["psin995"]["R"],
         self.geometric_parameters["mxh"]["psin995"]["Z"],
-        lw=2,ls='--',c='m',label="MXH: $\\psi_N=0.95$"
+        lw=2,ls='--',c='m',label="MXH: $\\psi_N=0.995$"
         )
     ax.plot(
         self.geometric_parameters["turnbull"]["psin995"]["R"],
         self.geometric_parameters["turnbull"]["psin995"]["Z"],
-        lw=2,ls='--',c='c',label="Turnbull: $\\psi_N=0.95$"
+        lw=2,ls='--',c='c',label="Turnbull: $\\psi_N=0.995$"
         )
     ax.plot(
         self.geometric_parameters["analytic"]["psin995"]["R"],
         self.geometric_parameters["analytic"]["psin995"]["Z"],
-        lw=2,ls='--',c='y',label="Analytic: $\\psi_N=0.95$"
+        lw=2,ls='--',c='y',label="Analytic: $\\psi_N=0.995$"
         )
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
