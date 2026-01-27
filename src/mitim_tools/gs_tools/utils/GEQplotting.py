@@ -65,7 +65,6 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     # fig.add_subplot(grid[1,3])]
 
     cols = GRAPHICStools.listColors()
-
     for i, g in enumerate(geqdsks):
         g.plotFS(axs=[ax1, ax2, ax3, ax4], color=cols[i], label=f"{labelsGs[i]} ")
         g.plotPlasma(
@@ -112,6 +111,24 @@ def plot(self, fn=None, extraLabel=""):
     ax4 = fig.add_subplot(grid[3, 2])
 
     plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5 , ax6])
+
+    # -----------------------------------------------------------------------------
+    # Plasma
+    # -----------------------------------------------------------------------------
+    fig = self.fn.add_figure(label=extraLabel + "Plasma")
+    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
+
+    ax_plasma = [
+        fig.add_subplot(grid[0, 0]),
+        fig.add_subplot(grid[1, 0]),
+        fig.add_subplot(grid[0, 1]),
+        fig.add_subplot(grid[1, 1]),
+        fig.add_subplot(grid[0, 2]),
+        fig.add_subplot(grid[1, 2]),
+        fig.add_subplot(grid[0, 3]),
+        fig.add_subplot(grid[1, 3]),
+    ]
+    ax_plasma = self.plotPlasma(axs=ax_plasma) #, legendYN=not wasProvided)
 
     # -----------------------------------------------------------------------------
     # Flux
@@ -161,9 +178,7 @@ def plot(self, fn=None, extraLabel=""):
     ax9 = fig.add_subplot(grid[2, 4])
     ax10 = fig.add_subplot(grid[:2, 4])
 
-    plotFields(self,
-        axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1]
-    )
+    plotFields(self,axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1])
 
     # -----------------------------------------------------------------------------
     # Checks
@@ -178,26 +193,6 @@ def plot(self, fn=None, extraLabel=""):
     ax5 = fig.add_subplot(grid[:, 3])
 
     plotChecks(self,axs=[ax1, ax1E, ax2, ax3, ax4, ax5])
-
-
-
-    # -----------------------------------------------------------------------------
-    # Plasma
-    # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Plasma")
-    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-
-    ax_plasma = [
-        fig.add_subplot(grid[0, 0]),
-        fig.add_subplot(grid[1, 0]),
-        fig.add_subplot(grid[0, 1]),
-        fig.add_subplot(grid[1, 1]),
-        fig.add_subplot(grid[0, 2]),
-        fig.add_subplot(grid[1, 2]),
-        fig.add_subplot(grid[0, 3]),
-        fig.add_subplot(grid[1, 3]),
-    ]
-    ax_plasma = self.plotPlasma(axs=ax_plasma, legendYN=not wasProvided)
 
     # -----------------------------------------------------------------------------
     # Geometry
@@ -241,7 +236,7 @@ def plotFS(self, axs=None, color="b", label=""):
     ax = axs[2]
     x = self.psi_pol_norm
     y = self.rho_tor
-    ax.plot(x, y, lw=2, ls="-", c=color, label=label)
+    ax.plot(x, y, lw=2, c=color, label=label)
     ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
 
     ax.set_xlabel("$\\Psi_n$ (PSI_NORM)")
@@ -252,7 +247,7 @@ def plotFS(self, axs=None, color="b", label=""):
     ax = axs[3]
     x = self.rho_tor
     y = self.rho_pol
-    ax.plot(x, y, lw=2, ls="-", c=color)
+    ax.plot(x, y, lw=2, c=color)
     ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
 
     ax.set_ylabel("$\\sqrt{\\Psi_n}$ (RHOp)")
@@ -268,7 +263,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[0]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_ylabel("FSA $\\langle J\\rangle$ ($MA/m^2$)")
     ax.set_xlim([0, 1])
@@ -285,7 +280,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[2]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -300,7 +295,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[4]
     x = self.psi_pol_norm
     y = self.Jt
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -315,7 +310,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[6]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -330,7 +325,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[8]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -350,7 +345,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[0]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Br")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_ylabel("FSA $\\langle B\\rangle$ ($T$)")
     ax.set_xlim([0, 1])
@@ -367,7 +362,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[2]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bz")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -382,7 +377,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[4]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bt")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [y.min(), y.max()]
@@ -398,7 +393,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[6]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bp")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -413,7 +408,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[8]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g["fluxSurfaces"]["avg"]["Bp**2"]
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("$\\langle B_{\\theta}^2\\rangle$")
@@ -421,15 +416,15 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     #ax = axs[9]
     #x = self.g["fluxSurfaces"]["midplane"]["R"]
     #y = self.g["fluxSurfaces"]["midplane"]["Bt"]
-    #ax.plot(x, y, lw=2, ls="-", c="r", label="$B_{t}$")
+    #ax.plot(x, y, lw=2, c="r", label="$B_{t}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Bp"]
-    #ax.plot(x, y, lw=2, ls="-", c="b", label="$B_{p}$")
+    #ax.plot(x, y, lw=2, c="b", label="$B_{p}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Bz"]
-    #ax.plot(x, y, lw=2, ls="-", c="g", label="$B_{z}$")
+    #ax.plot(x, y, lw=2, c="g", label="$B_{z}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Br"]
-    #ax.plot(x, y, lw=2, ls="-", c="m", label="$B_{r}$")
+    #ax.plot(x, y, lw=2, c="m", label="$B_{r}$")
     #y = self.g["fluxSurfaces"]["geo"]["bunit"]
-    #ax.plot(x, y, lw=2, ls="-", c="c", label="$B_{unit}$")
+    #ax.plot(x, y, lw=2, c="c", label="$B_{unit}$")
     #ax.set_xlabel("$R$ LF midplane")
     #ax.set_ylabel("$B$ (T)")
     #ax.legend()
@@ -442,11 +437,11 @@ def plotChecks(self, axs=None):
     ax = axs[0]
     x = self.psi_pol_norm
     y1 = self.Jt
-    ax.plot(x, np.abs(y1), lw=2, ls="-", c="b", label="$\\langle Jt\\rangle$")
+    ax.plot(x, np.abs(y1), lw=2, c="b", label="$\\langle Jt\\rangle$")
     zmax = y1.max()
     zmin = y1.min()
     y2 = self.Jt_fb
-    ax.plot(x, np.abs(y2), lw=2, ls="-", c="g", label="$\\langle Jt_{FB}\\rangle$")
+    ax.plot(x, np.abs(y2), lw=2, c="g", label="$\\langle Jt_{FB}\\rangle$")
 
     y3 = self.Jerror
     ax.plot(
@@ -475,9 +470,9 @@ def plotChecks(self, axs=None):
     ax = axs[2]
     x = self.psi_pol_norm
     y1 = self.g.raw["ffprim"]
-    ax.plot(x, y1, lw=2, ls="-", c="r", label="$FF'$")
+    ax.plot(x, y1, lw=2, c="r", label="$FF'$")
     y2 = self.g.raw["pprime"] * (4 * np.pi * 1e-7)
-    ax.plot(x, y2, lw=2, ls="-", c="b", label="$p'*\\mu_0$")
+    ax.plot(x, y2, lw=2, c="b", label="$p'*\\mu_0$")
 
     ax.set_ylabel("")
     ax.legend()
@@ -555,52 +550,58 @@ def plotParameterization(self, axs=None):
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
     GRAPHICStools.addDenseAxis(ax)
+    
+    typemarker = "-o"
+    ms = 2
 
     ax = axs[1]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["kappa"].copy()
-    ax.plot(x, y, label="$\\kappa$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\kappa$")
     y = self.g.derived["miller_geo"]["kappa_l"].copy()
-    ax.plot(x, y, ls="--", label="$\\kappa_L$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\kappa_L$")
     y = self.g.derived["miller_geo"]["kappa_u"].copy()
-    ax.plot(x, y, ls="--", label="$\\kappa_U$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\kappa_U$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Elongation $\\kappa$")
     ax.legend(loc="best")
     GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
     ax = axs[2]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["delta"].copy()
-    ax.plot(x, y, label="$\\delta$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\delta$")
     y = self.g.derived["miller_geo"]["delta_l"].copy()
-    ax.plot(x, y, ls="--", label="$\\delta_L$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\delta_L$")
     y = self.g.derived["miller_geo"]["delta_u"].copy()
-    ax.plot(x, y, ls="--", label="$\\delta_U$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\delta_U$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Triangularity $\\delta$")
     ax.legend(loc="best")
     GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
     ax = axs[3]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["zeta"].copy()
-    ax.plot(x, y, label="$\\zeta$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\zeta$")
     y = self.g.derived["miller_geo"]["zeta_li"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{IL}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{IL}$")
     y = self.g.derived["miller_geo"]["zeta_ui"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{IU}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{IU}$")
     y = self.g.derived["miller_geo"]["zeta_lo"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{OL}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{OL}$")
     y = self.g.derived["miller_geo"]["zeta_uo"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{OU}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{OU}$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Squareness $\\zeta$")
-    ax.legend(loc="best")
+    ax.legend(loc="lower left")
     GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
     ax = axs[4]
     
@@ -789,16 +790,19 @@ def plotParameterization(self, axs=None):
 
     ax.set_axis_off()
 
-def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
+def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
     if axs is None:
         plt.ion()
         fig, axs = plt.subplots(ncols=7)
 
     ax_plasma = axs
+    
+    xcoord = self.rho_tor
+    xlabel = "$\\rho_{tor}$"#"$\\sqrt{\\phi_n}$ (RHO)"
 
     ax = ax_plasma[0]
     ax.plot(
-        self.rho_tor,
+        xcoord,
         self.g.raw["pres"] * 1e-6,
         "-s",
         c=color,
@@ -807,39 +811,77 @@ def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
         label="geqdsk p",
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-    ax.set_ylim(bottom=0)
-    ax.set_ylabel("pressure (MPa)")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Pressure (MPa)")
+    ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Plasma Pressure")
 
     ax = ax_plasma[1]
     ax.plot(
-        self.rho_tor,
+        xcoord,
         -self.g.raw["pprime"] * 1e-6,
+        '-s',
         c=color,
         lw=2,
-        ls="-",
+        markersize=3,
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("pressure gradient -p' (MPa/[])")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+
 
     ax = ax_plasma[2]
-    ax.plot(self.rho_tor, self.g.raw["fpol"], c=color, lw=2, ls="-")
+    ax.plot(xcoord, self.g.raw["fpol"], '-s', c=color, lw=2, markersize=3)
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("$F = RB_{\\phi}$ (T*m)")
+    # ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Toroidal Field Function")
 
     ax = ax_plasma[3]
-    ax.plot(self.rho_tor, self.g.raw["ffprim"], c=color, lw=2, ls="-")
+    ax.plot(xcoord, self.g.raw["ffprim"], '-s', c=color, lw=2, markersize=3)
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("FF' (T*m/[])")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = ax_plasma[4]
     ax.plot(
-        self.rho_tor,
+        xcoord,
+        np.abs(self.Jt),
+        "-s",
+        c=color,
+        lw=2,
+        markersize=3,
+        label=label + "$J_{tor}$",
+    )
+    ax.plot(
+        xcoord,
+        np.abs(self.Jt_fb),
+        "--o",
+        c=color,
+        lw=1,
+        markersize=1,
+        label=label + "$J_{tor}$ force-balance",
+    )
+    ax.set_xlim([0, 1])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("FSA toroidal current density ($MA/m^2$)")
+    ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Toroidal Current Density")
+
+    if legendYN:
+        ax.legend()
+
+    ax = ax_plasma[5]
+    ax.plot(
+        xcoord,
         np.abs(self.g.raw["qpsi"]),
         "-s",
         c=color,
@@ -848,37 +890,12 @@ def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
         label=label + "geqdsk q",
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-    ax.set_ylim(bottom=0)
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("safety factor q")
-    ax.axhline(y=1.0, ls="--", lw=0.5, c="k")
-
-    ax = ax_plasma[5]
-    ax.plot(
-        self.rho_tor,
-        np.abs(self.Jt),
-        "-s",
-        c=color,
-        lw=2,
-        markersize=3,
-        label=label + "geqdsk Jt",
-    )
-    ax.plot(
-        self.rho_tor,
-        np.abs(self.Jt_fb),
-        "--o",
-        c=color,
-        lw=2,
-        markersize=3,
-        label=label + "geqdsk Jt(fb)",
-    )
-    ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-    ax.set_ylabel("FSA toroidal current density ($MA/m^2$)")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    ax.axhline(y=1.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
 
-    if legendYN:
-        ax.legend()
 
     #ax = ax_plasma[6]
     #ax.plot(

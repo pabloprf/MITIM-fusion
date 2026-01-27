@@ -422,10 +422,10 @@ class MITIMgeqdsk:
     def plotFS(self, axs=None, color="b", label=""):
         GEQplotting.plotFS(self, axs=axs, color=color, label=label)
 
-    def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
+    def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
         GEQplotting.plotPlasma(self, axs=axs, legendYN=legendYN, color=color, label=label)
 
-    def plotGeometry(self, axs=None, color="r"):
+    def plotGeometry(self, axs=None, color="b"):
         GEQplotting.plotGeometry(self, axs=axs, color=color)
 
     def plotFluxSurfaces(self, ax=None, fluxes=[1.0], color="b", alpha=1.0, rhoPol=True, sqrt=False, lw=1, lwB=2, plot1=True, label = ''):
