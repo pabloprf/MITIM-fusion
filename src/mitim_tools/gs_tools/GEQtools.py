@@ -1,8 +1,5 @@
 import os
-import io
-import tempfile
 import copy
-from matplotlib.pylab import geometric
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
@@ -154,92 +151,122 @@ class MITIMgeqdsk:
 
         self.geometric_parameters = {}
         
+        # Create megpy flux surfaces (except separatrix, which is already available in megpy's derived and requires careful handling)
+        Rgrid = self.g.derived['R']
+        Zgrid = self.g.derived['Z']
+        psigrid = self.g.derived['psirz']
+        
+        fs95 = megpy.fluxsurface.FluxSurface()
+        fs95.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.95, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
+        
+        fs995 = megpy.fluxsurface.FluxSurface()
+        fs995.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.995, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
+        
         # ------------------------------------------------------------------------------------------------------
-        # Geometric definitions
+        # Actual flux surfaces
         # ------------------------------------------------------------------------------------------------------
         
-        self.geometric_parameters["geo"] = {}
-        self.geometric_parameters["geo"]["kappa_sep"] = self.g.derived["miller_geo"]["kappa"][-1]
-        self.geometric_parameters["geo"]["kappaU_sep"] = self.g.derived["miller_geo"]["kappa_u"][-1]
-        self.geometric_parameters["geo"]["kappaL_sep"] = self.g.derived["miller_geo"]["kappa_l"][-1]
-        self.geometric_parameters["geo"]["delta_sep"] = self.g.derived["miller_geo"]["delta"][-1]
-        self.geometric_parameters["geo"]["deltaU_sep"] = self.g.derived["miller_geo"]["delta_u"][-1]
-        self.geometric_parameters["geo"]["deltaL_sep"] = self.g.derived["miller_geo"]["delta_l"][-1]
-        self.geometric_parameters["geo"]["zeta_sep"] = self.g.derived["miller_geo"]["zeta"][-1]
+        # Actual geometric values from the flux surface
+        self.geometric_parameters["actual"] = {}
+        self.geometric_parameters["actual"]["psin95"] = {
+            'R': fs95.R,
+            'Z': fs95.Z,
+        }
+        self.geometric_parameters["actual"]["psin995"] = {
+            'R': fs995.R,
+            'Z': fs995.Z,
+        }
+        # ------------------------------------------------------------------------------------------------------
+        # Analytic definitions (using tracer flux surfaces)
+        # ------------------------------------------------------------------------------------------------------
         
-        for var in ['kappa', 'delta']:
-            for psin in [0.95, 0.995]:
-                self.geometric_parameters["geo"][f"{var}_{str(psin).split('.')[-1]}"] = np.interp(
+        self.geometric_parameters["analytic"] = {}
+        
+        for miller_geo, flux in zip(
+            [fs95.miller_analytic, fs995.miller_analytic, self.g.derived["miller_geo"]],
+            ['psin95','psin995', 'separatrix']
+            ):
+                self.geometric_parameters["analytic"][flux] = {}
+                
+                self.geometric_parameters["analytic"][flux]["kappa"] = miller_geo["kappa"][-1] if len(miller_geo["kappa"].shape)>0 else miller_geo["kappa"]
+                self.geometric_parameters["analytic"][flux]["kappaU"] = miller_geo["kappa_u"][-1] if len(miller_geo["kappa_u"].shape)>0 else miller_geo["kappa_u"]
+                self.geometric_parameters["analytic"][flux]["kappaL"] = miller_geo["kappa_l"][-1] if len(miller_geo["kappa_l"].shape)>0 else miller_geo["kappa_l"]
+                self.geometric_parameters["analytic"][flux]["delta"] = miller_geo["delta"][-1] if len(miller_geo["delta"].shape)>0 else miller_geo["delta"]
+                self.geometric_parameters["analytic"][flux]["deltaU"] = miller_geo["delta_u"][-1] if len(miller_geo["delta_u"].shape)>0 else miller_geo["delta_u"]
+                self.geometric_parameters["analytic"][flux]["deltaL"] = miller_geo["delta_l"][-1] if len(miller_geo["delta_l"].shape)>0 else miller_geo["delta_l"]
+                self.geometric_parameters["analytic"][flux]["zeta"] = miller_geo["zeta"][-1] if len(miller_geo["zeta"].shape)>0 else miller_geo["zeta"]
+                
+                self.geometric_parameters["analytic"][flux]["R"] = miller_geo["R_miller"]
+                self.geometric_parameters["analytic"][flux]["Z"] = miller_geo["Z_miller"]
+        
+        # ------------------------------------------------------------------------------------------------------
+        # Analytic definitions (using extrapolations of miller parameters)
+        # ------------------------------------------------------------------------------------------------------
+                
+        self.geometric_parameters["analytic_extrapolation"] = {'psin95':{}, 'psin995':{}}
+        
+        for var in ['kappa', 'delta', 'zeta']:
+            for flux,psin in [("psin95", 0.95), ("psin995", 0.995)]:
+                self.geometric_parameters["analytic_extrapolation"][flux][var] = np.interp(
                     psin,
                     self.psi_pol_norm,
                     self.g.derived["miller_geo"][var],
                 )
-
+                
         # ------------------------------------------------------------------------------------------------------
         # Turnbull-Miller parameterization (minimization)
         # ------------------------------------------------------------------------------------------------------
         
-        self.geometric_parameters["turnbull"] = {}
-        self.geometric_parameters["mxh"] = {}
+        self.geometric_parameters["turnbull"] =  {'psin995':{}}
+        self.geometric_parameters["mxh"] = {'psin995':{}}
 
-        # convert 995 contour to MXH and Turnbull
-        psi995 = np.interp(0.995, self.psi_pol_norm, self.g.derived['psi'])
-        fs995 = megpy.fluxsurface.FluxSurface()
-        fs995.from_tracer(self.g.derived['R'],self.g.derived['Z'],self.g.derived['psirz'],psi995,analytic_shape=True)
-        
         # extract MXH shape coefficients
         fs995mxh = copy.deepcopy(fs995)
         fs995mxh.to_mxh(optimize=True)
         # fs995.shape after to_mxh consists of [R0,Z0,r,kappa,shape_cos0,shape_cos1,shape_sin1,...shape_cos{n},shape_sin{n}]
-        self.geometric_parameters["mxh"]["R0_995"] = copy.deepcopy(fs995mxh.shape[0])
-        self.geometric_parameters["mxh"]["Z0_995"] = copy.deepcopy(fs995mxh.shape[1])
-        self.geometric_parameters["mxh"]["rmin_995"] = copy.deepcopy(fs995mxh.shape[2])
-        self.geometric_parameters["mxh"]["kappa_995"] = copy.deepcopy(fs995mxh.shape[3])
-        self.geometric_parameters["mxh"]["delta_995"] = copy.deepcopy(np.sin(fs995mxh.shape[6]))
-        self.geometric_parameters["mxh"]["zeta_995"] = copy.deepcopy(-fs995mxh.shape[8])
-        self.geometric_parameters["mxh"]["shape_cos_995"] = copy.deepcopy(np.array(([fs995mxh.shape[4]]+list(fs995mxh.shape[5:][::2]))))
-        self.geometric_parameters["mxh"]["shape_sin_995"] = copy.deepcopy(fs995mxh.shape[6:][::2])
+        self.geometric_parameters["mxh"]['psin995']["R0"] = copy.deepcopy(fs995mxh.shape[0])
+        self.geometric_parameters["mxh"]['psin995']["Z0"] = copy.deepcopy(fs995mxh.shape[1])
+        self.geometric_parameters["mxh"]['psin995']["rmin"] = copy.deepcopy(fs995mxh.shape[2])
+        self.geometric_parameters["mxh"]['psin995']["kappa"] = copy.deepcopy(fs995mxh.shape[3])
+        self.geometric_parameters["mxh"]['psin995']["delta"] = copy.deepcopy(np.sin(fs995mxh.shape[6]))
+        self.geometric_parameters["mxh"]['psin995']["zeta"] = copy.deepcopy(-fs995mxh.shape[8])
+        self.geometric_parameters["mxh"]['psin995']["shape_cos"] = copy.deepcopy(np.array(([fs995mxh.shape[4]]+list(fs995mxh.shape[5:][::2]))))
+        self.geometric_parameters["mxh"]['psin995']["shape_sin"] = copy.deepcopy(fs995mxh.shape[6:][::2])
 
         R_param, Z_param, theta_ref = fs995mxh.mxh(fs995mxh.shape, fs995mxh.theta, norm=False)
-        self.geometric_parameters["mxh"]["R_995"] = copy.deepcopy(R_param)
-        self.geometric_parameters["mxh"]["Z_995"] = copy.deepcopy(Z_param)
+        self.geometric_parameters["mxh"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["mxh"]['psin995']["Z"] = copy.deepcopy(Z_param)
 
         # extract Turnbull-Miller shape coefficients
         fs995tm = copy.deepcopy(fs995)
         fs995tm.to_turnbull(initial=fs995tm.shape_analytic)
-        self.geometric_parameters["turnbull"]["kappa_995"] = copy.deepcopy(fs995tm.shape[3])
-        self.geometric_parameters["turnbull"]["delta_995"] = copy.deepcopy(fs995tm.shape[4])
-        self.geometric_parameters["turnbull"]["zeta_995"] = copy.deepcopy(fs995tm.shape[5])
+        self.geometric_parameters["turnbull"]['psin995']["kappa"] = copy.deepcopy(fs995tm.shape[3])
+        self.geometric_parameters["turnbull"]['psin995']["delta"] = copy.deepcopy(fs995tm.shape[4])
+        self.geometric_parameters["turnbull"]['psin995']["zeta"] = copy.deepcopy(fs995tm.shape[5])
 
         R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False)
-        self.geometric_parameters["turnbull"]["R_995"] = copy.deepcopy(R_param)
-        self.geometric_parameters["turnbull"]["Z_995"] = copy.deepcopy(Z_param)
-
-        # Actual geometric values from the flux surface
-        self.geometric_parameters["actual"] = {
-            "R_995": copy.deepcopy(fs995.R),
-            "Z_995": copy.deepcopy(fs995.Z),
-        }
+        self.geometric_parameters["turnbull"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["turnbull"]['psin995']["Z"] = copy.deepcopy(Z_param)
 
         # ------------------------------------------------------------------------------------------------------
         # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now
         # ------------------------------------------------------------------------------------------------------
         
-        self.kappa = self.geometric_parameters["geo"]["kappa_sep"]
-        self.kappaU = self.geometric_parameters["geo"]["kappaU_sep"]
-        self.kappaL = self.geometric_parameters["geo"]["kappaL_sep"]
+        self.kappa = self.geometric_parameters["analytic"]["separatrix"]["kappa"]
+        self.kappaU = self.geometric_parameters["analytic"]["separatrix"]["kappaU"]
+        self.kappaL = self.geometric_parameters["analytic"]["separatrix"]["kappaL"]
         
-        self.delta = self.geometric_parameters["geo"]["delta_sep"]
-        self.deltaU = self.geometric_parameters["geo"]["deltaU_sep"]
-        self.deltaL = self.geometric_parameters["geo"]["deltaL_sep"]
+        self.delta = self.geometric_parameters["analytic"]["separatrix"]["delta"]
+        self.deltaU = self.geometric_parameters["analytic"]["separatrix"]["deltaU"]
+        self.deltaL = self.geometric_parameters["analytic"]["separatrix"]["deltaL"]
         
-        self.zeta = self.geometric_parameters["geo"]["zeta_sep"]
+        self.zeta = self.geometric_parameters["analytic"]["separatrix"]["zeta"]
         
-        self.kappa95 = self.geometric_parameters["geo"]["kappa_95"]
-        self.delta95 = self.geometric_parameters["geo"]["delta_95"]
+        self.kappa95 = self.geometric_parameters["analytic"]["psin95"]["kappa"]
+        self.delta95 = self.geometric_parameters["analytic"]["psin95"]["delta"]
         
-        self.kappa995 = self.geometric_parameters["geo"]["kappa_995"]
-        self.delta995 = self.geometric_parameters["geo"]["delta_995"]
+        self.kappa995 = self.geometric_parameters["analytic"]["psin995"]["kappa"]
+        self.delta995 = self.geometric_parameters["analytic"]["psin995"]["delta"]
         
         #TODO: Placeholder for now: zeta from Turnbull
         #self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]

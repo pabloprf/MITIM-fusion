@@ -23,7 +23,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     # -----------------------------------------------------------------------------
     if plotAll:
         for i, g in enumerate(geqdsks):
-            _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - ")
+            _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - " if len(labelsGs) > i else "")
 
     if len(geqdsks) < 2:
         return None, fn
@@ -423,7 +423,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     #ax.plot(x, y, lw=2, c="g", label="$B_{z}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Br"]
     #ax.plot(x, y, lw=2, c="m", label="$B_{r}$")
-    #y = self.g["fluxSurfaces"]["geo"]["bunit"]
+    #y = self.g["fluxSurfaces"]["analytic"]["bunit"]
     #ax.plot(x, y, lw=2, c="c", label="$B_{unit}$")
     #ax.set_xlabel("$R$ LF midplane")
     #ax.set_ylabel("$B$ (T)")
@@ -603,8 +603,7 @@ def plotParameterization(self, axs=None):
     GRAPHICStools.addDenseAxis(ax)
     ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
-    ax = axs[4]
-    
+    ax = axs[4]    
     plotFluxSurfaces(
         self,
         ax=ax,
@@ -612,32 +611,42 @@ def plotParameterization(self, axs=None):
         plot1=True,
         rhoPol=True,
         sqrt=False,
-        color="k",
-        lw=0.5,
+        color="b",
+        lwB=0.5,
         label='LCFS'
     )
     # -- for legend
     ax.plot(
-        self.geometric_parameters["actual"]["R_995"],
-        self.geometric_parameters["actual"]["Z_995"],
-        lw=1.0,ls='-',c='k',label="LCFS Contour"
+        self.geometric_parameters["actual"]["psin995"]["R"],
+        self.geometric_parameters["actual"]["psin995"]["Z"],
+        lw=1.0,ls='-',c='b',label="Contour: $\\psi_N=1$"
         )
     # ----
-    
     ax.plot(
-        self.geometric_parameters["actual"]["R_995"],
-        self.geometric_parameters["actual"]["Z_995"],
-        lw=1,ls='-',c='b',label="Actual, 99.5%"
+        self.Rb,
+        self.Yb,
+        lw=1,ls='-',c='r',label="Boundary"
+        )
+   
+    ax.plot(
+        self.geometric_parameters["actual"]["psin995"]["R"],
+        self.geometric_parameters["actual"]["psin995"]["Z"],
+        lw=2,ls='-',c='g',label="Tracer: $\\psi_N=0.95$"
         )
     ax.plot(
-        self.geometric_parameters["mxh"]["R_995"],
-        self.geometric_parameters["mxh"]["Z_995"],
-        lw=1,ls='-',c='r',label="MXH, 99.5%"
+        self.geometric_parameters["mxh"]["psin995"]["R"],
+        self.geometric_parameters["mxh"]["psin995"]["Z"],
+        lw=2,ls='--',c='m',label="MXH: $\\psi_N=0.95$"
         )
     ax.plot(
-        self.geometric_parameters["turnbull"]["R_995"],
-        self.geometric_parameters["turnbull"]["Z_995"],
-        lw=1,ls='-',c='g',label="Turnbull, 99.5%"
+        self.geometric_parameters["turnbull"]["psin995"]["R"],
+        self.geometric_parameters["turnbull"]["psin995"]["Z"],
+        lw=2,ls='--',c='c',label="Turnbull: $\\psi_N=0.95$"
+        )
+    ax.plot(
+        self.geometric_parameters["analytic"]["psin995"]["R"],
+        self.geometric_parameters["analytic"]["psin995"]["Z"],
+        lw=2,ls='--',c='y',label="Analytic: $\\psi_N=0.95$"
         )
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
@@ -680,10 +689,10 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------------ Geometric (Miller) Defintions ------------\n\n'
-        f'$\\kappa_{{sep}}$ = {self.geometric_parameters["geo"]["kappa_sep"]:.3f}'
-        f'    (upper = {self.geometric_parameters["geo"]["kappaU_sep"]:.3f}, '
-        f'lower = {self.geometric_parameters["geo"]["kappaL_sep"]:.3f})',
+        f'------------ Analytical Definitions (Miller) ------------\n\n'
+        f'$\\kappa_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["kappa"]:.3f}'
+        f'    (upper = {self.geometric_parameters["analytic"]["separatrix"]["kappaU"]:.3f}, '
+        f'lower = {self.geometric_parameters["analytic"]["separatrix"]["kappaL"]:.3f})',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -695,8 +704,9 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'$\\kappa_{{95}}$ = {self.geometric_parameters["geo"]["kappa_95"]:.3f},  '
-        f'$\\kappa_{{995}}$ = {self.geometric_parameters["geo"]["kappa_995"]:.3f}',
+        f'$\\delta_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["delta"]:.3f} '
+        f'   (upper = {self.geometric_parameters["analytic"]["separatrix"]["deltaU"]:.3f}, '
+        f'lower = {self.geometric_parameters["analytic"]["separatrix"]["deltaL"]:.3f})',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -708,9 +718,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'$\\delta_{{sep}}$ = {self.geometric_parameters["geo"]["delta_sep"]:.3f} '
-        f'   (upper = {self.geometric_parameters["geo"]["deltaU_sep"]:.3f}, '
-        f'lower = {self.geometric_parameters["geo"]["deltaL_sep"]:.3f})',
+        f'$\\zeta_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["zeta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -722,8 +730,8 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'$\\delta_{{95}}$ = {self.geometric_parameters["geo"]["delta_95"]:.3f},  '
-       f'$\\delta_{{995}}$ = {self.geometric_parameters["geo"]["delta_995"]:.3f}',
+        f'$\\kappa_{{95}}$ = {self.geometric_parameters["analytic"]["psin95"]["kappa"]:.3f},  '
+        f'$\\delta_{{95}}$ = {self.geometric_parameters["analytic"]["psin95"]["delta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -735,10 +743,24 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'zeta = {self.geometric_parameters["geo"]["zeta_sep"]:.3f}',
+        f'Extrapolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_extrapolation"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_extrapolation"]["psin995"]["delta"]:.3f}',
         color="k",
         fontsize=fontsize,
-        fontweight="normal",
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'Tracer:              $\\kappa_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["delta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
         horizontalalignment="left",
         verticalalignment="top",
         rotation=0,
@@ -747,9 +769,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------------ MXH Defintions ------------\n\n'
-        f'$\\kappa_{{995}}$ = {self.geometric_parameters["mxh"]["kappa_995"]:.3f}, '
-        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["delta_995"]:.3f}',
+        f'------- MEGPY minimization with MXH -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -757,13 +777,24 @@ def plotParameterization(self, axs=None):
         verticalalignment="top",
         rotation=0,
     )
-    cont += 1 + 1.5
+    cont += 1.0
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------------ Turnbull Defintions ------------\n\n'
-        f'$\\kappa_{{995}}$ = {self.geometric_parameters["turnbull"]["kappa_995"]:.3f}, '
-        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["delta_995"]:.3f}',
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["delta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'------- MEGPY minimization with Turnbull -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -771,7 +802,20 @@ def plotParameterization(self, axs=None):
         verticalalignment="top",
         rotation=0,
     )
-    cont += 1 + 1.5
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["delta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
     ax.text(
         0.0,
         toppos-distance*cont,
@@ -949,7 +993,7 @@ def plotGeometry(self, axs=None, color="r"):
     y = np.zeros(x.shape)
     ax.plot(
         x, # self.rho_tor,
-        y, # self.g["fluxSurfaces"]["geo"]["surfArea"],
+        y, # self.g["fluxSurfaces"]["analytic"]["surfArea"],
         "-",
         c=color,
         lw=2,
@@ -964,7 +1008,7 @@ def plotGeometry(self, axs=None, color="r"):
     y = np.zeros(x.shape)
     ax.plot(
         x, # self.rho_tor,
-        y, # self.g["fluxSurfaces"]["geo"]["vol"],
+        y, # self.g["fluxSurfaces"]["analytic"]["vol"],
         "-",
         c=color,
         lw=2,
