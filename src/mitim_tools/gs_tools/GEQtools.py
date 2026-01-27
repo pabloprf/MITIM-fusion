@@ -200,14 +200,14 @@ class MITIMgeqdsk:
                 self.geometric_parameters["analytic"][flux]["Z"] = miller_geo["Z_miller"]
         
         # ------------------------------------------------------------------------------------------------------
-        # Analytic definitions (using extrapolations of miller parameters)
+        # Analytic definitions (using interpolation of miller parameters)
         # ------------------------------------------------------------------------------------------------------
                 
-        self.geometric_parameters["analytic_extrapolation"] = {'psin95':{}, 'psin995':{}}
+        self.geometric_parameters["analytic_interpolation"] = {'psin95':{}, 'psin995':{}}
         
         for var in ['kappa', 'delta', 'zeta']:
             for flux,psin in [("psin95", 0.95), ("psin995", 0.995)]:
-                self.geometric_parameters["analytic_extrapolation"][flux][var] = np.interp(
+                self.geometric_parameters["analytic_interpolation"][flux][var] = np.interp(
                     psin,
                     self.psi_pol_norm,
                     self.g.derived["miller_geo"][var],

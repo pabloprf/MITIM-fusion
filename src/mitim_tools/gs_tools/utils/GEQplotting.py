@@ -743,8 +743,8 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'Extrapolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_extrapolation"]["psin995"]["kappa"]:.3f},  '
-       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_extrapolation"]["psin995"]["delta"]:.3f}',
+        f'Interpolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="bold",
@@ -769,7 +769,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------- MEGPY minimization with MXH -------',
+        f'------- MEGPY best-fit with MXH -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -794,7 +794,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------- MEGPY minimization with Turnbull -------',
+        f'------- MEGPY best-fit with Turnbull -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",

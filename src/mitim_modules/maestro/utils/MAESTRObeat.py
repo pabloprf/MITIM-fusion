@@ -219,7 +219,7 @@ class initializer_from_geqdsk(beat_initializer):
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
-        extract_995_from="analytic_extrapolation",
+        extract_995_from="analytic_interpolation",
         **kwargs_profiles
         ):
         '''
@@ -278,11 +278,11 @@ class initializer_from_geqdsk(beat_initializer):
         
         f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
 
-        if self.extract_995_from == 'analytic_extrapolation':
-            print('\t- Extracting 0.995 flux surface parameters from "analytic_extrapolation"')
-            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["analytic_extrapolation"]["psin995"]["kappa"]
-            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["analytic_extrapolation"]["psin995"]["delta"]
-            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["analytic_extrapolation"]["psin995"]["zeta"]
+        if self.extract_995_from == 'analytic_interpolation':
+            print('\t- Extracting 0.995 flux surface parameters from "analytic_interpolation"')
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["analytic_interpolation"]["psin995"]["zeta"]
         elif self.extract_995_from == 'analytic':
             print('\t- Extracting 0.995 flux surface parameters from "analytic"')
             self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["analytic"]["psin995"]["kappa"]
@@ -332,7 +332,7 @@ class initializer_from_separatrix(beat_initializer):
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
-        extract_995_from="analytic_extrapolation",
+        extract_995_from="analytic_interpolation",
         **kwargs
         ):
         
