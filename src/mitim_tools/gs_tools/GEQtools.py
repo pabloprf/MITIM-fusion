@@ -177,7 +177,7 @@ class MITIMgeqdsk:
             'Z': fs995.Z,
         }
         # ------------------------------------------------------------------------------------------------------
-        # Analytic definitions (using tracer flux surfaces)
+        # Analytic definitions (using tracer flux surfaces) under Turnbull-Miller aparameterizations
         # ------------------------------------------------------------------------------------------------------
         
         self.geometric_parameters["analytic"] = {}
@@ -200,7 +200,7 @@ class MITIMgeqdsk:
                 self.geometric_parameters["analytic"][flux]["Z"] = miller_geo["Z_miller"]
         
         # ------------------------------------------------------------------------------------------------------
-        # Analytic definitions (using interpolation of miller parameters)
+        # Analytic definitions (using interpolation of miller parameters) under Turnbull-Miller aparameterizations
         # ------------------------------------------------------------------------------------------------------
                 
         self.geometric_parameters["analytic_interpolation"] = {'psin95':{}, 'psin995':{}}
@@ -214,15 +214,14 @@ class MITIMgeqdsk:
                 )
                 
         # ------------------------------------------------------------------------------------------------------
-        # Turnbull-Miller parameterization (minimization)
+        # MXH parameterization via best-fit methods
         # ------------------------------------------------------------------------------------------------------
         
-        self.geometric_parameters["turnbull"] =  {'psin995':{}}
         self.geometric_parameters["mxh"] = {'psin995':{}}
 
-        # extract MXH shape coefficients
         fs995mxh = copy.deepcopy(fs995)
         fs995mxh.to_mxh(optimize=True)
+        
         # fs995.shape after to_mxh consists of [R0,Z0,r,kappa,shape_cos0,shape_cos1,shape_sin1,...shape_cos{n},shape_sin{n}]
         self.geometric_parameters["mxh"]['psin995']["R0"] = copy.deepcopy(fs995mxh.shape[0])
         self.geometric_parameters["mxh"]['psin995']["Z0"] = copy.deepcopy(fs995mxh.shape[1])
@@ -237,7 +236,12 @@ class MITIMgeqdsk:
         self.geometric_parameters["mxh"]['psin995']["R"] = copy.deepcopy(R_param)
         self.geometric_parameters["mxh"]['psin995']["Z"] = copy.deepcopy(Z_param)
 
-        # extract Turnbull-Miller shape coefficients
+        # ------------------------------------------------------------------------------------------------------
+        # Turnbull-Miller parameterization via best-fit methods
+        # ------------------------------------------------------------------------------------------------------
+
+        self.geometric_parameters["turnbull"] =  {'psin995':{}}
+
         fs995tm = copy.deepcopy(fs995)
         fs995tm.to_turnbull(initial=fs995tm.shape_analytic)
         self.geometric_parameters["turnbull"]['psin995']["kappa"] = copy.deepcopy(fs995tm.shape[3])
@@ -247,6 +251,22 @@ class MITIMgeqdsk:
         R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False)
         self.geometric_parameters["turnbull"]['psin995']["R"] = copy.deepcopy(R_param)
         self.geometric_parameters["turnbull"]['psin995']["Z"] = copy.deepcopy(Z_param)
+
+        # ------------------------------------------------------------------------------------------------------
+        # Miller parameterization via best-fit methods #TODO: to change
+        # ------------------------------------------------------------------------------------------------------
+
+        self.geometric_parameters["miller"] =  {'psin995':{}}
+
+        fs995m = copy.deepcopy(fs995)
+        fs995m.to_turnbull(initial=fs995tm.shape_analytic) # change to miller
+        self.geometric_parameters["miller"]['psin995']["kappa"] = copy.deepcopy(fs995m.shape[3])
+        self.geometric_parameters["miller"]['psin995']["delta"] = copy.deepcopy(fs995m.shape[4])
+        self.geometric_parameters["miller"]['psin995']["zeta"] = 0.0
+
+        R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False) # change to miller
+        self.geometric_parameters["miller"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["miller"]['psin995']["Z"] = copy.deepcopy(Z_param)
 
         # ------------------------------------------------------------------------------------------------------
         # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now

@@ -300,6 +300,11 @@ class initializer_from_geqdsk(beat_initializer):
             self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["mxh"]["psin995"]["zeta"]
             self.beat_instance.maestro_instance.parameters_trans_beat['s_three995'] = f.geometric_parameters["mxh"]["psin995"]["shape_sin"][2]
             self.beat_instance.maestro_instance.parameters_trans_beat['s_four995'] = f.geometric_parameters["mxh"]["psin995"]["shape_sin"][3]
+        elif self.extract_995_from == 'miller':
+            print('\t- Extracting 0.995 flux surface parameters from "miller"')
+            self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["miller"]["psin995"]["kappa"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["miller"]["psin995"]["delta"]
+            self.beat_instance.maestro_instance.parameters_trans_beat['zeta995'] = f.geometric_parameters["miller"]["psin995"]["zeta"] # Should be zero
 
         print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', 
             self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'], 

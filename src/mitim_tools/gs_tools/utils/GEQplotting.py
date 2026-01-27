@@ -641,12 +641,17 @@ def plotParameterization(self, axs=None):
     ax.plot(
         self.geometric_parameters["turnbull"]["psin995"]["R"],
         self.geometric_parameters["turnbull"]["psin995"]["Z"],
-        lw=2,ls='--',c='c',label="Turnbull: $\\psi_N=0.995$"
+        lw=2,ls='--',c='c',label="T-M: $\\psi_N=0.995$"
+        )
+    ax.plot(
+        self.geometric_parameters["miller"]["psin995"]["R"],
+        self.geometric_parameters["miller"]["psin995"]["Z"],
+        lw=2,ls='--',c='pink',label="Miller: $\\psi_N=0.995$"
         )
     ax.plot(
         self.geometric_parameters["analytic"]["psin995"]["R"],
         self.geometric_parameters["analytic"]["psin995"]["Z"],
-        lw=2,ls='--',c='y',label="Analytic: $\\psi_N=0.995$"
+        lw=2,ls='--',c='y',label="T-M (analytic): $\\psi_N=0.995$"
         )
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
@@ -657,7 +662,7 @@ def plotParameterization(self, axs=None):
 
     ax = axs[5]
     
-    fontsize = 12
+    fontsize = 10
     toppos = 12.0
     distance = 0.75
     
@@ -689,7 +694,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------------ Analytical Definitions (Miller) ------------\n\n'
+        f'---- Analytical Formulas (Turnbull-Miller) ------------\n\n'
         f'$\\kappa_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["kappa"]:.3f}'
         f'    (upper = {self.geometric_parameters["analytic"]["separatrix"]["kappaU"]:.3f}, '
         f'lower = {self.geometric_parameters["analytic"]["separatrix"]["kappaL"]:.3f})',
@@ -743,8 +748,8 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'Interpolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]:.3f},  '
-       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]:.3f}',
+        f'MEGPY tracer:  $\\kappa_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["delta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="bold",
@@ -756,8 +761,8 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'Tracer:              $\\kappa_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["kappa"]:.3f},  '
-       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["delta"]:.3f}',
+        f'Interpolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="bold",
@@ -765,11 +770,12 @@ def plotParameterization(self, axs=None):
         verticalalignment="top",
         rotation=0,
     )
+
     cont += 1.5
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------- MEGPY best-fit with MXH -------',
+        f'---- MEGPY best-fit with MXH -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -794,7 +800,7 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------- MEGPY best-fit with Turnbull -------',
+        f'---- MEGPY best-fit with Turnbull-Miller -------',
         color="k",
         fontsize=fontsize,
         fontweight="normal",
@@ -807,7 +813,8 @@ def plotParameterization(self, axs=None):
         0.0,
         toppos-distance*cont,
         f'$\\kappa_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["kappa"]:.3f}, '
-        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["delta"]:.3f}',
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["delta"]:.3f}, '
+        f'$\\zeta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["zeta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="bold",
@@ -819,7 +826,32 @@ def plotParameterization(self, axs=None):
     ax.text(
         0.0,
         toppos-distance*cont,
-        f'------------ Others ------------\n\n'
+        f'---- MEGPY best-fit with Miller -------',
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["miller"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["miller"]["psin995"]["delta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'---- Others ------------\n\n'
         f"$\\kappa_{{areal}}$ = {self.kappa_a:.3f}",
         color="k",
         fontsize=fontsize,
