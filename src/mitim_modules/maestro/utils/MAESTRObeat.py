@@ -278,7 +278,7 @@ class initializer_from_geqdsk(beat_initializer):
         
         f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
 
-        if self.extract_995_from == 'analytic_interpolation':
+        if self.extract_995_from == "analytic_interpolation":
             print('\t- Extracting 0.995 flux surface parameters from "analytic_interpolation"')
             self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = f.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]
             self.beat_instance.maestro_instance.parameters_trans_beat['delta995'] = f.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]
