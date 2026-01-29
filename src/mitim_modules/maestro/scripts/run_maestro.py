@@ -21,6 +21,7 @@ def run_maestro_local(
     
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
     
+    # In case a beat requests this information (e.g. EPED initializer)
     maestro_namelist['maestro']['master_cpus'] = cpus
     
     # ****************************************************************************************************************
@@ -86,7 +87,6 @@ def run_maestro_local(
     else:
         geometry = {}
         
-
     # ---------------------------------------------------------------------------------------
     # Read user settings and default namelists for individual Beats
     # ---------------------------------------------------------------------------------------
