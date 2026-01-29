@@ -147,6 +147,7 @@ class eped_beat(beat):
         R = self.profiles_current.profiles['rcentr(m)'][0]
         a = self.profiles_current.derived['a']
         zeff = self.profiles_current.derived['Zeff_vol'] #TODO: Use pedestal Zeff
+        print("[MITIM] Grabbing Zeff from volume average, consider using pedestal Zeff for more accuracy in the future", typeMsg='w')
 
         '''
         -----------------------------------------------------------
@@ -174,8 +175,8 @@ class eped_beat(beat):
         else:
             zeta995 = None
         if self.toq_eq_choice == 'mxh':
-            s_three995 = 0 # TODO: pull from TRANSP (add to PROFILEtools.py)
-            s_four995 = 0 # TODO: pull from TRANSP(add to PROFILEtools.py)
+            s_three995 = self.profiles_current.derived['s_three995']
+            s_four995 = self.profiles_current.derived['s_four995']
         else: 
             s_three995 = None
             s_four995 = None

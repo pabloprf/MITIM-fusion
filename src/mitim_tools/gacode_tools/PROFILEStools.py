@@ -264,6 +264,10 @@ class gacode_state(MITIMstate.mitim_state):
 
         self.derived["zeta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
         
+        # Higher-order MXH shaping at 0.995 (used by EPED when toq_eq_choice == 'mxh')
+        self.derived["s_three995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin3(-)"])
+        self.derived["s_four995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin4(-)"])
+        
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
@@ -926,4 +930,3 @@ def xsec_area_RZ(R,Z):
     xsec_area = np.array(xsec_area)
 
     return xsec_area
-
