@@ -427,6 +427,9 @@ class transp_beat(beat):
                     
         self.time_end = max(self.time_end, time_end_minimum)
              
+        if 'lowZ_impurity' in self.maestro_instance.parameters_trans_beat:
+            print(f'\t- Lengyel provided low-Z impurity Z={self.maestro_instance.parameters_trans_beat["lowZ_impurity"]} to TRANSP beat, but MAESTRO is not ready to accept that yet, it is recommended to run a Lengyel beat after a TRANSP beat', typeMsg='w')
+             
     def _determine_minimum_time(self, ensure_sawtooths=None):
             
         # ---------------------------------------------------------------------------------------
@@ -496,8 +499,8 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
     
     lowA = 2*LowZ   # Approximation
     
-    transp_namelist["zlump"] =[  [highZ, highA, 0.1*Wratio],
-                                 [ LowZ,  lowA, 0.1       ] ]
+    transp_namelist["zlump"] =[  [ highZ, highA, 0.1*Wratio ],
+                                 [  LowZ,  lowA, 0.1        ] ]
 
     transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T']   #TODO: generalize TRANSP module
     

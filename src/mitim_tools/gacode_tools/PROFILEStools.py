@@ -615,7 +615,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
     if len(failed_radii) > 0:
         print('Geometric factors calculation failed, '
               'likely due to very extreme shaping that was not properly run by an equilibrium solver.',
-              f'Radii that failed: {failed_radii}, out of {len(r)-1}',
+              f'Radii that failed: r/a = {r[failed_radii]}, positions {failed_radii} out of {len(r)-1}',
               'To avoid use of failed radii, I will zero out <Bpol^2> which is the most sensitive quantity.',
               'Extreme caution is advised for all other quantities such as dV/dr and <|grad r|>, and calculations relying on them',
               'such as volume integrations or flux surface averages.',

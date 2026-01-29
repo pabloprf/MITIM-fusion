@@ -2,19 +2,10 @@ import os
 import numpy as np
 import copy
 from mitim_tools.gacode_tools import PROFILEStools
-from mitim_tools.eped_tools import EPEDtools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
-from mitim_tools.surrogate_tools import NNtools
-from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
-from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from IPython import embed
-
-# <> Function to interpolate a curve <> 
-from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
-from sympy import im
 
 def element_to_lengyel(symbol):
     
@@ -150,6 +141,9 @@ class lengyel_beat(beat):
         
         # Write modified input.gacode.lengyel
         p.write_state(file=self.folder / 'input.gacode.lengyel')
+        
+        # For the inform later
+        self.impurity_lengyel = [impurity_Z, impurity_A, fZ_top]
 
     def finalize(self, *args, **kwargs):
         
@@ -171,7 +165,10 @@ class lengyel_beat(beat):
     def _inform_save(self, *args, **kwargs):
         
         # If I have run Lengyel, I cannot reuse surrogate data #TODO: Maybe not always true?
-        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None 
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
+        
+        # Store the impurity specifications
+        self.maestro_instance.parameters_trans_beat['lowZ_impurity'] = self.impurity_lengyel
 
 def _modify_temperatures(p, Tesep, rhotop):
     
