@@ -935,7 +935,10 @@ class creator_from_eped(creator_from_parameterization):
         self.beat_eped.profiles_current = self.initialize_instance.profiles_current
         
         # Run EPED
-        nproc_per_run = 64 #TODO: make it a parameter to be received from MAESTRO namelist
+        cpus_master = self.beat_eped.maestro_instance.maestro_namelist['maestro']['master_cpus']
+        cpus_eped = self.beat_eped.maestro_instance.maestro_namelist['maestro']['eped']['preprocess_prepare_parameters']['cpus']
+        
+        nproc_per_run = cpus_eped if cpus_eped is not None else cpus_master
         eped_results = self.beat_eped._run(loopBetaN = 1, nproc_per_run=nproc_per_run, cold_start=True) # Assume always cold start for a creator
 
         # Potentially save variables

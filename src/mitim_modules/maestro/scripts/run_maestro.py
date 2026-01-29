@@ -21,6 +21,8 @@ def run_maestro_local(
     
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
     
+    maestro_namelist['maestro']['master_cpus'] = cpus
+    
     # ****************************************************************************************************************
     # ****************************************************************************************************************
     # Parse namelist
@@ -166,7 +168,9 @@ def run_maestro_local(
         terminal_outputs = terminal_outputs, 
         overall_log_file = True,
         master_cold_start = force_cold_start, 
-        keep_all_files = keep_all_files)
+        keep_all_files = keep_all_files,
+        maestro_namelist = maestro_namelist
+        )
 
     # -------------------------------------------------------------------------
     # Loop through beats
