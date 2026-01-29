@@ -54,6 +54,11 @@ def run_maestro_local(
     initialization_creator_type = maestro_namelist["plasma"]["profiles_initialization"]["creator_type"]
     parameters_initialize =  maestro_namelist["plasma"]["profiles_initialization"]["parameters"]
 
+    if "freeze_995_from" in maestro_namelist["plasma"]["parameters"]["separatrix"]:
+        if maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"] == "geo":
+            print('[MAESTRO] Warning: "geo" option for freeze_995_from is deprecated, use "analytic_interpolation" instead', typeMsg='w')
+            maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"] = "analytic_interpolation"
+            
     # Initialize geometry from first 4 MXH moments
     if initialization_type in ['fibe','separatrix',"freegs"]:
         
@@ -78,6 +83,7 @@ def run_maestro_local(
     
     else:
         geometry = {}
+        
 
     # ---------------------------------------------------------------------------------------
     # Read user settings and default namelists for individual Beats

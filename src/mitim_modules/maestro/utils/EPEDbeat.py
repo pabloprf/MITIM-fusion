@@ -90,11 +90,17 @@ class eped_beat(beat):
             print('Using the toq_eq_choice provided:', kwargs['toq_eq_choice'])
             if kwargs['toq_eq_choice'] == 'standard':  # ishape = 4 (Bondeson Dee formula)
                 self.toq_eq_choice = 'standard'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['analytic', "analytic_interpolation", 'miller']:
+                    print('Warning: freeze_995_from is not set to Miller geometry but EPED will be run with MILLER geometry', typeMsg='warning')
             elif kwargs['toq_eq_choice'] == 'full_turnbull_miller': # ishape = 7 (Turnbull-Miller full formula, same as 4 but adding squareness)
                 self.toq_eq_choice = 'full_turnbull_miller'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['analytic', "analytic_interpolation", 'turnbull_miller']:
+                    print('Warning: freeze_995_from is not set to Turnbull-Miller geometry but EPED will be run with Turnbull-Miller geometry', typeMsg='warning')
                 print('Warning: you must have modified EPED and have TOQ set to ishape = 7 to be consistent with this choice', typeMsg='warning')
             elif kwargs['toq_eq_choice'] == 'mxh':  # ishape = 13 (MXH-based formula)
                 self.toq_eq_choice = 'mxh'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['mxh']:
+                    print('Warning: freeze_995_from is not set to MXH geometry but EPED will be run with MXH geometry', typeMsg='warning')
                 print('Warning: you must have modified EPED and have TOQ set to ishape = 13 to be consistent with this choice', typeMsg='warning')
             else:
                 raise ValueError(f'Unknown toq_eq_choice: {kwargs["toq_eq_choice"]}')

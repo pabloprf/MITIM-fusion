@@ -69,7 +69,14 @@ plasma:
       n_mxh: 5
 
       # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
-      freeze_995_from: geo    # Options: geo, turnbull, null (if null: no trans_beat parameters will be set)
+      # Options:
+      #      analytic:                Use the analytical formulas (not the best fit) to Turnbull-Miller parameters
+      #      analytic_interpolation:  Use the analytical formulas (not the best fit) to Turnbull-Miller parameters, but interpolating the coefficients at psiN=0.995
+      #      turnbull:                Use Turnbull-Miller parameterization via best-fit methods
+      #      mxh:                     Use MXH parameterization via best-fit methods
+      #      [miller:                  Use Miller parameterization via best-fit methods] -> NOT AVAILABLE YET
+      #      null:                    No trans_beat parameters will be set
+      freeze_995_from: analytic_interpolation
 
       # If initialization_type = geqdsk or fibe: path to file
       geqdsk_file: ""

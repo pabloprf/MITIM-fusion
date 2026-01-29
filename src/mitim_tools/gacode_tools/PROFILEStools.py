@@ -249,9 +249,8 @@ class gacode_state(MITIMstate.mitim_state):
 		Surf 		= V' <|grad r|>	 
 		Surf_GACODE = V'
 		"""
-        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
+        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"]) # This should be equivalent to volp_geo
         self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
-
 
         self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
@@ -274,7 +273,6 @@ class gacode_state(MITIMstate.mitim_state):
         rho = self.profiles["rho(-)"]
         lines = GRAPHICStools.listLS()
 
-
         ax = ax00c
 
         var = self.derived['r']
@@ -287,7 +285,6 @@ class gacode_state(MITIMstate.mitim_state):
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
-
 
         ax = ax01c
         ax.plot(self.profiles["rho(-)"], self.derived['volp_geo'], color=color, lw=lw, label = extralab)
