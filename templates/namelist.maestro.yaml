@@ -74,7 +74,7 @@ plasma:
       #      analytic_interpolation:  Use the analytical formulas (not the best fit) to Turnbull-Miller parameters, but interpolating the coefficients at psiN=0.995
       #      turnbull:                Use Turnbull-Miller parameterization via best-fit methods
       #      mxh:                     Use MXH parameterization via best-fit methods
-      #      miller:                  Use Miller parameterization via best-fit methods
+      #      [miller:                  Use Miller parameterization via best-fit methods] -> NOT AVAILABLE YET
       #      null:                    No trans_beat parameters will be set
       freeze_995_from: analytic_interpolation
 
