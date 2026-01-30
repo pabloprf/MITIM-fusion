@@ -605,7 +605,6 @@ def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  #TODO: FIX Gstar
 
     return ne_peak_empirical_l, ne_peak_empirical, ne_peak_empirical_u
 
-
 def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
     """
     Notes:
@@ -638,11 +637,9 @@ def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
 
     return logLei, logLii
 
-
 # --------------------------------------------------------------------------------------------------------------------------------
 # Radiation
 # --------------------------------------------------------------------------------------------------------------------------------
-
 
 def synchrotron(Te_keV, ne20, B_ref, aspect_rat, r_min, r_coeff=0.8):
     # From TGYRO
@@ -658,11 +655,9 @@ def synchrotron(Te_keV, ne20, B_ref, aspect_rat, r_min, r_coeff=0.8):
 
     return qsync * 1e-7  # from erg
 
-
 # --------------------------------------------------------------------------------------------------------------------------------
 #
 # --------------------------------------------------------------------------------------------------------------------------------
-
 
 def chi_inc(aLTe, Qe_MWm2, Te_keV, a_m, ne_20, aLTe_base, order=2):
     Te_J = Te_keV * 1e3 * e_J

@@ -382,6 +382,10 @@ class powerstate:
             # ***************************************************************************************************************
 
             folder_run = folder / "transport_simulation_folder" if folder_main is not None else IOtools.expandPath('~/scratch/')
+            
+            if X.abs().max().item() > 1E10:
+                raise Exception("[MITIM] Flux-matching diverged, very large values of inputs detected:", X)
+
             QTransport, QTarget, _, _ = self.calculate(X, nameRun=nameRun, folder=folder_run, evaluation_number=cont)
 
             cont += 1
