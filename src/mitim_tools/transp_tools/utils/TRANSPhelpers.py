@@ -117,7 +117,13 @@ class transp_run:
     # Ufiles
     # --------------------------------------------------------------------------------------------
 
-    def write_ufiles(self, structures_position = -1, radial_position = 0, use_mry_file = False):
+    def write_ufiles(
+            self,
+            structures_position = -1,
+            radial_position = 0,
+            use_mry_file = False,
+            mxh_coeffs_smooth = 5
+            ):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
         '''
@@ -211,7 +217,14 @@ class transp_run:
             for time in self.times:
                 if (time in self.geometry) and ('R_sep' in self.geometry[time]):
 
-                    thetas, R, Z = prepare_RZsep_for_TRANSP(self.geometry[time]['R_sep'], self.geometry[time]['Z_sep'])
+                    if mxh_coeffs_smooth is not None:
+                        thetas, R, Z = prepare_RZsep_for_TRANSP(
+                            self.geometry[time]['R_sep'],
+                            self.geometry[time]['Z_sep'],
+                            n_coeff=mxh_coeffs_smooth
+                            )
+                    else:
+                        R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
                     r0, z0 = (R.max()+R.min())/2, (Z.max()+Z.min())/2
 
@@ -453,7 +466,7 @@ class transp_run:
         GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
-def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 101, endpoint=True), plotYN = False):
+def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=5, thetas = np.linspace(0, 2*np.pi, 101, endpoint=True), plotYN = False):
     '''
     TRANSP tends to give troubles with kinks, curvatures and loops in the boundary files.
     This method developed in MITIM helps to smooth the boundary and avoid these issues.
@@ -467,8 +480,8 @@ def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi,
 
     if plotYN:
         fig, ax = plt.subplots()
-        ax.plot(Ro, Zo, 'o', label='Original')
-        ax.plot(surfaces.R[0], surfaces.Z[0], label='Smoothed')
+        ax.plot(Ro, Zo, '-o', ms=5, label='Original')
+        ax.plot(surfaces.R[0], surfaces.Z[0], '-s', ms=5, label=f'Smoothed n_coeff={n_coeff}')
         ax.legend(loc='best')
         ax.set_aspect('equal')
         ax.set_xlabel('R [m]')

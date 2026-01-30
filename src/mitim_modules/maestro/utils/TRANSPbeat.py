@@ -51,6 +51,7 @@ class transp_beat(beat):
         time_before_end     = 0.001,
         machine_initialization = 'CMOD',
         machine_initialization_match_target = False,
+        mxh_coeffs_smooth_sep = None,
         **transp_namelist
         ):
         '''
@@ -75,15 +76,31 @@ class transp_beat(beat):
         
         self.timeAC = self.time_end - time_before_end if extractAC else None          # Time to extract TORIC and NUBEAM files
 
-        # Write TRANSP from profiles
+
+        # If the 
+        if mxh_coeffs_smooth_sep is None:
+            print('\t- No MXH coefficients for smoothing separatrix provided', typeMsg='i')
+            try:
+                mxh_coeffs_smooth_sep = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix']['n_mxh']
+                print(f'\t\t- Grabbing MXH coefficients for smoothing from MAESTRO separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
+            except KeyError:
+                print('\t\t- Proceeding without smoothing', typeMsg='i')
+                pass
+        else:
+            print(f'\t- Using provided MXH coefficients for smoothing separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
+        
+        # Initialize TRANSP object and profiles from input.gacode
+        
         times = [self.time_transition,self.time_end+1.0]
         self.transp = self.profiles_current.to_transp(
             folder = self.folder,
             shot = self.shot, runid = self.runid, times = times,
-            Vsurf = self.profiles_current.Vsurf)
+            Vsurf = self.profiles_current.Vsurf,
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+            )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Generatic TRANSP operation
+        # Generic TRANSP operation
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         transp_namelist_mod = copy.deepcopy(transp_namelist)
@@ -151,7 +168,9 @@ class transp_beat(beat):
         self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = freq_ICH)
 
         # Write Ufiles
-        self.transp.write_ufiles()
+        self.transp.write_ufiles(
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+        )
 
     def run(self, **kwargs):
 

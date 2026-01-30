@@ -15254,7 +15254,7 @@ class transp_output:
         IOtools.shutil_rmtree(self.FolderCDF / 'RELEASE_folder')
         (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], time_extraction = -1, mxh_coeffs_smooth = 5):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -15264,7 +15264,7 @@ class transp_output:
         for time in times:
             transp.populate_time.from_cdf(time, self, time_extraction=time_extraction)
 
-        transp.write_ufiles()
+        transp.write_ufiles(mxh_coeffs_smooth=mxh_coeffs_smooth)
 
         return transp
 

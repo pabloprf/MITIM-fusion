@@ -2940,7 +2940,7 @@ class mitim_state:
         return input_parameters
     
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -2951,7 +2951,7 @@ class mitim_state:
         for time in times:
             transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
 
-        transp.write_ufiles()
+        transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth)
 
         return transp
 

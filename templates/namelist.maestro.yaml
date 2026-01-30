@@ -327,6 +327,9 @@ maestro:
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
       machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma
 
+      # Smoothing of the separatrix boundary for TRANSP ufile generation
+      mxh_coeffs_smooth_sep: null # if null, it will take n_mxh from "separatrix" section of "plasma"
+
       # Simulation length
       flattop_window: 2.5   
       ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
