@@ -1155,7 +1155,7 @@ class mitim_state:
                 ImpurityText += f"{self.Species[i]['N']}({self.Species[i]['Z']:.0f},{self.Species[i]['A']:.0f}) = {self.derived['fi_vol'][i]:.1e}, "
             ImpurityText = ImpurityText[:-2]
     
-            print(f"\n{label + '' if label != '' else ', summary:'}")
+            print(f"\n{(label + ', summary:') if label != '' else 'Summary:'}")
             print(f" ________________________________________________________________________________________")
             print("| Engineering Parameters:")
             print(f"|\tBt = {self.profiles['bcentr(T)'][0]:.2f}T, Ip = {self.profiles['current(MA)'][0]:.2f}MA (q95 = {self.derived['q95']:.2f}, q* = {self.derived['qstar']:.2f}, q*ITER = {self.derived['qstar_ITER']:.2f})")

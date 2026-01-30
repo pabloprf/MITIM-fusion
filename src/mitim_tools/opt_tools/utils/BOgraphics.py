@@ -1001,9 +1001,7 @@ class optimization_data:
         return y, ystd, coincidentPoint
 
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
-        print(
-            f"\t* Reading points from file ({self.file})",
-        )
+        print(f"\t* Reading points from file ({self.file})")
 
         self.data = pd.read_csv(self.file)
 

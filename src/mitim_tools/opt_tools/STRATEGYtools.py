@@ -954,7 +954,7 @@ class MITIM_BO:
         # Update the train_X
         self.train_X = np.append(self.train_X, self.x_next.cpu(), axis=0)
 
-        # Update optimization_data with nans
+        # Update optimization_data with nans for the new points (will be updated later)
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
@@ -999,10 +999,6 @@ class MITIM_BO:
                 f"\t- Points {self.avoidPoints_failed} are avoided b/c at least one of the OFs could not be computed"
             )
         # ---------------------------------------------------------------------------------------------------------------------
-
-        # Update Tabular data with the actual evaluations
-        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
 
         # Update optimization_results with the actual evaluations
         if not isThisCorrected:
@@ -1292,18 +1288,13 @@ class MITIM_BO:
 
         # --- If nan for important outputs don't use this point
         for i in range(self.train_Y.shape[0]):
-            boole = (np.isinf(self.train_Y[i]).any()) and (
-                i not in self.avoidPoints_failed
-            )
+            boole = (np.isinf(self.train_Y[i]).any()) and (i not in self.avoidPoints_failed)
             if boole:
                 self.avoidPoints_failed.append(i)
         if len(self.avoidPoints_failed) > 0:
-            print(
-                f"\t- Points {self.avoidPoints_failed} are avoided b/c at least one of the OFs could not be computed"
-            )
+            print(f"\t- Points {self.avoidPoints_failed} are avoided b/c at least one of the OFs could not be computed")
         # ------------------
-        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
+       
         self.optimization_results.addPoints(
             includePoints=[0, self.Originalinitial_training],
             executed=True,
