@@ -1925,9 +1925,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         plt.ion()
         fig = plt.figure()
 
-    pps = np.max(
-        [3, len(self.predicted_channels)]
-    )  # Because plotGradients require at least Te, Ti, ne
+    #pps = np.max([3, len(self.predicted_channels)])  # Because plotGradients require at least Te, Ti, ne
+    pps = 6
     grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
     axsR = []
     for i in range(pps):
@@ -3277,18 +3276,23 @@ def produceInfoRanges(
 
     X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["solution"]["predicted_channels"]), 2))
     l = len(rhos) - 1
-    X[0:l, :] = torch.from_numpy(aLTe[1:, :])
-    X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
-
-    cont = 0
+    
+    
+    cont = 0 
+    if "te" in self_complete.portals_parameters["solution"]["predicted_channels"]:
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLTe[1:, :])
+        cont += 1
+    if "ti" in self_complete.portals_parameters["solution"]["predicted_channels"]:
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLTi[1:, :])
+        cont += 1
     if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
     if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
-        cont += 1
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
+        cont += 1  
     if "w0" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
     X = X.transpose(0, 1)

@@ -690,8 +690,9 @@ class powerstate:
 			grid. Therefore, aLw0_n can only be calculated on the coarse grid.
 		"""
         if calculateRotationQuantities:
-            self.plasma["w0_n"] = self.plasma["w0"] / self.plasma["c_s"]
-            self.plasma["aLw0_n"] = (self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"])  # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s
+            self.plasma["w0_n"]   = self.plasma["w0"] / self.plasma["c_s"]
+            # aLw0 * w0 = -a*dw0/dr; then aLw0_n = -dw0/dr * a/c_s; but I add that it has to have the same sign a/Lw0
+            self.plasma["aLw0_n"] = self.plasma["aLw0"] * self.plasma["w0"] / self.plasma["c_s"]  * self.plasma["w0_n"].sign()
 
     def calculateTargets(self, relative_error_assumed=1.0):
         """

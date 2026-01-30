@@ -689,7 +689,7 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
                     'Qi_': 'aLti',
                     'Ge_': 'aLne',
                     'GZ_': 'aLnZ',
-                    'Mt_': 'dw0dr',
+                    'Mt_': 'aLw0_n',
                     'Qie': None  # Referring to energy exchange
                 }
 
