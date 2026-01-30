@@ -60,7 +60,7 @@ if not drives:
             runWaveForms=wf,
         )
 
-        tglf.readScan(label=f"scan_{param}", variable=param, positionIon = ion)
+        tglf.readScan(label=f"scan_{param}", variable=param, ion_OI_position_in_total_padded_list=ion)
         labels.append(f"scan_{param}")
 
     # --- Extra TGLF plotting

@@ -113,8 +113,10 @@ class NEO(SIMtools.mitim_simulation):
         label="scan1",
         subfolder=None,
         variable="RLTS_1",
-        positionIon=2
+        ion_OI_position_in_total_padded_list=2
     ):
+        
+        ion_OI_position_in_ion_list = ion_OI_position_in_total_padded_list - 2
 
         output_object = "output"
 
@@ -123,7 +125,7 @@ class NEO(SIMtools.mitim_simulation):
             'Qe_gb': [output_object, 'Qe', None],
             'Qi_gb': [output_object, 'Qi', None],
             'Ge_gb': [output_object, 'Ge', None],
-            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Gi_gb': [output_object, 'GiAll', ion_OI_position_in_ion_list],
             'Mt_gb': [output_object, 'Mt', None],
         }
         
@@ -131,7 +133,7 @@ class NEO(SIMtools.mitim_simulation):
             'Qe': [output_object, 'Qe_unn', None],
             'Qi': [output_object, 'Qi_unn', None],
             'Ge': [output_object, 'Ge_unn', None],
-            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Gi': [output_object, 'GiAll_unn', ion_OI_position_in_ion_list],
             'Mt': [output_object, 'Mt_unn', None],
         }
         
@@ -139,7 +141,7 @@ class NEO(SIMtools.mitim_simulation):
             label=label,
             subfolder=subfolder,
             variable=variable,
-            positionIon=positionIon,
+            ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
             variable_mapping=variable_mapping,
             variable_mapping_unn=variable_mapping_unn
         )

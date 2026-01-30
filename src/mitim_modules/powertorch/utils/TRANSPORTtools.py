@@ -133,7 +133,7 @@ class power_transport:
         
         neoclassical = self.evaluate_neoclassical()
         turbulence = self.evaluate_turbulence()
-        
+
         '''
         ******************************************************************************************************
         From the json to powerstate.plasma and GB to real units transformation

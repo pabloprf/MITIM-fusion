@@ -910,12 +910,13 @@ class mitim_simulation:
         label="scan1",
         subfolder=None,
         variable="RLTS_1",
-        positionIon=2,
+        ion_OI_position_in_total_padded_list=2,
         variable_mapping=None,
         variable_mapping_unn=None
     ):
         '''
-        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        ion_OI_position_in_total_padded_list is the index in the input.tglf file... so if you want for ion RLNS_5, ion_OI_position_in_total_padded_list=5
+        The name comes from the fact that in input.tglf files electrons are 1, first ion is 2, etc.
         '''
 
         if subfolder is None:
@@ -932,7 +933,7 @@ class mitim_simulation:
         self.scans[label]["unnormalization_successful"] = True
         self.scans[label]["results_tags"] = []
 
-        self.positionIon_scan = positionIon
+        self.ion_OI_position_in_total_padded_list_scan = ion_OI_position_in_total_padded_list
 
         # ----
         

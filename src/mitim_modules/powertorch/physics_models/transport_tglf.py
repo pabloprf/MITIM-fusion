@@ -29,7 +29,8 @@ class tglf_model:
         percent_error = simulation_options["percent_error"]
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
-        impurityPosition = self.powerstate.impurityPosition_transport
+        # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
+        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
         
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare TGLF object
@@ -73,7 +74,7 @@ class tglf_model:
         Qe = np.array([tglf.results['base']['output'][i].Qe for i in range(len(rho_locations))])
         Qi = np.array([tglf.results['base']['output'][i].Qi for i in range(len(rho_locations))])
         Ge = np.array([tglf.results['base']['output'][i].Ge for i in range(len(rho_locations))])
-        GZ = np.array([tglf.results['base']['output'][i].GiAll[impurityPosition] for i in range(len(rho_locations))])
+        GZ = np.array([tglf.results['base']['output'][i].GiAll[ion_OI_position_in_ion_list] for i in range(len(rho_locations))])
         Mt = np.array([tglf.results['base']['output'][i].Mt for i in range(len(rho_locations))])
         S = np.array([tglf.results['base']['output'][i].Se for i in range(len(rho_locations))])
 
@@ -111,7 +112,7 @@ class tglf_model:
                 rho_locations, 
                 self.powerstate.predicted_channels, 
                 Flux_base = Flux_base,
-                impurityPosition=impurityPosition, 
+                ion_OI_position_in_ion_list=ion_OI_position_in_ion_list, 
                 delta = use_tglf_scan_trick,
                 cold_start=cold_start,
                 extra_name=self.name,
@@ -181,7 +182,7 @@ def _run_tglf_uncertainty_model(
     Flux_base = None,
     code_settings=None,
     extraOptions=None,
-    impurityPosition=1,
+    ion_OI_position_in_ion_list=1,
     delta=0.02, 
     minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
     cold_start=False, 
@@ -195,13 +196,15 @@ def _run_tglf_uncertainty_model(
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
 
+    ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2 # Because in input.tglf 1 is electrons, and 2 is first ion, etc
+
     # Prepare scan 
     variables_to_scan = []
     for i in predicted_channels:
         if i == 'te': variables_to_scan.append('RLTS_1')
         if i == 'ti': variables_to_scan.append('RLTS_2')
         if i == 'ne': variables_to_scan.append('RLNS_1')
-        if i == 'nZ': variables_to_scan.append(f'RLNS_{impurityPosition+2}')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{ion_OI_position_in_total_padded_list}')
         if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
 
     #TODO: Only if that parameter is changing at that location
@@ -250,7 +253,7 @@ def _run_tglf_uncertainty_model(
                         "minutes": minutes,
                                  },
                     extra_name = f'{extra_name}_{name}',
-                    positionIon=impurityPosition+2,
+                    ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
                     attempts_execution=2, 
                     only_minimal_files=only_minimal_files,
                     )

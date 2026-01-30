@@ -1915,8 +1915,10 @@ class TGLF(SIMtools.mitim_simulation):
         label="scan1",
         subfolder=None,
         variable="RLTS_1",
-        positionIon=2
+        ion_OI_position_in_total_padded_list=3,
     ):
+        
+        ion_OI_position_in_ion_list = ion_OI_position_in_total_padded_list - 2
         
         output_object = "output"
 
@@ -1925,7 +1927,7 @@ class TGLF(SIMtools.mitim_simulation):
             'Qe_gb': [output_object, 'Qe', None],
             'Qi_gb': [output_object, 'Qi', None],
             'Ge_gb': [output_object, 'Ge', None],
-            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Gi_gb': [output_object, 'GiAll', ion_OI_position_in_ion_list],
             'Mt_gb': [output_object, 'Mt', None],
             'S_gb': [output_object, 'Se', None],
             'ky': [output_object, 'ky', None],
@@ -1946,7 +1948,7 @@ class TGLF(SIMtools.mitim_simulation):
             'Qe': [output_object, 'Qe_unn', None],
             'Qi': [output_object, 'Qi_unn', None],
             'Ge': [output_object, 'Ge_unn', None],
-            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Gi': [output_object, 'GiAll_unn', ion_OI_position_in_ion_list],
             'Mt': [output_object, 'Mt_unn', None],
             'S': [output_object, 'Se_unn', None],
             'Qifast': [output_object, 'Qifast_unn', None],
@@ -1956,7 +1958,7 @@ class TGLF(SIMtools.mitim_simulation):
             label=label,
             subfolder=subfolder,
             variable=variable,
-            positionIon=positionIon,
+            ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
             variable_mapping=variable_mapping,
             variable_mapping_unn=variable_mapping_unn
         )
@@ -2417,7 +2419,7 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel("$\\Gamma_i$ ($1E20/s/m^2$)")
             ax.legend(loc="best", fontsize=fontsizeLeg)
             ax.axhline(y=0, ls="-.", c="k", lw=1)
-            ax.set_title(f"Ion particle flux (ION_{self.positionIon_scan})")
+            ax.set_title(f"Ion particle flux (ION_{self.ion_OI_position_in_total_padded_list_scan})")
             GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_00e
@@ -2449,7 +2451,7 @@ class TGLF(SIMtools.mitim_simulation):
         ax.set_ylabel("$\\Gamma_i$ (GB)")
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        ax.set_title(f"Ion #{self.positionIon_scan} particle flux")
+        ax.set_title(f"Ion #{self.ion_OI_position_in_total_padded_list_scan} particle flux")
         GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_11
@@ -2531,12 +2533,13 @@ class TGLF(SIMtools.mitim_simulation):
         add_baseline_to = 'none', # 'all' or 'first' or 'none'
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         minimum_delta_abs={},
-        positionIon=2,
+        ion_OI_position_in_total_padded_list=2,
         **kwargs_TGLFrun,
     ):
         
         '''
-        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        ion_OI_position_in_total_padded_list is the index in the input.tglf file... so if you want for ion RLNS_5, ion_OI_position_in_total_padded_list=5
+        The name comes from the fact that in input.tglf files electrons are 1, first ion is 2, etc.
         '''
 
         self.variablesDrives = variablesDrives
@@ -2602,7 +2605,7 @@ class TGLF(SIMtools.mitim_simulation):
 
             scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.read_scan(label=scan_name, variable=variable,positionIon=positionIon)
+            self.read_scan(label=scan_name, variable=variable,ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list)
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
@@ -2773,7 +2776,7 @@ class TGLF(SIMtools.mitim_simulation):
                 **kwargs_TGLFrun,
             )
 
-            self.read_scan(label=label, variable=self.variable, positionIon=position)
+            self.read_scan(label=label, variable=self.variable, ion_OI_position_in_total_padded_list=position)
 
             x = self.scans[label]["scanned_variable"]
             yV = self.scans[label]["Gi"]

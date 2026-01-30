@@ -15,7 +15,8 @@ class neo_model:
         cold_start = self.cold_start
         
         percent_error = simulation_options["percent_error"]
-        impurityPosition = self.powerstate.impurityPosition_transport
+        # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
+        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
                 
         # ------------------------------------------------------------------------------------------------------------------------        
         # Run
@@ -42,10 +43,11 @@ class neo_model:
             label='base',
             **simulation_options["read"])
         
+        
         Qe = np.array([neo.results['base']['output'][i].Qe for i in range(len(rho_locations))])
         Qi = np.array([neo.results['base']['output'][i].Qi for i in range(len(rho_locations))])
         Ge = np.array([neo.results['base']['output'][i].Ge for i in range(len(rho_locations))])
-        GZ = np.array([neo.results['base']['output'][i].GiAll[impurityPosition-1] for i in range(len(rho_locations))])
+        GZ = np.array([neo.results['base']['output'][i].GiAll[ion_OI_position_in_ion_list] for i in range(len(rho_locations))])
         Mt = np.array([neo.results['base']['output'][i].Mt for i in range(len(rho_locations))])
         
         # ------------------------------------------------------------------------------------------------------------------------
