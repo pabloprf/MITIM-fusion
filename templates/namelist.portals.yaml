@@ -77,8 +77,7 @@ solution:
   impurity_trick: true
 
   # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
-  fZ0_as_weight: null
-  fImp_orig: 1.0
+  fZ0_as_weight: 1.0 # if null, it will not be used
 
   # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
   scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
