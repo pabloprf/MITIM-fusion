@@ -698,17 +698,24 @@ def plot_gradients(
         )
         axs4[6 + cont].set_ylabel("$w_0$ (krad/s)")
         axs4[6 + cont].set_xlabel(labelx)
+        
+        var = -self.derived["dw0dr"][:ix] * 1e-5
+        varlab = "-$d\\omega_0/dr$ (krad/s/cm)"
+        
+        # var = self.derived["dw0dr"][:ix] * self.derived["a"] / self.profiles['w0(rad/s)'][:ix]
+        # varlab = "a/$L_{w0}$"
+        
         if "derived" in self.__dict__:
             axs4[7 + cont].plot(
                 xcoord[:ix],
-                self.derived["dw0dr"][:ix] * 1e-5,
+                var,
                 ls,
                 c=color,
                 lw=lw,
                 markersize=ms,
                 alpha=alpha,
             )
-        axs4[7 + cont].set_ylabel("-$d\\omega_0/dr$ (krad/s/cm)")
+        axs4[7 + cont].set_ylabel(varlab)
         axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
         axs4[7 + cont].set_xlabel(labelx)
         if autoscale:

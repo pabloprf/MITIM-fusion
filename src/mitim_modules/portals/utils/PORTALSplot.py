@@ -3277,7 +3277,6 @@ def produceInfoRanges(
     X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["solution"]["predicted_channels"]), 2))
     l = len(rhos) - 1
     
-    
     cont = 0 
     if "te" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLTe[1:, :])
@@ -3342,28 +3341,27 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 1],
-            powerstate.plasma["rho"][0],
-            powerstate.plasma["ne"][0] * 0.1,
-            y_up=powerstate.plasma["ne"][1] * 0.1,
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 2],
-            rhos,
-            aLne[:, 0],
-            y_up=aLne[:, 1],
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        cont += 2
+    GRAPHICStools.fillGraph(
+        axsR[3 + cont + 1],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["ne"][0] * 0.1,
+        y_up=powerstate.plasma["ne"][1] * 0.1,
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[3 + cont + 2],
+        rhos,
+        aLne[:, 0],
+        y_up=aLne[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    cont += 2
 
     if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
@@ -3399,6 +3397,7 @@ def produceInfoRanges(
             label=label,
             lw=lw,
         )
+
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 2],
             rhos,

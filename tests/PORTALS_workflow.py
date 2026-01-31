@@ -1,5 +1,4 @@
 import os
-import torch
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSoptimization
@@ -23,13 +22,13 @@ if cold_start and folderWork.exists():
 
 # Initialize class with the default namelist in templates/namelist.portals.yaml but modify some of its parameters
 portals_fun = PORTALSmain.portals(folderWork)
-portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
-portals_fun.optimization_options["initialization_options"]["initial_training"] = 2
+portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
+portals_fun.optimization_options["initialization_options"]["initial_training"] = 5
 
 portals_fun.portals_parameters["solution"]['turbulent_exchange_as_surrogate'] = True
 
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
-portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", 'w0'] 
+portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", "w0"] 
 portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
 
