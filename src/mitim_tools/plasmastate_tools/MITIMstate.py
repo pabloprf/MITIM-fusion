@@ -2063,7 +2063,7 @@ class mitim_state:
         ax = axs[0]
         rho = np.linspace(0, 1, 21)
         
-        self.plot_state_flux_surfaces(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3)
+        self.plot_state_flux_surfaces(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3, include995=True)
 
         ax.set_xlabel("R (m)")
         ax.set_ylabel("Z (m)")

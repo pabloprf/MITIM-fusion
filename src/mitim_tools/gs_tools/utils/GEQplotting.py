@@ -80,7 +80,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
 # Plot of GEQ class
 # -----------------------------------------------------------------------------
 
-def plot(self, fn=None, extraLabel=""):
+def plot(self, fn=None, extraLabel="", tab_color=None):
     if fn is None:
         wasProvided = False
 
@@ -99,7 +99,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Parameterization
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Shape")
+    fig = self.fn.add_figure(label=extraLabel + "Shape", tab_color=tab_color)
     grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
     ax1 = fig.add_subplot(grid[:3, 0])
     ax5 = fig.add_subplot(grid[:3, 1])
@@ -115,7 +115,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Plasma
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Plasma")
+    fig = self.fn.add_figure(label=extraLabel + "Plasma", tab_color=tab_color)
     grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
 
     ax_plasma = [
@@ -133,7 +133,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Flux
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Surfaces")
+    fig = self.fn.add_figure(label=extraLabel + "Surfaces", tab_color=tab_color)
     grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[:, 0])
     ax2 = fig.add_subplot(grid[:, 1])
@@ -145,7 +145,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Currents
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Currents")
+    fig = self.fn.add_figure(label=extraLabel + "Currents", tab_color=tab_color)
     grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[2, 0])
     ax2 = fig.add_subplot(grid[:2, 0])
@@ -165,7 +165,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Fields
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Fields")
+    fig = self.fn.add_figure(label=extraLabel + "Fields", tab_color=tab_color)
     grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[2, 0])
     ax2 = fig.add_subplot(grid[:2, 0])
@@ -183,7 +183,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Checks
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "GS Quality")
+    fig = self.fn.add_figure(label=extraLabel + "GS Quality", tab_color=tab_color)
     grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[0, 0])
     ax1E = ax1.twinx()
@@ -197,7 +197,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Geometry
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Geometry")
+    fig = self.fn.add_figure(label=extraLabel + "Geometry", tab_color=tab_color)
     grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[0, 0])
     ax2 = fig.add_subplot(grid[0, 1])

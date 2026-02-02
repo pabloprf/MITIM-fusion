@@ -463,8 +463,8 @@ class MITIMgeqdsk:
     # Plotting
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    def plot(self, fn=None, extraLabel=""):
-        GEQplotting.plot(self, fn=fn, extraLabel=extraLabel)
+    def plot(self, fn=None, extraLabel="", tab_color=None):
+        GEQplotting.plot(self, fn=fn, extraLabel=extraLabel, tab_color= tab_color )
 
     def plotFS(self, axs=None, color="b", label=""):
         GEQplotting.plotFS(self, axs=axs, color=color, label=label)

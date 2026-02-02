@@ -130,11 +130,15 @@ def plot_results(self, fn):
     keys = list(objs.keys())
     lw, ms = 1, 0
 
+    # Plot geqdsk?
+    if ini['geqdsk'] is not None:
+        ini['geqdsk'].plot(fn=fn, extraLabel='GEQDSK - ', tab_color=2)
+
     # ********************************************************************************************************
     # Plot initialization (geqdsk to input.gacode)
     # ********************************************************************************************************
 
-    fig = fn.add_figure(label='MAESTRO init', tab_color=2)
+    fig = fn.add_figure(label='MAESTRO init', tab_color=3)
     axs = fig.subplot_mosaic(
         """
         ABCDHK
@@ -164,7 +168,7 @@ def plot_results(self, fn):
         if obj1 is None or obj2 is None:
             continue
 
-        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=2)
+        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=3)
         axs = fig.subplot_mosaic(
             """
             ABCDHJ
@@ -182,7 +186,7 @@ def plot_results(self, fn):
     # Plot transition 0 -> last
     # ********************************************************************************************************
 
-    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=2)
+    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=3)
     axs = fig.subplot_mosaic(
         """
         ABCDHJ
@@ -204,7 +208,7 @@ def plot_results(self, fn):
     # ********************************************************************************************************
     # Plot special info
     # ********************************************************************************************************
-    fig = fn.add_figure(label='MAESTRO special', tab_color=3)
+    fig = fn.add_figure(label='MAESTRO special', tab_color=4)
     
     axs = fig.subplot_mosaic(
         """
@@ -223,7 +227,7 @@ def plot_results(self, fn):
         # ********************************************************************************************************
         # Timings
         # ********************************************************************************************************
-        fig = fn.add_figure(label='MAESTRO timings', tab_color=3)
+        fig = fn.add_figure(label='MAESTRO timings', tab_color=4)
         axs = fig.subplot_mosaic("""
                                  A
                                  B
@@ -378,7 +382,16 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
 
 def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
 
-    g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
+    # Flux surfaces in rho_tor
+    g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,plot1=False, lw = lw,label='Initial geqdsk')
+    
+    # LCFS
+    g.plotFluxSurfaces(ax=axs[0], fluxes=[], color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
+    
+    # 99.5% flux surface
+    g.plotFluxSurfaces(ax=axs[0], fluxes=[0.995], rhoPol=True, sqrt=False, color=color,plot1=False, lw = lw,label='995')
+    
+    
     axs[3].plot(g.g.derived['rho_tor'], g.g.raw['pres']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
     axs[4].plot(g.g.derived['rho_tor'], g.g.raw['qpsi'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
 

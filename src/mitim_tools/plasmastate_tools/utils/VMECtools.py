@@ -183,7 +183,7 @@ class vmec_state(MITIMstate.mitim_state):
         self.plot_plasma_boundary(ax=axs_3d, color=color, phi_cuts=phis_plot)
         self.plot_state_flux_surfaces(ax=axs_2d, c=color, phis_plot=phis_plot)
 
-    def plot_state_flux_surfaces(self, ax=None, c='b', phis_plot=[0.0]):
+    def plot_state_flux_surfaces(self, ax=None, c='b', phis_plot=[0.0], **kwargs):
         
         rhos_plot = np.linspace(0.0, 1.0, 10)
         
