@@ -296,7 +296,7 @@ def _run_tglf_uncertainty_model(
         S = np.append(np.atleast_2d(Flux_base[5]).T, S, axis=1)
 
     if reuse_scan_ball_file is not None:
-        Qe, Qi, Ge, GZ, Mt, S = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
+        Qe, Qi, Ge, GZ, Mt, S = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
 
     # Calculate the standard deviation of the scans, that's going to be the reported stds
 
@@ -328,7 +328,7 @@ def _run_tglf_uncertainty_model(
     return Flux_mean, Flux_std
 
 
-def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPosition, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):
+def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):
     '''
     Workflow to reuse previous TGLF evaluations within a delta ball to capture combinations
     around the current base case.
@@ -359,7 +359,7 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, impurityPositio
             output_params[irho, 0, i] = tglf.results[key]['output'][irho].Qe
             output_params[irho, 1, i] = tglf.results[key]['output'][irho].Qi + (0 if not Qi_includes_fast else tglf.results[key]['output'][irho].Qifast)
             output_params[irho, 2, i] = tglf.results[key]['output'][irho].Ge
-            output_params[irho, 3, i] = tglf.results[key]['output'][irho].GiAll[impurityPosition]
+            output_params[irho, 3, i] = tglf.results[key]['output'][irho].GiAll[ion_OI_position_in_ion_list]
             output_params[irho, 4, i] = tglf.results[key]['output'][irho].Mt
             output_params[irho, 5, i] = tglf.results[key]['output'][irho].Se
     
