@@ -17,7 +17,7 @@ def rapids_evaluator(nn, core, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
                      fDT=0.85,
-                     thr_beta=0.02,
+                     thr_beta=0.025,
                      ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
                      optional_flag="RAPIDS case ",  
@@ -348,66 +348,21 @@ def estimate_neped_transition(nn, eped_evaluation, plotYN=False):
     
     return ne_trans
 
-def plot_cases(axs, results, xlabel = '$n_{e,ped}$', leg='',c='b'):
-
-
-    ax = axs[0,0]
-    ax.plot(results['x'], results['Ptop'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel('$p_{top}$ (kPa)')
-
-    ax = axs[1,0]
-    ax.plot(results['x'], results['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel('$P_{fus}$ (MW)')
-
-    ax = axs[0,1]
-    ax.plot(results['fG'], results['Ptop'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel('$<f_G>$')
-    ax.set_ylabel('$p_{top}$ (kPa)')
-
-    ax = axs[1,1]
-    ax.plot(results['fG'], results['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel('$<f_G>$')
-    ax.set_ylabel('$P_{fus}$ (MW)')
-
-    ax = axs[0,2]
-    ax.plot(results['qstar_ITER'], results['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel('$q^*$ ITER')
-    ax.set_ylabel('$P_{fus}$ (MW)')
-    ax.set_xlim(2.8, 4.5)
-
-    ax = axs[1,2]
-    ax.plot(results['vol'], results['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel('$V$ ($m^3$)')
-    ax.set_ylabel('$P_{fus}$ (MW)')
-
-    ax = axs[0,3]
-    ax.plot(results['x'], results['H98'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel('$H_{98y2}$')
-    ax.set_ylim(0.5, 1.5)
-    ax.axhline(y=1.0,ls='-.',lw=1.0,c='k')
-
-    ax = axs[1,3]
-    ax.plot(results['x'], results['betaN'], '-s', color= c, lw=1.0, markersize=5, label =leg)
-    GRAPHICStools.addDenseAxis(ax)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
-
-def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='', axs=None, relative=False,c='b', leg='', goal_pfusion=1_100, Paux = 0.0, vertical_at_nominal=True):
-    
-    if axs is None:
-        plt.ion(); fig, axs = plt.subplots(nrows=2,ncols=4,figsize=(20,10))
+def scan_parameter(
+    nn, p_base, xparam, x, nominal_parameters, core,
+    xparamlab='',
+    relative=False,
+    c='b',
+    leg='',
+    goal_pfusion=1_100,
+    Paux = 0.0,
+    vertical_at_nominal=True,
+    type_plot='full',
+    axs=None
+    ):
+    '''
+    axs must be a list of 8 cases if full plot
+    '''
 
     values = copy.deepcopy(nominal_parameters)
 
@@ -416,6 +371,14 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         'profs' : [],'eped_inputs': [],'Ptop' : [],
         'fG': [],'Pfus' : [], 'vol': [], 'qstar_ITER': [], 'H98': [], 'betaN': []
         }
+    
+    # Option for BetaN: provide multiplier
+    if 'BetaN_multiplier' in core:
+        BetaN_multiplier = core['BetaN_multiplier']
+    # Option for BetaN: use same fraction as original
+    else:
+        BetaN_multiplier = 1+p_base.derived['pfast_fraction']
+    
     for i,x in enumerate(results1['x']):
         values[xparam] = x
         ptop_kPa,wtop_psipol,profiles_new, eped_evaluation, _ = rapids_evaluator(
@@ -436,36 +399,121 @@ def scan_parameter(nn,p_base, xparam, x, nominal_parameters, core, xparamlab='',
         results1['vol'].append(profiles_new.derived['volume'])
         results1['qstar_ITER'].append(profiles_new.derived['qstar_ITER'])
         results1['H98'].append(profiles_new.derived['H98'])
-        results1['betaN'].append(profiles_new.derived['BetaNthr_engineering']*core['BetaN_multiplier'])
+        results1['betaN'].append(profiles_new.derived['BetaNthr_engineering']*BetaN_multiplier)
 
-    plot_cases(axs, results1, xlabel = xparamlab, leg=leg,c=c)
-    if vertical_at_nominal:
-        axs[0,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
-        axs[1,0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+    if axs is None:
+        plt.ion()
+        fig = plt.figure(figsize=(16,9))
         
-        fG_nominal = results1['fG'][np.argmin(np.abs(results1['x']- (nominal_parameters[xparam] if not relative else nominal_parameters[xparam])))]
-        axs[0,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
-        axs[1,1].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+        if type_plot=='full':
+            axsL = fig.subplot_mosaic(
+                """
+                ABFH
+                CDGI
+                """
+            )
+            axs = [axsL['A'], axsL['C'], axsL['B'], axsL['D'], axsL['F'], axsL['G'], axsL['H'], axsL['I']]
+        elif type_plot=='simple':
+            axsL = fig.subplot_mosaic(
+                """
+                1
+                2
+                3
+                """
+            )
+            axs = [axsL['1'], axsL['2'], axsL['3']]
 
 
+    # ------------------------------------------------------------------------------
+    # Plotting
+    # ------------------------------------------------------------------------------
 
+    fG_nominal = results1['fG'][np.argmin(np.abs(results1['x']- (nominal_parameters[xparam] if not relative else nominal_parameters[xparam])))]
 
-    axs[0,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
-    axs[1,1].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
+    ax = axs[0]
+    ax.plot(results1['x'], results1['Ptop'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel(xparamlab)
+    ax.set_ylabel('$p_{top}$ (kPa)')
+    ax.set_title('Senstivity to scan parameter')
 
-    axs[0,1].set_xlim(0.5, 1.2)
-    axs[1,1].set_xlim(0.5, 1.2)
+    if vertical_at_nominal:
+        axs[0].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
 
-    # axs[0,0].set_ylim(bottom=0)
-    # axs[0,1].set_ylim(bottom=0)
+    ax = axs[1]
+    ax.plot(results1['x'], results1['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
 
-    axs[1,0].axhspan(goal_pfusion, goal_pfusion*1.5, facecolor="g", alpha=0.1, edgecolor="none")
-    axs[1,1].axhspan(goal_pfusion, goal_pfusion*1.5, facecolor="g", alpha=0.1, edgecolor="none")
-   
-    axs[1,0].set_ylim(0, goal_pfusion*1.5)
-    axs[1,1].set_ylim(0, goal_pfusion*1.5)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel(xparamlab)
+    ax.set_ylabel('$P_{fus}$ (MW)')
 
-    axs[0,3].axhspan(0.85, 1.15, facecolor="g", alpha=0.1, edgecolor="none")
+    axs[1].axhspan(goal_pfusion, goal_pfusion*1.5, facecolor="g", alpha=0.1, edgecolor="none")
+    axs[1].set_ylim(0, goal_pfusion*1.5)
+
+    if vertical_at_nominal:
+        axs[1].axvline(x=nominal_parameters[xparam],ls='-.',lw=1.0,c=c)
+
+    ax = axs[2]
+    ax.plot(results1['fG'], results1['Ptop'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel('$<f_G>$')
+    ax.set_ylabel('$p_{top}$ (kPa)')
+    ax.set_title('Senstivity to $<f_G>$')
+
+    axs[2].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
+    axs[2].set_xlim(0.5, 1.2)
+    
+    if vertical_at_nominal:
+        axs[2].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+    
+    ax = axs[3]
+    ax.plot(results1['fG'], results1['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_xlabel('$<f_G>$')
+    ax.set_ylabel('$P_{fus}$ (MW)')
+
+    axs[3].axvspan(1.0, 1.5, facecolor="k", alpha=0.1, edgecolor="none")
+    axs[3].set_xlim(0.5, 1.2)
+
+    axs[3].axhspan(goal_pfusion, goal_pfusion*1.5, facecolor="g", alpha=0.1, edgecolor="none")
+    axs[3].set_ylim(0, goal_pfusion*1.5)
+
+    if vertical_at_nominal:
+        axs[3].axvline(x=fG_nominal,ls='-.',lw=1.0,c=c)
+    
+    if type_plot=='full':
+
+        ax = axs[4]
+        ax.plot(results1['qstar_ITER'], results1['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel('$q^*$ ITER')
+        ax.set_ylabel('$P_{fus}$ (MW)')
+        ax.set_xlim(2.8, 4.5)
+
+        ax = axs[5]
+        ax.plot(results1['vol'], results1['Pfus'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel('$V$ ($m^3$)')
+        ax.set_ylabel('$P_{fus}$ (MW)')
+
+        ax = axs[6]
+        ax.plot(results1['x'], results1['H98'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel(xparamlab)
+        ax.set_ylabel('$H_{98y2}$')
+        ax.set_ylim(0.5, 1.5)
+        ax.axhline(y=1.0,ls='-.',lw=1.0,c='k')
+
+        axs[6].axhspan(0.85, 1.15, facecolor="g", alpha=0.1, edgecolor="none")
+
+        ax = axs[7]
+        ax.plot(results1['x'], results1['betaN'], '-s', color= c, lw=1.0, markersize=5, label =leg)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlabel(xparamlab)
+        ax.set_ylabel('$\\beta_N$ (w/ $B_0$)')
+
+    plt.tight_layout()
    
     return results1
 
@@ -480,6 +528,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
         CDGIE
         """
     )
+    axs = [axsL['A'], axsL['B'], axsL['F'], axsL['H'], axsL['C'], axsL['D'], axsL['G'], axsL['I']]
 
     extr = ''
     if keep_qstar:
@@ -487,7 +536,7 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
     if keep_eps:
         extr += ' (fixed $\\epsilon$)'
 
-    axs = np.array([[axsL['A'], axsL['B'], axsL['F'], axsL['H']], [axsL['C'], axsL['D'], axsL['G'], axsL['I']]])
+    
 
     resultsS = []
     for varrel,c,leg in zip(
@@ -529,14 +578,14 @@ def scan_density_additional(nn, p_base, nominal_parameters, core, r, param, para
         resultsS.append(results)
 
 
-    axs[0,0].legend(prop={'size': 10})
+    axs[0].legend(prop={'size': 10})
 
     ax = axsL['E']
     for results,c in zip(
             resultsS,
             ['r','b','g'],
             ):
-        results['profs'][0].plot_state_flux_surfaces(ax=ax, surfaces_rho=[1.0], color=c)
+        results1['profs'][0].plot_state_flux_surfaces(ax=ax, surfaces_rho=[1.0], color=c)
 
     GRAPHICStools.addDenseAxis(ax)
     ax.set_xlabel("R (m)")
