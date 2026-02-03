@@ -658,18 +658,18 @@ class eped_beat(beat):
         if loaded_results is not None:
             profiles.plotRelevant(axs = axs, color = 'r', label = 'EPED')
 
-            axs[1].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
+            axs[2].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
             try:
-                axs[1].axhline(loaded_results['Tetop_keV'], color='k', ls='--',lw=2)
+                axs[2].axhline(loaded_results['Tetop_keV'], color='k', ls='--',lw=2)
             except:
-                axs[1].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
+                axs[2].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
                 
 
-            axs[2].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
-            axs[2].axhline(loaded_results['netop_20'], color='k', ls='--',lw=2)
-
             axs[3].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
-            axs[3].axhline(loaded_results['ptop_kPa']*1E-3, color='k', ls='--',lw=2)
+            axs[3].axhline(loaded_results['netop_20'], color='k', ls='--',lw=2)
+
+            axs[6].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
+            axs[6].axhline(loaded_results['ptop_kPa']*1E-3, color='k', ls='--',lw=2)
 
         GRAPHICStools.adjust_figure_layout(fig)
 

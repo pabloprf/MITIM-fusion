@@ -141,7 +141,7 @@ def main():
 
     # Plot all profiles
     if any(ps_final):
-        figsProfs = state_plotting.add_figures(fn,fnlab_pre = "MAESTRO Profiles ALL - ", tab_color=4)
+        figsProfs = state_plotting.add_figures(fn,fnlab_pre = "MAESTRO Profiles ALL - ", tab_color=5)
         state_plotting.plotAll(ps_final, figs=figsProfs)
     else:
         print("No final profiles to plot, MAESTRO simulation did not finish all required beats", typeMsg="w")

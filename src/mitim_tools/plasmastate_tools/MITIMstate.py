@@ -2044,7 +2044,7 @@ class mitim_state:
 
         return nu_effCGYRO, ne_peaking
 
-    def plotRelevant(self, axs = None, color = 'b', label ='', lw = 1, ms = 1):
+    def plotRelevant(self, axs = None, color = 'b', label ='', lw = 1, ms = 1, include995=True):
 
         if axs is None:
             fig = plt.figure()
@@ -2063,7 +2063,7 @@ class mitim_state:
         ax = axs[0]
         rho = np.linspace(0, 1, 21)
         
-        self.plot_state_flux_surfaces(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3, include995=True)
+        self.plot_state_flux_surfaces(ax=ax, surfaces_rho=rho, label=label, color=color, lw=lw, lw1=lw*3, include995=include995)
 
         ax.set_xlabel("R (m)")
         ax.set_ylabel("Z (m)")
@@ -2073,11 +2073,27 @@ class mitim_state:
         ax.set_title("Equilibria")
 
         # ----------------------------------
+        # Pressure
+        # ----------------------------------
+
+        ax = axs[1]
+
+        ax.plot(self.profiles['rho(-)'], self.derived['ptot_manual'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$p_{kin}$ (MPa)")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Total Pressure")
+
+        # ----------------------------------
         # Kinetic Profiles
         # ----------------------------------
 
         # T profiles
-        ax = axs[1]
+        ax = axs[2]
 
         ax.plot(self.profiles['rho(-)'], self.profiles['te(keV)'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
         ax.plot(self.profiles['rho(-)'], self.profiles['ti(keV)'][:,0], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
@@ -2091,7 +2107,7 @@ class mitim_state:
         ax.set_title("Temperatures")
 
         # ne profiles
-        ax = axs[2]
+        ax = axs[3]
 
         ax.plot(self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)']*1E-1, '-o', markersize=ms, lw = lw, label=label, color=color)
 
@@ -2104,44 +2120,11 @@ class mitim_state:
         ax.set_title("Electron Density")
 
         # ----------------------------------
-        # Pressure
-        # ----------------------------------
-
-        ax = axs[3]
-
-        ax.plot(self.profiles['rho(-)'], self.derived['ptot_manual'], '-o', markersize=ms, lw = lw, label=label, color=color)
-
-        ax.set_xlabel("$\\rho_N$")
-        ax.set_ylabel("$p_{kin}$ (MPa)")
-        #ax.set_ylim(bottom = 0)
-        ax.set_xlim(0,1)
-        ax.legend(prop={'size':8})
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title("Total Pressure")
-
-        # ----------------------------------
-        # Current
-        # ----------------------------------
-
-        # q-profile
-        ax = axs[4]
-
-        ax.plot(self.profiles['rho(-)'], self.profiles['q(-)'], '-o', markersize=ms, lw = lw, label=label, color=color)
-
-        ax.set_xlabel("$\\rho_N$")
-        ax.set_ylabel("$q$")
-        #ax.set_ylim(bottom = 0)
-        ax.set_xlim(0,1)
-        ax.legend(prop={'size':8})
-        GRAPHICStools.addDenseAxis(ax)
-        ax.set_title("Safety Factor")
-
-        # ----------------------------------
         # Powers
         # ----------------------------------
 
         # RF and Ohmic
-        ax = axs[5]
+        ax = axs[4]
 
         ax.plot(self.profiles['rho(-)'], self.profiles['qrfe(MW/m^3)'], '-o', markersize=ms, lw = lw, label=label+', ICH e', color=color)
         ax.plot(self.profiles['rho(-)'], self.profiles['qrfi(MW/m^3)'], '--*', markersize=ms, lw = lw, label=label+', ICH i', color=color)
@@ -2159,7 +2142,7 @@ class mitim_state:
         # Heat fluxes
         # ----------------------------------
 
-        ax = axs[6]
+        ax = axs[5]
 
         ax.plot(self.profiles['rho(-)'], self.derived['qe_MWm2'], '-o', markersize=ms, lw = lw, label=label+', e', color=color)
         ax.plot(self.profiles['rho(-)'], self.derived['qi_MWm2'], '--*', markersize=ms, lw = lw, label=label+', i', color=color)
@@ -2171,6 +2154,24 @@ class mitim_state:
         ax.legend(prop={'size':8})
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Energy Fluxes")
+
+        # ----------------------------------
+        # Current
+        # ----------------------------------
+
+        # q-profile
+        ax = axs[6]
+
+        ax.plot(self.profiles['rho(-)'], self.profiles['q(-)'], '-o', markersize=ms, lw = lw, label=label, color=color)
+
+        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel("$q$")
+        #ax.set_ylim(bottom = 0)
+        ax.set_xlim(0,1)
+        ax.legend(prop={'size':8})
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title("Safety Factor")
+
 
         # ----------------------------------
         # Dynamic targets

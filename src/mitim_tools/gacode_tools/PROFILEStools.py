@@ -476,18 +476,20 @@ class gacode_state(MITIMstate.mitim_state):
                 ax.plot(
                     self.derived["R_surface"][i_toroidal,ir, :],
                     self.derived["Z_surface"][i_toroidal,ir, :],
-                    "-",
+                    "--",
                     lw=lw,
                     c=color,
+                    label = label + ' @ 0.995'
                 )
                 if reflect:
                     # Reflect the surface across the midplane
                     ax.plot(
                         self.derived["R_surface"][i_toroidal,ir, :] * -1,
                         self.derived["Z_surface"][i_toroidal,ir, :],
-                        "-",
+                        "--",
                         lw=lw,
                         c=color,
+                        label = label + ' @ 0.995'
                     )
 
         ax.axhline(y=0, ls="--", lw=0.2, c="k")

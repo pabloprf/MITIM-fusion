@@ -625,7 +625,7 @@ class EPED:
             
             for iheight in range(p.shape[0]):
                 
-                is_it_on_point = abs(teped[iheight] - teped_base) < 0.001
+                is_it_on_point = abs(teped[iheight] - teped_base) < 0.01
                 
                 alpha_case = 1.0 if is_it_on_point else (0.3 if teped[iheight] < teped_base else 0.05)
                 lw = 2.0 if is_it_on_point else 0.5
