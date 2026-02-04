@@ -112,7 +112,7 @@ def prepare_profiles(
         includeShaping=True,
     )
     
-    p.profiles['q(-)'] *= qstar / p_base.derived['qstar_ITER']
+    p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], qstar / p_base.derived['qstar_ITER'])
 
     # Make sure that toroidal flux is roughly consistent
     p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
