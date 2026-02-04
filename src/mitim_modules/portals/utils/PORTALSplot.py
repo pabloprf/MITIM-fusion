@@ -859,7 +859,7 @@ def PORTALSanalyzer_plotMetrics(
 
     ax = axQ
 
-    isThereFusion = np.nanmax(self.FusionGain) > 1E-2
+    isThereFusion = (np.nanmax(self.FusionGain) > 1E-2) and (np.nanmax(self.FusionGain) != np.inf)
 
     if isThereFusion:
         v = self.FusionGain
@@ -883,9 +883,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
-        ax.plot(
-            [self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4
-        )
+        ax.plot([self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4)
 
     vmin, vmax = np.max([0, np.nanmin(v)]), np.nanmax(v)
     ext = 0.8
