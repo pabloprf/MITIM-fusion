@@ -1735,9 +1735,7 @@ class mitim_state:
         modified_num = 0
         for i in range(len(self.Species)):
             if self.Species[i]["S"] != "therm":
-                print(
-                    f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal'
-                )
+                print(f'\t\t- Specie {i} ({self.profiles["name"][i]}) was fast, but now it is considered thermal')
                 self.Species[i]["S"] = "therm"
                 self.profiles["type"][i] = "[therm]"
                 self.profiles["ti(keV)"][:, i] = self.profiles["ti(keV)"][:, 0]

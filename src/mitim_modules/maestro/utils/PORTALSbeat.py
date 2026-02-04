@@ -125,7 +125,7 @@ class portals_beat(beat):
             if len(self.mitim_bo.optimization_data.data) == 0:
                 self._flux_match_for_first_point()
 
-            portals_fun.prep(self.fileGACODE,askQuestions=False)
+            portals_fun.prep(p,askQuestions=False)
 
             self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
@@ -147,7 +147,6 @@ class portals_beat(beat):
             target_options_use = self.mitim_bo.optimization_object.powerstate.target_options,   # Use the target_options of the new run, not the old one (which may be with fixed targets if soft)
             file_write_csv=folder_fm / 'optimization_data.csv'
             )
-
 
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)

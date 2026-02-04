@@ -113,7 +113,7 @@ transport:
     # Neoclassical transport model
     neoclassical_model: "neo"
 
-  # Function to post-process input.gacode only *before* passing to transport codes
+  # Function to post-process input.gacode only *before* passing to transport codes (i.e. not for targets)
   profiles_postprocessing_fun: null
 
   # Corrections to be applied to each iteration input.gacode file
