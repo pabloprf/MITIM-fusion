@@ -13,6 +13,153 @@ from IPython import embed
     RAPIDS (Rapid Assessment of Pedestal Integrity for Device Scenarios)
 '''
 
+def prepare_profiles(
+    p_base,
+    core,
+    R=None, a=None, Bt=None, Ip=None,
+    kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,
+    Zeff=None,
+    tesep_eV=75, nesep19=1.0,
+    Paux = 0.0,
+    scale_zeta=False,   # Trick for now to fix negative jacobians when moving triangularity too much
+    fDT=0.85,           # If Zeff is not None: fDT to mtaintain
+    ion_position=3,     # If Zeff is not None: if (T,D,Z,...), change Z to match Zeff choice
+    roatop = 0.9,
+    Ttop_keV = 4.0,
+    ntop_20 = 1.0,
+    **kwargs_rederive_geometry
+    ):
+    
+    p = copy.deepcopy(p_base)
+
+    # -------------------------------------------------------
+    # Main quantities
+    # -------------------------------------------------------
+
+    # Change major radius
+    p.profiles['rcentr(m)'][0] = R
+    p.profiles['rmaj(m)'] *= R / p_base.profiles['rmaj(m)'][-1]
+
+    # Change minor radius
+    p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
+    
+    # Change elongation
+    if kappa995 is not None:
+        # If 995 available, use that
+        mutilier_kappa = kappa995/p_base.derived['kappa995']
+    else:
+        # Otherwise, use the separatrix value
+        mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
+    p.profiles['kappa(-)'] *= mutilier_kappa
+
+    # Change triangularity
+    if delta995 is not None:
+        # If 995 available, use that
+        mutilier_delta = delta995/p_base.derived['delta995']
+    else:
+        # Otherwise, use the separatrix value
+        mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
+    p.profiles['delta(-)'] *= mutilier_delta
+    
+    # Squareness: for now reduce its magnitude proportionally to triangularity change
+    if scale_zeta and mutilier_delta > 1.0:
+        if np.sign(p.profiles['zeta(-)'][-1]) < 0:
+            p.profiles['zeta(-)'] /= mutilier_delta
+        else:
+            p.profiles['zeta(-)'] *= mutilier_delta
+    
+    # Change magnetic field
+    p.profiles['bcentr(T)'][0] = Bt
+    
+    # Change plasma current
+    p.profiles['current(MA)'][0] = Ip
+
+    # ---------------------------------------------------
+    # Derived quantities
+    # ---------------------------------------------------
+
+    kappa_sep = p.profiles['kappa(-)'][-1]
+    delta_sep = p.profiles['delta(-)'][-1]
+
+    # Approximate XS area
+    area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
+    area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
+
+    # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
+    factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
+    factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
+    
+    qstar = PLASMAtools.evaluate_qstar(
+        Ip,
+        R,
+        kappa995 * factor_995_to_95_kappa,
+        Bt,
+        a/R,
+        delta995 * factor_995_to_95_delta,
+        isInputIp=True,
+        ITERcorrection=True,
+        includeShaping=True,
+    )
+    
+    p.profiles['q(-)'] *= qstar / p_base.derived['qstar_ITER']
+
+    # Make sure that toroidal flux is roughly consistent
+    p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
+    p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
+
+    # -------------------------------------------------------
+    # Others
+    # -------------------------------------------------------
+
+    # Change auxiliary power
+    p.changeRFpower(PrfMW=Paux)
+    for i in ["qohme(MW/m^3)"]:
+        p.profiles[i] *= 0.0
+
+    # -------------------------------------------------------
+    # Gradient-based profiles
+    # -------------------------------------------------------
+    
+    # Option for core specification: aLT, aLn, TiTe
+    if 'TiTe' in core:
+    
+        # Te profile based on aLT
+        roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_keV, tesep_eV*1E-3, core['aLT'])
+        p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
+        
+        # Ti profile based on TiTe ratio
+        p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*core['TiTe'])), p.profiles['ti(keV)'].shape[-1],axis=-1)
+
+    # Option for core specification: aLTe, aLTi, aLn
+    elif 'aLTe' in core:
+        
+        # Te profile based on aLTe
+        roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_keV, tesep_eV*1E-3, core['aLTe'])
+        p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
+        
+        # Ti profile based on aLTi (thermal ones)
+        roa, Ti = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_keV, tesep_eV*1E-3, core['aLTi'])
+
+        for i in range(len(p.Species)):
+            if p.Species[i]['S'] == 'therm':
+                p.profiles['ti(keV)'][:,i] = np.interp(p.derived['roa'], roa, Ti)
+
+    else:
+        raise Exception('Core specification not recognized, provide either TiTe or aLTe, aLTi')
+
+    # ne profile based on aLn
+    roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_20*10, nesep19, core['aLn'])
+    p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
+    p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
+    
+    p.derive_quantities(**kwargs_rederive_geometry)
+
+    # Change Zeff
+    if Zeff is not None:
+        p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=True, fmain_force=fDT)
+    
+    return p
+
 def rapids_evaluator(nn, core, p_base,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
@@ -25,138 +172,33 @@ def rapids_evaluator(nn, core, p_base,
                      scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
                      **kwargs_rederive_geometry):
 
+    rhotop_start = 0.9
+
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
         print(f'\t\t Evaluating {optional_flag}')
         
-        p = copy.deepcopy(p_base)
-
-        # -------------------------------------------------------
-        # Main quantities
-        # -------------------------------------------------------
-
-        # Change major radius
-        p.profiles['rcentr(m)'][0] = R
-        p.profiles['rmaj(m)'] *= R / p_base.profiles['rmaj(m)'][-1]
-
-        # Change minor radius
-        p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
-        
-        # Change elongation
-        if kappa995 is not None:
-            # If 995 available, use that
-            mutilier_kappa = kappa995/p_base.derived['kappa995']
-        else:
-            # Otherwise, use the separatrix value
-            mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
-        p.profiles['kappa(-)'] *= mutilier_kappa
-
-        # Change triangularity
-        if delta995 is not None:
-            # If 995 available, use that
-            mutilier_delta = delta995/p_base.derived['delta995']
-        else:
-            # Otherwise, use the separatrix value
-            mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
-        p.profiles['delta(-)'] *= mutilier_delta
-        
-        # Squareness: for now reduce its magnitude proportionally to triangularity change
-        if scale_zeta and mutilier_delta > 1.0:
-            if np.sign(p.profiles['zeta(-)'][-1]) < 0:
-                p.profiles['zeta(-)'] /= mutilier_delta
-            else:
-                p.profiles['zeta(-)'] *= mutilier_delta
-        
-        # Change magnetic field
-        p.profiles['bcentr(T)'][0] = Bt
-        
-        # Change plasma current
-        p.profiles['current(MA)'][0] = Ip
-
-        # -------------------------------------------------------
-        # Derived quantities
-        # -------------------------------------------------------
-
-        kappa_sep = p.profiles['kappa(-)'][-1]
-        delta_sep = p.profiles['delta(-)'][-1]
-
-        # Approximate XS area
-        area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
-        area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
-
-        # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
-        factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
-        factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
-        
-        qstar = PLASMAtools.evaluate_qstar(
-            Ip,
-            R,
-            kappa995 * factor_995_to_95_kappa,
-            Bt,
-            a/R,
-            delta995 * factor_995_to_95_delta,
-            isInputIp=True,
-            ITERcorrection=True,
-            includeShaping=True,
-        )
-        
-        p.profiles['q(-)'] *= qstar / p_base.derived['qstar_ITER']
-
-        # Make sure that toroidal flux is roughly consistent
-        p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
-        p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
-
-        # -------------------------------------------------------
-        # Others
-        # -------------------------------------------------------
-
-        # Change auxiliary power
-        p.changeRFpower(PrfMW=Paux)
-        for i in ["qohme(MW/m^3)"]:
-            p.profiles[i] *= 0.0
-
-        # -------------------------------------------------------
-        # Gradient-based profiles
-        # -------------------------------------------------------
-
-        rhotop_start = 0.9
         Ttop_start = np.max([4.0, (tesep_eV*1E-3) * 1.5])              # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
         ntop_start = np.max([1.0, (nesep_ratio*neped*10) * 1.5])       # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
                 
-        roatop = np.interp(rhotop_start, p.profiles['rho(-)'], p.derived['roa'])
+        roatop = np.interp(rhotop_start, p_base.profiles['rho(-)'], p_base.derived['roa'])
         
-        # Option for core specification: aLT, aLn, TiTe
-        if 'TiTe' in core:
-        
-            # Te profile based on aLT
-            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLT'])
-            p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
-            
-            # Ti profile based on TiTe ratio
-            p.profiles['ti(keV)'] = np.repeat(np.transpose(np.atleast_2d(p.profiles['te(keV)']*core['TiTe'])), p.profiles['ti(keV)'].shape[-1],axis=-1)
-
-            # For EPED runs, scale 
-            TiTe_ped = core['TiTe']
-
-        # Option for core specification: aLTe, aLTi, aLn
-        elif 'aLTe' in core:
-            
-            # Te profile based on aLTe
-            roa, Te = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLTe'])
-            p.profiles['te(keV)'] = np.interp(p.derived['roa'], roa, Te)
-            
-            # Ti profile based on aLTi (thermal ones)
-            roa, Ti = FunctionalForms.MITIMfunctional_aLyTanh(roatop, Ttop_start, tesep_eV*1E-3, core['aLTi'])
-    
-            for i in range(len(p.Species)):
-                if p.Species[i]['S'] == 'therm':
-                    p.profiles['ti(keV)'][:,i] = np.interp(p.derived['roa'], roa, Ti)
-
-            # For EPED runs, scale 
-            TiTe_ped = 1.0
-
-        else:
-            raise Exception('Core specification not recognized, provide either TiTe or aLTe, aLTi')
+        p = prepare_profiles(
+            p_base,
+            core,
+            R=R, a=a, Bt=Bt, Ip=Ip, kappa_sep=kappa_sep, delta_sep=delta_sep, kappa995=kappa995, delta995=delta995,
+            Zeff=Zeff,
+            tesep_eV=tesep_eV,
+            nesep19 = nesep_ratio*neped*10,
+            Paux = Paux,
+            fDT=fDT,
+            ion_position=ion_position,
+            scale_zeta=scale_zeta,
+            roatop = roatop,
+            Ttop_keV = Ttop_start,
+            ntop_20 = ntop_start,
+            **kwargs_rederive_geometry
+        )
 
         # Option for BetaN: provide multiplier
         if 'BetaN_multiplier' in core:
@@ -165,15 +207,11 @@ def rapids_evaluator(nn, core, p_base,
         else:
             BetaN_multiplier = 1+p_base.derived['pfast_fraction']
 
-        # ne profile based on aLn
-        roa, ne = FunctionalForms.MITIMfunctional_aLyTanh(roatop, ntop_start*10, nesep_ratio*neped*10, core['aLn'])
-        p.profiles['ne(10^19/m^3)'] = np.interp(p.derived['roa'], roa, ne)
-        p.profiles['ni(10^19/m^3)'] = p_base.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p.profiles['ne(10^19/m^3)']/p_base.profiles['ne(10^19/m^3)'])))
-        
-        p.derive_quantities(**kwargs_rederive_geometry)
-
-        # Change Zeff
-        p.changeZeff(Zeff, ion_pos=ion_position, keep_fmain=True, fmain_force=fDT)
+        # For EPED runs, scale 
+        if 'TiTe' in core:
+            TiTe_ped = core['TiTe']
+        else:
+            TiTe_ped = 1.0
 
         def pedestal(p, force_within_range=None, force_betan=None):
 
