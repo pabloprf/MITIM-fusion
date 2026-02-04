@@ -86,16 +86,27 @@ def prepare_profiles(
     area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
 
     # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
-    factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
-    factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
+    if kappa995 is None:
+        factor_sep_to_95_kappa = p_base.derived['kappa95']/p_base.profiles['kappa(-)'][-1]
+        kappa95 = kappa_sep * factor_sep_to_95_kappa
+    else:
+        factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
+        kappa95 = kappa995 * factor_995_to_95_kappa
+    
+    if delta995 is None:
+        factor_sep_to_95_delta = p_base.derived['delta95']/p_base.profiles['delta(-)'][-1]
+        delta95 = delta_sep * factor_sep_to_95_delta
+    else:
+        factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
+        delta95 = delta995 * factor_995_to_95_delta
     
     qstar = PLASMAtools.evaluate_qstar(
         Ip,
         R,
-        kappa995 * factor_995_to_95_kappa,
+        kappa95,
         Bt,
         a/R,
-        delta995 * factor_995_to_95_delta,
+        delta95,
         isInputIp=True,
         ITERcorrection=True,
         includeShaping=True,
