@@ -1009,15 +1009,6 @@ def PORTALSanalyzer_plotMetrics(
     for ax in [axQ, axA, axR, axC]:
         ax.set_xlim([0, len(self.FusionGain) + 2])
 
-    # for ax in [axA,axR,axC]:
-    # 	ax.yaxis.tick_right()
-    # 	ax.yaxis.set_label_position("right")
-
-    # print(
-    #     "\t* Reminder: With the exception of the Residual plot, the rest are calculated with the original profiles, not necesarily modified by targets",
-    #     typeMsg="i",
-    # )
-
     # Save plot
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
@@ -1117,6 +1108,7 @@ def PORTALSanalyzer_plotExpected(
     # Only predict the cases I will plot (to speed up)
     y_train = torch.zeros_like(y_trainreal)
     for i in plotPoints:
+        print(f"\t\t* Predicting training point #{i} for plotting 'Expected' tab")
         x_use = x_train[i : i + 1, :]
         y_pred, _, _, _ = model.predict(x_use)
         y_train[i : i + 1, :] = y_pred
@@ -1125,6 +1117,7 @@ def PORTALSanalyzer_plotExpected(
     y_next = yU_next = yL_next = None
     if plotNext:
         try:
+            print(f"\t\t* Predicting next point for plotting 'Expected' tab")
             y_next, yU_next, yL_next, _ = model.predict(self.step.x_next)
         except:
             pass

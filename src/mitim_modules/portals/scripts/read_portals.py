@@ -17,12 +17,18 @@ def main():
                         help="Paths to the folders to read.")
 
     # PORTALS specific options
-    parser.add_argument("--max", type=int, required=False, default=None)  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
-    parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*")
-    parser.add_argument("--all", required=False, default=False, action="store_true")  # Plot all fluxes?
-    parser.add_argument("--complete", "-c", required=False, default=False, action="store_true")
-    parser.add_argument("--save", type=str, required=False, default=None) # Save folder location
-    parser.add_argument("--noshow", required=False, default=False, action="store_true")
+    parser.add_argument("--max", type=int, required=False, default=None,
+                        help="Define max bounds of fluxes based on this one, like 0, -1 or None(best)")
+    parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*",
+                        help="Additional indeces to plot.")
+    parser.add_argument("--all", required=False, default=False, action="store_true",
+                        help="If set, it will plot all fluxes, not only the main ones.")
+    parser.add_argument("--complete", "-c", required=False, default=False, action="store_true",
+                        help="If set, it will plot the complete PORTALS results, not only the metrics.")
+    parser.add_argument("--save", type=str, required=False, default=None,
+                        help="Folder to save the figures.")
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
    
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
@@ -113,7 +119,7 @@ def main():
 
         portals_total[i].fn = fn
 
-        # Plot metrics
+        # Plot metrics only
         if (not complete) or isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
             if isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
                 fig = None
@@ -127,23 +133,30 @@ def main():
                 indexToMaximize=indexToMaximize,
                 plotAllFluxes=plotAllFluxes,
                 indeces_extra=indeces_extra,
-                file_save=folder_save if len(folders) == 1 else None,
                 extra_lab=lab,
             )
 
-        # Plot PORTALS
+        # Plot more PORTALS
         else:
             portals_total[i].plotPORTALS()
 
+    # --------------------------------------------------------------------------------------------------------------------------------------------
     # Show figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
     if not noshow:
         if requiresFN:
             fn.show()
         else:
             plt.show()
         
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Save figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
     if folder_save:
         if requiresFN:
+            # Use Notebook save method, to collect all figures into a single folder
             fn.save(folder_save)
         else:
             if not folder_save.exists():
@@ -151,7 +164,6 @@ def main():
             GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig)
         
     embed()
-
 
 if __name__ == "__main__":
     main()

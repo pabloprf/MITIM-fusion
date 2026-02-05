@@ -1,33 +1,54 @@
 """
 Notebook tabs, originally from F. Sciortino (MIT, 2019) but modified
-extensively by PRF
+extensively by PRF with the help of ChatGPT to add headless support
+and figure saving capabilities.
 """
 
 import sys
 import re
+import os
+import matplotlib
 from pathlib import Path
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-try:
-    # ----------- PyQt -----------
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.backends.backend_qtagg import (
-        NavigationToolbar2QT as NavigationToolbar,
-    )
-    from PyQt6 import QtWidgets, QtCore, QtGui
-    from PyQt6.QtWidgets import QTabWidget, QTabBar
+# -----------------------------------------------------------------------------
+# Matplotlib backend selection
+# -----------------------------------------------------------------------------
+# On headless Linux nodes, Matplotlib may default to a Qt backend. Creating a
+# figure can then trigger Qt initialization and hard-abort with the xcb plugin
+# error. Force a non-GUI backend early (before importing pyplot) when headless.
+_MITIM_HEADLESS = (
+    (sys.platform.startswith("linux"))
+    and (os.environ.get("DISPLAY") is None)
+    and (os.environ.get("WAYLAND_DISPLAY") is None)
+) or (str(os.environ.get("MITIM_HEADLESS", "0")) == "1")
 
-    # -----------------------------
-except ImportError:
-    print(" > PyQt6 module or backends could not be loaded by MITIM, plotting notebooks will not work but I let you continue",typeMsg="w",)
+if _MITIM_HEADLESS and (os.environ.get("MPLBACKEND") is None):
+    matplotlib.use("Agg")
 
+# If running headless, do not import Qt or Matplotlib Qt backends at module import
+# time. Even importing these modules can cause backend selection or Qt loading
+# that later crashes when no platform plugin/display is available.
+_MITIM_ENABLE_QT = not _MITIM_HEADLESS
+
+if _MITIM_ENABLE_QT:
+    try:
+        # ----------- PyQt -----------
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+        from PyQt6 import QtWidgets, QtCore, QtGui
+        from PyQt6.QtWidgets import QTabWidget, QTabBar
+        # -----------------------------
+    except ImportError:
+        print(" > PyQt6 module or backends could not be loaded by MITIM, plotting notebooks will not work but I let you continue",typeMsg="w")
+        _MITIM_ENABLE_QT = False
+
+if not _MITIM_ENABLE_QT:
     class QTabWidget:
         pass
-
     class QTabBar:
         pass
-
 
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools.CONFIGread import read_dpi
@@ -43,22 +64,23 @@ class FigureNotebook:
         geometry="1800x900",
         vertical=True,
         show=True,
+        headless="auto",
     ):
         plt.ioff()
 
-        try:
-            self.app = QtWidgets.QApplication.instance()
-        except NameError:
-            raise Exception("[MITIM] MITIM was installed without [pyqt] option, no GUI available")
-        if self.app is None:
-            self.app = QtWidgets.QApplication(sys.argv)
-        self.app.setStyle("Fusion")
-        self.MainWindow = QtWidgets.QMainWindow()
-        self.MainWindow.__init__()
-        self.windowtitle = windowtitle
-        self.MainWindow.setWindowTitle(self.windowtitle)
+        # Headless environments (e.g. HPC nodes) may have PyQt installed but no display.
+        # Creating a QApplication there can hard-abort with an xcb plugin error.
+        if not show:
+            print(" > Running in headless mode because I am not showing figures anyway")
+            headless = True
+            matplotlib.use("Agg")
+        if headless == "auto":
+            headless = _MITIM_HEADLESS
 
+        self._headless = bool(headless)
+        self.windowtitle = windowtitle
         self.geometry = geometry
+
         try:
             self._geometry_px = (
                 int(str(geometry).split("x")[0]),
@@ -73,6 +95,26 @@ class FigureNotebook:
         self.tab_handles = []
         self.tab_titles = []
         self.current_window = -1
+
+        # Headless: do not touch Qt at all.
+        if self._headless:
+            self.app = None
+            self.MainWindow = None
+            self.tabs = None
+            return
+
+        try:
+            self.app = QtWidgets.QApplication.instance()
+        except NameError:
+            raise Exception(
+                "[MITIM] MITIM was installed without [pyqt] option, no GUI available"
+            )
+        if self.app is None:
+            self.app = QtWidgets.QApplication(sys.argv)
+        self.app.setStyle("Fusion")
+        self.MainWindow = QtWidgets.QMainWindow()
+        self.MainWindow.__init__()
+        self.MainWindow.setWindowTitle(self.windowtitle)
 
         self.tabs = TabWidget(
             vertical=vertical, xextend=int(geometry.split("x")[0]) - 200
@@ -90,6 +132,8 @@ class FigureNotebook:
         """Show the Qt window off-screen so layouts compute real sizes."""
 
         try:
+            if self._headless:
+                return False
             if self.app is None:
                 return False
 
@@ -116,6 +160,8 @@ class FigureNotebook:
         """Revert the temporary off-screen show state."""
 
         try:
+            if self._headless:
+                return
             if self.app is None:
                 return
 
@@ -142,6 +188,11 @@ class FigureNotebook:
         """
         tab_color can be a color name or an integer to grab colors in order
         """
+
+        if self._headless:
+            self.figure_handles.append(figure)
+            self.tab_titles.append(title)
+            return
 
         new_tab = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout()
@@ -181,6 +232,11 @@ class FigureNotebook:
             self.tabs.tabBar().setTabColor(self.tabs.count() - 1, tab_color_hex)
 
     def show(self):
+        if self._headless:
+            print(
+                "\n> MITIM FigureNotebook running headless (no Qt display).", typeMsg="w"
+            )
+            return
         print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")
         print("\t- Close the notebook to continue")
         self.app.exec()
@@ -201,7 +257,7 @@ class FigureNotebook:
         self,
         folder,
         fmt: str = "png",
-        dpi=120,
+        dpi=None,
         prefix: str = "figure",
         include_index: bool = True,
         use_tab_titles: bool = True,
@@ -247,10 +303,9 @@ class FigureNotebook:
         out_dir = Path(folder).expanduser()
 
         print(f"- Saving Notebook to {folder}/")
-        IOtools.askNewFolder(folder)
 
         was_visible = False
-        if realize_layout:
+        if realize_layout and (not self._headless):
             was_visible = self._offscreen_show_begin()
 
         if force_clean_folder:
@@ -267,7 +322,7 @@ class FigureNotebook:
 
         try:
             for i, fig in enumerate(self.figure_handles):
-                if realize_layout:
+                if realize_layout and (not self._headless):
                     try:
                         self.tabs.setCurrentIndex(i)
                         self.app.processEvents()
@@ -292,18 +347,20 @@ class FigureNotebook:
                     raise FileExistsError(f"File already exists: {fpath}")
 
                 # Make saved output match the on-screen tab size.
-                if match_canvas_size and i < len(self.canvases):
+                if match_canvas_size:
                     try:
-                        canvas = self.canvases[i]
-                        size = canvas.size()  # QSize in pixels
-                        w_px, h_px = int(size.width()), int(size.height())
+                        w_px, h_px = 0, 0
+                        if (not self._headless) and (i < len(self.canvases)):
+                            canvas = self.canvases[i]
+                            size = canvas.size()  # QSize in pixels
+                            w_px, h_px = int(size.width()), int(size.height())
 
                         # If Qt still reports a tiny size, fall back to the notebook geometry.
                         if ((w_px <= 50) or (h_px <= 50)) and (self._geometry_px is not None):
                             w_px, h_px = self._geometry_px
 
                         if (w_px > 0) and (h_px > 0):
-                            dpi_eff = fig.get_dpi()
+                            dpi_eff = fig.get_dpi() if dpi is None else dpi
                             fig.set_size_inches(
                                 w_px / dpi_eff, h_px / dpi_eff, forward=True
                             )
@@ -323,6 +380,9 @@ class FigureNotebook:
                 except Exception:
                     pass
 
+                if fpath.exists():
+                    fpath.unlink() 
+                
                 fig.savefig(
                     fpath,
                     format=fmt,
@@ -337,7 +397,7 @@ class FigureNotebook:
             print(f"- Saved {len(saved)} figure(s) to {out_dir}")
             return saved
         finally:
-            if realize_layout:
+            if realize_layout and (not self._headless):
                 self._offscreen_show_end(was_visible)
 
     def close(self):
@@ -348,6 +408,8 @@ class FigureNotebook:
         # Disconnect all canvases
         # for canvas in self.canvases:
         #     canvas.mpl_disconnect(canvas.callbacks.connect('draw_event', lambda: None))
+        if self._headless:
+            return
         self.MainWindow.close()
         self.app.quit()
 
