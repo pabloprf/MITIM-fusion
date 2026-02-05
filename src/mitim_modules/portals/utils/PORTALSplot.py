@@ -1114,7 +1114,12 @@ def PORTALSanalyzer_plotExpected(
     yL_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
     yU_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
 
-    y_train = model.predict(x_train)[0]
+    # Only predict the cases I will plot (to speed up)
+    y_train = torch.zeros_like(y_trainreal)
+    for i in plotPoints:
+        x_use = x_train[i : i + 1, :]
+        y_pred, _, _, _ = model.predict(x_use)
+        y_train[i : i + 1, :] = y_pred
 
     # ---- Next
     y_next = yU_next = yL_next = None
