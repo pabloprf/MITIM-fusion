@@ -362,11 +362,11 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self, tabs_colors_common = None):
+    def plotPORTALS(self, tabs_colors_common = None, noshow=False):
         if self.fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-            self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000")
+            self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000", show=not noshow)
 
         fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=0 if tabs_colors_common is None else tabs_colors_common)
         self.plotRanges(fig=fig)

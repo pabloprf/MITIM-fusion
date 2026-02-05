@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
+from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.misc_tools import IOtools
 
 def main():
@@ -13,6 +14,7 @@ def main():
     parser.add_argument("--input", type=str, required=False, default=None) # input.gacode file, otherwise what's in the current folder
     parser.add_argument('--cold', required=False, default=False, action='store_true')
     parser.add_argument('--batch', required=False, default=False, action='store_true', help="If True, do not ask any questions and proceed with defaults.")
+    parser.add_argument('--save', required=False, default=False, action='store_true')
 
     args = parser.parse_args()
     
@@ -21,6 +23,7 @@ def main():
     inputgacode = args.input
     cold_start = args.cold
     batch = args.batch
+    save_figs = args.save
     # Actual PORTALS run 
     
     portals_namelist = Path(portals_namelist) if  portals_namelist is not None else IOtools.expandPath('.') / "namelist.portals.yaml"
@@ -31,6 +34,11 @@ def main():
 
     mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestions=not batch)
     mitim_bo.run()
+    
+    if save_figs:
+        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folderWork)
+        portals_output.plotPORTALS(noshow=True)
+        portals_output.fn.save(folderWork / "Analysis" / "portals_plots")
 
 if __name__ == "__main__":
     main()

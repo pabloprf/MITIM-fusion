@@ -1,7 +1,7 @@
 import os
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
-from mitim_modules.portals.utils import PORTALSoptimization
+from mitim_modules.portals.utils import PORTALSoptimization, PORTALSanalysis
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __mitimroot__
 
@@ -57,6 +57,14 @@ PORTALSoptimization.flux_match_surrogate(
     plot_results = True,
     keep_within_bounds = False
     )
+
+# Save figures to folder (somewhat expensive)
+# portals_fun.fn.save(folderWork / "final_plots") 
+
+# Save only portals figures
+portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(folderWork)
+portals_output.plotPORTALS(noshow=True)
+portals_output.fn.save(folderWork / "final_portals_plots")
 
 # Required if running in non-interactive mode
 portals_fun.fn.show()
