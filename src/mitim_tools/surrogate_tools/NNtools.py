@@ -167,12 +167,8 @@ def standard_arguments_eped(Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff
 
 def engineering_arguments_eped(Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio):
 
-    # New calcs
-    aspect = R / a
-    qstar = PLASMAtools.evaluate_qstar(Ip, R, kappa995, Bt, 1/aspect, delta995, isInputIp=True, ITERcorrection=True, includeShaping=True)
-    fgped = neped/10 / PLASMAtools.Greenwald_density(Ip, a) 
-    bcoil = PLASMAtools.Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=1.0)
-    
+    aspect, qstar, fgped, bcoil, _ = PLASMAtools.physics_to_engineering(Ip, Bt, R, a, neped/10, kappa995, delta995, 0.0)
+
     inputs_to_nn = {
         'a': a,
         'aspect': aspect,

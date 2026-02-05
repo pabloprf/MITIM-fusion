@@ -898,6 +898,39 @@ def Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=1.0):
     """Estimate coil field Bcoil from Bt."""
     return Bt * R / (R - a - coil_to_innerleg)
 
+def physics_to_engineering(Ip, Bt, R, a, ne20, kappa95, delta95, Psol, coil_to_innerleg=1.0):
+
+    aspect = R / a
+    qstar = evaluate_qstar(Ip, R, kappa95, Bt, 1/aspect, delta95, isInputIp=True, ITERcorrection=True, includeShaping=True)
+    fG = ne20 / Greenwald_density(Ip, a) 
+    bcoil = Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=coil_to_innerleg)
+    
+    Plh = LHthreshold_Martin2(ne20, Bt, a, R)
+    flh = Psol / Plh
+
+    
+    return aspect, qstar, fG, bcoil, flh
+
+def engineering_to_physics(aspect, qstar, fG, bcoil, a, kappa95, delta95, flh, R=None, coil_to_innerleg=1.0):
+    
+    if R is None:
+        R = aspect * a
+    elif a is None:
+        a = R / aspect
+    else:
+        raise Exception("Either R or a must be None")
+    
+    Bt = Bcoil_to_Bt(bcoil, R, a, coil_to_innerleg=coil_to_innerleg)
+    Ip = evaluate_qstar(qstar, R, kappa95, Bt, 1/aspect, delta95, isInputIp=False, ITERcorrection=True, includeShaping=True)
+    nG = Greenwald_density(Ip, a)
+    
+    ne20 = fG * nG
+    
+    Plh = LHthreshold_Martin2(ne20, Bt, a, R)
+    Psol = flh * Plh
+    
+    return R, a, Ip, Bt, ne20, Psol
+
 def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
     factor1 = 1 - (fDT + Zmini * fmini + Zhigh * fhigh)
