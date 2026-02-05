@@ -1,7 +1,8 @@
 import argparse
+from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_modules.portals.utils import PORTALSanalysis
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools.utils import remote_tools
 from IPython import embed
@@ -19,8 +20,9 @@ def main():
     parser.add_argument("--max", type=int, required=False, default=None)  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
     parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*")
     parser.add_argument("--all", required=False, default=False, action="store_true")  # Plot all fluxes?
-    parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
     parser.add_argument("--complete", "-c", required=False, default=False, action="store_true")
+    parser.add_argument("--save", type=str, required=False, default=None) # Save folder location
+    parser.add_argument("--noshow", required=False, default=False, action="store_true")
    
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
@@ -80,11 +82,13 @@ def main():
     # Actual PORTALS plotting
     # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    file = args.file
     indexToMaximize = args.max
     indeces_extra = args.indeces_extra
     plotAllFluxes = args.all
     complete = args.complete
+
+    folder_save = Path(args.save) if args.save is not None else None
+    noshow = args.noshow    
 
     if not complete:
         size = 8
@@ -94,16 +98,13 @@ def main():
 
     is_any_ini = False
     for i in range(len(folders)):
-        is_any_ini = is_any_ini or isinstance(
-            portals_total[i], PORTALSanalysis.PORTALSinitializer
-        )
+        is_any_ini = is_any_ini or isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer)
 
     requiresFN = (len(folders) > 1) or complete or is_any_ini
 
     if requiresFN:
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        fn = FigureNotebook("PORTALS", geometry="1600x1000")
+        fn = FigureNotebook("PORTALS", geometry="1600x1000", show=not noshow)
     else:
         fn = None
 
@@ -126,7 +127,7 @@ def main():
                 indexToMaximize=indexToMaximize,
                 plotAllFluxes=plotAllFluxes,
                 indeces_extra=indeces_extra,
-                file_save=file if len(folders) == 1 else None,
+                file_save=folder_save if len(folders) == 1 else None,
                 extra_lab=lab,
             )
 
@@ -134,10 +135,21 @@ def main():
         else:
             portals_total[i].plotPORTALS()
 
-    if fn is not None:
-        fn.show()
-    else:
-        plt.show()
+    # Show figures?
+    if not noshow:
+        if requiresFN:
+            fn.show()
+        else:
+            plt.show()
+        
+    if folder_save:
+        if requiresFN:
+            fn.save(folder_save)
+        else:
+            if not folder_save.exists():
+                folder_save.mkdir(parents=True)
+            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig)
+        
     embed()
 
 
