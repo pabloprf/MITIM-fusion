@@ -27,6 +27,8 @@ def main():
                         help="If set, it will plot the complete PORTALS results, not only the metrics.")
     parser.add_argument("--save", type=str, required=False, default=None,
                         help="Folder to save the figures.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
                         help="If set, it will not show the figures on screen.")
    
@@ -92,6 +94,7 @@ def main():
     indeces_extra = args.indeces_extra
     plotAllFluxes = args.all
     complete = args.complete
+    dpi_fig = args.dpi
 
     folder_save = Path(args.save) if args.save is not None else None
     noshow = args.noshow    
@@ -161,7 +164,7 @@ def main():
         else:
             if not folder_save.exists():
                 folder_save.mkdir(parents=True)
-            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig)
+            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig, dpi=dpi_fig)
         
     embed()
 
