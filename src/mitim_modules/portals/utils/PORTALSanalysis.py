@@ -379,8 +379,8 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Expected", tab_color=3 if tabs_colors_common is None else tabs_colors_common)
         self.plotExpected(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
-        _, _ = self.plotModelComparison(fig=fig)
+        # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
+        # _, _ = self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
