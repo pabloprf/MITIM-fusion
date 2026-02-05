@@ -254,6 +254,7 @@ class opt_evaluator:
         rangesPlot=None,
         save_folder=None,
         tabs_colors=0,
+        noshow=False,
     ):
         time1 = datetime.datetime.now()
 
@@ -272,7 +273,7 @@ class opt_evaluator:
 
         if plotYN and (analysis_level >= 0):
             if "fn" not in self.__dict__:
-                self.fn = GUItools.FigureNotebook("MITIM Optimization Results")
+                self.fn = GUItools.FigureNotebook("MITIM Optimization Results", show=not noshow)
             
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,

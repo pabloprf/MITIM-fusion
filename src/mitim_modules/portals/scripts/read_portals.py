@@ -160,7 +160,7 @@ def main():
     if folder_save:
         if requiresFN:
             # Use Notebook save method, to collect all figures into a single folder
-            fn.save(folder_save)
+            fn.save(folder_save, dpi=dpi_fig)
         else:
             if not folder_save.exists():
                 folder_save.mkdir(parents=True)

@@ -361,6 +361,10 @@ class FigureNotebook:
 
                         if (w_px > 0) and (h_px > 0):
                             dpi_eff = fig.get_dpi() if dpi is None else dpi
+                            
+                            # Go a bit larger to avoid overlapping of labels, etc
+                            w_px = int(w_px * 1.25)
+                            h_px = int(h_px * 1.25)
                             fig.set_size_inches(
                                 w_px / dpi_eff, h_px / dpi_eff, forward=True
                             )
