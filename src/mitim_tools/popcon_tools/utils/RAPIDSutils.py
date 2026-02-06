@@ -124,7 +124,7 @@ def find_core_parameters_RAPIDS(profiles_list, provideBetaN_multiplier=True, roa
     aLTi = res.x[1]
 
     # Calculate final modified profiles
-    p_mods = [calculate_new(aLTe, aLn, aLTi, p) for p in ps]
+    p_mods = [calculate_new(aLTe, aLn, aLTi, p, roatop=roatop) for p in ps]
 
     # --------------------------------------------------------
     # Show results
@@ -146,12 +146,23 @@ def find_core_parameters_RAPIDS(profiles_list, provideBetaN_multiplier=True, roa
         print(f'\t\t- BetaN: {p_mod.derived["BetaN"]:.2f} (target={p.derived["BetaN"]:.2f}) -> rel error = {(p_mod.derived["BetaN"] - p.derived["BetaN"])/p.derived["BetaN"]*100.0:.4f}%')
         print(f'\t\t- tite_vol: {p_mod.derived["tite_vol"]:.2f} (initial={p.derived["tite_vol"]:.2f}) -> rel change = {(p_mod.derived["tite_vol"] - p.derived["tite_vol"])/p.derived["tite_vol"]*100.0:.1f}%')
 
+    # Store errors to pass as information
+    rel_errors = []
+    for i in range(len(p_mods)):
+        p_mod = p_mods[i]
+        p = ps[i]
+        rel_errors.append(abs((p_mod.derived["ne_vol20"] - p.derived["ne_vol20"]) / p.derived["ne_vol20"] * 100.0))
+        rel_errors.append(abs((p_mod.derived["Pfus"] - p.derived["Pfus"]) / p.derived["Pfus"] * 100.0))
+        rel_errors.append(abs((p_mod.derived["BetaN"] - p.derived["BetaN"]) / p.derived["BetaN"] * 100.0))
+
+    mean_error = float(np.mean(rel_errors)) if len(rel_errors) > 0 else np.nan
+    
     if plotYN:
         fn = state_plotting.plotAll(ps+p_mods)
 
         fn.show()
         
     if provideBetaN_multiplier:
-        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi, 'BetaN_multiplier': BetaN_multiplier}, p_mods
+        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi, 'BetaN_multiplier': BetaN_multiplier}, p_mods, mean_error
     else:
-        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi}, p_mods
+        return {'aLTe': aLTe, 'aLn': aLn, 'aLTi': aLTi}, p_mods, mean_error
