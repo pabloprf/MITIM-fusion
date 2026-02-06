@@ -241,6 +241,52 @@ class FigureNotebook:
         print("\t- Close the notebook to continue")
         self.app.exec()
 
+    def tight_layout(self, *args, realize_layout: bool = True, **kwargs):
+        """Apply `fig.tight_layout()` to all figures in this notebook.
+
+        Notes:
+            - In the Qt notebook, tight layout depends on a renderer + realized widget sizes.
+              By default this method temporarily realizes the window off-screen and iterates
+              through tabs so each figure gets a correct layout.
+        """
+
+        was_visible = False
+        if realize_layout and (not self._headless):
+            was_visible = self._offscreen_show_begin()
+
+        try:
+            for i, fig in enumerate(self.figure_handles):
+                if realize_layout and (not self._headless):
+                    try:
+                        self.tabs.setCurrentIndex(i)
+                        self.app.processEvents()
+                    except Exception:
+                        pass
+
+                # Draw once so text extents exist before tight_layout.
+                try:
+                    if getattr(fig, "canvas", None) is not None:
+                        fig.canvas.draw()
+                except Exception:
+                    pass
+
+                try:
+                    fig.tight_layout(*args, **kwargs)
+                except Exception:
+                    pass
+
+                # Redraw to apply new layout.
+                try:
+                    if (not self._headless) and (i < len(self.canvases)):
+                        self.canvases[i].draw()
+                    elif getattr(fig, "canvas", None) is not None:
+                        fig.canvas.draw()
+                except Exception:
+                    pass
+        finally:
+            if realize_layout and (not self._headless):
+                self._offscreen_show_end(was_visible)
+
     @staticmethod
     def _sanitize_filename(name: str, max_len: int = 120) -> str:
         name = (name or "").strip()
