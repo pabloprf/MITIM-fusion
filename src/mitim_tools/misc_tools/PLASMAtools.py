@@ -121,23 +121,23 @@ def LHthreshold_nmin(Ip, Bt, a, Rmajor):
     return nLH_min
 
 
-def LHthreshold_Martin1(n, Bt, S, nmin=0):
+def LHthreshold_Martin1(n, Bt, S, nmin=[0]):
     return 0.0488 * n**0.717 * Bt**0.803 * S**0.941 * nminfactor(nmin, n)
 
 
-def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=0):
+def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=[0]):
     return 2.15 * n**0.782 * Bt**0.772 * a**0.975  * Rmajor**0.999 * nminfactor(nmin, n)
 
 
-def LHthreshold_Schmid1(n, Bt, S, nmin=0):
+def LHthreshold_Schmid1(n, Bt, S, nmin=[0]):
     return 0.0029 * (n * 10) ** 1.05 * Bt**0.68 * S**0.93 * nminfactor(nmin, n)
 
 
-def LHthreshold_Schmid2(n, Bt, S, nmin=0):
+def LHthreshold_Schmid2(n, Bt, S, nmin=[0]):
     return 0.0021 * (n * 10) ** 1.07 * Bt**0.76 * S * nminfactor(nmin, n)
 
 
-def LHthreshold_Martin1_low(n, Bt, S, nmin=0):
+def LHthreshold_Martin1_low(n, Bt, S, nmin=[0]):
     return (
         0.0488
         * np.exp(-0.057)
