@@ -382,6 +382,11 @@ class PORTALSanalyzer:
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
 
+        fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
+        self.plotDebug(fig=fig)
+        
+        self.fn.tight_layout()
+
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
 
@@ -393,6 +398,9 @@ class PORTALSanalyzer:
 
     def plotRanges(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotRanges(self, **kwargs)
+
+    def plotDebug(self, **kwargs):
+        PORTALSplot.PORTALSanalyzer_plotDebug(self, **kwargs)
 
     def plotModelComparison(self, UseThisTGLFfull=None, **kwargs):
         UseTGLFfull_x = None

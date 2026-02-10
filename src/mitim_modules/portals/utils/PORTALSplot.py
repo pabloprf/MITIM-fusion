@@ -1993,6 +1993,148 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
 
     axsR[0].legend(loc="best")
 
+def PORTALSanalyzer_plotDebug(self, fig=None):
+    if fig is None:
+        plt.ion()
+        fig = plt.figure()
+        
+    axs = fig.subplot_mosaic(
+        [
+            ["Te_training", "Ti_training", "ne_training",           "Te_opt", "Ti_opt", "ne_opt"],
+            ["aLTe_training", "aLTi_training", "aLne_training",     "aLTe_opt", "aLTi_opt", "aLne_opt"],
+            ["Qe_training", "Qi_training", "Ge_training",           "Qe_opt", "Qi_opt", "Ge_opt"],
+        ]
+    )
+
+    # Plot the evolution of profiles and their gradients during the initial training
+    num_training = self.opt_fun.mitim_model.optimization_options['initialization_options']['initial_training']
+    num_total = len(self.powerstates)
+    roa_pred = self.powerstates[0].plasma['roa'][0,1:].cpu().numpy()
+    
+    colors, _ = GRAPHICStools.colorTableFade(num_training, startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
+    lw = 1
+    mm = 's'
+    mm2 = '--o'
+    mm3 = '--s'
+
+    def _plot_evaluations(axs, evals, mm='', mm2='--o', mm3='--s', lw=1, roa_pred=None, lab = 'Training'):
+
+        colors, _ = GRAPHICStools.colorTableFade(len(evals), startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
+
+        min_grads = [0,0,0]
+        max_grads = [0,0,0]
+        for j,i in enumerate(evals):
+        
+            power = self.powerstates[i]
+            p = power.profiles
+            
+            axs['Te'].plot(p.derived['roa'], p.profiles["te(keV)"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['Te'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['te'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['Ti'].plot(p.derived['roa'], p.profiles["ti(keV)"][:,0], label=f"#{i}", c=colors[j], lw=lw)
+            axs['Ti'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['ne'].plot(p.derived['roa'], p.profiles["ne(10^19/m^3)"] * 1e-1, label=f"#{i}", c=colors[j], lw=lw)
+            axs['ne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ne'][0,1:].cpu().numpy() * 1e-1, mm, c=colors[j], markersize=3)
+            
+            axs['aLTe'].plot(p.derived['roa'], p.derived["aLTe"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLTe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLte'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['aLTi'].plot(p.derived['roa'], p.derived["aLTi"][:,0], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLTi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['aLne'].plot(p.derived['roa'], p.derived["aLne"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLne'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['Qe'].plot(p.derived['roa'], p.derived["qe_MWm2"], label=f"#{i}", c=colors[j], lw=lw/2)
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2_tr'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
+            
+            axs['Qi'].plot(p.derived['roa'], p.derived["qi_MWm2"], label=f"#{i}", c=colors[j], lw=lw/2)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2_tr'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
+            
+            axs['Ge'].plot(p.derived['roa'], p.derived["ge_10E20m2"], label=f"#{i}", c=colors[j], lw=lw/2)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2_tr'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
+            
+            max_grads[0] = max(max_grads[0], power.plasma['aLte'][0,1:].cpu().numpy().max())
+            max_grads[1] = max(max_grads[1], power.plasma['aLti'][0,1:].cpu().numpy().max())
+            max_grads[2] = max(max_grads[2], power.plasma['aLne'][0,1:].cpu().numpy().max())
+            
+            min_grads[0] = min(min_grads[0], power.plasma['aLte'][0,1:].cpu().numpy().min())
+            min_grads[1] = min(min_grads[1], power.plasma['aLti'][0,1:].cpu().numpy().min())
+            min_grads[2] = min(min_grads[2], power.plasma['aLne'][0,1:].cpu().numpy().min())
+            
+        for ax in axs.values():
+            ax.set_xlabel("$r/a$"); ax.set_xlim([0, 1])
+            GRAPHICStools.addDenseAxis(ax)
+        
+        axs['Te'].legend(loc="best")
+        axs['Te'].set_ylabel("Te (keV)"); axs['Te'].set_ylim(bottom=0); axs['Te'].set_title(f'{lab}: Te')
+        axs['Ti'].set_ylabel("Ti (keV)"); axs['Ti'].set_ylim(bottom=0); axs['Ti'].set_title(f'{lab}: Ti')
+        axs['ne'].set_ylabel("ne ($10^{20}m^{-3}$)"); axs['ne'].set_ylim(bottom=0); axs['ne'].set_title(f'{lab}: ne')
+        axs['aLTe'].set_ylabel("$a/L_{Te}$"); axs['aLTe'].set_ylim([min_grads[0], max_grads[0]*1.1])
+        axs['aLTi'].set_ylabel("$a/L_{Ti}$"); axs['aLTi'].set_ylim([min_grads[1], max_grads[1]*1.1])
+        axs['aLne'].set_ylabel("$a/L_{ne}$"); axs['aLne'].set_ylim([min_grads[2], max_grads[2]*1.1])
+        axs['Qe'].set_ylabel("Qe (MW/m$^2$)"); #axs['Qe'].set_ylim(bottom=0)
+        axs['Qi'].set_ylabel("Qi (MW/m$^2$)"); #axs['Qi'].set_ylim(bottom=0)
+        axs['Ge'].set_ylabel("$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)"); #axs['Ge'].set_ylim(bottom=0)
+            
+    # Plot training evaluations     
+    evals = np.arange(0,num_training,1)
+    _plot_evaluations(
+        axs = {
+            'Te': axs['Te_training'],
+            'Ti': axs['Ti_training'],
+            'ne': axs['ne_training'],
+            'aLTe': axs['aLTe_training'],
+            'aLTi': axs['aLTi_training'],
+            'aLne': axs['aLne_training'],
+            'Qe': axs['Qe_training'],
+            'Qi': axs['Qi_training'],
+            'Ge': axs['Ge_training'],
+        },
+        evals = evals,
+        mm = mm,
+        mm2 = mm2,
+        mm3 = mm3,
+        lw = lw,
+        roa_pred = roa_pred,
+        lab = 'Training',
+    )
+    
+    # Plot a maximum of 5 evaluations during optimization (from the last one, equidistant going back until the last training one
+    evals = np.unique(
+        np.concatenate(
+            [
+                np.arange(num_training, num_total, max(1, (num_total - num_training) // 5)),
+                [num_total - 1],
+            ]
+        )
+    )
+    _plot_evaluations(
+        axs = {
+            'Te': axs['Te_opt'],
+            'Ti': axs['Ti_opt'],
+            'ne': axs['ne_opt'],
+            'aLTe': axs['aLTe_opt'],
+            'aLTi': axs['aLTi_opt'],
+            'aLne': axs['aLne_opt'],
+            'Qe': axs['Qe_opt'],
+            'Qi': axs['Qi_opt'],
+            'Ge': axs['Ge_opt'],
+        },
+        evals = evals,
+        mm = mm,
+        mm2 = mm2,
+        mm3 = mm3,
+        lw = lw,
+        roa_pred = roa_pred,
+        lab = 'Optimization',
+    )
+    
+            
 def PORTALSanalyzer_plotModelComparison(
     self,
     fig=None,
