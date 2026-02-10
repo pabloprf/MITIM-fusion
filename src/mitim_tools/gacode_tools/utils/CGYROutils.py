@@ -37,7 +37,6 @@ class CGYROlinear_scan:
             self.aLTi.append(results[label]['output'][irho].aLTi)
             self.g_mean.append(results[label]['output'][irho].g_mean[0])
             self.f_mean.append(results[label]['output'][irho].f_mean[0])
-            
             self.Qe_mean.append(results[label]['output'][irho].Qe_mean)
             self.Qi_mean.append(results[label]['output'][irho].Qi_mean)
 
@@ -452,7 +451,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 self.Gi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
                 self.Gi_all_EM_ky = self.Gi_all_EM_apar_ky.copy()
                 # sum over species
-                self.Gi_EM_apar_ky = self.Gi_EM_apar_ky.sum(axis=0)
+                self.Gi_EM_apar_ky = self.Gi_all_EM_ky.sum(axis=0)
             elif field == 'bpar':
                 self.Gi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
                 self.Gi_all_EM_ky += self.Gi_all_EM_aper_ky
