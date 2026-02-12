@@ -168,7 +168,7 @@ class lengyel_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
         
         # Store the impurity specifications
-        self.maestro_instance.parameters_trans_beat['lowZ_impurity'] = self.impurity_lengyel
+        #self.maestro_instance.parameters_trans_beat['lowZ_impurity'] = self.impurity_lengyel
 
 def _modify_temperatures(p, Tesep, rhotop):
     
