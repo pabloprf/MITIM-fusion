@@ -1222,6 +1222,16 @@ def calculateHeatFluxWidth_Eich(Bp_OMP, Psol, R0, epsilon):
 
     return Lambda_q_Eich14, Lambda_q_Eich15
 
+def estimate_surface_area_tokamak(R, a, kappa):
+    '''
+    Large aspect ratio approximation using Ramanujan's approximation for the ellipse perimeter,
+    and multiplying by the toroidal circumference
+    '''
+    
+    Lp = np.pi * a *  ( 3*(1+kappa) - np.sqrt( (3+kappa)*(1+3*kappa) ) )
+    A = 2 * np.pi * R * Lp
+    
+    return A
 
 def calculateUpstreamTemperature(Lambda_q, q95, ne, P_LCFS, R, Bp, Bt):
     """
