@@ -94,8 +94,8 @@ def main():
     indeces_extra = args.indeces_extra
     plotAllFluxes = args.all
     complete = args.complete
+    
     dpi_fig = args.dpi
-
     folder_save = Path(args.save) if args.save is not None else None
     noshow = args.noshow    
 

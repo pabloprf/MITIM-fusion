@@ -3,8 +3,9 @@ import copy
 import json
 import numpy as np
 from pathlib import Path
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_modules.maestro.MAESTROmain import maestro
+from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -282,12 +283,15 @@ def main():
     parser.add_argument("--namelist", type=str, required=False, default=None) # namelist.maestro.yaml file, otherwise what's in the current folder
     parser.add_argument('--cpus', type=int, required=False, default=8, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
+    parser.add_argument('--save', required=False, default=False, action='store_true')
+    
     args = parser.parse_args()
     
     folder = IOtools.expandPath(args.folder)
     maestro_namelist = args.namelist
     cpus = args.cpus
     terminal_outputs = args.terminal
+    save_figs = args.save
 
     maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
@@ -295,6 +299,13 @@ def main():
         folder.mkdir(parents=True, exist_ok=True)
     
     run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
+
+    if save_figs:
+        
+        fn = GUItools.FigureNotebook("MAESTRO", show=False)
+        _, _, _ = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=2, full_plot = False)
+        
+        fn.save(folder / "maestro_plots")
 
 if __name__ == "__main__":
     main()
