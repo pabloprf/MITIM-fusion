@@ -137,27 +137,30 @@ class gyrokinetic_model:
                 if file_path.exists():
                     all_good = post_checks(self)
 
-        if 'Qi_stable_criterion' in simulation_options:
-            self._stable_correction(simulation_options)
+    def _stable_correction(self, simulation_options_all):
+        
+        print(f"\n- Checking if any radius has Qi below the stability criterion to apply a stable correction if needed...", typeMsg='i')
 
-    def _stable_correction(self, simulation_options):
+        simulation_options = simulation_options_all["cgyro"]
 
         Qi_stable_criterion = simulation_options["Qi_stable_criterion"]
         Qi_stable_percent_error = simulation_options["Qi_stable_percent_error"]
         
         # Check if Qi in MW/m2 < Qi_stable_criterion
-        QiMWm2 = self.QiGB_turb * self.powerstate.plasma['Qgb'][0,1:].cpu().numpy()
-        QiGB_target = self.powerstate.plasma['QiGB'][0,1:].cpu().numpy()
+        QiMWm2 = self.powerstate.plasma['QiMWm2_tr_turb']
+        QiMWm2_target = self.powerstate.plasma['QiMWm2'][0,1:].cpu().numpy()
         
         radii_stable = QiMWm2 < Qi_stable_criterion
         
         for i in range(len(radii_stable)):
+            
             if radii_stable[i]:
-                print(f"\t- Qi considered stable at radius #{i}, ({QiMWm2[i]:.2f} < {Qi_stable_criterion:.2f})", typeMsg='q')
-                Qi_std = QiGB_target[i] * Qi_stable_percent_error / 100
-                print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target as standard deviation: {Qi_std:.2f} instead of {self.QiGB_turb_stds[i]}", typeMsg='i')
-                self.QiGB_turb_stds[i] = Qi_std
-
+                
+                print(f"\n\t- Qi considered stable at radius #{i}: {QiMWm2[i]:.2e} MW/m^2 in CGYRO simulation < {Qi_stable_criterion:.2e} MW/m^2 criterion (see namelist)", typeMsg='q')
+                
+                Qi_std = QiMWm2_target[i] * Qi_stable_percent_error / 100
+                print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target value as standard deviation: sigma = {Qi_std:.2e} MW/m^2 instead of {self.powerstate.plasma['QiMWm2_tr_turb_stds'][i]:.2e} MW/m^2", typeMsg='i')
+                self.powerstate.plasma['QiMWm2_tr_turb_stds'][i] = Qi_std
 
 class cgyro_model(gyrokinetic_model):
 

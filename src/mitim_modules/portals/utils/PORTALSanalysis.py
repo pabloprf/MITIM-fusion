@@ -362,27 +362,27 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self, tabs_colors_common = None, noshow=False):
+    def plotPORTALS(self, tabs_colors_common = None, noshow=False, tab_color_istart=0):
         if self.fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
             self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000", show=not noshow)
 
-        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=0 if tabs_colors_common is None else tabs_colors_common)
+        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=tab_color_istart if tabs_colors_common is None else tabs_colors_common)
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=self.fn, fn_color=1 if tabs_colors_common is None else tabs_colors_common)
+        self.plotSummary(fn=self.fn, fn_color=tab_color_istart + 1 if tabs_colors_common is None else tabs_colors_common)
 
-        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=2 if tabs_colors_common is None else tabs_colors_common)
+        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=tab_color_istart + 2 if tabs_colors_common is None else tabs_colors_common)
         self.plotMetrics(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=3 if tabs_colors_common is None else tabs_colors_common)
+        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=tab_color_istart + 3 if tabs_colors_common is None else tabs_colors_common)
         self.plotExpected(fig=fig)
 
-        # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
+        # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
 
-        fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=4 if tabs_colors_common is None else tabs_colors_common)
+        fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         self.plotDebug(fig=fig)
         
         self.fn.tight_layout()

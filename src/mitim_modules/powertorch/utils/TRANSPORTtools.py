@@ -142,6 +142,9 @@ class power_transport:
         self._populate_from_json(file_name = 'fluxes_turb.json', suffix= 'turb')
         self._populate_from_json(file_name = 'fluxes_neoc.json', suffix= 'neoc')
 
+        # Some codes would like a stable correction
+        self._stable_correction(self.transport_evaluator_options)
+
         '''
         ******************************************************************************************************
         Post-process the data: add turb and neoc, tensorize and transformations
@@ -424,6 +427,11 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return gx_model.evaluate_turbulence(self)
         else:
             raise Exception(f"Unknown turbulence model {self.turbulence_model}")
+
+    def _stable_correction(self, simulation_options):
+        
+        if self.turbulence_model == 'cgyro':
+            cgyro_model._stable_correction(self, simulation_options)
 
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
