@@ -171,7 +171,7 @@ def prepare_profiles(
     
     return p
 
-def rapids_evaluator(nn, core, p_base,
+def rapids_evaluator(nn, core, p_base_orig,
                      R=None, a=None, Bt=None, Ip=None, kappa_sep=None, delta_sep=None, kappa995=None, delta995=None,neped=None, Zeff=None, tesep_eV=75, nesep_ratio=0.3,
                      Paux = 0.0,
                      fDT=0.85,
@@ -181,14 +181,19 @@ def rapids_evaluator(nn, core, p_base,
                      optional_flag="RAPIDS case ",  
                      analyze_distance_to_pb = False,
                      scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
+                     state_resol=None, # If not None, change resolution of the profiles for the state calculation
                      **kwargs_rederive_geometry):
     '''
     neped in this evaluator is in 1E20 m^-3
     '''
+    
+    p_base = copy.deepcopy(p_base_orig)
+    if state_resol is not None:
+        p_base.changeResolution(n=state_resol)
 
     rhotop_start = 0.9
 
-    #with IOtools.speeder('profiler.prof'): # To allow debugging and printing
+    #with IOtools.nullcontext(): # To allow debugging and printing
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
         print(f'\t\t Evaluating {optional_flag}')
@@ -293,6 +298,7 @@ def rapids_evaluator(nn, core, p_base,
         minimum_its = 2  # To make sure that at least one iteration of adjustment is done, even if the guessed Beta_EPED0 is close enough
         
         profs, Beta, Beta_EPED, fails = [], [], [], []
+        #with IOtools.speeder('profiler.prof'):
         for i in range(100):
             
             print(f'\n- Iteration {i+1} for the BetaN loop: "previous" BetaN = {Beta_EPED0}\n', typeMsg='i')
@@ -435,7 +441,7 @@ def estimate_neped_transition(nn, eped_evaluation, plotYN=False):
     return ne_trans
 
 def scan_parameter(
-    nn, p_base, xparam, x, nominal_parameters, core,
+    nn, p_base_orig, xparam, x, nominal_parameters, core,
     xparamlab='',
     relative=False,
     c='b',
@@ -444,11 +450,18 @@ def scan_parameter(
     Paux = 0.0,
     vertical_at_nominal=True,
     type_plot='full',
-    axs=None
+    axs=None,
+    state_resol=None
     ):
     '''
     axs must be a list of 8 cases if full plot
     '''
+    
+    if state_resol is not None:
+        p_base = copy.deepcopy(p_base_orig)
+        p_base.changeResolution(n=state_resol)
+    else:
+        p_base = p_base_orig
 
     values = copy.deepcopy(nominal_parameters)
 
@@ -473,7 +486,8 @@ def scan_parameter(
             Paux=Paux,
             **values,
             n_theta_geo=101,
-            optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}')
+            optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}'
+            )
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['wtop_psipol'] = wtop_psipol
