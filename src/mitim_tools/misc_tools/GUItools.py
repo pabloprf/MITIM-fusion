@@ -368,6 +368,7 @@ class FigureNotebook:
 
         try:
             for i, fig in enumerate(self.figure_handles):
+                print(f"\t- Saving figure {i+1}/{len(self.figure_handles)}...")
                 if realize_layout and (not self._headless):
                     try:
                         self.tabs.setCurrentIndex(i)

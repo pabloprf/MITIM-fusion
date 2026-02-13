@@ -49,6 +49,12 @@ def main():
                         help="If provided, it will only plot the specified beats (e.g., transp)")
     parser.add_argument("--full", required=False, default=False, action="store_true",
                         help="If set, it will plot the full beat information.")
+    parser.add_argument("--save", type=str, required=False, default=None,
+                        help="Folder to save the figures.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
    
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
@@ -64,7 +70,6 @@ def main():
 
     args = parser.parse_args()
 
-
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote
     # --------------------------------------------------------------------------------------------------------------------------------------------
@@ -75,7 +80,6 @@ def main():
             
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 
-    
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Fix pkl optimization portals in remote
     # --------------------------------------------------------------------------------------------------------------------------------------------
@@ -93,7 +97,11 @@ def main():
 
     folders = [IOtools.expandPath(folder) for folder in folders]
     
-    fn = GUItools.FigureNotebook("MAESTRO")
+    dpi_fig = args.dpi
+    folder_save = Path(args.save) if args.save is not None else None
+    noshow = args.noshow    
+    
+    fn = GUItools.FigureNotebook("MAESTRO", show=not noshow)
 
     if len(folders) > 1:
         fig = fn.add_figure(label='MAESTRO special ALL', tab_color=4)
@@ -153,7 +161,15 @@ def main():
             axsTiming[let].set_ylim(bottom=0)
             axsTiming[let].set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
 
-    fn.show()
+    if not noshow:
+        fn.show()
+
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Save figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
+    if folder_save:
+        fn.save(folder_save, dpi=dpi_fig)
 
     # Import IPython and embed an interactive session
     from IPython import embed
