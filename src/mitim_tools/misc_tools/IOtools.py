@@ -38,6 +38,16 @@ import urllib.error as urlERR  # urllibE
 
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
+class nullcontext:
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        return
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
 class speeder(object):
     def __init__(self, file='./profiler.prof'):
         self.file = Path(file).expanduser()
