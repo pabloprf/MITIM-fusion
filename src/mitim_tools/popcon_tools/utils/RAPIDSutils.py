@@ -30,12 +30,16 @@ def calculate_new(aLTe, aLn, aLTi, p, roatop = 0.95):
     p_mod.profiles['ne(10^19/m^3)'] = np.interp(p_mod.derived['roa'], roa, ne)
     p_mod.profiles['ni(10^19/m^3)'] = p.profiles['ni(10^19/m^3)'] * np.transpose(np.atleast_2d((p_mod.profiles['ne(10^19/m^3)']/p.profiles['ne(10^19/m^3)'])))
 
-    p_mod.derive_quantities(rederiveGeometry=False)
-    
-    power = STATEtools.powerstate(p_mod,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
-    power.calculateProfileFunctions()
-    power.calculateTargets()
-    TRANSFORMtools.powerstate_to_gacode_powers(power, p_mod, rederive_at_high_res=False)
+    resolution_targets = 10 # For Pfus
+
+    if resolution_targets is not None:
+        
+        p_mod.derive_quantities(rederiveGeometry=False)
+        
+        power = STATEtools.powerstate(p_mod,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, resolution_targets)[1:]}, increase_profile_resol=False)
+        power.calculateProfileFunctions()
+        power.calculateTargets()
+        TRANSFORMtools.powerstate_to_gacode_powers(power, p_mod, rederive_at_high_res=False)
 
     p_mod.derive_quantities(rederiveGeometry=False)
     p_mod.selfconsistentPTOT()

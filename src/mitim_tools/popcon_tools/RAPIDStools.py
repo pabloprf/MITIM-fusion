@@ -1,7 +1,7 @@
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools, LOGtools
+from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools, LOGtools, IOtools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import TRANSFORMtools
 from mitim_tools.popcon_tools import FunctionalForms
@@ -182,15 +182,25 @@ def rapids_evaluator(nn, core, p_base,
                      analyze_distance_to_pb = False,
                      scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
                      **kwargs_rederive_geometry):
+    '''
+    neped in this evaluator is in 1E20 m^-3
+    '''
 
     rhotop_start = 0.9
 
+    #with IOtools.speeder('profiler.prof'): # To allow debugging and printing
     with LOGtools.HiddenPrints(show_if_contains=["[*WARNING*]", f"Evaluating {optional_flag}"] if hide_prints else ""):
         
         print(f'\t\t Evaluating {optional_flag}')
         
-        Ttop_start = np.max([4.0, (tesep_eV*1E-3) * 1.5])              # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
-        ntop_start = np.max([1.0, (nesep_ratio*neped*10) * 1.5])       # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
+        '''
+        ---------------------------------------------------------------------------------------------------------------------
+        Prepare profiles
+        ---------------------------------------------------------------------------------------------------------------------
+        '''
+        
+        Ttop_start_keV = np.max([4.0, (tesep_eV*1E-3) * 1.5])              # To avoid too low Ttop that creates hollowing later (but not too high to break the betan loop)
+        ntop_start_20 = np.max([1.0, (nesep_ratio*neped) * 1.5])       # To avoid too low ntop that creates hollowing later (but not too high to break the betan loop)
                 
         roatop = np.interp(rhotop_start, p_base.profiles['rho(-)'], p_base.derived['roa'])
         
@@ -206,8 +216,8 @@ def rapids_evaluator(nn, core, p_base,
             ion_position=ion_position,
             scale_zeta=scale_zeta,
             roatop = roatop,
-            Ttop_keV = Ttop_start,
-            ntop_20 = ntop_start,
+            Ttop_keV = Ttop_start_keV,
+            ntop_20 = ntop_start_20,
             **kwargs_rederive_geometry
         )
 
@@ -216,16 +226,18 @@ def rapids_evaluator(nn, core, p_base,
             BetaN_multiplier = core['BetaN_multiplier']
         # Option for BetaN: use same fraction as original
         else:
-            BetaN_multiplier = 1+p_base.derived['pfast_fraction']
+            BetaN_multiplier = 1 + p_base.derived['pfast_fraction']
 
         # For EPED runs, scale 
-        if 'TiTe' in core:
-            TiTe_ped = core['TiTe']
-        else:
-            TiTe_ped = 1.0
+        TiTe_ped = core['TiTe'] if 'TiTe' in core else 1.0
 
+        '''
+        ---------------------------------------------------------------------------------------------------------------------
+        Function to add a pedestal to the profiles object based on the EPED-NN evaluation and the current BetaN
+        ---------------------------------------------------------------------------------------------------------------------
+        '''
         def pedestal(p, force_within_range=None, force_betan=None):
-
+            
             # Calculate new pedestal
             eped_evaluation = p.to_eped(beta_pass = "BetaNthr_engineering")
 
@@ -270,15 +282,26 @@ def rapids_evaluator(nn, core, p_base,
             BetaN_used = p.derived["BetaNthr_engineering"] * BetaN_multiplier
 
             return p, ptop_kPa, wtop_psipol, eped_evaluation, BetaN_used, eped_evaluation["betan"], failed_case
-
-        # Loop for better beta definition
+        
+        '''
+        ---------------------------------------------------------------------------------------------------------------------
+        Loop to adjust the pedestal to be consistent with the BetaN, if needed
+        ---------------------------------------------------------------------------------------------------------------------
+        '''
+        
+        Beta_EPED0 = 1.0 # To start with a reasonable value to avoid breaking the loop with the first pedestal evaluation
+        minimum_its = 2  # To make sure that at least one iteration of adjustment is done, even if the guessed Beta_EPED0 is close enough
+        
         profs, Beta, Beta_EPED, fails = [], [], [], []
         for i in range(100):
+            
+            print(f'\n- Iteration {i+1} for the BetaN loop: "previous" BetaN = {Beta_EPED0}\n', typeMsg='i')
+
             # Force to start with a reasonable betaN such that the effect of the initial condition is negligible
-            p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p, force_betan=1.0 if i==0 else None)
+            p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p, force_betan=Beta_EPED0 if i==0 else None)
 
             # Store stuff for debugging
-            profs.append(copy.deepcopy(p))
+            profs.append(copy.deepcopy(p)) # Store a copy of the profiles for debugging
             Beta.append(Beta0)
             Beta_EPED.append(Beta_EPED0)
             fails.append(failed_case)
@@ -288,11 +311,13 @@ def rapids_evaluator(nn, core, p_base,
             print(f'BetaN evaluated: {Beta_EPED0} vs new profiles betaN: {Beta0} ({error_betaN*100:.3f}%)',typeMsg = 'i')
         
             # If the error is small enough and it's not a failed case, get out of the loop
-            if (error_betaN < thr_beta) and (not failed_case):
+            if (error_betaN < thr_beta) and (not failed_case) and (i+1) > minimum_its:
+                print(f'BetaN within {thr_beta*100:.2f}% after {i+1} iterations, get out of the loop', typeMsg='i')
                 break
             
             # If many failed cases, assumed it is in a loop of fail-nofail and get out
             if np.sum(fails)>3:
+                print(f'Many failed cases in a row, assume it is in a loop of fail-nofail and get out of the loop', typeMsg='w')
                 break
         
         # # TO HELP DEBUGGING
@@ -306,18 +331,30 @@ def rapids_evaluator(nn, core, p_base,
         # ax.set_ylabel('$\\beta_N$')
         # ax.legend()
         # plt.show()
-        
         # from mitim_tools.plasmastate_tools.utils import state_plotting
         # fn = state_plotting.plotAll(profs)
         # fn.show()
         # embed()
         
         # Run again the last point but with warning prints
-        p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p, force_within_range=False)
+        p_to_run = profs[-2] # The last one is the one that broke the loop, so take the previous one that is consistent with the BetaN
+        p, ptop_kPa, wtop_psipol, eped_evaluation, Beta0, Beta_EPED0, failed_case = pedestal(p_to_run, force_within_range=False)
 
         error_betaN = np.abs(Beta0 - Beta_EPED0)/Beta0
 
         if error_betaN > thr_beta or failed_case:
+            # # TO HELP DEBUGGING
+            # plt.ioff()
+            # fig, ax = plt.subplots()
+            # ax.plot(Beta, '-o', label='From profiles')
+            # ax.plot(Beta_EPED, '-o', label='From EPED evaluation')
+            # for i in range(len(fails)):
+            #     if fails[i]:
+            #         ax.axvline(x=i, color='r', ls='--', lw=5.0)
+            # ax.set_xlabel('Iteration')
+            # ax.set_ylabel('$\\beta_N$')
+            # ax.legend()
+            # plt.show()
             raise Exception(f'Failed case or BetaN relative error too high ({error_betaN} vs {thr_beta}), for parameters: {eped_evaluation}')
         else:
             print(f"\t\t- Evaluating {optional_flag} required {i+1} iterations for parameters: {eped_evaluation}")
