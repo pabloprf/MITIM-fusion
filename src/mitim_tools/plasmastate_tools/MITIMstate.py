@@ -2825,9 +2825,8 @@ class mitim_state:
         )
         betaprim = -(8*np.pi*1E-7) * self.derived['a'] / self.derived['B_unit']**2 * dpdr
         
-        #TODO #to check
-        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
-        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
+        s_kappa  = np.gradient(self.profiles['kappa(-)'], self.derived['roa'])
+        s_delta  = np.gradient(self.profiles['delta(-)'], self.derived['roa'])
 
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
             
