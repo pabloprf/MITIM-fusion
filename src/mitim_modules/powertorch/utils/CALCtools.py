@@ -34,7 +34,7 @@ def integration_Lx(x, z, f_bound):
 
     return f
     
-def derivation_into_Lx(r, p):
+def derivation_into_Lx(r, p, array = False):
     """
     Produces -1/p * dp/dr
         (adapted from  expro_util.f90, bound_deriv)
@@ -43,10 +43,12 @@ def derivation_into_Lx(r, p):
         - if r is r/a: a/Lp
     """
 
-    z = MATHtools.deriv(r, -torch.log(p), array=False)
+    if not array:
+        z = MATHtools.deriv(r, -torch.log(p), array=False)
+    else:
+        z = MATHtools.deriv(r, -np.log(p), array=True)
 
     return z
-
 
 def integration_dxdr(x, z, z0_bound):
     """

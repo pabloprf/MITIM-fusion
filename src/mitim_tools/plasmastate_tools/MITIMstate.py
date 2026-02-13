@@ -1063,7 +1063,7 @@ class mitim_state:
 
     # Derivate function
     def _deriv_gacode(self,y):
-        return grad(self.derived["r"],y).cpu().numpy()
+        return grad(self.derived["r"],y)
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -3050,18 +3050,10 @@ class DataTable:
                 writer.writerow(row)
 
 def aLT(r, p):
-    return (
-        r[-1]
-        * CALCtools.derivation_into_Lx(
-            torch.from_numpy(r).to(torch.double), torch.from_numpy(p).to(torch.double)
-        )
-        .cpu()
-        .cpu().numpy()
-    )
-
+    return r[-1] * CALCtools.derivation_into_Lx(r, p, array = True)
 
 def grad(r, p):
-    return MATHtools.deriv(torch.from_numpy(r), torch.from_numpy(p), array=False)
+    return MATHtools.deriv(r, p, array=True)
 
 
 def ionName(Z, A):
