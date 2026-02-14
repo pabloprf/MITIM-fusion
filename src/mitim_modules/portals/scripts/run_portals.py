@@ -24,7 +24,6 @@ def main():
     cold_start = args.cold
     batch = args.batch
     save_figs = args.save
-    # Actual PORTALS run 
     
     portals_namelist = Path(portals_namelist) if  portals_namelist is not None else IOtools.expandPath('.') / "namelist.portals.yaml"
     inputgacode = Path(inputgacode) if  inputgacode is not None else IOtools.expandPath('.') / "input.gacode"
