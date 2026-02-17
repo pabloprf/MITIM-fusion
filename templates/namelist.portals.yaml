@@ -313,6 +313,8 @@ optimization_options:
     stds_outside: 100       # Standard deviations outside the mean to consider a point as an outlier
     stds_outside_checker: 5 # Check for outliers only if there are at least these many points
 
+    # To add additional training points for certain fluxes and locations
+    extrapointsFile: null # Path to .csv file (same structure as surrogate_data.csv)
 
   strategy_options:
 
