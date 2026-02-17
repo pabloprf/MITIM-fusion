@@ -953,7 +953,10 @@ def xsec_area_RZ(R,Z):
     for i in range(R.shape[0]):
         R0 = np.max(R[i,:]) - np.min(R[i,:])
         Z0 = np.max(Z[i,:]) - np.min(Z[i,:])
-        xsec_area.append(np.trapz(R[i], Z[i]))
+        try:
+            xsec_area.append(np.trapezoid(R[i], Z[i]))
+        except AttributeError:
+            xsec_area.append(np.trapz(R[i], Z[i]))
 
     xsec_area = np.array(xsec_area)
 

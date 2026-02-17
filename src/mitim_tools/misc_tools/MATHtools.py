@@ -268,7 +268,10 @@ def integrate_definite(x, y, rangex=None):
     if len(x) > 1:
         # if rangex is None:  return integrate(x,y)[-1]
         # else:               return integrate(x,y)[np.argmin(np.abs(x-rangex[1]))] - integrate(x,y)[np.argmin(np.abs(x-rangex[0]))]
-        return np.trapz(y, x=x)
+        try:
+            return np.trapezoid(y, x=x)
+        except AttributeError:
+            return np.trapz(y, x=x)
     else:
         return 0
 
