@@ -284,7 +284,7 @@ def main():
     parser.add_argument('--cpus', type=int, required=False, default=8, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     parser.add_argument('--save', required=False, default=False, action='store_true')
-    parser.add_argument('--coldstart',required=False, default=False, action='force cold start')
+    parser.add_argument('--coldstart',action='store_true', help='force cold start')
     
     args = parser.parse_args()
     
