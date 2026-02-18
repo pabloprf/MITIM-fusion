@@ -37,6 +37,9 @@ def grabMAESTRO(folder):
         elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
             beat_types.append('lengyel')
 
+    if len(beats) == 0:
+        raise ValueError(f"No beats found in {folder_beats}")
+
     # First initializer
     beat_initializer = None
     if (folder_beats / f'{beats[0]}' / 'initializer_freegs').exists():

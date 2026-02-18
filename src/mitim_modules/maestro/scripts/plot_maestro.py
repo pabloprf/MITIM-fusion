@@ -59,11 +59,11 @@ def main():
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
                         help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
-    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+    parser.add_argument("--remote_folder_parent","--remote_parent_folder",type=str, required=False, default=None,
                         help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
     parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
                         help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
-    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+    parser.add_argument("--remote_minimal","--minimal", required=False, default=False, action="store_true",
                         help="If set, it will only retrieve the folder structure with a few key files.")
     parser.add_argument('--fix', required=False, default=False, action='store_true',
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
