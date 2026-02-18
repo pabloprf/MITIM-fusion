@@ -419,25 +419,25 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
         
-        if self.turbulence_model == 'tglf':
+        if self.turbulence_model.lower() == 'tglf':
             return tglf_model.evaluate_turbulence(self)
-        elif self.turbulence_model == 'cgyro':
+        elif self.turbulence_model.lower() == 'cgyro':
             return cgyro_model.evaluate_turbulence(self)
-        elif self.turbulence_model == 'gx':
+        elif self.turbulence_model.lower() == 'gx':
             return gx_model.evaluate_turbulence(self)
         else:
             raise Exception(f"Unknown turbulence model {self.turbulence_model}")
 
     def _stable_correction(self, simulation_options):
         
-        if self.turbulence_model == 'cgyro':
+        if self.turbulence_model.lower() == 'cgyro':
             cgyro_model._stable_correction(self, simulation_options)
 
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         if self.neoclassical_model is None:
             print('Neoclassical model chosen', typeMsg='w')
-        elif self.neoclassical_model == 'neo':
+        elif self.neoclassical_model.lower() == 'neo':
             return neo_model.evaluate_neoclassical(self)
         else:
             raise Exception(f"Unknown neoclassical model {self.neoclassical_model}")
