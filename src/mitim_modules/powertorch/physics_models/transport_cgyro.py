@@ -233,7 +233,7 @@ def post_checks(self, rtol = 1e-3):
             print(f"\t   {k} from POWERSTATE: {[round(float(i),4) for i in vP]}", typeMsg='' if not crit else 'i')
 
             if crit:
-                all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.3f}%:", typeMsg='q')
+                all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.3f}%, max rel difference: {np.max(np.abs(v - vP) / np.maximum(np.abs(v), np.abs(vP)))*100.0:.3f}%", typeMsg='q')
 
     return all_good
 

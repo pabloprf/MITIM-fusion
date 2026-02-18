@@ -1167,7 +1167,9 @@ class MITIM_BO:
                         if not insideBounds.item():
                             self.avoidPoints_outside.append(i)
 
-            except:
+            except Exception as e:
+                print("\n\nSomething went wrong when reading the initial training set from Tabular, because:", typeMsg="w")
+                print(traceback.format_exc())
                 flagger = print("Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",typeMsg="q",)
 
                 self.type_initialization = 1
