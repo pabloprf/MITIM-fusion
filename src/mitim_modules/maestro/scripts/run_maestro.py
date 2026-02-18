@@ -192,7 +192,7 @@ def run_maestro_local(
         
         m.define_beat(
             beat_parameters["beat_type"],
-            initializer = initialize_this_beat_with
+            initializer = initialize_this_beat_with,
             )
 
         # ****************************************************************************
@@ -284,6 +284,7 @@ def main():
     parser.add_argument('--cpus', type=int, required=False, default=8, help='Number of CPUs to use')
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     parser.add_argument('--save', required=False, default=False, action='store_true')
+    parser.add_argument('--coldstart',action='store_true', help='force cold start')
     
     args = parser.parse_args()
     
@@ -292,13 +293,14 @@ def main():
     cpus = args.cpus
     terminal_outputs = args.terminal
     save_figs = args.save
+    force_cold_start = args.coldstart
 
     maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
     if not folder.exists():
         folder.mkdir(parents=True, exist_ok=True)
     
-    run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs)
+    run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs, force_cold_start=force_cold_start)
 
     if save_figs:
         
