@@ -1,8 +1,10 @@
 import os
 from mitim_tools.gacode_tools import CGYROtools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 
 cold_start = True
+save_figures = True # if True, do not show the plot to screen, save to subfolder instead (good to test in non-interactive HPC)
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "cgyro_test"
@@ -105,13 +107,14 @@ cgyro.run(
 
 cgyro.read(label="cgyro2")
 
-
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
 
+fn = GUItools.FigureNotebook("CGYRO", geometry="1600x1000", show= not save_figures)
+
 # Plot results of the linear runs, as normal ones
-cgyro.plot(labels=["cgyro1"])
+cgyro.plot(labels=["cgyro1"], fn = fn)
 cgyro.plot(labels=["scan1_KY_0.3","scan1_KY_0.4"], fn = cgyro.fn)
 
 # Special plot type: quick linear plot
@@ -121,4 +124,9 @@ cgyro.plot_quick_linear(labels=["scan1_rho0", "scan1_rho1"], fig = fig)
 # Plot results of the nonlinear run
 cgyro.plot(labels=["cgyro2"], fn = cgyro.fn)
 
-cgyro.fn.show()
+if not save_figures:
+    cgyro.fn.show()
+    cgyro.fn.close()
+else:
+    cgyro.fn.save(f'{folder}/figs_cgyro/')
+

@@ -209,6 +209,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Get all folders inside "folder" that start with "preffix"
         subfolders = [subfolder for subfolder in Path(folder).glob(f"*{preffix}*") if subfolder.is_dir()]
 
+        # ----------------------------------------------------------
+        # Store in resutls
+        # ----------------------------------------------------------
+
+        # Store results in the form of {main_label}_KY_{subfolder}
+        
         labels_in_results = []
         if len(subfolders) == 0:
             print(f"No subfolders found in {folder} with preffix {preffix}. Reading the folder directly.")
@@ -222,6 +228,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # ----------------------------------------------------------
         # Make it a linear scan for the main label
         # ----------------------------------------------------------
+        
+        # Store special linear scan class as {main_label}
+        
         labelsD = []
         for label in labels_in_results:
             parts = label.split('_')
