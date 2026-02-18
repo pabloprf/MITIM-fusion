@@ -267,8 +267,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         if 'phib' in self.cgyrodata.__dict__:
             self.phi_ballooning = self.cgyrodata.phib       # (ball, time)
             self.apar_ballooning = self.cgyrodata.aparb     # (ball, time)
-            #self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
-            #self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
+            self.bpar_ballooning = self.cgyrodata.bparb     # (ball, time)
+            self.theta_ballooning = self.cgyrodata.thetab   # (ball, time)
 
     def _process_fluctuations(self):
         # Fluctuations (complex numbers)
