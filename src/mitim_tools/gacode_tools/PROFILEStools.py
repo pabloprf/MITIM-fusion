@@ -142,6 +142,8 @@ class gacode_state(MITIMstate.mitim_state):
                         self.profiles[title] = np.array(var0)
                 else:
                     # varT = [float(j) for j in var0[1:]]
+                    if len(var0) == 0:
+                        continue  # Sometimes there are extra blank lines, skip
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
