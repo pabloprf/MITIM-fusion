@@ -500,7 +500,7 @@ def create_initial_conditions(te_avg,
                 profiles.profiles['ti(keV)'][:,0] = np.interp(profiles.profiles['rho(-)'], x, T)
                 profiles.makeAllThermalIonsHaveSameTemp()
                 profiles.profiles['ni(10^19/m^3)'][:,0] = profiles.profiles['ne(10^19/m^3)']
-                profiles.enforceQuasineutrality()
+                profiles.enforce_quasineutrality()
                 profiles.derive_quantities()
 
                 print("residual:", ((profiles.derived['BetaN_engineering']-betan_desired) / betan_desired)**2)

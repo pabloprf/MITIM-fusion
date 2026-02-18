@@ -133,7 +133,7 @@ class lengyel_beat(beat):
         _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z)
         
         # Enforce quasineutrality
-        p.enforceQuasineutrality()
+        p.enforce_quasineutrality()
         
         # Check if the plasma just had too much impurity
         if p.profiles['ni(10^19/m^3)'].min() < 0:

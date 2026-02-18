@@ -236,7 +236,7 @@ class portals_beat(beat):
                         self.profiles_output.profiles['ti(keV)'][:,j] = profiles_portals_out.profiles['ti(keV)'][:,i]
 
         # Enforce quasineutrality because now I have all the ions
-        self.profiles_output.enforceQuasineutrality()
+        self.profiles_output.enforce_quasineutrality()
 
         # Make sure the pressure is consistent with the new profiles
         self.profiles_output.selfconsistentPTOT()

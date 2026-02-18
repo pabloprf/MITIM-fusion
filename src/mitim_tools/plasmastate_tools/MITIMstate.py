@@ -1475,7 +1475,7 @@ class mitim_state:
             print(f'\t\t- Changing Zeff (from {self.derived["Zeff_vol"]:.3f} to {Zeff=:.3f}) by changing content and Z of ion in position {ion_pos} {self.Species[ion_pos]["N"],self.Species[ion_pos]["Z"]}, quasineutralized by ions {quasineutral_ions} and keeping fmain={self.derived["fmain"]*fmain_factor:.3f}',typeMsg="i")
 
         # Plasma needs to be in quasineutrality to start with
-        self.enforceQuasineutrality()
+        self.enforce_quasineutrality()
 
         # ------------------------------------------------------
         # Contributions to equations
@@ -1690,7 +1690,7 @@ class mitim_state:
 
         # Enforce quasineutrality
         if quasineutrality:
-            self.enforceQuasineutrality()
+            self.enforce_quasineutrality()
 
         print(f"\t\t\t* Quasineutrality error = {self.derived['QN_Error']:.1e}")
 
@@ -1747,7 +1747,12 @@ class mitim_state:
         print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
         self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
 
-    def enforceQuasineutrality(self, using_ion = None, threshold_check=1E-10):
+    # DEPRECATED
+    def enforceQuasineutrality(self, *args, **kwargs):
+        print("WARNING: enforceQuasineutrality() is deprecated, use enforce_quasineutrality() instead")
+        self.enforce_quasineutrality(*args, **kwargs)
+
+    def enforce_quasineutrality(self, using_ion = None, threshold_check=1E-10):
         print(f"\t\t- Enforcing quasineutrality (error = {self.derived['QN_Error']:.1e})",typeMsg="i",)
 
         # What's the lack of quasineutrality?
