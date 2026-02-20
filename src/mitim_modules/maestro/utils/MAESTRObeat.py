@@ -94,8 +94,8 @@ class beat:
     def finalize(self, *args, **kwargs):
         pass
 
-    def finalize_maestro(self, *args, **kwargs):
-        pass
+    # def finalize_maestro(self, *args, **kwargs):
+    #     pass
 
     def grab_output(self, *args, **kwargs):
         pass

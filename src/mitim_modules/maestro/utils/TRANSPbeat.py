@@ -219,25 +219,79 @@ class transp_beat(beat):
 
         # Write profiles
         self.profiles_output.write_state(file=self.folder_output / "input.gacode")
+        p = PROFILEStools.gacode_state(self.folder_output / "input.gacode")
+        print()
+        aaa
 
     def _add_heating_profiles(self, force_auxiliary_heating_at_output = None):
         '''
         force_auxiliary_heating_at_output['Pe'] has the shaping function (takes rho) and the integrated value
         '''
         if force_auxiliary_heating_at_output is None:
-            force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
-
-
-        for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MW', 'qRFi_MW']):
-
+            force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None, 'Ge': None}
+        
+        for key, pkey, ikey in zip(['Pe','Pi', 'Ge'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qpar_beam(1/m^3/s)'], ['qRFe_MW', 'qRFi_MW', 'ge_10E20']):
             if force_auxiliary_heating_at_output[key] is not None:
-                print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} MW of power')
+                unit = "MW of power" if key in ('Pe', 'Pi') else "* 1e20 particles/(m^3 s)"
+                print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} {unit}')
                 self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
+                print(f'************************************************************')
+                print(f'for {key}, {pkey}')
+                print(f'first step:')
+                print(self.profiles_output.profiles[pkey])
                 self.profiles_output.derive_quantities()
+                print(f'second step:')
+                print(self.profiles_output.profiles[pkey])
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
+                print(f'third step:')
+                print(self.profiles_output.profiles[pkey])
+                print(f'************************************************************')
             else:
                 print(f'\t\t- Keeping auxiliary power from TRANSP output')
+        # # preprocess data to get it in units of MW/m^3
+        # r = self.profiles["rmin(m)"]
+        # volp = self.derived["volp_geo"]
 
+        # p_densities = {
+        #     'Pe_density': np.zeros(len(self.profiles["r"])),
+        #     'Pi_density': np.zeros(len(self.profiles["r"]))
+        # }
+
+        # for key, density_key in zip(['Pe','Pi'], ["Pe_density", "Pi_density"]):
+        #     # calc derivative of P with respect to r (dP/dr), np.gradient uses central differences for better accuracy
+        #     profile_data = self.profiles[key]
+        #     dP_dr = np.gradient(profile_data, r)
+
+        #     # divide by the volume derivative (volp) to get the density
+        #     density = (-1) * dP_dr / volp   # the gradient is 0, which makes sense, but the way it is calculated makes the density negative, so put a (-1) here to fix that
+            
+        #     # deal with volp[0] = 0 @ r=0
+        #     if volp[0] == 0:
+        #         density[0] = density[1]     # A simple fix: set the center value equal to the first neighbor
+
+        #     p_densities[density_key] = density
+
+        # for key, pkey, ikey in zip(['Pe_density', 'Pi_density', 'Ge'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qpar_beam(1/m^3/s)'], ['qRFe_MW', 'qRFi_MW', 'ge_10E20']):
+        #     # Pe, Pi are in units of MW, q is in units of MW/m^3
+
+        #     if force_auxiliary_heating_at_output[key] is not None:
+        #         if key == 'Pe_density' or key == 'Pi_density':
+        #             print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} MW of power')
+        #         else:
+        #             print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} keV particles')
+        #         self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])   # takes the shape function (parabolic) and applies it to rho
+        #         self.profiles_output.derive_quantities()    # recalculate integrals to take into account new shape function (but how do we do this when we didn't specify the magnitude yet??)
+        #         # self.profiles_output.profiles[pkey] = np.array(self.profiles_output.profiles[pkey]).astype(float) * force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]    # scale to target power (specify magnitude of the shape function)
+        #         current_integral = float(self.profiles_output.derived[ikey][-1])
+        #         target_val = float(force_auxiliary_heating_at_output[key][1])
+        #         scaling_factor = target_val / current_integral
+        #         current_profile_data = np.array(self.profiles_output.profiles[pkey]).astype(float)
+        #         my_scaling_factor = target_val/np.max(current_profile_data)
+        #         self.profiles_output.profiles[pkey] = current_profile_data * my_scaling_factor    # scale to target power (specify magnitude of the shape function)
+        #         # print(f' the self.profiles_output.profiles[key] value is {current_profile_data * scaling_factor}')
+        #     else:
+        #         print(f'\t\t- Keeping auxiliary power, particles from TRANSP output')
+    
     def merge_parameters(self):
         '''
         The goal of the TRANSP beat is to produce:
@@ -465,19 +519,25 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
         Pe = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"]
         Pi = maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
         nu_source = maestro_namelist["plasma"]["heating"]["parameters"]["nu_source"]
+        particles_source = maestro_namelist["plasma"]["heating"]["parameters"]["particles_source"]    # in units of 1e20 particles/(m^3 s)
 
         def P_auxiliary(rhotor):
+            _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
+            return y
+
+        def G_auxiliary(rhotor):
             _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
             return y
     
         force_auxiliary_heating_at_output = {
             'Pe': [P_auxiliary, Pe],
             'Pi': [P_auxiliary, Pi],
+            'Ge': [G_auxiliary, particles_source]
             }
-        
+   
     else:
-        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
-        
+        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None, 'Ge': None}
+
     run_namelist['mpisettings'] = {
         "trmpi": trmpi, 
         "toricmpi": toricmpi,
