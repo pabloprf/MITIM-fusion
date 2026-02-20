@@ -241,6 +241,7 @@ class transp_beat(beat):
                 print(self.profiles_output.profiles[pkey])
                 self.profiles_output.derive_quantities()
                 print(f'second step:')
+                print()
                 print(self.profiles_output.profiles[pkey])
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
                 print(f'third step:')
