@@ -592,11 +592,7 @@ class transp_output:
         if ZerothTime:
             self.t = self.t - self.timeOri
 
-        print(
-            "\t- Simulated from t={0:.3f}s to t={1:.3f}s ({2:.3f}s of simulated plasma)".format(
-                self.t[0], self.t[-1], self.t[-1] - self.t[0]
-            )
-        )
+        print(f"\t- Simulated from t={self.t[0]:.3f}s to t={self.t[-1]:.3f}s ({self.t[-1] - self.t[0]:.3f}s of simulated plasma)")
 
         try:
             self.tlastsaw, self.tlastsawU = (
@@ -606,7 +602,7 @@ class transp_output:
             self.numSaw = len(self.tlastsawU)
         except:
             self.tlastsaw, self.tlastsawU, self.numSaw = self.t, self.t, None
-            print(">> This plasma did not sawtooth")
+            print("\t- This plasma did not sawtooth")
 
         if ZerothTime:
             self.tlastsaw, self.tlastsawU = (
@@ -3158,9 +3154,7 @@ class transp_output:
             self.porcelli_s1 = self.f["PORCDIAG6"][:]  # magnetic shear at q=1 surface
 
         except:
-            print(
-                ">> This plasma did not use Porcelli model to trigger sawtooth crashes"
-            )
+            print("\t- This plasma did not use Porcelli model to trigger sawtooth crashes")
             self.porcelli_13L = self.t * 0.0 + self.eps00
             self.porcelli_13R = self.t * 0.0 + self.eps00
 
@@ -4966,20 +4960,16 @@ class transp_output:
             plotVV=True,
             Aspect=True,
         )
-        axGeo.legend(loc="upper right", prop={"size": self.mainLegendSize})
+        #axGeo.legend(loc="upper right", prop={"size": self.mainLegendSize})
 
         axParams = fig.add_subplot(grid[0:3, 1])  # fig.add_subplot(6,3,())
-        axGeoParams = fig.add_subplot(
-            grid[3:, 1]
-        )  # ,sharex=axParams) #fig.add_subplot(6,3,())
+        axGeoParams = fig.add_subplot(grid[3:, 1])  # ,sharex=axParams) #fig.add_subplot(6,3,())
 
         self.plotOperation(ax=axParams, ax1=axGeoParams)
         axParams.axvline(x=self.t[indt], c="k", lw=0.5, ls="--")
         axGeoParams.axvline(x=self.t[indt], c="k", lw=0.5, ls="--")
 
-        ax1 = fig.add_subplot(
-            grid[0:3, 2]
-        )  # ,sharex=axParams) #fig.add_subplot(6,3,())
+        ax1 = fig.add_subplot(grid[0:3, 2])  # ,sharex=axParams) #fig.add_subplot(6,3,())
         ax1.axvline(x=self.t[indt], c="k", lw=0.5, ls="--")
         plt.setp(ax1.get_xticklabels(), visible=False)
         ax1.tick_params(labelbottom=True)
@@ -13711,7 +13701,7 @@ class transp_output:
                     pass
                 
             if not foundImpurity:
-                print(f"\t- Could not find mass for impurity {i} in namelist. Using default value of 2*Zave", typeMsg="w")
+                print(f"\t- Could not find mass for impurity '{i}' in namelist. Using default value of 2*Zave", typeMsg="w")
                 mass =self.fZs_avol[i]['Zave'][self.ind_saw]*2
 
             self.Species[i+"_imp"] = {

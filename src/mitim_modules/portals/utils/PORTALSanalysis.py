@@ -385,7 +385,7 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         self.plotDebug(fig=fig)
         
-        self.fn.tight_layout()
+        #self.fn.tight_layout()
 
     def plotMetrics(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)

@@ -450,6 +450,6 @@ def getFBMprocess(folderWork, nameRunid, datanum=1, FBMparticle="He4_FUSN"):
             except:
                 print("\t\t- He4 from Fusion could not be found in FBM", typeMsg="w")
     else:
-        print("\t\t\t- FBM files not found", typeMsg="w")
+        print("\t\t\t- FBM files not found", typeMsg="i")
 
     return fbm_He4_gc, fbm_He4_po
