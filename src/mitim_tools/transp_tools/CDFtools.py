@@ -14816,6 +14816,9 @@ class transp_output:
             )
             ex1 = IOtools.findValue(namelist, f"rgeoant", "=", raiseException=False)
 
+        if ex1 is None:
+            ex1 = IOtools.findValue(namelist, "rgeoant(1)", "=", raiseException=False)
+
         self.R_ant, self.Z_ant = [], []
 
         # ---------------------------------------------------------------------------------------------------
@@ -14871,18 +14874,31 @@ class transp_output:
                 f"\t\t- Detected {nicha} ICRF antenna(s), searching for rgeoant and ygeoant in namelist"
             )
 
-            self.R_ant0 = [
-                float(i)
-                for i in IOtools.findValue(
-                    namelist, f"rgeoant", "=", isitArray=True
-                ).split(",")
-            ]
-            self.Z_ant0 = [
-                float(i)
-                for i in IOtools.findValue(
-                    namelist, f"ygeoant", "=", isitArray=True
-                ).split(",")
-            ]
+            try:
+                self.R_ant0 = [
+                    float(i)
+                    for i in IOtools.findValue(
+                        namelist, f"rgeoant", "=", isitArray=True
+                    ).split(",")
+                ]
+                self.Z_ant0 = [
+                    float(i)
+                    for i in IOtools.findValue(
+                        namelist, f"ygeoant", "=", isitArray=True
+                    ).split(",")
+                ]
+            except:
+                self.R_ant0, self.Z_ant0 = [], []
+                for ip in range(30):
+                    try:
+                        self.R_ant0.append(
+                            float(IOtools.findValue(namelist, f"rgeoant({ip+1})", "="))
+                        )
+                        self.Z_ant0.append(
+                            float(IOtools.findValue(namelist, f"ygeoant({ip+1})", "="))
+                        )
+                    except:
+                        break
 
             self.R_ant.append(self.R_ant0)
             self.Z_ant.append(self.Z_ant0)
