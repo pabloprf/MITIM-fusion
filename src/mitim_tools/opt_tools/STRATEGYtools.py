@@ -176,6 +176,13 @@ class opt_evaluator:
         """
         pass
 
+    def finalize_evaluation(self, *args, **kwargs):
+        '''
+        If the case has converged, do something
+        '''
+        
+        pass
+
     # **********************************************************************************************************************************************************
 
     def read_optimization_results(
@@ -297,10 +304,7 @@ class opt_evaluator:
             else:
                 # What function is it?
                 class_name = str(self.mitim_model.optimization_object).split()[0].split(".")[-1]
-                print(
-                    f'\t- Retrieving "analyze_results" method from class "{class_name}"',
-                    typeMsg="i",
-                )
+                print(f'\t- Retrieving "analyze_results" method from class "{class_name}"',typeMsg="i",)
 
                 if class_name == "freegsu":
                     from mitim_modules.freegsu.FREEGSUmain import analyze_results
@@ -312,14 +316,9 @@ class opt_evaluator:
                     analyze_results = None
 
                 if analyze_results is not None:
-                    self_complete = analyze_results(
-                        self, plotYN=plotYN, fn=self.fn, analysis_level=analysis_level
-                    )
+                    self_complete = analyze_results(self, plotYN=plotYN, fn=self.fn, analysis_level=analysis_level)
                 else:
-                    print(
-                        '\t- No "analyze_results" method found for this function class',
-                        typeMsg="w",
-                    )
+                    print('\t- No "analyze_results" method found for this function class',typeMsg="w")
 
         if plotYN and (analysis_level >= 0):
             print(f"\n- Plotting took {IOtools.getTimeDifference(time1)}")
@@ -758,6 +757,9 @@ class MITIM_BO:
                 break
 
         self.save()
+        
+        # Finalize the evaluation
+        self.optimization_object.finalize_evaluation()
 
         print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
         print("********************************************************\n")
