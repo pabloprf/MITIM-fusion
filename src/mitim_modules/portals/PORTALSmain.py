@@ -362,6 +362,21 @@ class portals(STRATEGYtools.opt_evaluator):
 
             optimization_data.data.to_csv(optimization_data.file, index=False)
 
+    def finalize_evaluation(self, *args, **kwargs):
+        '''
+        If the case has converged, do something
+        '''
+        
+        suffix = datetime.date.today().strftime("%Y%m%d")
+        
+        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+        powerstate = portals.powerstates[portals.ibest]
+        
+        powerstate.profiles.write_state(self.folder / "Outputs" / f"input.gacode_final_{suffix}")
+        powerstate.profiles_transport.write_state(self.folder / "Outputs" / f"input.gacode_transport_final_{suffix}")
+        
+        print(f"\n- Final profiles (iteration {portals.ibest}) written to Outputs/input.gacode_final_{suffix} and Outputs/input.gacode_transport_final_{suffix}", typeMsg="i")
+
 def runModelEvaluator(
     self,
     FolderEvaluation,
