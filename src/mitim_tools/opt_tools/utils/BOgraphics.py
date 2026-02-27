@@ -1498,7 +1498,10 @@ Workflow start time: {IOtools.getStringFromTime()}
         _, _ = self.plotImprovement(axs=[ax0, ax1, ax2, ax3])
 
         if log is not None:
-            IOtools.plot_timings(log, axs = [axsTimes[0], axsTimes[1]])
+            try:
+                IOtools.plot_timings(log, axs = [axsTimes[0], axsTimes[1]])
+            except FileNotFoundError:
+                print(f"\t- Could not plot timings likely because this case was run on a different folder/machine than what's currently on. I suggest you run with --fix option", typeMsg="w")
 
         return self.fn
 

@@ -2011,13 +2011,11 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
     num_total = len(self.powerstates)
     roa_pred = self.powerstates[0].plasma['roa'][0,1:].cpu().numpy()
     
-    colors, _ = GRAPHICStools.colorTableFade(num_training, startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
     lw = 1
-    mm = 's'
+    mm = '-s'
     mm2 = '--o'
-    mm3 = '--s'
 
-    def _plot_evaluations(axs, evals, mm='', mm2='--o', mm3='--s', lw=1, roa_pred=None, lab = 'Training'):
+    def _plot_evaluations(axs, evals, mm='', mm2='--o', lw=1, roa_pred=None, lab = 'Training'):
 
         colors, _ = GRAPHICStools.colorTableFade(len(evals), startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
 
@@ -2031,32 +2029,32 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
             axs['Te'].plot(p.derived['roa'], p.profiles["te(keV)"], label=f"#{i}", c=colors[j], lw=lw)
             axs['Te'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['te'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['Ti'].plot(p.derived['roa'], p.profiles["ti(keV)"][:,0], label=f"#{i}", c=colors[j], lw=lw)
+            axs['Ti'].plot(p.derived['roa'], p.profiles["ti(keV)"][:,0], c=colors[j], lw=lw)
             axs['Ti'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['ne'].plot(p.derived['roa'], p.profiles["ne(10^19/m^3)"] * 1e-1, label=f"#{i}", c=colors[j], lw=lw)
+            axs['ne'].plot(p.derived['roa'], p.profiles["ne(10^19/m^3)"] * 1e-1, c=colors[j], lw=lw)
             axs['ne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ne'][0,1:].cpu().numpy() * 1e-1, mm, c=colors[j], markersize=3)
             
-            axs['aLTe'].plot(p.derived['roa'], p.derived["aLTe"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLTe'].plot(p.derived['roa'], p.derived["aLTe"], c=colors[j], lw=lw)
             axs['aLTe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLte'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['aLTi'].plot(p.derived['roa'], p.derived["aLTi"][:,0], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLTi'].plot(p.derived['roa'], p.derived["aLTi"][:,0], c=colors[j], lw=lw)
             axs['aLTi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['aLne'].plot(p.derived['roa'], p.derived["aLne"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['aLne'].plot(p.derived['roa'], p.derived["aLne"], c=colors[j], lw=lw)
             axs['aLne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLne'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['Qe'].plot(p.derived['roa'], p.derived["qe_MWm2"], label=f"#{i}", c=colors[j], lw=lw/2)
-            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
-            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2_tr'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
+            axs['Qe'].plot(p.derived['roa'], p.derived["qe_MWm2"], c=colors[j], lw=lw/2, label=f"HR target")
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3, label=f"target")
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3, label=f"transport")
             
-            axs['Qi'].plot(p.derived['roa'], p.derived["qi_MWm2"], label=f"#{i}", c=colors[j], lw=lw/2)
-            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2_tr'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
-            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
-            
-            axs['Ge'].plot(p.derived['roa'], p.derived["ge_10E20m2"], label=f"#{i}", c=colors[j], lw=lw/2)
-            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2_tr'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
-            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2'][0,1:].cpu().numpy(), mm3, c=colors[j], markersize=3)
+            axs['Qi'].plot(p.derived['roa'], p.derived["qi_MWm2"], c=colors[j], lw=lw/2)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+
+            axs['Ge'].plot(p.derived['roa'], p.derived["ge_10E20m2"], c=colors[j], lw=lw/2)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
             max_grads[0] = max(max_grads[0], power.plasma['aLte'][0,1:].cpu().numpy().max())
             max_grads[1] = max(max_grads[1], power.plasma['aLti'][0,1:].cpu().numpy().max())
@@ -2080,6 +2078,8 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         axs['Qe'].set_ylabel("Qe (MW/m$^2$)"); #axs['Qe'].set_ylim(bottom=0)
         axs['Qi'].set_ylabel("Qi (MW/m$^2$)"); #axs['Qi'].set_ylim(bottom=0)
         axs['Ge'].set_ylabel("$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)"); #axs['Ge'].set_ylim(bottom=0)
+        
+        axs['Qe'].legend(loc="best")
             
     # Plot training evaluations     
     evals = np.arange(0,num_training,1)
@@ -2098,7 +2098,6 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         evals = evals,
         mm = mm,
         mm2 = mm2,
-        mm3 = mm3,
         lw = lw,
         roa_pred = roa_pred,
         lab = 'Training',
@@ -2128,7 +2127,6 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         evals = evals,
         mm = mm,
         mm2 = mm2,
-        mm3 = mm3,
         lw = lw,
         roa_pred = roa_pred,
         lab = 'Optimization',

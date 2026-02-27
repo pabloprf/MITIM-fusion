@@ -1172,7 +1172,7 @@ class MITIM_BO:
             except Exception as e:
                 print("\n\nSomething went wrong when reading the initial training set from Tabular, because:", typeMsg="w")
                 print(traceback.format_exc())
-                flagger = print("Error reading Tabular. Do you want to continue without cold_start and do standard initialization instead?",typeMsg="q",)
+                flagger = print("Error reading csv file. Do you want to continue without cold_start and do standard initialization instead?",typeMsg="q",)
 
                 self.type_initialization = 1
                 self.cold_start = True

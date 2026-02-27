@@ -45,12 +45,12 @@ acquisition_options:
       relative_improvement_for_stopping: 0.0001
       keep_best: 1
     sr:
-      num_restarts: 5
-      maxiter: 1000
-      relative_improvement_for_stopping: 0.001
-      relax: 0.1
-      relax_dyn: true
-      keep_best: 1
+      num_restarts: 5                           # How many points to initialize with (parallel optimization)
+      maxiter: 1000                             # Maximum number of iterations in acquisition optimization
+      relative_improvement_for_stopping: 0.001  # Treshold (relative improvement) to stop the acquisition optimization
+      relax: 0.1                                # Initial relaxation parameter (will be updated during the dynamic adjustments, if relax_dyn: true)
+      relax_dyn: true                           # Use Dynamic Simple Relaxation
+      keep_best: 1                              # How many best points to keep (#TODO: >1 not fully defined yet)
     ga:
       num_restarts: 1
       keep_best: 32
