@@ -6,6 +6,7 @@ from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from IPython import embed
+from torch import Type
 
 '''
 Example usage:
@@ -66,9 +67,9 @@ class transp_nml:
         self.contents_ptr_tglf = None
         self.contents_ptr_ptsolver = None
 
-    def define_machine(self, tokamak = "SPARC"):
+    def define_machine(self, tokamak = None):
 
-        if tokamak == "SPARC" or tokamak == "ARC":
+        if tokamak == "SPARC":
             from mitim_tools.experiment_tools.SPARCtools import ICRFantennas, defineTRANSPnmlStructures, defineISOLVER
             ECRFgyrotrons, NBIbeams = None, None
         elif tokamak == "CMOD":
@@ -80,6 +81,12 @@ class transp_nml:
         elif tokamak == "D3D":
             from mitim_tools.experiment_tools.DIIIDtools import ECRFgyrotrons, NBIbeams
             ICRFantennas, defineTRANSPnmlStructures, defineISOLVER = None, None, None
+        else:
+            # Generic
+            if tokamak is not None:
+                print(f"Warning: Machine {tokamak} not recognized. Using generic simplified structures (e.g. for ICRF antenna).")
+            from mitim_tools.experiment_tools.TOKtools import ICRFantennas
+            ECRFgyrotrons, NBIbeams, defineTRANSPnmlStructures, defineISOLVER = None, None, None, None
 
         self.ICRFantennas = ICRFantennas
         self.ECRFgyrotrons = ECRFgyrotrons
@@ -917,7 +924,10 @@ class transp_nml:
 
     def addVessel(self, defineTRANSPnmlStructures_method):
 
-        limiters, VVmoms = defineTRANSPnmlStructures_method()
+        try:
+            limiters, VVmoms = defineTRANSPnmlStructures_method()
+        except TypeError:
+            limiters, VVmoms = None, None
 
         if limiters is not None and self.LimitersInNML:
             alnlmr = str(limiters[0][0])

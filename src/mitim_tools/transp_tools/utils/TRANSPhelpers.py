@@ -49,7 +49,7 @@ class transp_run:
     def write_namelist(
         self,
         timings = {},
-        tokamak_structures = 'SPARC',
+        tokamak_structures = None,
         **transp_params
         ):
         ''' 
@@ -122,7 +122,8 @@ class transp_run:
             structures_position = -1,
             radial_position = 0,
             use_mry_file = False,
-            mxh_coeffs_smooth = 5
+            mxh_coeffs_smooth = 5,
+            is_machine_fixed = False
             ):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
@@ -287,9 +288,11 @@ class transp_run:
             # Write Antenna in namelist
             # --------------------------------------------------------------------------------------------
 
-            self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
-            self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
-            self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
+            if not is_machine_fixed:
+
+                self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
+                self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
+                self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
 
         else:
             self.geometry_select = None
@@ -317,16 +320,6 @@ class transp_run:
     # Utilities to populate specific times with something
     # --------------------------------------------------------------------------------------------
 
-    def add_variable_time(self, time, value_x, value, variable='QPR'):
-
-        if time not in self.variables.keys():
-            self.variables[time] = {}
-
-        self.variables[time][variable] = {
-            'x': value_x,
-            'z': value
-        }
-
     def add_g_time(self, time, g_file_loc):
 
         g = GEQtools.MITIMgeqdsk(g_file_loc)
@@ -340,21 +333,37 @@ class transp_run:
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
 
-    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3):
+    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3, nicha = 1):
 
+        channels_array = np.arange(nicha) +1
+
+        def add_variable_time(time, value):
+
+            if time not in self.variables.keys():
+                self.variables[time] = {}
+            value = value * np.ones(nicha) / nicha
+
+            self.variables[time]['RFP'] = {
+                'x': channels_array,
+                'z': value
+            }
+        
         for t in self.variables.keys():
             if t>time:
-                self.add_variable_time(t, None, power_MW*1E6, variable='RFP')
+                add_variable_time(t, power_MW*1E6)
             else:
-                self.add_variable_time(t, None, 0.0, variable='RFP')
+                add_variable_time(t, 0.0)
         
         time_prev = round(time - ramp_time, 10)
-        self.add_variable_time(time_prev, None, 0.0, variable='RFP')
-        self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
-        self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
+        add_variable_time(time_prev, 0.0)
+        add_variable_time(time, power_MW*1E6)
+        add_variable_time(1E3, power_MW*1E6)
 
         # Antenna Frequency
-        IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
+        if freq_MHz is not None:
+            IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
+
+        self.quantities['PichT'][2] = 'x' #channels_array
 
     # --------------------------------------------------------------------------------------------
 
@@ -964,9 +973,7 @@ def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     if ax is not None:
         ax.plot(x, y, "-o", markersize=0.5, lw=0.5, c="k", label="lims")
 
-    print(
-        f"\t- Limiters UFile created in ...{IOtools.clipstr(UFilePath)}"
-    )
+    print(f"\t- Limiters UFile created in ...{IOtools.clipstr(UFilePath)}")
 
 def writeBoundary(nameFile, rs_orig, zs_orig):
     numpoints = len(rs_orig)

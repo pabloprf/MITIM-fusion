@@ -44,26 +44,29 @@ def defineFirstWall(file_rel=IOtools.expandPath(LimiterPath)):
 
     return r, z
 
-
 def ICRFantennas(MHz=120.0):
     lines = [
         "! ----- Antenna Parameters",
-        "nicha     = 1         ! Number of ICRH antennae",
-        f"frqicha   = {MHz}e6   ! Frequency of antenna (Hz)",
-        "!prficha    = 0.0      ! Power of antenna (W)",
-        "rfartr    = 2.0       ! Distance (cm) from antenna for Faraday shield",
-        "ngeoant   = 1         ! Geometry representation of antenna (1=traditional)",
-        "rmjicha   = 165.0     ! Major radius of antenna (cm)",
-        "rmnicha   = 55.0      ! Minor radius of antenna (cm)",
-        "thicha    = 26.28     ! Theta extent of antenna (degrees)",
-        "num_nphi  = 1         ! Num of Nphi per antenna",
-        "nnphi     = 30        ! Nphi values",
-        "wnphi     = 1.        ! Nphi power weightings",
-        "",
+        "nicha     = 2         ! Number of ICRH antennae",
+        f"frqicha(1)   = {MHz}e6   ! Frequency of antenna 1 (Hz)",
+        f"frqicha(2)   = {MHz}e6   ! Frequency of antenna 2 (Hz)",
+        "rgeoant_a(1,1)   = 242.05",
+        "rgeoant_a(2,1)   = 245.0",
+        "ygeoant_a(1,1)   = 37.055",
+        "ygeoant_a(2,1)   = 4.555",
+        "rgeoant_a(1,2)   = 242.05",
+        "rgeoant_a(2,2)   = 245.0",
+        "ygeoant_a(1,2)   = -37.62",
+        "ygeoant_a(2,2)   = -5.12",
+        "num_nphi(1)      = 1      ! Num of Nphi per antenna",
+        "nnphi(1,1)       = 38     ! Nphi values",
+        "wnphi(1,1)       = 1.     ! Nphi power weightings",
+        "num_nphi(2)      = 1      ! Num of Nphi per antenna",
+        "nnphi(1,2)       = 38     ! Nphi values",
+        "wnphi(1,2)       = 1.     ! Nphi power weightings",
     ]
 
     return "\n".join(lines)
-
 
 def defineISOLVER():
     isolver_file = "file: iso_sprc.nc"

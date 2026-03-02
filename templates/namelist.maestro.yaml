@@ -117,13 +117,15 @@ plasma:
       # If type = ICRH: Minority fraction to be added to the mix
       fmini: 0.05
 
-      # If type = ICRH: Antenna frequency (in MHz)
+      # If type = ICRH and tokamak_structures = null: Antenna frequency (in MHz)
       freq_ICH: null    # If null, estimate on-axis deposition based on field and minority species resonance
 
       # If type = gaussian_sources: Gaussian source parameters
       nu_source: 5.0  # Peaking factor for the source profile
       Pe: 11.0        # Total electron heating power
       Pi: 5.0         # Total ion heating power
+
+
 
 # ------------------------------------------------------------------------------------------------------------
 # MAESTRO workflow parameters
@@ -320,6 +322,9 @@ maestro:
     base_module: null
 
     parameters_prepare:
+
+      # Mahine structures
+      tokamak_structures: null # If null: define structures (e.g. antenna for ICRF) as a very simplified setup; if machine (e.g. SPARC) use actual machine structures
 
       # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
       machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium

@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import copy
 import numpy as np
@@ -65,6 +66,10 @@ class transp_beat(beat):
             (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
         
+        # Grab structures
+        tokamak_structures = transp_namelist.get('tokamak_structures', None)
+        is_machine_fixed = tokamak_structures is not None
+        
         # Define timings
         self.transition_window     = transition_window 
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
@@ -76,8 +81,6 @@ class transp_beat(beat):
         
         self.timeAC = self.time_end - time_before_end if extractAC else None          # Time to extract TORIC and NUBEAM files
 
-
-        # If the 
         if mxh_coeffs_smooth_sep is None:
             print('\t- No MXH coefficients for smoothing separatrix provided', typeMsg='i')
             try:
@@ -120,6 +123,11 @@ class transp_beat(beat):
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
+        if is_machine_fixed: 
+            # Remove antenna geometry that may have been written from GACODE 
+            for var in ['rmjicha', 'rmnicha', 'thicha']:
+                del self.transp.namelist_variables[var]
+        
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
 
@@ -134,7 +142,6 @@ class transp_beat(beat):
             modify_Ip_to_match_qstar = None
             modify_p_to_match_pB2 = None
             
-            
         self.machine_run = machine_initialization
         
         if transition_window > 0.0:
@@ -143,34 +150,71 @@ class transp_beat(beat):
                 modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
                 modify_p_to_match_pB2=modify_p_to_match_pB2,
                 )
-        
-        # ICRF on
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # ICRF power
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
         PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
         
-        if freq_ICH is None:
-
-            B_T         = self.profiles_current.profiles['bcentr(T)'][0]
-
+        # Antennas
+        nicha = self._number_of_antennas(tokamak_structures)
+        
+        if is_machine_fixed:
             '''
-            Best resonance condition for minority ions
-            ------------------------------------------
-            B = (Fich * 2 * np.pi) / qm 
-            Fich_MHz = B * qm / (2 * np.pi) * 1e-6
-            qm ~ q/m * 1E8
-            Fich_MHz = B * q/m * 1E8  / (2 * np.pi) * 1e-6 ~ B * q/m * 15.0
-                e.g. He3 in SPARC: F = 12 * 2/3 * 15 = 120 MHz
+            For realistic antenna geometry, I need to use the predefined frequencies that come with the antenna definitions
             '''
+            if freq_ICH is not None:
+                print(f'[MITIM] Warning: freq_ICH is defined but will be ignored since tokamak_structures = {tokamak_structures} is not None', typeMsg='w')
+                
+            freq_ICH = None
 
-            qm_minority = self.transp.nml_object.Minorities[0]/self.transp.nml_object.Minorities[1]
-            factor_to_account_for_Bplasma = 1.0 #1.05
-            freq_ICH = B_T * qm_minority * 15.0 * factor_to_account_for_Bplasma
+        else:
+            '''
+            For simple antenna geometry, I can choose the frequency to match the best resonance condition for minority ions.
+            If freq_ICH is not provided, I estimate it based on the on-axis (vacuum) magnetic field and the minority species.
+            '''
+            if freq_ICH is None:
 
-        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = freq_ICH)
+                B_T         = self.profiles_current.profiles['bcentr(T)'][0]
 
+                '''
+                Best resonance condition for minority ions
+                ------------------------------------------
+                B = (Fich * 2 * np.pi) / qm 
+                Fich_MHz = B * qm / (2 * np.pi) * 1e-6
+                qm ~ q/m * 1E8
+                Fich_MHz = B * q/m * 1E8  / (2 * np.pi) * 1e-6 ~ B * q/m * 15.0
+                    e.g. He3 in SPARC: F = 12 * 2/3 * 15 = 120 MHz
+                '''
+
+                qm_minority = self.transp.nml_object.Minorities[0]/self.transp.nml_object.Minorities[1]
+                factor_to_account_for_Bplasma = 1.0 #1.05
+                freq_ICH = B_T * qm_minority * 15.0 * factor_to_account_for_Bplasma
+
+        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = freq_ICH, nicha = nicha)
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Write Ufiles
-        self.transp.write_ufiles(
-            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
-        )
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed)
+
+    def _number_of_antennas(self, tokamak_structures):
+        # Determine the number of antennas
+    
+        if tokamak_structures is None:
+            from mitim_tools.experiment_tools.TOKtools import ICRFantennas
+        elif tokamak_structures == "SPARC":
+            from mitim_tools.experiment_tools.SPARCtools import ICRFantennas
+        elif tokamak_structures == "CMOD":
+            from mitim_tools.experiment_tools.CMODtools import ICRFantennas
+        else:
+            raise ValueError(f"[MITIM] tokamak_structures = {tokamak_structures} not recognized for ICRF-only mode. Supported options are: None, 'SPARC', 'CMOD'")
+        transp_antenna_setup = ICRFantennas()
+        
+        nicha = int(re.search(r'^\s*nicha\s*=\s*(\d+)\b', transp_antenna_setup, re.M).group(1))
+        
+        return nicha
 
     def run(self, **kwargs):
 
