@@ -358,6 +358,24 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         
             plt.tight_layout()
 
+        ytr0, ytar0, yout0 = flux_residual_evaluator(x_history[0,:,:])
+        ytr, ytar, yout = flux_residual_evaluator(x_new)
+
+        fig, axs = plt.subplots(ncols=np.max([ytr.shape[0], 2]), nrows=2, figsize=(15, 10), sharex=True)
+        for j in range(ytr.shape[0]):
+            axs[0,j].plot(x_history[0,j,:].detach().cpu().numpy(),'-o',c='b')
+            axs[1,j].plot(ytr0[j].detach().cpu().numpy(),'-o',c='b', label='Transport')
+            axs[1,j].plot(ytar0[j].detach().cpu().numpy(),'--o',c='b', label='Target')
+            
+            axs[0,j].plot(x_new[j].detach().cpu().numpy(),'-o',c='r')
+            axs[1,j].plot(ytr[j].detach().cpu().numpy(),'-o',c='r', label='Transport')
+            axs[1,j].plot(ytar[j].detach().cpu().numpy(),'--o',c='r', label='Target')
+            
+            axs[1,j].legend(loc='best')
+            GRAPHICStools.addDenseAxis(axs[0,j])
+            GRAPHICStools.addDenseAxis(axs[1,j])
+        plt.tight_layout()
+
         plt.show()
         
         embed()
@@ -383,7 +401,7 @@ def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, thre
 
     # Define absolute step (Note for PRF: abs() was added by me, I think it performs better that way!)
     x_step = dx * x.abs()
-
+    
     # Absolute steps limits
     if dx_max_abs is not None:
         ix = x_step.abs() > dx_max_abs
