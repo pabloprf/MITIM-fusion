@@ -108,23 +108,29 @@ plasma:
     # Heating model parameters
     parameters:
 
-      # If type = ICRH: Total input power
+      # ~~~~~~~~~~~
+      # Parameters ICRF (type = ICRH)
+      # ~~~~~~~~~~~
+
+      # Total input power
       P_icrh: 11.0
 
-      # If type = ICRH: Minority species [Z,A]
+      # Minority species [Z,A]
       minority: [2, 3]
 
-      # If type = ICRH: Minority fraction to be added to the mix
+      # Minority fraction to be added to the mix
       fmini: 0.05
 
-      # If type = ICRH and tokamak_structures = null: Antenna frequency (in MHz)
+      # Antenna frequency (MHz)
+      #     (only if tokamak_structures is null, otherwise it will be taken from the machine structures definition)
       freq_ICH: null    # If null, estimate on-axis deposition based on field and minority species resonance
 
-      # If type = gaussian_sources: Gaussian source parameters
+      # ~~~~~~~~~~~
+      # Parameters for simple Gaussian sources (type = gaussian_sources)
+      # ~~~~~~~~~~~
       nu_source: 5.0  # Peaking factor for the source profile
       Pe: 11.0        # Total electron heating power
       Pi: 5.0         # Total ion heating power
-
 
 
 # ------------------------------------------------------------------------------------------------------------
@@ -159,6 +165,8 @@ maestro:
 
       # Whether to run with full EPED or EPED-NN
       use_full_EPED: false
+
+      # Definition of equilibrium parameters that will based to EPED
       toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
 
       # (if full EPED) EPED override parameters: dictionary of EPED configuration parameters to override default values in config
@@ -300,6 +308,9 @@ maestro:
 
     parameters_prepare:
 
+      # A soft PORTALS beat means:
+      #     No evolving alpha, radiation
+      #     More relaxed convergence criteria and optimization strategy
       portals_parameters:
         target:
           options:
@@ -323,8 +334,10 @@ maestro:
 
     parameters_prepare:
 
-      # Mahine structures
-      tokamak_structures: null # If null: define structures (e.g. antenna for ICRF) as a very simplified setup; if machine (e.g. SPARC) use actual machine structures
+      # Mahine structures (ICRF antennas, limiters, VV)
+      #       If null: define structures as a very simplified setup (e.g. one midplane antenna)
+      #       If machine (SPARC, CMOD, ARC, D3D): use actual machine structures harcoded in MITIM (see mitim_tools/experiment_tools/)
+      tokamak_structures: null 
 
       # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
       machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
