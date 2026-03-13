@@ -14,7 +14,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # Solver options
     # --------------------------------------------------------------------------------------------------------
 
-    num_restarts = optimization_params.get("num_restarts",1)
+    num_restarts = optimization_params.get("num_restarts", 1)
     bounds = fun.bounds_mod
 
     if method == 'scipy_root':
@@ -72,26 +72,42 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     print("\t- Preparing starting points")
 
     # Guesses coming from the training set
-    xGuesses = copy.deepcopy(fun.xGuesses)
-    num_max_guesses = xGuesses.shape[0]
-    
-    num_random = int(np.ceil(num_restarts/2)) # At least half of the restarts will be random, the other half will be the best guesses
-    num_random = min(num_random, num_restarts - num_max_guesses) # If we have less guesses than restarts, we will need to add more random points
+    xGuesses_train = copy.deepcopy(fun.xGuesses)
 
-    # Take the best num_restarts-num_random points
-    xGuesses = xGuesses[:num_restarts-num_random, :]  if xGuesses.shape[0] > num_restarts-num_random else xGuesses
-    
-    # Add random points (to avoid local minima and getting stuck as much as possible) 
-    cases_to_choose_from = fun.xGuesses.shape[0]-xGuesses.shape[0]
-    random_choice = xGuesses.shape[0]+np.random.choice(cases_to_choose_from, np.min([cases_to_choose_from,num_random]), replace=False)
-    xGuesses = torch.cat((xGuesses, fun.xGuesses[random_choice, :]), axis=0) 
-    
-    # If we didn't have enough points to guess from (either best or random), we will add random points with some percent variation around the best point
-    xGuesses = _add_random_points_if_missing(xGuesses, num_restarts, bounds)
+    # If num_restarts is None, just use the available guesses (no restarts policy)
+    if num_restarts is None:
+        xGuesses = xGuesses_train
+        print(f"\t\t- Running for {len(xGuesses)} starting points")
+    else:
+        num_restarts = max(int(num_restarts), 0)
 
-    print(f"\t\t- From training set, taking the best {num_restarts-num_random} points and adding {num_random} random points (ordered positions {random_choice})")
+        # Split restarts between best guesses and random picks from the remaining training set
+        num_random_target = int(np.ceil(num_restarts / 2))
+        num_best_target = int(num_restarts - num_random_target)
 
-    print(f'\t\t- Running for {len(xGuesses)} starting points , as a an augmented optimization problem')
+        num_train = int(xGuesses_train.shape[0])
+        num_best = min(num_train, num_best_target)
+        xGuesses_best = xGuesses_train[:num_best, :] if num_best > 0 else xGuesses_train[:0, :]
+
+        # Add random points (to avoid local minima and getting stuck as much as possible)
+        available_random = max(0, num_train - num_best)
+        num_random = min(num_random_target, available_random)
+
+        if num_random > 0:
+            choice_local = np.random.choice(available_random, size=num_random, replace=False)
+            random_choice = num_best + choice_local
+            xGuesses = torch.cat((xGuesses_best, xGuesses_train[random_choice, :]), axis=0)
+            print(
+                f"\t\t- From training set, taking the best {num_best} points and adding {num_random} random points (ordered positions {random_choice})"
+            )
+        else:
+            xGuesses = xGuesses_best
+            print(f"\t\t- From training set, taking the best {num_best} points and adding 0 random points")
+
+        # If we didn't have enough points to guess from (either best or random), add random points around the best point
+        xGuesses = _add_random_points_if_missing(xGuesses, num_restarts, bounds)
+
+        print(f"\t\t- Running for {len(xGuesses)} starting points , as a an augmented optimization problem")
 
     # --------------------------------------------------------------------------------------------------------
     # Solver
