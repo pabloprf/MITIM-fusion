@@ -11,6 +11,30 @@ from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
+# Performance helpers
+# ----------------------------------------------------------------------------------------------------------------------------
+
+def configure_performance_settings(n_threads=None):
+    """
+    Apply PyTorch / GPyTorch / linear_operator settings for efficient GP inference.
+    Call once at the start of a BO step.  Critical on HPC clusters where PyTorch's
+    default thread count over-subscribes shared CPUs.
+    """
+    import os
+    import linear_operator
+
+    if n_threads is None:
+        n_threads = int(os.environ.get("OMP_NUM_THREADS", torch.get_num_threads()))
+    torch.set_num_threads(n_threads)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass  # can only be set once before any parallel work
+    linear_operator.settings.max_cholesky_size._set_value(2000)
+    print(f"\t[perf] torch_num_threads={n_threads}, max_cholesky_size=2000", typeMsg="i")
+
+
+# ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
 # ----------------------------------------------------------------------------------------------------------------------------
 
@@ -446,9 +470,15 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
 
     def untransform_posterior(self, X, posterior):
         if (self.output is not None) and (self.flag_to_evaluate):
-            factor = self.surrogate_parameters["transformationOutputs"](
-                X, self.surrogate_parameters, self.output
-            ).to(X.device)
+            # Cache factor by X tensor identity: avoids recomputing expensive physics
+            # transform when the same X object is passed multiple times (e.g. inner
+            # optimizer iterations, MC acquisition sampling).
+            if not (hasattr(self, "_cached_factor_X") and self._cached_factor_X is X):
+                self._cached_factor = self.surrogate_parameters["transformationOutputs"](
+                    X, self.surrogate_parameters, self.output
+                ).to(X.device)
+                self._cached_factor_X = X
+            factor = self._cached_factor
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
