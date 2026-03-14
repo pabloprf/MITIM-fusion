@@ -14,21 +14,22 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 # Performance helpers
 # ----------------------------------------------------------------------------------------------------------------------------
 
+_original_thread_state = {}
+
 def configure_performance_settings(n_threads=None):
     """
-    Apply PyTorch / GPyTorch / linear_operator settings for efficient GP inference.
-    Call once at the start of a BO step.
+    Restrict thread counts for GP inference and save the original state so that
+    restore_performance_settings() can hand full threads back to physics codes.
 
     On HPC clusters OMP_NUM_THREADS is typically set to the full node core count by the
     scheduler (e.g. 64) for the benefit of the physics code.  Passing that value straight
     to PyTorch causes massive thread oversubscription on the tiny GP matrices used here
     (e.g. 5×5 Cholesky with 64 threads is ~6× *slower* than with 4 threads).
     We therefore cap at MITIM_GP_THREADS (default 4) regardless of OMP_NUM_THREADS.
-    Override by setting MITIM_GP_THREADS in the environment.
 
-    torch.set_num_threads only caps PyTorch's own intraop pool. BLAS routines (MKL,
-    OpenBLAS) called by torch.linalg.* use a separate thread pool and must be capped
-    independently via threadpoolctl (runtime) and environment variables (pre-import).
+    NOTE: only in-process thread pools (PyTorch, MKL, OpenBLAS via threadpoolctl) are
+    restricted.  Environment variables are NOT modified, so child processes launched for
+    physics evaluation inherit the original scheduler allocation unchanged.
     """
     import os
     import linear_operator
@@ -36,27 +37,61 @@ def configure_performance_settings(n_threads=None):
     if n_threads is None:
         n_threads = int(os.environ.get("MITIM_GP_THREADS", 4))
 
-    # PyTorch intraop / interop
+    # Save original in-process thread counts so restore_performance_settings() can undo this
+    _original_thread_state["torch_num_threads"] = torch.get_num_threads()
+    try:
+        import threadpoolctl
+        _original_thread_state["blas_info"] = threadpoolctl.threadpool_info()
+    except ImportError:
+        pass
+
+    # PyTorch intraop / interop (in-process only — does not affect child processes)
     torch.set_num_threads(n_threads)
     try:
         torch.set_num_interop_threads(1)
     except RuntimeError:
         pass  # can only be set once before any parallel work
 
-    # BLAS/OpenMP thread pools (MKL, OpenBLAS, etc.) — separate from PyTorch's pool
-    os.environ["MKL_NUM_THREADS"] = str(n_threads)
-    os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
-    os.environ["OMP_NUM_THREADS"] = str(n_threads)
+    # BLAS/OpenMP thread pools via threadpoolctl (in-process only — child processes
+    # inherit the environment unchanged and use their full SLURM allocation)
     try:
         import threadpoolctl
         threadpoolctl.threadpool_limits(limits=n_threads, user_api="blas")
         threadpoolctl.threadpool_limits(limits=n_threads, user_api="openmp")
         blas_info = {lib["prefix"]: lib["num_threads"] for lib in threadpoolctl.threadpool_info()}
     except ImportError:
-        blas_info = {"note": "threadpoolctl not available — env vars set but may not take effect"}
+        blas_info = {"note": "threadpoolctl not available"}
 
     linear_operator.settings.max_cholesky_size._set_value(2000)
     print(f"\t[perf] torch_num_threads={n_threads}, blas_threads={blas_info}, max_cholesky_size=2000", typeMsg="i")
+
+
+def restore_performance_settings():
+    """
+    Restore in-process thread counts to the values saved by configure_performance_settings().
+
+    Call this before any in-process physics evaluation so that physics code running in the
+    same Python process gets the full thread allocation back.  Not needed when physics runs
+    as subprocesses (they were never affected).
+    """
+    if not _original_thread_state:
+        return  # configure_performance_settings() was never called
+
+    torch.set_num_threads(_original_thread_state["torch_num_threads"])
+
+    try:
+        import threadpoolctl
+        orig = _original_thread_state.get("blas_info", [])
+        for lib in orig:
+            try:
+                threadpoolctl.threadpool_limits(limits=lib["num_threads"], user_api=lib.get("user_api"))
+            except Exception:
+                pass
+        restored = {lib["prefix"]: lib["num_threads"] for lib in threadpoolctl.threadpool_info()}
+    except ImportError:
+        restored = {}
+
+    print(f"\t[perf] thread pools restored: torch={_original_thread_state['torch_num_threads']}, blas={restored}", typeMsg="i")
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
