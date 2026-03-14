@@ -117,8 +117,6 @@ class OPTstep:
         if avoidPoints is None:
             avoidPoints = []
 
-        BOTORCHtools.configure_performance_settings()
-
         """
 		*********************************************************************************************************************
 			Preparing for fit
