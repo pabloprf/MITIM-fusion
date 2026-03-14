@@ -531,69 +531,42 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 
         X: raw (pre-transform) test inputs, shape (*batch_dims, M, d_raw).
         Returns GPyTorchPosterior with MultitaskMultivariateNormal distribution.
-
-        Set MITIM_GP_PROFILE=1 to print per-section wall times.
         """
-        import os, time
         from gpytorch.distributions import MultitaskMultivariateNormal
         from linear_operator.operators import DiagLinearOperator, BlockDiagLinearOperator
         from botorch.posteriors.gpytorch import GPyTorchPosterior
 
-        _profile = True #os.environ.get("MITIM_GP_PROFILE", "0") == "1"
-        _t = {}
-
-        def _tick(label):
-            if _profile:
-                torch.cpu.synchronize() if hasattr(torch.cpu, "synchronize") else None
-                _t[label] = time.perf_counter()
-
         N = self._n_batched
         n_train = self._n_train
 
-        # Transform inputs per model: tf1 (physics) is computed once for model[0] and
-        # cached via parameters_combined; subsequent models reuse the cache for tf1 and
-        # apply their own tf2 (normalisation), which is model-specific.
-        _tick("start")
+        # Transform inputs per model. prepareToGenerateCommons sets flag_to_store=True so
+        # model[0] computes and caches the powerstate in parameters_combined["powerstate"];
+        # models 1..N-1 reuse that cache.
+        # cold_startCommons() is deferred until after the tf1_factors loop below so that
+        # output_transform_portals can also reuse the cached powerstate via
+        # constructEvaluationProfiles (otherwise it would rebuild the powerstate 63 times).
         self.prepareToGenerateCommons()
-        Xtr_per_model = []
-        for _mi, _m in enumerate(self.models):
-            Xtr_per_model.append(_m.transform_inputs(X))
-            if _profile and _mi == 0:
-                _t["transform_inputs_m0"] = time.perf_counter()
-        # Note: cold_startCommons() is intentionally deferred until after the tf1_factors loop.
-        # transform_inputs populates parameters_combined["powerstate"] (via flag_to_store=True).
-        # output_transform_portals (called per model below) reuses that cached powerstate via
-        # constructEvaluationProfiles — but only if parameters_combined is still present.
-        # Calling cold_startCommons() here would delete it, forcing 63 separate powerstate
-        # reconstructions instead of one.
-        _tick("transform_inputs")
+        Xtr_per_model = [m.transform_inputs(X) for m in self.models]
 
-        # orig_shape and M_flat derived from raw X — independent of each model's
-        # transformed feature dimensionality (d varies per model for ConstantKernel models).
-        orig_shape = X.shape[:-1]       # (*batch_dims, M)
-        M_flat = X[..., 0].numel()      # total test points, flattened
+        orig_shape = X.shape[:-1]   # (*batch_dims, M)
+        M_flat = X[..., 0].numel()  # total test points, flattened
 
-        # --- ScaleKernel group (all share the same d_sc = ard) ---
+        # --- ScaleKernel group ---
         if self._sc_indices:
-            N_sc = len(self._sc_indices)
             d_sc = Xtr_per_model[self._sc_indices[0]].shape[-1]
             Xtr_sc = torch.stack(
                 [Xtr_per_model[i].reshape(M_flat, d_sc) for i in self._sc_indices], dim=0
             )  # (N_sc, M_flat, d_sc)
-            _tick("sc_stack")
-            K_star_sc = self._batch_covar(Xtr_sc, self._X_train_sc).to_dense()  # (N_sc, M, n)
-            _tick("sc_kernel")
+            K_star_sc = self._batch_covar(Xtr_sc, self._X_train_sc).to_dense()  # (N_sc, M_flat, n)
             prior_sc  = torch.stack(
                 [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d_sc))
                  for i in self._sc_indices]
             )  # (N_sc, M_flat)
             mean_sc = prior_sc + (K_star_sc @ self._alpha_sc).squeeze(-1)
-            _tick("sc_mean")
-            v_sc = torch.linalg.solve_triangular(
+            v_sc    = torch.linalg.solve_triangular(
                 self._L_sc, K_star_sc.transpose(-1, -2), upper=False
             )  # (N_sc, n, M_flat)
-            var_sc = (self._os_sc.unsqueeze(-1) - (v_sc * v_sc).sum(dim=-2)).clamp(min=0)
-            _tick("sc_var")
+            var_sc  = (self._os_sc.unsqueeze(-1) - (v_sc * v_sc).sum(dim=-2)).clamp(min=0)
 
         # --- MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
         # Each ck model may have a different d (kernel ignores inputs; mean module uses them).
@@ -607,14 +580,12 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                  ) for i in self._ck_indices]
             )  # (N_ck, M_flat)
             mean_ck = prior_ck + (K_star_ck @ self._alpha_ck).squeeze(-1)
-            _tick("ck_mean")
-            v_ck = torch.linalg.solve_triangular(
+            v_ck    = torch.linalg.solve_triangular(
                 self._L_ck, K_star_ck.transpose(-1, -2), upper=False
             )  # (N_ck, n, M_flat)
-            var_ck = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)
-            _tick("ck_var")
+            var_ck  = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)
 
-        # --- Assemble in original model order, preserving autograd graph ---
+        # --- Assemble in original model order ---
         mean_by_model = [None] * N
         var_by_model  = [None] * N
         for j, i in enumerate(self._sc_indices):
@@ -624,24 +595,18 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             mean_by_model[i] = mean_ck[j]
             var_by_model[i]  = var_ck[j]
 
-        pred_mean_flat = torch.stack(mean_by_model)  # (N, M_flat)
-        pred_var_flat  = torch.stack(var_by_model)   # (N, M_flat)
-
-        # Reshape to (N, *batch_dims, M)
-        pred_mean = pred_mean_flat.view(N, *orig_shape)
-        pred_var  = pred_var_flat.view(N, *orig_shape)
+        pred_mean = torch.stack(mean_by_model).view(N, *orig_shape)
+        pred_var  = torch.stack(var_by_model).view(N, *orig_shape)
 
         # Un-normalise tf2 (Standardize)
-        sh = [N] + [1] * (pred_mean.dim() - 1)
+        sh       = [N] + [1] * (pred_mean.dim() - 1)
         mean_tf2 = pred_mean * self._std_stdvs.view(*sh) + self._std_means.view(*sh)
         var_tf2  = pred_var  * self._std_stdvs.view(*sh) ** 2
-        _tick("tf2")
 
-        # Un-normalise tf1 (physics) per output using existing X-identity cache.
-        # Compute factors in a plain loop (unavoidable — each output has its own transform),
-        # then apply in one batched op and build MTMVN directly.  This replaces N individual
-        # MultivariateNormal + DiagLinearOperator constructions (O(N*M) Python overhead) with
-        # a single BlockDiagLinearOperator(DiagLinearOperator(...)) call.
+        # Un-normalise tf1 (physics output scaling) per model.
+        # The loop calls transformationOutputs once per model; constructEvaluationProfiles
+        # inside it reuses parameters_combined["powerstate"] (still alive from transform_inputs
+        # above) so the powerstate is built only once across all 63 models.
         factors_list = []
         for i, m in enumerate(self.models):
             tf1 = m.outcome_transform["tf1"]
@@ -651,36 +616,20 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 ).to(X.device)
                 tf1._cached_factor_X = X
             factors_list.append(tf1._cached_factor.squeeze(-1))  # (*orig_shape,)
-        self.cold_startCommons()  # deferred from after transform_inputs — safe now that tf1 factors are done
-        _tick("tf1_factors")
+        self.cold_startCommons()  # deferred: safe now that both transform_inputs and tf1 factors are done
 
         factors  = torch.stack(factors_list)                              # (N, *orig_shape)
         mean_fin = (mean_tf2 * factors).reshape(N, M_flat)               # (N, M_flat)
         var_fin  = (var_tf2 * factors ** 2).clamp(min=0).reshape(N, M_flat)  # (N, M_flat)
 
-        # mean_out: (*orig_shape, N)  — MultitaskMultivariateNormal convention (*batch, n_pts, n_tasks)
-        # block_covar: BlockDiagLinearOperator of N diagonal (M_flat×M_flat) blocks,
-        #              interleaved=False → block i covers all M points for task i
-        mean_out    = mean_fin.reshape(N, *orig_shape).permute(
-            *range(1, len(orig_shape) + 1), 0
-        )
+        # Build MultitaskMultivariateNormal directly from batched tensors — avoids constructing
+        # N individual MultivariateNormal objects (O(N*M) Python overhead).
+        # interleaved=False: BlockDiagLinearOperator block i covers all M points for task i.
+        mean_out    = mean_fin.reshape(N, *orig_shape).permute(*range(1, len(orig_shape) + 1), 0)
         block_covar = BlockDiagLinearOperator(DiagLinearOperator(var_fin))
         mtmvn = MultitaskMultivariateNormal(
             mean_out, block_covar, validate_args=False, interleaved=False
         )
-        _tick("mtmvn")
-
-        if _profile:
-            keys = ["transform_inputs_m0", "transform_inputs", "sc_stack", "sc_kernel",
-                    "sc_mean", "sc_var", "ck_mean", "ck_var", "tf2", "tf1_factors", "mtmvn"]
-            prev = _t.get("start", 0)
-            parts = []
-            for k in keys:
-                if k in _t:
-                    parts.append(f"{k}={1e3*(_t[k]-prev):.1f}ms")
-                    prev = _t[k]
-            total = 1e3 * (_t.get("mtmvn", prev) - _t.get("start", prev))
-            print(f"\t[GP profile] total={total:.1f}ms  " + "  ".join(parts), typeMsg="i")
 
         return GPyTorchPosterior(distribution=mtmvn)
 
