@@ -17,14 +17,20 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 def configure_performance_settings(n_threads=None):
     """
     Apply PyTorch / GPyTorch / linear_operator settings for efficient GP inference.
-    Call once at the start of a BO step.  Critical on HPC clusters where PyTorch's
-    default thread count over-subscribes shared CPUs.
+    Call once at the start of a BO step.
+
+    On HPC clusters OMP_NUM_THREADS is typically set to the full node core count by the
+    scheduler (e.g. 64) for the benefit of the physics code.  Passing that value straight
+    to PyTorch causes massive thread oversubscription on the tiny GP matrices used here
+    (e.g. 5×5 Cholesky with 64 threads is ~6× *slower* than with 4 threads).
+    We therefore cap at MITIM_GP_THREADS (default 4) regardless of OMP_NUM_THREADS.
+    Override by setting MITIM_GP_THREADS in the environment.
     """
     import os
     import linear_operator
 
     if n_threads is None:
-        n_threads = int(os.environ.get("OMP_NUM_THREADS", torch.get_num_threads()))
+        n_threads = int(os.environ.get("MITIM_GP_THREADS", 4))
     torch.set_num_threads(n_threads)
     try:
         torch.set_num_interop_threads(1)

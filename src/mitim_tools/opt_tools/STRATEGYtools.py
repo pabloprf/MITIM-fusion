@@ -944,8 +944,8 @@ class MITIM_BO:
         # ~~~~~~~~~~~~~~~~~~
         # What's the expected value of the next points?
         # ~~~~~~~~~~~~~~~~~~
-
-        y, u, l, _ = self.steps[-1].GP["combined_model"].predict(self.x_next)
+        with torch.no_grad():
+            y, u, l, _ = self.steps[-1].GP["combined_model"].predict(self.x_next)
         self.y_next_pred = y.detach()
         self.y_next_pred_u = u.detach()
         self.y_next_pred_l = l.detach()

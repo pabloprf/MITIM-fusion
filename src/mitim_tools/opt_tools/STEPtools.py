@@ -311,9 +311,7 @@ class OPTstep:
         time_eval = datetime.datetime.now()
         with torch.no_grad():
             self.GP["combined_model"].predict(X_rand)
-        print(
-            f"--> Time for 1 evaluation of combined_model ({X_rand.shape[-1]}D, {len(self.GP['individual_models'])} GPs) at 1000 random points: {IOtools.getTimeDifference(time_eval)}"
-        )
+        print(f"--> Time for 1 evaluation of combined_model ({X_rand.shape[-1]}D, {len(self.GP['individual_models'])} GPs) at 1000 random points: {IOtools.getTimeDifference(time_eval)}")
 
         txt_time = IOtools.getTimeDifference(time1)
 
