@@ -531,10 +531,21 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 
         X: raw (pre-transform) test inputs, shape (*batch_dims, M, d_raw).
         Returns GPyTorchPosterior with MultitaskMultivariateNormal distribution.
+
+        Set MITIM_GP_PROFILE=1 to print per-section wall times.
         """
+        import os, time
         from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
         from linear_operator.operators import DiagLinearOperator
         from botorch.posteriors.gpytorch import GPyTorchPosterior
+
+        _profile = os.environ.get("MITIM_GP_PROFILE", "0") == "1"
+        _t = {}
+
+        def _tick(label):
+            if _profile:
+                torch.cpu.synchronize() if hasattr(torch.cpu, "synchronize") else None
+                _t[label] = time.perf_counter()
 
         N = self._n_batched
         n_train = self._n_train
@@ -542,9 +553,11 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         # Transform inputs per model: tf1 (physics) is computed once for model[0] and
         # cached via parameters_combined; subsequent models reuse the cache for tf1 and
         # apply their own tf2 (normalisation), which is model-specific.
+        _tick("start")
         self.prepareToGenerateCommons()
         Xtr_per_model = [m.transform_inputs(X) for m in self.models]
         self.cold_startCommons()
+        _tick("transform_inputs")
 
         # orig_shape and M_flat derived from raw X — independent of each model's
         # transformed feature dimensionality (d varies per model for ConstantKernel models).
@@ -558,16 +571,20 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             Xtr_sc = torch.stack(
                 [Xtr_per_model[i].reshape(M_flat, d_sc) for i in self._sc_indices], dim=0
             )  # (N_sc, M_flat, d_sc)
+            _tick("sc_stack")
             K_star_sc = self._batch_covar(Xtr_sc, self._X_train_sc).to_dense()  # (N_sc, M, n)
+            _tick("sc_kernel")
             prior_sc  = torch.stack(
                 [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d_sc))
                  for i in self._sc_indices]
             )  # (N_sc, M_flat)
             mean_sc = prior_sc + (K_star_sc @ self._alpha_sc).squeeze(-1)
+            _tick("sc_mean")
             v_sc = torch.linalg.solve_triangular(
                 self._L_sc, K_star_sc.transpose(-1, -2), upper=False
             )  # (N_sc, n, M_flat)
             var_sc = (self._os_sc.unsqueeze(-1) - (v_sc * v_sc).sum(dim=-2)).clamp(min=0)
+            _tick("sc_var")
 
         # --- MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
         # Each ck model may have a different d (kernel ignores inputs; mean module uses them).
@@ -581,10 +598,12 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                  ) for i in self._ck_indices]
             )  # (N_ck, M_flat)
             mean_ck = prior_ck + (K_star_ck @ self._alpha_ck).squeeze(-1)
+            _tick("ck_mean")
             v_ck = torch.linalg.solve_triangular(
                 self._L_ck, K_star_ck.transpose(-1, -2), upper=False
             )  # (N_ck, n, M_flat)
             var_ck = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)
+            _tick("ck_var")
 
         # --- Assemble in original model order, preserving autograd graph ---
         mean_by_model = [None] * N
@@ -607,6 +626,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         sh = [N] + [1] * (pred_mean.dim() - 1)
         mean_tf2 = pred_mean * self._std_stdvs.view(*sh) + self._std_means.view(*sh)
         var_tf2  = pred_var  * self._std_stdvs.view(*sh) ** 2
+        _tick("tf2")
 
         # Un-normalise tf1 (physics) per output using existing X-identity cache
         mvns = []
@@ -622,8 +642,23 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             mean_i = mean_tf2[i] * factor
             var_i  = (var_tf2[i] * factor ** 2).clamp(min=0)
             mvns.append(MultivariateNormal(mean_i, DiagLinearOperator(var_i)))
+        _tick("tf1_mvns")
 
         mtmvn = MultitaskMultivariateNormal.from_independent_mvns(mvns)
+        _tick("mtmvn")
+
+        if _profile:
+            keys = ["transform_inputs", "sc_stack", "sc_kernel", "sc_mean", "sc_var",
+                    "ck_mean", "ck_var", "tf2", "tf1_mvns", "mtmvn"]
+            prev = _t.get("start", 0)
+            parts = []
+            for k in keys:
+                if k in _t:
+                    parts.append(f"{k}={1e3*(_t[k]-prev):.1f}ms")
+                    prev = _t[k]
+            total = 1e3 * (_t.get("mtmvn", prev) - _t.get("start", prev))
+            print(f"\t[GP profile] total={total:.1f}ms  " + "  ".join(parts), typeMsg="i")
+
         return GPyTorchPosterior(distribution=mtmvn)
 
     def posterior(
