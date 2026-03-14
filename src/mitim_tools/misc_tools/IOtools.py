@@ -1979,6 +1979,19 @@ def print_machine_info(output_file=None):
     info_lines.append(f"OpenMP: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}   "
                       f"MKL: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
 
+    # BLAS thread pool state (threadpoolctl, if available)
+    try:
+        import threadpoolctl
+        blas_pools = threadpoolctl.threadpool_info()
+        if blas_pools:
+            info_lines.append("BLAS thread pools (threadpoolctl):")
+            for lib in blas_pools:
+                info_lines.append(f"  {lib.get('prefix','?'):20s} {lib.get('num_threads','?')} threads  [{lib.get('filepath','?')}]")
+        else:
+            info_lines.append("BLAS thread pools: none detected by threadpoolctl")
+    except ImportError:
+        info_lines.append("BLAS thread pools: threadpoolctl not installed (install for runtime BLAS thread control)")
+
     # PyTorch build config — only the lines that matter for linear algebra
     try:
         f = io.StringIO()

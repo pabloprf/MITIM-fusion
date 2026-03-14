@@ -25,19 +25,38 @@ def configure_performance_settings(n_threads=None):
     (e.g. 5×5 Cholesky with 64 threads is ~6× *slower* than with 4 threads).
     We therefore cap at MITIM_GP_THREADS (default 4) regardless of OMP_NUM_THREADS.
     Override by setting MITIM_GP_THREADS in the environment.
+
+    torch.set_num_threads only caps PyTorch's own intraop pool. BLAS routines (MKL,
+    OpenBLAS) called by torch.linalg.* use a separate thread pool and must be capped
+    independently via threadpoolctl (runtime) and environment variables (pre-import).
     """
     import os
     import linear_operator
 
     if n_threads is None:
         n_threads = int(os.environ.get("MITIM_GP_THREADS", 4))
+
+    # PyTorch intraop / interop
     torch.set_num_threads(n_threads)
     try:
         torch.set_num_interop_threads(1)
     except RuntimeError:
         pass  # can only be set once before any parallel work
+
+    # BLAS/OpenMP thread pools (MKL, OpenBLAS, etc.) — separate from PyTorch's pool
+    os.environ["MKL_NUM_THREADS"] = str(n_threads)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
+    os.environ["OMP_NUM_THREADS"] = str(n_threads)
+    try:
+        import threadpoolctl
+        threadpoolctl.threadpool_limits(limits=n_threads, user_api="blas")
+        threadpoolctl.threadpool_limits(limits=n_threads, user_api="openmp")
+        blas_info = {lib["prefix"]: lib["num_threads"] for lib in threadpoolctl.threadpool_info()}
+    except ImportError:
+        blas_info = {"note": "threadpoolctl not available — env vars set but may not take effect"}
+
     linear_operator.settings.max_cholesky_size._set_value(2000)
-    print(f"\t[perf] torch_num_threads={n_threads}, max_cholesky_size=2000", typeMsg="i")
+    print(f"\t[perf] torch_num_threads={n_threads}, blas_threads={blas_info}, max_cholesky_size=2000", typeMsg="i")
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
