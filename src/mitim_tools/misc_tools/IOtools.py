@@ -1933,79 +1933,77 @@ def print_machine_info(output_file=None):
 
     # System Information
     info_lines.append("=== System Information ===")
-    info_lines.append(f"System: {platform.system()}")
-    info_lines.append(f"Node Name: {platform.node()}")
-    info_lines.append(f"Release: {platform.release()}")
-    info_lines.append(f"Version: {platform.version()}")
-    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"System:    {platform.system()} {platform.release()}  ({platform.machine()})")
+    info_lines.append(f"Node:      {platform.node()}")
     info_lines.append(f"Processor: {platform.processor()}")
 
     # CPU Information
     info_lines.append("\n=== CPU Information ===")
     logical_cpus = os.cpu_count()
-    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
-
-    # Attempt to get CPU frequency (limited without external packages)
-    try:
-        if platform.system() == "Windows":
-            import subprocess
-            cmd = 'wmic cpu get MaxClockSpeed'
-            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
-            info_lines.append(f"Max Frequency: {max_freq} MHz")
-        elif platform.system() == "Linux":
-            with open('/proc/cpuinfo') as f:
-                cpuinfo = f.read()
-            import re
-            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
-            if matches:
-                current_freq = matches[0]
-                info_lines.append(f"Current Frequency: {current_freq} MHz")
-        else:
-            info_lines.append("CPU Frequency information not available.")
-    except Exception as e:
-        info_lines.append("Error retrieving CPU Frequency information.")
-
-    # PyTorch CPU Information
-    info_lines.append("\n=== PyTorch Information ===")
-    num_threads = torch.get_num_threads()
-    num_interop_threads = torch.get_num_interop_threads()
-    openmp_enabled = getattr(torch.backends, 'openmp', None)
-    mkl_enabled = getattr(torch.backends, 'mkl', None)
-
-    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
-    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
-    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
-    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
-
-    for var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK"]:
-        info_lines.append(f"{var}: {os.environ.get(var, 'Not set')}")
-
-    f = io.StringIO()
-    with redirect_stdout(f):
-        torch.__config__.show()
-    info_lines.append("\n=== PyTorch Build Config ===")
-    info_lines.append(f.getvalue())
-
-    info_lines.append("\n=== Package Versions ===")
-    for pkg in ["torch", "gpytorch", "botorch"]:
-        try:
-            mod = __import__(pkg)
-            info_lines.append(f"{pkg}: {mod.__version__}")
-        except Exception:
-            info_lines.append(f"{pkg}: not available")
+    info_lines.append(f"Logical CPUs:  {logical_cpus}")
 
     try:
         import psutil
+        physical_cpus = psutil.cpu_count(logical=False)
+        info_lines.append(f"Physical CPUs: {physical_cpus}")
+        freq = psutil.cpu_freq()
+        if freq:
+            info_lines.append(f"CPU Frequency: current={freq.current:.0f} MHz, max={freq.max:.0f} MHz")
+        mem = psutil.virtual_memory()
+        info_lines.append(f"RAM:           {mem.total / 2**30:.1f} GB total, {mem.available / 2**30:.1f} GB available")
         proc = psutil.Process()
         if hasattr(proc, "cpu_affinity"):
-            info_lines.append(f"Process affinity (cpus): {proc.cpu_affinity()}")
-        else:
-            info_lines.append("CPU affinity not supported on this platform/psutil build")
+            affinity = proc.cpu_affinity()
+            info_lines.append(f"CPU affinity:  {len(affinity)} cores {affinity}")
     except ImportError:
-        info_lines.append("psutil not installed (skipping affinity check)")
+        info_lines.append("(psutil not installed — physical CPU count, freq, RAM, affinity unavailable)")
+    except Exception as e:
+        info_lines.append(f"(psutil query failed: {e})")
 
-    info_lines.append("=============================\n\n")
+    # Environment variables that affect threading
+    info_lines.append("\n=== Thread Environment ===")
+    thread_vars = [
+        "MITIM_GP_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK",
+    ]
+    for var in thread_vars:
+        val = os.environ.get(var, "not set")
+        info_lines.append(f"  {var:<26} {val}")
+
+    # PyTorch threading state
+    info_lines.append("\n=== PyTorch Information ===")
+    info_lines.append(f"Intraop threads (current): {torch.get_num_threads()}")
+    info_lines.append(f"Interop threads (current): {torch.get_num_interop_threads()}")
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled    = getattr(torch.backends, 'mkl', None)
+    info_lines.append(f"OpenMP: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}   "
+                      f"MKL: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # PyTorch build config — only the lines that matter for linear algebra
+    try:
+        f = io.StringIO()
+        with redirect_stdout(f):
+            torch.__config__.show()
+        blas_lines = [
+            ln.strip() for ln in f.getvalue().splitlines()
+            if re.search(r"BLAS|LAPACK|MKL|OpenMP|AVX", ln, re.IGNORECASE)
+        ]
+        if blas_lines:
+            info_lines.append("PyTorch build (BLAS/MKL/OpenMP lines):")
+            info_lines.extend(f"  {ln}" for ln in blas_lines)
+    except Exception:
+        pass
+
+    # Package versions
+    info_lines.append("\n=== Package Versions ===")
+    for pkg in ["torch", "gpytorch", "botorch", "linear_operator"]:
+        try:
+            mod = __import__(pkg)
+            info_lines.append(f"  {pkg}: {mod.__version__}")
+        except Exception:
+            info_lines.append(f"  {pkg}: not available")
+
+    info_lines.append("=============================\n")
 
     # Output to screen or file
     output = '\n'.join(info_lines)

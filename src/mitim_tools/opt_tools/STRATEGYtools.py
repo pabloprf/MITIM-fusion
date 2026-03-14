@@ -12,7 +12,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.misc_tools.IOtools import mitim_timer
-from mitim_tools.opt_tools import OPTtools, STEPtools
+from mitim_tools.opt_tools import OPTtools, STEPtools, BOTORCHtools
 from mitim_tools.opt_tools.utils import (
     BOgraphics,
     SBOcorrections,
@@ -449,8 +449,9 @@ class MITIM_BO:
             print("\t\t\t BO class module")
             print("-----------------------------------------------------------------------------------------\n")
 
-            # Print machine resources
+            # Print machine resources and apply GP performance settings (once per run)
             IOtools.print_machine_info()
+            BOTORCHtools.configure_performance_settings()
 
             # Meta
             self.numIterations = self.optimization_options["convergence_options"]["maximum_iterations"]
