@@ -75,37 +75,43 @@ class NEO(SIMtools.mitim_simulation):
         else:
             self.fn = fn
             
-        fig1 = self.fn.add_figure(label=f"{extratitle}Summary", tab_color=fn_color)
-        
-        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+        type_plots = {
+            ' (GB)': (['Qe', 'Qi', 'Ge'],['GB', 'GB', 'GB']),
+            ' (unnormalized)': (['Qe_unn', 'Qi_unn', 'Ge_unn'],['$MW/m^2$', '$MW/m^2$', '$1E20/s/m^2$'])
+        }
+            
+        for suffix, (variables, labels_y) in type_plots.items():
+            fig1 = self.fn.add_figure(label=f"{extratitle}NEO summary{suffix}", tab_color=fn_color)
+            
+            grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
 
-        if colors is None:
-            colors = GRAPHICStools.listColors()
+            if colors is None:
+                colors = GRAPHICStools.listColors()
 
-        axQe = fig1.add_subplot(grid[0, 0])
-        axQi = fig1.add_subplot(grid[0, 1])
-        axGe = fig1.add_subplot(grid[0, 2])
+            axQe = fig1.add_subplot(grid[0, 0])
+            axQi = fig1.add_subplot(grid[0, 1])
+            axGe = fig1.add_subplot(grid[0, 2])
 
-        for i,label in enumerate(labels):
-            roa, QeGB, QiGB, GeGB = [], [], [], []
-            for irho in range(len(self.rhos)):
-                roa.append(self.results[label]['output'][irho].roa)
-                QeGB.append(self.results[label]['output'][irho].Qe)
-                QiGB.append(self.results[label]['output'][irho].Qi)
-                GeGB.append(self.results[label]['output'][irho].Ge)
-                
-            axQe.plot(roa, QeGB, label=label, color=colors[i], marker='o', linestyle='-')
-            axQi.plot(roa, QiGB, label=label, color=colors[i], marker='o', linestyle='-')
-            axGe.plot(roa, GeGB, label=label, color=colors[i], marker='o', linestyle='-')
+            for i,label in enumerate(labels):
+                roa, Qe, Qi, Ge = [], [], [], []
+                for irho in range(len(self.rhos)):
+                    roa.append(self.results[label]['output'][irho].roa)
+                    Qe.append(self.results[label]['output'][irho].__dict__[variables[0]])
+                    Qi.append(self.results[label]['output'][irho].__dict__[variables[1]])
+                    Ge.append(self.results[label]['output'][irho].__dict__[variables[2]])
+                    
+                axQe.plot(roa, Qe, label=label, color=colors[i], marker='o', linestyle='-')
+                axQi.plot(roa, Qi, label=label, color=colors[i], marker='o', linestyle='-')
+                axGe.plot(roa, Ge, label=label, color=colors[i], marker='o', linestyle='-')
 
-        for ax in [axQe, axQi, axGe]:
-            ax.set_xlabel("$r/a$"); ax.set_xlim([0,1])
-            GRAPHICStools.addDenseAxis(ax)
-            ax.legend(loc="best")
+            for ax in [axQe, axQi, axGe]:
+                ax.set_xlabel("$r/a$"); ax.set_xlim([0,1])
+                GRAPHICStools.addDenseAxis(ax)
+                ax.legend(loc="best")
 
-        axQe.set_ylabel("$Q_e$ ($MW/m^2$)"); axQe.set_yscale('log')
-        axQi.set_ylabel("$Q_i$ ($MW/m^2$)"); axQi.set_yscale('log')
-        axGe.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)"); #axGe.set_yscale('log')
+            axQe.set_ylabel(f"$Q_e$ ({labels_y[0]})"); axQe.set_yscale('log')
+            axQi.set_ylabel(f"$Q_i$ ({labels_y[1]})"); axQi.set_yscale('log')
+            axGe.set_ylabel(f"$\\Gamma_e$ ({labels_y[2]})"); #axGe.set_yscale('log')
 
 
     def read_scan(
@@ -339,11 +345,11 @@ class NEOoutput(SIMtools.GACODEoutput):
         with open(self.FolderGACODE / ("input.neo" + self.suffix), "r") as fi:
             lines = fi.readlines()
         self.inputFile = "".join(lines)
-        
-        
+
     def unnormalize(self, normalization, rho=None):
         
         if normalization is not None:
+            print("\t- Unnormalizing NEO results using the provided normalization factors")
             rho_x = normalization["rho"]
             roa_x = normalization["roa"]
             q_gb = normalization["q_gb"]
@@ -375,4 +381,5 @@ class NEOoutput(SIMtools.GACODEoutput):
             self.unnormalization_successful = True
 
         else:
+            print("\t- No normalization provided, cannot unnormalize NEO results.")
             self.unnormalization_successful = False
