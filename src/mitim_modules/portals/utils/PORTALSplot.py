@@ -2149,8 +2149,8 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
             fig = fn.add_figure(label=f"Turb (#{it}) - Distributions", tab_color=fn_color+k)
             axs = fig.subplots(ncols=3)
             
-            varss = ['Qe', 'Qi', 'Ge']
-            for i, var in enumerate(varss):
+            varss = [('Qe', '$Q_e$ (MW/m$^2$)'), ('Qi', '$Q_i$ (MW/m$^2$)'), ('Ge', '$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)')]
+            for i, (var, label) in enumerate(varss):
                 ax = axs[i]
                 y = np.array(distributions['y'][var])
                 # Plot each distribution case as a light profile
@@ -2176,11 +2176,11 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
                     yerr=2*y_std,
                     fmt='o-',
                     color='k',
-                    ms=4,
-                    lw=1.6,
-                    elinewidth=1.2,
-                    capsize=3,
-                    capthick=1.2,
+                    ms=6,
+                    lw=2.0,
+                    elinewidth=1.5,
+                    capsize=5,
+                    capthick=1.5,
                     markerfacecolor='white',
                     markeredgewidth=1.1,
                     label='mean ± 2std',
@@ -2188,9 +2188,11 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
                 )
                         
                 ax.set_xlabel("$\\rho_N$")
-                ax.set_ylabel(var)
+                ax.set_ylabel(label)
                 ax.legend(loc="best",prop={'size': 6})
                 GRAPHICStools.addDenseAxis(ax)
+                if var in ["Qe", "Qi"]:
+                    ax.set_ylim(bottom=0)
         
         self.transport_model_objects[it]['neoclassical'].plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
         k += 2
