@@ -477,8 +477,8 @@ class mitim_state:
         self.derived["ce_MWm2"] = PLASMAtools.convective_flux(self.profiles["te(keV)"], self.derived["ge_10E20m2"])
 
         # qmom
-        self.derived["mt_Jmiller"] = CALCtools.volume_integration(self.profiles["qmom(N/m^2)"], r, volp)
-        self.derived["mt_Jm2"] = self.derived["mt_Jmiller"] / (volp)
+        self.derived["mt_J"] = CALCtools.volume_integration(self.profiles["qmom(N/m^2)"], r, volp)
+        self.derived["mt_Jm2"] = self.derived["mt_J"] / (volp)
 
         # Extras for plotting in TGYRO for comparison
         P = np.zeros(len(self.derived["r"]))
@@ -548,19 +548,20 @@ class mitim_state:
                 P += self.profiles[i]
         self.derived["qRF_MW"] = CALCtools.volume_integration(P, r, volp)
         if "qrfe(MW/m^3)" in self.profiles:
-            self.derived["qRFe_MW"] = CALCtools.volume_integration(
-                self.profiles["qrfe(MW/m^3)"], r, volp
-            )
+            self.derived["qRFe_MW"] = CALCtools.volume_integration(self.profiles["qrfe(MW/m^3)"], r, volp)
         if "qrfi(MW/m^3)" in self.profiles:
-            self.derived["qRFi_MW"] = CALCtools.volume_integration(
-                self.profiles["qrfi(MW/m^3)"], r, volp
-            )
+            self.derived["qRFi_MW"] = CALCtools.volume_integration(self.profiles["qrfi(MW/m^3)"], r, volp)
 
         P = np.zeros(len(self.profiles["rho(-)"]))
         for i in ["qbeame(MW/m^3)", "qbeami(MW/m^3)"]:
             if i in self.profiles:
                 P += self.profiles[i]
         self.derived["qBEAM_MW"] = CALCtools.volume_integration(P, r, volp)
+
+        if "qbeame(MW/m^3)" in self.profiles:
+            self.derived["qBEAMe_MW"] = CALCtools.volume_integration(self.profiles["qbeame(MW/m^3)"], r, volp)
+        if "qbeami(MW/m^3)" in self.profiles:
+            self.derived["qBEAMi_MW"] = CALCtools.volume_integration(self.profiles["qbeami(MW/m^3)"], r, volp)
 
         self.derived["qrad_MW"] = CALCtools.volume_integration(self.derived["qrad"], r, volp)
         if "qsync(MW/m^3)" in self.profiles:
@@ -1183,6 +1184,12 @@ class mitim_state:
             print("|\tWe = {0:.2f} MJ,   Wi_thr = {1:.2f} MJ    (W_thr = {2:.2f} MJ)".format(self.derived["We"], self.derived["Wi_thr"], self.derived["Wthr"]))
             print("|\tNe = {0:.1f}*10^20, Ni_thr = {1:.1f}*10^20  (N_thr = {2:.1f}*10^20)".format(self.derived["Ne"], self.derived["Ni_thr"], self.derived["Nthr"]))
             print(f"|\ttauE = { self.derived['tauE']:.3f} s,  tauP = {self.derived['tauP']:.3f} s (tauP/tauE = {self.derived['tauPotauE']:.2f})")
+            print("| External sources:")
+            print(f"|\tPrf   = {self.derived['qRF_MW'][-1]:.1f} MW, Pbeam   = {self.derived['qBEAM_MW'][-1]:.1f} MW, Pohm   = {self.derived['qOhm_MW'][-1]:.1f} MW --> Pext   = {self.derived['qRF_MW'][-1] + self.derived['qBEAM_MW'][-1] + self.derived['qOhm_MW'][-1]:.1f} MW")
+            print(f"|\tPrf_e = {self.derived['qRFe_MW'][-1]:.1f} MW, Pbeam_e = {self.derived['qBEAMe_MW'][-1]:.1f} MW, Pohm_e = {self.derived['qOhm_MW'][-1]:.1f} MW --> Pext_e = {self.derived['qRFe_MW'][-1] + self.derived['qBEAMe_MW'][-1] + self.derived['qOhm_MW'][-1]:.1f} MW")
+            print(f"|\tPrf_i = {self.derived['qRFi_MW'][-1]:.1f} MW, Pbeam_i = {self.derived['qBEAMi_MW'][-1]:.1f} MW                  --> Pext_i = {self.derived['qRFi_MW'][-1] + self.derived['qBEAMi_MW'][-1]:.1f} MW")
+            print(f"|\tMmom  = {self.derived['mt_J'][-1]:.1f} Nm")
+            print(f"|\tGe    = {self.derived['ge_10E20'][-1]:.1e} 10^20/s")
             print("| Species concentration (volume average):")
             print(f"|\t{ImpurityText}")
             print(" ------------------------------------------------------------------------------------------\n")

@@ -118,7 +118,7 @@ def gacode_to_powerstate(self, rho_vec=None):
     quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MW"]
     quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20"]
     quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20"] * 0.0
-    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
+    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_J"]
 
     if 'qfus' not in self.target_options["options"]["targets_evolve"]:
         # Fusion fixed
