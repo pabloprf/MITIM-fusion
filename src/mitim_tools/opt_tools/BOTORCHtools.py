@@ -394,9 +394,6 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             if m.train_inputs[0].shape[0] != n_train:
                 print(f"\t[batched GP] skipping: model[{i}] n_train mismatch", typeMsg="w")
                 return
-            if not torch.allclose(m.train_inputs[0], X_train, atol=1e-6):
-                print(f"\t[batched GP] skipping: model[{i}] train_inputs differ from model[0]", typeMsg="w")
-                return
 
             if isinstance(covar, gpytorch.kernels.ScaleKernel) and isinstance(
                 covar.base_kernel, (gpytorch.kernels.MaternKernel, gpytorch.kernels.RBFKernel)
@@ -437,10 +434,12 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                     return lhd.noise.reshape(1).expand(n_train)
 
                 def _chol_alpha(mods, K_train_batch):
-                    """Given K_train_batch (M, n, n) and a list of models, return L, alpha."""
-                    noise = torch.stack([_noise(m) for m in mods])          # (M, n)
-                    y     = torch.stack([m.train_targets.reshape(n_train) for m in mods])  # (M, n)
-                    pm    = torch.stack([m.mean_module(X_train) for m in mods])           # (M, n)
+                    """Given K_train_batch (M, n, n) and a list of models, return L, alpha.
+                    Each model's own train_inputs[0] is used for the mean module, since
+                    the transformed training X is model-specific (output-dependent physics tf)."""
+                    noise = torch.stack([_noise(m) for m in mods])                          # (M, n)
+                    y     = torch.stack([m.train_targets.reshape(n_train) for m in mods])   # (M, n)
+                    pm    = torch.stack([m.mean_module(m.train_inputs[0]) for m in mods])   # (M, n)
                     K_noisy = K_train_batch + torch.diag_embed(noise)
                     L = torch.linalg.cholesky(K_noisy)
                     alpha = torch.cholesky_solve((y - pm).unsqueeze(-1), L)
@@ -461,14 +460,17 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                     _batch_covar.raw_outputscale = torch.nn.Parameter(raw_os.clone())
                     _batch_covar.requires_grad_(False)
                     _batch_covar.eval()
-                    X_train_batch = X_train.unsqueeze(0).expand(N_sc, n_train, d)
-                    K_train_sc = _batch_covar(X_train_batch, X_train_batch).to_dense()
+                    # Per-model training X (each model has its own physics-transformed X)
+                    X_train_sc = torch.stack(
+                        [m.train_inputs[0] for m in sc_mods], dim=0
+                    )  # (N_sc, n, d)
+                    K_train_sc = _batch_covar(X_train_sc, X_train_sc).to_dense()
                     L_sc, alpha_sc = _chol_alpha(sc_mods, K_train_sc)
                     os_sc = _batch_covar.outputscale.detach()   # (N_sc,)
                 else:
-                    _batch_covar = L_sc = alpha_sc = os_sc = None
+                    _batch_covar = L_sc = alpha_sc = os_sc = X_train_sc = None
 
-                # --- MITIM_ConstantKernel group (K = ones everywhere) ---
+                # --- MITIM_ConstantKernel group (K = ones everywhere, X-independent) ---
                 if ck_indices:
                     ck_mods = [models[i] for i in ck_indices]
                     N_ck = len(ck_mods)
@@ -480,12 +482,13 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             self._sc_indices   = sc_indices
             self._ck_indices   = ck_indices
             self._batch_covar  = _batch_covar
+            self._X_train_sc   = X_train_sc   # (N_sc, n, d) — per-model kernel-space training X
             self._L_sc         = L_sc
             self._alpha_sc     = alpha_sc
             self._os_sc        = os_sc
             self._L_ck         = L_ck
             self._alpha_ck     = alpha_ck
-            self._train_X_cached = X_train
+            self._n_train      = n_train
             self._std_stdvs    = std_stdvs
             self._std_means    = std_means
             self._n_batched    = N
@@ -515,45 +518,53 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         from botorch.posteriors.gpytorch import GPyTorchPosterior
 
         N = self._n_batched
+        n_train = self._n_train
 
-        # Transform inputs: apply tf1 (physics, once) + tf2 (normalise) via model[0]
+        # Transform inputs per model: tf1 (physics) is computed once for model[0] and
+        # cached via parameters_combined; subsequent models reuse the cache for tf1 and
+        # apply their own tf2 (normalisation), which is model-specific.
         self.prepareToGenerateCommons()
-        Xtr = self.models[0].transform_inputs(X)  # (*batch_dims, M, d_transformed)
+        Xtr_per_model = [m.transform_inputs(X) for m in self.models]
         self.cold_startCommons()
 
-        d = Xtr.shape[-1]
-        orig_shape = Xtr.shape[:-1]   # (*batch_dims, M)
-        M_flat = Xtr.reshape(-1, d).shape[0]
-        Xtr_flat = Xtr.reshape(M_flat, d)
+        # orig_shape and M_flat derived from raw X — independent of each model's
+        # transformed feature dimensionality (d varies per model for ConstantKernel models).
+        orig_shape = X.shape[:-1]       # (*batch_dims, M)
+        M_flat = X[..., 0].numel()      # total test points, flattened
 
-        n_train = self._train_X_cached.shape[0]
-
-        # --- ScaleKernel group ---
+        # --- ScaleKernel group (all share the same d_sc = ard) ---
         if self._sc_indices:
             N_sc = len(self._sc_indices)
-            X_train_batch = self._train_X_cached.unsqueeze(0).expand(N_sc, n_train, d)
-            Xtr_batch     = Xtr_flat.unsqueeze(0).expand(N_sc, M_flat, d)
-            K_star_sc = self._batch_covar(Xtr_batch, X_train_batch).to_dense()  # (N_sc, M, n)
+            d_sc = Xtr_per_model[self._sc_indices[0]].shape[-1]
+            Xtr_sc = torch.stack(
+                [Xtr_per_model[i].reshape(M_flat, d_sc) for i in self._sc_indices], dim=0
+            )  # (N_sc, M_flat, d_sc)
+            K_star_sc = self._batch_covar(Xtr_sc, self._X_train_sc).to_dense()  # (N_sc, M, n)
             prior_sc  = torch.stack(
-                [self.models[i].mean_module(Xtr_flat) for i in self._sc_indices]
-            )  # (N_sc, M)
+                [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d_sc))
+                 for i in self._sc_indices]
+            )  # (N_sc, M_flat)
             mean_sc = prior_sc + (K_star_sc @ self._alpha_sc).squeeze(-1)
             v_sc = torch.linalg.solve_triangular(
                 self._L_sc, K_star_sc.transpose(-1, -2), upper=False
-            )  # (N_sc, n, M)
+            )  # (N_sc, n, M_flat)
             var_sc = (self._os_sc.unsqueeze(-1) - (v_sc * v_sc).sum(dim=-2)).clamp(min=0)
 
         # --- MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
+        # Each ck model may have a different d (kernel ignores inputs; mean module uses them).
         if self._ck_indices:
             N_ck = len(self._ck_indices)
-            K_star_ck = torch.ones(N_ck, M_flat, n_train, dtype=Xtr_flat.dtype, device=Xtr_flat.device)
+            _ref_dtype = Xtr_sc.dtype if self._sc_indices else Xtr_per_model[self._ck_indices[0]].dtype
+            K_star_ck = torch.ones(N_ck, M_flat, n_train, dtype=_ref_dtype, device=X.device)
             prior_ck  = torch.stack(
-                [self.models[i].mean_module(Xtr_flat) for i in self._ck_indices]
-            )  # (N_ck, M)
+                [self.models[i].mean_module(
+                     Xtr_per_model[i].reshape(M_flat, Xtr_per_model[i].shape[-1])
+                 ) for i in self._ck_indices]
+            )  # (N_ck, M_flat)
             mean_ck = prior_ck + (K_star_ck @ self._alpha_ck).squeeze(-1)
             v_ck = torch.linalg.solve_triangular(
                 self._L_ck, K_star_ck.transpose(-1, -2), upper=False
-            )  # (N_ck, n, M)
+            )  # (N_ck, n, M_flat)
             var_ck = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)
 
         # --- Assemble in original model order, preserving autograd graph ---
