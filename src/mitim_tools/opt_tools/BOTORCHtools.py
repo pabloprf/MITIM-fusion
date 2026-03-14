@@ -361,6 +361,204 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 
         return X_tr
 
+    def setup_batched_inference(self):
+        """Pre-compute batched kernel and cached Cholesky/alpha for vectorised posterior.
+
+        Supports: ConstantMean + ScaleKernel(Matern/RBF), all models with same n_train
+        and shared input space. Falls back gracefully on any incompatibility.
+        Call once after all sub-models are fitted.
+        """
+        import copy
+
+        self._batched_ready = False
+        models = self.models
+        N = len(models)
+        if N == 0:
+            return
+
+        m0 = models[0]
+
+        # --- Compatibility checks ---
+        reason = None
+        try:
+            if not isinstance(m0.covar_module, gpytorch.kernels.ScaleKernel):
+                reason = f"covar_module is {type(m0.covar_module).__name__}, expected ScaleKernel"
+                raise AssertionError
+            if not isinstance(
+                m0.covar_module.base_kernel,
+                (gpytorch.kernels.MaternKernel, gpytorch.kernels.RBFKernel),
+            ):
+                reason = f"base_kernel is {type(m0.covar_module.base_kernel).__name__}, expected Matern/RBF"
+                raise AssertionError
+            ard = m0.covar_module.base_kernel.raw_lengthscale.shape[-1]
+            n_train = m0.train_inputs[0].shape[0]
+            X_train = m0.train_inputs[0]
+            for i, m in enumerate(models[1:], 1):
+                if not isinstance(m.covar_module, gpytorch.kernels.ScaleKernel):
+                    reason = f"model[{i}] covar_module is {type(m.covar_module).__name__}"
+                    raise AssertionError
+                if not isinstance(
+                    m.covar_module.base_kernel,
+                    (gpytorch.kernels.MaternKernel, gpytorch.kernels.RBFKernel),
+                ):
+                    reason = f"model[{i}] base_kernel is {type(m.covar_module.base_kernel).__name__}"
+                    raise AssertionError
+                if m.covar_module.base_kernel.raw_lengthscale.shape[-1] != ard:
+                    reason = f"model[{i}] ard_num_dims mismatch"
+                    raise AssertionError
+                if m.train_inputs[0].shape[0] != n_train:
+                    reason = f"model[{i}] n_train mismatch"
+                    raise AssertionError
+                if not torch.allclose(m.train_inputs[0], X_train, atol=1e-6):
+                    reason = f"model[{i}] train_inputs differ from model[0]"
+                    raise AssertionError
+        except AssertionError:
+            print(f"\t[batched GP] skipping batched inference: {reason}", typeMsg="w")
+            return
+
+        try:
+            with torch.no_grad():
+                # Stack raw kernel params
+                raw_ls = torch.stack(
+                    [m.covar_module.base_kernel.raw_lengthscale for m in models], dim=0
+                )  # (N, 1, d)
+                raw_os = torch.stack(
+                    [m.covar_module.raw_outputscale for m in models], dim=0
+                )  # (N,)
+
+                # Stack noise per training point
+                noise_list = []
+                for m in models:
+                    lhd = m.likelihood
+                    if isinstance(lhd, gpytorch.likelihoods.FixedNoiseGaussianLikelihood):
+                        noise = lhd.noise_covar.noise.reshape(n_train)
+                    else:
+                        noise = lhd.noise.reshape(1).expand(n_train)
+                    noise_list.append(noise)
+                noise_batch = torch.stack(noise_list, dim=0)  # (N, n)
+
+                # Stack training targets
+                y_train = torch.stack(
+                    [m.train_targets.reshape(n_train) for m in models], dim=0
+                )  # (N, n)
+
+                # Stack outcome tf2 (Standardize) statistics
+                std_stdvs = torch.cat(
+                    [m.outcome_transform["tf2"].stdvs.reshape(1) for m in models], dim=0
+                )  # (N,)
+                std_means = torch.cat(
+                    [m.outcome_transform["tf2"].means.reshape(1) for m in models], dim=0
+                )  # (N,)
+
+                # Build batched kernel using existing GPyTorch kernel objects
+                _batch_covar = copy.deepcopy(m0.covar_module)
+                _batch_covar.base_kernel.raw_lengthscale = torch.nn.Parameter(raw_ls.clone())
+                _batch_covar.raw_outputscale = torch.nn.Parameter(raw_os.clone())
+                _batch_covar.requires_grad_(False)
+                _batch_covar.eval()
+
+                # Batched training kernel K_train (N, n, n)
+                d = X_train.shape[-1]
+                X_train_batch = X_train.unsqueeze(0).expand(N, n_train, d)
+                K_train = _batch_covar(X_train_batch, X_train_batch).to_dense()
+                K_noisy = K_train + torch.diag_embed(noise_batch)
+
+                # Prior mean at training points — supports any mean module (ConstantMean,
+                # LinearMean, MITIM_LinearMeanGradients, …)
+                prior_mean_train = torch.stack(
+                    [m.mean_module(X_train) for m in models], dim=0
+                )  # (N, n)
+
+                # Cholesky and alpha = K_noisy^{-1} (y - prior_mean)
+                L_batch = torch.linalg.cholesky(K_noisy)  # (N, n, n)
+                y_centered = y_train - prior_mean_train  # (N, n)
+                alpha_batch = torch.cholesky_solve(y_centered.unsqueeze(-1), L_batch)  # (N, n, 1)
+
+            self._batch_covar = _batch_covar
+            self._L_batch = L_batch
+            self._alpha_batch = alpha_batch
+            self._train_X_cached = X_train
+            self._os_batch = _batch_covar.outputscale.detach()  # (N,)
+            self._std_stdvs = std_stdvs
+            self._std_means = std_means
+            self._n_batched = N
+            self._batched_ready = True
+            print(f"\t[batched GP] setup: N={N}, n_train={n_train}, d={ard}", typeMsg="i")
+
+        except Exception as e:
+            print(f"\t[batched GP] setup failed ({e}) — sequential path will be used", typeMsg="w")
+            self._batched_ready = False
+
+    def _batched_posterior(self, X):
+        """Vectorised GP posterior: one kernel call for all N models.
+
+        X: raw (pre-transform) test inputs, shape (*batch_dims, M, d_raw).
+        Returns GPyTorchPosterior with MultitaskMultivariateNormal distribution.
+        """
+        from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
+        from linear_operator.operators import DiagLinearOperator
+        from botorch.posteriors.gpytorch import GPyTorchPosterior
+
+        N = self._n_batched
+
+        # Transform inputs: apply tf1 (physics, once) + tf2 (normalise) via model[0]
+        self.prepareToGenerateCommons()
+        Xtr = self.models[0].transform_inputs(X)  # (*batch_dims, M, d_transformed)
+        self.cold_startCommons()
+
+        d = Xtr.shape[-1]
+        orig_shape = Xtr.shape[:-1]   # (*batch_dims, M)
+        M_flat = Xtr.reshape(-1, d).shape[0]
+
+        Xtr_flat = Xtr.reshape(M_flat, d)
+        Xtr_batch = Xtr_flat.unsqueeze(0).expand(N, M_flat, d)  # (N, B*M, d)
+        n_train = self._train_X_cached.shape[0]
+        X_train_batch = self._train_X_cached.unsqueeze(0).expand(N, n_train, d)  # (N, n, d)
+
+        # One batched kernel call for all N models
+        K_star = self._batch_covar(Xtr_batch, X_train_batch).to_dense()  # (N, B*M, n)
+
+        # Prior mean at test points — works for any mean module
+        prior_mean_test = torch.stack(
+            [m.mean_module(Xtr_flat) for m in self.models], dim=0
+        )  # (N, B*M)
+
+        # Predicted mean (N, B*M)
+        pred_mean_flat = prior_mean_test + (K_star @ self._alpha_batch).squeeze(-1)
+
+        # Predicted variance (N, B*M): prior_var - ||L^{-1} K_star^T||^2
+        v = torch.linalg.solve_triangular(
+            self._L_batch, K_star.transpose(-1, -2), upper=False
+        )  # (N, n, B*M)
+        pred_var_flat = (self._os_batch.unsqueeze(-1) - (v * v).sum(dim=-2)).clamp(min=0)
+
+        # Reshape to (N, *batch_dims, M)
+        pred_mean = pred_mean_flat.view(N, *orig_shape)
+        pred_var = pred_var_flat.view(N, *orig_shape)
+
+        # Un-normalise tf2 (Standardize): multiply by training output std, add mean
+        sh = [N] + [1] * (pred_mean.dim() - 1)
+        mean_tf2 = pred_mean * self._std_stdvs.view(*sh) + self._std_means.view(*sh)
+        var_tf2 = pred_var * self._std_stdvs.view(*sh) ** 2
+
+        # Un-normalise tf1 (physics) per output using existing X-identity cache
+        mvns = []
+        for i, m in enumerate(self.models):
+            tf1 = m.outcome_transform["tf1"]
+            if not (hasattr(tf1, "_cached_factor_X") and tf1._cached_factor_X is X):
+                tf1._cached_factor = tf1.surrogate_parameters["transformationOutputs"](
+                    X, tf1.surrogate_parameters, tf1.output
+                ).to(X.device)
+                tf1._cached_factor_X = X
+            factor = tf1._cached_factor.squeeze(-1)  # (*batch_dims, M)
+
+            mean_i = mean_tf2[i] * factor
+            var_i = (var_tf2[i] * factor ** 2).clamp(min=0)
+            mvns.append(MultivariateNormal(mean_i, DiagLinearOperator(var_i)))
+
+        mtmvn = MultitaskMultivariateNormal.from_independent_mvns(mvns)
+        return GPyTorchPosterior(distribution=mtmvn)
+
     def posterior(
         self,
         X,
@@ -369,6 +567,19 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         posterior_transform=None,
         **kwargs,
     ):
+        # Fast batched path: one kernel call for all N models
+        if (
+            getattr(self, "_batched_ready", False)
+            and output_indices is None
+            and not observation_noise
+            and posterior_transform is None
+        ):
+            try:
+                return self._batched_posterior(X)
+            except Exception as e:
+                print(f"\t[batched GP] posterior failed ({e}) — falling back", typeMsg="w")
+
+        # Sequential fallback
         self.prepareToGenerateCommons()
         posterior = super().posterior(
             X,

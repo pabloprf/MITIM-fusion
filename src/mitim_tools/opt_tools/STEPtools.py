@@ -274,6 +274,7 @@ class OPTstep:
         for GP in self.GP["individual_models"]:
             models += (GP.gpmodel,)
         self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
+        self.GP["combined_model"].gpmodel.setup_batched_inference()
 
         # ------------------------------------------------------------------------------------------------------
         # Make sure each model has the right surrogate_transformation_variables inside the combined model
