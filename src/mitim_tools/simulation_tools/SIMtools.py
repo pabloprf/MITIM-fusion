@@ -953,7 +953,7 @@ class mitim_simulation:
         cont = 0
         for ikey in self.results:
             
-            isThisTheRightReadResults = (subfolder in variable) and (variable== "_".join(ikey.split("_")[:-1]).split(subfolder + "_")[-1])
+            isThisTheRightReadResults = (subfolder in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subfolder + "_")[-1])
 
             if isThisTheRightReadResults:
 
