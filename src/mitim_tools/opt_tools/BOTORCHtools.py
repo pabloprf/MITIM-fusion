@@ -555,7 +555,11 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         # apply their own tf2 (normalisation), which is model-specific.
         _tick("start")
         self.prepareToGenerateCommons()
-        Xtr_per_model = [m.transform_inputs(X) for m in self.models]
+        Xtr_per_model = []
+        for _mi, _m in enumerate(self.models):
+            Xtr_per_model.append(_m.transform_inputs(X))
+            if _profile and _mi == 0:
+                _t["transform_inputs_m0"] = time.perf_counter()
         # Note: cold_startCommons() is intentionally deferred until after the tf1_factors loop.
         # transform_inputs populates parameters_combined["powerstate"] (via flag_to_store=True).
         # output_transform_portals (called per model below) reuses that cached powerstate via
@@ -667,8 +671,8 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         _tick("mtmvn")
 
         if _profile:
-            keys = ["transform_inputs", "sc_stack", "sc_kernel", "sc_mean", "sc_var",
-                    "ck_mean", "ck_var", "tf2", "tf1_factors", "mtmvn"]
+            keys = ["transform_inputs_m0", "transform_inputs", "sc_stack", "sc_kernel",
+                    "sc_mean", "sc_var", "ck_mean", "ck_var", "tf2", "tf1_factors", "mtmvn"]
             prev = _t.get("start", 0)
             parts = []
             for k in keys:
