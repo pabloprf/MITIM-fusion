@@ -556,7 +556,12 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         _tick("start")
         self.prepareToGenerateCommons()
         Xtr_per_model = [m.transform_inputs(X) for m in self.models]
-        self.cold_startCommons()
+        # Note: cold_startCommons() is intentionally deferred until after the tf1_factors loop.
+        # transform_inputs populates parameters_combined["powerstate"] (via flag_to_store=True).
+        # output_transform_portals (called per model below) reuses that cached powerstate via
+        # constructEvaluationProfiles — but only if parameters_combined is still present.
+        # Calling cold_startCommons() here would delete it, forcing 63 separate powerstate
+        # reconstructions instead of one.
         _tick("transform_inputs")
 
         # orig_shape and M_flat derived from raw X — independent of each model's
@@ -642,6 +647,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 ).to(X.device)
                 tf1._cached_factor_X = X
             factors_list.append(tf1._cached_factor.squeeze(-1))  # (*orig_shape,)
+        self.cold_startCommons()  # deferred from after transform_inputs — safe now that tf1 factors are done
         _tick("tf1_factors")
 
         factors  = torch.stack(factors_list)                              # (N, *orig_shape)
