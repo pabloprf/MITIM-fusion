@@ -535,11 +535,11 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         Set MITIM_GP_PROFILE=1 to print per-section wall times.
         """
         import os, time
-        from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
-        from linear_operator.operators import DiagLinearOperator
+        from gpytorch.distributions import MultitaskMultivariateNormal
+        from linear_operator.operators import DiagLinearOperator, BlockDiagLinearOperator
         from botorch.posteriors.gpytorch import GPyTorchPosterior
 
-        _profile = os.environ.get("MITIM_GP_PROFILE", "0") == "1"
+        _profile = True #os.environ.get("MITIM_GP_PROFILE", "0") == "1"
         _t = {}
 
         def _tick(label):
@@ -628,8 +628,12 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         var_tf2  = pred_var  * self._std_stdvs.view(*sh) ** 2
         _tick("tf2")
 
-        # Un-normalise tf1 (physics) per output using existing X-identity cache
-        mvns = []
+        # Un-normalise tf1 (physics) per output using existing X-identity cache.
+        # Compute factors in a plain loop (unavoidable — each output has its own transform),
+        # then apply in one batched op and build MTMVN directly.  This replaces N individual
+        # MultivariateNormal + DiagLinearOperator constructions (O(N*M) Python overhead) with
+        # a single BlockDiagLinearOperator(DiagLinearOperator(...)) call.
+        factors_list = []
         for i, m in enumerate(self.models):
             tf1 = m.outcome_transform["tf1"]
             if not (hasattr(tf1, "_cached_factor_X") and tf1._cached_factor_X is X):
@@ -637,19 +641,28 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                     X, tf1.surrogate_parameters, tf1.output
                 ).to(X.device)
                 tf1._cached_factor_X = X
-            factor = tf1._cached_factor.squeeze(-1)  # (*batch_dims, M)
+            factors_list.append(tf1._cached_factor.squeeze(-1))  # (*orig_shape,)
+        _tick("tf1_factors")
 
-            mean_i = mean_tf2[i] * factor
-            var_i  = (var_tf2[i] * factor ** 2).clamp(min=0)
-            mvns.append(MultivariateNormal(mean_i, DiagLinearOperator(var_i)))
-        _tick("tf1_mvns")
+        factors  = torch.stack(factors_list)                              # (N, *orig_shape)
+        mean_fin = (mean_tf2 * factors).reshape(N, M_flat)               # (N, M_flat)
+        var_fin  = (var_tf2 * factors ** 2).clamp(min=0).reshape(N, M_flat)  # (N, M_flat)
 
-        mtmvn = MultitaskMultivariateNormal.from_independent_mvns(mvns)
+        # mean_out: (*orig_shape, N)  — MultitaskMultivariateNormal convention (*batch, n_pts, n_tasks)
+        # block_covar: BlockDiagLinearOperator of N diagonal (M_flat×M_flat) blocks,
+        #              interleaved=False → block i covers all M points for task i
+        mean_out    = mean_fin.reshape(N, *orig_shape).permute(
+            *range(1, len(orig_shape) + 1), 0
+        )
+        block_covar = BlockDiagLinearOperator(DiagLinearOperator(var_fin))
+        mtmvn = MultitaskMultivariateNormal(
+            mean_out, block_covar, validate_args=False, interleaved=False
+        )
         _tick("mtmvn")
 
         if _profile:
             keys = ["transform_inputs", "sc_stack", "sc_kernel", "sc_mean", "sc_var",
-                    "ck_mean", "ck_var", "tf2", "tf1_mvns", "mtmvn"]
+                    "ck_mean", "ck_var", "tf2", "tf1_factors", "mtmvn"]
             prev = _t.get("start", 0)
             parts = []
             for k in keys:
