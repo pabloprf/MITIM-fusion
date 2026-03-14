@@ -54,6 +54,8 @@ class gacode_state(MITIMstate.mitim_state):
         # Ensure correctness (wrong names in older input.gacode files)
         if "qmom(Nm)" in self.profiles:
             self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
+        if "qmom(MW/m^3)" in self.profiles:
+            self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(MW/m^3)")
         if "qpar_beam(MW/m^3)" in self.profiles:
             self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
         if "qpar_wall(MW/m^3)" in self.profiles:
