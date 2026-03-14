@@ -36,6 +36,8 @@ class mitim_simulation:
         self.results, self.scans = {}, {}
         
         self.run_specifications = None
+        
+        self.NormalizationSets = {'SELECTED': None}
 
     def prep(
         self,
@@ -868,6 +870,7 @@ class mitim_simulation:
         label="run1",
         folder=None,  # If None, search in the previously run folder
         suffix=None,  # If None, search with my standard _0.55 suffixes corresponding to rho of this TGLF class
+        input_gacode=None,  # If provided, will try to get normalizations from it if they are not already populated in the class
         **kwargs_to_class_output
     ):
         print("> Reading simulation results")
@@ -883,6 +886,12 @@ class mitim_simulation:
             'parsed': [],
             "x": np.array(self.rhos),
             }
+
+        # Try get normalizations if they weren't populated (e.g. this is just a "read" of an already run folder)
+        if self.NormalizationSets["SELECTED"] is None and input_gacode is not None:
+            print("\t- Getting normalizations from input.gacode provided in the read function")
+            from mitim_tools.gacode_tools import PROFILEStools
+            self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
 
         for rho in self.rhos:
 
@@ -943,7 +952,8 @@ class mitim_simulation:
 
         cont = 0
         for ikey in self.results:
-            isThisTheRightReadResults = (subfolder in ikey) and (variable== "_".join(ikey.split("_")[:-1]).split(subfolder + "_")[-1])
+            
+            isThisTheRightReadResults = (subfolder in variable) and (variable== "_".join(ikey.split("_")[:-1]).split(subfolder + "_")[-1])
 
             if isThisTheRightReadResults:
 

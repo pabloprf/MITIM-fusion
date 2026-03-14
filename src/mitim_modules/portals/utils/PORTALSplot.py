@@ -2132,6 +2132,68 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         lab = 'Optimization',
     )
     
+def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
+    
+    print("- Plotting PORTALS Simulations - Transport models")
+    
+    colors = GRAPHICStools.listColors()
+    
+    k = 0
+    for it in self.transport_model_objects:
+        turb = self.transport_model_objects[it]['turbulence']
+        turb.plot(fn=fn, fn_color=fn_color+k, labels = ['base'], extratitle=f"Turb (#{it}) - ")
+        
+        if "distributions" in turb.__dict__:
+            distributions = turb.distributions
+            k += 1
+            fig = fn.add_figure(label=f"Turb (#{it}) - Distributions", tab_color=fn_color+k)
+            axs = fig.subplots(ncols=3)
+            
+            varss = ['Qe', 'Qi', 'Ge']
+            for i, var in enumerate(varss):
+                ax = axs[i]
+                y = np.array(distributions['y'][var])
+                # Plot each distribution case as a light profile
+                for jj in range(y.shape[0]):
+                    ax.plot(
+                        turb.rhos,
+                        y[jj, :],
+                        marker='o',
+                        ms=3,
+                        lw=0.8,
+                        alpha=0.4,
+                        color=colors[jj % len(colors)],
+                        label=distributions['x'][jj],
+                        zorder=2,
+                    )
+
+                # Overlay mean ± 2std with a clear point+errorbar style
+                y_mean = y.mean(axis=0)
+                y_std = y.std(axis=0)
+                ax.errorbar(
+                    turb.rhos,
+                    y_mean,
+                    yerr=2*y_std,
+                    fmt='o-',
+                    color='k',
+                    ms=4,
+                    lw=1.6,
+                    elinewidth=1.2,
+                    capsize=3,
+                    capthick=1.2,
+                    markerfacecolor='white',
+                    markeredgewidth=1.1,
+                    label='mean ± 2std',
+                    zorder=5,
+                )
+                        
+                ax.set_xlabel("$\\rho_N$")
+                ax.set_ylabel(var)
+                ax.legend(loc="best",prop={'size': 6})
+                GRAPHICStools.addDenseAxis(ax)
+        
+        self.transport_model_objects[it]['neoclassical'].plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
+        k += 2
             
 def PORTALSanalyzer_plotModelComparison(
     self,

@@ -23,7 +23,7 @@ def main():
                         help="Additional indeces to plot.")
     parser.add_argument("--all", required=False, default=False, action="store_true",
                         help="If set, it will plot all fluxes, not only the main ones.")
-    parser.add_argument("--complete", "-c", required=False, default=False, action="store_true",
+    parser.add_argument("--complete", "-c", "--full", required=False, default=False, action="store_true",
                         help="If set, it will plot the complete PORTALS results, not only the metrics.")
     parser.add_argument("--save", type=str, required=False, default=None,
                         help="Folder to save the figures.")

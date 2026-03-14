@@ -77,7 +77,7 @@ class NEO(SIMtools.mitim_simulation):
             
         type_plots = {
             ' (GB)': (['Qe', 'Qi', 'Ge'],['GB', 'GB', 'GB']),
-            ' (unnormalized)': (['Qe_unn', 'Qi_unn', 'Ge_unn'],['$MW/m^2$', '$MW/m^2$', '$1E20/s/m^2$'])
+            ' (real)': (['Qe_unn', 'Qi_unn', 'Ge_unn'],['$MW/m^2$', '$MW/m^2$', '$1E20/s/m^2$'])
         }
             
         for suffix, (variables, labels_y) in type_plots.items():

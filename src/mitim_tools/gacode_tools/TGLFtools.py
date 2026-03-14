@@ -450,11 +450,7 @@ class TGLF(SIMtools.mitim_simulation):
 
         # Main folder where things are
         from mitim_tools.gacode_tools import PROFILEStools
-        self.NormalizationSets, _ = NORMtools.normalizations(
-            PROFILEStools.gacode_state(input_gacode)
-            if input_gacode is not None
-            else None
-        )
+        self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode)if input_gacode is not None else None)
 
         # input_tglf_file
         inputclass = TGLFinput(file=input_tglf_file)
@@ -489,6 +485,7 @@ class TGLF(SIMtools.mitim_simulation):
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
         cold_startWF = True, # If this is a "complete" read, I will assign a None
         require_all_files = True,   # If False, I only need the fluxes
+        input_gacode = None, # Only needed to grab normalizations if they weren't populated already (e.g. this is just a "read" of an already run folder
     ):
         print("> Reading TGLF results")
 
@@ -521,6 +518,11 @@ class TGLF(SIMtools.mitim_simulation):
         if folder is None:
             folder = self.FolderSimLast
 
+        # Try get normalizations if they weren't populated (e.g. this is just a "read" of an already run folder)
+        if self.NormalizationSets["SELECTED"] is None and input_gacode is not None:
+            print("\t- Getting normalizations from input.gacode provided in the read function")
+            from mitim_tools.gacode_tools import PROFILEStools
+            self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
 
         # -----------------------------------------
         # ~~~~~~~ Read results

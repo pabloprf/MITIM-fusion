@@ -46,6 +46,13 @@ class PORTALSanalyzer:
         self.mitim_runs = IOtools.unpickle_mitim(self.opt_fun.mitim_model.optimization_object.optimization_extra)
 
         self.prep_metrics()
+        
+        # Read info about transport models used
+        self.transport_model_objects = {}
+        try:
+            self.read_transport_models()
+        except:
+            print("\t- Could not read transport models information, likely due to missing files in the optimization folders. You will not be able to plot transport model results, but other PORTALS analysis should work fine.", typeMsg="w")
 
     @classmethod
     def from_folder(cls, folder, folderRemote=None, folderAnalysis=None):
@@ -358,6 +365,48 @@ class PORTALSanalyzer:
         self.DVdistMetric_x = self.opt_fun.res.DVdistMetric_x
         self.DVdistMetric_y = self.opt_fun.res.DVdistMetric_y
 
+    def read_transport_models(self):
+        
+        its = [0,self.ibest]
+        
+        turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        neoclassical_model = self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+        
+        for it in its:
+            folder_execution = self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder"
+            
+            if turbulence_model.lower() == "tglf":
+                from mitim_tools.gacode_tools import TGLFtools
+                tglf = TGLFtools.TGLF(rhos=self.rhos)
+                tglf.read(folder=folder_execution / "base_tglf", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                
+                # ---------------------------------------
+                # Extract turbulence drives distributions
+                # ---------------------------------------
+                
+                # Find subfolders with that preffix
+                subfolders = [f for f in (folder_execution).iterdir() if f.is_dir() and f.name.startswith("turb_drives_")]
+                subfolders.append( folder_execution / "base_tglf")
+                distributions_x = []
+                distributions_y = {'Qe': [], 'Qi': [], 'Ge': []}
+                for subfolder in subfolders:
+                    label = subfolder.name #[len("turb_drives_"):]
+                    tglf.read(folder=subfolder, label=label, input_gacode=folder_execution / "input.gacode_torun", require_all_files=False)
+
+                    distributions_x.append(label)
+                    distributions_y['Qe'].append([tglf.results[label]['output'][i].Qe_unn for i in range(tglf.rhos.shape[0])])
+                    distributions_y['Qi'].append([tglf.results[label]['output'][i].Qi_unn for i in range(tglf.rhos.shape[0])])
+                    distributions_y['Ge'].append([tglf.results[label]['output'][i].Ge_unn for i in range(tglf.rhos.shape[0])])
+                
+                tglf.distributions = {'x': distributions_x, 'y': distributions_y}
+                
+            if neoclassical_model.lower() == "neo":
+                from mitim_tools.gacode_tools import NEOtools
+                neo = NEOtools.NEO(rhos=self.rhos)
+                neo.read(folder=folder_execution / "base_neo", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                
+            self.transport_model_objects[it] = {"turbulence": tglf, "neoclassical": neo}
+                
     # ****************************************************************************
     # PLOTTING
     # ****************************************************************************
@@ -379,11 +428,14 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Expected", tab_color=tab_color_istart + 3 if tabs_colors_common is None else tabs_colors_common)
         self.plotExpected(fig=fig)
 
-        # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
-        # _, _ = self.plotModelComparison(fig=fig)
-
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         self.plotDebug(fig=fig)
+        
+        if len(self.transport_model_objects) > 0:
+            self.plotTransportModels(fn=self.fn, fn_color=tab_color_istart + 5 if tabs_colors_common is None else tabs_colors_common+1)
+        
+        # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
+        # _, _ = self.plotModelComparison(fig=fig)
         
         #self.fn.tight_layout()
 
@@ -401,6 +453,9 @@ class PORTALSanalyzer:
 
     def plotDebug(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotDebug(self, **kwargs)
+
+    def plotTransportModels(self, **kwargs):
+        PORTALSplot.PORTALSanalyzer_plotTransportModels(self, **kwargs)
 
     def plotModelComparison(self, UseThisTGLFfull=None, **kwargs):
         UseTGLFfull_x = None
