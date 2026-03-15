@@ -180,8 +180,8 @@ def _add_random_points_if_missing(xGuesses, num_restarts, bounds):
     high = torch.min(bounds[1, :], center + half_width)
 
     # Use numpy RNG since optimize_function seeds numpy
-    low_np = low.detach().cpu().numpy()
-    high_np = high.detach().cpu().numpy()
+    low_np = low.cpu().numpy()
+    high_np = high.cpu().numpy()
     span_np = np.maximum(high_np - low_np, 0.0)
     u = np.random.rand(missing, bounds.shape[-1])
     extra_np = low_np[None, :] + u * span_np[None, :]

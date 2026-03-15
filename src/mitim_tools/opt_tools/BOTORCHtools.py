@@ -634,8 +634,8 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 mean_by_model[i] = mean_g[j]
                 var_by_model[i]  = var_g[j]
 
-        pred_mean = torch.stack(mean_by_model).view(N, *orig_shape)
-        pred_var  = torch.stack(var_by_model).view(N, *orig_shape)
+        pred_mean = torch.stack(mean_by_model).reshape(N, *orig_shape)
+        pred_var  = torch.stack(var_by_model).reshape(N, *orig_shape)
 
         # Un-normalise tf2 (Standardize)
         sh       = [N] + [1] * (pred_mean.dim() - 1)

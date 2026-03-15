@@ -22,14 +22,17 @@ from IPython import embed
 
 class portals(STRATEGYtools.opt_evaluator):
     def __init__(
-        self, 
+        self,
         folder,                             # Folder where the PORTALS workflow will be run
-        portals_namelist = None,
-        tensor_options = {
-            "dtype": torch.double,
-            "device": torch.device("cpu"),
-        },
+        portals_namelist=None,
+        tensor_options=None,
         ):
+
+        if tensor_options is None:
+            tensor_options = {
+                "dtype": torch.double,
+                "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            }
 
         time1 = datetime.datetime.now()
         print("\n-----------------------------------------------------------------------------------------")

@@ -677,22 +677,22 @@ def storeInfo(x_opt, acq_evaluated, fun):
     y_ini_res = summarizeSituation(x_ini, fun, printYN=False)
     y, y1, y2, _ = fun.evaluators["residual_function"](x_ini, outputComponents=True)
 
-    infoOPT["x_start"] = copy.deepcopy(x_ini.cpu().numpy())
-    infoOPT["y_res_start"] = copy.deepcopy(y_ini_res.cpu().numpy())
-    infoOPT["yFun_start"] = copy.deepcopy(y1.detach().cpu().numpy())
-    infoOPT["yCal_start"] = copy.deepcopy(y2.detach().cpu().numpy())
-    infoOPT["y_start"] = copy.deepcopy(y.detach().cpu().numpy())
+    infoOPT["x_start"] = x_ini.detach().cpu().numpy().copy()
+    infoOPT["y_res_start"] = y_ini_res.detach().cpu().numpy().copy()
+    infoOPT["yFun_start"] = y1.detach().cpu().numpy().copy()
+    infoOPT["yCal_start"] = y2.detach().cpu().numpy().copy()
+    infoOPT["y_start"] = y.detach().cpu().numpy().copy()
 
     # End
     if x_opt.shape[0] > 0:
         y_opt_res = summarizeSituation(x_opt, fun, printYN=False)
         y, y1, y2, _ = fun.evaluators["residual_function"](x_opt, outputComponents=True)
 
-        infoOPT["x"] = copy.deepcopy(x_opt.cpu().numpy())
-        infoOPT["y_res"] = copy.deepcopy(y_opt_res.cpu().numpy())
-        infoOPT["yFun"] = copy.deepcopy(y1.detach().cpu().numpy())
-        infoOPT["yCal"] = copy.deepcopy(y2.detach().cpu().numpy())
-        infoOPT["y"] = copy.deepcopy(y.detach().cpu().numpy())
+        infoOPT["x"] = x_opt.detach().cpu().numpy().copy()
+        infoOPT["y_res"] = y_opt_res.detach().cpu().numpy().copy()
+        infoOPT["yFun"] = y1.detach().cpu().numpy().copy()
+        infoOPT["yCal"] = y2.detach().cpu().numpy().copy()
+        infoOPT["y"] = y.detach().cpu().numpy().copy()
 
     infoOPT["acq_evaluated"] = acq_evaluated
 

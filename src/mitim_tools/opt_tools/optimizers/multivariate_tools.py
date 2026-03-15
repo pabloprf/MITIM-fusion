@@ -321,18 +321,24 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
 
         relax_history = torch.stack(relax_history)
         step_history = torch.stack(step_history)
-        
+
+        x_history_np = x_history.detach().cpu().numpy()
+        y_history_np = y_history.detach().cpu().numpy()
+        r_history_np = relax_history.detach().cpu().numpy()
+        m_history_np = metric_history.detach().cpu().numpy()
+        s_history_np = step_history.detach().cpu().numpy()
+
         for candidate in range(x_history.shape[1]):
-            
+
             fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10), sharex=True)
-            
+
             axs = axs.flatten()
-            
-            x = x_history[:,candidate,:].cpu().numpy()
-            y = y_history[:,candidate,:].cpu().numpy()
-            r = relax_history[:,candidate,:].cpu().numpy()
-            m = metric_history[:,candidate].cpu().numpy()
-            s = step_history[:,candidate,:].cpu().numpy()
+
+            x = x_history_np[:,candidate,:]
+            y = y_history_np[:,candidate,:]
+            r = r_history_np[:,candidate,:]
+            m = m_history_np[:,candidate]
+            s = s_history_np[:,candidate,:]
             
             colors = GRAPHICStools.listColors()[:x.shape[-1]]
 

@@ -71,14 +71,17 @@ class opt_evaluator:
         folder,
         namelist=None,
         default_namelist_function=None,
-        tensor_options = {
-            "dtype": torch.double,
-            "device": torch.device("cpu"),
-        }
+        tensor_options=None,
     ):
         """
         Namelist file can be provided and will be copied to the folder
         """
+
+        if tensor_options is None:
+            tensor_options = {
+                "dtype": torch.double,
+                "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            }
 
         self.tensor_options = tensor_options
 
@@ -715,7 +718,7 @@ class MITIM_BO:
                     current_step.x_next = self.x_next
 
                 # If there is any Nan, assume that I cannot cold_start this step
-                if IOtools.isAnyNan(self.x_next.cpu()):
+                if self.x_next.isnan().any():
                     print("\t* Because x_next points have NaNs, disabling cold_starting-from-previous from this point on",typeMsg="w")
                     self.cold_start = True
 
@@ -956,11 +959,11 @@ class MITIM_BO:
         # ~~~~~~~~~~~~~~~~~~
 
         # Update the train_X
-        self.train_X = np.append(self.train_X, self.x_next.cpu(), axis=0)
+        self.train_X = np.append(self.train_X, self.x_next.detach().cpu().numpy(), axis=0)
 
         # Update optimization_data with nans for the new points (will be updated later)
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.detach().cpu().numpy())
 
         # Update optimization_results only as "predicted"
         if not isThisCorrected:
@@ -1260,7 +1263,7 @@ class MITIM_BO:
 
         # Write initialization in Tabular
         _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
-        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.cpu().numpy())
+        self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.detach().cpu().numpy())
 
         # Write optimization_results
         self.optimization_results.addPoints(
@@ -1622,8 +1625,9 @@ class MITIM_BO:
         maxPoints = 1  # 4
         xExplore = []
         if "x_next" in step.__dict__.keys() and step.x_next is not None:
+            x_next_np = step.x_next.detach().cpu().numpy()
             for i in range(np.min([step.x_next.shape[0], maxPoints])):
-                xExplore.append(step.x_next[i].cpu().numpy())
+                xExplore.append(x_next_np[i])
         else:
             xExplore.append(step.train_X[0])
 

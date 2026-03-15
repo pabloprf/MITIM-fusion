@@ -68,7 +68,7 @@ class surrogate_model:
         self.losses = None
 
         if self.dfT is None:
-            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
+            self.dfT = torch.randn((2, 2), dtype=torch.double, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
         # Surrogate parameters must contain at least:
         if 'transformationInputs' not in self.surrogate_parameters:
