@@ -423,7 +423,8 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
           - MITIM_ConstantKernel:    K(x1,x2)=1 always; no kernel call needed at inference
 
         Any mean module is supported (ConstantMean, LinearMean, MITIM_LinearMeanGradients, …).
-        Requires all models to share the same n_train and transformed training inputs.
+        Models are grouped by (kernel_type, n_train, ard) so that heterogeneous training-set
+        sizes are handled — each group is batched independently.
         Falls back gracefully on any incompatibility.
         Call once after all sub-models are fitted.
         """
@@ -435,35 +436,26 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         if N == 0:
             return
 
-        # --- Classify each model into a kernel group ---
-        sc_indices = []   # ScaleKernel(Matern/RBF) models
-        ck_indices = []   # MITIM_ConstantKernel models
-
-        n_train = models[0].train_inputs[0].shape[0]
-        X_train = models[0].train_inputs[0]
-        ard = None
+        # --- Classify each model; group by (kernel_type, n_train, ard) ---
+        # sc_buckets: dict (n_train, ard) -> list of model indices
+        # ck_buckets: dict (n_train,)     -> list of model indices
+        sc_buckets = {}
+        ck_buckets = {}
 
         for i, m in enumerate(models):
-            covar = m.covar_module
-            if m.train_inputs[0].shape[0] != n_train:
-                print(f"\t[batched GP] skipping: model[{i}] n_train mismatch", typeMsg="w")
-                return
-
+            covar  = m.covar_module
+            n_i    = m.train_inputs[0].shape[0]
             if isinstance(covar, gpytorch.kernels.ScaleKernel) and isinstance(
                 covar.base_kernel, (gpytorch.kernels.MaternKernel, gpytorch.kernels.RBFKernel)
             ):
-                d_i = covar.base_kernel.raw_lengthscale.shape[-1]
-                if ard is None:
-                    ard = d_i
-                elif d_i != ard:
-                    print(f"\t[batched GP] skipping: model[{i}] ard_num_dims mismatch", typeMsg="w")
-                    return
-                sc_indices.append(i)
+                ard_i = covar.base_kernel.raw_lengthscale.shape[-1]
+                key   = (n_i, ard_i)
+                sc_buckets.setdefault(key, []).append(i)
             elif isinstance(covar, MITIM_ConstantKernel):
-                ck_indices.append(i)
+                ck_buckets.setdefault((n_i,), []).append(i)
             else:
                 print(
-                    f"\t[batched GP] skipping: model[{i}] covar_module is "
+                    f"\t[MITIM: GP batching] Cannot batch: model[{i}] covar_module is "
                     f"{type(covar).__name__} (not supported)",
                     typeMsg="w",
                 )
@@ -471,9 +463,9 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 
         try:
             with torch.no_grad():
-                d = X_train.shape[-1]
+                ref = models[0].train_inputs[0]
 
-                # --- Outcome tf2 stats for ALL models (in order) ---
+                # --- Outcome tf2 stats for ALL models (in original order) ---
                 std_stdvs = torch.cat(
                     [m.outcome_transform["tf2"].stdvs.reshape(1) for m in models], dim=0
                 )  # (N,)
@@ -481,80 +473,85 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                     [m.outcome_transform["tf2"].means.reshape(1) for m in models], dim=0
                 )  # (N,)
 
-                def _noise(m):
+                def _noise(m, n):
                     lhd = m.likelihood
                     if isinstance(lhd, gpytorch.likelihoods.FixedNoiseGaussianLikelihood):
-                        return lhd.noise_covar.noise.reshape(n_train)
-                    return lhd.noise.reshape(1).expand(n_train)
+                        return lhd.noise_covar.noise.reshape(n)
+                    return lhd.noise.reshape(1).expand(n)
 
-                def _chol_alpha(mods, K_train_batch):
-                    """Given K_train_batch (M, n, n) and a list of models, return L, alpha.
-                    Each model's own train_inputs[0] is used for the mean module, since
-                    the transformed training X is model-specific (output-dependent physics tf)."""
-                    noise = torch.stack([_noise(m) for m in mods])                          # (M, n)
-                    y     = torch.stack([m.train_targets.reshape(n_train) for m in mods])   # (M, n)
-                    pm    = torch.stack([m.mean_module(m.train_inputs[0]) for m in mods])   # (M, n)
+                def _chol_alpha(mods, K_train_batch, n):
+                    noise   = torch.stack([_noise(m, n) for m in mods])
+                    y       = torch.stack([m.train_targets.reshape(n) for m in mods])
+                    pm      = torch.stack([m.mean_module(m.train_inputs[0]) for m in mods])
                     K_noisy = K_train_batch + torch.diag_embed(noise)
-                    L = torch.linalg.cholesky(K_noisy)
-                    alpha = torch.cholesky_solve((y - pm).unsqueeze(-1), L)
+                    L       = torch.linalg.cholesky(K_noisy)
+                    alpha   = torch.cholesky_solve((y - pm).unsqueeze(-1), L)
                     return L, alpha
 
-                # --- ScaleKernel group ---
-                if sc_indices:
-                    sc_mods = [models[i] for i in sc_indices]
-                    N_sc = len(sc_mods)
+                # --- Build one batched group per (n_train, ard) bucket ---
+                sc_groups = []
+                for (n, ard), indices in sc_buckets.items():
+                    mods   = [models[i] for i in indices]
                     raw_ls = torch.stack(
-                        [m.covar_module.base_kernel.raw_lengthscale for m in sc_mods], dim=0
-                    )  # (N_sc, 1, d)
+                        [m.covar_module.base_kernel.raw_lengthscale for m in mods], dim=0
+                    )  # (G, 1, ard)
                     raw_os = torch.stack(
-                        [m.covar_module.raw_outputscale for m in sc_mods], dim=0
-                    )  # (N_sc,)
-                    _batch_covar = copy.deepcopy(sc_mods[0].covar_module)
-                    _batch_covar.base_kernel.raw_lengthscale = torch.nn.Parameter(raw_ls.clone())
-                    _batch_covar.raw_outputscale = torch.nn.Parameter(raw_os.clone())
-                    _batch_covar.requires_grad_(False)
-                    _batch_covar.eval()
-                    # Per-model training X (each model has its own physics-transformed X)
-                    X_train_sc = torch.stack(
-                        [m.train_inputs[0] for m in sc_mods], dim=0
-                    )  # (N_sc, n, d)
-                    K_train_sc = _batch_covar(X_train_sc, X_train_sc).to_dense()
-                    L_sc, alpha_sc = _chol_alpha(sc_mods, K_train_sc)
-                    os_sc = _batch_covar.outputscale.detach()   # (N_sc,)
-                else:
-                    _batch_covar = L_sc = alpha_sc = os_sc = X_train_sc = None
+                        [m.covar_module.raw_outputscale for m in mods], dim=0
+                    )  # (G,)
+                    bc = copy.deepcopy(mods[0].covar_module)
+                    bc.base_kernel.raw_lengthscale = torch.nn.Parameter(raw_ls.clone())
+                    bc.raw_outputscale             = torch.nn.Parameter(raw_os.clone())
+                    bc.requires_grad_(False)
+                    bc.eval()
+                    X_tr = torch.stack([m.train_inputs[0] for m in mods], dim=0)  # (G, n, ard)
+                    K_tr = bc(X_tr, X_tr).to_dense()
+                    L, alpha = _chol_alpha(mods, K_tr, n)
+                    sc_groups.append({
+                        "indices":     indices,
+                        "n_train":     n,
+                        "ard":         ard,
+                        "batch_covar": bc,
+                        "X_train":     X_tr,
+                        "L":           L,
+                        "alpha":       alpha,
+                        "os":          bc.outputscale.detach(),  # (G,)
+                    })
 
-                # --- MITIM_ConstantKernel group (K = ones everywhere, X-independent) ---
-                if ck_indices:
-                    ck_mods = [models[i] for i in ck_indices]
-                    N_ck = len(ck_mods)
-                    K_train_ck = torch.ones(N_ck, n_train, n_train, dtype=X_train.dtype, device=X_train.device)
-                    L_ck, alpha_ck = _chol_alpha(ck_mods, K_train_ck)
-                else:
-                    L_ck = alpha_ck = None
+                # --- Build one batched group per n_train bucket (ck) ---
+                ck_groups = []
+                for (n,), indices in ck_buckets.items():
+                    mods    = [models[i] for i in indices]
+                    G       = len(mods)
+                    K_tr    = torch.ones(G, n, n, dtype=ref.dtype, device=ref.device)
+                    L, alpha = _chol_alpha(mods, K_tr, n)
+                    ck_groups.append({
+                        "indices": indices,
+                        "n_train": n,
+                        "L":       L,
+                        "alpha":   alpha,
+                    })
 
-            self._sc_indices   = sc_indices
-            self._ck_indices   = ck_indices
-            self._batch_covar  = _batch_covar
-            self._X_train_sc   = X_train_sc   # (N_sc, n, d) — per-model kernel-space training X
-            self._L_sc         = L_sc
-            self._alpha_sc     = alpha_sc
-            self._os_sc        = os_sc
-            self._L_ck         = L_ck
-            self._alpha_ck     = alpha_ck
-            self._n_train      = n_train
-            self._std_stdvs    = std_stdvs
-            self._std_means    = std_means
-            self._n_batched    = N
+            self._sc_groups  = sc_groups
+            self._ck_groups  = ck_groups
+            self._std_stdvs  = std_stdvs
+            self._std_means  = std_means
+            self._n_batched  = N
             self._batched_ready = True
+
+            sc_summary = ", ".join(
+                f"n={g['n_train']}/ard={g['ard']}:{len(g['indices'])}" for g in sc_groups
+            )
+            ck_summary = ", ".join(
+                f"n={g['n_train']}:{len(g['indices'])}" for g in ck_groups
+            )
             print(
-                f"\t[batched GP] setup: N={N} (sc={len(sc_indices)}, ck={len(ck_indices)}), "
-                f"n_train={n_train}, d={d}",
+                f"\t[MITIM: GP batching] setup: N={N} "
+                f"sc=[{sc_summary}] ck=[{ck_summary}]",
                 typeMsg="i",
             )
 
         except Exception as e:
-            print(f"\t[batched GP] setup failed ({e}) — sequential path will be used", typeMsg="w")
+            print(f"\t[MITIM: GP batching] setup failed ({e}) — sequential path will be used", typeMsg="w")
             self._batched_ready = False
 
     def _batched_posterior(self, X):
@@ -572,7 +569,6 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         from botorch.posteriors.gpytorch import GPyTorchPosterior
 
         N = self._n_batched
-        n_train = self._n_train
 
         # Transform inputs per model. prepareToGenerateCommons sets flag_to_store=True so
         # model[0] computes and caches the powerstate in parameters_combined["powerstate"];
@@ -586,49 +582,52 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         orig_shape = X.shape[:-1]   # (*batch_dims, M)
         M_flat = X[..., 0].numel()  # total test points, flattened
 
-        # --- ScaleKernel group ---
-        if self._sc_indices:
-            d_sc = Xtr_per_model[self._sc_indices[0]].shape[-1]
-            Xtr_sc = torch.stack(
-                [Xtr_per_model[i].reshape(M_flat, d_sc) for i in self._sc_indices], dim=0
-            )  # (N_sc, M_flat, d_sc)
-            K_star_sc = self._batch_covar(Xtr_sc, self._X_train_sc).to_dense()  # (N_sc, M_flat, n)
-            prior_sc  = torch.stack(
-                [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d_sc))
-                 for i in self._sc_indices]
-            )  # (N_sc, M_flat)
-            mean_sc = prior_sc + (K_star_sc @ self._alpha_sc).squeeze(-1)
-            v_sc    = torch.linalg.solve_triangular(
-                self._L_sc, K_star_sc.transpose(-1, -2), upper=False
-            )  # (N_sc, n, M_flat)
-            var_sc  = (self._os_sc.unsqueeze(-1) - (v_sc * v_sc).sum(dim=-2)).clamp(min=0)
-
-        # --- MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
-        # Each ck model may have a different d (kernel ignores inputs; mean module uses them).
-        if self._ck_indices:
-            N_ck = len(self._ck_indices)
-            _ref_dtype = Xtr_sc.dtype if self._sc_indices else Xtr_per_model[self._ck_indices[0]].dtype
-            K_star_ck = torch.ones(N_ck, M_flat, n_train, dtype=_ref_dtype, device=X.device)
-            prior_ck  = torch.stack(
-                [self.models[i].mean_module(
-                     Xtr_per_model[i].reshape(M_flat, Xtr_per_model[i].shape[-1])
-                 ) for i in self._ck_indices]
-            )  # (N_ck, M_flat)
-            mean_ck = prior_ck + (K_star_ck @ self._alpha_ck).squeeze(-1)
-            v_ck    = torch.linalg.solve_triangular(
-                self._L_ck, K_star_ck.transpose(-1, -2), upper=False
-            )  # (N_ck, n, M_flat)
-            var_ck  = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)
-
-        # --- Assemble in original model order ---
+        # --- Process each ScaleKernel group (one batched kernel call per group) ---
         mean_by_model = [None] * N
         var_by_model  = [None] * N
-        for j, i in enumerate(self._sc_indices):
-            mean_by_model[i] = mean_sc[j]
-            var_by_model[i]  = var_sc[j]
-        for j, i in enumerate(self._ck_indices):
-            mean_by_model[i] = mean_ck[j]
-            var_by_model[i]  = var_ck[j]
+
+        _ref_dtype = None
+        for grp in self._sc_groups:
+            indices = grp["indices"]
+            d       = grp["ard"]
+            Xtr_g   = torch.stack(
+                [Xtr_per_model[i].reshape(M_flat, d) for i in indices], dim=0
+            )  # (G, M_flat, d)
+            K_star  = grp["batch_covar"](Xtr_g, grp["X_train"]).to_dense()  # (G, M_flat, n)
+            prior   = torch.stack(
+                [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d))
+                 for i in indices]
+            )  # (G, M_flat)
+            mean_g  = prior + (K_star @ grp["alpha"]).squeeze(-1)
+            v_g     = torch.linalg.solve_triangular(
+                grp["L"], K_star.transpose(-1, -2), upper=False
+            )  # (G, n, M_flat)
+            var_g   = (grp["os"].unsqueeze(-1) - (v_g * v_g).sum(dim=-2)).clamp(min=0)
+            for j, i in enumerate(indices):
+                mean_by_model[i] = mean_g[j]
+                var_by_model[i]  = var_g[j]
+            _ref_dtype = Xtr_g.dtype
+
+        # --- Process each MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
+        for grp in self._ck_groups:
+            indices = grp["indices"]
+            n       = grp["n_train"]
+            G       = len(indices)
+            dtype   = _ref_dtype if _ref_dtype is not None else Xtr_per_model[indices[0]].dtype
+            K_star  = torch.ones(G, M_flat, n, dtype=dtype, device=X.device)
+            prior   = torch.stack(
+                [self.models[i].mean_module(
+                     Xtr_per_model[i].reshape(M_flat, Xtr_per_model[i].shape[-1])
+                 ) for i in indices]
+            )  # (G, M_flat)
+            mean_g  = prior + (K_star @ grp["alpha"]).squeeze(-1)
+            v_g     = torch.linalg.solve_triangular(
+                grp["L"], K_star.transpose(-1, -2), upper=False
+            )  # (G, n, M_flat)
+            var_g   = (1.0 - (v_g * v_g).sum(dim=-2)).clamp(min=0)
+            for j, i in enumerate(indices):
+                mean_by_model[i] = mean_g[j]
+                var_by_model[i]  = var_g[j]
 
         pred_mean = torch.stack(mean_by_model).view(N, *orig_shape)
         pred_var  = torch.stack(var_by_model).view(N, *orig_shape)
@@ -686,7 +685,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             try:
                 return self._batched_posterior(X)
             except Exception as e:
-                print(f"\t[batched GP] posterior failed ({e}) — falling back", typeMsg="w")
+                print(f"\t[MITIM: GP batching] posterior failed ({e}) — falling back", typeMsg="w")
 
         # Sequential fallback
         self.prepareToGenerateCommons()
