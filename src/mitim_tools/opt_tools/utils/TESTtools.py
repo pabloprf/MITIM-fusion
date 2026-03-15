@@ -40,47 +40,60 @@ def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper 
     return insideBounds
 
 
-def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
+def testInferenceTime(combined_model, individual_models, bounds, n_points=1000):
+    """Time a single combined_model evaluation at n_points random points."""
+    import datetime
+    from mitim_tools.misc_tools import IOtools
+
+    dtype  = combined_model.train_X.dtype
+    device = combined_model.train_X.device
+    bt     = torch.zeros(2, len(bounds), dtype=dtype, device=device)
+    for i, key in enumerate(bounds):
+        bt[0, i] = bounds[key][0]
+        bt[1, i] = bounds[key][1]
+    X_rand = bt[0] + (bt[1] - bt[0]) * torch.rand(n_points, bt.shape[-1], dtype=dtype, device=device)
+
+    t0 = datetime.datetime.now()
+    with torch.no_grad():
+        combined_model.predict(X_rand)
+    print(
+        f"[MITIM: GP batching] Time for 1 evaluation of combined_model "
+        f"({X_rand.shape[-1]}D, {len(individual_models)} GPs) at {n_points} random points: "
+        f"{IOtools.getTimeDifference(t0)}",
+    )
+
+
+def testBatchAccuracy(combined_model, individual_models, thr_percent=0.1):
     """
-    This assesses the relative error in cases where y_Normalized> thrImportance
-    It stops running if the error gets larger than thrPercent in those cases
+    Verify that the batched combined_model gives the same predictions as the
+    individual models evaluated sequentially.  Uses the training points as inputs
+    (known, always available) so no extra data is needed.
     """
+    x = combined_model.train_X
 
-    for i in combinations:
-        x = GPs.train_X[0:1, :].repeat(i, 1)
+    with torch.no_grad():
+        y_batch, _, _, _ = combined_model.predict(x)
+        y_indiv = torch.cat([m.predict(x)[0] for m in individual_models], dim=1)
 
-        y1 = GPs.predict(x)[0]
-        y2 = GPs.predict(x[0:1, :])[0]
+    y_batch = y_batch.detach()
+    y_indiv = y_indiv.detach()
 
-        y1 = y1.detach().mean(axis=0).unsqueeze(0).cpu().numpy()
-        y2 = y2.detach().cpu().numpy()
+    mask   = y_indiv.abs() > 1e-10
+    err    = torch.where(mask, (y_batch - y_indiv).abs() / y_indiv.abs() * 100,
+                         torch.zeros_like(y_batch))
+    max_err = err.max().item()
 
-        maxPercent, trouble, indeces = checkSame(
-            y1, y2, labels=[f"{i} SAMPLES", "1 SAMPLE"]
-        )
-
-
-def testCombinationCapabilities(GPs, GP):
-    x = GP.train_X
-
-    # Combined
-    y, _, _, _ = GP.predict(x)
-
-    # Separated
-    ys = torch.Tensor().to(x)
-    for i in range(len(GPs)):
-        y0, _, _, _ = GPs[i].predict(x)
-        ys = torch.cat((ys, y0), axis=1)
-
-    # Test
-    y, ys = y.detach(), ys.detach()
-    err = ((y - ys).abs() / ys * 100).cpu().numpy()
-
-    if np.nanmax(err) > 1e-5:
+    if max_err > thr_percent:
         print(
-            f"\t Max error of combination (check!): {np.nanmax(err):.2f}%", typeMsg="w"
+            f"\t[MITIM: GP batching] Accuracy check FAILED: max relative error = {max_err:.2e}% "
+            f"(threshold {thr_percent}%) — batched and sequential predictions disagree",
+            typeMsg="w",
         )
-        embed()
+    else:
+        print(
+            f"\t[GP batching] Accuracy check passed: max relative error = {max_err:.2e}%",
+            typeMsg="i",
+        )
 
 
 def isOutlier(y0, y, stds_outside=5, stds_outside_checker=1):

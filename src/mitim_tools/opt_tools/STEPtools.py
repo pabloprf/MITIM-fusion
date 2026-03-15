@@ -293,24 +293,8 @@ class OPTstep:
 		*********************************************************************************************************************
 		"""
 
-        # Test (if test could not be launched is likely because a singular matrix for Choleski decomposition)
-        print("--> Launching tests to assure batch evaluation accuracy")
-        TESTtools.testBatchCapabilities(self.GP["combined_model"])
-        print("--> Launching tests to assure model combination accuracy")
-        TESTtools.testCombinationCapabilities(self.GP["individual_models"], self.GP["combined_model"])
-        print("--> Launching tests evaluate accuracy on training set (absolute units)")
-        self.GP["combined_model"].testTraining()
-        
-        # Evaluate the time it takes for 1 evaluation of combined_model, at 1000 random points (this is important for acquisition optimization)
-        bounds_tensor = torch.zeros((2, len(self.bounds)), dtype=self.GP["combined_model"].train_X.dtype, device=self.GP["combined_model"].train_X.device)
-        for i, ikey in enumerate(self.bounds):
-            bounds_tensor[0, i] = self.bounds[ikey][0]
-            bounds_tensor[1, i] = self.bounds[ikey][1]
-        X_rand = bounds_tensor[0] + (bounds_tensor[1] - bounds_tensor[0]) * torch.rand(1000, bounds_tensor.shape[-1], dtype=bounds_tensor.dtype, device=bounds_tensor.device)
-        time_eval = datetime.datetime.now()
-        with torch.no_grad():
-            self.GP["combined_model"].predict(X_rand)
-        print(f"--> Time for 1 evaluation of combined_model ({X_rand.shape[-1]}D, {len(self.GP['individual_models'])} GPs) at 1000 random points: {IOtools.getTimeDifference(time_eval)}")
+        TESTtools.testBatchAccuracy(self.GP["combined_model"], self.GP["individual_models"])
+        TESTtools.testInferenceTime(self.GP["combined_model"], self.GP["individual_models"], self.bounds)
 
         txt_time = IOtools.getTimeDifference(time1)
 
