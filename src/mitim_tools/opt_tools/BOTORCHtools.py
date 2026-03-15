@@ -518,17 +518,26 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                     })
 
                 # --- Build one batched group per n_train bucket (ck) ---
+                # Since K(x1,x2)=1 always, K_star = ones for any test point.
+                # Both the mean correction (K_star @ alpha) and the predictive variance
+                # (1 - ||L^{-1} @ 1_n||^2) are independent of X, so precompute them once.
                 ck_groups = []
                 for (n,), indices in ck_buckets.items():
                     mods    = [models[i] for i in indices]
                     G       = len(mods)
                     K_tr    = torch.ones(G, n, n, dtype=ref.dtype, device=ref.device)
                     L, alpha = _chol_alpha(mods, K_tr, n)
+                    # mean correction: sum over training points (G, 1)
+                    mean_correction = alpha.sum(dim=-2)          # (G, 1)
+                    # variance constant: 1 - ||L^{-1} @ 1_n||^2, shape (G, 1)
+                    ones_n   = torch.ones(G, n, 1, dtype=ref.dtype, device=ref.device)
+                    v_ck     = torch.linalg.solve_triangular(L, ones_n, upper=False)  # (G, n, 1)
+                    var_const = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)       # (G, 1)
                     ck_groups.append({
-                        "indices": indices,
-                        "n_train": n,
-                        "L":       L,
-                        "alpha":   alpha,
+                        "indices":         indices,
+                        "n_train":         n,
+                        "mean_correction": mean_correction,
+                        "var_const":       var_const,
                     })
 
             self._sc_groups  = sc_groups
@@ -608,23 +617,19 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 var_by_model[i]  = var_g[j]
             _ref_dtype = Xtr_g.dtype
 
-        # --- Process each MITIM_ConstantKernel group (K_star = ones, prior_var = 1) ---
+        # --- Process each MITIM_ConstantKernel group ---
+        # K_star = ones for any test X, so mean correction and variance are X-independent
+        # and were precomputed in setup_batched_inference.
         for grp in self._ck_groups:
             indices = grp["indices"]
-            n       = grp["n_train"]
             G       = len(indices)
-            dtype   = _ref_dtype if _ref_dtype is not None else Xtr_per_model[indices[0]].dtype
-            K_star  = torch.ones(G, M_flat, n, dtype=dtype, device=X.device)
             prior   = torch.stack(
                 [self.models[i].mean_module(
                      Xtr_per_model[i].reshape(M_flat, Xtr_per_model[i].shape[-1])
                  ) for i in indices]
             )  # (G, M_flat)
-            mean_g  = prior + (K_star @ grp["alpha"]).squeeze(-1)
-            v_g     = torch.linalg.solve_triangular(
-                grp["L"], K_star.transpose(-1, -2), upper=False
-            )  # (G, n, M_flat)
-            var_g   = (1.0 - (v_g * v_g).sum(dim=-2)).clamp(min=0)
+            mean_g = prior + grp["mean_correction"].to(X.device)     # (G, M_flat)
+            var_g  = grp["var_const"].to(X.device).expand(G, M_flat) # (G, M_flat)
             for j, i in enumerate(indices):
                 mean_by_model[i] = mean_g[j]
                 var_by_model[i]  = var_g[j]
