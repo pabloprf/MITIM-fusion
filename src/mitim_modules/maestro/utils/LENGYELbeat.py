@@ -186,7 +186,7 @@ def _modify_temperatures(p, Tesep, rhotop):
             _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
 
 
-def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z):
+def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z, plotYN=False):
 
     print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_Z}, A={impurity_A}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
     
@@ -194,24 +194,39 @@ def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, f
     p.profiles['mass'][i_Z] = impurity_A
     p.profiles['name'][i_Z] = impurity_name[:2] 
     
-    if rhotop is None:
-        print('\t\t- No rhotop available at this beat, scaling the entire impurity density profile uniformly by the top (after applying enrichment) value, exact from ne profile')
-        p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
+    # Scale entire profile
+    print(f'\t- Implementing a core concentration of {fZ_top:.1e}, applied to the electron density profile')
+    p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
     
+    if rhotop is None:
+        print('\t\t- No rhotop available at this beat, entire impurity profile scaled with the same factor (i.e. no different enrichment at the core and at the separatrix)')
     else:
-        print(f'\t\t- Using rhotop = {rhotop:.3f} to scale impurity density profiles')
+        print(f'\t\t- Using rhotop = {rhotop:.3f} to apply a linear ramp in impurity concentration from rhotop to the separatrix, with the value at rhotop being {fZ_top:.1e} and the value at the separatrix being {fZ_sep:.1e}')
         
-        # First, scale impurity density profile entirely by the desired top value
-        nZ_top_new = fZ_top * p.profiles['ne(10^19/m^3)'][-1]
         ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
-        nZ_top_old = p.profiles['ni(10^19/m^3)'][ix, i_Z]
         
-        p.profiles['ni(10^19/m^3)'][:, i_Z] *= nZ_top_new / nZ_top_old
-        
-        # Then modify the edge such that it goes to nZ_sep (Apply quadratic scaling from rhotop to separatrix)
-        nZ_sep = fZ_sep * p.profiles['ne(10^19/m^3)'][-1]
-        _scale_quadratic(p, p.profiles['ni(10^19/m^3)'][:, i_Z], rhotop, nZ_sep)
+        # From rhotop to separatrix, make the concentration go linearly from the value at rhotop to fZ_sep at the separatrix
+        p.profiles['ni(10^19/m^3)'][ix:, i_Z] = np.linspace(fZ_top, fZ_sep, len(p.profiles['ni(10^19/m^3)'][ix:, i_Z])) * p.profiles['ne(10^19/m^3)'][ix:]
 
+    if plotYN:
+        # Debug plot to check the impurity density modification
+        import matplotlib.pyplot as plt
+        fig, axs= plt.subplots(nrows=2)
+        ax = axs[0]
+        ax.plot( p.profiles['rho(-)'], p.profiles['ne(10^19/m^3)'], 'o-', label='ne' )
+        ax.plot( p.profiles['rho(-)'], p.profiles['ni(10^19/m^3)'][:, i_Z], 'o-', label=f'{impurity_name} density' )
+        
+        ax.legend()
+        
+        ax = axs[1]
+        ax.plot( p.profiles['rho(-)'], p.profiles['ni(10^19/m^3)'][:, i_Z] / p.profiles['ne(10^19/m^3)'], 'o-', label=f'{impurity_name} fraction' )
+        
+        ax.legend()
+        
+        plt.show()
+        
+        embed()
+        
 def _scale_quadratic(p, var, rhotop, val_sep, plotYN=False):
     '''
     I use a quadratic scaling from rhotop to separatrix instead of a linear one, to have a smoother transition.
