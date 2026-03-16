@@ -823,9 +823,21 @@ class MITIM_BO:
         for ikey in self.optimization_object.doNotSaveVariables:
             saver[ikey] = self.optimization_object.__dict__[ikey]
             del self.optimization_object.__dict__[ikey]
+
+        # Temporarily remove evaluators from steps: they contain acquisition functions with
+        # non-leaf tensors that cannot be deep-copied (prepare_for_save_MITIMBO already deletes
+        # them from the saved copy anyway)
+        saved_evaluators = {}
+        for i, step in enumerate(self.steps):
+            if "evaluators" in step.__dict__:
+                saved_evaluators[i] = step.__dict__.pop("evaluators")
         # -----------------------------------------------------------------------------------
 
-        copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
+        try:
+            copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
+        finally:
+            for i, ev in saved_evaluators.items():
+                self.steps[i].evaluators = ev
 
         with open(stateFile_tmp, "wb") as handle:
             try:
@@ -959,10 +971,10 @@ class MITIM_BO:
         # ~~~~~~~~~~~~~~~~~~
 
         # Update the train_X
-        self.train_X = np.append(self.train_X, self.x_next.detach().cpu().numpy(), axis=0)
+        self.train_X = np.vstack([self.train_X, self.x_next.detach().cpu().numpy()])
 
         # Update optimization_data with nans for the new points (will be updated later)
-        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y).to(self.dfT))
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.detach().cpu().numpy())
 
         # Update optimization_results only as "predicted"
@@ -991,8 +1003,8 @@ class MITIM_BO:
         # ------------------
 
         # Update the train_Y
-        self.train_Y = np.append(self.train_Y, y_next, axis=0)
-        self.train_Ystd = np.append(self.train_Ystd, ystd_next, axis=0)
+        self.train_Y = np.vstack([self.train_Y, y_next])
+        self.train_Ystd = np.vstack([self.train_Ystd, ystd_next])
 
         # --- If problem in evaluation don't use this point -------------------------------------------------------------------
         for i in range(self.train_Y.shape[0]):
@@ -1165,10 +1177,12 @@ class MITIM_BO:
                 # It could be the case that those points in Tabular are outside the bounds that I want to apply to this optimization, remove outside points?
                 
                 if self.optimization_options["initialization_options"]["ensure_within_bounds"]:
+                    bounds_tensor = torch.from_numpy(np.array(list(self.bounds.values())).T).to(self.dfT)
+                    train_X_tensor = torch.from_numpy(self.train_X).to(self.dfT)
                     for i in range(self.train_X.shape[0]):
                         insideBounds = TESTtools.checkSolutionIsWithinBounds(
-                            torch.from_numpy(self.train_X[i, :]).to(self.dfT),
-                            torch.from_numpy(np.array(list(self.bounds.values())).T),
+                            train_X_tensor[i],
+                            bounds_tensor,
                         )
                         if not insideBounds.item():
                             self.avoidPoints_outside.append(i)
@@ -1262,7 +1276,7 @@ class MITIM_BO:
         # -----------------------------------------------------------------
 
         # Write initialization in Tabular
-        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y))
+        _,_,objective = self.optimization_object.scalarized_objective(torch.from_numpy(self.train_Y).to(self.dfT))
         self.optimization_data.update_points(self.train_X, Y=self.train_Y, Ystd=self.train_Ystd, objective=objective.detach().cpu().numpy())
 
         # Write optimization_results

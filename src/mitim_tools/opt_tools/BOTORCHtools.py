@@ -563,7 +563,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             print(f"\t[MITIM: GP batching] setup failed ({e}) — sequential path will be used", typeMsg="w")
             self._batched_ready = False
 
-    def _batched_posterior(self, X):
+    def _batched_posterior(self, X, observation_noise=False):
         """Vectorised GP posterior for all N models.
 
         Handles two kernel groups:
@@ -571,10 +571,11 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
           - MITIM_ConstantKernel group: K_star = ones (no kernel call)
 
         X: raw (pre-transform) test inputs, shape (*batch_dims, M, d_raw).
+        observation_noise: if True, adds per-model likelihood noise to the predictive variance.
         Returns GPyTorchPosterior with MultitaskMultivariateNormal distribution.
         """
         from gpytorch.distributions import MultitaskMultivariateNormal
-        from linear_operator.operators import DiagLinearOperator, BlockDiagLinearOperator
+        from linear_operator.operators import DiagLinearOperator, BlockDiagLinearOperator, CatLinearOperator
         from botorch.posteriors.gpytorch import GPyTorchPosterior
 
         N = self._n_batched
@@ -661,11 +662,43 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         mean_fin = (mean_tf2 * factors).reshape(N, M_flat)               # (N, M_flat)
         var_fin  = (var_tf2 * factors ** 2).clamp(min=0).reshape(N, M_flat)  # (N, M_flat)
 
+        # Add observation noise per model when requested (required for cache_root=True in qNEI)
+        if observation_noise:
+            def _test_noise(m):
+                lhd = m.likelihood
+                if isinstance(lhd, gpytorch.likelihoods.FixedNoiseGaussianLikelihood):
+                    # Fixed noise has no noise at test points unless learn_additional_noise=True
+                    if lhd.learn_additional_noise:
+                        return lhd.noise.squeeze().to(var_fin)
+                    return torch.zeros(1, dtype=var_fin.dtype, device=var_fin.device)
+                return lhd.noise.squeeze().reshape(1).to(var_fin)
+            noise_per_model = torch.stack([_test_noise(m) for m in self.models])  # (N,)
+            # Apply tf2 variance scaling, then tf1 scaling per point (same pipeline as var_fin)
+            noise_tf2 = noise_per_model * self._std_stdvs ** 2              # (N,)
+            noise_fin = noise_tf2.unsqueeze(-1) * factors.reshape(N, M_flat) ** 2  # (N, M_flat)
+            var_fin = var_fin + noise_fin
+
         # Build MultitaskMultivariateNormal directly from batched tensors — avoids constructing
         # N individual MultivariateNormal objects (O(N*M) Python overhead).
         # interleaved=False: BlockDiagLinearOperator block i covers all M points for task i.
-        mean_out    = mean_fin.reshape(N, *orig_shape).permute(*range(1, len(orig_shape) + 1), 0)
-        block_covar = BlockDiagLinearOperator(DiagLinearOperator(var_fin))
+        mean_out = mean_fin.reshape(N, *orig_shape).permute(*range(1, len(orig_shape) + 1), 0)
+
+        # BlockDiagLinearOperator(DiagLinearOperator(var_fin)) is auto-simplified to
+        # DiagLinearOperator by linear_operator 0.6, which breaks extract_batch_covar
+        # in BoTorch 0.16 (requires BlockDiagLinearOperator). Use CatLinearOperator +
+        # block_dim=-3 to preserve the block structure, matching BoTorch's own approach.
+        #
+        # When X has batch dims (*batch_shape, q, d), orig_shape = (*batch_shape, q) and
+        # MultitaskMultivariateNormal expects covariance (*batch_shape, N*q, N*q) — not the
+        # flat (N*M_flat, N*M_flat). Reshape var_fin to (N, *batch_shape, q) so each
+        # DiagLinearOperator gets shape (*batch_shape, q, q), and CatLinearOperator stacks
+        # them to (*batch_shape, N, q, q) → BlockDiagLinearOperator → (*batch_shape, N*q, N*q).
+        batch_shape = orig_shape[:-1]      # may be () for simple 1-D case
+        q_dim       = orig_shape[-1]       # last dim = jointly evaluated points
+        var_fin_bq  = var_fin.reshape(N, *batch_shape, q_dim)  # (N, *batch_shape, q_dim)
+        cat_covar   = CatLinearOperator(*[DiagLinearOperator(var_fin_bq[i]).unsqueeze(-3) for i in range(N)], dim=-3)
+        block_covar = BlockDiagLinearOperator(cat_covar, block_dim=-3)
+
         mtmvn = MultitaskMultivariateNormal(
             mean_out, block_covar, validate_args=False, interleaved=False
         )
@@ -684,11 +717,10 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         if (
             getattr(self, "_batched_ready", False)
             and output_indices is None
-            and not observation_noise
             and posterior_transform is None
         ):
             try:
-                return self._batched_posterior(X)
+                return self._batched_posterior(X, observation_noise=observation_noise)
             except Exception as e:
                 print(f"\t[MITIM: GP batching] posterior failed ({e}) — falling back", typeMsg="w")
 

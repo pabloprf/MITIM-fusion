@@ -621,17 +621,9 @@ class surrogate_model:
             yU_next = yU_next.detach().cpu().numpy()
 
         # --- Print stuff ---
-        maxError = np.zeros(y.shape[1])
-        for j in range(y.shape[1]):
-            for i in range(y.shape[0]):
-                err = (
-                    np.abs((y[i, j] - yPredicted[i, j]) / y[i, j]) * 100.0
-                    if y[i, j] != 0.0
-                    else 0.0
-                )
-                # if printYN and err>5.0:
-                # 	print(f'\t* Trained point #{i}, y({j})={y[i,j]:.3f}, y_pred({j})={yPredicted[i,j]:.3f} ({err:.2f}% off)',typeMsg='w')
-                maxError[j] = np.max([err, maxError[j]])
+        nonzero = y != 0.0
+        err = np.where(nonzero, np.abs((y - yPredicted) / np.where(nonzero, y, 1.0)) * 100.0, 0.0)
+        maxError = err.max(axis=0)
 
         # --- Plot stuff ---
         if plotYN:

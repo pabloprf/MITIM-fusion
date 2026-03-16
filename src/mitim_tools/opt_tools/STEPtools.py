@@ -398,7 +398,8 @@ class OPTstep:
                     self.evaluators["GP"].gpmodel,
                     objective=self.evaluators["objective"],
                     X_baseline=self.evaluators["GP"].train_X,
-                    sampler=sampler
+                    sampler=sampler,
+                    cache_root=True,
                 )
             )
 

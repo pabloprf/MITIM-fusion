@@ -116,10 +116,10 @@ def lookForTrouble(x, y_res, z_res, evaluators, stepSettings, elimintateTroubles
 
     y_res_joint = evaluators["acq_function"](x.unsqueeze(1)).detach()
 
-    y_res_single = torch.Tensor().to(x)
-    for i in range(x.shape[0]):
-        y = evaluators["acq_function"](x[i].unsqueeze(0).unsqueeze(1)).detach()
-        y_res_single = torch.cat((y_res_single, y), axis=0)
+    y_res_single = torch.cat(
+        [evaluators["acq_function"](x[i].unsqueeze(0).unsqueeze(1)).detach() for i in range(x.shape[0])],
+        axis=0,
+    ).to(x)
 
     perMax1, trouble1, indeces1 = checkSame(
         y_res, y_res_joint, z=z_res, labels=["OPTIMIZATION", "JOINT"]

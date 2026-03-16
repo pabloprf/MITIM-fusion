@@ -245,13 +245,12 @@ class portals(STRATEGYtools.opt_evaluator):
 			Note: var_dict['Qe_tr_turb'] must have shape (dim1...N, num_radii)
 		"""
 
-        var_dict = {}
+        var_dict_parts = {}
         for of in ofs_ordered_names:
-
             var = '_'.join(of.split("_")[:-1])
-            if var not in var_dict:
-                var_dict[var] = torch.Tensor().to(Y)
-            var_dict[var] = torch.cat((var_dict[var], Y[..., ofs_ordered_names == of]), dim=-1)
+            var_dict_parts.setdefault(var, []).append(Y[..., ofs_ordered_names == of])
+
+        var_dict = {var: torch.cat(parts, dim=-1).to(Y) for var, parts in var_dict_parts.items()}
 
         """
 		-------------------------------------------------------------------------
