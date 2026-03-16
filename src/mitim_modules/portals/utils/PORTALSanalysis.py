@@ -411,7 +411,7 @@ class PORTALSanalyzer:
     # PLOTTING
     # ****************************************************************************
 
-    def plotPORTALS(self, tabs_colors_common = None, noshow=False, tab_color_istart=0):
+    def plotPORTALS(self, tabs_colors_common = None, noshow=False, tab_color_istart=0, plot_transport_models = False):
         if self.fn is None:
             from mitim_tools.misc_tools.GUItools import FigureNotebook
 
@@ -431,7 +431,7 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         self.plotDebug(fig=fig)
         
-        if len(self.transport_model_objects) > 0:
+        if plot_transport_models and len(self.transport_model_objects) > 0:
             self.plotTransportModels(fn=self.fn, fn_color=tab_color_istart + 5 if tabs_colors_common is None else tabs_colors_common+1)
         
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)

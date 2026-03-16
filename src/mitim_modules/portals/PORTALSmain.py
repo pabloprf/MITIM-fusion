@@ -486,9 +486,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
 
     return dictOFs
 
-def analyze_results(
-    self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,
-    ):
+def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")
@@ -506,13 +504,13 @@ def analyze_results(
 
     if plotYN:
         portals_full.fn = fn
-        portals_full.plotPORTALS(tabs_colors_common=tabs_colors)
+        portals_full.plotPORTALS(tabs_colors_common=tabs_colors, plot_transport_models=analysis_level>2)
 
     # ----------------------------------------------------------------------------------------------------------------
     # Running cases: Original and Best
     # ----------------------------------------------------------------------------------------------------------------
 
-    if analysis_level in [2, 5]:
+    if analysis_level >= 3:
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.mitim_model.optimization_object

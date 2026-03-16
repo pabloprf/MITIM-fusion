@@ -106,9 +106,7 @@ def main():
 # ----- Inputs
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--type", type=int, required=False, default=4
-    )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
+    parser.add_argument("--type", type=int, required=False, default=2)  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also all, 3: additional, 4: addtional + extra
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--seeds", type=int, required=False, default=None)
     parser.add_argument("--resolution", type=int, required=False, default=50)

@@ -141,7 +141,7 @@ def main():
 
         # Plot more PORTALS
         else:
-            portals_total[i].plotPORTALS()
+            portals_total[i].plotPORTALS(plot_transport_models=True)
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Show figures?
