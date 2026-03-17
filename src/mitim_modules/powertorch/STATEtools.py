@@ -134,9 +134,13 @@ class powerstate:
 
         # Have the posibility of storing profiles in the class
         self.profiles_stored = []
-        self.FluxMatch_Xopt, self.FluxMatch_Yopt = torch.Tensor().to(
-            self.dfT
-        ), torch.Tensor().to(self.dfT)
+        self.FluxMatch_Xopt, self.FluxMatch_Yopt, self.FluxMatch_relax = (
+            torch.Tensor().to(self.dfT),
+            torch.Tensor().to(self.dfT),
+            torch.Tensor().to(self.dfT),
+        )
+        self.FluxMatch_tol       = None   # positive residual threshold (−tol from solver)
+        self.FluxMatch_osc_iters = []     # iterations where oscillation check ran
 
         self.labelsFM = []
         for profile in self.predicted_channels:
@@ -425,14 +429,20 @@ class powerstate:
         x0 = x0.view((self.plasma["rho"].shape[0],(self.plasma["rho"].shape[1] - 1) * len(self.predicted_channels),))
 
         # Optimize
-        x_best,Yopt, Xopt, metric_history = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
+        x_best, Yopt, Xopt, metric_history, *extra_ = solver_fun(evaluator,x0, bounds=self.bounds_current,solver_options=solver_options)
+        relax_history   = extra_[0] if len(extra_) > 0 else torch.Tensor()
+        solver_tol      = extra_[1] if len(extra_) > 1 else None
+        osc_check_iters = extra_[2] if len(extra_) > 2 else []
 
         # For simplicity, return the trajectory of only the best candidate
 
         idx_flat = metric_history.argmax()
         index_best = divmod(idx_flat.item(), metric_history.shape[1])
-        
+
         self.FluxMatch_Yopt, self.FluxMatch_Xopt = Yopt[:,index_best[1],:], Xopt[:,index_best[1],:]
+        self.FluxMatch_relax     = relax_history[:, index_best[1], :] if relax_history.numel() > 0 else relax_history
+        self.FluxMatch_tol       = -solver_tol if solver_tol is not None else None   # positive residual threshold
+        self.FluxMatch_osc_iters = osc_check_iters
 
         print("**********************************************************************************************")
         print(f"\t- Flux matching of powerstate finished, and took {IOtools.getTimeDifference(timeBeginning)}\n")
@@ -460,11 +470,11 @@ class powerstate:
             figMain = fn.add_figure(label="PowerState", tab_color='r')
             # Optimization
             figOpt = fn.add_figure(label="Optimization", tab_color='r')
-            grid = plt.GridSpec(2, 1+len(self.predicted_channels), hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(3, 1+len(self.predicted_channels), hspace=0.3, wspace=0.3)
 
             axsRes = [figOpt.add_subplot(grid[:, 0])]
             for i in range(len(self.predicted_channels)):
-                for j in range(2):
+                for j in range(3):
                     axsRes.append(figOpt.add_subplot(grid[j, i+1]))
 
             # Profiles
@@ -522,6 +532,9 @@ class powerstate:
         if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and self.FluxMatch_Yopt.requires_grad:
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.detach()
 
+        if hasattr(self, 'FluxMatch_relax') and self.FluxMatch_relax is not None and self.FluxMatch_relax.requires_grad:
+            self.FluxMatch_relax = self.FluxMatch_relax.detach()
+
     def _repeat_tensors(self, batch_size=1, specific_keys=None, positionToUnrepeat=0):
         """
         Repeat 1D profiles [...] or [positionToUnrepeat,...] (unrepeat first) to [batch_size,...] so that the MITIM calculations are fine
@@ -563,6 +576,8 @@ class powerstate:
             self.Xcurrent = self.Xcurrent.cpu()
         if hasattr(self, 'FluxMatch_Yopt') and self.FluxMatch_Yopt is not None and isinstance(self.FluxMatch_Yopt, torch.Tensor):
             self.FluxMatch_Yopt = self.FluxMatch_Yopt.cpu()
+        if hasattr(self, 'FluxMatch_relax') and self.FluxMatch_relax is not None and isinstance(self.FluxMatch_relax, torch.Tensor):
+            self.FluxMatch_relax = self.FluxMatch_relax.cpu()
         if hasattr(self, 'profiles'):
             self.profiles.toNumpyArrays()
 

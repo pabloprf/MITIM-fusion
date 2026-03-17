@@ -234,7 +234,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     # ********************************************************************************************
 
     hardbreak = False
-    relax_history, step_history = [], []
+    relax_history, step_history, osc_check_iters = [], [], []
     its_since_last_dyn_relax, i = 0, 0
     
     for i in range(int(maxiter) - 1):
@@ -280,16 +280,18 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
                 x_history,
                 y_history,
                 relax,
-                relax_dyn_decrease, 
+                relax_dyn_decrease,
                 relax_dyn_num,
                 i,
-                its_since_last_dyn_relax
+                its_since_last_dyn_relax,
+                osc_check_iters,
                 )
             
+        relax_history.append(relax.clone())
+
         # For debugging
         if debug:
             step_history.append(x_step.detach().clone())
-            relax_history.append(relax.clone())
 
         if hardbreak:
             break
@@ -317,14 +319,15 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     else:
         y_history, x_history, metric_history = torch.Tensor(), torch.Tensor(), torch.Tensor()
 
+    relax_history = torch.stack(relax_history) if relax_history else torch.Tensor()
+
     if debug:
 
-        relax_history = torch.stack(relax_history)
         step_history = torch.stack(step_history)
 
         x_history_np = x_history.detach().cpu().numpy()
         y_history_np = y_history.detach().cpu().numpy()
-        r_history_np = relax_history.detach().cpu().numpy()
+        r_history_np = relax_history.detach().cpu().numpy()   # already stacked
         m_history_np = metric_history.detach().cpu().numpy()
         s_history_np = step_history.detach().cpu().numpy()
 
@@ -394,7 +397,7 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     index_best = divmod(idx_flat.item(), metric_history.shape[1])
     print(f"\t* Best metric: {metric_history[index_best].item():.2e} at iteration {index_best[0]} for candidate in position {index_best[1]}",typeMsg="i")
 
-    return x_best, y_history, x_history, metric_history
+    return x_best, y_history, x_history, metric_history, relax_history, tol, osc_check_iters
 
 def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10, bounds=None, thr_bounds=1e-4):
     
@@ -429,11 +432,13 @@ def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, thre
 
     return x_new, x_step
 
-def _dynamic_relax(x, y, relax, relax_dyn_decrease, relax_dyn_num, iteration_num, iteration_applied):
+def _dynamic_relax(x, y, relax, relax_dyn_decrease, relax_dyn_num, iteration_num, iteration_applied, osc_check_iters):
 
     min_relax = 1e-6
 
     if iteration_num - iteration_applied > relax_dyn_num:
+
+        osc_check_iters.append(iteration_num)
 
         mask_reduction = _check_oscillation(torch.stack(x), relax_dyn_num)
 

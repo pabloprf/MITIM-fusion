@@ -114,7 +114,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # --------------------------------------------------------------------------------------------------------
 
     print("************************************************************************************************")
-    x_res, y_history, x_history, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    x_res, y_history, x_history, acq_evaluated, *_ = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
     # --------------------------------------------------------------------------------------------------------
