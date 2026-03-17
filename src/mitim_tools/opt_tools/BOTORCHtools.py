@@ -428,6 +428,9 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         Falls back gracefully on any incompatibility.
         Call once after all sub-models are fitted.
         """
+        
+        print("[MITIM: GP batching] Setting up combined model for batched inference")
+        
         import copy
 
         self._batched_ready = False
@@ -455,7 +458,7 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
                 ck_buckets.setdefault((n_i,), []).append(i)
             else:
                 print(
-                    f"\t[MITIM: GP batching] Cannot batch: model[{i}] covar_module is "
+                    f"\t- Cannot batch: model[{i}] covar_module is "
                     f"{type(covar).__name__} (not supported)",
                     typeMsg="w",
                 )
@@ -548,19 +551,22 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
             self._batched_ready = True
 
             sc_summary = ", ".join(
-                f"n={g['n_train']}/ard={g['ard']}:{len(g['indices'])}" for g in sc_groups
+                f"{len(g['indices'])} output(s) [{g['n_train']} train pts, {g['ard']} input dims]"
+                for g in sc_groups
             )
             ck_summary = ", ".join(
-                f"n={g['n_train']}:{len(g['indices'])}" for g in ck_groups
+                f"{len(g['indices'])} output(s) [{g['n_train']} train pts]"
+                for g in ck_groups
             )
+            sc_str = f"ScaleKernel groups: {sc_summary}" if sc_groups else "no ScaleKernel outputs"
+            ck_str = f"ConstantKernel groups: {ck_summary}" if ck_groups else "no ConstantKernel outputs"
             print(
-                f"\t[MITIM: GP batching] setup: N={N} "
-                f"sc=[{sc_summary}] ck=[{ck_summary}]",
+                f"\t- Setup: {N} outputs total — {sc_str} — {ck_str}",
                 typeMsg="i",
             )
 
         except Exception as e:
-            print(f"\t[MITIM: GP batching] setup failed ({e}) — sequential path will be used", typeMsg="w")
+            print(f"\t- Setup failed ({e}) — sequential path will be used", typeMsg="w")
             self._batched_ready = False
 
     def _batched_posterior(self, X, observation_noise=False):

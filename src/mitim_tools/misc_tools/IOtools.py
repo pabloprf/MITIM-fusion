@@ -111,7 +111,7 @@ class timer:
         dt = time.perf_counter() - self.t0_wall
         t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f'\t\t* {self.name} took {createTimeTXT(dt)}')
+        print(f'\n\t\t* {self.name} took {createTimeTXT(dt)}\n')
 
         if self.log_file:
             record = {

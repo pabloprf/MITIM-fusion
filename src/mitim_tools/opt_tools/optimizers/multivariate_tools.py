@@ -93,7 +93,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
         X = torch.tensor(x, requires_grad=True).to(dfT1)
 
         # Evaluate value and local jacobian
-        QhatD, JD = mitim_jacobian(function_for_optimizer_prep, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
+        QhatD, JD = mitim_jacobian(function_for_optimizer_prep, X)
 
         # Avoid numerical artifacts for off-block-diagonal elements that should be zero but numerically are not
         JD[JD.abs() <= jacobian_numerical_filter] = 0.0
@@ -520,87 +520,49 @@ def _check_oscillation(signal_raw, relax_dyn_num):
 
 
 
-'''
-********************************************************************************************************************************** 
-The original implementation of torch.autograd.functional.jacobian runs the function once and then computes the jacobian.
-This implementation simply copies what the original does, but returns the outputs so that I don't need to calculate them again.
-**********************************************************************************************************************************
-'''
+def mitim_jacobian(func, X):
+    """
+    Jacobian of func(X) w.r.t. X, plus the function output.
 
-from torch.autograd.functional import _autograd_grad, _construct_standard_basis_for, _grad_postprocess, _grad_preprocess, _tuple_postprocess, _as_tuple, _check_requires_grad
+    X: (n_in,) for a single point, or (n_pts, n_in) for a batch of independent
+    evaluations (e.g. GP posterior at multiple test points).
 
-def mitim_jacobian(
-    func,
-    inputs,
-    create_graph=False,
-    strict=False,
-    vectorize=False,
-    strategy="reverse-mode",
-    ):
+    Returns: (output, jacobian)
+      - single:  output (n_out,),        jacobian (n_out, n_in)
+      - batched: output (n_pts, n_out),  jacobian (n_pts, n_out, n_in)
 
+    Strategy chosen automatically by output shape:
+      - 1D output  → one backward pass with is_grads_batched=True (n_out VJPs in
+                      parallel; efficient for single-point).
+      - 2D output  → n_out sequential backward passes, each covering all n_pts
+                      simultaneously.  Cross-point terms are zero for independent
+                      evaluations so unit grad_outputs per column gives the correct
+                      per-point Jacobian with O(n_out) rather than O(n_pts*n_out) work.
+    """
     with torch.enable_grad():
-        is_inputs_tuple, inputs = _as_tuple(inputs, "inputs", "jacobian")
-        inputs = _grad_preprocess(inputs, create_graph=create_graph, need_graph=True)
+        x = X.detach().requires_grad_(True)
+        output = func(x)
 
-        outputs = func(*inputs)
-        is_outputs_tuple, outputs = _as_tuple(
-            outputs, "outputs of the user-provided function", "jacobian"
-        )
-        _check_requires_grad(outputs, "outputs", strict=strict)
-
-        if vectorize:
-
-            # Step 1: Construct grad_outputs by splitting the standard basis
-            output_numels = tuple(output.numel() for output in outputs)
-            grad_outputs = _construct_standard_basis_for(outputs, output_numels)
-            flat_outputs = tuple(output.reshape(-1) for output in outputs)
-
-            # Step 2: Call vmap + autograd.grad
-            def vjp(grad_output):
-                vj = list(
-                    _autograd_grad(
-                        flat_outputs,
-                        inputs,
-                        grad_output,
-                        create_graph=create_graph,
-                        is_grads_batched=True,
-                    )
+        if output.dim() == 1:
+            # Single-point: one batched backward (n_out VJPs simultaneously)
+            n_out = output.numel()
+            basis = torch.eye(n_out, dtype=output.dtype, device=output.device)
+            jacobian = torch.autograd.grad(output, x, grad_outputs=basis,
+                                           is_grads_batched=True)[0]  # (n_out, n_in)
+        else:
+            # Batched: n_out sequential backwards over all pts at once
+            n_out = output.shape[-1]
+            cols = []
+            for j in range(n_out):
+                g = torch.zeros_like(output)
+                g[..., j] = 1.0
+                cols.append(
+                    torch.autograd.grad(output, x, grad_outputs=g,
+                                        retain_graph=(j < n_out - 1))[0].detach()
                 )
-                for el_idx, vj_el in enumerate(vj):
-                    if vj_el is not None:
-                        continue
-                    vj[el_idx] = torch.zeros_like(inputs[el_idx]).expand(
-                        (sum(output_numels),) + inputs[el_idx].shape
-                    )
-                return tuple(vj)
+            jacobian = torch.stack(cols, dim=-2)  # (n_pts, n_out, n_in)
 
-            jacobians_of_flat_output = vjp(grad_outputs)
-
-            # Step 3: The returned jacobian is one big tensor per input. In this step,
-            # we split each Tensor by output.
-            jacobian_input_output = []
-            for jac_input_i, input_i in zip(jacobians_of_flat_output, inputs):
-                jacobian_input_i_output = []
-                for jac, output_j in zip(
-                    jac_input_i.split(output_numels, dim=0), outputs
-                ):
-                    jacobian_input_i_output_j = jac.view(output_j.shape + input_i.shape)
-                    jacobian_input_i_output.append(jacobian_input_i_output_j)
-                jacobian_input_output.append(jacobian_input_i_output)
-
-            # Step 4: Right now, `jacobian` is a List[List[Tensor]].
-            # The outer List corresponds to the number of inputs,
-            # the inner List corresponds to the number of outputs.
-            # We need to exchange the order of these and convert to tuples
-            # before returning.
-            jacobian_output_input = tuple(zip(*jacobian_input_output))
-
-            jacobian_output_input = _grad_postprocess(
-                jacobian_output_input, create_graph
-            )
-            return outputs[0],_tuple_postprocess(
-                jacobian_output_input, (is_outputs_tuple, is_inputs_tuple)
-            )
+        return output.detach(), jacobian
 
 class logistic:
     """

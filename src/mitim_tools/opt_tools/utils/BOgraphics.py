@@ -1091,6 +1091,8 @@ class optimization_results:
     def __init__(self, file):
         self.file = file
         self.predictedSofar = 0
+        
+        self.printed_criteria = False
 
     def readClass(self, MITIM_BOclass):
         self.MITIM_BO = MITIM_BOclass
@@ -1320,7 +1322,12 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def getBest(self, rangeT=None):
 
-        converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        if not self.printed_criteria:
+            converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
+            self.printed_criteria = True
+        else:
+            with LOGtools.HiddenPrints():
+                converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
         best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]

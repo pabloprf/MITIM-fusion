@@ -3,6 +3,7 @@ import copy
 import datetime
 import array
 import traceback
+from sympy import EX
 import torch
 from pathlib import Path
 from collections import OrderedDict
@@ -766,7 +767,13 @@ class MITIM_BO:
         self.optimization_object.finalize_evaluation()
 
         print(f"- Complete MITIM workflow took {IOtools.getTimeDifference(timeBeginning)} ~~")
-        print("********************************************************\n")
+        print("\n **********************************************************************************************************************")
+        print(  "******************************************  *****   *   *   ****    **************************************************")
+        print(  "******************************************  *       **  *   *   *   **************************************************")
+        print(  "******************************************  ****    * * *   *   *   **************************************************")
+        print(  "******************************************  *       *  **   *   *   **************************************************")
+        print(  "******************************************  *****   *   *   ****    **************************************************")
+        print(  "**********************************************************************************************************************\n")
 
     def prepare_for_save_MITIMBO(self, copyClass):
         """
@@ -1567,8 +1574,8 @@ class MITIM_BO:
 		"""
         try:    
             self.plotAcquisitionOptimizationSummary(fn=fn)
-        except: 
-            print('\t- Problem plotting acquisition optimization summary', typeMsg='w')
+        except Exception as e:
+            print(f'\t- Problem plotting acquisition optimization summary: {e}', typeMsg='w')
 
         return fn
 
@@ -1616,7 +1623,11 @@ class MITIM_BO:
                 
                 # Plot max of guesses
                 if len(y_acq)>0:
-                    ax.axhline(y=y_acq.max(axis=1)[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
+                    if y_acq.ndim > 1:
+                        y_acq_max = y_acq.max(axis=1)
+                    else:
+                        y_acq_max = y_acq
+                    ax.axhline(y=y_acq_max[0], c=colors[i], ls='--', lw=1.0, label=f'{infoOPT[i]["method"]} (max of guesses)')
 
             ax.set_title(f'BO Step #{step}')
             ax.set_ylabel('$f_{acq}$ (to max)')

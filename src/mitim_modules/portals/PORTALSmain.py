@@ -34,9 +34,8 @@ class portals(STRATEGYtools.opt_evaluator):
                 "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
             }
 
-        time1 = datetime.datetime.now()
         print("\n-----------------------------------------------------------------------------------------")
-        print(f"\t\t\t PORTALS class module {time1.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\t\t\t PORTALS class module {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("-----------------------------------------------------------------------------------------\n")
 
         super().__init__(
