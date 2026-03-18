@@ -107,6 +107,8 @@ class lengyel_beat(beat):
         fZ_sep = self.l.results['impurity_fraction']['seed_impurity'][impurity_name] 
         fZ_top = fZ_sep / self.seed_impurity_enrichment
         
+        print(f'\t- Enrichment factor applied: {self.seed_impurity_enrichment:.1f} (i.e. SOL concentration: {fZ_sep:.1e};  main plasma concentration: {fZ_top:.1e})')
+        
         # ------------------------------------------------
         # Modify input.gacode
         # ------------------------------------------------
@@ -117,7 +119,7 @@ class lengyel_beat(beat):
         _modify_temperatures(p, Tesep, self.rhotop)
         
         # Modify impurity density profile
-        _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, edge_profile=self.seed_impurity_edge_profile)
+
         # Find impurity index: if I have transp beat before Lengyel, I know the order of the impuritites
         if "impurity_order_transp" in self.maestro_instance.parameters_trans_beat:
             # Impurities ordered as in TRANSP
@@ -133,7 +135,7 @@ class lengyel_beat(beat):
             i_Z = 3
             print(f"\t\t- No impurity order from TRANSP beat found, assuming impurity '{impurity_symbol}' is in position #{i_Z} in input.gacode", typeMsg='w')
         
-        _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z)
+        _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
         
         # Enforce quasineutrality
         p.enforce_quasineutrality()
@@ -178,11 +180,11 @@ def _modify_temperatures(p, Tesep, rhotop):
     print(f'\t\t* Setting electron and ion temperature at separatrix to {Tesep*1E3:.1f} eV')
     
     if rhotop is None:
-        print('\t\t- No rhotop available at this beat, scaling the entire profile uniformly')
+        print('\t\t\t- No rhotop available at this beat, scaling the entire profile uniformly')
         p.profiles['te(keV)'] *= Tesep / p.profiles['te(keV)'][-1]
         p.profiles['ti(keV)'] *= Tesep / p.profiles['ti(keV)'][-1, :]
     else:
-        print(f'\t\t- Using rhotop = {rhotop:.3f} to scale temperature profiles only from rhotop to the new separatrix value')
+        print(f'\t\t\t- Using rhotop = {rhotop:.3f} to scale temperature profiles only from rhotop to the new separatrix value')
         
         _scale_quadratic(p, p.profiles['te(keV)'], rhotop, Tesep)
         for ion in range(len(p.profiles['ti(keV)'][0, :])):
@@ -198,17 +200,17 @@ def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, f
     p.profiles['name'][i_Z] = impurity_name[:2] 
     
     # Scale entire profile
-    print(f'\t- Implementing a core concentration of {fZ_top:.1e}, applied to the electron density profile')
+    print(f'\t\t\t- Implementing a core concentration of {fZ_top:.1e}, applied to the electron density profile')
     p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
     
     if edge_profile == "flat":
-        print(f'\t\t- Using a flat profile, with the same concentration at the separatrix and at the core')
+        print(f'\t\t\t\t- Using a flat profile, with the same concentration at the separatrix and at the core')
     elif edge_profile == "linear":
         
         if rhotop is None:
-            print('\t\t- No rhotop available at this beat, entire impurity profile scaled with the same factor (i.e. no different enrichment at the core and at the separatrix)')
+            print('\t\t\t\t- No rhotop available at this beat, entire impurity profile scaled with the same factor (i.e. no different enrichment at the core and at the separatrix)')
         else:
-            print(f'\t\t- Using rhotop = {rhotop:.3f} to apply a linear ramp in impurity concentration from rhotop to the separatrix, with the value at rhotop being {fZ_top:.1e} and the value at the separatrix being {fZ_sep:.1e}')
+            print(f'\t\t\t\t- Using rhotop = {rhotop:.3f} to apply a linear ramp in impurity concentration from rhotop to the separatrix, with the value at rhotop being {fZ_top:.1e} and the value at the separatrix being {fZ_sep:.1e}')
             
             ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
             
