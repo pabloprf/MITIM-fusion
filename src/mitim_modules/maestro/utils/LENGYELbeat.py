@@ -39,7 +39,8 @@ class lengyel_beat(beat):
 
         # Use seed impurity species from maestro namelist        
         seed_impurity_symbol = seed_impurity_species["name"]
-        seed_impurity_ratio_sep_top = seed_impurity_species["ratio_nZ_sep_top"]
+        seed_impurity_ratio_sep_top = seed_impurity_species["ratio_fZ_sep_top"]
+        seed_impurity_edge_profile = seed_impurity_species["edge_profile"]
         seed_impurity_name, seed_impurity_Z, seed_impurity_A = element_to_lengyel( seed_impurity_symbol )
 
         # High-Z impurity search
@@ -79,6 +80,8 @@ class lengyel_beat(beat):
         self.seed_impurity_Z = seed_impurity_Z
         self.seed_impurity_A = seed_impurity_A
         
+        self.seed_impurity_edge_profile = seed_impurity_edge_profile
+        
         self.fixed_impurity_symbol = fixed_impurity_symbol
         
         self._inform()
@@ -114,7 +117,7 @@ class lengyel_beat(beat):
         _modify_temperatures(p, Tesep, self.rhotop)
         
         # Modify impurity density profile
-        
+        _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, edge_profile=self.seed_impurity_edge_profile)
         # Find impurity index: if I have transp beat before Lengyel, I know the order of the impuritites
         if "impurity_order_transp" in self.maestro_instance.parameters_trans_beat:
             # Impurities ordered as in TRANSP
@@ -186,7 +189,7 @@ def _modify_temperatures(p, Tesep, rhotop):
             _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
 
 
-def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z, plotYN=False):
+def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z, plotYN=False, edge_profile="flat"):
 
     print(f'\t\t* Setting impurity "{impurity_name}" (Z={impurity_Z}, A={impurity_A}), at ion position #{i_Z}, density at separatrix to {fZ_top = :.1e}')
     
@@ -198,15 +201,19 @@ def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, f
     print(f'\t- Implementing a core concentration of {fZ_top:.1e}, applied to the electron density profile')
     p.profiles['ni(10^19/m^3)'][:, i_Z] = fZ_top * p.profiles['ne(10^19/m^3)']
     
-    if rhotop is None:
-        print('\t\t- No rhotop available at this beat, entire impurity profile scaled with the same factor (i.e. no different enrichment at the core and at the separatrix)')
-    else:
-        print(f'\t\t- Using rhotop = {rhotop:.3f} to apply a linear ramp in impurity concentration from rhotop to the separatrix, with the value at rhotop being {fZ_top:.1e} and the value at the separatrix being {fZ_sep:.1e}')
+    if edge_profile == "flat":
+        print(f'\t\t- Using a flat profile, with the same concentration at the separatrix and at the core')
+    elif edge_profile == "linear":
         
-        ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
-        
-        # From rhotop to separatrix, make the concentration go linearly from the value at rhotop to fZ_sep at the separatrix
-        p.profiles['ni(10^19/m^3)'][ix:, i_Z] = np.linspace(fZ_top, fZ_sep, len(p.profiles['ni(10^19/m^3)'][ix:, i_Z])) * p.profiles['ne(10^19/m^3)'][ix:]
+        if rhotop is None:
+            print('\t\t- No rhotop available at this beat, entire impurity profile scaled with the same factor (i.e. no different enrichment at the core and at the separatrix)')
+        else:
+            print(f'\t\t- Using rhotop = {rhotop:.3f} to apply a linear ramp in impurity concentration from rhotop to the separatrix, with the value at rhotop being {fZ_top:.1e} and the value at the separatrix being {fZ_sep:.1e}')
+            
+            ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
+            
+            # From rhotop to separatrix, make the concentration go linearly from the value at rhotop to fZ_sep at the separatrix
+            p.profiles['ni(10^19/m^3)'][ix:, i_Z] = np.linspace(fZ_top, fZ_sep, len(p.profiles['ni(10^19/m^3)'][ix:, i_Z])) * p.profiles['ne(10^19/m^3)'][ix:]
 
     if plotYN:
         # Debug plot to check the impurity density modification

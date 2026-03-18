@@ -216,7 +216,8 @@ maestro:
 
       seed_impurity_species: 
         name: "Ne"
-        ratio_nZ_sep_top: 1.0
+        ratio_fZ_sep_top: 1.0
+        edge_profile: "flat"    # Options: "flat", "linear"
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
