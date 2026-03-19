@@ -63,7 +63,7 @@ def configure_performance_settings(n_threads=None):
         blas_info = {"note": "threadpoolctl not available"}
 
     linear_operator.settings.max_cholesky_size._set_value(2000)
-    print(f"\t[perf] torch_num_threads={n_threads}, blas_threads={blas_info}, max_cholesky_size=2000", typeMsg="i")
+    print(f"\t[MITIM: GP performance] torch_num_threads={n_threads}, blas_threads={blas_info}, max_cholesky_size=2000", typeMsg="i")
 
 
 def restore_performance_settings():
@@ -91,7 +91,7 @@ def restore_performance_settings():
     except ImportError:
         restored = {}
 
-    print(f"\t[perf] thread pools restored: torch={_original_thread_state['torch_num_threads']}, blas={restored}", typeMsg="i")
+    print(f"\t[MITIM: GP performance] thread pools restored: torch={_original_thread_state['torch_num_threads']}, blas={restored}", typeMsg="i")
 
 
 # ----------------------------------------------------------------------------------------------------------------------------

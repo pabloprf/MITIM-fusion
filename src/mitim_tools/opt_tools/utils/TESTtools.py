@@ -1,9 +1,10 @@
 import torch
+import datetime
 import numpy as np
-from IPython import embed
-from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.opt_tools.optimizers.multivariate_tools import mitim_jacobian
-
+from mitim_tools.misc_tools.LOGtools import printMsg as print
+from IPython import embed
 
 def DVdistanceMetric(xT):
     yG = []
@@ -41,8 +42,10 @@ def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper 
     return insideBounds
 
 
-def _rand_points(combined_model, bounds, n_points):
+def _rand_points(combined_model, n_points):
     """Build a (n_points, n_dims) tensor of random points uniformly sampled within bounds."""
+    
+    bounds = combined_model.bounds
     dtype  = combined_model.train_X.dtype
     device = combined_model.train_X.device
     bt = torch.zeros(2, len(bounds), dtype=dtype, device=device)
@@ -99,36 +102,53 @@ def _jacobian_mean(model, X, _also_clean=None):
     return J     # (n_pts, n_out, n_in)
 
 
-def testInferenceTime(combined_model, individual_models, bounds, n_points=1000):
+def testInferenceTime(combined_model, n_points_list=[1000], additional_calls=None):
     """Time combined_model mean inference and Jacobian at n_points random points."""
 
-    print(f"[MITIM: GP batching] Testing inference time...")
+    for n_points in n_points_list:
+        
+        print(f"[MITIM: GP performance] Testing inference time of evaluating {n_points} points...", typeMsg="i")
 
-    import datetime
-    from mitim_tools.misc_tools import IOtools
+        X_rand = _rand_points(combined_model, n_points)
+        n_dims = X_rand.shape[-1]
 
-    X_rand = _rand_points(combined_model, bounds, n_points)
-    n_dims = X_rand.shape[-1]
-    n_gps  = len(individual_models)
+        # --- mean inference ---
+        t0 = datetime.datetime.now()
+        with torch.no_grad():
+            mean,_,_,_ = combined_model.predict(X_rand)
+        t_diff = IOtools.getTimeDifference(t0)
+            
+        n_gps = mean.shape[-1]
+        n_train = combined_model.train_X.shape[0]
+        print(
+            f"\t- Mean inference ({n_dims}D, {n_gps} GPs, {n_train} training pts, {n_points} inference pts): "
+            f"{t_diff}", typeMsg="i"
+        )
 
-    # --- mean inference ---
-    t0 = datetime.datetime.now()
-    with torch.no_grad():
-        combined_model.predict(X_rand)
-    print(
-        f"\t- Mean inference ({n_dims}D, {n_gps} GPs, {n_points} pts): "
-        f"{IOtools.getTimeDifference(t0)}", typeMsg="i"
-    )
+        # --- Jacobian ---
+        t0 = datetime.datetime.now()
+        _jacobian_mean(combined_model, X_rand)
+        t_diff = IOtools.getTimeDifference(t0)
+        print(
+            f"\t- Jacobian of mean ({n_dims}D, {n_gps} GPs, {n_train} training pts, {n_points} inference pts): "
+            f"{t_diff}", typeMsg="i"
+        )
+        
+        # --- additional call if requested ---
+        if additional_calls is not None:
+            for name, func in additional_calls.items():
+                t0 = datetime.datetime.now()
+                func(X_rand)
+                t_diff = IOtools.getTimeDifference(t0, niceText=False)*1000
+                print(
+                    f"\t- {name}: {n_dims}D, {n_points} inference pts): "
+                    f"{t_diff} ms", typeMsg="i"
+                )
+            # Return the time in ms of the last additional call for potential use in tests
+            return t_diff
+            
 
-    # --- Jacobian ---
-    t0 = datetime.datetime.now()
-    _jacobian_mean(combined_model, X_rand)
-    print(
-        f"\t- Jacobian of mean ({n_dims}D, {n_gps} GPs, {n_points} pts): "
-        f"{IOtools.getTimeDifference(t0)}", typeMsg="i"
-    )
-
-def testBatchAccuracy(combined_model, individual_models, bounds, n_points=1000, n_points_jac=5, thr_percent=0.1):
+def testBatchAccuracy(combined_model, individual_models, n_points=1000, n_points_jac=5, thr_percent=0.1):
     """
     Verify that the batched combined_model gives the same predictions as the
     individual models evaluated sequentially.
@@ -140,8 +160,8 @@ def testBatchAccuracy(combined_model, individual_models, bounds, n_points=1000, 
 
     print(f"[MITIM: GP batching] Testing accuracy of combined_model predictions against individual models...")
 
-    x     = _rand_points(combined_model, bounds, n_points)
-    x_jac = _rand_points(combined_model, bounds, n_points_jac)
+    x     = _rand_points(combined_model, n_points)
+    x_jac = _rand_points(combined_model, n_points_jac)
 
     # --- mean and std ---
     with torch.no_grad():

@@ -803,17 +803,11 @@ def createTimeTXT(duration_in_s, until=3):
     minutes = divmod(hours[1], 60)  # Use remainder of hours to calc minutes
     seconds = divmod(minutes[1], 1)  # Use remainder of minutes to calc seconds
 
-    try:
-        milisec = int(
-            (
-                duration_in_s
-                - (days[0] * 24 * 3600 + hours[0] * 3600 + minutes[0] * 60 + seconds[0])
-            )
-            * 1000
-        )
-        milisec_txt = f" ({str(milisec).zfill(2)}ms)"
-    except:
-        milisec_txt = ""
+    milisec = duration_in_s * 1e3
+    if 1 <= abs(milisec) < 1000:
+        milisec_txt = f" ({milisec:.1f} ms)"
+    else:
+        milisec_txt = f" ({milisec:.2e} ms)"
 
     if days[0] > 0:
         txt = f"{days[0]}d "
@@ -839,6 +833,8 @@ def createTimeTXT(duration_in_s, until=3):
             txt = "<1min "
         else:
             txt = f"<1s{milisec_txt} "
+    else:
+        txt += milisec_txt
 
     return txt[:-1]
 

@@ -95,11 +95,11 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
 
     # Nice LaTeX labels per predicted channel
     _nice_labels = {
-        'te': ('$a/L_{T_e}$',  r'$|\Delta Q_e|$'),
-        'ti': ('$a/L_{T_i}$',  r'$|\Delta Q_i|$'),
-        'ne': ('$a/L_{n_e}$',  r'$|\Delta \Gamma_e|$'),
-        'nZ': ('$a/L_{n_Z}$',  r'$|\Delta \Gamma_Z|$'),
-        'w0': ('$|d\omega_0/dr|$', r'$|\Delta \Pi|$'),
+        'te': ('$a/L_{T_e}$',  '$|\\Delta Q_e|$'),
+        'ti': ('$a/L_{T_i}$',  '$|\\Delta Q_i|$'),
+        'ne': ('$a/L_{n_e}$',  '$|\\Delta \\Gamma_e|$'),
+        'nZ': ('$a/L_{n_Z}$',  '$|\\Delta \\Gamma_Z|$'),
+        'w0': ('$|d\\omega_0/dr|$', '$|\\Delta \\Pi|$'),
     }
 
     if self.FluxMatch_Yopt.shape[0] > 0:

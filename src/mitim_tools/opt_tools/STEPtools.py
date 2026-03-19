@@ -292,8 +292,8 @@ class OPTstep:
 		*********************************************************************************************************************
 		"""
 
-        TESTtools.testBatchAccuracy(self.GP["combined_model"], self.GP["individual_models"], self.bounds)
-        TESTtools.testInferenceTime(self.GP["combined_model"], self.GP["individual_models"], self.bounds)
+        TESTtools.testBatchAccuracy(self.GP["combined_model"], self.GP["individual_models"])
+        TESTtools.testInferenceTime(self.GP["combined_model"], n_points_list = [1000, 5])
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 

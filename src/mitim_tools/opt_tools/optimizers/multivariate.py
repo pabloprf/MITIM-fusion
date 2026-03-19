@@ -113,10 +113,22 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # Solver
     # --------------------------------------------------------------------------------------------------------
 
+    # Test speed right here too
+    ms_inference = TESTtools.testInferenceTime(fun.evaluators['GP'],
+                                n_points_list = [len(xGuesses)],
+                                additional_calls={
+                                    'Residual evaluator used for optimization':flux_residual_evaluator
+                                    })
     print("************************************************************************************************")
     x_res, y_history, x_history, acq_evaluated, *_ = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
+    evaluations_required = y_history[..., 0].numel()
+
+    print('[MITIM: Optimization performance]')
+    print(f'\tOptimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
+    print(f'\tExpected time based on inference time of residual evaluator: {evaluations_required * ms_inference / 1000:.2f} seconds')
+    
     # --------------------------------------------------------------------------------------------------------
     # Post-process
     # --------------------------------------------------------------------------------------------------------
