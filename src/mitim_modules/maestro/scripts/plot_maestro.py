@@ -118,10 +118,14 @@ def main():
         )
         
         fig = fn.add_figure(label='MAESTRO timings ALL', tab_color=4)
-        axsTiming = fig.subplot_mosaic("""
-                                       A
-                                       B
-                                       """,sharex=True)
+        gs  = fig.add_gridspec(2, 2, width_ratios=[2, 1], hspace=0.35, wspace=0.35)
+        ax_tA = fig.add_subplot(gs[0, 0])
+        ax_tB = fig.add_subplot(gs[1, 0], sharex=ax_tA)
+        ax_tC = fig.add_subplot(gs[0, 1])
+        ax_tD = fig.add_subplot(gs[1, 1])
+        ax_tC.set_title("Time per Beat", fontsize=9)
+        ax_tD.set_title("Total by type", fontsize=9)
+        axsTiming = {'A': ax_tA, 'B': ax_tB, 'C': ax_tC, 'D': ax_tD}
         
         colors = GRAPHICStools.listColors()
             
@@ -138,7 +142,7 @@ def main():
         if len(folders) > 1:
             MAESTROplot.plot_special_quantities(ps, ps_lab, axsAll, color=colors[i], label = f'Case #{i}', legYN = i==0)
             if (m.folder_performance / 'timing.jsonl').exists():
-                x0, scripts0 = IOtools.plot_timings(m.folder_performance / 'timing.jsonl', axs = axsTiming, label = f'Case #{i}', color=colors[i])
+                x0, scripts0 = IOtools.plot_timings(m.folder_performance / 'timing.jsonl', axs = [axsTiming['A'], axsTiming['B']], ax_summary=axsTiming['C'], ax_total=axsTiming['D'], label = f'Case #{i}', color=colors[i])
     
         # Only keep the longest
         if len(x0) > len(x):
@@ -160,6 +164,8 @@ def main():
             axsTiming[let].set_xlim(left=0)
             axsTiming[let].set_ylim(bottom=0)
             axsTiming[let].set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+        axsTiming['C'].set_ylim(bottom=0)
+        axsTiming['D'].set_ylim(bottom=0)
 
     if not noshow:
         fn.show()

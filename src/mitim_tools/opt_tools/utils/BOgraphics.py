@@ -1469,10 +1469,14 @@ Workflow start time: {IOtools.getStringFromTime()}
         fig4 = self.fn.add_figure(label="Improvement", tab_color=tab_color)
         if log is not None:
             figTimes = self.fn.add_figure(label="Times", tab_color=tab_color)
-            grid = plt.GridSpec(2, 1, hspace=0.3, wspace=0.3)
-            axx0 = figTimes.add_subplot(grid[0])
-            axx1 = figTimes.add_subplot(grid[1], sharex=axx0)
-            axsTimes = [axx0, axx1]
+            grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.35, width_ratios=[2, 1])
+            axx0 = figTimes.add_subplot(grid[0, 0])
+            axx1 = figTimes.add_subplot(grid[1, 0], sharex=axx0)
+            axx2 = figTimes.add_subplot(grid[0, 1])
+            axx3 = figTimes.add_subplot(grid[1, 1])
+            axx2.set_title("Time per iteration", fontsize=9)
+            axx3.set_title("Total by type", fontsize=9)
+            axsTimes = [axx0, axx1, axx2, axx3]
 
         _ = self.plotComplete(
             fig=fig1,
@@ -1506,7 +1510,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         if log is not None:
             try:
-                IOtools.plot_timings(log, axs = [axsTimes[0], axsTimes[1]])
+                IOtools.plot_timings(log, axs=[axsTimes[0], axsTimes[1]], ax_summary=axsTimes[2], ax_total=axsTimes[3])
             except FileNotFoundError:
                 print(f"\t- Could not plot timings likely because this case was run on a different folder/machine than what's currently on. I suggest you run with --fix option", typeMsg="w")
 
