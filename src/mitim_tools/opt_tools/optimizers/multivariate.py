@@ -128,8 +128,8 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     print('\n[MITIM: Optimization performance]')
     print(f'\t- Optimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
     seconds_estimate = y_history.shape[0] * ms_inference / 1000
-    print(f'\t- Expected time based on inference time ({ms_inference} ms) of residual evaluator: {seconds_estimate:.2f} seconds\n')
-    print(f'\t- Hence, addtional overhead: {t.dt-seconds_estimate:.2f} seconds\n')
+    print(f'\t- Expected time based on inference time ({ms_inference} ms) of residual evaluator: {seconds_estimate:.2f} seconds')
+    print(f'\t- Hence, addtional overhead: {t.dt-seconds_estimate:.2f} seconds ({(t.dt-seconds_estimate)/seconds_estimate*100:.1f}%)\n')
     # --------------------------------------------------------------------------------------------------------
     # Post-process
     # --------------------------------------------------------------------------------------------------------
