@@ -315,7 +315,6 @@ class log_to_file:
             # If the file is closed, reopen it and try again
             self.log = open(self.log_file, 'a')
             self.log.write(clean_message)
-        self.log.flush()  # Ensure each write is immediately flushed
 
     def flush(self):
         # Ensure sys.stdout and sys.stderr are flushed
@@ -416,21 +415,22 @@ class Logger(object):
         print(f"- Creating log file: {logFile}")
 
         if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
+            self._log = open(self.logFile, "w")
+            self._log.write(f"* New run ({currentime})\n")
         else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run cold_started ({currentime})~~~~~ \n\n\n\n\n"
-                )
+            self._log = open(self.logFile, "a")
+            self._log.write(
+                f"\n\n\n\n\n\t ~~~~~ Run cold_started ({currentime})~~~~~ \n\n\n\n\n"
+            )
 
     def write(self, message):
         if self.writeAlsoTerminal:
             self.terminal.write(message)
+        self._log.write(strip_ansi_codes(message))
 
-        with open(self.logFile, "a") as self.log:
-            self.log.write(strip_ansi_codes(message))
-
-    # For python 3 compatibility:
     def flush(self):
-        pass
+        self._log.flush()
+
+    def close(self):
+        self._log.flush()
+        self._log.close()

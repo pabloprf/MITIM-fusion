@@ -57,7 +57,13 @@ def load_settings():
 
     return settings
 
+_verbose_level_cache = None
+
 def read_verbose_level():
+    global _verbose_level_cache
+    if _verbose_level_cache is not None:
+        return _verbose_level_cache
+
     s = load_settings()
     if "verbose_level" in s["preferences"]:
         verbose = int(s["preferences"]["verbose_level"])
@@ -68,7 +74,13 @@ def read_verbose_level():
     if verbose in [1, 2]:
         LOGtools.ignoreWarnings()
 
+    _verbose_level_cache = verbose
     return verbose
+
+def reset_verbose_level_cache():
+    """Force re-read of verbose level from config on next printMsg call."""
+    global _verbose_level_cache
+    _verbose_level_cache = None
 
 def read_dpi():
     s = load_settings()
