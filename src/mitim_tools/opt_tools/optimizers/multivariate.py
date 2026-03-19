@@ -121,14 +121,15 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
                                     'Residual evaluator used for optimization':flux_residual_evaluator
                                     })
     print("************************************************************************************************")
-    with IOtools.timer():
+    with IOtools.timer() as t:
         x_res, y_history, x_history, acq_evaluated, *_ = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
     print('\n[MITIM: Optimization performance]')
-    print(f'\tOptimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
-    print(f'\tExpected time based on inference time ({ms_inference} ms) of residual evaluator: {y_history.shape[0] * ms_inference / 1000:.2f} seconds\n')
-    
+    print(f'\t- Optimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
+    seconds_estimate = y_history.shape[0] * ms_inference / 1000
+    print(f'\t- Expected time based on inference time ({ms_inference} ms) of residual evaluator: {seconds_estimate:.2f} seconds\n')
+    print(f'\t- Hence, addtional overhead: {t.dt-seconds_estimate:.2f} seconds\n')
     # --------------------------------------------------------------------------------------------------------
     # Post-process
     # --------------------------------------------------------------------------------------------------------

@@ -108,17 +108,17 @@ class timer:
     # ────────────────────────────────────────────────────────────────────
     def _finish(self):
         
-        dt = time.perf_counter() - self.t0_wall
+        self.dt = time.perf_counter() - self.t0_wall
         t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f'\n\t\t* {self.name} took {createTimeTXT(dt)}\n')
+        print(f'\n\t\t* {self.name} took {createTimeTXT(self.dt)}\n')
 
         if self.log_file:
             record = {
                 "script"      : self.name,
                 "t_start"     : self.t0,
                 "ts_end"      : t1,
-                "duration_s"  : dt,
+                "duration_s"  : self.dt,
             }
             with Path(self.log_file).open("a", buffering=1) as f:
                 f.write(json.dumps(record) + "\n")
