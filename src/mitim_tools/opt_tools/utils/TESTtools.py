@@ -107,7 +107,7 @@ def testInferenceTime(combined_model, n_points_list=[1000], additional_calls=Non
 
     for n_points in n_points_list:
         
-        print(f"[MITIM: GP performance] Testing inference time of evaluating {n_points} points...", typeMsg="i")
+        print(f"\n[MITIM: GP performance] Testing inference time of evaluating {n_points} points...", typeMsg="i")
 
         X_rand = _rand_points(combined_model, n_points)
         n_dims = X_rand.shape[-1]
@@ -158,7 +158,7 @@ def testBatchAccuracy(combined_model, individual_models, n_points=1000, n_points
     n_out backward passes through all sequential individual models per point).
     """
 
-    print(f"[MITIM: GP batching] Testing accuracy of combined_model predictions against individual models...")
+    print(f"[MITIM: GP batching] Testing accuracy of combined_model predictions against individual models...", typeMsg="i")
 
     x     = _rand_points(combined_model, n_points)
     x_jac = _rand_points(combined_model, n_points_jac)
