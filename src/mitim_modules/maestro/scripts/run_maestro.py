@@ -310,7 +310,7 @@ def main():
         partition, environment, hours, memory = slurm
         
         run_slurm(f'mitim_run_maestro {folder} --namelist {maestro_namelist} --cpus {cpus} {optional_flags}',
-                    folder,partition,environment,hours=hours,n=cpus,mem=memory,exclusive=False,are_n_threads=False, ntasks_per_node=cpus)
+                    folder,partition,environment,hours=int(hours),n=cpus,mem=memory,exclusive=False,are_n_threads=False, ntasks_per_node=cpus)
         
     else:
         
