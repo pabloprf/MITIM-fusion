@@ -7,6 +7,7 @@ from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
+from mitim_tools.opt_tools.scripts.slurm import run_slurm
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -286,6 +287,9 @@ def main():
     parser.add_argument('--save', required=False, default=False, action='store_true')
     parser.add_argument('--coldstart',action='store_true', help='force cold start')
     
+    # Slurm option must be or None or a list wiht [partition, enviroment, hours, memory]
+    parser.add_argument('--slurm', nargs=4, metavar=('PARTITION', 'ENVIRONMENT', 'HOURS', 'MEMORY'), help='Submit to SLURM with given parameters')
+    
     args = parser.parse_args()
     
     folder = IOtools.expandPath(args.folder)
@@ -294,20 +298,36 @@ def main():
     terminal_outputs = args.terminal
     save_figs = args.save
     force_cold_start = args.coldstart
-
-    maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
-
-    if not folder.exists():
-        folder.mkdir(parents=True, exist_ok=True)
     
-    run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs, force_cold_start=force_cold_start)
+    slurm = args.slurm
 
-    if save_figs:
+    if slurm is not None:
+        # Recurse with same arguments but without slurm and submit to slurm
+        optional_flags = "--save" if save_figs else ""
+        optional_flags += " --coldstart" if force_cold_start else ""
+        optional_flags += " --terminal" if terminal_outputs else ""
         
-        fn = GUItools.FigureNotebook("MAESTRO", show=False)
-        _, _, _ = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=2, full_plot = False)
+        partition, environment, hours, memory = slurm
         
-        fn.save(folder / "maestro_plots")
+        run_slurm(f'mitim_run_maestro {folder} --namelist {maestro_namelist} --cpus {cpus} {optional_flags}',
+                    folder,partition,environment,hours=hours,n=cpus,mem=memory,exclusive=False,are_n_threads=False, ntasks_per_node=cpus)
+        
+    else:
+        
+
+        maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
+
+        if not folder.exists():
+            folder.mkdir(parents=True, exist_ok=True)
+        
+        run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs, force_cold_start=force_cold_start)
+
+        if save_figs:
+            
+            fn = GUItools.FigureNotebook("MAESTRO", show=False)
+            _, _, _ = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=2, full_plot = False)
+            
+            fn.save(folder / "maestro_plots")
 
 if __name__ == "__main__":
     main()
