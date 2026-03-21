@@ -1,4 +1,5 @@
 import torch
+import warnings
 import datetime
 import numpy as np
 from mitim_tools.misc_tools import IOtools
@@ -160,10 +161,22 @@ def testBatchAccuracy(combined_model, individual_models, n_points=1000, n_points
 
     print(f"[MITIM: GP batching] Testing accuracy of combined_model predictions against individual models...", typeMsg="i")
 
+    # Suppress GPyTorch's NumericalWarning about negative variances throughout this function.
+    # The sequential individual-model path (used only as a reference here) can produce tiny
+    # negative variances via floating-point cancellation in k_ss - k_sX K^{-1} k_Xs when
+    # test points land near training points. GPyTorch rounds these to 1e-10; the warning is
+    # harmless. The production batched path already clamps to 0 and never triggers it.
+    warnings.filterwarnings("ignore", message="Negative variance values detected")
+
     x     = _rand_points(combined_model, n_points)
     x_jac = _rand_points(combined_model, n_points_jac)
 
     # --- mean and std ---
+    # The individual-model predictions use standard GPyTorch inference, which can produce
+    # tiny negative variances (floating-point cancellation in k_ss - k_sX K^{-1} k_Xs)
+    # when test points land near training points. GPyTorch rounds these to 1e-10 and warns;
+    # suppress here since it is harmless and expected in the sequential verification path.
+    # The batched combined_model already clamps variances to 0 and never triggers this.
     with torch.no_grad():
         y_batch, upper_batch, lower_batch, _ = combined_model.predict(x)
         indiv_preds = [m.predict(x) for m in individual_models]

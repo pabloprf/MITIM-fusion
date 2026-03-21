@@ -298,7 +298,26 @@ optimization_options:
     # Relative improvement for stopping criteria of the acquisition optimization
     relative_improvement_for_stopping: 1.e-2    # Reducing residual by 100x is enough
 
-    # Type of acquisition function (Options: ["posterior_mean", "noisy_logei_mc", ...])
+    # Type of acquisition function (only applicable with "botorch" optimizers).
+    # Controls what quantity is maximized during the inner acquisition optimization (i.e., where to evaluate next).
+    #
+    # IMPORTANT: this setting only matters when "botorch" is in the optimizers list below.
+    # The "sr" and "root" optimizers use the residual function directly and ignore this.
+    #
+    # Analytic (no MC samples, cheaper):
+    #   "posterior_mean"    — maximizes h(E[Y]): objective applied to the GP mean.
+    #                         Fast, but only exact for linear objectives. For nonlinear
+    #                         objectives this approximates E[h(Y)] via Jensen's inequality.
+    #
+    # Monte Carlo (draw samples from posterior, correct for nonlinear objectives):
+    #   "simple_regret_mc"  — maximizes E[h(Y)]: MC estimate of the expected objective.
+    #                         Correct analog of "posterior_mean" for nonlinear objectives;
+    #                         the two differ by Jensen's inequality when h is nonlinear.
+    #   "logei_mc"          — maximizes log E[max(h(Y)-best, 0)]: log-EI, numerically
+    #                         stable. Balances exploration/exploitation. Use for standard BO.
+    #   "noisy_logei_mc"    — same as logei_mc but accounts for observation noise when
+    #                         computing best_f. More accurate with noisy GPs, higher cost.
+    #   "ei_mc"             — non-log version of logei_mc; less numerically stable.
     type:  "posterior_mean"
 
     # Optimizers to apply sequentially (Options: ["sr", "root", "botorch"])

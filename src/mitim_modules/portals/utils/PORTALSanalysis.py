@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools import STRATEGYtools
-from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, PLASMAtools, GRAPHICStools, LOGtools
 from mitim_tools.gacode_tools import TGLFtools, TGYROtools, PROFILEStools
 from mitim_modules.portals.utils import PORTALSplot
 from mitim_modules.portals import PORTALStools
@@ -378,7 +378,9 @@ class PORTALSanalyzer:
             if turbulence_model.lower() == "tglf":
                 from mitim_tools.gacode_tools import TGLFtools
                 tglf = TGLFtools.TGLF(rhos=self.rhos)
-                tglf.read(folder=folder_execution / "base_tglf", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                print(f"> Reading TGLF results for evaluation {it} (not printing to avoid cluttering the terminal)")
+                with LOGtools.HiddenPrints():
+                    tglf.read(folder=folder_execution / "base_tglf", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
                 
                 # ---------------------------------------
                 # Extract turbulence drives distributions
@@ -391,7 +393,8 @@ class PORTALSanalyzer:
                 distributions_y = {'Qe': [], 'Qi': [], 'Ge': []}
                 for subfolder in subfolders:
                     label = subfolder.name #[len("turb_drives_"):]
-                    tglf.read(folder=subfolder, label=label, input_gacode=folder_execution / "input.gacode_torun", require_all_files=False)
+                    with LOGtools.HiddenPrints():
+                        tglf.read(folder=subfolder, label=label, input_gacode=folder_execution / "input.gacode_torun", require_all_files=False)
 
                     distributions_x.append(label)
                     distributions_y['Qe'].append([tglf.results[label]['output'][i].Qe_unn for i in range(tglf.rhos.shape[0])])
@@ -403,7 +406,9 @@ class PORTALSanalyzer:
             if neoclassical_model.lower() == "neo":
                 from mitim_tools.gacode_tools import NEOtools
                 neo = NEOtools.NEO(rhos=self.rhos)
-                neo.read(folder=folder_execution / "base_neo", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                print(f"> Reading NEO results for evaluation {it} (not printing to avoid cluttering the terminal)")
+                with LOGtools.HiddenPrints():
+                    neo.read(folder=folder_execution / "base_neo", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
                 
             self.transport_model_objects[it] = {"turbulence": tglf, "neoclassical": neo}
                 

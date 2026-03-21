@@ -328,6 +328,11 @@ class OPTstep:
 
         # **************************************************************************************************
         # Acquisition functions (following BoTorch assumption of maximization)
+        #
+        # NOTE: the acquisition function is only used by the "botorch" optimizer.
+        #       "sr" (simple relaxation) and "root" (scipy root-finding) optimizers
+        #       use evaluators["residual_function"] directly and ignore this entirely.
+        #       The acquisition type setting has no effect when optimizers=["sr","root"].
         # **************************************************************************************************
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -335,6 +340,11 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         if self.acquisition_type == "posterior_mean":
+            # Computes h(E[Y]): applies the objective to the GP posterior mean directly.
+            # Fast (no MC samples), but only exact when the objective h is linear in Y.
+            # For nonlinear objectives, this is an approximation via Jensen's inequality:
+            #   h(E[Y]) != E[h(Y)]  in general.
+            # Only relevant when "botorch" is in the optimizers list.
             print('\t* Chosen analytic posterior_mean acquisition, objective nonlinearity not considered', typeMsg="i")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel,
@@ -342,6 +352,9 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "logei":
+            # Analytic log-Expected Improvement. Does not apply the custom objective;
+            # best_f is computed directly from train_Y. Use only for simple scalar problems
+            # where the objective is identity (or close to it).
             print("\t* Chosen analytic logei acquisition, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
@@ -353,10 +366,16 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Monte Carlo acquisition functions
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        
+
         sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([self.acquisition_params["mc_samples"]]))
 
         if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
+            # Computes E_Y[h(Y)] via MC: draws posterior samples, applies the objective
+            # to each, and averages. This is the correct analog of the posterior mean
+            # when the objective h is nonlinear — unlike "posterior_mean", it respects
+            # Jensen's inequality and accounts for posterior uncertainty.
+            # For q=1 (single candidate), this equals the expected objective value E[h(Y)].
+            # Only relevant when "botorch" is in the optimizers list.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qSimpleRegret(
                     self.evaluators["GP"].gpmodel,
@@ -366,6 +385,10 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "ei_mc":
+            # MC Expected Improvement: E[max(h(Y) - best_f, 0)].
+            # Balances exploration and exploitation; best_f is the current best
+            # observed objective value. Use when actively searching for improvement
+            # over a known best point.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -376,6 +399,9 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "logei_mc":
+            # MC log-Expected Improvement: numerically more stable version of ei_mc,
+            # using log-space to avoid underflow in low-improvement regions.
+            # Preferred over ei_mc in most exploration-exploitation settings.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -386,6 +412,10 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "noisy_logei_mc":
+            # MC log-Expected Improvement robust to observation noise: treats training
+            # points as noisy and re-evaluates best_f internally from X_baseline.
+            # More accurate than logei_mc when the GP likelihood includes noise,
+            # at the cost of higher computational overhead (especially with many training points).
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogNoisyExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
