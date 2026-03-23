@@ -47,7 +47,7 @@ plasma:
 
     # Profile boundary conditions
     neped_20: 2.5           # Density at "ped" location as defined by EPED
-    fGped: null             # [Optional] if not null, use this Greenwald fraction instead of the neped_20 value (overrides neped_20). Ip and a must be provided for this to work
+    fGped: null             # [Optional] if not null, use this pedestal Greenwald fraction (overrides neped_20). Ip and a must be provided for this to work
     ne_ratio_sep_ped: 0.3   # Ratio nsep/nped 
     Tesep_eV: 75.0          # Temperature at separatrix (to potentially change if beat provides physics for this, e.g. Lengyel)
 

@@ -49,9 +49,10 @@ def run_maestro_local(
         try:
             Ip = maestro_namelist["plasma"]["parameters"]["Ip"]
             a = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
-        except KeyError:
-            raise KeyError("To use fGped, you must provide both Ip and a in the namelist")
+        except:
+            raise Exception("To use fGped, you must provide both Ip and a in the namelist")
         neped_20 = maestro_namelist["plasma"]["parameters"]["fGped"] * PLASMAtools.Greenwald_density(Ip, a)
+        print(f'\t- Calculated neped_20 from fGped: {neped_20 = :.2f}')
     else:
         neped_20 = maestro_namelist["plasma"]["parameters"]["neped_20"]
 
