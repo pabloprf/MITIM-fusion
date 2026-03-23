@@ -3,7 +3,7 @@ import copy
 import json
 import numpy as np
 from pathlib import Path
-from mitim_tools.misc_tools import IOtools, GUItools
+from mitim_tools.misc_tools import IOtools, GUItools, PLASMAtools
 from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
@@ -44,14 +44,25 @@ def run_maestro_local(
     elif maestro_namelist["plasma"]["heating"]["type"] == "gaussian_sources":
         Ptotal = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"] + maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
 
+    if "fGped" in maestro_namelist["plasma"]["parameters"] and maestro_namelist["plasma"]["parameters"]["fGped"] is not None:
+        print('[MAESTRO] Using fGped to determine neped_20. This will override the neped_20 value provided in the namelist', typeMsg='i')
+        try:
+            Ip = maestro_namelist["plasma"]["parameters"]["Ip"]
+            a = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
+        except KeyError:
+            raise KeyError("To use fGped, you must provide both Ip and a in the namelist")
+        neped_20 = maestro_namelist["plasma"]["parameters"]["fGped"] * PLASMAtools.Greenwald_density(Ip, a)
+    else:
+        neped_20 = maestro_namelist["plasma"]["parameters"]["neped_20"]
+
     parameters_engineering = {
         'Ip_MA':        maestro_namelist["plasma"]["parameters"]["Ip"],
         'B_T':          maestro_namelist["plasma"]["parameters"]["Bt"],
         'Zeff':         maestro_namelist["plasma"]["species"]["Zeff"],
         'PichT_MW':     Ptotal,
-        'neped_20' :    maestro_namelist["plasma"]["parameters"]["neped_20"] ,
+        'neped_20' :    neped_20,
         'Tesep_keV':    maestro_namelist["plasma"]["parameters"]["Tesep_eV"]*1E-3,
-        'nesep_20':     maestro_namelist["plasma"]["parameters"]["neped_20"] * maestro_namelist["plasma"]["parameters"]["ne_ratio_sep_ped"]
+        'nesep_20':     neped_20* maestro_namelist["plasma"]["parameters"]["ne_ratio_sep_ped"]
         }
     
     initialization_type =  maestro_namelist["plasma"]["profiles_initialization"]["initialization_type"]
