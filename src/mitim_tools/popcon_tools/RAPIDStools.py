@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+import concurrent.futures
 from mitim_tools.misc_tools import GRAPHICStools, PLASMAtools, LOGtools, IOtools
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import TRANSFORMtools
@@ -178,10 +179,11 @@ def rapids_evaluator(nn, core, p_base_orig,
                      thr_beta=0.025,
                      ion_position=3, # if (T,D,Z,...), change Z to match Zeff choice
                      hide_prints=True,  # -> If True, only print warnings and the case flag
-                     optional_flag="RAPIDS case ",  
+                     optional_flag="RAPIDS case ",
                      analyze_distance_to_pb = False,
                      scale_zeta=False, # Trick for now to fix negative jacobians when moving triangularity too much
                      state_resol=None, # If not None, change resolution of the profiles for the state calculation
+                     initial_betan=1.0, # Starting guess for the BetaN loop; warm-starting from a nearby case reduces iterations
                      **kwargs_rederive_geometry):
     '''
     neped in this evaluator is in 1E20 m^-3
@@ -294,7 +296,7 @@ def rapids_evaluator(nn, core, p_base_orig,
         ---------------------------------------------------------------------------------------------------------------------
         '''
         
-        Beta_EPED0 = 1.0 # To start with a reasonable value to avoid breaking the loop with the first pedestal evaluation
+        Beta_EPED0 = initial_betan # Starting guess; warm-starting from a nearby converged case reduces BetaN loop iterations
         minimum_its = 2  # To make sure that at least one iteration of adjustment is done, even if the guessed Beta_EPED0 is close enough
         
         profs, Beta, Beta_EPED, fails = [], [], [], []
@@ -451,7 +453,8 @@ def scan_parameter(
     vertical_at_nominal=True,
     type_plot='full',
     axs=None,
-    state_resol=None
+    state_resol=None,
+    n_jobs=1,   # >1 uses ThreadPoolExecutor (real speedup when NN inference dominates)
     ):
     '''
     axs must be a list of 8 cases if full plot
@@ -478,16 +481,36 @@ def scan_parameter(
     else:
         BetaN_multiplier = 1+p_base.derived['pfast_fraction']
     
-    for i,x in enumerate(results1['x']):
-        values[xparam] = x
-        ptop_kPa,wtop_psipol,profiles_new, eped_evaluation, _ = rapids_evaluator(
-            nn, core,
-            p_base,
+    xs_scan = results1['x']
+    n_scan   = len(xs_scan)
+
+    def _evaluate_one(i, x_val, initial_betan):
+        vals = dict(values)
+        vals[xparam] = x_val
+        return rapids_evaluator(
+            nn, core, p_base,
             Paux=Paux,
-            **values,
+            **vals,
             n_theta_geo=101,
-            optional_flag=f'RAPIDS case {i+1}/{len(results1["x"])}: {xparam}={x:.3f}'
-            )
+            optional_flag=f'RAPIDS case {i+1}/{n_scan}: {xparam}={x_val:.3f}',
+            initial_betan=initial_betan,
+        )
+
+    if n_jobs == 1:
+        # Sequential: carry over converged betan as warm start for the next point
+        eval_results = []
+        next_betan = 1.0
+        for i, x_val in enumerate(xs_scan):
+            res = _evaluate_one(i, x_val, initial_betan=next_betan)
+            eval_results.append(res)
+            next_betan = res[3].get('betan', 1.0)  # eped_evaluation['betan'] from converged point
+    else:
+        # Parallel: all points run concurrently; no betan carry-over (points are independent)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n_jobs) as pool:
+            futures = [pool.submit(_evaluate_one, i, x_val, 1.0) for i, x_val in enumerate(xs_scan)]
+            eval_results = [f.result() for f in futures]
+
+    for ptop_kPa, wtop_psipol, profiles_new, eped_evaluation, _ in eval_results:
         results1['profs'].append(profiles_new)
         results1['Ptop'].append(ptop_kPa)
         results1['wtop_psipol'] = wtop_psipol
