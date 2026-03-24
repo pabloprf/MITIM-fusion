@@ -2,7 +2,10 @@ import os
 import scipy
 import numpy as np
 from pathlib import Path
-import statsmodels.api as sm
+try:
+    import statsmodels.api as sm
+except:
+    print("could not load statsmodel")
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools import SIMtools
