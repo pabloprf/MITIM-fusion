@@ -469,10 +469,10 @@ def plotChecks(self, axs=None):
 
     ax = axs[2]
     x = self.psi_pol_norm
-    y1 = self.g.raw["ffprim"]
-    ax.plot(x, y1, lw=2, c="r", label="$FF'$")
-    y2 = self.g.raw["pprime"] * (4 * np.pi * 1e-7)
-    ax.plot(x, y2, lw=2, c="b", label="$p'*\\mu_0$")
+    y1 = self.g.derived["ffprim"]
+    ax.plot(x, y1, lw=2, ls="-", c="r", label="$FF'$")
+    y2 = self.g.derived["pprime"] * (4 * np.pi * 1e-7)
+    ax.plot(x, y2, lw=2, ls="-", c="b", label="$p'*\\mu_0$")
 
     ax.set_ylabel("")
     ax.legend()
@@ -525,16 +525,16 @@ def plotParameterization(self, axs=None):
     )
     # Boundary, axis and limiter
     ax.plot(self.Rb, self.Yb, lw=1, c="r")
-    ax.plot(self.g.raw["rmaxis"], self.g.raw["zmaxis"], "+", markersize=10, c="r")
+    ax.plot(self.g.derived["rmaxis"], self.g.derived["zmaxis"], "+", markersize=10, c="r")
     ax.plot([self.Rmag], [self.Zmag], "o", markersize=5, c="m")
     ax.plot([self.Rmajor], [self.Zmag], "+", markersize=10, c="k")
-    if 'rlim' in self.g.raw and 'zlim' in self.g.raw:
-        ax.plot(self.g.raw["rlim"], self.g.raw["zlim"], lw=1, c="k")
+    if 'rlim' in self.g.derived and 'zlim' in self.g.derived:
+        ax.plot(self.g.derived["rlim"], self.g.derived["zlim"], lw=1, c="k")
 
         import matplotlib
 
         path = matplotlib.path.Path(
-            np.transpose(np.array([self.g.raw["rlim"], self.g.raw["zlim"]]))
+            np.transpose(np.array([self.g.derived["rlim"], self.g.derived["zlim"]]))
         )
         patch = matplotlib.patches.PathPatch(path, facecolor="none")
         ax.add_patch(patch)
@@ -878,8 +878,8 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
 
     ax = ax_plasma[0]
     ax.plot(
-        xcoord,
-        self.g.raw["pres"] * 1e-6,
+        self.rho_tor,
+        self.g.derived["pres"] * 1e-6,
         "-s",
         c=color,
         lw=2,
@@ -895,9 +895,8 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
 
     ax = ax_plasma[1]
     ax.plot(
-        xcoord,
-        -self.g.raw["pprime"] * 1e-6,
-        '-s',
+        self.rho_tor,
+        -self.g.derived["pprime"] * 1e-6,
         c=color,
         lw=2,
         markersize=3,
@@ -910,7 +909,7 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
 
 
     ax = ax_plasma[2]
-    ax.plot(xcoord, self.g.raw["fpol"], '-s', c=color, lw=2, markersize=3)
+    ax.plot(self.rho_tor, self.g.derived["fpol"], c=color, lw=2, ls="-")
     ax.set_xlim([0, 1])
     ax.set_xlabel(xlabel)
     ax.set_ylabel("$F = RB_{\\phi}$ (T*m)")
@@ -919,7 +918,7 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
     ax.set_title("Toroidal Field Function")
 
     ax = ax_plasma[3]
-    ax.plot(xcoord, self.g.raw["ffprim"], '-s', c=color, lw=2, markersize=3)
+    ax.plot(self.rho_tor, self.g.derived["ffprim"], c=color, lw=2, ls="-")
     ax.set_xlim([0, 1])
     ax.set_xlabel(xlabel)
     ax.set_ylabel("FF' (T*m/[])")
@@ -928,7 +927,23 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
 
     ax = ax_plasma[4]
     ax.plot(
-        xcoord,
+        self.rho_tor,
+        np.abs(self.g.derived["qpsi"]),
+        "-s",
+        c=color,
+        lw=2,
+        markersize=3,
+        label=label + "geqdsk q",
+    )
+    ax.set_xlim([0, 1])
+    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel("safety factor q")
+    ax.axhline(y=1.0, ls="--", lw=0.5, c="k")
+
+    ax = ax_plasma[5]
+    ax.plot(
+        self.rho_tor,
         np.abs(self.Jt),
         "-s",
         c=color,

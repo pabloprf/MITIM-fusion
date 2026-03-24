@@ -21,14 +21,14 @@ Modifications are made in MITIM for visualizations and a few extra derivations.
 """
 
 class MITIMgeqdsk:
-    def __init__(self, filename):
+    def __init__(self, filename, refine=1):
 
         self.g = megpy.Equilibrium()
         try:
             self.g.read_geqdsk(f_path=filename)
         except ValueError:
             raise ValueError("-> MITIMgeqdsk: Problem reading g-eqdsk file ", filename)
-        self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True)
+        self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
 
         # Extra derivations in MITIM
         self.derive()
