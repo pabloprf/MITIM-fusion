@@ -399,7 +399,7 @@ def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
     g.plotFluxSurfaces(ax=axs[0], fluxes=[0.995], rhoPol=True, sqrt=False, color=color,plot1=False, lw = lw,label='995')
     
     
-    axs[1].plot(g.g.derived['rho_tor'], g.g.raw['pres']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
-    axs[6].plot(g.g.derived['rho_tor'], g.g.raw['qpsi'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+    axs[1].plot(g.g.derived['rho_tor'], g.g.derived['pres']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+    axs[6].plot(g.g.derived['rho_tor'], g.g.derived['qpsi'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
 
 

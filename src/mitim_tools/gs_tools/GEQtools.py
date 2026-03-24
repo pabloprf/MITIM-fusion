@@ -90,7 +90,7 @@ class MITIMgeqdsk:
 
         self.Jerror = np.abs(self.Jt - self.Jt_fb)
 
-        self.Ip = self.g.raw["current"]
+        self.Ip = self.g.derived["current"]
         
         self.a = self.g.derived["r"][-1]
         self.Rmag = self.g.derived["Ro"][0]
@@ -117,7 +117,7 @@ class MITIMgeqdsk:
             The shaping parameters calculated using fluxsurfaces are correct though.
         """
 
-        self.Rb_gfile, self.Yb_gfile = self.g.raw["rbbbs"].copy(), self.g.raw["zbbbs"].copy()
+        self.Rb_gfile, self.Yb_gfile = self.g.derived["rbbbs"].copy(), self.g.derived["zbbbs"].copy()
         self.Rb, self.Yb = self.g.fluxsurfaces["R"][-1], self.g.fluxsurfaces["Z"][-1]
         
         if len(self.Rb) == 0:
@@ -414,13 +414,13 @@ class MITIMgeqdsk:
         rhotor = self.g.derived['rho_tor']
         psi = self.g.derived['psi']                          # Wb/rad
         torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
-        q = self.g.raw['qpsi']
-        pressure = self.g.raw['pres']       # Pa
-        Ip = self.g.raw['current']*1E-6     # MA
+        q = self.g.derived['qpsi']
+        pressure = self.g.derived['pres']       # Pa
+        Ip = self.g.derived['current']*1E-6     # MA
 
         RZ = np.array([self.Rb,self.Yb]).T
         R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
-        B0 = self.g.raw['rcentr']*self.g.raw['bcentr'] / R0
+        B0 = self.g.derived['rcentr']*self.g.derived['bcentr'] / R0
 
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
