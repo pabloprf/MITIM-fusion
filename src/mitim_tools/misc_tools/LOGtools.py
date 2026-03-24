@@ -5,6 +5,7 @@ import datetime
 import warnings
 import contextlib
 import logging
+import threading
 from IPython import embed
 
 # Paramiko shows some deprecation warnings that are not relevant
@@ -148,11 +149,47 @@ def query_yes_no(question, extra=""):
         else:
             printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
 
+# ---------------------------------------------------------------------------
+# Thread-local stdout proxy — installed once, lets HiddenPrints work safely
+# across multiple concurrent threads without the threads stomping on each
+# other's sys.stdout replacement.
+# ---------------------------------------------------------------------------
+
+_hp_tls   = threading.local()   # per-thread: current HiddenPrints override
+_hp_lock  = threading.Lock()    # guards the one-time proxy installation
+
+
+class _ThreadLocalStdoutProxy:
+    """sys.stdout replacement that dispatches writes to a per-thread override.
+
+    If the calling thread has an active HiddenPrints context it sees its own
+    filtered stream; all other threads see the original stdout unchanged.
+    """
+
+    def __init__(self, real):
+        # Store without triggering __setattr__ overrides
+        object.__setattr__(self, '_real', real)
+
+    def write(self, msg):
+        target = getattr(_hp_tls, 'override', None)
+        (target if target is not None else self._real).write(msg)
+
+    def flush(self):
+        target = getattr(_hp_tls, 'override', None)
+        (target if target is not None else self._real).flush()
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_real'), name)
+
+
 class HiddenPrints:
     """
     Usage:
             with IOtools.HiddenPrints():
                     printMsg("This will not be printed")
+
+    Thread-safe: multiple threads can each be inside their own HiddenPrints
+    context simultaneously without interfering with each other.
     """
 
     def __init__(self, show_if_contains=None):
@@ -183,18 +220,27 @@ class HiddenPrints:
         self._current_line_visible = False
 
     def __enter__(self):
-        # Save the original stdout and create a devnull sink
-        self._original_stdout = sys.stdout
+        # Install the process-wide proxy once (thread-safe, idempotent)
+        with _hp_lock:
+            if not isinstance(sys.stdout, _ThreadLocalStdoutProxy):
+                sys.stdout = _ThreadLocalStdoutProxy(sys.stdout)
+
+        # Resolve the "real" stdout: skip through any enclosing HiddenPrints
+        # so that visible lines always reach the actual terminal/file.
+        prev = getattr(_hp_tls, 'override', None)
+        self._original_stdout = prev._original_stdout if prev is not None \
+            else sys.stdout._real  # type: ignore[attr-defined]
         self._devnull = open(os.devnull, "w")
 
-        # Replace sys.stdout with this object so we can filter writes
-        sys.stdout = self
+        # Set this instance as the per-thread stdout override
+        self._prev_override = prev
+        _hp_tls.override = self
 
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Restore original stdout and close the devnull sink
-        sys.stdout = self._original_stdout
+        # Restore the previous per-thread override (None if outermost context)
+        _hp_tls.override = self._prev_override
         if not self._devnull.closed:
             self._devnull.close()
 
