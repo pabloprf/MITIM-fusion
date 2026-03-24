@@ -973,7 +973,7 @@ def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
     ax = ax_plasma[5]
     ax.plot(
         xcoord,
-        np.abs(self.g.raw["qpsi"]),
+        np.abs(self.g.derived["qpsi"]),
         "-s",
         c=color,
         lw=2,

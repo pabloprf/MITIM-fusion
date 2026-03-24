@@ -28,7 +28,11 @@ class MITIMgeqdsk:
             self.g.read_geqdsk(f_path=filename)
         except ValueError:
             raise ValueError("-> MITIMgeqdsk: Problem reading g-eqdsk file ", filename)
-        self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+        try:
+            self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+        except:
+            print('> Reading geqdsk derived quantities failed, trying increasing refine parameter', typeMsg='w')
+            self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
 
         # Extra derivations in MITIM
         self.derive()
