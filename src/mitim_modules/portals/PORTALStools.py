@@ -308,22 +308,35 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
     return powerstate
 
 def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0):
-    
+
     Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
     of, cal, _ = mitim_bo.scalarized_objective(Y)
-    
+
     Ystd = torch.from_numpy(mitim_bo.train_Ystd).to(mitim_bo.dfT)
-    of_u, cal_u, _ = mitim_bo.scalarized_objective(Y+Ystd)
-    of_l, cal_l, _ = mitim_bo.scalarized_objective(Y-Ystd)
 
-    # If the transformation is linear, they should be the same
-    of_stdu, cal_stdu = (of_u-of), (cal_u-cal)
-    of_stdl, cal_stdl = (of-of_l), (cal-cal_l)
+    # Perturb each independent uncertainty source separately and combine in quadrature.
+    # Perturbing all outputs simultaneously (Y+Ystd) gives an arithmetic sum of
+    # turb_std + neoc_std through the linear "of = turb + neoc" combination, which
+    # assumes perfect correlation between independent sources.  The correct combination
+    # for independent sources is quadrature: sqrt(turb_std^2 + neoc_std^2), matching
+    # what calculate_residuals_distributions uses in post-processing.
+    ofs_names = np.array(mitim_bo.optimization_options["problem_options"]["ofs"])
+    of_var  = torch.zeros_like(of)
+    cal_var = torch.zeros_like(cal)
+    for tag in ("_tr_turb_", "_tr_neoc_", "_tar_", "Qie_tr_turb_"):
+        mask = torch.tensor(
+            [tag in n for n in ofs_names], dtype=Y.dtype, device=Y.device
+        )
+        Ystd_k = Ystd * mask                                     # zero out all other columns
+        of_k, cal_k, _ = mitim_bo.scalarized_objective(Y + Ystd_k)
+        of_var  += (of_k  - of )**2
+        cal_var += (cal_k - cal)**2
 
-    of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
+    of_std  = of_var **0.5
+    cal_std = cal_var**0.5
 
     _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
-    
+
     return chiR
 
 def stopping_criteria_portals(mitim_bo, parameters = {}):
