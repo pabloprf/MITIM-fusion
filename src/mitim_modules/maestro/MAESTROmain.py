@@ -16,7 +16,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
-from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator
+from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
 '''
@@ -179,6 +179,8 @@ class maestro:
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
         elif method in ['profiles', "fixed_profiles"]:
             self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs_creator)
+        elif method == 'fixed_bc':
+            self.beat.initialize.profile_creator = creator_from_fixed_bc(self.beat.initialize,**kwargs_creator)
         else:
             raise ValueError(f'[MITIM] Creator method {method} not recognized')
 

@@ -105,7 +105,10 @@ def run_maestro_local(
     # Read user settings and default namelists for individual Beats
     # ---------------------------------------------------------------------------------------
 
-    potential_beats = maestro_namelist["maestro"]["beats"] + ["eped_initializer"] # The ones that I want to use plus the special one
+    # Add creator beat to potential_beats only when it has a namelist entry (i.e. it maps to a real beat like eped_initializer)
+    potential_beats = maestro_namelist["maestro"]["beats"]
+    if initialization_creator_type not in [None, 'fixed_profiles', 'fixed_bc']:
+        potential_beats = potential_beats + [initialization_creator_type]
 
 
     beat_prepare_namelists, beat_run_namelists = {}, {}
@@ -220,6 +223,8 @@ def run_maestro_local(
                 if initialization_creator_type == 'fixed_profiles':
                     profiles_insert = read_fixed_profiles(parameters_initialize['profiles_file'])
                     parameters_initialize['profiles_insert'] = profiles_insert
+                elif initialization_creator_type == 'fixed_bc':
+                    pass  # All parameters come directly from parameters_initialize and parameters_engineering
                 else:
                     # If normal creator, append the **beat_prepare_namelists[initialization_creator_type],
                     parameters_initialize = IOtools.deep_dict_update(

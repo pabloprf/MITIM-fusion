@@ -76,7 +76,7 @@ def main():
 
     only_folder_structure_with_files = None
     if args.remote_minimal:
-       only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl"]
+       only_folder_structure_with_files = ["beat_results/input.gacode", "input.gacode_final","initializer_geqdsk/input.gacode", "timing.jsonl", "maestro.namelist.actual.yaml"]
             
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 
