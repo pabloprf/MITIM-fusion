@@ -95,6 +95,10 @@ def main():
     only = args.only
     full = args.full
 
+    # If a single "*" is given, expand to all subdirectories of the current directory
+    if folders == ["*"]:
+        folders = sorted([str(p) for p in Path.cwd().iterdir() if p.is_dir()])
+
     folders = [IOtools.expandPath(folder) for folder in folders]
     
     dpi_fig = args.dpi

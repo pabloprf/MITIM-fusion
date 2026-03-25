@@ -452,7 +452,11 @@ Logger
 
 class Logger(object):
     def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
+        # Unwrap the thread-local proxy so Logger.terminal always points at the
+        # real underlying stream.  Without this, Logger ↔ proxy ↔ HiddenPrints
+        # ↔ Logger forms an infinite recursion cycle.
+        raw = sys.stdout
+        self.terminal = raw._real if isinstance(raw, _ThreadLocalStdoutProxy) else raw
         self.logFile = logFile
         self.writeAlsoTerminal = writeAlsoTerminal
 
