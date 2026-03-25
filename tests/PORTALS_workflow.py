@@ -48,7 +48,7 @@ mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestio
 mitim_bo.run()
 
 # Plot
-portals_fun.plot_optimization_results(analysis_level=4)
+portals_fun.plot_optimization_results(analysis_level=2)
 
 # For fun and to show capabilities, let's do a flux match of the current surrogates and plot in the same notebook
 PORTALSoptimization.flux_match_surrogate(

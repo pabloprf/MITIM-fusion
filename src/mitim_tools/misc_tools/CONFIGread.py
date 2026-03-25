@@ -47,7 +47,12 @@ config_manager = ConfigManager()
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+_settings_cache = None
+
 def load_settings():
+    global _settings_cache
+    if _settings_cache is not None:
+        return _settings_cache
 
     _config_file_path = config_manager.get()
 
@@ -55,9 +60,16 @@ def load_settings():
     with open(_config_file_path, "r") as f:
         settings = json.load(f)
 
+    _settings_cache = settings
     return settings
 
+_verbose_level_cache = None
+
 def read_verbose_level():
+    global _verbose_level_cache
+    if _verbose_level_cache is not None:
+        return _verbose_level_cache
+
     s = load_settings()
     if "verbose_level" in s["preferences"]:
         verbose = int(s["preferences"]["verbose_level"])
@@ -68,7 +80,14 @@ def read_verbose_level():
     if verbose in [1, 2]:
         LOGtools.ignoreWarnings()
 
+    _verbose_level_cache = verbose
     return verbose
+
+def reset_config_cache():
+    """Force re-read of config file and verbose level on next access."""
+    global _settings_cache, _verbose_level_cache
+    _settings_cache = None
+    _verbose_level_cache = None
 
 def read_dpi():
     s = load_settings()

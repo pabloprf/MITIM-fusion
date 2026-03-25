@@ -89,14 +89,18 @@ class mitim_nn:
         
         
     def _evaluate_tf(self, inputs, print_msg=True):
-        
+
         if print_msg:
             print('Evaluating NN with inputs: ', inputs)
 
+        # Use direct __call__ instead of model.predict(): predict() re-initialises the TF
+        # data pipeline on every call (adds ~100 ms overhead per scalar evaluation).
+        out = np.array(self.model(np.expand_dims(inputs, axis=0), training=False))[0]
+
         if self.normalization is not None:
-            return self.model.predict(np.expand_dims(inputs, axis=0))[0]*self.normalization
+            return out * self.normalization
         else:
-            return self.model.predict(np.expand_dims(inputs, axis=0))[0]
+            return out
 
     def _load_pt(self, model_path, norm=None):
 

@@ -108,17 +108,17 @@ class timer:
     # ────────────────────────────────────────────────────────────────────
     def _finish(self):
         
-        dt = time.perf_counter() - self.t0_wall
+        self.dt = time.perf_counter() - self.t0_wall
         t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f'\t\t* {self.name} took {createTimeTXT(dt)}')
+        print(f'\n\t\t* {self.name} took {createTimeTXT(self.dt)}\n')
 
         if self.log_file:
             record = {
                 "script"      : self.name,
                 "t_start"     : self.t0,
                 "ts_end"      : t1,
-                "duration_s"  : dt,
+                "duration_s"  : self.dt,
             }
             with Path(self.log_file).open("a", buffering=1) as f:
                 f.write(json.dumps(record) + "\n")
@@ -185,7 +185,7 @@ def mitim_timer(
     return decorator_timer
 
 # ---------------------------------------------------------------------------
-def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= '', log=False):
+def plot_timings(jsonl_path, axs = None, ax_summary = None, ax_total = None, unit: str = "min", color = "b", label= '', log=False):
     """
     Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
     with vertical lines when the beat number changes.
@@ -194,14 +194,39 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
     ----------
     jsonl_path : str | Path
         File with one JSON record per line.
+    ax_summary : matplotlib Axes or None
+        If provided, plot a stacked-bar summary of time per beat broken down by
+        category (portals / transp / eped / other).
     unit : {"s", "min", "h"}
         Unit for the y-axis.
     """
     multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
+    
+    rotation = 30
 
     scripts, script_time, cumulative, beat_nums, script_restarts = [], [], [], [], []
     running = 0.0
     beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
+    iter_pat = re.compile(r"@\s*(\d+)\s*$")   # "Surr @ 3", "Eval @ 1", …
+
+    beat_summary = {}   # {group_num: {cat: total_time_in_unit}}
+    all_cats     = []   # ordered list of unique categories encountered
+
+    def _script_type(script_name):
+        """Category = script name with 'Beat #N' prefix or '@ N' suffix stripped."""
+        t = beat_pat.sub('', script_name)   # remove Beat #N
+        t = iter_pat.sub('', t)             # remove @ N
+        return t.strip(' -_:/') or 'other'
+
+    def _group_num(script_name):
+        """Group index: beat number for MAESTRO scripts, iteration for BO scripts."""
+        m = beat_pat.search(script_name)
+        if m:
+            return int(m.group(1))
+        m = iter_pat.search(script_name)
+        if m:
+            return int(m.group(1))
+        return 0
 
     # ── read the file ───────────────────────────────────────────────────────
     with Path(jsonl_path).expanduser().open() as f:
@@ -209,9 +234,18 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
             if not line.strip():
                 continue
             rec = json.loads(line)
-            
+
+            # ── beat/iter summary (every record, including restarts) ─────────
+            bnum = _group_num(rec["script"])
+            cat  = _script_type(rec["script"])
+            if cat not in all_cats:
+                all_cats.append(cat)
+            if bnum not in beat_summary:
+                beat_summary[bnum] = {}
+            beat_summary[bnum][cat] = beat_summary[bnum].get(cat, 0.0) + rec["duration_s"] * multiplier
+
             if rec["script"] not in scripts:
-            
+
                 scripts.append(rec["script"])
                 script_time.append(rec["duration_s"] * multiplier)
                 running += rec["duration_s"]* multiplier
@@ -219,17 +253,17 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
                 m = beat_pat.search(rec["script"])
                 beat_nums.append(int(m.group(1)) if m else None)
-                
+
                 script_restarts.append(0.0)
-                
+
             else:
                 # If the script is already in the list, it means it was restarted
                 idx = scripts.index(rec["script"])
                 script_restarts[idx] += rec["duration_s"] * multiplier
-                
-                cumulative[-1] += script_restarts[idx] 
-                running += script_restarts[idx] 
-                
+
+                cumulative[-1] += script_restarts[idx]
+                running += script_restarts[idx]
+
 
     if not scripts:
         raise ValueError(f"No records found in {jsonl_path}")
@@ -274,9 +308,9 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
     #ax.set_xlim(left=0)
     ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    ax.set_xticks(x, scripts, rotation=rotation, ha="right", fontsize=8)
     GRAPHICStools.addDenseAxis(ax)
-    ax.legend(loc='upper left', fontsize=8)
+    ax.legend(loc='best', fontsize=8)
 
 
     ax = axs[1]
@@ -297,11 +331,51 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
     #ax.set_xlim(left=0)
     ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    ax.set_xticks(x, scripts, rotation=rotation, ha="right", fontsize=8)
     GRAPHICStools.addDenseAxis(ax)
     if log:
         ax.set_yscale('log')
-    
+
+    # ── shared color map for categories (built from what's actually in the data) ──
+    _palette   = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    cat_colors = {cat: _palette[i % len(_palette)] for i, cat in enumerate(all_cats)}
+
+    # ── beat summary panel (optional) ───────────────────────────────────────
+    if ax_summary is not None and beat_summary:
+        beats_sorted  = sorted(beat_summary.keys())
+        has_beat_pat  = any(beat_pat.search(s) for s in scripts)
+        beat_labels   = [
+            (f"Beat #{b}" if has_beat_pat else f"Iter #{b}") if b > 0 else "init"
+            for b in beats_sorted
+        ]
+        bottom = [0.0] * len(beats_sorted)
+        for cat in all_cats:
+            vals = [beat_summary[b].get(cat, 0.0) for b in beats_sorted]
+            if any(v > 0 for v in vals):
+                ax_summary.bar(beat_labels, vals, bottom=bottom,
+                               color=cat_colors[cat], label=cat, alpha=0.85)
+                bottom = [b + v for b, v in zip(bottom, vals)]
+        ax_summary.set_ylabel(f"Time ({unit})")
+        ax_summary.set_xlabel("Beat")
+        ax_summary.tick_params(axis='x', rotation=rotation, labelsize=8)
+        plt.setp(ax_summary.get_xticklabels(), ha="right", rotation_mode="anchor")
+        ax_summary.legend(fontsize=8, loc='best')
+        GRAPHICStools.addDenseAxis(ax_summary)
+
+    # ── total-by-category panel (optional) ──────────────────────────────────
+    if ax_total is not None and beat_summary:
+        totals = {cat: sum(beat_summary[b].get(cat, 0.0) for b in beat_summary) for cat in all_cats}
+        cats_present = [c for c in all_cats if totals[c] > 0]
+        vals  = [totals[c] for c in cats_present]
+        bars  = ax_total.bar(cats_present, vals,
+                             color=[cat_colors[c] for c in cats_present], alpha=0.85)
+        ax_total.bar_label(bars, fmt=lambda v: f"{v:.1f}", fontsize=8, padding=2)
+        ax_total.set_ylabel(f"Total time ({unit})")
+        ax_total.tick_params(axis='x', rotation=rotation, labelsize=9)
+        plt.setp(ax_total.get_xticklabels(), ha="right", rotation_mode="anchor")
+        ax_total.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax_total)
+
     return x, scripts
 
 
@@ -803,17 +877,11 @@ def createTimeTXT(duration_in_s, until=3):
     minutes = divmod(hours[1], 60)  # Use remainder of hours to calc minutes
     seconds = divmod(minutes[1], 1)  # Use remainder of minutes to calc seconds
 
-    try:
-        milisec = int(
-            (
-                duration_in_s
-                - (days[0] * 24 * 3600 + hours[0] * 3600 + minutes[0] * 60 + seconds[0])
-            )
-            * 1000
-        )
-        milisec_txt = f" ({str(milisec).zfill(2)}ms)"
-    except:
-        milisec_txt = ""
+    milisec = duration_in_s * 1e3
+    if 1 <= abs(milisec) < 1000:
+        milisec_txt = f" ({milisec:.1f} ms)"
+    else:
+        milisec_txt = f" ({milisec:.2e} ms)"
 
     if days[0] > 0:
         txt = f"{days[0]}d "
@@ -839,6 +907,8 @@ def createTimeTXT(duration_in_s, until=3):
             txt = "<1min "
         else:
             txt = f"<1s{milisec_txt} "
+    else:
+        txt += milisec_txt
 
     return txt[:-1]
 
@@ -1933,79 +2003,90 @@ def print_machine_info(output_file=None):
 
     # System Information
     info_lines.append("=== System Information ===")
-    info_lines.append(f"System: {platform.system()}")
-    info_lines.append(f"Node Name: {platform.node()}")
-    info_lines.append(f"Release: {platform.release()}")
-    info_lines.append(f"Version: {platform.version()}")
-    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"System:    {platform.system()} {platform.release()}  ({platform.machine()})")
+    info_lines.append(f"Node:      {platform.node()}")
     info_lines.append(f"Processor: {platform.processor()}")
 
     # CPU Information
     info_lines.append("\n=== CPU Information ===")
     logical_cpus = os.cpu_count()
-    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
-
-    # Attempt to get CPU frequency (limited without external packages)
-    try:
-        if platform.system() == "Windows":
-            import subprocess
-            cmd = 'wmic cpu get MaxClockSpeed'
-            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
-            info_lines.append(f"Max Frequency: {max_freq} MHz")
-        elif platform.system() == "Linux":
-            with open('/proc/cpuinfo') as f:
-                cpuinfo = f.read()
-            import re
-            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
-            if matches:
-                current_freq = matches[0]
-                info_lines.append(f"Current Frequency: {current_freq} MHz")
-        else:
-            info_lines.append("CPU Frequency information not available.")
-    except Exception as e:
-        info_lines.append("Error retrieving CPU Frequency information.")
-
-    # PyTorch CPU Information
-    info_lines.append("\n=== PyTorch Information ===")
-    num_threads = torch.get_num_threads()
-    num_interop_threads = torch.get_num_interop_threads()
-    openmp_enabled = getattr(torch.backends, 'openmp', None)
-    mkl_enabled = getattr(torch.backends, 'mkl', None)
-
-    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
-    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
-    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
-    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
-
-    for var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK"]:
-        info_lines.append(f"{var}: {os.environ.get(var, 'Not set')}")
-
-    f = io.StringIO()
-    with redirect_stdout(f):
-        torch.__config__.show()
-    info_lines.append("\n=== PyTorch Build Config ===")
-    info_lines.append(f.getvalue())
-
-    info_lines.append("\n=== Package Versions ===")
-    for pkg in ["torch", "gpytorch", "botorch"]:
-        try:
-            mod = __import__(pkg)
-            info_lines.append(f"{pkg}: {mod.__version__}")
-        except Exception:
-            info_lines.append(f"{pkg}: not available")
+    info_lines.append(f"Logical CPUs:  {logical_cpus}")
 
     try:
         import psutil
+        physical_cpus = psutil.cpu_count(logical=False)
+        info_lines.append(f"Physical CPUs: {physical_cpus}")
+        freq = psutil.cpu_freq()
+        if freq:
+            info_lines.append(f"CPU Frequency: current={freq.current:.0f} MHz, max={freq.max:.0f} MHz")
+        mem = psutil.virtual_memory()
+        info_lines.append(f"RAM:           {mem.total / 2**30:.1f} GB total, {mem.available / 2**30:.1f} GB available")
         proc = psutil.Process()
         if hasattr(proc, "cpu_affinity"):
-            info_lines.append(f"Process affinity (cpus): {proc.cpu_affinity()}")
-        else:
-            info_lines.append("CPU affinity not supported on this platform/psutil build")
+            affinity = proc.cpu_affinity()
+            info_lines.append(f"CPU affinity:  {len(affinity)} cores {affinity}")
     except ImportError:
-        info_lines.append("psutil not installed (skipping affinity check)")
+        info_lines.append("(psutil not installed — physical CPU count, freq, RAM, affinity unavailable)")
+    except Exception as e:
+        info_lines.append(f"(psutil query failed: {e})")
 
-    info_lines.append("=============================\n\n")
+    # Environment variables that affect threading
+    info_lines.append("\n=== Thread Environment ===")
+    thread_vars = [
+        "MITIM_GP_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK",
+    ]
+    for var in thread_vars:
+        val = os.environ.get(var, "not set")
+        info_lines.append(f"  {var:<26} {val}")
+
+    # PyTorch threading state
+    info_lines.append("\n=== PyTorch Information ===")
+    info_lines.append(f"Intraop threads (current): {torch.get_num_threads()}")
+    info_lines.append(f"Interop threads (current): {torch.get_num_interop_threads()}")
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled    = getattr(torch.backends, 'mkl', None)
+    info_lines.append(f"OpenMP: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}   "
+                      f"MKL: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # BLAS thread pool state (threadpoolctl, if available)
+    try:
+        import threadpoolctl
+        blas_pools = threadpoolctl.threadpool_info()
+        if blas_pools:
+            info_lines.append("BLAS thread pools (threadpoolctl):")
+            for lib in blas_pools:
+                info_lines.append(f"  {lib.get('prefix','?'):20s} {lib.get('num_threads','?')} threads  [{lib.get('filepath','?')}]")
+        else:
+            info_lines.append("BLAS thread pools: none detected by threadpoolctl")
+    except ImportError:
+        info_lines.append("BLAS thread pools: threadpoolctl not installed (install for runtime BLAS thread control)")
+
+    # PyTorch build config — only the lines that matter for linear algebra
+    try:
+        f = io.StringIO()
+        with redirect_stdout(f):
+            torch.__config__.show()
+        blas_lines = [
+            ln.strip() for ln in f.getvalue().splitlines()
+            if re.search(r"BLAS|LAPACK|MKL|OpenMP|AVX", ln, re.IGNORECASE)
+        ]
+        if blas_lines:
+            info_lines.append("PyTorch build (BLAS/MKL/OpenMP lines):")
+            info_lines.extend(f"  {ln}" for ln in blas_lines)
+    except Exception:
+        pass
+
+    # Package versions
+    info_lines.append("\n=== Package Versions ===")
+    for pkg in ["torch", "gpytorch", "botorch", "linear_operator"]:
+        try:
+            mod = __import__(pkg)
+            info_lines.append(f"  {pkg}: {mod.__version__}")
+        except Exception:
+            info_lines.append(f"  {pkg}: not available")
+
+    info_lines.append("=============================\n")
 
     # Output to screen or file
     output = '\n'.join(info_lines)

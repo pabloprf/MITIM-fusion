@@ -36,8 +36,8 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     pop_sizes, max_gens, mut_probs, co_probs = randomizeTrials(num=numCases, numOFs=fun.dimOFs, numDVs=fun.dimDVs)
 
-    xGuesses = fun.xGuesses.cpu().numpy()
-    bounds = fun.bounds_mod.cpu().numpy()
+    xGuesses = fun.xGuesses.detach().cpu().numpy()
+    bounds = fun.bounds_mod.detach().cpu().numpy()
 
     # Peform workflow
     GA = MITIM_GA(

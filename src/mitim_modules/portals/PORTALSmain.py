@@ -22,18 +22,20 @@ from IPython import embed
 
 class portals(STRATEGYtools.opt_evaluator):
     def __init__(
-        self, 
+        self,
         folder,                             # Folder where the PORTALS workflow will be run
-        portals_namelist = None,
-        tensor_options = {
-            "dtype": torch.double,
-            "device": torch.device("cpu"),
-        },
+        portals_namelist=None,
+        tensor_options=None,
         ):
 
-        time1 = datetime.datetime.now()
+        if tensor_options is None:
+            tensor_options = {
+                "dtype": torch.double,
+                "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            }
+
         print("\n-----------------------------------------------------------------------------------------")
-        print(f"\t\t\t PORTALS class module {time1.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\t\t\t PORTALS class module {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("-----------------------------------------------------------------------------------------\n")
 
         super().__init__(
@@ -242,13 +244,12 @@ class portals(STRATEGYtools.opt_evaluator):
 			Note: var_dict['Qe_tr_turb'] must have shape (dim1...N, num_radii)
 		"""
 
-        var_dict = {}
+        var_dict_parts = {}
         for of in ofs_ordered_names:
-
             var = '_'.join(of.split("_")[:-1])
-            if var not in var_dict:
-                var_dict[var] = torch.Tensor().to(Y)
-            var_dict[var] = torch.cat((var_dict[var], Y[..., ofs_ordered_names == of]), dim=-1)
+            var_dict_parts.setdefault(var, []).append(Y[..., ofs_ordered_names == of])
+
+        var_dict = {var: torch.cat(parts, dim=-1).to(Y) for var, parts in var_dict_parts.items()}
 
         """
 		-------------------------------------------------------------------------

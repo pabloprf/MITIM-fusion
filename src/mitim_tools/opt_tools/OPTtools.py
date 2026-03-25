@@ -20,10 +20,11 @@ class fun_optimization:
 
         # Pass the original bounds of the problem already to the fun class (they may be modified by boundsRefine)
 
-        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(self.evaluators["GP"].train_X)
+        ref = self.evaluators["GP"].train_X
+        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds)), dtype=ref.dtype, device=ref.device)
         for i, ikey in enumerate(self.evaluators["GP"].bounds):
-            self.bounds[0, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][0])
-            self.bounds[1, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][1])
+            self.bounds[0, i] = self.evaluators["GP"].bounds[ikey][0]
+            self.bounds[1, i] = self.evaluators["GP"].bounds[ikey][1]
 
         # Define bounds_mod to search optimizer
 
@@ -339,9 +340,9 @@ def select_points(
 def pointsOperation_concat(
     x_opt2, y_opt_residual2, z_opt2, x_opt_previous, y_opt_previous, z_opt_previous
 ):
-    x_opt = torch.cat((x_opt_previous, x_opt2)).to(x_opt2)
-    y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2)).to(x_opt2)
-    z_opt = torch.cat((z_opt_previous, z_opt2)).to(x_opt2)
+    x_opt = torch.cat((x_opt_previous, x_opt2))
+    y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2))
+    z_opt = torch.cat((z_opt_previous, z_opt2))
 
     print(f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima")
 
@@ -411,12 +412,7 @@ def pointsOperation_bounds(
     if z_opt is None:
         z_opt = x_opt.clone()[:, 0]
 
-    x_opt_inbounds, y_opt_inbounds, z_opt_inbounds = (
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-    )
-    x_removeds = torch.Tensor().to(fun.stepSettings["dfT"])
+    in_idx, out_idx = [], []
     for i in range(x_opt.shape[0]):
         if maxExtrapolation is not None:
             insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=maxExtrapolation)
@@ -427,19 +423,15 @@ def pointsOperation_bounds(
             insideBounds = True
 
         if insideBounds:
-            x_opt_inbounds = torch.cat(
-                (x_opt_inbounds, x_opt[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
-            y_opt_inbounds = torch.cat(
-                (y_opt_inbounds, y_opt_residual[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
-            z_opt_inbounds = torch.cat(
-                (z_opt_inbounds, z_opt[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
+            in_idx.append(i)
         else:
-            x_removeds = torch.cat((x_removeds, x_opt[i].unsqueeze(0)), axis=0).to(
-                fun.stepSettings["dfT"]
-            )
+            out_idx.append(i)
+
+    dfT = fun.stepSettings["dfT"]
+    x_opt_inbounds = x_opt[in_idx].to(dfT) if in_idx else torch.empty_like(x_opt[:0])
+    y_opt_inbounds = y_opt_residual[in_idx].to(dfT) if in_idx else torch.empty_like(y_opt_residual[:0])
+    z_opt_inbounds = z_opt[in_idx].to(dfT) if in_idx else torch.empty_like(z_opt[:0])
+    x_removeds = x_opt[out_idx].to(dfT) if out_idx else torch.empty_like(x_opt[:0])
 
     txt = (
         f" (allowed exploration of [{maxExtrapolation[0]*100.0:.1f}%,{maxExtrapolation[1]*100.0:.1f}%] outside bounds)"
@@ -461,23 +453,10 @@ def pointsOperation_common(x_opt, y_opt_residual, z_opt, fun, best_points=None):
     evaluators = fun.evaluators
     stepSettings = fun.stepSettings
 
-    xopt_new, yopt_new, zopt_new = (
-        torch.Tensor().to(x_opt),
-        torch.Tensor().to(y_opt_residual),
-        torch.Tensor().to(z_opt),
-    )
-
-    for i in range(z_opt.shape[0]):
-        if z_opt[i] != 1.0:
-            xopt_new = torch.cat((xopt_new, x_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            yopt_new = torch.cat((yopt_new, y_opt_residual[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            zopt_new = torch.cat((zopt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
+    mask = z_opt != 1.0
+    xopt_new = x_opt[mask].to(stepSettings["dfT"])
+    yopt_new = y_opt_residual[mask].to(stepSettings["dfT"])
+    zopt_new = z_opt[mask].to(stepSettings["dfT"])
 
     print(
         f"\t- Removed {x_opt.shape[0]-xopt_new.shape[0]} points from final candidate set because they belonged to training set (already evaluated), now candidate set has {xopt_new.shape[0]} points"
@@ -485,27 +464,18 @@ def pointsOperation_common(x_opt, y_opt_residual, z_opt, fun, best_points=None):
     x_opt, y_opt_residual, z_opt = xopt_new, yopt_new, zopt_new
 
     # Even if they weren't training, the opt procedures may have generated identical ones
-    xopt_new, yopt_new, zopt_new = (
-        torch.Tensor().to(x_opt),
-        torch.Tensor().to(y_opt_residual),
-        torch.Tensor().to(z_opt),
-    )
+    keep = []
     for i in range(x_opt.shape[0]):
-        equal = False
-        for j in range(evaluators["GP"].train_X.shape[0]):
-            equal = equal or MATHtools.arePointsEqual(
-                x_opt[i], evaluators["GP"].train_X[j]
-            )
-        if not equal:
-            xopt_new = torch.cat((xopt_new, x_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            yopt_new = torch.cat((yopt_new, y_opt_residual[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            zopt_new = torch.cat((zopt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
+        is_dup = any(
+            MATHtools.arePointsEqual(x_opt[i], evaluators["GP"].train_X[j])
+            for j in range(evaluators["GP"].train_X.shape[0])
+        )
+        if not is_dup:
+            keep.append(i)
+
+    xopt_new = x_opt[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(x_opt[:0])
+    yopt_new = y_opt_residual[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(y_opt_residual[:0])
+    zopt_new = z_opt[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(z_opt[:0])
 
     if x_opt.shape[0] - xopt_new.shape[0] > 0:
         print(
@@ -677,22 +647,22 @@ def storeInfo(x_opt, acq_evaluated, fun):
     y_ini_res = summarizeSituation(x_ini, fun, printYN=False)
     y, y1, y2, _ = fun.evaluators["residual_function"](x_ini, outputComponents=True)
 
-    infoOPT["x_start"] = copy.deepcopy(x_ini.cpu().numpy())
-    infoOPT["y_res_start"] = copy.deepcopy(y_ini_res.cpu().numpy())
-    infoOPT["yFun_start"] = copy.deepcopy(y1.detach().cpu().numpy())
-    infoOPT["yCal_start"] = copy.deepcopy(y2.detach().cpu().numpy())
-    infoOPT["y_start"] = copy.deepcopy(y.detach().cpu().numpy())
+    infoOPT["x_start"] = x_ini.detach().cpu().numpy().copy()
+    infoOPT["y_res_start"] = y_ini_res.detach().cpu().numpy().copy()
+    infoOPT["yFun_start"] = y1.detach().cpu().numpy().copy()
+    infoOPT["yCal_start"] = y2.detach().cpu().numpy().copy()
+    infoOPT["y_start"] = y.detach().cpu().numpy().copy()
 
     # End
     if x_opt.shape[0] > 0:
         y_opt_res = summarizeSituation(x_opt, fun, printYN=False)
         y, y1, y2, _ = fun.evaluators["residual_function"](x_opt, outputComponents=True)
 
-        infoOPT["x"] = copy.deepcopy(x_opt.cpu().numpy())
-        infoOPT["y_res"] = copy.deepcopy(y_opt_res.cpu().numpy())
-        infoOPT["yFun"] = copy.deepcopy(y1.detach().cpu().numpy())
-        infoOPT["yCal"] = copy.deepcopy(y2.detach().cpu().numpy())
-        infoOPT["y"] = copy.deepcopy(y.detach().cpu().numpy())
+        infoOPT["x"] = x_opt.detach().cpu().numpy().copy()
+        infoOPT["y_res"] = y_opt_res.detach().cpu().numpy().copy()
+        infoOPT["yFun"] = y1.detach().cpu().numpy().copy()
+        infoOPT["yCal"] = y2.detach().cpu().numpy().copy()
+        infoOPT["y"] = y.detach().cpu().numpy().copy()
 
     infoOPT["acq_evaluated"] = acq_evaluated
 
@@ -933,21 +903,13 @@ def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
     #                                            or if I have allowed ROOT to go outside in the previous iteration)
     # --------------------------------------------------
     if checkBounds:
-        xGuesses_new = torch.Tensor().to(fun.stepSettings["dfT"])
-        z_opt_new = torch.Tensor().to(fun.stepSettings["dfT"])
-        for i in range(xGuesses.shape[0]):
-            if TESTtools.checkSolutionIsWithinBounds(xGuesses[i], fun.bounds):
-                xGuesses_new = torch.cat(
-                    (xGuesses_new, xGuesses[i].unsqueeze(0)), axis=0
-                ).to(fun.stepSettings["dfT"])
-                z_opt_new = torch.cat((z_opt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                    fun.stepSettings["dfT"]
-                )
+        total_before = xGuesses.shape[0]
+        keep = [i for i in range(xGuesses.shape[0]) if TESTtools.checkSolutionIsWithinBounds(xGuesses[i], fun.bounds)]
+        dfT = fun.stepSettings["dfT"]
+        xGuesses = xGuesses[keep].to(dfT) if keep else torch.empty_like(xGuesses[:0])
+        z_opt = z_opt[keep].to(dfT) if keep else torch.empty_like(z_opt[:0])
 
-        print(f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}")
-
-        xGuesses = xGuesses_new
-        z_opt = z_opt_new
+        print(f"\t~~ Keeping (inside bounds) {xGuesses.shape[0]} points from the total of {total_before}")
 
     # --------------------------------------------------
     # Add random until filling up max number requested
@@ -957,10 +919,10 @@ def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
         LHSdraw = torch.from_numpy(
             SAMPLINGtools.LHS(howmany, fun.bounds, seed=seed)
         ).to(fun.stepSettings["dfT"])
-        xGuesses = torch.cat((xGuesses, LHSdraw), axis=0).to(fun.stepSettings["dfT"])
+        xGuesses = torch.cat((xGuesses, LHSdraw), axis=0)
 
-        z_opt_draw = torch.ones(LHSdraw.shape[0]).to(fun.stepSettings["dfT"]) * 2
-        z_opt = torch.cat((z_opt, z_opt_draw), axis=0).to(fun.stepSettings["dfT"])
+        z_opt_draw = torch.ones(LHSdraw.shape[0], dtype=z_opt.dtype, device=z_opt.device) * 2
+        z_opt = torch.cat((z_opt, z_opt_draw), axis=0)
 
     if len(xGuesses) == 0:
         print("* Initial points equal to zero, will likely fail", typeMsg="q")

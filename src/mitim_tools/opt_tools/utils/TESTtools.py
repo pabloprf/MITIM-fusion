@@ -1,8 +1,11 @@
 import torch
+import warnings
+import datetime
 import numpy as np
-from IPython import embed
+from mitim_tools.misc_tools import IOtools
+from mitim_tools.opt_tools.optimizers.multivariate_tools import mitim_jacobian
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-
+from IPython import embed
 
 def DVdistanceMetric(xT):
     yG = []
@@ -40,48 +43,195 @@ def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper 
     return insideBounds
 
 
-def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
+def _rand_points(combined_model, n_points):
+    """Build a (n_points, n_dims) tensor of random points uniformly sampled within bounds."""
+    
+    bounds = combined_model.bounds
+    dtype  = combined_model.train_X.dtype
+    device = combined_model.train_X.device
+    bt = torch.zeros(2, len(bounds), dtype=dtype, device=device)
+    for i, key in enumerate(bounds):
+        bt[0, i] = bounds[key][0]
+        bt[1, i] = bounds[key][1]
+    return bt[0] + (bt[1] - bt[0]) * torch.rand(n_points, bt.shape[-1], dtype=dtype, device=device)
+
+
+def _detach_nonleaf_tensors(*roots):
     """
-    This assesses the relative error in cases where y_Normalized> thrImportance
-    It stops running if the error gets larger than thrPercent in those cases
+    Walk every root's attribute tree and replace non-leaf tensors in-place with
+    their detached version.  Called after a grad-enabled forward pass to prevent
+    deepcopy from failing on computation-graph nodes stored in model caches
+    (e.g. tf1._cached_factor written by _batched_posterior).
     """
+    visited = set()
 
-    for i in combinations:
-        x = GPs.train_X[0:1, :].repeat(i, 1)
+    def _walk(obj):
+        if id(obj) in visited:
+            return
+        visited.add(id(obj))
+        if isinstance(obj, torch.Tensor):
+            return
+        if isinstance(obj, dict):
+            for k, v in list(obj.items()):
+                if isinstance(v, torch.Tensor) and not v.is_leaf:
+                    obj[k] = v.detach()
+                else:
+                    _walk(v)
+        elif isinstance(obj, (list, tuple)):
+            for v in obj:
+                _walk(v)
+        else:
+            d = getattr(obj, '__dict__', None)
+            if d:
+                for k, v in list(d.items()):
+                    if isinstance(v, torch.Tensor) and not v.is_leaf:
+                        d[k] = v.detach()
+                    else:
+                        _walk(v)
 
-        y1 = GPs.predict(x)[0]
-        y2 = GPs.predict(x[0:1, :])[0]
-
-        y1 = y1.detach().mean(axis=0).unsqueeze(0).cpu().numpy()
-        y2 = y2.detach().cpu().numpy()
-
-        maxPercent, trouble, indeces = checkSame(
-            y1, y2, labels=[f"{i} SAMPLES", "1 SAMPLE"]
-        )
+    for root in roots:
+        _walk(root)
 
 
-def testCombinationCapabilities(GPs, GP):
-    x = GP.train_X
+def _jacobian_mean(model, X, _also_clean=None):
+    """
+    Jacobian of the GP mean w.r.t. inputs, shape (n_points, n_outputs, n_inputs).
+    Delegates to mitim_jacobian and cleans up non-leaf tensors afterward.
+    """
+    _, J = mitim_jacobian(lambda x: model.predict(x)[0], X)
+    _detach_nonleaf_tensors(model, *(_also_clean or []))
+    return J     # (n_pts, n_out, n_in)
 
-    # Combined
-    y, _, _, _ = GP.predict(x)
 
-    # Separated
-    ys = torch.Tensor().to(x)
-    for i in range(len(GPs)):
-        y0, _, _, _ = GPs[i].predict(x)
-        ys = torch.cat((ys, y0), axis=1)
+def testInferenceTime(combined_model, n_points_list=[1000], additional_calls=None):
+    """Time combined_model mean inference and Jacobian at n_points random points."""
 
-    # Test
-    y, ys = y.detach(), ys.detach()
-    err = ((y - ys).abs() / ys * 100).cpu().numpy()
+    for n_points in n_points_list:
+        
+        print(f"\n[MITIM: GP performance] Testing inference time of evaluating {n_points} points...", typeMsg="i")
 
-    if np.nanmax(err) > 1e-5:
+        X_rand = _rand_points(combined_model, n_points)
+        n_dims = X_rand.shape[-1]
+
+        # --- mean inference ---
+        t0 = datetime.datetime.now()
+        with torch.no_grad():
+            mean,_,_,_ = combined_model.predict(X_rand)
+        t_diff = IOtools.getTimeDifference(t0)
+            
+        n_gps = mean.shape[-1]
+        n_train = combined_model.train_X.shape[0]
         print(
-            f"\t Max error of combination (check!): {np.nanmax(err):.2f}%", typeMsg="w"
+            f"\t- Mean inference ({n_dims}D, {n_gps} GPs, {n_train} training pts, {n_points} inference pts): "
+            f"{t_diff}", typeMsg="i"
         )
-        embed()
 
+        # --- Jacobian ---
+        t0 = datetime.datetime.now()
+        _jacobian_mean(combined_model, X_rand)
+        t_diff = IOtools.getTimeDifference(t0)
+        print(
+            f"\t- Jacobian of mean ({n_dims}D, {n_gps} GPs, {n_train} training pts, {n_points} inference pts): "
+            f"{t_diff}", typeMsg="i"
+        )
+        
+        # --- additional call if requested ---
+        if additional_calls is not None:
+            for name, func in additional_calls.items():
+                t0 = datetime.datetime.now()
+                func(X_rand)
+                t_diff = IOtools.getTimeDifference(t0, niceText=False)*1000
+                print(
+                    f"\t- {name}: {n_dims}D, {n_points} inference pts): "
+                    f"{t_diff} ms", typeMsg="i"
+                )
+            # Return the time in ms of the last additional call for potential use in tests
+            return t_diff
+            
+
+def testBatchAccuracy(combined_model, individual_models, n_points=1000, n_points_jac=5, thr_percent=0.1):
+    """
+    Verify that the batched combined_model gives the same predictions as the
+    individual models evaluated sequentially.
+
+    Mean and std are checked at n_points random points.
+    Jacobian is checked at n_points_jac points (kept small: the reference requires
+    n_out backward passes through all sequential individual models per point).
+    """
+
+    print(f"[MITIM: GP batching] Testing accuracy of combined_model predictions against individual models...", typeMsg="i")
+
+    # Suppress GPyTorch's NumericalWarning about negative variances throughout this function.
+    # The sequential individual-model path (used only as a reference here) can produce tiny
+    # negative variances via floating-point cancellation in k_ss - k_sX K^{-1} k_Xs when
+    # test points land near training points. GPyTorch rounds these to 1e-10; the warning is
+    # harmless. The production batched path already clamps to 0 and never triggers it.
+    warnings.filterwarnings("ignore", message="Negative variance values detected")
+
+    x     = _rand_points(combined_model, n_points)
+    x_jac = _rand_points(combined_model, n_points_jac)
+
+    # --- mean and std ---
+    # The individual-model predictions use standard GPyTorch inference, which can produce
+    # tiny negative variances (floating-point cancellation in k_ss - k_sX K^{-1} k_Xs)
+    # when test points land near training points. GPyTorch rounds these to 1e-10 and warns;
+    # suppress here since it is harmless and expected in the sequential verification path.
+    # The batched combined_model already clamps variances to 0 and never triggers this.
+    with torch.no_grad():
+        y_batch, upper_batch, lower_batch, _ = combined_model.predict(x)
+        indiv_preds = [m.predict(x) for m in individual_models]
+        y_indiv     = torch.cat([p[0] for p in indiv_preds], dim=1)
+        # upper/lower are ±2*std, so std = (upper - lower) / 4
+        std_batch = ((upper_batch - lower_batch) / 4).detach()
+        std_indiv = torch.cat([(p[1] - p[2]) / 4 for p in indiv_preds], dim=1).detach()
+
+    y_batch = y_batch.detach()
+    y_indiv = y_indiv.detach()
+
+    mask_mean    = y_indiv.abs() > 1e-10
+    err_mean     = torch.where(mask_mean, (y_batch - y_indiv).abs() / y_indiv.abs() * 100,
+                               torch.zeros_like(y_batch))
+    max_err_mean = err_mean.max().item()
+
+    mask_std    = std_indiv.abs() > 1e-10
+    err_std     = torch.where(mask_std, (std_batch - std_indiv).abs() / std_indiv.abs() * 100,
+                              torch.zeros_like(std_batch))
+    max_err_std = err_std.max().item()
+
+    # --- Jacobian of mean (few points: reference is expensive) ---
+    class _IndivWrapper:
+        """Thin wrapper so _jacobian_mean can call predict() on the individual models."""
+        def predict(self, X):
+            mean = torch.cat([m.predict(X)[0] for m in individual_models], dim=1)
+            return mean, None, None, None
+
+    J_batch = _jacobian_mean(combined_model, x_jac)                              # (n_pts_jac, n_out, n_in)
+    J_indiv = _jacobian_mean(_IndivWrapper(), x_jac, _also_clean=individual_models)  # (n_pts_jac, n_out, n_in)
+
+    mask_jac    = J_indiv.abs() > 1e-10
+    err_jac     = torch.where(mask_jac, (J_batch - J_indiv).abs() / J_indiv.abs() * 100,
+                              torch.zeros_like(J_batch))
+    max_err_jac = err_jac.max().item()
+
+    passed = (max_err_mean <= thr_percent) and (max_err_std <= thr_percent) and (max_err_jac <= thr_percent)
+
+    if not passed:
+        print(
+            f"\t- Accuracy check FAILED (threshold {thr_percent}%) "
+            f"— batched and sequential predictions disagree\n"
+            f"\t  mean     max relative error = {max_err_mean:.2e}%  ({n_points} pts)\n"
+            f"\t  std      max relative error = {max_err_std:.2e}%  ({n_points} pts)\n"
+            f"\t  Jacobian max relative error = {max_err_jac:.2e}%  ({n_points_jac} pts)",
+            typeMsg="w",
+        )
+    else:
+        print(
+            f"\t- Accuracy check passed: "
+            f"mean = {max_err_mean:.2e}% ({n_points} pts), "
+            f"std = {max_err_std:.2e}% ({n_points} pts), "
+            f"Jacobian = {max_err_jac:.2e}% ({n_points_jac} pts)",
+            typeMsg="i",
+        )
 
 def isOutlier(y0, y, stds_outside=5, stds_outside_checker=1):
     mean = y.mean()
@@ -103,10 +253,10 @@ def lookForTrouble(x, y_res, z_res, evaluators, stepSettings, elimintateTroubles
 
     y_res_joint = evaluators["acq_function"](x.unsqueeze(1)).detach()
 
-    y_res_single = torch.Tensor().to(x)
-    for i in range(x.shape[0]):
-        y = evaluators["acq_function"](x[i].unsqueeze(0).unsqueeze(1)).detach()
-        y_res_single = torch.cat((y_res_single, y), axis=0)
+    y_res_single = torch.cat(
+        [evaluators["acq_function"](x[i].unsqueeze(0).unsqueeze(1)).detach() for i in range(x.shape[0])],
+        axis=0,
+    ).to(x)
 
     perMax1, trouble1, indeces1 = checkSame(
         y_res, y_res_joint, z=z_res, labels=["OPTIMIZATION", "JOINT"]

@@ -68,7 +68,7 @@ class surrogate_model:
         self.losses = None
 
         if self.dfT is None:
-            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
+            self.dfT = torch.randn((2, 2), dtype=torch.double, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
         # Surrogate parameters must contain at least:
         if 'transformationInputs' not in self.surrogate_parameters:
@@ -452,25 +452,13 @@ class surrogate_model:
                 - Samples if nSamples not None
         """
 
-        
-        # Accurate
-        # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
-        # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
-
-        # # Fast
-        # with gpytorch.settings.fast_computations(), \
-        #     gpytorch.settings.fast_pred_samples(), \
-        #     gpytorch.settings.fast_pred_var(), \
-        #     gpytorch.settings.lazily_evaluate_kernels(True), \
-        #     (fundamental_model_context(self) if produceFundamental else contextlib.nullcontext(self)) as surrogate_model:
-        #     posterior = surrogate_model.gpmodel.posterior(X)
-
-        with (
-            fundamental_model_context(self)
-            if produceFundamental
-            else contextlib.nullcontext(self)
-        ) as surrogate_model:
-            posterior = surrogate_model.gpmodel.posterior(X)
+        with gpytorch.settings.fast_pred_var(), gpytorch.settings.lazily_evaluate_kernels(True):
+            with (
+                fundamental_model_context(self)
+                if produceFundamental
+                else contextlib.nullcontext(self)
+            ) as surrogate_model:
+                posterior = surrogate_model.gpmodel.posterior(X)
 
         mean = posterior.mean
         lower, upper = posterior.mvn.confidence_region()
@@ -633,17 +621,9 @@ class surrogate_model:
             yU_next = yU_next.detach().cpu().numpy()
 
         # --- Print stuff ---
-        maxError = np.zeros(y.shape[1])
-        for j in range(y.shape[1]):
-            for i in range(y.shape[0]):
-                err = (
-                    np.abs((y[i, j] - yPredicted[i, j]) / y[i, j]) * 100.0
-                    if y[i, j] != 0.0
-                    else 0.0
-                )
-                # if printYN and err>5.0:
-                # 	print(f'\t* Trained point #{i}, y({j})={y[i,j]:.3f}, y_pred({j})={yPredicted[i,j]:.3f} ({err:.2f}% off)',typeMsg='w')
-                maxError[j] = np.max([err, maxError[j]])
+        nonzero = y != 0.0
+        err = np.where(nonzero, np.abs((y - yPredicted) / np.where(nonzero, y, 1.0)) * 100.0, 0.0)
+        maxError = err.max(axis=0)
 
         # --- Plot stuff ---
         if plotYN:

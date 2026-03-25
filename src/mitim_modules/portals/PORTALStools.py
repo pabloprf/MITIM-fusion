@@ -127,10 +127,9 @@ def input_transform_portals(Xorig, output, surrogate_parameters, surrogate_trans
     num = output.split("_")[-1]
     index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
 
-    xFit = torch.Tensor().to(X)
-    for ikey in surrogate_transformation_variables[output]:
-        xx = powerstate.plasma[ikey][: X.shape[0], index]
-        xFit = torch.cat((xFit, xx.unsqueeze(-1)), dim=-1).to(X)
+    xFit_cols = [powerstate.plasma[ikey][: X.shape[0], index].unsqueeze(-1)
+                 for ikey in surrogate_transformation_variables[output]]
+    xFit = torch.cat(xFit_cols, dim=-1).to(X)
 
     parameters_combined = {"powerstate": powerstate}
 
@@ -309,22 +308,35 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
     return powerstate
 
 def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0):
-    
+
     Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
     of, cal, _ = mitim_bo.scalarized_objective(Y)
-    
+
     Ystd = torch.from_numpy(mitim_bo.train_Ystd).to(mitim_bo.dfT)
-    of_u, cal_u, _ = mitim_bo.scalarized_objective(Y+Ystd)
-    of_l, cal_l, _ = mitim_bo.scalarized_objective(Y-Ystd)
 
-    # If the transformation is linear, they should be the same
-    of_stdu, cal_stdu = (of_u-of), (cal_u-cal)
-    of_stdl, cal_stdl = (of-of_l), (cal-cal_l)
+    # Perturb each independent uncertainty source separately and combine in quadrature.
+    # Perturbing all outputs simultaneously (Y+Ystd) gives an arithmetic sum of
+    # turb_std + neoc_std through the linear "of = turb + neoc" combination, which
+    # assumes perfect correlation between independent sources.  The correct combination
+    # for independent sources is quadrature: sqrt(turb_std^2 + neoc_std^2), matching
+    # what calculate_residuals_distributions uses in post-processing.
+    ofs_names = np.array(mitim_bo.optimization_options["problem_options"]["ofs"])
+    of_var  = torch.zeros_like(of)
+    cal_var = torch.zeros_like(cal)
+    for tag in ("_tr_turb_", "_tr_neoc_", "_tar_", "Qie_tr_turb_"):
+        mask = torch.tensor(
+            [tag in n for n in ofs_names], dtype=Y.dtype, device=Y.device
+        )
+        Ystd_k = Ystd * mask                                     # zero out all other columns
+        of_k, cal_k, _ = mitim_bo.scalarized_objective(Y + Ystd_k)
+        of_var  += (of_k  - of )**2
+        cal_var += (cal_k - cal)**2
 
-    of_std, cal_std = (of_stdu+of_stdl)/2, (cal_stdu+cal_stdl)/2
+    of_std  = of_var **0.5
+    cal_std = cal_var**0.5
 
     _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
-    
+
     return chiR
 
 def stopping_criteria_portals(mitim_bo, parameters = {}):
@@ -413,11 +425,7 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
     # Go through each profile that needs to be predicted, calculate components
     # ------------------------------------------------------------------------
 
-    of, cal, res = (
-        torch.Tensor().to(dfT),
-        torch.Tensor().to(dfT),
-        torch.Tensor().to(dfT),
-    )
+    of_parts, cal_parts = [], []
     for prof in powerstate.predicted_channels:
         if prof == "te":
             var = "Qe"
@@ -481,7 +489,11 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
                 cal0 * portals_parameters["solution"]["scalar_multipliers"][4],
             )
 
-        of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
+        of_parts.append(of0)
+        cal_parts.append(cal0)
+
+    of = torch.cat(of_parts, dim=-1).to(dfT)
+    cal = torch.cat(cal_parts, dim=-1).to(dfT)
 
     # -----------
     # Composition
@@ -548,8 +560,7 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
     # Go through each profile that needs to be predicted, calculate components
     # ------------------------------------------------------------------------
 
-    of, cal = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
-    ofE, calE = torch.Tensor().to(dfT), torch.Tensor().to(dfT)
+    of_parts, cal_parts, ofE_parts, calE_parts = [], [], [], []
     for prof in powerstate.predicted_channels:
         if prof == "te":
             var = "Qe"
@@ -585,7 +596,14 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
             cal0 = var_dict[f"{var}_tar"]
             cal0E = var_dict[f"{var}_tar_stds"]
 
-        of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
-        ofE, calE = torch.cat((ofE, of0E), dim=-1), torch.cat((calE, cal0E), dim=-1)
+        of_parts.append(of0)
+        cal_parts.append(cal0)
+        ofE_parts.append(of0E)
+        calE_parts.append(cal0E)
+
+    of  = torch.cat(of_parts,   dim=-1).to(dfT)
+    cal = torch.cat(cal_parts,  dim=-1).to(dfT)
+    ofE  = torch.cat(ofE_parts,  dim=-1).to(dfT)
+    calE = torch.cat(calE_parts, dim=-1).to(dfT)
 
     return of, cal, ofE, calE

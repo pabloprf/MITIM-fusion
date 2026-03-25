@@ -4,6 +4,7 @@ import numpy as np
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_tools.opt_tools.utils import TESTtools
+from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
 def optimize_function(fun, optimization_params = {}, writeTrajectory=False, method = 'scipy_root'):
@@ -113,10 +114,22 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # Solver
     # --------------------------------------------------------------------------------------------------------
 
+    # Test speed right here too
+    ms_inference = TESTtools.testInferenceTime(fun.evaluators['GP'],
+                                n_points_list = [len(xGuesses)],
+                                additional_calls={
+                                    'Residual evaluator used for optimization':flux_residual_evaluator
+                                    })
     print("************************************************************************************************")
-    x_res, y_history, x_history, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    with IOtools.timer() as t:
+        x_res, y_history, x_history, acq_evaluated, *_ = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
+    print('\n[MITIM: Optimization performance]')
+    print(f'\t- Optimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
+    seconds_estimate = y_history.shape[0] * ms_inference / 1000
+    print(f'\t- Expected time based on inference time ({ms_inference} ms) of residual evaluator: {seconds_estimate:.2f} seconds')
+    print(f'\t- Hence, addtional overhead (steps updates, analysis, printing): {t.dt-seconds_estimate:.2f} seconds ({(t.dt-seconds_estimate)/seconds_estimate*100:.1f}%)\n')
     # --------------------------------------------------------------------------------------------------------
     # Post-process
     # --------------------------------------------------------------------------------------------------------
@@ -180,8 +193,8 @@ def _add_random_points_if_missing(xGuesses, num_restarts, bounds):
     high = torch.min(bounds[1, :], center + half_width)
 
     # Use numpy RNG since optimize_function seeds numpy
-    low_np = low.detach().cpu().numpy()
-    high_np = high.detach().cpu().numpy()
+    low_np = low.cpu().numpy()
+    high_np = high.cpu().numpy()
     span_np = np.maximum(high_np - low_np, 0.0)
     u = np.random.rand(missing, bounds.shape[-1])
     extra_np = low_np[None, :] + u * span_np[None, :]

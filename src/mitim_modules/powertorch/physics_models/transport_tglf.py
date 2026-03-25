@@ -1,7 +1,7 @@
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -192,6 +192,7 @@ def _run_tglf_uncertainty_model(
     Qi_includes_fast=False,
     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
     reuse_scan_ball_file=None,      # If not None, it will reuse previous evaluations within the delta ball (to capture combinations)
+    print_logs = False
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -237,26 +238,33 @@ def _run_tglf_uncertainty_model(
     # Enforce minimum minutes
     minutes = max(2, minutes)
 
-    tglf.runScanTurbulenceDrives(	
-                    subfolder = name,
-                    variablesDrives = variables_to_scan,
-                    varUpDown     = relative_scan,
-                    minimum_delta_abs = minimum_delta_abs,
-                    code_settings = code_settings,
-                    extraOptions = extraOptions,
-                    ApplyCorrections = False,
-                    add_baseline_to = 'none',
-                    cold_start=cold_start,
-                    forceIfcold_start=True,
-                    slurm_setup={
-                        "cores": cores_per_tglf_instance,      
-                        "minutes": minutes,
-                                 },
-                    extra_name = f'{extra_name}_{name}',
-                    ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
-                    attempts_execution=2, 
-                    only_minimal_files=only_minimal_files,
-                    )
+    if print_logs:
+        print_context = IOtools.nullcontext()
+    else:
+        print(f"\n\t- Running TGLF scans for turbulence drives (logs are hidden to avoid cluttering the log file)...\n", typeMsg="i")
+        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed"])
+
+    with print_context:
+        tglf.runScanTurbulenceDrives(
+                        subfolder = name,
+                        variablesDrives = variables_to_scan,
+                        varUpDown     = relative_scan,
+                        minimum_delta_abs = minimum_delta_abs,
+                        code_settings = code_settings,
+                        extraOptions = extraOptions,
+                        ApplyCorrections = False,
+                        add_baseline_to = 'none',
+                        cold_start=cold_start,
+                        forceIfcold_start=True,
+                        slurm_setup={
+                            "cores": cores_per_tglf_instance,
+                            "minutes": minutes,
+                                     },
+                        extra_name = f'{extra_name}_{name}',
+                        ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
+                        attempts_execution=2,
+                        only_minimal_files=only_minimal_files,
+                        )
 
     # Remove folders because they are heavy to carry many throughout
     if remove_folders_out:

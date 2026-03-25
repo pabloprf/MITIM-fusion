@@ -384,9 +384,9 @@ singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& t
         TRANSPcommand = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
 singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
+singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q >> {runid}tr_dat.log 2>&1
 singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} >> {transp_job.folderExecution}/{runid}tr.log 2>&1
 """
 
     # ********** Start from previous
@@ -397,7 +397,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
         TRANSPcommand_prep = None
 
         TRANSPcommand = f"""
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R |& tee {transp_job.folderExecution}/{runid}tr.log
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R >> {transp_job.folderExecution}/{runid}tr.log 2>&1
 """
 
     # ------------------

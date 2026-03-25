@@ -93,52 +93,96 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
     # ---- Plot flux matching
     # -----------------------------------------------------------------------------------------------------------
 
+    # Nice LaTeX labels per predicted channel
+    _nice_labels = {
+        'te': ('$a/L_{T_e}$',  '$|\\Delta Q_e|$'),
+        'ti': ('$a/L_{T_i}$',  '$|\\Delta Q_i|$'),
+        'ne': ('$a/L_{n_e}$',  '$|\\Delta \\Gamma_e|$'),
+        'nZ': ('$a/L_{n_Z}$',  '$|\\Delta \\Gamma_Z|$'),
+        'w0': ('$|d\\omega_0/dr|$', '$|\\Delta \\Pi|$'),
+    }
+
     if self.FluxMatch_Yopt.shape[0] > 0:
         ax = axsRes[0]
-        ax.plot(self.FluxMatch_Yopt.mean(axis=1),"-o",color=c,markersize=2)
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("Mean residual")
+        ax.plot(self.FluxMatch_Yopt.mean(axis=1), "-o", color=c, markersize=2)
+
+        # Stopping criterion
+        if getattr(self, 'FluxMatch_tol', None) is not None:
+            ax.axhline(y=self.FluxMatch_tol, color='k', linestyle='--', lw=1.2, label=f'Tolerance Criterion')
+            ax.legend(fontsize=10, frameon=False)
+
+        # Oscillation-check iterations
+        for it in getattr(self, 'FluxMatch_osc_iters', []):
+            ax.axvline(x=it, color='0.6', linestyle=':', lw=0.8)
+
+        ax.set_ylabel("Mean flux residual")
         ax.set_xlim(left=0)
         ax.set_yscale("log")
 
         colors = GRAPHICStools.listColors()
+        
+        lw = 0.5
 
         cont = 0
-        for i in range(len(self.predicted_channels)):
+        for i, ch in enumerate(self.predicted_channels):
+            aL_label, res_label = _nice_labels.get(ch, (self.labelsFM[i][0], f'$|\\Delta${self.labelsFM[i][1]}$|$'))
 
             # Plot gradient evolution
             ax = axsRes[1+cont]
-            for j in range(self.plasma['rho'].shape[-1]-1):    
+            for j in range(self.plasma['rho'].shape[-1]-1):
 
                 position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
-                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=1.0, label = f"r/a = {self.plasma['roa'][batch_num,j+1]:.2f}",markersize=0.5)
+                ax.plot(self.FluxMatch_Xopt[:,position_in_batch], "-o", color=colors[j], lw=lw, label=f"$r/a={self.plasma['roa'][batch_num,j+1]:.2f}$", markersize=0.5)
                 if self.bounds_current is not None:
                     for u in [0,1]:
                         ax.axhline(y=self.bounds_current[u,position_in_batch], color=colors[j], linestyle='-.', lw=0.2)
 
-            ax.set_ylabel(self.labelsFM[i][0])
-            
+            ax.set_ylabel(aL_label)
+
+            for it in getattr(self, 'FluxMatch_osc_iters', []):
+                ax.axvline(x=it, color='0.6', linestyle=':', lw=0.8)
+
             if i == len(self.predicted_channels)-1:
-                GRAPHICStools.addLegendApart(ax, ratio=1.0,extraPad=0.05, size=9)
+                GRAPHICStools.addLegendApart(ax, ratio=1.0, extraPad=0.05, size=9)
 
             # Plot residual evolution
             ax = axsRes[1+cont+1]
-            for j in range(self.plasma['rho'].shape[-1]-1):    
+            for j in range(self.plasma['rho'].shape[-1]-1):
 
                 position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
 
-                ax.plot(self.FluxMatch_Yopt[:,position_in_batch], "-o", color=colors[j], lw=1.0,markersize=1)
+                ax.plot(self.FluxMatch_Yopt[:,position_in_batch], "-o", color=colors[j], lw=lw, markersize=1)
 
-            ax.set_ylabel(f'{self.labelsFM[i][1]} residual')
+            # if getattr(self, 'FluxMatch_tol', None) is not None:
+            #     ax.axhline(y=self.FluxMatch_tol, color='k', linestyle='--', lw=1.2)
+            for it in getattr(self, 'FluxMatch_osc_iters', []):
+                ax.axvline(x=it, color='0.6', linestyle=':', lw=0.8)
+
+            ax.set_ylabel(res_label)
             ax.set_yscale("log")
 
-            cont += 2
+            # Plot relaxation parameter evolution
+            ax = axsRes[1+cont+2]
+            if self.FluxMatch_relax.numel() > 0:
+                for j in range(self.plasma['rho'].shape[-1]-1):
+
+                    position_in_batch = i * ( self.plasma['rho'].shape[-1] -1 ) + j
+
+                    ax.plot(self.FluxMatch_relax[:,position_in_batch], "-o", color=colors[j], lw=lw, markersize=0.5)
+
+            for it in getattr(self, 'FluxMatch_osc_iters', []):
+                ax.axvline(x=it, color='0.6', linestyle=':', lw=0.8)
+
+            ax.set_ylabel("Relaxation param., $\\eta$")
+            ax.set_yscale("log")
+
+            cont += 3
 
         for ax in axsRes:
             ax.set_xlabel("Iteration")
             ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
+            #GRAPHICStools.addDenseAxis(ax)
         
 def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile,labelGB, c, label, batch_num=0):
 
