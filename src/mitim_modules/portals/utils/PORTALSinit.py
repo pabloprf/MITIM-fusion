@@ -11,6 +11,7 @@ from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
+from fusio.classes.io import io
 from IPython import embed
 
 
@@ -61,6 +62,8 @@ def initializeProblem(
     # ---- Copy the file of interest to initialization folder
     if isinstance(fileStart, MITIMstate.mitim_state):
         fileStart.write_state(file=FolderInitialization / "input.gacode")
+    elif isinstance(fileStart, io):
+        fileStart.to("gacode").write(FolderInitialization / "input.gacode", side="input")
     else:
         shutil.copy2(fileStart, FolderInitialization / "input.gacode")
 
@@ -75,6 +78,8 @@ def initializeProblem(
     # If it is a profiles class, use it directly
     if isinstance(fileStart, MITIMstate.mitim_state):
         profiles = copy.deepcopy(fileStart)
+    elif isinstance(fileStart, io):
+        profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
     # If it is a file, then assume it is a gacode one (#TODO: check type?)
     else:
         profiles = PROFILEStools.gacode_state(initialization_file)
