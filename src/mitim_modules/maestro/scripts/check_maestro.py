@@ -3,30 +3,67 @@ from pathlib import Path
 import argparse
 import re
 import os
-import time
 import subprocess
 from datetime import datetime
 from IPython import embed
 from mitim_tools.opt_tools.scripts import slurm
+
+# Compiled once, reused for every folder
+_RE_BEAT       = re.compile(r'Beat_(\d+)')
+_RE_EVAL       = re.compile(r'Evaluation\.(\d+)')
+_RE_SBATCH_JOB = re.compile(r'Submitted batch job (\S+)')
+_RE_SLURM_JOB  = re.compile(r'SLURM job (\S+)')
+_RE_TOOK       = re.compile(r'\* MAESTRO took(.+)')
+
+# Tail chunk size for reading log files (bytes) — "MAESTRO took" is always near the end
+_LOG_TAIL_BYTES = 4096
 
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
         txt = f"{txt}"
     return f"{'...' if len(txt) > chars else ''}{txt[-chars:]}" if txt is not None else None
 
-def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
-    """Return a mapping of SLURM jobid -> info by running `squeue` once.
+def _stat_or_none(path):
+    """Single syscall: return os.stat result or None if path doesn't exist."""
+    try:
+        return os.stat(path)
+    except OSError:
+        return None
 
-    Keys in the returned dict include: state, submit_time, cores, partition.
-    If `squeue` is unavailable or fails, returns an empty dict.
-    """
+def _scandir_names(path):
+    """Return list of (name, is_dir) for entries in path using scandir (one syscall per entry saved)."""
+    try:
+        with os.scandir(path) as it:
+            return [(e.name, e.is_dir()) for e in it]
+    except OSError:
+        return []
+
+def _read_first_line(path):
+    try:
+        with open(path, 'r') as f:
+            return f.readline()
+    except OSError:
+        return ''
+
+def _read_tail(path, nbytes=_LOG_TAIL_BYTES):
+    """Return the last `nbytes` of a file as a string without reading the whole file."""
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - nbytes))
+            return f.read().decode('utf-8', errors='replace')
+    except OSError:
+        return ''
+
+def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
+    """Return a mapping of SLURM jobid -> info by running `squeue` once."""
     if user is None:
         user = os.environ.get("USER")
     if not user:
         return {}
 
     try:
-        # %i: jobid, %T: state, %V: submit time, %C: CPUs, %P: partition
         squeue_out = subprocess.run(
             ["squeue", "-u", user, "-o", "%i|%T|%V|%C|%P", "-h"],
             capture_output=True,
@@ -105,120 +142,118 @@ def check_cases(folders, chars_folder_clip=500):
 
     header = ("Folder", "Last Beat", "Type", "Details", "Job Status")
 
-    # Cache SLURM queue info once (fast) instead of `squeue -j <id>` per folder (slow).
+    # One squeue call for all jobs
     squeue_by_jobid = get_squeue_by_jobid()
 
     for folder in folders:
-        if not folder.is_dir():
-            continue
-        outputs_folder = folder / 'Outputs'
-        slurm_output = folder / 'slurm_output.dat'
-        slurm_sbatch_output = folder / 'sbatch_submission.log'
+        folder_str = str(folder)
 
-        txt = ''
-        job_status = ''
-        job_state = None
-        job_id = None
-
-        # Parse SLURM info first so we can correctly label PENDING jobs even
-        # when Maestro hasn't created Beats/ yet.
+        # --- Job ID from slurm files (read first line only) ---
         job_match = None
-        
-        # Find the job ID from the slurm output file
-        if slurm_sbatch_output.exists():
-            with open(slurm_sbatch_output, 'r') as f:
-                first_line = f.readline()
-                job_match = re.search(r'Submitted batch job (\S+)', first_line)
-        elif slurm_output.exists():
-            with open(slurm_output, 'r') as f:
-                first_line = f.readline()
-                # Allow array jobs (e.g. 12345_6) and other non-whitespace forms.
-                job_match = re.search(r'SLURM job (\S+)', first_line)
+        slurm_output_path    = folder_str + '/slurm_output.dat'
+        slurm_sbatch_path    = folder_str + '/sbatch_submission.log'
+        slurm_output_stat    = None
 
+        sbatch_line = _read_first_line(slurm_sbatch_path)
+        if sbatch_line:
+            job_match = _RE_SBATCH_JOB.search(sbatch_line)
+        else:
+            slurm_output_stat = _stat_or_none(slurm_output_path)   # stat cached for reuse below
+            if slurm_output_stat:
+                job_match = _RE_SLURM_JOB.search(_read_first_line(slurm_output_path))
+
+        job_status = ''
+        job_state  = None
         if job_match:
-            job_id = job_match.group(1)
+            job_id   = job_match.group(1)
             job_info = squeue_by_jobid.get(job_id)
             if job_info:
-                state = job_info.get("state", "").strip()
-                job_state = state
-                submit_time = job_info.get("submit_time", "").strip()
-                cores = job_info.get("cores", "").strip()
-                partition = job_info.get("partition", "").strip()
-
-                # SLURM submit time formats vary by site/config; keep a safe fallback.
+                state        = job_info["state"].strip()
+                job_state    = state
+                submit_time  = job_info["submit_time"].strip()
+                cores        = job_info["cores"].strip()
+                partition    = job_info["partition"].strip()
                 try:
-                    submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
-                    time_in_queue = datetime.now() - submit_dt
-                    hours = time_in_queue.days * 24 + time_in_queue.seconds // 3600
-                    minutes = (time_in_queue.seconds % 3600) // 60
-                    job_status = f"{state} for {hours}h {minutes}m ({cores} cores, {partition})"
+                    submit_dt      = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
+                    time_in_queue  = datetime.now() - submit_dt
+                    hours          = time_in_queue.days * 24 + time_in_queue.seconds // 3600
+                    minutes        = (time_in_queue.seconds % 3600) // 60
+                    job_status     = f"{state} for {hours}h {minutes}m ({cores} cores, {partition})"
                 except Exception:
                     job_status = f"{state} (submitted {submit_time}) ({cores} cores on {partition})"
 
-        beats_folder = folder / 'Beats'
-        pattern = re.compile(r'Beat_(\d+)')
-        last_beat = None
-        run_folder: list[str] = []
-        if beats_folder.exists():
-            subfolders = [d for d in beats_folder.iterdir() if d.is_dir() and pattern.match(d.name)]
-            if subfolders:
-                sorted_subfolders = sorted(subfolders, key=lambda d: int(pattern.match(d.name).group(1)))
-                last_beat = sorted_subfolders[-1]
-                run_folder = [n.name for n in last_beat.iterdir()]
+        # --- Last beat: use scandir so is_dir() costs no extra syscall ---
+        beats_folder_path = folder_str + '/Beats'
+        last_beat     = None
+        run_names: list[str] = []
+
+        beat_entries = [(name, isdir) for name, isdir in _scandir_names(beats_folder_path)
+                        if isdir and _RE_BEAT.match(name)]
+        if beat_entries:
+            beat_entries.sort(key=lambda t: int(_RE_BEAT.match(t[0]).group(1)))
+            last_beat_name_only = beat_entries[-1][0]
+            last_beat = Path(beats_folder_path) / last_beat_name_only
+            run_names = [name for name, _ in _scandir_names(str(last_beat))]
 
         last_beat_name = last_beat.name if last_beat is not None else "NO BEATS"
+        folder_clip    = clipstr(folder, chars=chars_folder_clip)
 
-        if (outputs_folder / 'beat_final').exists() and slurm_output.exists():
-            mod_time = datetime.fromtimestamp((outputs_folder / 'beat_final').stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            with open(slurm_output, 'r') as f:
-                lines = f.readlines()
-            for line in lines:
-                if '* MAESTRO took' in line:
-                    txt = line.split('* MAESTRO took')[-1].strip()
-            rows_finished.append((clipstr(folder, chars=chars_folder_clip), "FINISHED", last_beat_name, txt, f"completed on {mod_time}"))
-            continue
+        # --- Finished check: reuse slurm_output_stat if we already have it ---
+        beat_final_path = folder_str + '/Outputs/beat_final'
+        beat_final_stat = _stat_or_none(beat_final_path)
 
+        if beat_final_stat is not None:
+            if slurm_output_stat is None:
+                slurm_output_stat = _stat_or_none(slurm_output_path)
+            if slurm_output_stat is not None:
+                mod_time = datetime.fromtimestamp(beat_final_stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                # Read only the tail — "MAESTRO took" is always at the end
+                txt = ''
+                tail = _read_tail(slurm_output_path)
+                m = _RE_TOOK.search(tail)
+                if m:
+                    txt = m.group(1).strip()
+                rows_finished.append((folder_clip, "FINISHED", last_beat_name, txt, f"completed on {mod_time}"))
+                continue
+
+        # --- Determine beat type via scandir results (already in memory) ---
+        txt  = ''
         beat = 'UNKNOWN'
         if last_beat is not None:
-            if 'run_portals' in run_folder:
+            if 'run_portals' in run_names:
                 beat = 'PORTALS'
-                exe_folder = last_beat / 'run_portals' / 'Execution'
-                if not exe_folder.exists():
+                exe_path = str(last_beat) + '/run_portals/Execution'
+                eval_entries = [(name, isdir) for name, isdir in _scandir_names(exe_path)
+                                if isdir and _RE_EVAL.match(name)]
+                if not eval_entries:
                     txt = 'no execution folder yet'
                 else:
-                    pattern_eval = re.compile(r'Evaluation.(\d+)')
-                    subfolders_eval = [d for d in exe_folder.iterdir() if d.is_dir() and pattern_eval.match(d.name)]
-                    if subfolders_eval:
-                        sorted_subfolders_eval = sorted(subfolders_eval, key=lambda d: int(pattern_eval.match(d.name).group(1)))
-                        last_ev = sorted_subfolders_eval[-1].name.split('.')[-1]
-                        txt = f"last evaluation: {last_ev}"
-            elif 'run_eped' in run_folder:
+                    eval_entries.sort(key=lambda t: int(_RE_EVAL.match(t[0]).group(1)))
+                    txt = f"last evaluation: {eval_entries[-1][0].split('.')[-1]}"
+            elif 'run_eped' in run_names:
                 beat = 'EPED'
-            elif 'run_transp' in run_folder:
+            elif 'run_transp' in run_names:
                 beat = 'TRANSP'
 
-        # If the job is queued but not started, show it as PENDING (not POTENTIAL FAIL).
-        # This typically happens when SLURM reports state=PENDING.
         if job_state and job_state.upper() in {"PENDING", "PD"}:
             details = f"{beat}{(' - ' + txt) if txt else ''}" if (beat != 'UNKNOWN' or txt) else ''
-            rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, "PENDING", details, job_status or "PENDING"))
+            rows_running.append((folder_clip, last_beat_name, "PENDING", details, job_status or "PENDING"))
             continue
 
-        # If Beats/ isn't created yet, don't flag as failure if a job exists.
         if last_beat is None:
             if job_status:
-                rows_running.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "UNKNOWN", "", job_status))
+                rows_running.append((folder_clip, "NO BEATS", "UNKNOWN", "", job_status))
                 continue
-            mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((clipstr(folder, chars=chars_folder_clip), "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
+            mod_time = datetime.fromtimestamp(os.stat(folder_str).st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            rows_failed.append((folder_clip, "NO BEATS", "POTENTIAL FAIL", "", f"failed on {mod_time}"))
             continue
 
-        if not job_status and not (outputs_folder / 'beat_final').exists():
-            mod_time = datetime.fromtimestamp(folder.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            rows_failed.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
+        if not job_status and beat_final_stat is None:
+            mod_time = datetime.fromtimestamp(os.stat(folder_str).st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            rows_failed.append((folder_clip, last_beat_name, "POTENTIAL FAIL", txt, f"failed on {mod_time}"))
             continue
 
-        rows_running.append((clipstr(folder, chars=chars_folder_clip), last_beat_name, beat, txt, job_status))
+        rows_running.append((folder_clip, last_beat_name, beat, txt, job_status))
 
     # Recalculate col_widths after adding labels to ensure proper alignment
     all_rows = rows_running + rows_finished + rows_failed
@@ -244,25 +279,14 @@ def check_cases(folders, chars_folder_clip=500):
     print_block(rows_failed, "FAILED")
     print('')
 
-def safe_exists(path, retries=3, delay=0.5):
-    path = Path(path)
-    for _ in range(retries):
-        if path.exists() or os.path.exists(str(path)):
-            return True
-        time.sleep(delay)
-    return False
-
 def main():
-
 
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
 
     args = parser.parse_args()
 
-    folders = args.folders
-
-    check_cases(folders, chars_folder_clip=50)
+    check_cases(args.folders, chars_folder_clip=50)
 
 if __name__ == "__main__":
     main()
