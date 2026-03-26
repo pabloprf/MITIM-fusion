@@ -8,11 +8,13 @@ import dill as pickle
 from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.plasmastate_tools import MITIMstate
 from mitim_tools.plasmastate_tools.utils import state_plotting
+from mitim_tools.gacode_tools import PROFILEStools
 from mitim_modules.powertorch.utils import TRANSFORMtools, POWERplot
 from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_modules.powertorch.utils import TARGETStools, CALCtools, TRANSPORTtools
 from mitim_modules.powertorch.physics_models import targets_analytic
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from fusio.classes.io import io
 from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
@@ -150,12 +152,14 @@ class powerstate:
         # Object type (e.g. input.gacode)
         # -------------------------------------------------------------------------------------
 
-        if isinstance(profiles_object, MITIMstate.mitim_state):
+        #if isinstance(profiles_object, MITIMstate.mitim_state):
+        if isinstance(profiles_object, io):
             self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
-            self.profiles = copy.deepcopy(profiles_object)
+            #self.profiles = copy.deepcopy(profiles_object)
+            self.profiles = PROFILEStools.gacode_state.from_scratch(profiles_object.to('gacode').to_dict())
             if "derived" not in self.profiles.__dict__:
                 self.profiles.derive_quantities()
 
