@@ -12,6 +12,7 @@ from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
+from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
 from IPython import embed
 
 MARKERSIZE = 1
@@ -36,6 +37,8 @@ def grabMAESTRO(folder):
             beat_types.append('eped')
         elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
             beat_types.append('lengyel')
+        elif (folder_beats / f'{beats[beat]}' / 'run_sharpness').exists():
+            beat_types.append('sharpness')
 
     if len(beats) == 0:
         raise ValueError(f"No beats found in {folder_beats}")
@@ -107,7 +110,11 @@ def plot_results(self, fn):
             key = f'EPED b#{i+1}'
         elif isinstance(beat, lengyel_beat):
             key = f'Lengyel b#{i+1}'
-        
+        elif isinstance(beat, sharpness_beat):
+            key = f'Sharpness b#{i+1}'
+        else:
+            key = f'Beat b#{i+1}'
+
         objs[key] = profs
 
     # ********************************************************************************************************

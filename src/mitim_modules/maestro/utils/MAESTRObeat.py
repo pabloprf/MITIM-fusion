@@ -977,10 +977,11 @@ class creator_from_fixed_bc(creator_from_parameterization):
         self,
         initialize_instance,
         label = 'fixed_bc',
-        rho_bc = None,              # BC location in rho coordinate (e.g. pedestal top)
-        Te_bc = None,               # Te at rho_bc (keV)
-        Ti_bc = None,               # Ti at rho_bc (keV); if None, uses Te_bc
-        neped_20 = None,            # ne at rho_bc (10^20 m^-3), interpreted as ne_bc for fixed_bc
+        x_bc = None,                # BC location value in the coordinate given by bc_coordinate
+        bc_coordinate = 'rho',      # coordinate for x_bc: 'rho' (rho_tor), 'roa' (r/a), or 'psin'
+        Te_bc = None,               # Te at x_bc (keV)
+        Ti_bc = None,               # Ti at x_bc (keV); if None, uses Te_bc
+        neped_20 = None,            # ne at x_bc (10^20 m^-3)
         Tesep_keV = None,           # Te at separatrix (keV); if None, read from current profiles
         nesep_20 = None,            # ne at separatrix (10^20 m^-3); if None, read from current profiles
         BetaN = None,
@@ -1002,13 +1003,15 @@ class creator_from_fixed_bc(creator_from_parameterization):
             aLT = aLT,
             aLTe_to_aLTi_ratio = aLTe_to_aLTi_ratio,
             nresol = nresol,
-            rhotop = rho_bc,
+            rhotop = x_bc,          # stored as-is; converted to rho_tor in __call__
             Ttop_keV = Te_bc,
             netop_20 = netop_20,
             Tsep_keV = Tesep_keV,
             nesep_20 = nesep_20,
             )
 
+        self.x_bc = x_bc
+        self.bc_coordinate = bc_coordinate
         self.Te_bc = Te_bc
         self.Ti_bc = Ti_bc if Ti_bc is not None else Te_bc
 
@@ -1025,10 +1028,24 @@ class creator_from_fixed_bc(creator_from_parameterization):
 
     def __call__(self):
 
+        # Convert x_bc from bc_coordinate to rho_tor now that profiles are available
+        _profs = self.initialize_instance.profiles_current
+        _rho   = _profs.profiles['rho(-)']
+        _roa   = _profs.derived['roa']
+        _psin  = _profs.derived['psi_pol_n']
+        if self.bc_coordinate == 'rho':
+            self.rhotop = float(self.x_bc)
+        elif self.bc_coordinate == 'roa':
+            self.rhotop = float(np.interp(self.x_bc, _roa, _rho))
+        elif self.bc_coordinate == 'psin':
+            self.rhotop = float(np.interp(self.x_bc, _psin, _rho))
+        else:
+            raise ValueError(f"bc_coordinate must be 'rho', 'roa', or 'psin', got '{self.bc_coordinate}'")
+
         print('\n\t--------------------------------')
         print('\t  fixed_bc profile creator')
         print('\t--------------------------------')
-        print(f'\t  Boundary condition location:  rho_bc  = {self.rhotop:.4f}')
+        print(f'\t  Boundary condition location:  x_bc    = {self.x_bc} ({self.bc_coordinate})  ->  rho_tor = {self.rhotop:.4f}')
         print(f'\t  Boundary condition values:    Te_bc   = {self.Te_bc:.4f} keV')
         print(f'\t                                Ti_bc   = {self.Ti_bc:.4f} keV')
         print(f'\t                                ne_bc   = {self.netop_20:.4f} 10^20/m^3')
@@ -1049,9 +1066,9 @@ class creator_from_fixed_bc(creator_from_parameterization):
             print(f'\t                                nesep   = {self.nesep_20:.4f} 10^20/m^3')
         print('\t--------------------------------\n')
 
-        # Gradients use r/a coordinate but rhotop is in rho
+        # Gradients use r/a coordinate; rhotop is now in rho_tor
         x_top = np.interp(self.rhotop, self.initialize_instance.profiles_current.profiles['rho(-)'], self.initialize_instance.profiles_current.derived['roa'])
-        print(f'\t- rho_bc = {self.rhotop:.4f} maps to r/a = {x_top:.4f}')
+        print(f'\t- x_bc = {self.x_bc} ({self.bc_coordinate}) -> rho_tor = {self.rhotop:.4f} -> r/a = {x_top:.4f}')
 
         x_a = 0.3
 

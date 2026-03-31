@@ -16,6 +16,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
+from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
@@ -126,6 +127,9 @@ class maestro:
         elif beat == 'lengyel':
             print(f'\n- Beat {self.counter_current}: LENGYEL ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = lengyel_beat(self)
+        elif beat == 'sharpness':
+            print(f'\n- Beat {self.counter_current}: SHARPNESS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = sharpness_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
