@@ -36,13 +36,14 @@ plasma:
       nu_ne: 1.3    # Density peaking
       aLTe_to_aLTi_ratio: 1.0  # Keep this ratio during the BetaN optimization
 
-      # If creator_type = fixed_bc: User-specified boundary condition values at rho_bc
-      #   - rho_bc, Te_bc, Ti_bc, ne_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
+      # If creator_type = fixed_bc: User-specified boundary condition values at x_bc
+      #   - x_bc + bc_coordinate, Te_bc, Ti_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
       #   - BetaN and nu_ne (above) are still used to match target values by adjusting aLT and aLn
       #   - Set BetaN and/or nu_ne to null to skip the corresponding gradient optimization and use aLT/aLn directly
-      rho_bc: null      # BC location in rho coordinate (e.g. pedestal top, typically ~0.95)
-      Te_bc: null       # Te at rho_bc (keV)
-      Ti_bc: null       # Ti at rho_bc (keV); if null, uses Te_bc
+      x_bc: null           # BC location value (e.g. pedestal top, typically ~0.95)
+      bc_coordinate: "rho" # Coordinate for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin'
+      Te_bc: null          # Te at x_bc (keV)
+      Ti_bc: null          # Ti at x_bc (keV); if null, uses Te_bc
       # Note: for fixed_bc, neped_20 (from plasma.parameters above) is used directly as ne_bc
 
       # If initialization_type = profiles: path to profiles file (input.gacode) to initialize with
@@ -206,10 +207,44 @@ maestro:
   eped_initializer:
 
     beat_type: eped
-   
+
     base_module: eped
 
     parameters_prepare: {}
+
+  sharpness:
+
+    beat_type: sharpness
+
+    base_module: null
+
+    parameters_prepare:
+
+      # Location of the boundary condition in the coordinate given by bc_coordinate
+      x_bc: 0.90
+
+      # Coordinate system for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin' (normalized poloidal flux)
+      bc_coordinate: "rho"
+
+      # Prescribed sharpness parameter xi (ratio of edge to core temperature gradient)
+      # xi=1 means edge gradient matches core gradient; xi>1 means sharper (more H-mode-like) edge
+      sharpness: 1.0
+
+      # Coordinate system in which the sharpness parameter xi (the gradient ratio) is defined.
+      # Independent of bc_coordinate. Options: 'psin' (default), 'rho' (rho_tor), 'roa' (r/a)
+      sharpness_coordinate: "psin"
+
+      # Ti/Te ratio at the boundary condition location (default 1.0)
+      tite: 1.0
+
+      # If True, override x_bc with the outermost radial location used by the previous
+      # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
+      # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
+      update_bc_based_on_portals: false
+
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: null
 
   lengyel:
 
