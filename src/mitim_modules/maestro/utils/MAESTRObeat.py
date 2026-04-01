@@ -215,7 +215,7 @@ class initializer_from_geqdsk(beat_initializer):
     def __call__(
         self,
         geqdsk_file = None,
-        PichT_MW = 1.0,
+        Paux_MW = 1.0,
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
@@ -227,7 +227,7 @@ class initializer_from_geqdsk(beat_initializer):
         If too fine, TRANSP might complain about kinks and curvature.
         If too coarse, geometry won't be well represented.
         '''
-        
+
         # Read geqdsk
         self.f = GEQtools.MITIMgeqdsk(geqdsk_file)
         
@@ -235,7 +235,16 @@ class initializer_from_geqdsk(beat_initializer):
 
         # Convert to profiles
         print(f'\t- Converting geqdsk to profiles, using {coeffs_MXH = }')
-        p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
+        
+        type_heating = kwargs_profiles.get('type_heating', 'ICRH')
+        if type_heating == 'ICRH':
+            aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+        elif type_heating == 'NBI':
+            aux_channels = {'e': 'qbeame(MW/m^3)', 'i': 'qbeami(MW/m^3)', 'total': 'qBEAM_MW'}
+        else:
+            aux_channels = None
+        
+        p = self.f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, Paux = Paux_MW, coeffs_MXH = coeffs_MXH, aux_channels = aux_channels)
 
         # Sometimes I may want to change Ip and Bt
         if 'Ip_MA' in kwargs_profiles and kwargs_profiles['Ip_MA'] is not None:
@@ -334,14 +343,14 @@ class initializer_from_separatrix(beat_initializer):
 
     def __call__(
         self,
-        PichT_MW = 1.0,
+        Paux_MW = 1.0,
         Zeff = 1.5,
         netop_20 = 1.0,
         coeffs_MXH = 5,
         extract_995_from="analytic_interpolation",
         **kwargs
         ):
-        
+
         self._minimal_call(extract_995_from=extract_995_from)
         
         if 'rz_boundary_file' in kwargs and kwargs['rz_boundary_file'] is not None:
@@ -374,18 +383,28 @@ class initializer_from_separatrix(beat_initializer):
             )
         
         # Write to profiles
+        
+        type_heating = kwargs.get('type_heating', 'ICRH')
+        if type_heating == 'ICRH':
+            aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+        elif type_heating == 'NBI':
+            aux_channels = {'e': 'qbeame(MW/m^3)', 'i': 'qbeami(MW/m^3)', 'total': 'qBEAM_MW'}
+        else:
+            aux_channels = None
+
         self.p = GEQtools.equilibrium_to_profiles(
             rho, psi, q, pressure, torfluxa, R0, B0, Ip,
             kappa, delta, zeta, rmin, rmaj, z0, sn[:,:coeffs_MXH], cn[:,:coeffs_MXH],
             ne0_20 = netop_20,
             Zeff = Zeff,
             Z = 9,
-            PichT = PichT_MW
+            Paux = Paux_MW,
+            aux_channels = aux_channels,
         )
 
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
         try:
-            self._correct_profiles_withfreegs(PichT_MW = PichT_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+            self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
         except:
             print('\t- Could not run freegs to correct the profiles, proceeding with uncorrected ones', typeMsg = 'w')
         
@@ -400,7 +419,7 @@ class initializer_from_separatrix(beat_initializer):
         super().__call__(**kwargs)
 
     def _correct_profiles_withfreegs(self,
-            PichT_MW = 1.0, Zeff = 1.5, netop_20 = 1.0, coeffs_MXH = 5,
+            Paux_MW = 1.0, Zeff = 1.5, netop_20 = 1.0, coeffs_MXH = 5,
             Ip_MA = 1.0, a = 0.5, B_T = 5.4, R = 1.5, kappa_sep = 1.7, delta_sep = 0.3, zeta_sep = 0.0, z0 = 0.0, **kwargs):
         '''
         This runs freegs to copy all but the shapings
@@ -421,7 +440,16 @@ class initializer_from_separatrix(beat_initializer):
         # Use old shaping
         
         p_old = copy.deepcopy(self.p)
-        self.p = f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, PichT = PichT_MW, coeffs_MXH = coeffs_MXH)
+        
+        type_heating = kwargs.get('type_heating', 'ICRH')
+        if type_heating == 'ICRH':
+            aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+        elif type_heating == 'NBI':
+            aux_channels = {'e': 'qbeame(MW/m^3)', 'i': 'qbeami(MW/m^3)', 'total': 'qBEAM_MW'}
+        else:
+            aux_channels = None
+        
+        self.p = f.to_profiles(ne0_20 = netop_20, Zeff = Zeff, Paux = Paux_MW, coeffs_MXH = coeffs_MXH, aux_channels = aux_channels)
 
         for i in ['kappa(-)', 'delta(-)', 'zeta(-)', 'rmin(m)', 'rmaj(m)', 'zmag(m)']:
             self.p.profiles[i] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[i])

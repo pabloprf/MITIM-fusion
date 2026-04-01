@@ -455,11 +455,13 @@ def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
         _ = IOtools.changeValue(nml_file, "nptr_pserve", 0, [], "=", MaintainComments=True)
 
     # If no NUBEAM, no MPI
-    val = IOtools.findValue(nml_file, "nalpha", "=", raiseException=False)
-    if (val is None) or (int(val) > 0):
+    val_alpha = IOtools.findValue(nml_file, "nalpha", "=", raiseException=False)
+    val_nubeam = IOtools.findValue(nml_file, "nlbeam", "=", raiseException=False)
+    
+    if ( (val_alpha is None) or (int(val_alpha) > 0) ) and ( (val_nubeam is None) or not bool(val_nubeam) ):
         mpisettings["trmpi"] = 1
         _ = IOtools.changeValue(nml_file, "nbi_pserve", 0, [], "=", MaintainComments=True)
-
+        
     # -------- Further checkers
     toric_mpi = IOtools.findValue(nml_file, "ntoric_pserve", "=", raiseException=False)
     nbi_mpi = IOtools.findValue(nml_file, "nbi_pserve", "=", raiseException=False)

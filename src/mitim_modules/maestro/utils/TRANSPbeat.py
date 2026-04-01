@@ -65,7 +65,7 @@ class transp_beat(beat):
         - transp_namelist is a dictionary with the keys that I want to be different from the defaults
             (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
-        
+
         # Grab structures
         tokamak_structures = transp_namelist.get('tokamak_structures', None)
         is_machine_fixed = tokamak_structures is not None
@@ -93,7 +93,6 @@ class transp_beat(beat):
             print(f'\t- Using provided MXH coefficients for smoothing separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
         
         # Initialize TRANSP object and profiles from input.gacode
-        
         times = [self.time_transition,self.time_end+1.0]
         self.transp = self.profiles_current.to_transp(
             folder = self.folder,
@@ -150,48 +149,66 @@ class transp_beat(beat):
                 modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
                 modify_p_to_match_pB2=modify_p_to_match_pB2,
                 )
+            
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # ICRF power
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        if transp_namelist.get('Pich', False):
 
-        PichT_MW    = self.profiles_current.derived['qRF_MW'][-1]
-        
-        # Antennas
-        nicha = self._number_of_antennas(tokamak_structures)
-        
-        if is_machine_fixed:
-            '''
-            For realistic antenna geometry, I need to use the predefined frequencies that come with the antenna definitions
-            '''
-            if freq_ICH is not None:
-                print(f'[MITIM] Warning: freq_ICH is defined but will be ignored since tokamak_structures = {tokamak_structures} is not None', typeMsg='w')
-                
-            freq_ICH = None
-
-        else:
-            '''
-            For simple antenna geometry, I can choose the frequency to match the best resonance condition for minority ions.
-            If freq_ICH is not provided, I estimate it based on the on-axis (vacuum) magnetic field and the minority species.
-            '''
-            if freq_ICH is None:
-
-                B_T         = self.profiles_current.profiles['bcentr(T)'][0]
-
+            Paux_MW    = self.profiles_current.derived['qRF_MW'][-1]
+            
+            # Antennas
+            nicha = self._number_of_antennas(tokamak_structures)
+            
+            if is_machine_fixed:
                 '''
-                Best resonance condition for minority ions
-                ------------------------------------------
-                B = (Fich * 2 * np.pi) / qm 
-                Fich_MHz = B * qm / (2 * np.pi) * 1e-6
-                qm ~ q/m * 1E8
-                Fich_MHz = B * q/m * 1E8  / (2 * np.pi) * 1e-6 ~ B * q/m * 15.0
-                    e.g. He3 in SPARC: F = 12 * 2/3 * 15 = 120 MHz
+                For realistic antenna geometry, I need to use the predefined frequencies that come with the antenna definitions
                 '''
+                if freq_ICH is not None:
+                    print(f'[MITIM] Warning: freq_ICH is defined but will be ignored since tokamak_structures = {tokamak_structures} is not None', typeMsg='w')
+                    
+                freq_ICH = None
 
-                qm_minority = self.transp.nml_object.Minorities[0]/self.transp.nml_object.Minorities[1]
-                factor_to_account_for_Bplasma = 1.0 #1.05
-                freq_ICH = B_T * qm_minority * 15.0 * factor_to_account_for_Bplasma
+            else:
+                '''
+                For simple antenna geometry, I can choose the frequency to match the best resonance condition for minority ions.
+                If freq_ICH is not provided, I estimate it based on the on-axis (vacuum) magnetic field and the minority species.
+                '''
+                if freq_ICH is None:
 
-        self.transp.icrf_on_time(self.time_diffusion, power_MW = PichT_MW, freq_MHz = freq_ICH, nicha = nicha)
+                    B_T         = self.profiles_current.profiles['bcentr(T)'][0]
+
+                    '''
+                    Best resonance condition for minority ions
+                    ------------------------------------------
+                    B = (Fich * 2 * np.pi) / qm 
+                    Fich_MHz = B * qm / (2 * np.pi) * 1e-6
+                    qm ~ q/m * 1E8
+                    Fich_MHz = B * q/m * 1E8  / (2 * np.pi) * 1e-6 ~ B * q/m * 15.0
+                        e.g. He3 in SPARC: F = 12 * 2/3 * 15 = 120 MHz
+                    '''
+
+                    qm_minority = self.transp.nml_object.Minorities[0]/self.transp.nml_object.Minorities[1]
+                    factor_to_account_for_Bplasma = 1.0 #1.05
+                    freq_ICH = B_T * qm_minority * 15.0 * factor_to_account_for_Bplasma
+
+            self.transp.icrf_on_time(self.time_diffusion, power_MW = Paux_MW, freq_MHz = freq_ICH, nicha = nicha)
+        
+        
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # NBI power
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        if transp_namelist.get('Pnbi', False):
+
+            Paux_MW    = self.profiles_current.derived['qBEAM_MW'][-1]
+            
+            # Beams
+            nbeams, active_beams = self._number_of_beams(tokamak_structures)
+            
+            nbeams_active = len(active_beams)
+            print(f'\t- NBI heating requested with Paux_MW = {Paux_MW:.2f} MW. Total number of beams is nbeams = {nbeams}, with active_beams = {active_beams}', typeMsg='i')
+
+            self.transp.nbi_on_time(self.time_diffusion, power_MW = Paux_MW, nbeams = nbeams, nbeams_active = nbeams_active)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Write Ufiles
@@ -215,6 +232,25 @@ class transp_beat(beat):
         nicha = int(re.search(r'^\s*nicha\s*=\s*(\d+)\b', transp_antenna_setup, re.M).group(1))
         
         return nicha
+
+
+    def _number_of_beams(self, tokamak_structures):
+        # Determine the number of beams and which are active (PINJA > 0)
+
+        if tokamak_structures is None:
+            from mitim_tools.experiment_tools.TOKtools import NBIbeams
+        elif tokamak_structures == "D3D":
+            from mitim_tools.experiment_tools.DIIIDtools import NBIbeams
+        else:
+            raise ValueError(f"[MITIM] tokamak_structures = {tokamak_structures} not recognized for NBI-only mode. Supported options are: None, D3D'")
+        transp_beam_setup = NBIbeams()
+
+        nbeam = int(re.search(r'^\s*nbeam\s*=\s*(\d+)\b', transp_beam_setup, re.M).group(1))
+
+        pinja_matches = re.findall(r'^\s*PINJA\s*\(\s*(\d+)\s*\)\s*=\s*([\d.eE+\-]+)', transp_beam_setup, re.M | re.I)
+        active_beams = [int(i) for i, p in pinja_matches if float(p) > 0]
+
+        return nbeam, active_beams
 
     def run(self, **kwargs):
 
@@ -368,6 +404,10 @@ class transp_beat(beat):
         print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
         self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
         self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+
+        self.profiles_output.profiles['qbeame(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
+        self.profiles_output.profiles['qbeami(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
+
 
         # --------------------------------------------------------------------------------------------
 
@@ -537,9 +577,13 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
     fmini = maestro_namelist["plasma"]["heating"]["parameters"]["fmini"]
 
     # Only correct Pich from the maestro namelist if it's not already False    
-    if transp_namelist['Pich']:
+    if transp_namelist.get('Pich', False):
         transp_namelist['Pich'] =   maestro_namelist["plasma"]['heating']['type'] == 'ICRH' and \
                                     maestro_namelist["plasma"]['heating']['parameters']['P_icrh'] > 0.0
+    
+    if transp_namelist.get('Pnbi', False):
+        transp_namelist['Pnbi'] =   maestro_namelist["plasma"]['heating']['type'] == 'NBI' and \
+                                    maestro_namelist["plasma"]['heating']['parameters']['P_nbi'] > 0.0
     
     if transp_namelist['Pich']:
         transp_namelist['Minorities'] = [ Zmini, Amini, fmini ]
@@ -612,6 +656,7 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
         "toricmpi": toricmpi,
         "ptrmpi": 1
         }
+
     run_namelist['force_auxiliary_heating_at_output'] = force_auxiliary_heating_at_output
     
     return run_namelist

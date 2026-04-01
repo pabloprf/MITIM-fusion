@@ -26,7 +26,7 @@ MAESTRO:
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
 '''
 
-ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
+ENABLE_EMBED = True # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
 class maestro:
 

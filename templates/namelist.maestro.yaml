@@ -114,8 +114,9 @@ plasma:
 
     # Heating model. Options:
     #       ICRH:             Ion Cyclotron Resonance Heating model in TRANSP
+    #       NBI:              Neutral Beam Injection model in TRANSP
     #       gaussian_sources: Simple Gaussian heating sources for electrons and ions
-    type: ICRH
+    type: NBI
 
     # Heating model parameters
     parameters:
@@ -137,6 +138,14 @@ plasma:
       #     (only if tokamak_structures is null, otherwise it will be taken from the machine structures definition)
       freq_ICH: null    # If null, estimate on-axis deposition based on field and minority species resonance
 
+
+      # ~~~~~~~~~~~
+      # Parameters NBI (type = NBI)
+      # ~~~~~~~~~~~
+
+      # Total input power
+      P_nbi: 11.0
+
       # ~~~~~~~~~~~
       # Parameters for simple Gaussian sources (type = gaussian_sources)
       # ~~~~~~~~~~~
@@ -152,7 +161,7 @@ plasma:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "eped", "portals", "eped", "portals"]
+  beats: ["transp", "eped", "portals", "eped", "portals"]
 
   # Remove intermediate files to avoid heavy MAESTRO simulation folders
   keep_all_files: true
@@ -402,6 +411,7 @@ maestro:
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
       Pich: True
+      Pnbi: True
       dtOut_ms : 10.0
       dtIn_ms : 10.0
       nzones : 60
@@ -434,6 +444,7 @@ maestro:
         flattop_window: 20.0 # Long flattop to allow for current diffusion
 
         Pich: False
+        Pnbi: False
         useNUBEAMforAlphas: False
       
         dtEquilMax_ms: 100.0

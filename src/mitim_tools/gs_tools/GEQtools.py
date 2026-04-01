@@ -405,7 +405,7 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
-    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, Paux = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False, aux_channels = None):
 
         # -------------------------------------------------------------------------------------------------------
         # Quantities from the equilibrium
@@ -433,7 +433,8 @@ class MITIMgeqdsk:
             ne0_20 = ne0_20,
             Zeff = Zeff,
             Z = Z,
-            PichT = PichT
+            Paux = Paux,
+            aux_channels = aux_channels
         )
 
         # -------------------------------------------------------------------------------------------------------
@@ -450,13 +451,13 @@ class MITIMgeqdsk:
 
         return p
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
-        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
+        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, Paux = Paux_MW)
         p.write_state(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
@@ -1193,7 +1194,7 @@ class freegs_millerized:
         # From geqdsk to profiles
         return g.to_profiles()
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0, times = [0.0,1.0]):
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
@@ -1202,7 +1203,7 @@ class freegs_millerized:
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
-        return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, PichT_MW=PichT_MW, times=times)
+        return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, Paux_MW=Paux_MW, times=times)
 
 
 def equilibrium_to_profiles(
@@ -1211,8 +1212,12 @@ def equilibrium_to_profiles(
         ne0_20 = 1E19,
         Zeff = 1.5,
         Z = 1,
-        PichT = 10.0
+        Paux = 10.0,
+        aux_channels = None
         ):
+    
+    if aux_channels is None:
+        aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
     
     # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
     rhotor = np.array([np.abs(i) for i in rhotor])
@@ -1298,12 +1303,18 @@ def equilibrium_to_profiles(
     # Power: insert parabolic and use PROFILES volume integration to find desired power
     # -------------------------------------------------------------------------------------------------------
 
-    _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
+    # What variables are the ones to substitute in input.gacode?
+    channel_e = aux_channels['e']
+    channel_i = aux_channels['i']
+    channel_total = aux_channels['total']
+
+    _, profiles[channel_e] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
 
     p = PROFILEStools.gacode_state.scratch(profiles)
 
-    p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
-    p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
+
+    p.profiles[channel_e] = p.profiles[channel_e] *  (Paux / p.derived[channel_total][-1]) /2
+    p.profiles[channel_i] = p.profiles[channel_e]
 
     # -------------------------------------------------------------------------------------------------------
     # Ready to go

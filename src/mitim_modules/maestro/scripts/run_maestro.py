@@ -41,6 +41,8 @@ def run_maestro_local(
     # Define total power
     if maestro_namelist["plasma"]["heating"]["type"] == "ICRH":
         Ptotal = maestro_namelist["plasma"]["heating"]["parameters"]["P_icrh"]
+    if maestro_namelist["plasma"]["heating"]["type"] == "NBI":
+        Ptotal = maestro_namelist["plasma"]["heating"]["parameters"]["P_nbi"]
     elif maestro_namelist["plasma"]["heating"]["type"] == "gaussian_sources":
         Ptotal = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"] + maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
 
@@ -60,7 +62,8 @@ def run_maestro_local(
         'Ip_MA':        maestro_namelist["plasma"]["parameters"]["Ip"],
         'B_T':          maestro_namelist["plasma"]["parameters"]["Bt"],
         'Zeff':         maestro_namelist["plasma"]["species"]["Zeff"],
-        'PichT_MW':     Ptotal,
+        'type_heating': maestro_namelist["plasma"]["heating"]["type"],
+        'Paux_MW':      Ptotal,
         'neped_20' :    neped_20,
         'Tesep_keV':    maestro_namelist["plasma"]["parameters"]["Tesep_eV"]*1E-3,
         'nesep_20':     neped_20* maestro_namelist["plasma"]["parameters"]["ne_ratio_sep_ped"]
