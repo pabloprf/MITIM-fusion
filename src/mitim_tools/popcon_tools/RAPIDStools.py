@@ -28,96 +28,99 @@ def prepare_profiles(
     roatop = 0.9,
     Ttop_keV = 4.0,
     ntop_20 = 1.0,
+    force_fixed_geometry=False, # If True, do not change geometry (R,a,...) and only change profiles; this is useful to analyze the effect of the profiles alone without changing the geometry,
     **kwargs_rederive_geometry
     ):
     
     p = copy.deepcopy(p_base)
 
-    # -------------------------------------------------------
-    # Main quantities
-    # -------------------------------------------------------
+    if not force_fixed_geometry:
 
-    # Change major radius
-    p.profiles['rcentr(m)'][0] = R
-    p.profiles['rmaj(m)'] *= R / p_base.profiles['rmaj(m)'][-1]
+        # -------------------------------------------------------
+        # Main quantities
+        # -------------------------------------------------------
 
-    # Change minor radius
-    p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
-    
-    # Change elongation
-    if kappa995 is not None:
-        # If 995 available, use that
-        mutilier_kappa = kappa995/p_base.derived['kappa995']
-    else:
-        # Otherwise, use the separatrix value
-        mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
-    p.profiles['kappa(-)'] *= mutilier_kappa
+        # Change major radius
+        p.profiles['rcentr(m)'][0] = R
+        p.profiles['rmaj(m)'] *= R / p_base.profiles['rmaj(m)'][-1]
 
-    # Change triangularity
-    if delta995 is not None:
-        # If 995 available, use that
-        mutilier_delta = delta995/p_base.derived['delta995']
-    else:
-        # Otherwise, use the separatrix value
-        mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
-    p.profiles['delta(-)'] *= mutilier_delta
-    
-    # Squareness: for now reduce its magnitude proportionally to triangularity change
-    if scale_zeta and mutilier_delta > 1.0:
-        if np.sign(p.profiles['zeta(-)'][-1]) < 0:
-            p.profiles['zeta(-)'] /= mutilier_delta
+        # Change minor radius
+        p.profiles['rmin(m)'] *= a/p_base.profiles['rmin(m)'][-1]
+        
+        # Change elongation
+        if kappa995 is not None:
+            # If 995 available, use that
+            mutilier_kappa = kappa995/p_base.derived['kappa995']
         else:
-            p.profiles['zeta(-)'] *= mutilier_delta
-    
-    # Change magnetic field
-    p.profiles['bcentr(T)'][0] = Bt
-    
-    # Change plasma current
-    p.profiles['current(MA)'][0] = Ip
+            # Otherwise, use the separatrix value
+            mutilier_kappa = kappa_sep/p_base.profiles['kappa(-)'][-1]
+        p.profiles['kappa(-)'] *= mutilier_kappa
 
-    # ---------------------------------------------------
-    # Derived quantities
-    # ---------------------------------------------------
+        # Change triangularity
+        if delta995 is not None:
+            # If 995 available, use that
+            mutilier_delta = delta995/p_base.derived['delta995']
+        else:
+            # Otherwise, use the separatrix value
+            mutilier_delta = delta_sep/p_base.profiles['delta(-)'][-1]
+        p.profiles['delta(-)'] *= mutilier_delta
+        
+        # Squareness: for now reduce its magnitude proportionally to triangularity change
+        if scale_zeta and mutilier_delta > 1.0:
+            if np.sign(p.profiles['zeta(-)'][-1]) < 0:
+                p.profiles['zeta(-)'] /= mutilier_delta
+            else:
+                p.profiles['zeta(-)'] *= mutilier_delta
+        
+        # Change magnetic field
+        p.profiles['bcentr(T)'][0] = Bt
+        
+        # Change plasma current
+        p.profiles['current(MA)'][0] = Ip
 
-    kappa_sep = p.profiles['kappa(-)'][-1]
-    delta_sep = p.profiles['delta(-)'][-1]
+        # ---------------------------------------------------
+        # Derived quantities
+        # ---------------------------------------------------
 
-    # Approximate XS area
-    area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
-    area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
+        kappa_sep = p.profiles['kappa(-)'][-1]
+        delta_sep = p.profiles['delta(-)'][-1]
 
-    # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
-    if kappa995 is None:
-        factor_sep_to_95_kappa = p_base.derived['kappa95']/p_base.profiles['kappa(-)'][-1]
-        kappa95 = kappa_sep * factor_sep_to_95_kappa
-    else:
-        factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
-        kappa95 = kappa995 * factor_995_to_95_kappa
-    
-    if delta995 is None:
-        factor_sep_to_95_delta = p_base.derived['delta95']/p_base.profiles['delta(-)'][-1]
-        delta95 = delta_sep * factor_sep_to_95_delta
-    else:
-        factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
-        delta95 = delta995 * factor_995_to_95_delta
-    
-    qstar = PLASMAtools.evaluate_qstar(
-        Ip,
-        R,
-        kappa95,
-        Bt,
-        a/R,
-        delta95,
-        isInputIp=True,
-        ITERcorrection=True,
-        includeShaping=True,
-    )
-    
-    p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], qstar / p_base.derived['qstar_ITER'])
+        # Approximate XS area
+        area_new = np.pi * a**2 * kappa_sep * (1-delta_sep**2/2)
+        area_old = np.pi * p_base.profiles['rmin(m)'][-1]**2 * p_base.profiles['kappa(-)'][-1] * (1-p_base.profiles['delta(-)'][-1]**2/2)
 
-    # Make sure that toroidal flux is roughly consistent
-    p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
-    p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
+        # Make sure that q95 is roughly consistent, scale based on the same as qstar_ITER
+        if kappa995 is None:
+            factor_sep_to_95_kappa = p_base.derived['kappa95']/p_base.profiles['kappa(-)'][-1]
+            kappa95 = kappa_sep * factor_sep_to_95_kappa
+        else:
+            factor_995_to_95_kappa = p_base.derived['kappa95']/p_base.derived['kappa995']
+            kappa95 = kappa995 * factor_995_to_95_kappa
+        
+        if delta995 is None:
+            factor_sep_to_95_delta = p_base.derived['delta95']/p_base.profiles['delta(-)'][-1]
+            delta95 = delta_sep * factor_sep_to_95_delta
+        else:
+            factor_995_to_95_delta = p_base.derived['delta95']/p_base.derived['delta995']
+            delta95 = delta995 * factor_995_to_95_delta
+        
+        qstar = PLASMAtools.evaluate_qstar(
+            Ip,
+            R,
+            kappa95,
+            Bt,
+            a/R,
+            delta95,
+            isInputIp=True,
+            ITERcorrection=True,
+            includeShaping=True,
+        )
+        
+        p.profiles['q(-)'] = PLASMAtools.q_profile_scale(p.derived['psi_pol_n'], p.profiles['q(-)'], qstar / p_base.derived['qstar_ITER'])
+
+        # Make sure that toroidal flux is roughly consistent
+        p.profiles['torfluxa(Wb/radian)'] *= ( Bt / p_base.profiles['bcentr(T)'][0] ) * ( area_new / area_old )
+        p.profiles['polflux(Wb/radian)'] *= ( Ip / p_base.profiles['current(MA)'][0] )
 
     # -------------------------------------------------------
     # Others
