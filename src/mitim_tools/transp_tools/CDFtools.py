@@ -2871,59 +2871,97 @@ class transp_output:
             self.Pnbih = self.f["PBTH"][:]  # MW/m^3
 
             # Per beam
+            
+            # How many beams?
+            self.nbeams = 0
+            for i in range(100):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
+                try:                    
+                    _ = self.f[f"PINJ{num_padded_zero}"][:]
+                    self.nbeams += 1
+                except:
+                    break
+            
 
             PnbiT_beam = []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
-                    PnbiT_beam.append(self.f[f"PINJ0{i + 1}"][:] * 1e-6)
+                    PnbiT_beam.append(self.f[f"PINJ{num_padded_zero}"][:] * 1e-6)
                 except:
                     break
             self.PnbiT_beam = np.array(PnbiT_beam)
 
             Pnbie_beam = []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
-                    Pnbie_beam.append(self.f[f"PBE0{i + 1}_TOT"][:])
+                    Pnbie_beam.append(self.f[f"PBE{num_padded_zero}_TOT"][:])
                 except:
                     break
             self.Pnbie_beam = np.array(Pnbie_beam)
 
             Pnbii_beam = []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
-                    Pnbii_beam.append(self.f[f"PBI0{i + 1}_TOT"][:])
+                    Pnbii_beam.append(self.f[f"PBI{num_padded_zero}_TOT"][:])
                 except:
                     break
             self.Pnbii_beam = np.array(Pnbii_beam)
 
             Pnbih_beam = []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
-                    Pnbih_beam.append(self.f[f"PBTH0{i + 1}_TOT"][:])
+                    Pnbih_beam.append(self.f[f"PBTH{num_padded_zero}_TOT"][:])
                 except:
                     break
             self.Pnbih_beam = np.array(Pnbih_beam)
 
             # particles
             Pnbip_beam = []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
                     Pnbip_beam.append(
-                        self.f[f"BDEP0{i + 1}_TOT"][:] * 1e6 * 1e-20
+                        self.f[f"BDEP{num_padded_zero}_TOT"][:] * 1e6 * 1e-20
                     )  # 1E20/m^3/s
                 except:
                     break
             self.Pnbip_beam = np.array(Pnbip_beam)
 
+            # Current
             j_beam, j_beamU = [], []
-            for i in range(8):
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
                 try:
-                    j_beam.append(self.f[f"BDC0{i + 1}"][:] * 1e-6 * 1e4)
-                    j_beamU.append(self.f[f"UDC0{i + 1}"][:] * 1e-6 * 1e4)
+                    j_beam.append(self.f[f"BDC{num_padded_zero}"][:] * 1e-6 * 1e4)
+                    j_beamU.append(self.f[f"UDC{num_padded_zero}"][:] * 1e-6 * 1e4)
                 except:
                     break
             self.jNBI_beam = np.array(j_beam)
             self.jNBI_beamU = np.array(j_beamU)
+
+            # torque
+            Pnbit_beam = []
+            for i in range(self.nbeams):
+                num_padded_zero = f"0{i + 1}" if i < 9 else f"{i + 1}"
+                try:
+                    Pnbit_beam.append(
+                        self.f[f"TQTOT{num_padded_zero}"][:] * 1e6
+                    )  # N*m/m^3
+                except:
+                    break
+            self.Pnbit_beam = np.array(Pnbit_beam)
+            
+            self.Pnbit_e     = self.f["TQBE"][:] * 1e6   # torque to electrons (N·m/m³)
+            self.Pnbit_i     = self.f["TQBI"][:] * 1e6   # torque to ions (N·m/m³)
+            self.Pnbit_coll  = self.f["TQBCO"][:] * 1e6  # total collisional torque (N·m/m³)
+            self.Pnbit_jxb   = self.f["TQJXB"][:] * 1e6  # total JxB torque (N·m/m³)
+            self.Pnbit_therm = self.f["TQBTH"][:] * 1e6  # total thermalization torque (N·m/m³)
+            
+            self.Pnbit_total = self.Pnbit_coll+self.Pnbit_jxb+self.Pnbit_therm #self.f["TQIN"][:] * 1e6 # TQIN is unreliable (often zero)
 
         except:
             self.PnbiINJ = copy.deepcopy(self.PohT) * 0.0 + self.eps00
@@ -8019,7 +8057,7 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(2, 3, hspace=0.2, wspace=0.4)
+        grid = plt.GridSpec(2, 4, hspace=0.2, wspace=0.4)
 
         ax1 = fig.add_subplot(grid[0, 1])
         ax2 = fig.add_subplot(grid[1, 1], sharex=ax1, sharey=ax1)
@@ -8027,11 +8065,14 @@ class transp_output:
         ax3 = fig.add_subplot(grid[1, 2], sharex=ax1)
         ax4 = fig.add_subplot(grid[0, 2], sharex=ax1)
 
+        ax5 = fig.add_subplot(grid[1, 3], sharex=ax1)
+        ax6 = fig.add_subplot(grid[0, 3], sharex=ax1)
+
         ax0 = fig.add_subplot(grid[0, 0])
         ax0e = fig.add_subplot(grid[1, 0])
 
         # Ions
-        col = ["b", "r", "g", "m", "c", "y", "orange", "sienna"]
+        col = GRAPHICStools.listColors()
         ax = ax1
         ax.plot(self.x_lw, self.Pnbii[i1], lw=4, c="k", label="$P$")
         for i in range(len(self.Pnbii_beam)):
@@ -8041,7 +8082,7 @@ class transp_output:
                     self.Pnbii_beam[i][i1],
                     lw=2,
                     c=col[i],
-                    label=f"beam #{i + 1}",
+                    #label=f"beam #{i + 1}",
                 )
         ptot = np.sum(self.Pnbii_beam[:, i1, :], axis=0)
         ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
@@ -8062,7 +8103,7 @@ class transp_output:
                     self.Pnbie_beam[i][i1],
                     lw=2,
                     c=col[i],
-                    label=f"beam #{i + 1}",
+                    #label=f"beam #{i + 1}",
                 )
         ptot = np.sum(self.Pnbie_beam[:, i1, :], axis=0)
         ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
@@ -8073,8 +8114,62 @@ class transp_output:
         ax.set_xlabel("$\\rho_N$")
         ax.set_ylim(bottom=0)
 
-        # Particle
+        # Torque
+        ax = ax4
+
+        # Per-beam profiles (individual)
+        for i in range(len(self.Pnbii_beam)):
+            if np.sum(self.Pnbit_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
+                ax.plot(self.x_lw, self.Pnbit_beam[i][i1], lw=1.5, c=col[i % len(col)])
+
+        # Mechanism totals
+        ax.plot(self.x_lw, self.Pnbit_total[i1], lw=4, c="k", label="Total")
+        sum_beams = np.sum(self.Pnbit_beam[:, i1, :], axis=0)
+        ax.plot(self.x_lw, sum_beams,                              lw=3, c="y",      ls="--", label="check (sum)")
+
+        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        ax.set_title("Beam torque")
+        ax.set_ylabel("Torque density ($Nm/m^{-3}$)")
+        ax.set_xlabel("$\\rho_N$")
+
+        # Torque
         ax = ax3
+
+        # Mechanism totals
+        ax.plot(self.x_lw, self.Pnbit_total[i1], lw=4, c="k", label="Total")
+        ax.plot(self.x_lw, self.Pnbit_coll[i1],                   lw=3, c="b",      ls="-",  label="Collisional")
+        ax.plot(self.x_lw, self.Pnbit_e[i1]+self.Pnbit_i[i1],    lw=2, c="y",   ls="--",  label="check (e+i)")
+        ax.plot(self.x_lw, self.Pnbit_jxb[i1],                    lw=3, c="c", ls="-", label="JxB")
+        ax.plot(self.x_lw, self.Pnbit_therm[i1],                  lw=3, c="m", ls="-", label="therm")
+
+        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        ax.set_title("Torque breakdown")
+        ax.set_ylabel("Torque density ($Nm/m^{-3}$)")
+        ax.set_xlabel("$\\rho_N$")
+
+
+        # Current
+        ax = ax6
+        ax.plot(self.x_lw, self.jNBI[i1], lw=4, c="k", label="$J_{NBI}$")
+        for i in range(len(self.Pnbii_beam)):
+            if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
+                ax.plot(
+                    self.x_lw,
+                    self.jNBI_beam[i][i1],
+                    lw=2,
+                    c=col[i],
+                    #label=f"beam #{i + 1}",
+                )
+        ptot = np.sum(self.jNBI_beam[:, i1, :], axis=0)
+        ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
+
+        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        ax.set_title("Beam current drive")
+        ax.set_ylabel("Current density ($MAm^{-2}$)")
+        ax.set_xlabel("$\\rho_N$")
+
+        # Particle
+        ax = ax5
         parttot = copy.deepcopy(self.x_lw) * 0.0
         for i in range(len(self.Pnbie_beam)):
             if np.sum(self.Pnbip_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
@@ -8086,35 +8181,19 @@ class transp_output:
                     label=f"beam #{i + 1}",
                 )
                 parttot += self.Pnbip_beam[i][i1]
-        ax.plot(self.x_lw, parttot, lw=3, c="k", label="S")
+        ax.plot(self.x_lw, parttot, lw=3, c="y", ls="--", label="check")
 
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Ion deposition")
+        #ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
+        ax.set_title("Ion particle deposition")
         ax.set_ylabel("Source ($10^{20}/m^{-3}/s$)")
         ax.set_xlabel("$\\rho_N$")
 
         ax.set_xlim([0, 1.0])
         ax.set_ylim(bottom=0)
 
-        # Current
-        ax = ax4
-        ax.plot(self.x_lw, self.jNBI[i1], lw=4, c="k", label="$J_{NBI}$")
-        for i in range(len(self.Pnbii_beam)):
-            if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(
-                    self.x_lw,
-                    self.jNBI_beam[i][i1],
-                    lw=2,
-                    c=col[i],
-                    label=f"beam #{i + 1}",
-                )
-        ptot = np.sum(self.jNBI_beam[:, i1, :], axis=0)
-        ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
 
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Beam current drive")
-        ax.set_ylabel("Current density ($MAm^{-2}$)")
-        ax.set_xlabel("$\\rho_N$")
+
 
         # Machine
         self.plotGeometry(ax=ax0, color="b")
@@ -8139,30 +8218,85 @@ class transp_output:
         if ax is None:
             fig, ax = plt.subplots()
 
-        cont = 0
-        if hasattr(self, "beam_trajectories") and self.beam_trajectories is not None:
-            for i in range(len(self.Pnbii_beam)):
-                if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (
-                    len(self.t) + 1
-                ):
-                    f = cont**2 / 8
-                    cont += 1
-                    if topDown:
-                        ax.plot(
-                            self.beam_trajectories["xlin"][i],
-                            self.beam_trajectories["ylin"][i],
-                            lw=3 - f,
-                            c=col[i],
-                            label=f"beam #{i + 1}",
-                        )
-                    else:
-                        ax.plot(
-                            self.beam_trajectories["rlin"][i],
-                            self.beam_trajectories["zlin"][i],
-                            lw=3 - f,
-                            c=col[i],
-                            label=f"beam #{i + 1}",
-                        )
+        if not (hasattr(self, "beam_trajectories") and self.beam_trajectories is not None):
+            return
+
+        # Collect active beam indices
+        active = [
+            i for i in range(len(self.Pnbii_beam))
+            if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1)
+        ]
+
+        # --- Plot trajectories with transparency ---
+        for i in active:
+            c = col[i % len(col)]
+            if topDown:
+                ax.plot(
+                    self.beam_trajectories["xlin"][i],
+                    self.beam_trajectories["ylin"][i],
+                    lw=3.0, c=c, alpha=0.45, label=f"beam #{i + 1}",
+                )
+            else:
+                ax.plot(
+                    self.beam_trajectories["rlin"][i],
+                    self.beam_trajectories["zlin"][i],
+                    lw=3.0, c=c, alpha=0.45, label=f"beam #{i + 1}",
+                )
+
+        # --- Beam-number labels with overlap avoidance ---
+        if active:
+            # Initial label positions: beam entry point nudged away from the vessel center
+            lbl = []
+            for i in active:
+                if topDown:
+                    x0 = self.beam_trajectories["xlin"][i][0]
+                    y0 = self.beam_trajectories["ylin"][i][0]
+                    R0 = np.hypot(x0, y0) + 1e-12
+                    lbl.append([x0 / R0 * (R0 + 0.18), y0 / R0 * (R0 + 0.18)])
+                else:
+                    r0 = self.beam_trajectories["rlin"][i][0]
+                    z0 = self.beam_trajectories["zlin"][i][0]
+                    lbl.append([r0 + 0.08, z0])
+
+            lbl = np.array(lbl, dtype=float)
+
+            # Iterative pairwise repulsion — stops early when nothing overlaps
+            min_sep = 0.13 if topDown else 0.06   # metres
+            for _ in range(120):
+                any_moved = False
+                for j in range(len(lbl)):
+                    for k in range(j + 1, len(lbl)):
+                        dx = lbl[k, 0] - lbl[j, 0]
+                        dy = lbl[k, 1] - lbl[j, 1]
+                        dist = np.hypot(dx, dy) + 1e-12
+                        if dist < min_sep:
+                            push = (min_sep - dist) * 0.5
+                            lbl[j, 0] -= push * dx / dist
+                            lbl[j, 1] -= push * dy / dist
+                            lbl[k, 0] += push * dx / dist
+                            lbl[k, 1] += push * dy / dist
+                            any_moved = True
+                if not any_moved:
+                    break
+
+            # Draw annotated labels with a thin connecting line to beam entry
+            for idx, i in enumerate(active):
+                c = col[i % len(col)]
+                if topDown:
+                    x0 = self.beam_trajectories["xlin"][i][0]
+                    y0 = self.beam_trajectories["ylin"][i][0]
+                else:
+                    x0 = self.beam_trajectories["rlin"][i][0]
+                    y0 = self.beam_trajectories["zlin"][i][0]
+                ax.annotate(
+                    f"#{i + 1}",
+                    xy=(x0, y0),
+                    xytext=(lbl[idx, 0], lbl[idx, 1]),
+                    fontsize=6,
+                    ha="center", va="center",
+                    color=c,
+                    arrowprops=dict(arrowstyle="-", color=c, lw=0.5, alpha=0.6),
+                )
 
         if leg:
             ax.legend(loc="best", prop={"size": self.mainLegendSize})
@@ -15028,25 +15162,26 @@ class transp_output:
             pass
 
         if NML is not None:
-            print("\t- Looking for information on beam trajectories")
-            try:
-                self.beam_trajectories = getBeamTrajectories(namelist)
-                print("\t\t- Gathered beam trajectories from namelist post-processing")
-            except:
-                pass
+            
+            if np.sum(self.PnbiT) > 1E-10:
+                print("\t- Looking for information on beam trajectories")
+                try:
+                    self.beam_trajectories = getBeamTrajectories(str(namelist), nbeams=self.nbeams)
+                    print("\t\t- Gathered beam trajectories from namelist post-processing")
+                except:
+                    print("\t\t- Could not gather beam trajectories from namelist post-processing")
 
-            print("\t- Looking for information on ECH trajectories")
-            try:
-                self.ECRH_trajectories = getECRHTrajectories(
-                    namelist,
-                    self.Theta_gyr[:, self.ind_saw],
-                    self.Phi_gyr[:, self.ind_saw],
-                )
-                print(
-                    "\t\t- Gathered ECRH trajectories from namelist and CDF post-processing"
-                )
-            except:
-                pass
+            if np.sum(self.PechT) > 1E-10:
+                print("\t- Looking for information on ECH trajectories")
+                try:
+                    self.ECRH_trajectories = getECRHTrajectories(
+                        namelist,
+                        self.Theta_gyr[:, self.ind_saw],
+                        self.Phi_gyr[:, self.ind_saw],
+                    )
+                    print("\t\t- Gathered ECRH trajectories from namelist and CDF post-processing")
+                except:
+                    print("\t\t- Could not gather ECRH trajectories from namelist and CDF post-processing")
 
     def getEstimatedMachineCost(self):
         self.cost = 0.7266 * self.Bt**2 * self.Rmajor**3 + self.PichT
@@ -15284,7 +15419,6 @@ class transp_output:
         it = np.argmin(np.abs(self.t - time_extraction))
         
         print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-        print("\t\t* TRANSP to profiles: Ignoring rotation and no-ICRF auxiliary sources",typeMsg='w')
         print(f"\t\t* TRANSP to profiles: Not time averaging yet, just extracting at t={time_extraction:.3f}s",typeMsg='w')
         print("\t\t* Extrapolating using cubic spline",typeMsg='i')
         
@@ -15412,6 +15546,14 @@ class transp_output:
         profiles['qohme(MW/m^3)'] = self.Poh[it,:]
         profiles['qfuse(MW/m^3)'] = self.Pfuse[it,:]
         profiles['qfusi(MW/m^3)'] = self.Pfusi[it,:]
+        profiles['qbeame(MW/m^3)'] = self.Pnbie[it,:]
+        profiles['qbeami(MW/m^3)'] = self.Pnbii[it,:]
+
+        # Rotation
+        profiles['w0(rad/s)'] = self.TGLF_w0[it,:]
+
+        # Torque (full NBI momentum source: collisional + JxB + thermalization)
+        profiles['qmom(N/m^2)'] = self.Pnbit_coll[it,:] + self.Pnbit_jxb[it,:] + self.Pnbit_therm[it,:]
 
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Interpolate from xb to x (boundary to center quantities)
@@ -15420,7 +15562,7 @@ class transp_output:
         def grid_interpolation_method_to_one(x,y,x_new):
             return extrapolation_routine(x_new, x, y)
 
-        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)']
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
                 profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key],profiles['rho(-)'])
@@ -16565,27 +16707,105 @@ def definePenalties(q95, fG, kappa, BetaN, maxKappa=1.8):
     return np.max([penalty_q95 * penalty_fG * penalty_kappa * penalty_beta, 0.0])
 
 
-def getBeamTrajectories(namelist):
-    try:
-        from trgui_fbm import plot_aug
-    except ImportError:
-        print(
-            "\t- TRANSP tools external modules are not available. Please ensure it is installed and accessible.",
-            typeMsg="i",
+def getBeamTrajectories(namelist, nbeams=8, R_clip_cm=250.0):
+    """
+    Compute NBI beam centerline trajectories analytically from a TRANSP TR.DAT namelist.
+
+    Geometry (mid-plane approximation, Z = 0):
+      - Source radius:  R_src = sqrt(RTCENA^2 + XLBTNA^2)
+      - Source position: (R_src * cos(XBZETA), R_src * sin(XBZETA))
+      - Tangent point:   phi_tan = XBZETA ± arccos(RTCENA / R_src)
+                         co-injection (+, CCW), counter-injection (-, CW)
+
+    Parameters
+    ----------
+    namelist : str
+        Path to the TRANSP TR.DAT namelist file.
+    nbeams : int
+        Total number of beam sources (NBEAM).
+    R_clip_cm : float
+        Trajectory clipping radius in cm (≈ outer vessel wall, default 250 cm).
+
+    Returns
+    -------
+    dict with keys "xlin", "ylin", "rlin", "zlin" — each a list of length nbeams
+    containing arrays of coordinates in **meters**.
+    """
+    import re
+    from pathlib import Path
+
+    nml_str = Path(namelist).read_text()
+
+    def _float(name, idx):
+        m = re.search(
+            rf'^\s*{name}\s*\(\s*{idx}\s*\)\s*=\s*([\-+]?[\d.]+(?:[eE][\-+]?\d+)?)',
+            nml_str, re.M | re.I
         )
+        return float(m.group(1)) if m else None
 
-    xlin, ylin, rlin, zlin = plot_aug.nbi_plot(
-        nbis=[1, 2, 3, 4, 5, 6, 7, 8], runid=namelist[:-6]
-    )
+    def _bool(name, idx):
+        m = re.search(
+            rf'^\s*{name}\s*\(\s*{idx}\s*\)\s*=\s*(\S+)',
+            nml_str, re.M | re.I
+        )
+        if m:
+            return m.group(1).upper().strip('.') in ('TRUE', 'T')
+        return True   # default: co-injection
 
-    beam_trajectories = {
-        "xlin": np.array(xlin) * 1e-2,
-        "ylin": np.array(ylin) * 1e-2,
-        "rlin": np.array(rlin) * 1e-2,
-        "zlin": np.array(zlin) * 1e-2,
-    }
+    xlin, ylin, rlin, zlin = [], [], [], []
 
-    return beam_trajectories
+    for i in range(1, nbeams + 1):
+        rtcena = _float('RTCENA', i)   # tangency radius (cm)
+        xbzeta = _float('XBZETA', i)   # toroidal angle of beam port (deg)
+        xlbtna = _float('XLBTNA', i)   # source-to-tangent-point distance (cm)
+        nlco   = _bool('NLCO', i)      # True = co-injection (CCW)
+
+        if any(v is None for v in [rtcena, xbzeta, xlbtna]):
+            xlin.append(np.zeros(2))
+            ylin.append(np.zeros(2))
+            rlin.append(np.zeros(2))
+            zlin.append(np.zeros(2))
+            continue
+
+        # Source is at R_src from axis, at toroidal angle phi_src
+        R_src   = np.sqrt(rtcena**2 + xlbtna**2)
+        phi_src = np.deg2rad(xbzeta)
+        x_src   = R_src * np.cos(phi_src)
+        y_src   = R_src * np.sin(phi_src)
+
+        # Tangent point: co=CCW (+alpha), counter=CW (-alpha)
+        alpha   = np.arccos(np.clip(rtcena / R_src, 0.0, 1.0))
+        phi_tan = phi_src + alpha if nlco else phi_src - alpha
+        x_tan   = rtcena * np.cos(phi_tan)
+        y_tan   = rtcena * np.sin(phi_tan)
+
+        # Unit direction vector from source toward tangent point (and beyond)
+        ux = (x_tan - x_src) / xlbtna
+        uy = (y_tan - y_src) / xlbtna
+
+        # Clip to R_clip_cm: solve (x_src + t*ux)^2 + (y_src + t*uy)^2 = R_clip^2
+        b_q  = 2.0 * (x_src * ux + y_src * uy)
+        c_q  = x_src**2 + y_src**2 - R_clip_cm**2
+        disc = b_q**2 - 4.0 * c_q   # a_q = 1 (unit vector)
+
+        if disc < 0:
+            t_entry, t_exit = 0.0, 2.0 * xlbtna
+        else:
+            sqd     = np.sqrt(disc)
+            t_entry = max((-b_q - sqd) / 2.0, 0.0)
+            t_exit  = min((-b_q + sqd) / 2.0, 2.0 * xlbtna)
+
+        t_vals = np.linspace(t_entry, t_exit, 120)
+        x_beam = x_src + t_vals * ux
+        y_beam = y_src + t_vals * uy
+        R_beam = np.sqrt(x_beam**2 + y_beam**2)
+
+        xlin.append(x_beam * 1e-2)          # cm → m
+        ylin.append(y_beam * 1e-2)
+        rlin.append(R_beam * 1e-2)
+        zlin.append(np.zeros_like(R_beam))  # midplane injection (Z = 0)
+
+    return {"xlin": xlin, "ylin": ylin, "rlin": rlin, "zlin": zlin}
 
 
 def getECRHTrajectories(namelist, Theta_gyr, Phi_gyr):
