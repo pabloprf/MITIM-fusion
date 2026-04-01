@@ -15409,7 +15409,7 @@ class transp_output:
 
         return transp
 
-    def to_profiles(self, time_extraction = None):
+    def to_profiles(self, time_extraction=None, time_window=0.0):
 
         if time_extraction is None:
             time_extraction = self.t[self.ind_saw]
@@ -15417,11 +15417,35 @@ class transp_output:
             time_extraction = self.t[-1] + time_extraction
 
         it = np.argmin(np.abs(self.t - time_extraction))
-        
-        print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-        print(f"\t\t* TRANSP to profiles: Not time averaging yet, just extracting at t={time_extraction:.3f}s",typeMsg='w')
-        print("\t\t* Extrapolating using cubic spline",typeMsg='i')
-        
+
+        # Time indices to average over (single point when time_window == 0)
+        if time_window == 0.0:
+            it_range = np.array([it])
+        else:
+            mask = np.abs(self.t - time_extraction) <= time_window / 2
+            it_range = np.where(mask)[0]
+            if len(it_range) == 0:
+                it_range = np.array([it])
+
+        if time_window == 0.0:
+            print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: single slice at t={self.t[it]:.3f}s", typeMsg='i')
+            print(f"\t\t* Flux surfaces: evaluated at t={self.t[it]:.3f}s", typeMsg='i')
+        else:
+            t_lo, t_hi = self.t[it_range[0]], self.t[it_range[-1]]
+            t_mean = float(np.mean(self.t[it_range]))
+            print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices)")
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: averaged over {len(it_range)} slices", typeMsg='i')
+            print(f"\t\t* Flux surfaces: evaluated at mean time t={t_mean:.3f}s", typeMsg='i')
+        print("\t\t* Extrapolating using cubic spline", typeMsg='i')
+
+        # Helpers: average a scalar (time,) or profile (time, x) over it_range
+        def _s(arr):
+            return float(np.mean(arr[it_range]))
+
+        def _p(arr):
+            return np.mean(arr[it_range, :], axis=0)
+
         #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
 
@@ -15431,8 +15455,8 @@ class transp_output:
 
         profiles = {}
 
-        # Radial grid
-        rho_grid = self.xb[it]
+        # Radial grid — averaged over time window
+        rho_grid = np.mean(self.xb[it_range, :], axis=0)
 
         # Info
         nion = len(self.Species) - 1
@@ -15460,7 +15484,7 @@ class transp_output:
             else:
                 profiles['name'].append(self.Species[specie]['name'])
                 profiles['mass'].append(self.Species[specie]['m']/self.mD * mass_ref)
-                profiles['z'].append(self.Species[specie]['Z'][it])
+                profiles['z'].append(_s(self.Species[specie]['Z']))
                 if self.Species[specie]['type'] == 'thermal':
                     profiles['type'].append('[therm]')
                 else:
@@ -15473,32 +15497,33 @@ class transp_output:
         profiles['z'] = np.array(profiles['z'])
 
         # -------------------------------------------------------------------------------------------------------
-        # Global equilibrium
+        # Global equilibrium  (scalars — averaged)
         # -------------------------------------------------------------------------------------------------------
 
-        profiles['torfluxa(Wb/radian)'] = np.array([self.phi_bnd[it] / (2*np.pi)])
-        profiles['rcentr(m)'] = np.array([self.Rmajor[it]])
-        profiles['bcentr(T)'] = np.array([self.Bt_vacuum[it]])
-        profiles['current(MA)'] = np.array([self.Ip[it]])
+        profiles['torfluxa(Wb/radian)'] = np.array([_s(self.phi_bnd) / (2*np.pi)])
+        profiles['rcentr(m)'] = np.array([_s(self.Rmajor)])
+        profiles['bcentr(T)'] = np.array([_s(self.Bt_vacuum)])
+        profiles['current(MA)'] = np.array([_s(self.Ip)])
 
         # -------------------------------------------------------------------------------------------------------
-        # Equilibrium profiles
+        # Equilibrium profiles  (time-averaged)
         # -------------------------------------------------------------------------------------------------------
 
         profiles['rho(-)'] = rho_grid
 
-        profiles['polflux(Wb/radian)'] = self.psi[it,:]
-        profiles['q(-)'] = self.q[it,:]
-        
+        profiles['polflux(Wb/radian)'] = _p(self.psi)
+        profiles['q(-)'] = _p(self.q)
+
         # -------------------------------------------------------------------------------------------------------
-        # Flux surfaces
+        # Flux surfaces  (R,Z averaged over time window, then MXH fitted once)
         # -------------------------------------------------------------------------------------------------------
 
         coeffs_MXH = 7
 
+        t_mean = float(np.mean(self.t[it_range]))
         Rs, Zs = [], []
         for rho in profiles['rho(-)']:
-            R, Z = getFluxSurface(self.f, time_extraction, rho, rhoPol=False, sqrt=True)
+            R, Z = getFluxSurface(self.f, t_mean, rho, rhoPol=False, sqrt=True)
             Rs.append(R)
             Zs.append(Z)
         Rs = np.array(Rs)
@@ -15512,7 +15537,7 @@ class transp_output:
             profiles[f'shape_cos{i}(-)'] = surfaces.cn[:,i]
             if i > 2:
                 profiles[f'shape_sin{i}(-)'] = surfaces.sn[:,i]
-        
+
         profiles['kappa(-)'] = surfaces.kappa
         profiles['delta(-)'] = np.sin(surfaces.sn[:,1])
         profiles['zeta(-)'] = -surfaces.sn[:,2]
@@ -15521,53 +15546,54 @@ class transp_output:
         profiles['zmag(m)'] = surfaces.Z0
 
         # -------------------------------------------------------------------------------------------------------
-        # Kinetic profiles
+        # Kinetic profiles  (time-averaged)
+        # -------------------------------------------------------------------------------------------------------
         # -------------------------------------------------------------------------------------------------------
 
         profiles['ni(10^19/m^3)'] = []
         profiles['ti(keV)'] = []
         for specie in self.Species:
             if specie == 'e':
-                profiles['te(keV)'] = self.Te[it,:]
-                profiles['ne(10^19/m^3)'] =self.ne[it,:]*1E1
+                profiles['te(keV)'] = _p(self.Te)
+                profiles['ne(10^19/m^3)'] = _p(self.ne) * 1E1
             else:
-                profiles['ni(10^19/m^3)'].append(self.Species[specie]['n'][it,:]*1E1)
-                profiles['ti(keV)'].append(self.Species[specie]['T'][it,:])
+                profiles['ni(10^19/m^3)'].append(_p(self.Species[specie]['n']) * 1E1)
+                profiles['ti(keV)'].append(_p(self.Species[specie]['T']))
         profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
         profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
 
-        # Power profiles
-        profiles['qei(MW/m^3)'] = self.Pei[it,:]
-        profiles['qrfe(MW/m^3)'] = self.Peich[it,:]
-        profiles['qrfi(MW/m^3)'] = self.Piich[it,:]
-        profiles['qbrem(MW/m^3)'] = self.Prad_b[it,:]
-        profiles['qsync(MW/m^3)'] = self.Prad_c[it,:]
-        profiles['qline(MW/m^3)'] = self.Prad_l[it,:]
-        profiles['qohme(MW/m^3)'] = self.Poh[it,:]
-        profiles['qfuse(MW/m^3)'] = self.Pfuse[it,:]
-        profiles['qfusi(MW/m^3)'] = self.Pfusi[it,:]
-        profiles['qbeame(MW/m^3)'] = self.Pnbie[it,:]
-        profiles['qbeami(MW/m^3)'] = self.Pnbii[it,:]
+        # Power profiles  (time-averaged)
+        profiles['qei(MW/m^3)'] = _p(self.Pei)
+        profiles['qrfe(MW/m^3)'] = _p(self.Peich)
+        profiles['qrfi(MW/m^3)'] = _p(self.Piich)
+        profiles['qbrem(MW/m^3)'] = _p(self.Prad_b)
+        profiles['qsync(MW/m^3)'] = _p(self.Prad_c)
+        profiles['qline(MW/m^3)'] = _p(self.Prad_l)
+        profiles['qohme(MW/m^3)'] = _p(self.Poh)
+        profiles['qfuse(MW/m^3)'] = _p(self.Pfuse)
+        profiles['qfusi(MW/m^3)'] = _p(self.Pfusi)
+        profiles['qbeame(MW/m^3)'] = _p(self.Pnbie)
+        profiles['qbeami(MW/m^3)'] = _p(self.Pnbii)
 
-        # Rotation
-        profiles['w0(rad/s)'] = self.TGLF_w0[it,:]
+        # Rotation  (time-averaged)
+        profiles['w0(rad/s)'] = _p(self.TGLF_w0)
 
-        # Torque (full NBI momentum source: collisional + JxB + thermalization)
-        profiles['qmom(N/m^2)'] = self.Pnbit_coll[it,:] + self.Pnbit_jxb[it,:] + self.Pnbit_therm[it,:]
+        # Torque — full NBI momentum source: collisional + JxB + thermalization  (time-averaged)
+        profiles['qmom(N/m^2)'] = _p(self.Pnbit_coll) + _p(self.Pnbit_jxb) + _p(self.Pnbit_therm)
 
         # -------------------------------------------------------------------------------------------------------
-        # Postprocessing: Interpolate from xb to x (boundary to center quantities)
+        # Postprocessing: Interpolate from x to xb (zone centres to boundary grid)
         # -------------------------------------------------------------------------------------------------------
 
-        def grid_interpolation_method_to_one(x,y,x_new):
+        def grid_interpolation_method_to_one(x, y, x_new):
             return extrapolation_routine(x_new, x, y)
 
         keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
-                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key],profiles['rho(-)'])
+                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key], profiles['rho(-)'])
             elif (profiles[key].ndim == 2):
-                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i],profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
+                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i], profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
 
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Add zero at the beginning
