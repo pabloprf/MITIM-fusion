@@ -339,10 +339,10 @@ def addDenseAxis(ax, grid=True, n=10, axTwinx=None, ensure_floats=False):
 
     addMinor(ax, n=n)
     ax.tick_params(
-        which="major", length=5, bottom=True, top=True, left=True, right=True
+        which="major", length=5, width=0.8, color="k", bottom=True, top=True, left=True, right=True
     )
     ax.tick_params(
-        which="minor", length=3, bottom=True, top=True, left=True, right=True
+        which="minor", length=3, width=0.4, color="k", bottom=True, top=True, left=True, right=True
     )
 
     if grid:
@@ -382,68 +382,8 @@ def output_figure_papers(name, fig=None, dpi=445):
 
 
 def prep_figure_papers(size=15, slower_but_latex=False, darkMode=False, lw=1.0):
-
-    if darkMode:
-        plt.style.use('dark_background')
-
-    # ── Font ──────────────────────────────────────────────────────────────────
-    plt.rc("font", family="serif", serif="Times", size=size)
-    plt.rcParams['axes.labelsize']   = size
-    plt.rcParams['xtick.labelsize']  = size * 0.85
-    plt.rcParams['ytick.labelsize']  = size * 0.85
-    plt.rcParams['axes.titlesize']   = size
-    plt.rcParams['axes.titlepad']    = 8
-    plt.rcParams['axes.labelpad']    = 5
-    if slower_but_latex:
-        plt.rc("text", usetex=True)
-
-    # ── Frame and tick geometry ───────────────────────────────────────────────
-    plt.rcParams['axes.linewidth']    = lw
-    plt.rcParams['xtick.major.width'] = lw
-    plt.rcParams['ytick.major.width'] = lw
-    plt.rcParams['xtick.minor.width'] = lw * 0.5
-    plt.rcParams['ytick.minor.width'] = lw * 0.5
-    plt.rcParams['xtick.major.size']  = 5
-    plt.rcParams['ytick.major.size']  = 5
-    plt.rcParams['xtick.minor.size']  = 3
-    plt.rcParams['ytick.minor.size']  = 3
-    # Inward ticks on all four sides (standard in APS / Nature style)
-    plt.rcParams['xtick.direction']   = 'in'
-    plt.rcParams['ytick.direction']   = 'in'
-    plt.rcParams['xtick.top']         = True
-    plt.rcParams['ytick.right']       = True
-
-    # ── Lines and markers ─────────────────────────────────────────────────────
-    plt.rcParams['lines.linewidth']   = 1.5
-    plt.rcParams['lines.markersize']  = 5
-
-    # ── Legend ────────────────────────────────────────────────────────────────
-    plt.rc("legend", fontsize=size * 0.85)
-    plt.rcParams['legend.framealpha']   = 0.85
-    plt.rcParams['legend.edgecolor']    = '0.75'
-    plt.rcParams['legend.borderpad']    = 0.5
-    plt.rcParams['legend.handlelength'] = 1.5
-    plt.rcParams['legend.labelspacing'] = 0.35
-
-    # ── Math / number formatting ──────────────────────────────────────────────
-    plt.rcParams['axes.formatter.use_mathtext'] = True
-    plt.rcParams['axes.formatter.limits']       = (-3, 4)
-
-    # ── Color cycle (colorblind-friendly, print-safe) ─────────────────────────
-    plt.rcParams['axes.prop_cycle'] = plt.cycler('color', [
-        '#0C5DA5',  # blue
-        '#FF2C00',  # red
-        '#00B945',  # green
-        '#FF9500',  # orange
-        '#845B97',  # purple
-        '#474747',  # dark grey
-        '#9e9e9e',  # light grey
-    ])
-
-    # ── Save quality ──────────────────────────────────────────────────────────
-    plt.rcParams['savefig.dpi']         = 300
-    plt.rcParams['savefig.bbox']        = 'tight'
-    plt.rcParams['savefig.pad_inches']  = 0.05
+    from mitim_tools.misc_tools.style_tools.themes import apply_theme
+    apply_theme("dark" if darkMode else "paper", latex=slower_but_latex)
 
 
 def makePlotInvisible(ax):

@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# mitim_paper.mplstyle
+# Publication-quality theme (APS / Nature style).
+# Inherits mitim_base, adds serif fonts and tighter spacing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Serif fonts (pass slower_but_latex=True to apply_theme for full LaTeX) ───
+font.family         : serif
+font.serif          : Times New Roman, Times, DejaVu Serif
+font.size           : 13
+axes.labelsize      : 13
+axes.titlesize      : 13
+xtick.labelsize     : 11
+ytick.labelsize     : 11
+legend.fontsize     : 11
+
+# ── Slightly heavier lines for print ─────────────────────────────────────────
+axes.linewidth      : 1.0
+xtick.major.width   : 1.0
+ytick.major.width   : 1.0
+xtick.minor.width   : 0.5
+ytick.minor.width   : 0.5
+lines.linewidth     : 1.8
+
+# ── Figure size (single column ~3.4 in, double ~7 in) ────────────────────────
+figure.figsize      : 7, 4.5
+figure.dpi          : 150
+
+# ── Higher save quality for papers ───────────────────────────────────────────
+savefig.dpi         : 400

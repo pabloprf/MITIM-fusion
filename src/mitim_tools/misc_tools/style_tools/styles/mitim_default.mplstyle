@@ -1,0 +1,8 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# mitim_default.mplstyle
+# General-purpose interactive / notebook theme.
+# ─────────────────────────────────────────────────────────────────────────────
+# Inherits everything from mitim_base (loaded programmatically by apply_theme).
+
+figure.figsize      : 8, 5
+figure.dpi          : 100
