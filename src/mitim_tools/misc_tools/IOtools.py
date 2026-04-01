@@ -1033,7 +1033,7 @@ def findFileByExtension(
             retpath = allfiles[0]
         else:
             print(
-                f"\t\t~ File with extension {extension} not found in {fpath}, returning None"
+                f"\t\t~ File with extension {extension} not found in {clipstr(fpath)}, returning None"
             )
     else:
         fstr = clipstr(f"{fpath}")

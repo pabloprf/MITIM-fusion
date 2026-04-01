@@ -8057,145 +8057,110 @@ class transp_output:
         if fig is None:
             fig = plt.figure()
 
-        grid = plt.GridSpec(2, 4, hspace=0.2, wspace=0.4)
+        grid = plt.GridSpec(2, 4, hspace=0.45, wspace=0.5)
 
-        ax1 = fig.add_subplot(grid[0, 1])
-        ax2 = fig.add_subplot(grid[1, 1], sharex=ax1, sharey=ax1)
-
-        ax3 = fig.add_subplot(grid[1, 2], sharex=ax1)
-        ax4 = fig.add_subplot(grid[0, 2], sharex=ax1)
-
-        ax5 = fig.add_subplot(grid[1, 3], sharex=ax1)
-        ax6 = fig.add_subplot(grid[0, 3], sharex=ax1)
-
-        ax0 = fig.add_subplot(grid[0, 0])
+        ax1  = fig.add_subplot(grid[0, 1])
+        ax2  = fig.add_subplot(grid[1, 1], sharex=ax1, sharey=ax1)
+        ax4  = fig.add_subplot(grid[0, 2], sharex=ax1)
+        ax3  = fig.add_subplot(grid[1, 2], sharex=ax1)
+        ax6  = fig.add_subplot(grid[0, 3], sharex=ax1)
+        ax5  = fig.add_subplot(grid[1, 3], sharex=ax1)
+        ax0  = fig.add_subplot(grid[0, 0])
         ax0e = fig.add_subplot(grid[1, 0])
 
-        # Ions
         col = GRAPHICStools.listColors()
+        _ls  = {"lw": 2, "alpha": 0.8}
+        _leg = {"prop": {"size": self.mainLegendSize}, "loc": "best", "framealpha": 0.7}
+
+        # --- Power to ions ---
         ax = ax1
-        ax.plot(self.x_lw, self.Pnbii[i1], lw=4, c="k", label="$P$")
+        ax.plot(self.x_lw, self.Pnbii[i1], lw=3, c="k", label="total")
         for i in range(len(self.Pnbii_beam)):
             if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(
-                    self.x_lw,
-                    self.Pnbii_beam[i][i1],
-                    lw=2,
-                    c=col[i],
-                    #label=f"beam #{i + 1}",
-                )
-        ptot = np.sum(self.Pnbii_beam[:, i1, :], axis=0)
-        ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
-
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Deposited Power to Ions")
-        ax.set_ylabel("Power ($MWm^{-3}$)")
-        ax.set_xlabel("$\\rho_N$")
+                ax.plot(self.x_lw, self.Pnbii_beam[i][i1], c=col[i], **_ls)
+        ax.plot(self.x_lw, np.sum(self.Pnbii_beam[:, i1, :], axis=0), lw=2, c="k", ls="--", label=r"$\Sigma$ beams")
+        ax.legend(**_leg)
+        ax.set_title("Power to ions")
+        ax.set_ylabel(r"$P_i$ ($MWm^{-3}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
         ax.set_ylim(bottom=0)
 
-        # Electrons
+        # --- Power to electrons ---
         ax = ax2
-        ax.plot(self.x_lw, self.Pnbie[i1], lw=4, c="k", label="$P$")
+        ax.plot(self.x_lw, self.Pnbie[i1], lw=3, c="k", label="total")
         for i in range(len(self.Pnbie_beam)):
             if np.sum(self.Pnbie_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(
-                    self.x_lw,
-                    self.Pnbie_beam[i][i1],
-                    lw=2,
-                    c=col[i],
-                    #label=f"beam #{i + 1}",
-                )
-        ptot = np.sum(self.Pnbie_beam[:, i1, :], axis=0)
-        ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
-
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Deposited Power to Electrons")
-        ax.set_ylabel("Power ($MWm^{-3}$)")
-        ax.set_xlabel("$\\rho_N$")
+                ax.plot(self.x_lw, self.Pnbie_beam[i][i1], c=col[i], **_ls)
+        ax.plot(self.x_lw, np.sum(self.Pnbie_beam[:, i1, :], axis=0), lw=2, c="k", ls="--", label=r"$\Sigma$ beams")
+        ax.legend(**_leg)
+        ax.set_title("Power to electrons")
+        ax.set_ylabel(r"$P_e$ ($MWm^{-3}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
         ax.set_ylim(bottom=0)
 
-        # Torque
+        # --- Torque per beam ---
         ax = ax4
-
-        # Per-beam profiles (individual)
         for i in range(len(self.Pnbii_beam)):
             if np.sum(self.Pnbit_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(self.x_lw, self.Pnbit_beam[i][i1], lw=1.5, c=col[i % len(col)])
+                ax.plot(self.x_lw, self.Pnbit_beam[i][i1], c=col[i % len(col)], **_ls)
+        tq_total = self.Pnbit_coll[i1] + self.Pnbit_jxb[i1] + self.Pnbit_therm[i1]
+        ax.plot(self.x_lw, tq_total, lw=3, c="k", ls="-",  label="total")
+        ax.plot(self.x_lw, np.sum(self.Pnbit_beam[:, i1, :], axis=0), lw=2, c="k", ls="--", label=r"$\Sigma$ beams")
+        ax.legend(**_leg)
+        ax.set_title("Torque per beam")
+        ax.set_ylabel(r"$M$ ($Nm^{-3}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
 
-        # Mechanism totals
-        ax.plot(self.x_lw, self.Pnbit_total[i1], lw=4, c="k", label="Total")
-        sum_beams = np.sum(self.Pnbit_beam[:, i1, :], axis=0)
-        ax.plot(self.x_lw, sum_beams,                              lw=3, c="y",      ls="--", label="check (sum)")
-
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Beam torque")
-        ax.set_ylabel("Torque density ($Nm/m^{-3}$)")
-        ax.set_xlabel("$\\rho_N$")
-
-        # Torque
+        # --- Torque breakdown by mechanism ---
         ax = ax3
-
-        # Mechanism totals
-        ax.plot(self.x_lw, self.Pnbit_total[i1], lw=4, c="k", label="Total")
-        ax.plot(self.x_lw, self.Pnbit_coll[i1],                   lw=3, c="b",      ls="-",  label="Collisional")
-        ax.plot(self.x_lw, self.Pnbit_e[i1]+self.Pnbit_i[i1],    lw=2, c="y",   ls="--",  label="check (e+i)")
-        ax.plot(self.x_lw, self.Pnbit_jxb[i1],                    lw=3, c="c", ls="-", label="JxB")
-        ax.plot(self.x_lw, self.Pnbit_therm[i1],                  lw=3, c="m", ls="-", label="therm")
-
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
+        tq_total = self.Pnbit_coll[i1] + self.Pnbit_jxb[i1] + self.Pnbit_therm[i1]
+        ax.plot(self.x_lw, tq_total,                            lw=3, c="k",          ls="-",  label="total")
+        ax.plot(self.x_lw, self.Pnbit_coll[i1],                lw=2, c="royalblue",  ls="-",  label="collisional")
+        ax.plot(self.x_lw, self.Pnbit_e[i1]+self.Pnbit_i[i1], lw=2, c="y",  ls="--",  label="coll. (e+i)")
+        ax.plot(self.x_lw, self.Pnbit_jxb[i1],                lw=2, c="darkorange", ls="-",  label="JxB")
+        ax.plot(self.x_lw, self.Pnbit_therm[i1],              lw=2, c="purple",     ls="-",  label="therm.")
+        ax.legend(**_leg)
         ax.set_title("Torque breakdown")
-        ax.set_ylabel("Torque density ($Nm/m^{-3}$)")
-        ax.set_xlabel("$\\rho_N$")
+        ax.set_ylabel(r"$M$ ($Nm^{-3}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
 
-
-        # Current
+        # --- Current drive ---
         ax = ax6
-        ax.plot(self.x_lw, self.jNBI[i1], lw=4, c="k", label="$J_{NBI}$")
+        ax.plot(self.x_lw, self.jNBI[i1], lw=3, c="k", label="total")
         for i in range(len(self.Pnbii_beam)):
             if np.sum(self.Pnbii_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(
-                    self.x_lw,
-                    self.jNBI_beam[i][i1],
-                    lw=2,
-                    c=col[i],
-                    #label=f"beam #{i + 1}",
-                )
-        ptot = np.sum(self.jNBI_beam[:, i1, :], axis=0)
-        ax.plot(self.x_lw, ptot, lw=3, c="y", ls="--", label="check")
+                ax.plot(self.x_lw, self.jNBI_beam[i][i1], c=col[i], **_ls)
+        ax.plot(self.x_lw, np.sum(self.jNBI_beam[:, i1, :], axis=0), lw=2, c="k", ls="--", label=r"$\Sigma$ beams")
+        ax.legend(**_leg)
+        ax.set_title("Current drive")
+        ax.set_ylabel(r"$j_{NBI}$ ($MAm^{-2}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
 
-        ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        ax.set_title("Beam current drive")
-        ax.set_ylabel("Current density ($MAm^{-2}$)")
-        ax.set_xlabel("$\\rho_N$")
-
-        # Particle
+        # --- Particle deposition ---
         ax = ax5
-        parttot = copy.deepcopy(self.x_lw) * 0.0
+        parttot = np.zeros_like(self.x_lw)
         for i in range(len(self.Pnbie_beam)):
             if np.sum(self.Pnbip_beam[i][i1]) > 0.0 + self.eps00 * (len(self.t) + 1):
-                ax.plot(
-                    self.x_lw,
-                    self.Pnbip_beam[i][i1],
-                    lw=2,
-                    c=col[i],
-                    label=f"beam #{i + 1}",
-                )
+                ax.plot(self.x_lw, self.Pnbip_beam[i][i1], c=col[i], label=f"#{i+1}", **_ls)
                 parttot += self.Pnbip_beam[i][i1]
-        ax.plot(self.x_lw, parttot, lw=3, c="y", ls="--", label="check")
-
-        #ax.legend(loc="best", prop={"size": self.mainLegendSize})
-        GRAPHICStools.addLegendApart(ax, ratio=0.85, size=self.mainLegendSize)
-        ax.set_title("Ion particle deposition")
-        ax.set_ylabel("Source ($10^{20}/m^{-3}/s$)")
-        ax.set_xlabel("$\\rho_N$")
-
-        ax.set_xlim([0, 1.0])
+        ax.plot(self.x_lw, parttot, lw=2, c="k", ls="--", label=r"$\Sigma$ beams")
+        GRAPHICStools.addLegendApart(ax, ratio=0.82, size=self.mainLegendSize)
+        ax.set_title("Particle deposition")
+        ax.set_ylabel(r"$S_n$ ($10^{20}m^{-3}s^{-1}$)")
+        ax.set_xlabel(r"$\rho_N$")
+        ax.set_xlim([0, 1])
         ax.set_ylim(bottom=0)
 
+        # --- Apply dense-axis styling to all profile panels ---
+        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            GRAPHICStools.addDenseAxis(ax)
 
-
-
-        # Machine
+        # --- Machine cross-section views ---
         self.plotGeometry(ax=ax0, color="b")
         self.plotNBItrajectories(time=timeReq, ax=ax0, topDown=False, col=col)
 
