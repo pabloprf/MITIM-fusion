@@ -2988,6 +2988,14 @@ class transp_output:
             self.Pnbie_beam = copy.deepcopy(self.Poh) * 0.0 + self.eps00
             self.Pnbii_beam = copy.deepcopy(self.Poh) * 0.0 + self.eps00
             self.Pnbih_beam = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            
+            self.Pnbit_e     = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            self.Pnbit_i     = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            self.Pnbit_coll  = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            self.Pnbit_jxb   = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            self.Pnbit_therm = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+            
+            self.Pnbit_total = copy.deepcopy(self.Poh) * 0.0 + self.eps00
 
             # Info about sources of particles
             self.nD_source_beams = copy.deepcopy(self.Poh) * 0.0 + self.eps00

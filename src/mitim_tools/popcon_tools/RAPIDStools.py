@@ -24,7 +24,7 @@ def prepare_profiles(
     Paux = 0.0,
     scale_zeta=False,   # Trick for now to fix negative jacobians when moving triangularity too much
     fDT=0.85,           # If not None: If Zeff is not None: fDT to mtaintain 
-    ion_position=3,     # If Zeff is not None: if (T,D,Z,...), change Z to match Zeff choice
+    ion_position=3,     # If Zeff is not None: if (T,D,Z1,Z2), change Z2 to match Zeff choice
     roatop = 0.9,
     Ttop_keV = 4.0,
     ntop_20 = 1.0,
