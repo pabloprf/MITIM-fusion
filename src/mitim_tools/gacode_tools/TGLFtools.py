@@ -294,6 +294,283 @@ class TGLF(SIMtools.mitim_simulation):
         with open(file, "wb") as handle:
             pickle.dump(tglf_copy, handle, protocol=4)
 
+    def save_npz(self, file):
+        """
+        Save all TGLF results as a lightweight compressed numpy archive (.npz).
+
+        Only numerical arrays and the minimal metadata required for plotting/analysis
+        are stored.  Heavy Python objects (profiles, TGYRO, matplotlib functions) are
+        intentionally omitted to keep the file small.  Arrays are stored as float32
+        (half the size of float64, sufficient for post-processing).
+
+        The complementary classmethod TGLF.from_npz(file) reconstructs a functional
+        TGLF object from this file.
+        """
+        import json
+
+        file = Path(file)
+        arrays = {}
+        meta = {
+            "rhos": [float(r) for r in self.rhos],
+            "labels": list(self.results.keys()),
+            "mitim_version": mitim_version,
+        }
+
+        # ---- Per-label / per-rho output arrays ----
+        for label in self.results:
+            res = self.results[label]
+            meta[f"{label}__x"] = [float(v) for v in res["x"]]
+            meta[f"{label}__DRMAJDX_LOC"] = res.get("DRMAJDX_LOC", {})
+
+            for irho, output in enumerate(res["output"]):
+                pfx = f"{label}__{irho}__"
+
+                # Scalar metadata
+                meta[f"{pfx}roa"] = float(output.roa)
+                meta[f"{pfx}num_species"] = int(output.num_species)
+                meta[f"{pfx}num_nmodes"] = int(output.num_nmodes)
+                meta[f"{pfx}num_ky"] = int(output.num_ky)
+                meta[f"{pfx}num_fields"] = int(output.num_fields)
+                meta[f"{pfx}fields"] = list(output.fields)
+                meta[f"{pfx}ions_included"] = list(output.ions_included)
+                meta[f"{pfx}fast_included"] = list(output.fast_included)
+                meta[f"{pfx}unnorm_ok"] = bool(output.unnormalization_successful)
+                meta[f"{pfx}inputFile"] = output.inputFile
+                meta[f"{pfx}tglf_version"] = getattr(output, "tglf_version", "")
+                meta[f"{pfx}scalar_sat_params"] = getattr(output, "scalar_sat_params", {})
+
+                # Main spectra — includes all derived slice attributes so that
+                # from_npz() can restore them directly without re-running read().
+                _spectrum_attrs = [
+                    "ky", "Eigenvalues", "g", "f",
+                    "AmplitudeSpectrum", "AmplitudeSpectrum_Te", "AmplitudeSpectrum_ne",
+                    "AmplitudeSpectrum_Ti", "AmplitudeSpectrum_ni",
+                    "nTSpectrum", "neTeSpectrum", "niTiSpectrum",
+                    "FieldSpectrum", "v_spectrum", "phi_spectrum",
+                    "a_par_spectrum", "a_per_spectrum",
+                    "SumFluxSpectrum",
+                    "SumFlux_Qe_phi", "SumFlux_Qe_a_par", "SumFlux_Qe_a_per",
+                    "SumFlux_Qe_a", "SumFlux_Qe",
+                    "SumFlux_Ge_phi", "SumFlux_Ge_a_par", "SumFlux_Ge_a_per",
+                    "SumFlux_Ge_a", "SumFlux_Ge",
+                    "SumFlux_QiAll_phi", "SumFlux_QiAll_a_par", "SumFlux_QiAll_a_per",
+                    "SumFlux_QiAll_a", "SumFlux_QiAll",
+                    "SumFlux_Qi_phi", "SumFlux_Qi_a", "SumFlux_Qi",
+                    "SumFlux_GiAll_phi", "SumFlux_GiAll_a", "SumFlux_GiAll",
+                    "SumFlux_Gi_phi", "SumFlux_Gi_a", "SumFlux_Gi",
+                    "SumFlux_MtAll_phi", "SumFlux_MtAll_a", "SumFlux_MtAll",
+                    "SumFlux_Mt_phi", "SumFlux_Mt_a", "SumFlux_Mt",
+                    # QL flux spectrum — full array plus all derived slices used by plotTGLF_Field
+                    "QLFluxSpectrum",
+                    "QLFluxSpectrum_Ge_phi", "QLFluxSpectrum_Qe_phi",
+                    "QLFluxSpectrum_GiAll_phi", "QLFluxSpectrum_Gi_phi",
+                    "QLFluxSpectrum_QiAll_phi", "QLFluxSpectrum_Qi_phi",
+                    "QLFluxSpectrum_Ge_a_par", "QLFluxSpectrum_Qe_a_par",
+                    "QLFluxSpectrum_GiAll_a_par", "QLFluxSpectrum_Gi_a_par",
+                    "QLFluxSpectrum_QiAll_a_par", "QLFluxSpectrum_Qi_a_par",
+                    "QLFluxSpectrum_Ge_a_per", "QLFluxSpectrum_Qe_a_per",
+                    "QLFluxSpectrum_GiAll_a_per", "QLFluxSpectrum_Gi_a_per",
+                    "QLFluxSpectrum_QiAll_a_per", "QLFluxSpectrum_Qi_a_per",
+                    "IntensitySpectrum", "IntensitySpectrum_ne", "IntensitySpectrum_Te",
+                    "IntensitySpectrum_ni", "IntensitySpectrum_Ti",
+                ]
+                for attr in _spectrum_attrs:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        if isinstance(v, np.ndarray):
+                            arrays[pfx + attr] = v.astype(np.float32)
+                        elif isinstance(v, (int, float)):
+                            arrays[pfx + attr] = np.array([v], dtype=np.float32)
+
+                # tglf_model sub-arrays
+                if hasattr(output, "tglf_model"):
+                    for k, v in output.tglf_model.items():
+                        arrays[f"{pfx}tglf_model__{k}"] = np.asarray(v, dtype=np.float32)
+
+                # Scalar fluxes (from gbflux)
+                for attr in ["Ge", "Qe", "Qi", "Qifast", "Me", "Mt", "Se", "Si"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+                for attr in ["GiAll", "QiAll", "MiAll", "SiAll"]:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        arrays[pfx + attr] = np.asarray(v, dtype=np.float32)
+
+                # Unnormalized fluxes (if available)
+                for attr in ["Qe_unn", "Qi_unn", "Qifast_unn", "Ge_unn", "Mt_unn", "Se_unn"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+                for attr in ["QiAll_unn", "GiAll_unn"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.asarray(getattr(output, attr), dtype=np.float32)
+
+                # Fluctuation levels
+                for attr in ["AmplitudeSpectrum_Te_level", "AmplitudeSpectrum_ne_level",
+                             "neTeSpectrum_level"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+
+
+        # ---- Normalization (SELECTED set only — pure numpy arrays) ----
+        norm = self.NormalizationSets.get("SELECTED")
+        if norm is not None:
+            for k, v in norm.items():
+                try:
+                    arrays[f"norm__{k}"] = np.asarray(v, dtype=np.float32)
+                except (TypeError, ValueError):
+                    pass  # skip non-array entries (e.g. mi_ref scalar handled below)
+                    meta[f"norm_scalar__{k}"] = float(v) if isinstance(v, (int, float, np.floating)) else str(v)
+
+        # EXP normalization (experimental fluxes for comparison plots)
+        exp = self.NormalizationSets.get("EXP")
+        if exp is not None:
+            for k, v in exp.items():
+                try:
+                    arrays[f"exp__{k}"] = np.asarray(v, dtype=np.float32)
+                except (TypeError, ValueError):
+                    pass
+
+        # ---- Metadata packed as JSON bytes ----
+        meta_bytes = np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8)
+        arrays["__meta__"] = meta_bytes
+
+        np.savez_compressed(file, **arrays)
+
+        # Report size (np.savez_compressed appends .npz if not present)
+        npz_path = file.with_suffix(".npz") if file.suffix != ".npz" else file
+        size_kb = npz_path.stat().st_size / 1024
+        print(f"> Saved TGLF results to {IOtools.clipstr(npz_path)} ({size_kb:.1f} kB)")
+
+    @classmethod
+    def from_npz(cls, file):
+        """
+        Reconstruct a TGLF object from a file written by save_npz().
+
+        The returned object supports plot() and all analysis methods that operate on
+        the stored results.  Methods that require the raw run folders, TGYRO objects,
+        or profiles (GACODE profile tabs, renormalization) are not available.
+        """
+        import json
+
+        file = Path(file)
+        if file.suffix != ".npz":
+            file = file.with_suffix(".npz")
+
+        data = np.load(file, allow_pickle=False)
+        meta = json.loads(data["__meta__"].tobytes().decode("utf-8"))
+
+        from mitim_tools.simulation_tools import SIMtools
+
+        # ---- Bare TGLF shell ----
+        tglf = object.__new__(cls)
+        tglf.rhos = meta["rhos"]
+        tglf.results = {}
+        tglf.NormalizationSets = {
+            k: None for k in ["TRANSP", "PROFILES", "TGYRO", "EXP", "input_gacode", "SELECTED"]
+        }
+        tglf.ky_single = None
+        tglf.tgyro = None
+        tglf.d_perp_dict = None
+        tglf.convolution_fun_fluct = None
+        tglf.factorTot_to_Perp = 1.0
+        tglf.DRMAJDX_LOC = {}
+        tglf.FoldersTGLF_WF = {}
+
+        # ---- Rebuild NormalizationSets["SELECTED"] ----
+        norm_keys = [k[len("norm__"):] for k in data.files if k.startswith("norm__")]
+        if norm_keys:
+            norm = {k: data[f"norm__{k}"].astype(np.float64) for k in norm_keys}
+            # restore scalar entries stored in meta
+            for mk, mv in meta.items():
+                if mk.startswith("norm_scalar__"):
+                    norm[mk[len("norm_scalar__"):]] = mv
+            tglf.NormalizationSets["SELECTED"] = norm
+
+        # ---- Rebuild NormalizationSets["EXP"] ----
+        exp_keys = [k[len("exp__"):] for k in data.files if k.startswith("exp__")]
+        if exp_keys:
+            tglf.NormalizationSets["EXP"] = {
+                k: data[f"exp__{k}"].astype(np.float64) for k in exp_keys
+            }
+
+        # ---- Rebuild results per label ----
+        for label in meta["labels"]:
+            res = {}
+            res["x"] = np.array(meta[f"{label}__x"])
+            res["DRMAJDX_LOC"] = meta.get(f"{label}__DRMAJDX_LOC", {})
+            res["convolution_fun_fluct"] = None
+            res["profiles"] = None
+            res["wavefunction"] = {}
+
+            outputs, inputclasses, parseds = [], [], []
+
+            n_rhos = len(meta[f"{label}__x"])
+            for irho in range(n_rhos):
+                pfx = f"{label}__{irho}__"
+
+                # Bare TGLFoutput shell
+                output = object.__new__(TGLFoutput)
+                output.FolderGACODE = None
+                output.suffix = ""
+
+                # Metadata
+                output.roa = float(meta[f"{pfx}roa"])
+                output.num_species = int(meta[f"{pfx}num_species"])
+                output.num_nmodes = int(meta[f"{pfx}num_nmodes"])
+                output.num_ky = int(meta[f"{pfx}num_ky"])
+                output.num_fields = int(meta[f"{pfx}num_fields"])
+                output.fields = list(meta[f"{pfx}fields"])
+                output.ions_included = tuple(int(x) for x in meta[f"{pfx}ions_included"])
+                output.fast_included = tuple(int(x) for x in meta[f"{pfx}fast_included"])
+                output.unnormalization_successful = bool(meta[f"{pfx}unnorm_ok"])
+                output.inputFile = meta[f"{pfx}inputFile"]
+                output.tglf_version = meta.get(f"{pfx}tglf_version", "")
+                output.scalar_sat_params = meta.get(f"{pfx}scalar_sat_params", {})
+                output.inputFile_gen = ""
+
+                # Restore all numpy arrays stored under this prefix
+                for key in data.files:
+                    if key.startswith(pfx) and not key.startswith(f"{pfx}tglf_model__"):
+                        attr = key[len(pfx):]
+                        setattr(output, attr, data[key].astype(np.float64))
+
+                # Restore tglf_model dict
+                output.tglf_model = {}
+                for key in data.files:
+                    if key.startswith(f"{pfx}tglf_model__"):
+                        sub = key[len(f"{pfx}tglf_model__"):]
+                        output.tglf_model[sub] = data[key].astype(np.float64)
+
+                # Scalar fluxes stored as 1-element arrays — unwrap to float
+                for attr in ["Ge", "Qe", "Qi", "Qifast", "Me", "Mt", "Se", "Si",
+                             "Qe_unn", "Qi_unn", "Qifast_unn", "Ge_unn", "Mt_unn", "Se_unn",
+                             "AmplitudeSpectrum_Te_level", "AmplitudeSpectrum_ne_level",
+                             "neTeSpectrum_level"]:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        if isinstance(v, np.ndarray) and v.size == 1:
+                            setattr(output, attr, float(v.flat[0]))
+
+                # Reconstruct TGLFinput from stored inputFile string
+                input_dict = SIMtools.buildDictFromInput(output.inputFile)
+                output.inputclass = TGLFinput.initialize_in_memory(input_dict)
+
+                # Re-derive postprocess metrics (requires SumFlux_* to be set)
+                output.postprocess()
+
+                outputs.append(output)
+                inputclasses.append(output.inputclass)
+                parseds.append({})
+
+            res["output"] = outputs
+            res["inputclasses"] = inputclasses
+            res["parsed"] = parseds
+            tglf.results[label] = res
+
+        print(f"> Loaded TGLF results from {IOtools.clipstr(file)} "
+              f"({len(tglf.results)} label(s), {len(tglf.rhos)} rho(s))")
+        return tglf
+
     def prep_using_tgyro(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
@@ -4351,6 +4628,50 @@ class TGLFoutput(SIMtools.GACODEoutput):
             lines = fi.readlines()
         self.inputFile = "".join(lines)
 
+        if require_all_files:
+
+            # Generated input file (defaults filled in by TGLF)
+            gen_path = self.FolderGACODE / ("input.tglf.gen" + self.suffix)
+            if gen_path.exists():
+                with open(gen_path, "r") as fi:
+                    self.inputFile_gen = fi.read()
+            else:
+                self.inputFile_gen = ""
+
+            # TGLF version string
+            version_path = self.FolderGACODE / ("out.tglf.version" + self.suffix)
+            if version_path.exists():
+                with open(version_path, "r") as fi:
+                    self.tglf_version = fi.read().strip()
+            else:
+                self.tglf_version = ""
+
+            # Scalar saturation parameters
+            self.scalar_sat_params = {}
+            sat_path = self.FolderGACODE / ("out.tglf.scalar_saturation_parameters" + self.suffix)
+            if sat_path.exists():
+                with open(sat_path, "r") as fi:
+                    for line in fi:
+                        line = line.strip()
+                        if line.startswith("!") or "=" not in line:
+                            continue
+                        key, val = line.split("=", 1)
+                        key = key.strip()
+                        val = val.strip().split()[0]  # first token only
+                        try:
+                            val = int(val)
+                        except ValueError:
+                            try:
+                                val = float(val)
+                            except ValueError:
+                                pass
+                        self.scalar_sat_params[key] = val
+
+        else:
+            self.inputFile_gen = ""
+            self.tglf_version = ""
+            self.scalar_sat_params = {}
+
     def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):
         if normalization is not None:
             rho_x = normalization["rho"]
@@ -4442,9 +4763,9 @@ class TGLFoutput(SIMtools.GACODEoutput):
             'sum_flux': ['nspecies', 'nfields', 'nky'],
         }
         data_type_mapper = {
-            'amplitude': ['density', 'temperature'],
+            'amplitude': ['temperature', 'density'],  # index 0 = temperature (dataT appended first), 1 = density
             'eigenvalue': ['imaginary', 'real'],
-            'field': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
+            'field': ['v', 'phi', 'a_par', 'a_per'],  # FieldSpectrum[0]=v, [1]=phi, [2]=a_par, [3]=a_per
             'intensity': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
             'ql_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
             'sum_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
