@@ -388,7 +388,7 @@ class TGLF(SIMtools.mitim_simulation):
                         arrays[f"{pfx}tglf_model__{k}"] = np.asarray(v, dtype=np.float32)
 
                 # Scalar fluxes (from gbflux)
-                for attr in ["Ge", "Qe", "Qi", "Qifast", "Me", "Mt", "Se", "Si"]:
+                for attr in ["Ge", "Qe", "Qi", "Gi", "Qifast", "Me", "Mt", "Se", "Si"]:
                     if hasattr(output, attr):
                         arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
                 for attr in ["GiAll", "QiAll", "MiAll", "SiAll"]:
@@ -542,7 +542,7 @@ class TGLF(SIMtools.mitim_simulation):
                         output.tglf_model[sub] = data[key].astype(np.float64)
 
                 # Scalar fluxes stored as 1-element arrays — unwrap to float
-                for attr in ["Ge", "Qe", "Qi", "Qifast", "Me", "Mt", "Se", "Si",
+                for attr in ["Ge", "Qe", "Qi", "Gi", "Qifast", "Me", "Mt", "Se", "Si",
                              "Qe_unn", "Qi_unn", "Qifast_unn", "Ge_unn", "Mt_unn", "Se_unn",
                              "AmplitudeSpectrum_Te_level", "AmplitudeSpectrum_ne_level",
                              "neTeSpectrum_level"]:
@@ -943,6 +943,9 @@ class TGLF(SIMtools.mitim_simulation):
                     if il not in max_fields:
                         max_fields.append(il)
 
+        from mitim_tools.misc_tools.style_tools.themes import apply_theme
+        apply_theme()
+
         if fn is None:
             self.fn = GUItools.FigureNotebook("TGLF MITIM Notebook", geometry="1700x900", vertical=True)
         else:
@@ -968,6 +971,20 @@ class TGLF(SIMtools.mitim_simulation):
         figO = self.fn.add_figure(
             label=f"{extratitle}Model Details", tab_color=fn_color
         )
+        figFlux2 = self.fn.add_figure(
+            label=f"{extratitle}Ion & Mom. Fluxes", tab_color=fn_color
+        )
+
+        # SAT parameters tab (only if at least one run has them populated)
+        has_sat_params = any(
+            self.results[lbl]["output"][ir].scalar_sat_params
+            for lbl in labels
+            for ir in range(len(self.results[lbl]["output"]))
+        )
+        if has_sat_params:
+            figSAT = self.fn.add_figure(
+                label=f"{extratitle}SAT Parameters", tab_color=fn_color
+            )
 
         figsWF = {}
         for ky_single0 in ky_single_stored_unique:
@@ -1127,6 +1144,24 @@ class TGLF(SIMtools.mitim_simulation):
         grid = plt.GridSpec(2, 1, hspace=0.5, wspace=0.5)
         axs7 = [fig7.add_subplot(grid[0]), fig7.add_subplot(grid[1])]
 
+        # Ion & Momentum Fluxes axes
+        grid = plt.GridSpec(3, 4, hspace=0.6, wspace=0.35)
+        axsFlux2 = np.empty((3, 4), dtype=plt.Axes)
+        axsFlux2[0, 0] = figFlux2.add_subplot(grid[0, 0])
+        for r in range(3):
+            for c_ in range(4):
+                if r == 0 and c_ == 0:
+                    continue
+                sharex = axsFlux2[0, 0] if c_ < 2 else None
+                axsFlux2[r, c_] = figFlux2.add_subplot(grid[r, c_], sharex=sharex)
+
+        # SAT parameters axes — one shared figure, one line per label
+        if has_sat_params:
+            grid = plt.GridSpec(1, 2, hspace=0.4, wspace=0.4)
+            axsSAT = np.empty((1, 2), dtype=plt.Axes)
+            axsSAT[0, 0] = figSAT.add_subplot(grid[0, 0])
+            axsSAT[0, 1] = figSAT.add_subplot(grid[0, 1])
+
         if successful_normalization:
             grid = plt.GridSpec(2, 2, hspace=0.4, wspace=0.2)
             axT2 = fig3.add_subplot(grid[0, 0])
@@ -1134,13 +1169,15 @@ class TGLF(SIMtools.mitim_simulation):
             axT2_3 = fig3.add_subplot(grid[1, 0], sharex=axT2)
             axT2_4 = fig3.add_subplot(grid[1, 1], sharex=axT2)
 
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axS00 = figS.add_subplot(grid[0, 0])
             axS01 = figS.add_subplot(grid[0, 1])
             axS10 = figS.add_subplot(grid[1, 0])
             axS11 = figS.add_subplot(grid[1, 1], sharex=axS01, sharey=axS01)
             axS20 = figS.add_subplot(grid[0, 2])
             axS21 = figS.add_subplot(grid[1, 2], sharex=axS01)
+            axS_Gi = figS.add_subplot(grid[0, 3])
+            axS_Mt = figS.add_subplot(grid[1, 3], sharex=axS01)
 
             grid = plt.GridSpec(3, 3, hspace=0.5, wspace=0.3)
             axFluc00 = figF.add_subplot(grid[0, 0])
@@ -1221,6 +1258,23 @@ class TGLF(SIMtools.mitim_simulation):
                 self.results[label]["output"][irho].plotTGLF_Model(
                     axs=axsTGLF3, c=colors[cont], label=full_label
                 )
+
+                self.results[label]["output"][irho].plotTGLF_IonMomFluxes(
+                    axs=axsFlux2,
+                    c=colors[cont],
+                    label=full_label,
+                    fontsizeLeg=fontsizeLeg,
+                    title_legend=title_legend,
+                    cont=cont,
+                )
+
+                if has_sat_params:
+                    self.results[label]["output"][irho].plotTGLF_SAT(
+                        axs=axsSAT,
+                        c=colors[cont],
+                        label=full_label,
+                        cont=cont,
+                    )
 
                 self.results[label]["output"][irho].plotTGLF_Fluctuations(
                     axs=axsTGLF_flucts,
@@ -1310,6 +1364,7 @@ class TGLF(SIMtools.mitim_simulation):
 
             Qe, Qi, Ge = [], [], []
             QeGB, QiGB, GeGB = [], [], []
+            GiGB, MtGB = [], []
             TeF, neTe = [], []
             roas = []
             for irho_cont in range(len(self.rhos)):
@@ -1329,6 +1384,8 @@ class TGLF(SIMtools.mitim_simulation):
                 QeGB.append(self.results[label]["output"][irho].Qe)
                 QiGB.append(self.results[label]["output"][irho].Qi)
                 GeGB.append(self.results[label]["output"][irho].Ge)
+                GiGB.append(self.results[label]["output"][irho].Gi)
+                MtGB.append(self.results[label]["output"][irho].Mt)
 
             if self.results[label]["output"][irho].unnormalization_successful:
                 axT2.plot(self.rhos, Qe, "-o", c=colorLab[0], lw=2, label=full_label)
@@ -1368,6 +1425,9 @@ class TGLF(SIMtools.mitim_simulation):
 
                 axS20.plot(self.rhos, TeF, "-o", c=colorLab[0], lw=2, label=label)
                 axS21.plot(self.rhos, neTe, "-o", c=colorLab[0], lw=2, label=label)
+
+                axS_Gi.plot(roas, GiGB, "-o", c=colorLab[0], lw=2, label=label)
+                axS_Mt.plot(roas, MtGB, "-o", c=colorLab[0], lw=2, label=label)
 
             axsTGLF1[3, 0].plot(roas, QeGB, "-", c=colorLab[0], lw=1)
             axsTGLF1[3, 1].plot(roas, QiGB, "-", c=colorLab[0], lw=1)
@@ -1502,12 +1562,12 @@ class TGLF(SIMtools.mitim_simulation):
 
         if len(self.rhos) > 1 or len(labels) > 1:
             axsTGLF1[1, 0].legend(
-                loc="lower right", fontsize=fontsizeLeg, title=title_legend
+                loc="lower right", title=title_legend
             )
 
         if successful_normalization:
             if len(self.rhos) > 1 or len(labels) > 1:
-                axS10.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+                axS10.legend(loc="best", title=title_legend)
 
             ax = axT2
             ax.set_xlabel("$\\rho_N$")
@@ -1516,7 +1576,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_title("Electron heat flux")
             ax.legend(loc="best")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # Simple
             ax = axS01
@@ -1524,9 +1583,8 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel("$Q_e$ ($MW/m^2$)")
             ax.set_ylim(bottom=0)
             ax.set_title("Electron heat flux")
-            ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+            ax.legend(loc="best", title=title_legend)
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # ---
 
@@ -1536,7 +1594,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # Simple
             ax = axS11
@@ -1545,7 +1602,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
             # ---
 
             # Simple
@@ -1555,7 +1611,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Temperature fluctuations")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
             # ---
 
             # Simple
@@ -1564,14 +1619,28 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel("Angle (degrees)")
             ax.set_title("$n_eT_e$ phase angle")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
+            # ---
+
+            ax = axS_Gi
+            ax.set_xlabel("$r/a$")
+            ax.set_ylabel("$\\Gamma_i$ (GB)")
+            ax.set_title("Ion particle flux (summed thermal ions)")
+            ax.axhline(y=0, ls="--", c="k", lw=1)
+            ax.set_xlim([0, 1])
+            ax.legend(loc="best", title=title_legend)
+
+            ax = axS_Mt
+            ax.set_xlabel("$r/a$")
+            ax.set_ylabel("$\\Pi$ (GB)")
+            ax.set_title("Total momentum flux")
+            ax.axhline(y=0, ls="--", c="k", lw=1)
+            ax.set_xlim([0, 1])
             # ---
 
             ax = axT2_3
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = axT2_4
             ax.set_xlabel("$\\rho_N$")
@@ -1580,7 +1649,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_title("GB Fluxes")
             ax.set_yscale("log")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # FLUCTS
 
@@ -1804,35 +1872,29 @@ class TGLF(SIMtools.mitim_simulation):
             ax = axFluc00
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
             ax = axFluc01
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             # ax.legend(loc='best');
             ax.set_xscale("linear")
             ax.set_xlim([0, 3])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = axFluc10e
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
             ax = axFluc11e
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
 
             axFluc00Sym.set_ylabel("Convolution")
-            GRAPHICStools.addDenseAxis(axFluc00Sym)
             axFluc01Sym.set_ylabel("Convolution")
-            GRAPHICStools.addDenseAxis(axFluc01Sym)
             axFluc00Sym.set_ylim([0, 1])
             axFluc01Sym.set_ylim([0, 1])
 
@@ -1863,7 +1925,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.scatter(TL, T, color=C)
             ax.set_ylabel("$\\delta T_e/T_e$ (%)")
             ax.set_ylim(bottom=0)
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -1873,7 +1934,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.scatter(TL, N, color=C)
             ax.set_ylabel("$\\delta n_e/n_e$ (%)")
             ax.set_ylim(bottom=0)
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -1882,7 +1942,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.plot(TL, NT, "-", c="k")
             ax.scatter(TL, NT, color=C)
             ax.set_ylabel("$n_eT_e$ angle (degrees)")
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -2083,7 +2142,6 @@ class TGLF(SIMtools.mitim_simulation):
                 ax = ax00
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\gamma$ ($c_s/a$)")
-                GRAPHICStools.addDenseAxis(ax)
                 if addLegend:
                     GRAPHICStools.addLegendApart(
                         ax, size=6, ratio=0.6, title=title_legend
@@ -2095,7 +2153,6 @@ class TGLF(SIMtools.mitim_simulation):
                 ax = ax10
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\omega$ ($c_s/a$)")
-                GRAPHICStools.addDenseAxis(ax)
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
@@ -2105,33 +2162,27 @@ class TGLF(SIMtools.mitim_simulation):
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
                 ax.set_ylabel("Electric potential $\\delta\\phi$")
                 ax.set_title("Real component $\\delta\\phi$")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax11
                 ax.set_ylabel("Electric potential $\\delta\\phi$")
                 ax.set_title("Imaginary component $\\delta\\phi$")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax02
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
                 ax.set_title("Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax12
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
                 ax.set_title("Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax03
 
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
                 ax.set_title("Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax13
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
                 ax.set_title("Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------
         # Profiles
@@ -2672,42 +2723,37 @@ class TGLF(SIMtools.mitim_simulation):
             ax = ax1_00
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$Q_e$ ($MW/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_ylim(bottom=0)
             ax.set_title("Electron heat flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_10
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$Q_i$ ($MW/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_20
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.axhline(y=0, ls="-.", c="k", lw=1)
             ax.set_title("Electron particle flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_30
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$\\Gamma_i$ ($1E20/s/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.axhline(y=0, ls="-.", c="k", lw=1)
             ax.set_title(f"Ion particle flux (ION_{self.ion_OI_position_in_total_padded_list_scan})")
-            GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_00e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$Q_e$ (GB)")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Electron heat flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_10e
         ax.set_xlabel(variableLabel)
@@ -2715,7 +2761,6 @@ class TGLF(SIMtools.mitim_simulation):
         # ax.legend(loc='best')
         ax.set_ylim(bottom=0)
         ax.set_title("Ion heat flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_20e
         ax.set_xlabel(variableLabel)
@@ -2723,7 +2768,6 @@ class TGLF(SIMtools.mitim_simulation):
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title("Electron particle flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_30e
         ax.set_xlabel(variableLabel)
@@ -2731,32 +2775,27 @@ class TGLF(SIMtools.mitim_simulation):
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title(f"Ion #{self.ion_OI_position_in_total_padded_list_scan} particle flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_11
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$\\eta_{a/b}=max(\\gamma_{a})/max(\\gamma_{b})$")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Dominant turbulence")
         ax.axhline(y=1.0, ls="--", c="k", lw=0.5)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_01
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$\\gamma$ ($c_s/a$)")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Largest growth rate")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_00
         ax.set_xlim([1e-2, 3e1])
-        ax.legend(loc="best", fontsize=fontsizeLeg)
-        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best")
 
         ax = ax2_10
-        GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------------------------------
         # Plot full TGLFs
@@ -3225,8 +3264,7 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel(f"Transport flux {self.scans[label]['var_y']}")
             ax.set_title("Incremental diffusivity calculations")
             # if len(labels) > 1 or len(self.rhos) > 1:
-            ax.legend(fontsize=8, loc="best")
-            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
 
             ax.set_xlim([x_min * 0.9, x_max * 1.1])
             ax.set_ylim([y_min * 0.9, y_max * 1.1])
@@ -3243,7 +3281,6 @@ class TGLF(SIMtools.mitim_simulation):
 
             ax.set_xlim([0.8, 1.2])
             ax.set_ylim([0.5, 2.0])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax01
             ax.set_xlabel("$\\rho_N$")
@@ -3251,18 +3288,16 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             # ax.set_ylim(bottom=0)
             ax.set_title("Diffusivity profiles (effective and incremental)")
-            ax.legend(fontsize=10, loc="best")
+            ax.legend(loc="best")
             ax.axhline(y=0.0, ls="-", c="k", lw=0.3)
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax11
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("$\\chi^{PB}$ ($m^2/s$), $V^{PB}$ ($m/s$)")
             ax.set_xlim([0, 1])
             ax.set_title("Phenomenological (diffusivity + pinch)")
-            ax.legend(fontsize=10, loc="best")
+            ax.legend(loc="best")
             ax.axhline(y=0.0, ls="-", c="k", lw=0.3)
-            GRAPHICStools.addDenseAxis(ax)
 
         elif analysisType == "Z":
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
@@ -3361,8 +3396,7 @@ class TGLF(SIMtools.mitim_simulation):
             )
             ax.set_ylabel(f"Transport flux {self.scans[label]['var_y']}")
             ax.set_title("D and V calculations")
-            ax.legend(fontsize=7, loc="best")
-            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
 
             ax = ax11
             ax.set_xlabel("$\\rho_N$")
@@ -3370,7 +3404,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("V pinch profiles")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax01
             ax.set_xlabel("$\\rho_N$")
@@ -3378,7 +3411,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("D diffusivity profiles")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax02
             ax.set_xlabel("$\\rho_N$")
@@ -3386,14 +3418,12 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("Gradients at zero-flux condition")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax12
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("Relative $n_Z$")
             ax.set_xlim([0, 1])
             ax.set_title(f"Integrated profile using BC={BC}")
-            GRAPHICStools.addDenseAxis(ax)
 
     def updateConvolution(self):
         self.DRMAJDX_LOC = {}
@@ -4126,6 +4156,10 @@ class TGLFoutput(SIMtools.GACODEoutput):
         self.QiEM = np.sum(self.SumFlux_Qi_a)
         self.GeES = np.sum(self.SumFlux_Ge_phi)
         self.GeEM = np.sum(self.SumFlux_Ge_a)
+        self.GiES = np.sum(self.SumFlux_Gi_phi)
+        self.GiEM = np.sum(self.SumFlux_Gi_a)
+        self.MtES = np.sum(self.SumFlux_Mt_phi)
+        self.MtEM = np.sum(self.SumFlux_Mt_a)
 
     # Redefined because of very specific TGLF stuff
     def read(self,require_all_files=True):
@@ -4400,6 +4434,23 @@ class TGLFoutput(SIMtools.GACODEoutput):
             self.SumFlux_Qi_a = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
             self.SumFlux_Qi = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
 
+            # Per-ion and total particle flux spectra [species, ky]
+            self.SumFlux_GiAll_phi = self.SumFluxSpectrum[0, 1:, 0, :]
+            self.SumFlux_GiAll_a = self.SumFluxSpectrum[0, 1:, 1, :] if self.num_fields > 1 else self.SumFlux_GiAll_phi * 0.0
+            self.SumFlux_GiAll = self.SumFlux_GiAll_phi + self.SumFlux_GiAll_a
+            self.SumFlux_Gi_phi = self.SumFlux_GiAll_phi[sum_ions, :].sum(axis=0)
+            self.SumFlux_Gi_a = self.SumFlux_GiAll_a[sum_ions, :].sum(axis=0)
+            self.SumFlux_Gi = self.SumFlux_Gi_phi + self.SumFlux_Gi_a
+
+            # Momentum (toroidal stress) flux spectra [species, ky] — sign applied as in gbflux
+            signMt = -self.inputclass.plasma['SIGN_IT']
+            self.SumFlux_MtAll_phi = self.SumFluxSpectrum[2, :, 0, :] * signMt  # all species incl. electrons
+            self.SumFlux_MtAll_a = (self.SumFluxSpectrum[2, :, 1, :] * signMt if self.num_fields > 1 else self.SumFlux_MtAll_phi * 0.0)
+            self.SumFlux_MtAll = self.SumFlux_MtAll_phi + self.SumFlux_MtAll_a
+            self.SumFlux_Mt_phi = self.SumFlux_MtAll_phi.sum(axis=0)  # total ES momentum spectrum
+            self.SumFlux_Mt_a = self.SumFlux_MtAll_a.sum(axis=0)      # total EM momentum spectrum
+            self.SumFlux_Mt = self.SumFlux_Mt_phi + self.SumFlux_Mt_a
+
             # ------------------------------------------------------------------------
             # QL Flux Spectrum (QL weights per mode)
             # ------------------------------------------------------------------------
@@ -4586,6 +4637,20 @@ class TGLFoutput(SIMtools.GACODEoutput):
             self.SumFlux_Qi_phi = np.zeros((1,))
             self.SumFlux_Qi_a = np.zeros((1,))
             self.SumFlux_Qi = np.zeros((1,))
+
+            self.SumFlux_GiAll_phi = np.zeros((1, 1))
+            self.SumFlux_GiAll_a = np.zeros((1, 1))
+            self.SumFlux_GiAll = np.zeros((1, 1))
+            self.SumFlux_Gi_phi = np.zeros((1,))
+            self.SumFlux_Gi_a = np.zeros((1,))
+            self.SumFlux_Gi = np.zeros((1,))
+
+            self.SumFlux_MtAll_phi = np.zeros((1, 1))
+            self.SumFlux_MtAll_a = np.zeros((1, 1))
+            self.SumFlux_MtAll = np.zeros((1, 1))
+            self.SumFlux_Mt_phi = np.zeros((1,))
+            self.SumFlux_Mt_a = np.zeros((1,))
+            self.SumFlux_Mt = np.zeros((1,))
 
             # QL Flux Spectrum
             self.QLFluxSpectrum = np.zeros((5, 1, 1, 1, 1))
@@ -4937,7 +5002,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $\\delta T_e$ Amplitude")
         ax.set_ylabel("$A_{T_e}(k_y)$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 1]
 
@@ -4957,7 +5021,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $\\delta n_e$ Amplitude")
         ax.set_ylabel("$A_{n_e}(k_y)$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 1]
 
@@ -4977,7 +5040,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $n_e-T_e$ cross-phase angle")
         ax.set_ylabel("$\\alpha_{n_e,T_e}$ (degrees)")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax.axhline(y=0, ls="--", lw=1, c="k")
         ax.set_ylim([-180, 180])
@@ -4993,7 +5055,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 2]
 
@@ -5004,7 +5065,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 2]
 
@@ -5015,7 +5075,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** Flux Values
 
@@ -5026,7 +5085,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_e/Q_{GB}$")
         ax.set_xlim([0, 1])
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $Q_e$ (GB)")
 
         ax = axs[3, 1]
@@ -5036,7 +5094,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_i/Q_{GB}$")
         ax.set_xlim([0, 1])
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $Q_i$ (GB)")
 
         ax = axs[3, 2]
@@ -5047,7 +5104,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma/\\Gamma_{GB}$")
         ax.set_xlim([0, 1])
         ax.axhline(y=0, ls="--", lw=1, c="k")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $\\Gamma_e$ (GB)")
 
     def plotTGLF_Contributors(
@@ -5100,9 +5156,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (ES+EM): $Q_e$")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
 
         ax = axs[1, 0]
         ax.plot(
@@ -5129,7 +5184,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 0]
         ax.plot(
@@ -5156,7 +5210,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** EM+ES Flux radial
 
@@ -5198,9 +5251,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_e$ (GB)")
         ax.set_title("Profile (ES+EM): $Q_e$ (GB)")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 2]
         ax.plot(
@@ -5241,7 +5293,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_i$ (GB)")
         ax.set_title("Profile (ES+EM): $Q_i$ (GB)")
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 2]
 
@@ -5283,7 +5334,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         ax.set_title("Profile (ES+EM): $\\Gamma_e$ (GB)")
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** Cumulative Spectra
 
@@ -5294,7 +5344,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Qe, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $Q_e$")
 
         ax = axs[1, 1]
@@ -5304,7 +5353,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Qi, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $Q_i$")
 
         ax = axs[2, 1]
@@ -5314,7 +5362,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Ge, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $\\Gamma_e$")
         ax.axhline(y=0, ls="--", lw=0.5, c="k")
 
@@ -5385,9 +5432,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (each ion): $Q_i$")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
 
     def plotTGLF_Fluctuations(
         self, c="b", label="", axs=None, fontsizeLeg=4, title_legend="", cont=0
@@ -5412,7 +5458,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Amplitude Spectrum: $n_e$")
 
         ax = axs[1, 0]
@@ -5420,7 +5465,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Amplitude Spectrum: $T_e$")
 
         ax = axs[2, 0]
@@ -5437,9 +5481,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("$n_e-T_e$ Spectrum")
-        ax.legend(loc="best", fontsize=fontsizeLeg, title=title_legend)
+        GRAPHICStools.addLegendApart(ax, size=fontsizeLeg, ratio=0.9, title=title_legend)
 
         ax = axs[3, 0]
         for i in range(self.num_nmodes):
@@ -5455,7 +5498,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Intensity Spectrum: $n_e$")
 
         ax = axs[4, 0]
@@ -5472,7 +5514,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Intensity Spectrum: $T_e$")
 
         for ion in range(self.num_species - 1):
@@ -5488,7 +5529,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Amplitude Spectrum: $n_{{i}}$ (ion {ion+1})")
 
             ax = axs[1, ion + 1]
@@ -5503,7 +5543,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Amplitude Spectrum: $T_{{i}}$ (ion {ion+1})")
 
             ax = axs[2, ion + 1]
@@ -5520,7 +5559,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"$n_i-T_i$ Spectrum (ion {ion+1})")
 
             ax = axs[3, ion + 1]
@@ -5537,7 +5575,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Intensity Spectrum: $n_{{i}}$ (ion {ion+1})")
 
             ax = axs[4, ion + 1]
@@ -5554,7 +5591,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Intensity Spectrum: $T_{{i}}$ (ion {ion+1})")
 
     def plotTGLF_Field(
@@ -5635,9 +5671,7 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title(f"Growth Rate Spectrum")
-        ax.legend(loc="best", fontsize=fontsizeLeg, title=title_legend)
 
         ax = axs[1, 0]
         for i in range(self.num_nmodes):
@@ -5653,7 +5687,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title(f"Field Spectrum: {v[1]}")
 
         # ****************************************************************
@@ -5673,7 +5706,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("QL Spectrum: $Q_e$")
 
         ax = axs[0, 2]
@@ -5690,7 +5722,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("QL Spectrum: $\\Gamma_e$")
 
         for ion in range(self.num_species - 1):
@@ -5707,7 +5738,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"QL Spectrum: $Q_i$ (ion {ion+1})")
 
         # ****************************************************************
@@ -5719,7 +5749,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Sum Flux Spectrum: $Q_e$")
 
         ax = axs[1, 2]
@@ -5727,7 +5756,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Sum Flux Spectrum: $\\Gamma_e$")
 
         for ion in range(self.num_species - 1):
@@ -5736,8 +5764,233 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Sum Flux Spectrum: $Q_i$ (ion {ion+1})")
+
+        # Place legend outside the last column so it never overlaps inner plots
+        ax_last = axs[0, axs.shape[1] - 1]
+        handles, labels_h = axs[0, 0].get_legend_handles_labels()
+        box = ax_last.get_position()
+        ax_last.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        prop = {"size": fontsizeLeg} if fontsizeLeg is not None else {}
+        ax_last.legend(handles, labels_h, loc="upper left",
+                       bbox_to_anchor=(1, 1.0), prop=prop, title=title_legend)
+
+    def plotTGLF_IonMomFluxes(
+        self, c="b", label="", axs=None, fontsizeLeg=4, title_legend=None, cont=0
+    ):
+        """
+        Plot per-ion particle fluxes (Gi), per-ion heat flux (QiAll), total momentum
+        flux (Mt) spectra and radial totals.  axs must be shape (3, 4).
+        """
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(14, 7))
+            grid = plt.GridSpec(3, 4, hspace=0.6, wspace=0.3)
+            axs = np.empty((3, 4), dtype=plt.Axes)
+            axs[0, 0] = fig.add_subplot(grid[0, 0])
+            for r in range(3):
+                for c_ in range(4):
+                    if r == 0 and c_ == 0:
+                        continue
+                    sharex = axs[0, 0] if c_ < 2 else None
+                    axs[r, c_] = fig.add_subplot(grid[r, c_], sharex=sharex)
+
+        typeline = GRAPHICStools.listmarkersLS()
+        n_ions = self.SumFlux_GiAll_phi.shape[0]
+
+        # --- Column 0: per-ion particle flux spectra (ES + EM) ---
+        ax = axs[0, 0]
+        for ion in range(n_ions):
+            ax.plot(self.ky, self.SumFlux_GiAll_phi[ion, :], typeline[ion],
+                    color=c, lw=0.7, markersize=2,
+                    label=f"ion {ion+1} ES" if cont == 0 else "")
+            ax.plot(self.ky, self.SumFlux_GiAll_a[ion, :], typeline[ion],
+                    color=c, lw=0.3, markersize=1, alpha=0.5,
+                    label=f"ion {ion+1} EM" if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Gamma_{i,ky}$")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: $\\Gamma_i$ per ion")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 0 row 1: per-ion heat flux spectra ---
+        ax = axs[1, 0]
+        for ion in range(n_ions):
+            ax.plot(self.ky, self.SumFlux_QiAll_phi[ion, :], typeline[ion],
+                    color=c, lw=0.7, markersize=2,
+                    label=f"ion {ion+1} ES" if cont == 0 else "")
+            ax.plot(self.ky, self.SumFlux_QiAll_a[ion, :], typeline[ion],
+                    color=c, lw=0.3, markersize=1, alpha=0.5)
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$Q_{i,ky}$")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: $Q_i$ per ion")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 0 row 2: total momentum flux spectrum ---
+        ax = axs[2, 0]
+        ax.plot(self.ky, self.SumFlux_Mt_phi, "-o", color=c, lw=0.7, markersize=2,
+                label="ES" if cont == 0 else "")
+        ax.plot(self.ky, self.SumFlux_Mt_a, "-s", color=c, lw=0.3, markersize=2,
+                label="EM" if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Pi_{ky}$ (GB)")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: Total momentum $\\Pi$")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 1: cumulative spectra ---
+        ax = axs[0, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Gi), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Gi if hasattr(self, 'Gi') else 0, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $\\Gamma_i$ (summed ions)")
+
+        ax = axs[1, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Qi), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Qi, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $Q_i$ (summed ions)")
+
+        ax = axs[2, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Mt), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Mt, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $\\Pi$ (total momentum)")
+
+        # --- Column 2: per-ion radial scalars ---
+        ax = axs[0, 2]
+        for ion in range(n_ions):
+            Gi_ion = self.GiAll[ion] if hasattr(self, 'GiAll') and len(self.GiAll) > ion else 0.0
+            ax.plot([self.roa], [Gi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Gamma_i$ (GB)")
+        ax.set_title("Profile: $\\Gamma_i$ per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+        ax = axs[1, 2]
+        for ion in range(n_ions):
+            Qi_ion = self.QiAll[ion] if hasattr(self, 'QiAll') and len(self.QiAll) > ion else 0.0
+            ax.plot([self.roa], [Qi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$Q_i$ (GB)")
+        ax.set_title("Profile: $Q_i$ per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+
+        ax = axs[2, 2]
+        ax.plot([self.roa], [self.MtES], "-o", c=c, markersize=5,
+                label="ES" if cont == 0 else "")
+        ax.plot([self.roa], [self.MtEM], "-s", c=c, markersize=5,
+                label="EM" if cont == 0 else "")
+        ax.plot([self.roa], [self.Mt], "-*", c=c, markersize=5,
+                label="ES+EM" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Pi$ (GB)")
+        ax.set_title("Profile: Total momentum $\\Pi$")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 3: per-species momentum spectrum ---
+        ax = axs[0, 3]
+        for sp in range(self.SumFlux_MtAll_phi.shape[0]):
+            lbl = "electrons" if sp == 0 else f"ion {sp}"
+            ax.plot(self.ky, self.SumFlux_MtAll_phi[sp, :], typeline[sp],
+                    color=c, lw=0.7, markersize=2,
+                    label=lbl if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Pi_{ky}$ (GB)")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Momentum (ES) per species")
+        ax.legend(loc="best", title=title_legend)
+
+        ax = axs[1, 3]
+        for ion in range(n_ions):
+            Gi_ion = float(np.sum(self.SumFlux_GiAll_phi[ion, :]))
+            ax.plot([self.roa], [Gi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Gamma_i$ ES (GB)")
+        ax.set_title("Profile: $\\Gamma_i$ ES per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+
+        ax = axs[2, 3]
+        for sp in range(self.SumFlux_MtAll_phi.shape[0]):
+            Mt_sp = float(np.sum(self.SumFlux_MtAll_phi[sp, :]))
+            lbl = "electrons" if sp == 0 else f"ion {sp}"
+            ax.plot([self.roa], [Mt_sp], typeline[sp], c=c, markersize=5,
+                    label=lbl if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Pi$ ES (GB)")
+        ax.set_title("Momentum ES per species")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+    def plotTGLF_SAT(self, axs=None, c="b", label="", cont=0):
+        """
+        Plot scalar saturation parameters (requires scalar_sat_params to be populated).
+        axs must be shape (1, 2). All labels are overlaid on the same axes as colored lines.
+        """
+
+        if not self.scalar_sat_params:
+            return
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(10, 4))
+            grid = plt.GridSpec(1, 2)
+            axs = np.empty((1, 2), dtype=plt.Axes)
+            axs[0, 0] = fig.add_subplot(grid[0, 0])
+            axs[0, 1] = fig.add_subplot(grid[0, 1])
+
+        # ---- left: key scalar SAT parameters, one colored line per label ----
+        scalar_keys = ["ALPHA_ZF", "kymax_out", "vzf_out", "rho_ion", "rho_e",
+                       "ETG_FACTOR", "SAT_geo0_out", "SAT_geo1_out", "SAT_geo2_out"]
+        ax = axs[0, 0]
+        vals_present = {k: self.scalar_sat_params[k] for k in scalar_keys if k in self.scalar_sat_params}
+        if vals_present:
+            ks = list(vals_present.keys())
+            vs = [vals_present[k] for k in ks]
+            xs = np.arange(len(ks))
+            ax.plot(xs, vs, "-o", color=c, lw=1.5, markersize=5, label=label)
+            ax.set_xticks(xs)
+            ax.set_xticklabels(ks, rotation=40, ha="right", fontsize=7)
+            ax.axhline(y=0, ls="--", lw=0.5, c="k")
+            ax.set_title(f"SAT scalars (r/a={self.roa:.3f})")
+            ax.legend(loc="best")
+
+        # ---- right: geometry / normalization parameters as a line plot ----
+        geo_keys = ["Bt0_out", "B_geo0_out", "grad_r0_out", "B_unit", "R_unit", "q_unit"]
+        ax = axs[0, 1]
+        vals_geo = {k: self.scalar_sat_params[k] for k in geo_keys if k in self.scalar_sat_params}
+        if vals_geo:
+            ks = list(vals_geo.keys())
+            vs = [vals_geo[k] for k in ks]
+            xs = np.arange(len(ks))
+            sat_rule = self.scalar_sat_params.get("SAT_RULE", "?")
+            xnu     = self.scalar_sat_params.get("XNU_MODEL", "?")
+            lbl = f"{label}  [SAT{sat_rule}, XNU{xnu}]"
+            ax.plot(xs, vs, "-o", color=c, lw=1.5, markersize=5, label=lbl)
+            ax.set_xticks(xs)
+            ax.set_xticklabels(ks, rotation=40, ha="right", fontsize=7)
+            ax.axhline(y=0, ls="--", lw=0.5, c="k")
+            ax.set_title(f"SAT geometry (r/a={self.roa:.3f})")
+            ax.legend(loc="best")
 
     def plotTGLF_Model(self, c="b", label="", axs=None):
         if axs is None:
@@ -5768,7 +6021,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         for i in [0.3, 1.65]:
             ax.axhline(y=i, lw=0.5, ls="--", c="k")
         ax.set_title("Gaussian Width Spectrum")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 0]
         ax.plot(
@@ -5785,7 +6037,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$kx_e$")
         ax.set_xscale("log")
         ax.set_title("Spectral Shift Spectrum, $<phi|kx/ky|phi>/<phi|phi>$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[0, 1]
         ax.plot(
@@ -5802,7 +6053,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$<p_0>$")
         ax.set_xscale("log")
         ax.set_title("SAT0 normalization")
-        GRAPHICStools.addDenseAxis(ax)
 
 
 def processGrowthRates(k, g, f, gs, fs, klow=0.8, coeff=0):
