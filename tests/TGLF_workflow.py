@@ -8,6 +8,7 @@ cold_start = True
 
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_test"
 input_tglf = __mitimroot__ / "tests" / "data" / "input.tglf"
+npz_file   = folder / "tglf_results.npz"
 
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
@@ -25,7 +26,7 @@ tglf.run(
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="ES (SAT1)")
+tglf.read(label="ES (SAT1)", save_and_cleanup=npz_file)
 
 tglf.run(
     "run2/",
@@ -36,7 +37,7 @@ tglf.run(
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="EM (SAT1)")
+tglf.read(label="EM (SAT1)", save_and_cleanup=npz_file)
 
 tglf.run(
     "run3/",
@@ -47,9 +48,8 @@ tglf.run(
     slurm_setup={"cores": 4, "minutes": 1},
 )
 
-tglf.read(label="EM (SAT3)")
+tglf.read(label="EM (SAT3)", save_and_cleanup=npz_file)
 
-tglf.plot(labels=["EM (SAT1)","ES (SAT1)", "EM (SAT3)"])
-
-# Required if running in non-interactive mode
-tglf.fn.show()
+tglf_loaded = TGLFtools.TGLF.from_npz(npz_file)
+tglf_loaded.plot(labels=["ES (SAT1)", "EM (SAT1)", "EM (SAT3)"])
+tglf_loaded.fn.show()

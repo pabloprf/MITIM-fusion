@@ -306,7 +306,7 @@ class TGLF(SIMtools.mitim_simulation):
         The complementary classmethod TGLF.from_npz(file) reconstructs a functional
         TGLF object from this file.
         """
-        import json
+        import json, io, bz2
 
         file = Path(file)
         arrays = {}
@@ -339,40 +339,16 @@ class TGLF(SIMtools.mitim_simulation):
                 meta[f"{pfx}tglf_version"] = getattr(output, "tglf_version", "")
                 meta[f"{pfx}scalar_sat_params"] = getattr(output, "scalar_sat_params", {})
 
-                # Main spectra — includes all derived slice attributes so that
-                # from_npz() can restore them directly without re-running read().
+                # Base spectra only — derived slices are recomputed by _compute_derived()
+                # on load, so they don't need to be stored.
                 _spectrum_attrs = [
-                    "ky", "Eigenvalues", "g", "f",
-                    "AmplitudeSpectrum", "AmplitudeSpectrum_Te", "AmplitudeSpectrum_ne",
-                    "AmplitudeSpectrum_Ti", "AmplitudeSpectrum_ni",
-                    "nTSpectrum", "neTeSpectrum", "niTiSpectrum",
-                    "FieldSpectrum", "v_spectrum", "phi_spectrum",
-                    "a_par_spectrum", "a_per_spectrum",
+                    "ky", "Eigenvalues",
+                    "AmplitudeSpectrum",
+                    "nTSpectrum",
+                    "FieldSpectrum",
                     "SumFluxSpectrum",
-                    "SumFlux_Qe_phi", "SumFlux_Qe_a_par", "SumFlux_Qe_a_per",
-                    "SumFlux_Qe_a", "SumFlux_Qe",
-                    "SumFlux_Ge_phi", "SumFlux_Ge_a_par", "SumFlux_Ge_a_per",
-                    "SumFlux_Ge_a", "SumFlux_Ge",
-                    "SumFlux_QiAll_phi", "SumFlux_QiAll_a_par", "SumFlux_QiAll_a_per",
-                    "SumFlux_QiAll_a", "SumFlux_QiAll",
-                    "SumFlux_Qi_phi", "SumFlux_Qi_a", "SumFlux_Qi",
-                    "SumFlux_GiAll_phi", "SumFlux_GiAll_a", "SumFlux_GiAll",
-                    "SumFlux_Gi_phi", "SumFlux_Gi_a", "SumFlux_Gi",
-                    "SumFlux_MtAll_phi", "SumFlux_MtAll_a", "SumFlux_MtAll",
-                    "SumFlux_Mt_phi", "SumFlux_Mt_a", "SumFlux_Mt",
-                    # QL flux spectrum — full array plus all derived slices used by plotTGLF_Field
                     "QLFluxSpectrum",
-                    "QLFluxSpectrum_Ge_phi", "QLFluxSpectrum_Qe_phi",
-                    "QLFluxSpectrum_GiAll_phi", "QLFluxSpectrum_Gi_phi",
-                    "QLFluxSpectrum_QiAll_phi", "QLFluxSpectrum_Qi_phi",
-                    "QLFluxSpectrum_Ge_a_par", "QLFluxSpectrum_Qe_a_par",
-                    "QLFluxSpectrum_GiAll_a_par", "QLFluxSpectrum_Gi_a_par",
-                    "QLFluxSpectrum_QiAll_a_par", "QLFluxSpectrum_Qi_a_par",
-                    "QLFluxSpectrum_Ge_a_per", "QLFluxSpectrum_Qe_a_per",
-                    "QLFluxSpectrum_GiAll_a_per", "QLFluxSpectrum_Gi_a_per",
-                    "QLFluxSpectrum_QiAll_a_per", "QLFluxSpectrum_Qi_a_per",
-                    "IntensitySpectrum", "IntensitySpectrum_ne", "IntensitySpectrum_Te",
-                    "IntensitySpectrum_ni", "IntensitySpectrum_Ti",
+                    "IntensitySpectrum",
                 ]
                 for attr in _spectrum_attrs:
                     if hasattr(output, attr):
@@ -411,6 +387,23 @@ class TGLF(SIMtools.mitim_simulation):
                         arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
 
 
+        # ---- Wavefunction data ----
+        # Structure: results[label]["wavefunction"][f"ky{val}"][rho] = dict of arrays
+        # Field names contain parens (e.g. "RE(phi)") so we sanitize them for npz keys.
+        _wf_safe = lambda n: n.replace("(", "").replace(")", "")
+        for label in self.results:
+            wf_data = self.results[label].get("wavefunction", {})
+            ky_keys = [k for k in wf_data if wf_data[k]]  # non-empty ky entries
+            meta[f"{label}__wf_ky_keys"] = ky_keys
+            for ky_key in ky_keys:
+                for irho, rho_val in enumerate(self.rhos):
+                    if rho_val not in wf_data[ky_key]:
+                        continue
+                    wf = wf_data[ky_key][rho_val]
+                    pfx_wf = f"wf__{label}__{ky_key}__{irho}__"
+                    for field, arr in wf.items():
+                        arrays[pfx_wf + _wf_safe(field)] = np.asarray(arr, dtype=np.float32)
+
         # ---- Normalization (SELECTED set only — pure numpy arrays) ----
         norm = self.NormalizationSets.get("SELECTED")
         if norm is not None:
@@ -430,16 +423,36 @@ class TGLF(SIMtools.mitim_simulation):
                 except (TypeError, ValueError):
                     pass
 
+        # ---- Scan data (aggregated arrays from read_scan) ----
+        meta["scan_labels"] = list(self.scans.keys())
+        meta["ion_OI_position_in_total_padded_list_scan"] = getattr(
+            self, "ion_OI_position_in_total_padded_list_scan", 3)
+        meta["variablesDrives"] = list(getattr(self, "variablesDrives", []))
+        for scan_label in self.scans:
+            scan = self.scans[scan_label]
+            spfx = f"scan__{scan_label}__"
+            meta[f"{spfx}variable"] = scan.get("variable", "")
+            meta[f"{spfx}positionBase"] = scan.get("positionBase")
+            meta[f"{spfx}unnorm_ok"] = bool(scan.get("unnormalization_successful", True))
+            meta[f"{spfx}results_tags"] = list(scan.get("results_tags", []))
+            for k, v in scan.items():
+                if isinstance(v, np.ndarray):
+                    arrays[spfx + k] = v.astype(np.float32)
+
         # ---- Metadata packed as JSON bytes ----
         meta_bytes = np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8)
         arrays["__meta__"] = meta_bytes
 
-        np.savez_compressed(file, **arrays)
+        # Pack all arrays into one uncompressed zip stream, then bz2-compress the
+        # whole thing.  Cross-array bz2 compression is ~4× smaller than compressing
+        # each array independently as np.savez_compressed does.
+        import io, bz2
+        buf = io.BytesIO()
+        np.savez(buf, **arrays)
+        file.write_bytes(bz2.compress(buf.getvalue(), compresslevel=9))
 
-        # Report size (np.savez_compressed appends .npz if not present)
-        npz_path = file.with_suffix(".npz") if file.suffix != ".npz" else file
-        size_kb = npz_path.stat().st_size / 1024
-        print(f"> Saved TGLF results to {IOtools.clipstr(npz_path)} ({size_kb:.1f} kB)")
+        size_kb = file.stat().st_size / 1024
+        print(f"> Saved TGLF results to {IOtools.clipstr(file)} ({size_kb:.1f} kB)")
 
     @classmethod
     def from_npz(cls, file):
@@ -450,13 +463,14 @@ class TGLF(SIMtools.mitim_simulation):
         the stored results.  Methods that require the raw run folders, TGYRO objects,
         or profiles (GACODE profile tabs, renormalization) are not available.
         """
-        import json
+        import json, io, bz2
 
         file = Path(file)
-        if file.suffix != ".npz":
-            file = file.with_suffix(".npz")
-
-        data = np.load(file, allow_pickle=False)
+        raw = file.read_bytes()
+        # Auto-detect bz2 (magic b"BZh") vs legacy plain-npz
+        if raw[:3] == b"BZh":
+            raw = bz2.decompress(raw)
+        data = np.load(io.BytesIO(raw), allow_pickle=False)
         meta = json.loads(data["__meta__"].tobytes().decode("utf-8"))
 
         from mitim_tools.simulation_tools import SIMtools
@@ -500,7 +514,29 @@ class TGLF(SIMtools.mitim_simulation):
             res["DRMAJDX_LOC"] = meta.get(f"{label}__DRMAJDX_LOC", {})
             res["convolution_fun_fluct"] = None
             res["profiles"] = None
-            res["wavefunction"] = {}
+
+            # Restore wavefunction data
+            _wf_orig = {"REphi": "RE(phi)", "IMphi": "IM(phi)",
+                        "REBper": "RE(Bper)", "IMBper": "IM(Bper)",
+                        "REBpar": "RE(Bpar)", "IMBpar": "IM(Bpar)"}
+            ky_keys = meta.get(f"{label}__wf_ky_keys", [])
+            wf_dict = {}
+            n_rhos_wf = len(meta[f"{label}__x"])
+            for ky_key in ky_keys:
+                wf_dict[ky_key] = {}
+                for irho_wf in range(n_rhos_wf):
+                    rho_val = meta[f"{label}__x"][irho_wf]
+                    pfx_wf = f"wf__{label}__{ky_key}__{irho_wf}__"
+                    wf = {}
+                    for safe, orig in {**_wf_orig,
+                                       "theta": "theta", "ky": "ky",
+                                       "gamma": "gamma", "freq": "freq"}.items():
+                        key = pfx_wf + safe
+                        if key in data:
+                            wf[orig] = data[key].astype(np.float64)
+                    if wf:
+                        wf_dict[ky_key][rho_val] = wf
+            res["wavefunction"] = wf_dict
 
             outputs, inputclasses, parseds = [], [], []
 
@@ -555,6 +591,9 @@ class TGLF(SIMtools.mitim_simulation):
                 input_dict = SIMtools.buildDictFromInput(output.inputFile)
                 output.inputclass = TGLFinput.initialize_in_memory(input_dict)
 
+                # Re-derive all slice attributes from base spectra
+                output._compute_derived()
+
                 # Re-derive postprocess metrics (requires SumFlux_* to be set)
                 output.postprocess()
 
@@ -566,6 +605,27 @@ class TGLF(SIMtools.mitim_simulation):
             res["inputclasses"] = inputclasses
             res["parsed"] = parseds
             tglf.results[label] = res
+
+        # ---- Restore scan data ----
+        tglf.ion_OI_position_in_total_padded_list_scan = int(
+            meta.get("ion_OI_position_in_total_padded_list_scan", 3))
+        tglf.variablesDrives = list(meta.get("variablesDrives", []))
+        tglf.scans = {}
+        for scan_label in meta.get("scan_labels", []):
+            spfx = f"scan__{scan_label}__"
+            scan = {}
+            scan["variable"] = meta.get(f"{spfx}variable", "")
+            scan["positionBase"] = meta.get(f"{spfx}positionBase")
+            scan["unnormalization_successful"] = bool(meta.get(f"{spfx}unnorm_ok", True))
+            scan["results_tags"] = list(meta.get(f"{spfx}results_tags", []))
+            for key in data.files:
+                if key.startswith(spfx):
+                    k = key[len(spfx):]
+                    scan[k] = data[key].astype(np.float64)
+            # x (rho values) must exactly match self.rhos; restore from meta to avoid
+            # float32 round-trip precision drift that breaks == comparisons in plot_scan
+            scan["x"] = np.array(meta["rhos"])
+            tglf.scans[scan_label] = scan
 
         print(f"> Loaded TGLF results from {IOtools.clipstr(file)} "
               f"({len(tglf.results)} label(s), {len(tglf.rhos)} rho(s))")
@@ -763,6 +823,7 @@ class TGLF(SIMtools.mitim_simulation):
         cold_startWF = True, # If this is a "complete" read, I will assign a None
         require_all_files = True,   # If False, I only need the fluxes
         input_gacode = None, # Only needed to grab normalizations if they weren't populated already (e.g. this is just a "read" of an already run folder
+        save_and_cleanup = None,  # If a Path/str is given, save npz there then delete the raw run folder
     ):
         print("> Reading TGLF results")
 
@@ -860,6 +921,13 @@ class TGLF(SIMtools.mitim_simulation):
         # After read, go back to no waveforms in case I want to read another case without it
         if cold_startWF:
             self.ky_single = None
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            if folder is not None and folder.exists():
+                import shutil
+                shutil.rmtree(folder)
+                print(f"\t- Removed raw run folder: {IOtools.clipstr(folder)}", typeMsg="i")
 
     def plot(
         self,
@@ -2246,6 +2314,7 @@ class TGLF(SIMtools.mitim_simulation):
         subfolder=None,
         variable="RLTS_1",
         ion_OI_position_in_total_padded_list=3,
+        save_and_cleanup=None,  # If a Path/str is given, save npz there then delete the raw scan subfolder
     ):
         
         ion_OI_position_in_ion_list = ion_OI_position_in_total_padded_list - 2
@@ -2299,8 +2368,18 @@ class TGLF(SIMtools.mitim_simulation):
                 axes_swap = [1, 2, 0] # [rho, scan, ky]
             elif len(self.scans[label][var].shape) == 4:
                 axes_swap = [2, 3, 1, 0] # [rho, scan, nmode, ky]
-                
+
             self.scans[label][var] = np.transpose(self.scans[label][var], axes=axes_swap)
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            resolved_subfolder = subfolder if subfolder is not None else self.subfolder_scan
+            if resolved_subfolder is not None:
+                import shutil
+                for d in sorted(self.FolderGACODE.glob(f"{resolved_subfolder}_*")):
+                    if d.is_dir():
+                        shutil.rmtree(d)
+                        print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
 
     def plot_scan(
         self,
@@ -2852,6 +2931,7 @@ class TGLF(SIMtools.mitim_simulation):
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         minimum_delta_abs={},
         ion_OI_position_in_total_padded_list=2,
+        save_and_cleanup=None,  # If a Path/str, save npz there then delete raw scan folders
         **kwargs_TGLFrun,
     ):
         
@@ -2923,7 +3003,15 @@ class TGLF(SIMtools.mitim_simulation):
 
             scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.read_scan(label=scan_name, variable=variable,ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list)
+            self.read_scan(label=scan_name, variable=variable, ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list)
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            import shutil
+            for d in sorted(self.FolderGACODE.glob(f"{subfolder}_*")):
+                if d.is_dir():
+                    shutil.rmtree(d)
+                    print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
@@ -4161,6 +4249,135 @@ class TGLFoutput(SIMtools.GACODEoutput):
         self.MtES = np.sum(self.SumFlux_Mt_phi)
         self.MtEM = np.sum(self.SumFlux_Mt_a)
 
+    def _compute_derived(self):
+        """
+        Re-derive all slice attributes from the stored base spectra.
+
+        Requires that the following base attributes are already set on self:
+          Eigenvalues, AmplitudeSpectrum, nTSpectrum, FieldSpectrum,
+          SumFluxSpectrum, QLFluxSpectrum, IntensitySpectrum,
+          ions_included, fields, num_fields, inputclass
+        """
+        # ---- Eigenvalues -> g, f ----
+        self.g = self.Eigenvalues[0, :, :]
+        self.f = self.Eigenvalues[1, :, :]
+
+        # ---- AmplitudeSpectrum slices ----
+        self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
+        self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
+        self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
+        self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
+
+        # ---- nTSpectrum slices ----
+        self.neTeSpectrum = self.nTSpectrum[0, :, :]
+        self.niTiSpectrum = self.nTSpectrum[1:, :, :]
+
+        # ---- FieldSpectrum slices ----
+        self.v_spectrum   = self.FieldSpectrum[0, :, :]
+        self.phi_spectrum = self.FieldSpectrum[1, :, :]
+        self.a_par_spectrum = self.FieldSpectrum[2, :, :]
+        self.a_per_spectrum = self.FieldSpectrum[3, :, :]
+
+        # ---- SumFluxSpectrum slices ----
+        self.SumFlux_Qe_phi   = self.SumFluxSpectrum[1, 0, 0, :]
+        self.SumFlux_Ge_phi   = self.SumFluxSpectrum[0, 0, 0, :]
+        self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
+
+        contF = 0
+        if "a_par" in self.fields:
+            self.SumFlux_Qe_a_par    = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+            self.SumFlux_Ge_a_par    = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+            self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+            contF += 1
+        else:
+            self.SumFlux_Qe_a_par    = self.SumFlux_Qe_phi * 0.0
+            self.SumFlux_Ge_a_par    = self.SumFlux_Ge_phi * 0.0
+            self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
+
+        if "a_per" in self.fields:
+            self.SumFlux_Qe_a_per    = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+            self.SumFlux_Ge_a_per    = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+            self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+        else:
+            self.SumFlux_Qe_a_per    = self.SumFlux_Qe_phi * 0.0
+            self.SumFlux_Ge_a_per    = self.SumFlux_Ge_phi * 0.0
+            self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
+
+        self.SumFlux_Qe_a    = self.SumFlux_Qe_a_par    + self.SumFlux_Qe_a_per
+        self.SumFlux_Ge_a    = self.SumFlux_Ge_a_par    + self.SumFlux_Ge_a_per
+        self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
+
+        self.SumFlux_Qe    = self.SumFlux_Qe_phi    + self.SumFlux_Qe_a
+        self.SumFlux_Ge    = self.SumFlux_Ge_phi    + self.SumFlux_Ge_a
+        self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
+
+        sum_ions = tuple([i - 1 for i in self.ions_included])
+
+        self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
+        self.SumFlux_Qi_a   = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
+        self.SumFlux_Qi     = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
+
+        self.SumFlux_GiAll_phi = self.SumFluxSpectrum[0, 1:, 0, :]
+        self.SumFlux_GiAll_a   = (self.SumFluxSpectrum[0, 1:, 1, :] if self.num_fields > 1
+                                   else self.SumFlux_GiAll_phi * 0.0)
+        self.SumFlux_GiAll     = self.SumFlux_GiAll_phi + self.SumFlux_GiAll_a
+        self.SumFlux_Gi_phi    = self.SumFlux_GiAll_phi[sum_ions, :].sum(axis=0)
+        self.SumFlux_Gi_a      = self.SumFlux_GiAll_a[sum_ions, :].sum(axis=0)
+        self.SumFlux_Gi        = self.SumFlux_Gi_phi + self.SumFlux_Gi_a
+
+        signMt = -self.inputclass.plasma['SIGN_IT']
+        self.SumFlux_MtAll_phi = self.SumFluxSpectrum[2, :, 0, :] * signMt
+        self.SumFlux_MtAll_a   = (self.SumFluxSpectrum[2, :, 1, :] * signMt if self.num_fields > 1
+                                   else self.SumFlux_MtAll_phi * 0.0)
+        self.SumFlux_MtAll     = self.SumFlux_MtAll_phi + self.SumFlux_MtAll_a
+        self.SumFlux_Mt_phi    = self.SumFlux_MtAll_phi.sum(axis=0)
+        self.SumFlux_Mt_a      = self.SumFlux_MtAll_a.sum(axis=0)
+        self.SumFlux_Mt        = self.SumFlux_Mt_phi + self.SumFlux_Mt_a
+
+        # ---- QLFluxSpectrum slices ----
+        self.QLFluxSpectrum_Ge_phi    = self.QLFluxSpectrum[0, 0, 0, :, :]
+        self.QLFluxSpectrum_Qe_phi    = self.QLFluxSpectrum[1, 0, 0, :, :]
+        self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
+        self.QLFluxSpectrum_Gi_phi    = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(axis=0)
+        self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
+        self.QLFluxSpectrum_Qi_phi    = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(axis=0)
+
+        if "a_par" in self.fields:
+            self.QLFluxSpectrum_Ge_a_par    = self.QLFluxSpectrum[0, 0, 1, :, :]
+            self.QLFluxSpectrum_Qe_a_par    = self.QLFluxSpectrum[1, 0, 1, :, :]
+            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
+            self.QLFluxSpectrum_Gi_a_par    = self.QLFluxSpectrum_GiAll_a_par[sum_ions, :].sum(axis=0)
+            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
+            self.QLFluxSpectrum_Qi_a_par    = self.QLFluxSpectrum_QiAll_a_par[sum_ions, :].sum(axis=0)
+        else:
+            self.QLFluxSpectrum_Ge_a_par    = self.QLFluxSpectrum_Ge_phi * 0.0
+            self.QLFluxSpectrum_Qe_a_par    = self.QLFluxSpectrum_Qe_phi * 0.0
+            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Gi_a_par    = self.QLFluxSpectrum_Qi_phi * 0.0
+            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Qi_a_par    = self.QLFluxSpectrum_Qi_phi * 0.0
+
+        if "a_per" in self.fields:
+            self.QLFluxSpectrum_Ge_a_per    = self.QLFluxSpectrum[0, 0, 2, :, :]
+            self.QLFluxSpectrum_Qe_a_per    = self.QLFluxSpectrum[1, 0, 2, :, :]
+            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
+            self.QLFluxSpectrum_Gi_a_per    = self.QLFluxSpectrum_GiAll_a_per[sum_ions, :].sum(axis=0)
+            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
+            self.QLFluxSpectrum_Qi_a_per    = self.QLFluxSpectrum_QiAll_a_per[sum_ions, :].sum(axis=0)
+        else:
+            self.QLFluxSpectrum_Ge_a_per    = self.QLFluxSpectrum_Ge_phi * 0.0
+            self.QLFluxSpectrum_Qe_a_per    = self.QLFluxSpectrum_Qe_phi * 0.0
+            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
+            self.QLFluxSpectrum_Gi_a_per    = self.QLFluxSpectrum_Gi_phi * 0.0
+            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Qi_a_per    = self.QLFluxSpectrum_Qi_phi * 0.0
+
+        # ---- IntensitySpectrum slices ----
+        self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
+        self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
+        self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
+        self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
+
     # Redefined because of very specific TGLF stuff
     def read(self,require_all_files=True):
         # --------------------------------------------------------------------------------
@@ -4250,9 +4467,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 .transpose((2, 1, 0))
             )
 
-            self.g = self.Eigenvalues[0, :, :]
-            self.f = self.Eigenvalues[1, :, :]
-
             # ------------------------------------------------------------------------
             # TGLF model
             # ------------------------------------------------------------------------
@@ -4304,12 +4518,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             self.num_species = self.AmplitudeSpectrum.shape[1]
 
-            self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
-            self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
-
-            self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
-            self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
-
             # ------------------------------------------------------------------------
             # Cross Phase Spectrum
             # ------------------------------------------------------------------------
@@ -4323,9 +4531,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [species,nmode,ky]
             self.nTSpectrum = datanT.transpose((0, 2, 1)) * 180 / (np.pi)
-
-            self.neTeSpectrum = self.nTSpectrum[0, :, :]
-            self.niTiSpectrum = self.nTSpectrum[1:, :, :]
 
             # ----------------------------------------------------------------------------------------
             # Field Spectrum (gyro-bohm normalized field fluctuation intensity spectra per mode)
@@ -4347,11 +4552,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 self.FieldSpectrum[2, i] = data[0, :, 4 * i + 2]
                 self.FieldSpectrum[3, i] = data[0, :, 4 * i + 3]
             # *************************************************
-
-            self.v_spectrum = self.FieldSpectrum[0, :, :]
-            self.phi_spectrum = self.FieldSpectrum[1, :, :]
-            self.a_par_spectrum = self.FieldSpectrum[2, :, :]
-            self.a_per_spectrum = self.FieldSpectrum[3, :, :]
 
             with open(
                 self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix), "r"
@@ -4390,66 +4590,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [quantity,species,field,ky]
             self.SumFluxSpectrum = data_re.transpose((3, 0, 1, 2))
-            # *************************************************
-
-            self.SumFlux_Qe_phi = self.SumFluxSpectrum[1, 0, 0, :]
-            self.SumFlux_Ge_phi = self.SumFluxSpectrum[0, 0, 0, :]
-            self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
-
-            contF = 0
-            if "a_par" in self.fields:
-                self.SumFlux_Qe_a_par = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-                self.SumFlux_Ge_a_par = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-                self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-                contF += 1
-            else:
-                self.SumFlux_Qe_a_par = self.SumFlux_Qe_phi * 0.0
-                self.SumFlux_Ge_a_par = self.SumFlux_Ge_phi * 0.0
-                self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
-
-            if "a_per" in self.fields:
-                self.SumFlux_Qe_a_per = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-                self.SumFlux_Ge_a_per = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-                self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-                contF += 1
-            else:
-                self.SumFlux_Qe_a_per = self.SumFlux_Qe_phi * 0.0
-                self.SumFlux_Ge_a_per = self.SumFlux_Ge_phi * 0.0
-                self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
-
-            self.SumFlux_Qe_a = self.SumFlux_Qe_a_par + self.SumFlux_Qe_a_per
-            self.SumFlux_Ge_a = self.SumFlux_Ge_a_par + self.SumFlux_Ge_a_per
-            self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
-
-            self.SumFlux_Qe = self.SumFlux_Qe_phi + self.SumFlux_Qe_a
-            self.SumFlux_Ge = self.SumFlux_Ge_phi + self.SumFlux_Ge_a
-            self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
-
-            # Sum ion contributions
 
             print(f"\t\t- For Qi spectrum, summing contributions from ions {self.ions_included} (#0 is e-)",typeMsg="i",)
-            sum_ions = tuple([i - 1 for i in self.ions_included])
-
-            self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
-            self.SumFlux_Qi_a = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
-            self.SumFlux_Qi = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
-
-            # Per-ion and total particle flux spectra [species, ky]
-            self.SumFlux_GiAll_phi = self.SumFluxSpectrum[0, 1:, 0, :]
-            self.SumFlux_GiAll_a = self.SumFluxSpectrum[0, 1:, 1, :] if self.num_fields > 1 else self.SumFlux_GiAll_phi * 0.0
-            self.SumFlux_GiAll = self.SumFlux_GiAll_phi + self.SumFlux_GiAll_a
-            self.SumFlux_Gi_phi = self.SumFlux_GiAll_phi[sum_ions, :].sum(axis=0)
-            self.SumFlux_Gi_a = self.SumFlux_GiAll_a[sum_ions, :].sum(axis=0)
-            self.SumFlux_Gi = self.SumFlux_Gi_phi + self.SumFlux_Gi_a
-
-            # Momentum (toroidal stress) flux spectra [species, ky] — sign applied as in gbflux
-            signMt = -self.inputclass.plasma['SIGN_IT']
-            self.SumFlux_MtAll_phi = self.SumFluxSpectrum[2, :, 0, :] * signMt  # all species incl. electrons
-            self.SumFlux_MtAll_a = (self.SumFluxSpectrum[2, :, 1, :] * signMt if self.num_fields > 1 else self.SumFlux_MtAll_phi * 0.0)
-            self.SumFlux_MtAll = self.SumFlux_MtAll_phi + self.SumFlux_MtAll_a
-            self.SumFlux_Mt_phi = self.SumFlux_MtAll_phi.sum(axis=0)  # total ES momentum spectrum
-            self.SumFlux_Mt_a = self.SumFlux_MtAll_a.sum(axis=0)      # total EM momentum spectrum
-            self.SumFlux_Mt = self.SumFlux_Mt_phi + self.SumFlux_Mt_a
 
             # ------------------------------------------------------------------------
             # QL Flux Spectrum (QL weights per mode)
@@ -4462,8 +4604,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 columns=None,
                 numky=self.num_ky,
             )
-
-            # Re-arrange to separa specie and field
 
             data_re = np.reshape(
                 data,
@@ -4479,72 +4619,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [quantity,species,field,nmode,ky]
             self.QLFluxSpectrum = data_re.transpose((4, 0, 1, 2, 3))
-            # *************************************************
-
-            self.QLFluxSpectrum_Ge_phi = self.QLFluxSpectrum[0, 0, 0, :, :]
-            self.QLFluxSpectrum_Qe_phi = self.QLFluxSpectrum[1, 0, 0, :, :]
-
-            self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
-            self.QLFluxSpectrum_Gi_phi = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(
-                axis=0
-            )  # Sum over ions
-            self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
-            self.QLFluxSpectrum_Qi_phi = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(
-                axis=0
-            )  # Sum over ions
-
-            contF = 1
-            if "a_par" in self.fields:
-                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum[0, 0, 1, :, :]
-                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum[1, 0, 1, :, :]
-
-                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
-                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_GiAll_a_par[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
-                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_QiAll_a_par[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                contF += 1
-            else:
-                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum_Ge_phi * 0.0
-                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum_Qe_phi * 0.0
-
-                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
-                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
-
-            if "a_per" in self.fields:
-                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum[0, 0, 2, :, :]
-                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum[1, 0, 2, :, :]
-
-                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
-                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_GiAll_a_per[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
-                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_QiAll_a_per[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                contF += 1
-            else:
-                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum_Ge_phi * 0.0
-                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum_Qe_phi * 0.0
-
-                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
-                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_Gi_phi * 0.0
-                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_Qi_phi * 0.0
 
             # ------------------------------------------------------------------------
             # Intensity Spectrum
@@ -4566,11 +4640,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
             # Using my convention of [quantity=(density,temperature,parallel velocity,parallel energy),species,nmode,ky]
             self.IntensitySpectrum = data_re.transpose((3, 0, 1, 2))
 
-            self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
-            self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
-
-            self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
-            self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
+            # Re-derive all slice attributes from the base spectra
+            self._compute_derived()
 
         else:
             self.ky = np.zeros((1,))
