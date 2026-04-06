@@ -439,6 +439,21 @@ class TGLF(SIMtools.mitim_simulation):
                 if isinstance(v, np.ndarray):
                     arrays[spfx + k] = v.astype(np.float32)
 
+        # ---- 2-D scan data (aggregated arrays from read_scan2d) ----
+        scans2d = getattr(self, "scans2d", {})
+        scan2d_configs = getattr(self, "scan2d_configs", {})
+        meta["scan2d_labels"] = list(scans2d.keys())
+        meta["scan2d_configs"] = scan2d_configs
+        for scan_label in scans2d:
+            scan = scans2d[scan_label]
+            spfx = f"scan2d__{scan_label}__"
+            meta[f"{spfx}variable1"] = scan.get("variable1", "")
+            meta[f"{spfx}variable2"] = scan.get("variable2", "")
+            meta[f"{spfx}ky_target"] = float(scan.get("ky_target", 0.3))
+            for k, v in scan.items():
+                if isinstance(v, np.ndarray):
+                    arrays[spfx + k] = v.astype(np.float32)
+
         # ---- Metadata packed as JSON bytes ----
         meta_bytes = np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8)
         arrays["__meta__"] = meta_bytes
@@ -626,6 +641,25 @@ class TGLF(SIMtools.mitim_simulation):
             # float32 round-trip precision drift that breaks == comparisons in plot_scan
             scan["x"] = np.array(meta["rhos"])
             tglf.scans[scan_label] = scan
+
+        # ---- Restore 2-D scan data ----
+        tglf.scan2d_configs = meta.get("scan2d_configs", {})
+        # subfolder_scan: the last subfolder used; infer from configs if possible
+        _cfg_keys = list(tglf.scan2d_configs.keys())
+        tglf.subfolder_scan = _cfg_keys[-1] if _cfg_keys else getattr(tglf, "subfolder_scan", None)
+        tglf.scans2d = {}
+        for scan_label in meta.get("scan2d_labels", []):
+            spfx = f"scan2d__{scan_label}__"
+            scan = {}
+            scan["variable1"]  = meta.get(f"{spfx}variable1", "")
+            scan["variable2"]  = meta.get(f"{spfx}variable2", "")
+            scan["ky_target"]  = float(meta.get(f"{spfx}ky_target", 0.3))
+            scan["x"] = np.array(meta["rhos"])
+            for key in data.files:
+                if key.startswith(spfx):
+                    k = key[len(spfx):]
+                    scan[k] = data[key].astype(np.float64)
+            tglf.scans2d[scan_label] = scan
 
         print(f"> Loaded TGLF results from {IOtools.clipstr(file)} "
               f"({len(tglf.results)} label(s), {len(tglf.rhos)} rho(s))")
@@ -2380,6 +2414,341 @@ class TGLF(SIMtools.mitim_simulation):
                     if d.is_dir():
                         shutil.rmtree(d)
                         print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
+
+    # =========================================================================
+    # 2-D parameter scan
+    # =========================================================================
+
+    def run_scan2d(
+        self,
+        subfolder,
+        variable1,
+        varUpDown1,
+        variable2,
+        varUpDown2,
+        save_and_cleanup=None,
+        **kwargs_run,
+    ):
+        """
+        Run a 2-D grid scan varying two TGLF input parameters simultaneously.
+
+        All (mult1, mult2) combinations are prepared in a single code_executor
+        and submitted together for efficiency.  Folder names follow the pattern:
+          {subfolder}_{variable1}_{mult1}_{variable2}_{mult2}
+
+        kwargs_run is forwarded to _run_prepare / _run (code_settings, extraOptions,
+        cold_start, slurm_setup, …).
+        """
+        self.subfolder_scan = subfolder
+        if not hasattr(self, "scan2d_configs"):
+            self.scan2d_configs = {}
+        varUpDown1 = list(varUpDown1)
+        varUpDown2 = list(varUpDown2)
+        self.scan2d_configs[subfolder] = {
+            "variable1": variable1, "varUpDown1": varUpDown1,
+            "variable2": variable2, "varUpDown2": varUpDown2,
+        }
+
+        code_executor = {}
+        code_executor_full = {}
+        folders = {}
+        first = True
+
+        for mult1 in varUpDown1:
+            m1 = round(float(mult1), 6)
+            for mult2 in varUpDown2:
+                m2 = round(float(mult2), 6)
+                run_name = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                kw = dict(kwargs_run)
+                kw["forceIfcold_start"] = (not first) or kw.get("forceIfcold_start", False)
+                code_executor, code_executor_full = self._run_prepare(
+                    run_name,
+                    code_executor=code_executor,
+                    code_executor_full=code_executor_full,
+                    multipliers={variable1: m1, variable2: m2},
+                    **kw,
+                )
+                folders[(m1, m2)] = copy.deepcopy(self.FolderSimLast)
+                first = False
+
+        self._run(code_executor, code_executor_full=code_executor_full, **kwargs_run)
+
+        for mult1 in varUpDown1:
+            m1 = round(float(mult1), 6)
+            for mult2 in varUpDown2:
+                m2 = round(float(mult2), 6)
+                run_name = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                self.read(
+                    label=run_name,
+                    folder=folders[(m1, m2)],
+                    cold_startWF=False,
+                    require_all_files=not kwargs_run.get("only_minimal_files", False),
+                )
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            import shutil
+            for d in sorted(self.FolderGACODE.glob(f"{subfolder}_*")):
+                if d.is_dir():
+                    shutil.rmtree(d)
+                    print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
+
+    def read_scan2d(
+        self,
+        label,
+        subfolder=None,
+        variable1=None,
+        varUpDown1=None,
+        variable2=None,
+        varUpDown2=None,
+        ion_OI_position_in_total_padded_list=3,
+        ky_target=0.3,
+    ):
+        """
+        Aggregate 2-D scan results into self.scans2d[label].
+
+        Arrays in scans2d[label] have shape (n_rhos, n1, n2).
+        """
+        if subfolder is None:
+            subfolder = getattr(self, "subfolder_scan", None)
+        if not hasattr(self, "scan2d_configs"):
+            self.scan2d_configs = {}
+        cfg = self.scan2d_configs.get(subfolder, {})
+        variable1   = variable1   or cfg.get("variable1")
+        varUpDown1  = list(varUpDown1  if varUpDown1  is not None else cfg.get("varUpDown1",  []))
+        variable2   = variable2   or cfg.get("variable2")
+        varUpDown2  = list(varUpDown2  if varUpDown2  is not None else cfg.get("varUpDown2",  []))
+
+        ion_idx = ion_OI_position_in_total_padded_list - 2
+
+        if not hasattr(self, "scans2d"):
+            self.scans2d = {}
+
+        n1, n2, nr = len(varUpDown1), len(varUpDown2), len(self.rhos)
+
+        arrs = {k: np.full((nr, n1, n2), np.nan)
+                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "g_ky")}
+        v1_abs = np.full((nr, n1, n2), np.nan)
+        v2_abs = np.full((nr, n1, n2), np.nan)
+
+        # Find n_ky from the first available result so we can pre-allocate spectra arrays.
+        n_ky = None
+        for _m1 in varUpDown1:
+            for _m2 in varUpDown2:
+                _rk = f"{subfolder}_{variable1}_{round(float(_m1),6)}_{variable2}_{round(float(_m2),6)}"
+                if _rk in self.results and self.results[_rk]["output"]:
+                    _out0 = self.results[_rk]["output"][0]
+                    if hasattr(_out0, "ky") and _out0.ky is not None:
+                        n_ky = len(_out0.ky)
+                        break
+            if n_ky is not None:
+                break
+
+        if n_ky is not None:
+            ky_arr     = np.full((nr, n_ky), np.nan)
+            g_spectra  = np.full((nr, n1, n2, n_ky), np.nan)   # growth rate spectrum
+            f_spectra  = np.full((nr, n1, n2, n_ky), np.nan)   # real frequency spectrum
+        else:
+            ky_arr = g_spectra = f_spectra = None
+
+        for i1, mult1 in enumerate(varUpDown1):
+            m1 = round(float(mult1), 6)
+            for i2, mult2 in enumerate(varUpDown2):
+                m2    = round(float(mult2), 6)
+                rkey  = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                if rkey not in self.results:
+                    print(f"\t- Result not found: {rkey}", typeMsg="w")
+                    continue
+                for irho in range(nr):
+                    out    = self.results[rkey]["output"][irho]
+                    parsed = self.results[rkey]["parsed"][irho]
+                    arrs["Qe_gb"][irho, i1, i2] = out.Qe
+                    arrs["Qi_gb"][irho, i1, i2] = out.Qi
+                    arrs["Ge_gb"][irho, i1, i2] = out.Ge
+                    arrs["Gi_gb"][irho, i1, i2] = float(out.GiAll[ion_idx]) if hasattr(out, "GiAll") and len(out.GiAll) > ion_idx else np.nan
+                    ky_idx = int(np.argmin(np.abs(out.ky - ky_target)))
+                    arrs["g_ky"][irho, i1, i2]  = float(out.g[0, ky_idx])
+                    if parsed:
+                        v1_abs[irho, i1, i2] = float(parsed.get(variable1, np.nan))
+                        v2_abs[irho, i1, i2] = float(parsed.get(variable2, np.nan))
+
+                    # Full spectra (most-unstable mode, index 0)
+                    if n_ky is not None and hasattr(out, "g") and out.g is not None:
+                        if out.g.shape[1] == n_ky:
+                            g_spectra[irho, i1, i2, :] = out.g[0, :]
+                    if n_ky is not None and hasattr(out, "f") and out.f is not None:
+                        if out.f.shape[1] == n_ky:
+                            f_spectra[irho, i1, i2, :] = out.f[0, :]
+                    if n_ky is not None and hasattr(out, "ky") and out.ky is not None:
+                        if len(out.ky) == n_ky:
+                            ky_arr[irho, :] = out.ky
+
+        self.scans2d[label] = {
+            "variable1": variable1, "varUpDown1": np.array(varUpDown1),
+            "variable2": variable2, "varUpDown2": np.array(varUpDown2),
+            "x": np.array(self.rhos),
+            "v1_abs": v1_abs, "v2_abs": v2_abs,
+            "ky_target": ky_target,
+            **arrs,
+            "ky": ky_arr,
+            "g_spectra": g_spectra,
+            "f_spectra": f_spectra,
+        }
+
+    def plot_scan2d(self, label, fn=None):
+        """
+        Filled contour plots of 2-D scan results (one tab per quantity, one
+        column per rho).  Axes are the absolute parameter values from v1_abs /
+        v2_abs (falling back to the multiplier arrays when not available).
+        """
+        scan = self.scans2d[label]
+        rhos       = scan["x"]
+        nr         = len(rhos)
+        variable1  = scan["variable1"]
+        variable2  = scan["variable2"]
+        ky_target  = scan.get("ky_target", 0.3)
+
+        quantities = [
+            ("Qe_gb", "Qe (GB)",              r"$Q_e$ (GB)"),
+            ("Qi_gb", "Qi (GB)",              r"$Q_i$ (GB)"),
+            ("Ge_gb", "Ge (GB)",              r"$\Gamma_e$ (GB)"),
+            ("g_ky",  f"gamma at ky~{ky_target}", rf"$\gamma$ at $k_\theta\rho_s\approx{ky_target}$"),
+        ]
+
+        n1 = len(scan["varUpDown1"])
+        n2 = len(scan["varUpDown2"])
+
+        if fn is None:
+            self.fn = GUItools.FigureNotebook("TGLF 2D Scan", geometry="1500x900", vertical=True)
+            fn = self.fn
+
+        # ---- Scalar contourf tabs (Qe, Qi, Ge, g at ky_target) ----
+        for qkey, tab_label, qtitle in quantities:
+            fig = fn.add_figure(label=tab_label)
+            grid = plt.GridSpec(1, nr, hspace=0.4, wspace=0.4, figure=fig)
+
+            for irho in range(nr):
+                ax = fig.add_subplot(grid[0, irho])
+
+                Z = scan[qkey][irho]           # (n1, n2)
+                # Use absolute values where available, else multipliers
+                x1 = scan["v1_abs"][irho, :, 0]
+                x2 = scan["v2_abs"][irho, 0, :]
+                if np.any(np.isnan(x1)):
+                    x1 = scan["varUpDown1"]
+                if np.any(np.isnan(x2)):
+                    x2 = scan["varUpDown2"]
+
+                X1, X2 = np.meshgrid(x1, x2, indexing="ij")
+
+                finite = Z[np.isfinite(Z)]
+                if finite.size < 3:
+                    ax.set_title(f"{qtitle}\nr/a={rhos[irho]:.3f}")
+                    ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center")
+                    continue
+
+                vmin, vmax = finite.min(), finite.max()
+                levels = np.linspace(vmin, vmax, 21)
+
+                cf = ax.contourf(X1, X2, Z, levels=levels, cmap="inferno")
+                ax.contour(X1, X2, Z, levels=levels[::4], colors="white",
+                           linewidths=0.4, alpha=0.5)
+                plt.colorbar(cf, ax=ax, pad=0.02)
+
+                ax.set_xlabel(variable1, fontsize=8)
+                ax.set_ylabel(variable2, fontsize=8)
+                ax.set_title(f"r/a = {rhos[irho]:.3f}", fontsize=9)
+
+            fig.suptitle(qtitle, fontsize=10)
+
+        # ---- Spectral tabs: one tab per rho, rows = γ / ω, columns = variable2 values ----
+        #
+        # Each panel is a pcolormesh:
+        #   x-axis → variable1 values  (how the spectrum shifts with scan variable 1)
+        #   y-axis → k_θρ_s            (wavenumber axis)
+        #   colour → γ (inferno, clipped ≥0) or ω (RdBu_r diverging)
+        # Colourbar range is per-panel (not shared).
+
+        g_spectra = scan.get("g_spectra")   # (nr, n1, n2, n_ky) or None
+        f_spectra = scan.get("f_spectra")
+        ky_arr    = scan.get("ky")          # (nr, n_ky) or None
+        has_g = g_spectra is not None and not np.all(np.isnan(g_spectra))
+        has_f = f_spectra is not None and not np.all(np.isnan(f_spectra))
+        n_spec_rows = int(has_g) + int(has_f)
+
+        if n_spec_rows > 0:
+            spec_rows = []
+            if has_g:
+                spec_rows.append((g_spectra, r"$\gamma(k_\theta\rho_s)$", "inferno", False))
+            if has_f:
+                spec_rows.append((f_spectra, r"$\omega(k_\theta\rho_s)$", "RdBu_r",  True))
+
+            for irho in range(nr):
+                fig = fn.add_figure(label=f"spectra r/a={rhos[irho]:.2f}")
+                grid = plt.GridSpec(n_spec_rows, n2, hspace=0.55, wspace=0.15, figure=fig)
+
+                ky = ky_arr[irho] if ky_arr is not None else None
+                if ky is None or np.all(np.isnan(ky)):
+                    ky = np.arange(g_spectra.shape[-1] if has_g else f_spectra.shape[-1], dtype=float)
+
+                v1_vals = scan["v1_abs"][irho, :, 0]
+                if np.any(np.isnan(v1_vals)):
+                    v1_vals = scan["varUpDown1"].astype(float)
+
+                v2_vals = scan["v2_abs"][irho, 0, :]
+                if np.any(np.isnan(v2_vals)):
+                    v2_vals = scan["varUpDown2"].astype(float)
+
+                for irow, (spectra, row_title, cmap_name, diverging) in enumerate(spec_rows):
+                    for i2 in range(n2):
+                        ax = fig.add_subplot(grid[irow, i2])
+
+                        Z = spectra[irho, :, i2, :]    # (n1, n_ky)
+                        if not diverging:
+                            Z = np.clip(Z, 0.0, None)  # γ<0 → black (stable)
+
+                        # Per-panel colour range
+                        finite = Z[np.isfinite(Z)]
+                        if finite.size == 0:
+                            ax.set_visible(False)
+                            continue
+                        if diverging:
+                            clim = float(np.nanmax(np.abs(finite)))
+                            vmin_p, vmax_p = -clim, clim
+                        else:
+                            vmin_p, vmax_p = 0.0, float(np.nanmax(finite))
+
+                        mesh = ax.pcolormesh(
+                            v1_vals, ky, Z.T,
+                            cmap=cmap_name, vmin=vmin_p, vmax=vmax_p,
+                            shading="nearest",
+                        )
+
+                        # Dashed line at the scalar ky_target
+                        ax.axhline(ky_target, color="lime", lw=0.8, ls="--", alpha=0.7)
+
+                        cb = plt.colorbar(mesh, ax=ax, pad=0.04, fraction=0.06)
+                        cb.ax.tick_params(labelsize=6)
+
+                        # Axis labels on edges only
+                        if irow == n_spec_rows - 1:
+                            ax.set_xlabel(variable1, fontsize=7)
+                        else:
+                            ax.set_xticklabels([])
+                        if i2 == 0:
+                            ax.set_ylabel(r"$k_\theta\rho_s$", fontsize=8)
+                        else:
+                            ax.set_yticklabels([])
+
+                        ax.tick_params(labelsize=6)
+                        ax.set_title(f"{variable2}={v2_vals[i2]:.2f}", fontsize=7)
+
+                        # Row label on leftmost panel
+                        if i2 == 0:
+                            ax.text(-0.35, 0.5, row_title, transform=ax.transAxes,
+                                    fontsize=8, va="center", ha="center", rotation=90)
+
+                fig.suptitle(f"Instability spectra  r/a = {rhos[irho]:.3f}", fontsize=10)
 
     def plot_scan(
         self,
