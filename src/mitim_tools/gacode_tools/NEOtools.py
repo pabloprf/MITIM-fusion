@@ -1,8 +1,10 @@
+import copy
 import os
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, FARMINGtools
-from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
+from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults, NORMtools
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.style_tools.themes import apply_theme
@@ -12,10 +14,16 @@ from IPython import embed
 class NEO(SIMtools.mitim_simulation):
     def __init__(
         self,
-        rhos=[0.4, 0.6],  # rho locations of interest
+        rhos=[0.4, 0.6],   # rho locations of interest
+        in_process=False,  # If True, run NEO in-process via ctypes (no subprocess); requires libneo_serial.so
     ):
-        
+
         super().__init__(rhos=rhos)
+        self.in_process = in_process
+
+        # Cache of in-process results, keyed by str(folder_sim).
+        # Each entry: {"raw": {rho: outputs_dict}, "inputs": {rho: NEOinput}}
+        self._inprocess_cache: dict = {}
 
         def code_call(folder, n, p, additional_command="", **kwargs):
             return f"neo -e {folder} -n {n} -p {p} {additional_command}"
@@ -76,7 +84,260 @@ class NEO(SIMtools.mitim_simulation):
             'out.neo.run',
             'out.neo.version',
         ]
-        
+
+    # ------------------------------------------------------------------
+    # In-process overrides — mirror TGLFtools.TGLF in_process plumbing.
+    # When self.in_process=False, every method below delegates to the
+    # parent (mitim_simulation), so the standard subprocess workflow is
+    # untouched.  When self.in_process=True, NEO is executed entirely
+    # in-memory via libneo_serial.so (no folders, no input.neo files,
+    # no out.neo.* files written).
+    # ------------------------------------------------------------------
+
+    def prep(self, mitim_state, FolderGACODE=None, **kwargs):
+        """
+        Prepare the NEO run from a MITIM state (input.gacode path or object).
+
+        When ``self.in_process=True``, *FolderGACODE* is optional.  If omitted
+        a temporary directory is used as a logical base path — nothing is
+        ever written to it.  No ``input.neo*`` or ``input.gacode_torun``
+        files are created.
+
+        When ``self.in_process=False`` the behaviour is identical to the
+        parent: *FolderGACODE* is required and all files are written normally.
+        """
+        if not self.in_process:
+            return super().prep(mitim_state, FolderGACODE, **kwargs)
+
+        # ------------------------------------------------------------------
+        # Zero-file in-process prep
+        # ------------------------------------------------------------------
+        import tempfile
+        from mitim_tools.gacode_tools import PROFILEStools
+        from mitim_tools.misc_tools.PLASMAtools import md_u
+
+        if FolderGACODE is None:
+            self.FolderGACODE = Path(tempfile.mkdtemp(prefix="neo_inprocess_"))
+        else:
+            self.FolderGACODE = Path(FolderGACODE).resolve()
+
+        # Load profiles
+        if isinstance(mitim_state, (str, Path)):
+            self.profiles = PROFILEStools.gacode_state(str(mitim_state))
+        else:
+            self.profiles = mitim_state
+
+        self.profiles.derive_quantities(mi_ref=md_u)
+
+        # Build NEOinput objects in memory — no files written
+        raw = self.profiles.to_neo(r=self.rhos, r_is_rho=True)
+        self.inputs_files = {}
+        for rho, d in raw.items():
+            inp = NEOinput.initialize_in_memory(d)
+            # Set a logical (never-created) file path so any later code
+            # that inspects inp.file does not hit AttributeError.
+            inp.file = self.FolderGACODE / f"input.neo_{float(rho):.4f}"
+            self.inputs_files[rho] = inp
+
+        # Normalizations (pure in-memory)
+        print("> Setting up normalizations")
+        self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
+        return cdf
+
+    def _run_prepare(self, subfolder_simulation, code_executor=None, code_executor_full=None,
+                     code_settings=None, extraOptions={}, multipliers={}, minimum_delta_abs={},
+                     cold_start=False, forceIfcold_start=False, only_minimal_files=False,
+                     launchSlurm=True, slurm_setup=None, additional_files_to_send=None,
+                     **kwargs_control):
+        """
+        When ``self.in_process=True``: build NEOinput objects in memory via
+        ``modifyInputs()`` — no folder creation, no file writes.
+        When ``self.in_process=False``: delegate to the parent implementation.
+        """
+        if not self.in_process:
+            return super()._run_prepare(
+                subfolder_simulation,
+                code_executor=code_executor,
+                code_executor_full=code_executor_full,
+                code_settings=code_settings,
+                extraOptions=extraOptions,
+                multipliers=multipliers,
+                minimum_delta_abs=minimum_delta_abs,
+                cold_start=cold_start,
+                forceIfcold_start=forceIfcold_start,
+                only_minimal_files=only_minimal_files,
+                launchSlurm=launchSlurm,
+                slurm_setup=slurm_setup,
+                additional_files_to_send=additional_files_to_send,
+                **kwargs_control,
+            )
+
+        # ------------------------------------------------------------------
+        # Zero-file in-process path
+        # ------------------------------------------------------------------
+        from mitim_tools.simulation_tools.SIMtools import modifyInputs
+
+        if code_executor is None:
+            code_executor = {}
+        if code_executor_full is None:
+            code_executor_full = {}
+
+        # Compute the logical folder path (never created on disk)
+        Folder_sim = (self.FolderGACODE / subfolder_simulation).resolve()
+
+        inputs = copy.deepcopy(self.inputs_files)
+
+        mod_input_file = {}
+        for i, rho in enumerate(self.rhos):
+            print(f"\t- [in-process] Preparing input for rho={rho:.4f}")
+            input_sim_rho = modifyInputs(
+                inputs[rho],
+                code_settings=code_settings,
+                extraOptions=extraOptions,
+                multipliers=multipliers,
+                minimum_delta_abs=minimum_delta_abs if minimum_delta_abs else {},
+                position_change=i,
+                addControlFunction=self.run_specifications["control_function"],
+                controls_file=self.run_specifications["controls_file"],
+                NS=inputs[rho].num_recorded,
+            )
+            input_sim_rho.anticipate_problems()
+            mod_input_file[rho] = input_sim_rho
+
+        code_executor_full[subfolder_simulation] = {}
+        code_executor[subfolder_simulation] = {}
+        for irho in self.rhos:
+            entry = {
+                "folder":     Folder_sim,
+                "dictionary": mod_input_file[irho],
+                "inputs":     None,
+                "extraOptions": extraOptions,
+                "multipliers":  multipliers,
+                "additional_files_to_send": None,
+            }
+            code_executor_full[subfolder_simulation][irho] = entry
+            code_executor[subfolder_simulation][irho]      = entry
+
+        self.FolderSimLast = Folder_sim
+        return code_executor, code_executor_full
+
+    def _run(self, code_executor, run_type='normal', **kwargs_run):
+        """
+        Dispatch to in-process ctypes engine or parent subprocess/SLURM engine.
+
+        When ``self.in_process=True`` the Fortran physics is called directly
+        via ctypes for every (subfolder, rho) in *code_executor* — no file
+        I/O.  Results are stored in ``self._inprocess_cache[str(folder_sim)]``.
+        """
+        if not self.in_process:
+            return super()._run(code_executor, run_type=run_type, **kwargs_run)
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from mitim_tools.simulation_tools.interfaces import neo_inprocess as _nip
+
+        # Build work items — one per (subfolder_variation, rho)
+        work_items = []   # (subfolder_sim, rho, flat, neo_input, folder_sim)
+        for subfolder_sim, rho_dict in code_executor.items():
+            for rho, rho_info in rho_dict.items():
+                folder_sim = rho_info["folder"]
+                neo_input  = rho_info["dictionary"]
+                # NEO species fields (Z_1, MASS_1, ...) live in plasma
+                # because NEOinput.process inherits the base implementation
+                # which doesn't split them out into a species dict.
+                flat = {}
+                flat.update(neo_input.controls)
+                flat.update(neo_input.plasma)
+                work_items.append((subfolder_sim, rho, flat, neo_input, folder_sim))
+
+        n_workers = os.cpu_count() or 1
+        n_jobs    = len(work_items)
+        if n_jobs == 0:
+            self.simulation_job = None
+            return
+        print(f"\t- [in-process] Submitting {n_jobs} NEO cases across {min(n_workers, n_jobs)} workers")
+
+        results_by_folder: dict = {}
+
+        # Threads, not processes — see tglf_inprocess.py for the rationale:
+        # each thread loads its own private copy of the .so so Fortran
+        # module-level globals are independent, and ctypes releases the GIL
+        # during the Fortran call so we get true parallelism.
+        with ThreadPoolExecutor(max_workers=min(n_workers, n_jobs)) as pool:
+            future_map = {
+                pool.submit(_nip._parallel_worker, flat): (subfolder_sim, rho, neo_input, folder_sim)
+                for subfolder_sim, rho, flat, neo_input, folder_sim in work_items
+            }
+            for future in as_completed(future_map):
+                subfolder_sim, rho, neo_input, folder_sim = future_map[future]
+                outputs = future.result()
+                key = str(folder_sim)
+                if key not in results_by_folder:
+                    results_by_folder[key] = {"raw": {}, "inputs": {}}
+                results_by_folder[key]["raw"][float(rho)]    = outputs
+                results_by_folder[key]["inputs"][float(rho)] = neo_input
+                if outputs.get("error_status", 0) != 0:
+                    print(f"\t- [in-process] rho={rho:.4f}  WARNING error_status={outputs['error_status']}",
+                          typeMsg="w")
+
+        self._inprocess_cache.update(results_by_folder)
+        self.simulation_job = None   # keep attribute consistent with parent
+
+    def read(self, label="run1", folder=None, suffix=None, input_gacode=None,
+             require_all_files=True, **kwargs_to_class_output):
+        """
+        Build NEO results from the in-process cache when ``self.in_process``
+        is True; otherwise delegate to the parent file-reading path.
+        """
+        if not self.in_process:
+            return super().read(
+                label=label,
+                folder=folder,
+                suffix=suffix,
+                input_gacode=input_gacode,
+                require_all_files=require_all_files,
+                **kwargs_to_class_output,
+            )
+
+        subfolder = folder if folder is not None else self.FolderSimLast
+        cache_key = str(subfolder)
+        if cache_key not in self._inprocess_cache:
+            raise RuntimeError(
+                f"No in-process NEO results cached for key '{cache_key}'. "
+                "Call run() first."
+            )
+        cached    = self._inprocess_cache[cache_key]
+        raw       = cached["raw"]      # {rho: outputs_dict}
+        inp_files = cached["inputs"]   # {rho: NEOinput}
+
+        output_list = []
+        parsed_list = []
+        for rho in self.rhos:
+            inputclass = inp_files.get(rho) or inp_files.get(float(rho))
+            outputs    = raw.get(rho)    or raw.get(float(rho))
+            out = NEOoutput.from_inprocess(inputclass, outputs)
+
+            if 'NormalizationSets' in self.__dict__:
+                out.unnormalize(self.NormalizationSets["SELECTED"], rho=rho)
+
+            output_list.append(out)
+
+            # Build a flat parsed dict so read_scan() can find scan variables
+            if inputclass is not None:
+                flat_parsed = {}
+                flat_parsed.update(inputclass.controls)
+                flat_parsed.update(inputclass.plasma)
+            else:
+                flat_parsed = {}
+            parsed_list.append(flat_parsed)
+
+        self.results[label] = {
+            "output": output_list,
+            "parsed": parsed_list,
+            "x":      np.array(self.rhos),
+        }
+        print(f"\t- [in-process] Read NEO results for label '{label}' "
+              f"({len(self.rhos)} rho values)")
+
     def plot(
         self,
         fn=None,
@@ -1321,6 +1582,145 @@ class NEOoutput(SIMtools.GACODEoutput):
     # ------------------------------------------------------------------
     # Unnormalization
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # In-process constructor — build a NEOoutput directly from a
+    # NEOInProcess output dict, without touching the filesystem.
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_inprocess(cls, inputclass, outputs):
+        """
+        Build a NEOoutput from an in-process ctypes result dict — no file I/O.
+
+        Mirrors what ``_read_grid`` + ``_read_transport_flux`` would set when
+        reading ``out.neo.transport_flux``: per-species DKE / GV / TGYRO
+        fluxes, after applying the GB normalization that NEO uses on disk
+        (``pgb = n_e ρ² T_e^1.5`` etc.).  Theory / NCLASS / geometry fields
+        are populated as well so plotting tabs work.
+
+        Parameters
+        ----------
+        inputclass : NEOinput
+            Processed input object for this rho (provides species charges,
+            ``RMIN_OVER_A``).  May be None.
+        outputs : dict
+            Output dict returned by ``NEOInProcess.run_from_dict()``.
+        """
+        obj = cls.__new__(cls)
+        SIMtools.GACODEoutput.__init__(obj)   # sets obj.inputFile = None
+
+        obj.FolderGACODE = None
+        obj.suffix       = ""
+        obj.inputclass   = inputclass
+        obj.inputFile    = ""
+
+        # ---- Geometry / grid metadata ----
+        ns = int(outputs.get("ns", 0))
+        obj.n_species = ns
+        obj.n_radial  = 1
+        obj.n_energy  = obj.n_xi = obj.n_theta = None
+        obj.theta_grid = None
+
+        # ---- Pull r/a, electron index and Z list from the input ----
+        if inputclass is not None:
+            plasma = inputclass.plasma
+            obj.roa = float(plasma.get("RMIN_OVER_A", 0.0))
+            Z = np.array([float(plasma.get(f"Z_{i+1}", 0.0)) for i in range(ns)])
+        else:
+            obj.roa = 0.0
+            Z = np.zeros(ns)
+
+        # Find electron index (Z = -1)
+        ie_idx = np.where(Z == -1)[0]
+        ie = int(ie_idx[0]) if ie_idx.size > 0 else None
+
+        # ---- GB normalization (norm units → GB units, per neo_transport.f90) ----
+        if inputclass is not None:
+            rho_star = float(plasma.get("RHO_STAR", 1e-3))
+            ae_flag  = int(plasma.get("AE_FLAG", 0))
+            if ae_flag == 1:
+                dens_e = float(plasma.get("DENS_AE", 1.0))
+                temp_e = float(plasma.get("TEMP_AE", 1.0))
+            elif ie is not None:
+                dens_e = float(plasma.get(f"DENS_{ie+1}", 1.0))
+                temp_e = float(plasma.get(f"TEMP_{ie+1}", 1.0))
+            else:
+                dens_e, temp_e = 1.0, 1.0
+            pgb = dens_e * rho_star**2 * temp_e**1.5
+            egb = dens_e * rho_star**2 * temp_e**2.5
+            mgb = dens_e * rho_star**2 * temp_e**2.0
+        else:
+            pgb = egb = mgb = 1.0
+
+        def _arr(key):
+            return np.asarray(outputs.get(key, [0.0] * ns), dtype=float)[:ns]
+
+        # ---- DKE fluxes (norm → GB) ----
+        G_dke = _arr("pflux_dke")    / pgb
+        Q_dke = _arr("efluxtot_dke") / egb
+        M_dke = _arr("mflux_dke")    / mgb
+
+        # ---- GV fluxes (norm → GB) ----
+        G_gv  = _arr("pflux_gv")     / pgb
+        Q_gv  = _arr("efluxtot_gv")  / egb
+        M_gv  = _arr("mflux_gv")     / mgb
+
+        # ---- Tgyro = DKE + GV (electron-frame Q already; on disk NEO also
+        #      subtracts ω_rot · Π for energy, but for the normal use case
+        #      of this in-process path Π is small enough that omitting that
+        #      correction is harmless — same as what neo_inprocess does).
+        G_tg = G_dke + G_gv
+        Q_tg = Q_dke + Q_gv
+        M_tg = M_dke + M_gv
+
+        def _split(arr):
+            """Return (electron_value, ion_array_without_electron)."""
+            if ie is None:
+                return float(np.nan), np.asarray(arr, dtype=float)
+            return float(arr[ie]), np.delete(np.asarray(arr, dtype=float), ie)
+
+        # tgyro section drives Ge / Qe / Me / GiAll / QiAll / MiAll
+        obj.Ge,    obj.GiAll = _split(G_tg)
+        obj.Qe,    obj.QiAll = _split(Q_tg)
+        obj.Me,    obj.MiAll = _split(M_tg)
+        obj.Zi               = np.delete(Z, ie) if ie is not None else Z
+        obj.Qi               = float(obj.QiAll.sum())
+        obj.Mt               = float(obj.Me + obj.MiAll.sum())
+
+        # dke section
+        obj.Ge_dke,    obj.GiAll_dke = _split(G_dke)
+        obj.Qe_dke,    obj.QiAll_dke = _split(Q_dke)
+        obj.Me_dke,    obj.MiAll_dke = _split(M_dke)
+        obj.Qi_dke                   = float(obj.QiAll_dke.sum())
+
+        # gv section
+        obj.Ge_gv,    obj.GiAll_gv = _split(G_gv)
+        obj.Qe_gv,    obj.QiAll_gv = _split(Q_gv)
+        obj.Me_gv,    obj.MiAll_gv = _split(M_gv)
+        obj.Qi_gv                  = float(obj.QiAll_gv.sum())
+
+        # ---- Theory predictions (HH / CH / Sauter etc.) ----
+        obj.HHGamma  = float(outputs.get("pflux_thHH",  0.0)) / pgb
+        obj.HHQi     = float(outputs.get("eflux_thHHi", 0.0)) / egb
+        obj.HHQe     = float(outputs.get("eflux_thHHe", 0.0)) / egb
+        obj.CHQi     = float(outputs.get("eflux_thCHi", 0.0)) / egb
+        obj.HHjparB  = float(outputs.get("jpar_thS",    0.0))   # already GB-like
+        obj.SjparB   = float(outputs.get("jpar_thSmod", 0.0))
+
+        # ---- DKE bootstrap current and flows ----
+        obj.jparB    = float(outputs.get("jpar_dke",    0.0))
+        obj.vtheta_sp= np.asarray(outputs.get("vpol_dke", []), dtype=float)[:ns]
+        obj.vphi_sp  = np.asarray(outputs.get("vtor_dke", []), dtype=float)[:ns]
+
+        # ---- Status / sentinel inputFile string for read_scan ----
+        obj.inputFile = ""
+        obj.unnormalization_successful = False
+        obj.prec = float("nan")
+        obj.error_status = int(outputs.get("error_status", 0))
+
+        if obj.error_status != 0:
+            print(f"\t- [in-process] WARNING NEO returned error_status={obj.error_status}", typeMsg="w")
+        return obj
 
     def unnormalize(self, normalization, rho=None):
 
