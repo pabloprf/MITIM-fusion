@@ -66,9 +66,35 @@ spawn/fork/forkserver issues, no ``if __name__ == '__main__':`` requirement).
 
 from __future__ import annotations
 
+import os
+
+# ---------------------------------------------------------------------------
+# Pin BLAS / OpenMP to one thread per *worker* BEFORE any ctypes import.
+#
+# libtglf_serial.so links against the conda-forge libblas / liblapack
+# wrappers, which on many clusters resolve to MKL (or openblas).  When the
+# in-process driver fans out N TGLF cases across N Python ThreadPoolExecutor
+# workers (see GACODEinprocess._run_inprocess), MKL/openblas inside each
+# worker has no idea the other workers exist — every thread tries to spin
+# up a full thread pool sized to the whole node.  With e.g. 18 workers on a
+# 64-core node that becomes 18 * 64 ≈ 1152 OS threads competing for 64
+# cores, catastrophic oversubscription and order-of-magnitude slowdowns.
+#
+# TGLF is *not* BLAS-bound on the relevant code paths (measured: a single
+# call takes the same wall time at MKL_NUM_THREADS=1 and =8), so pinning to
+# 1 BLAS thread per worker costs nothing and avoids the meltdown.
+#
+# These vars must be set BEFORE the shared library is dlopen'd, because
+# MKL/openblas read them once at library init time.  setdefault() leaves
+# any value the user has explicitly exported alone.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("MKL_NUM_THREADS",      "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS",      "1")
+os.environ.setdefault("MKL_DYNAMIC",          "FALSE")
+
 import atexit
 import ctypes
-import os
 import shutil
 import tempfile
 import threading

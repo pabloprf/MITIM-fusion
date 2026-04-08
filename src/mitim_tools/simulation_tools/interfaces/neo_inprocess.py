@@ -63,9 +63,24 @@ true parallelism without any of the macOS multiprocessing pitfalls.
 
 from __future__ import annotations
 
+import os
+
+# ---------------------------------------------------------------------------
+# Pin BLAS / OpenMP to one thread per *worker* BEFORE any ctypes import.
+# See the matching block in tglf_inprocess.py for the full rationale: the
+# in-process driver fans cases out across a Python ThreadPoolExecutor and
+# MKL/openblas inside each worker would otherwise spin up a full per-node
+# thread pool, causing severe oversubscription on multi-core nodes.
+# These vars must be set BEFORE the .so is dlopen'd because BLAS libraries
+# read them once at init time.
+# ---------------------------------------------------------------------------
+os.environ.setdefault("MKL_NUM_THREADS",      "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS",      "1")
+os.environ.setdefault("MKL_DYNAMIC",          "FALSE")
+
 import atexit
 import ctypes
-import os
 import shutil
 import tempfile
 import threading
