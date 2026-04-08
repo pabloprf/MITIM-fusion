@@ -33,6 +33,7 @@ class TGLF(SIMtools.mitim_simulation):
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
+        in_process=False,  # If True, run TGLF in-process via ctypes (no subprocess); requires libtglf_serial.so
         cdf=None,  # Option1: Start from CDF file (TRANSP) - Path to file
         time=100.0,  # 		   Time to extract CDF file
         avTime=0.0,  # 		   Averaging window to extract CDF file
@@ -40,6 +41,7 @@ class TGLF(SIMtools.mitim_simulation):
     ):
 
         super().__init__(rhos=rhos)
+        self.in_process = in_process
 
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
             return f"tglf -e {folder} -n {n} -p {p} {additional_command}"
@@ -137,6 +139,204 @@ class TGLF(SIMtools.mitim_simulation):
                 "SELECTED": None,
             }
 
+            self._inprocess_cache: dict = {}   # {subfolder: raw {rho: outputs_dict}}
+
+    def prep(self, mitim_state, FolderGACODE=None, **kwargs):
+        """
+        Prepare the TGLF run from a MITIM state (input.gacode path or object).
+
+        When ``self.in_process=True``, *FolderGACODE* is optional.  If omitted
+        a temporary directory is used as a logical base path — nothing is ever
+        written to it.  No ``input.tglf*`` or ``input.gacode_torun`` files are
+        created.
+
+        When ``self.in_process=False`` the behaviour is identical to the parent:
+        *FolderGACODE* is required and all files are written normally.
+        """
+        if not self.in_process:
+            return super().prep(mitim_state, FolderGACODE, **kwargs)
+
+        # ------------------------------------------------------------------
+        # Zero-file in-process prep
+        # ------------------------------------------------------------------
+        import tempfile
+        from mitim_tools.gacode_tools import PROFILEStools
+        from mitim_tools.gacode_tools.utils import NORMtools
+        from mitim_tools.misc_tools.PLASMAtools import md_u
+
+        # Use the provided folder as a logical base (no mkdir); fall back to temp.
+        if FolderGACODE is None:
+            self.FolderGACODE = Path(tempfile.mkdtemp(prefix="tglf_inprocess_"))
+        else:
+            self.FolderGACODE = Path(FolderGACODE).resolve()
+
+        # Load profiles
+        if isinstance(mitim_state, (str, Path)):
+            self.profiles = PROFILEStools.gacode_state(str(mitim_state))
+        else:
+            self.profiles = mitim_state
+
+        self.profiles.derive_quantities(mi_ref=md_u)
+
+        # Build TGLFinput objects in memory — no files written
+        raw = self.profiles.to_tglf(r=self.rhos, r_is_rho=True)
+        self.inputs_files = {}
+        for rho, d in raw.items():
+            inp = TGLFinput.initialize_in_memory(d)
+            # Set a logical (never-created) file path so later code that
+            # inspects inp.file doesn't hit AttributeError
+            inp.file = self.FolderGACODE / f"input.tglf_{float(rho):.4f}"
+            self.inputs_files[rho] = inp
+
+        # Normalizations (pure in-memory)
+        print("> Setting up normalizations")
+        self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
+        return cdf
+
+    def _run_prepare(self, subfolder_simulation, code_executor=None, code_executor_full=None,
+                     code_settings=None, extraOptions={}, multipliers={}, minimum_delta_abs={},
+                     cold_start=False, forceIfcold_start=False, only_minimal_files=False,
+                     launchSlurm=True, slurm_setup=None, additional_files_to_send=None,
+                     **kwargs_control):
+        """
+        When ``self.in_process=True``: build TGLFinput objects in memory via
+        ``modifyInputs()`` — no folder creation, no file writes.
+        When ``self.in_process=False``: delegate to the parent implementation.
+        """
+        if not self.in_process:
+            return super()._run_prepare(
+                subfolder_simulation,
+                code_executor=code_executor,
+                code_executor_full=code_executor_full,
+                code_settings=code_settings,
+                extraOptions=extraOptions,
+                multipliers=multipliers,
+                minimum_delta_abs=minimum_delta_abs,
+                cold_start=cold_start,
+                forceIfcold_start=forceIfcold_start,
+                only_minimal_files=only_minimal_files,
+                launchSlurm=launchSlurm,
+                slurm_setup=slurm_setup,
+                additional_files_to_send=additional_files_to_send,
+                **kwargs_control,
+            )
+
+        # ------------------------------------------------------------------
+        # Zero-file in-process path
+        # ------------------------------------------------------------------
+        from mitim_tools.simulation_tools.SIMtools import modifyInputs
+
+        if code_executor is None:
+            code_executor = {}
+        if code_executor_full is None:
+            code_executor_full = {}
+
+        # Compute the logical folder path (never created on disk)
+        Folder_sim = (self.FolderGACODE / subfolder_simulation).resolve()
+
+        inputs = copy.deepcopy(self.inputs_files)
+
+        mod_input_file = {}
+        for i, rho in enumerate(self.rhos):
+            print(f"\t- [in-process] Preparing input for rho={rho:.4f}")
+            input_sim_rho = modifyInputs(
+                inputs[rho],
+                code_settings=code_settings,
+                extraOptions=extraOptions,
+                multipliers=multipliers,
+                minimum_delta_abs=minimum_delta_abs if minimum_delta_abs else {},
+                position_change=i,
+                addControlFunction=self.run_specifications["control_function"],
+                controls_file=self.run_specifications["controls_file"],
+                NS=inputs[rho].num_recorded,
+            )
+            if code_settings is not None:
+                input_sim_rho.removeLowDensitySpecie()
+                input_sim_rho.remove_fast()
+            if kwargs_control.get("Quasineutral", False):
+                input_sim_rho.ensureQuasineutrality()
+            input_sim_rho.anticipate_problems()
+            mod_input_file[rho] = input_sim_rho
+
+        code_executor_full[subfolder_simulation] = {}
+        code_executor[subfolder_simulation] = {}
+        for irho in self.rhos:
+            entry = {
+                "folder":     Folder_sim,
+                "dictionary": mod_input_file[irho],
+                "inputs":     None,
+                "extraOptions": extraOptions,
+                "multipliers":  multipliers,
+                "additional_files_to_send": None,
+            }
+            code_executor_full[subfolder_simulation][irho] = entry
+            code_executor[subfolder_simulation][irho] = entry
+
+        self.FolderSimLast = Folder_sim
+        return code_executor, code_executor_full
+
+    def _run(self, code_executor, run_type='normal', **kwargs_run):
+        """
+        Dispatch to in-process ctypes engine or parent subprocess/SLURM engine.
+
+        When ``self.in_process=True`` the Fortran physics is called directly via
+        ctypes for every (subfolder, rho) in *code_executor* — no file I/O.
+        Results are stored in ``self._inprocess_cache[str(folder_sim)]``.
+        """
+        if not self.in_process:
+            return super()._run(code_executor, run_type=run_type, **kwargs_run)
+
+        import os
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from mitim_tools.simulation_tools.interfaces import tglf_inprocess as _tip
+
+        # Build work items — one per (subfolder_variation, rho)
+        work_items = []   # (subfolder_sim, rho, flat, tglf_input, folder_sim)
+        for subfolder_sim, rho_dict in code_executor.items():
+            for rho, rho_info in rho_dict.items():
+                folder_sim = rho_info["folder"]
+                tglf_input = rho_info["dictionary"]
+                flat = {}
+                flat.update(tglf_input.controls)
+                flat.update(tglf_input.plasma)
+                for i, sp_data in tglf_input.species.items():
+                    for var, val in sp_data.items():
+                        flat[f"{var}_{i}"] = val
+                work_items.append((subfolder_sim, rho, flat, tglf_input, folder_sim))
+
+        n_workers = os.cpu_count() or 1
+        n_jobs    = len(work_items)
+        print(f"\t- [in-process] Submitting {n_jobs} TGLF cases across {min(n_workers, n_jobs)} workers")
+
+        results_by_folder: dict = {}
+
+        # Use threads, not processes.
+        # • ctypes releases the GIL during Fortran calls → true parallelism.
+        # • Each thread loads a private copy of the .so (via _get_thread_lib())
+        #   so Fortran module-level globals are independent per thread.
+        # • No macOS spawn/fork/forkserver issues; no __main__ re-execution.
+        with ThreadPoolExecutor(max_workers=min(n_workers, n_jobs)) as pool:
+            future_map = {
+                pool.submit(_tip._parallel_worker, flat): (subfolder_sim, rho, tglf_input, folder_sim)
+                for subfolder_sim, rho, flat, tglf_input, folder_sim in work_items
+            }
+            for future in as_completed(future_map):
+                subfolder_sim, rho, tglf_input, folder_sim = future_map[future]
+                outputs = future.result()
+                key = str(folder_sim)
+                if key not in results_by_folder:
+                    results_by_folder[key] = {"raw": {}, "inputs": {}}
+                results_by_folder[key]["raw"][float(rho)]    = outputs
+                results_by_folder[key]["inputs"][float(rho)] = tglf_input
+                print(
+                    f"\t- [in-process] rho={rho:.4f}  "
+                    f"Qe={outputs['elec_eflux']:.4f}  "
+                    f"Qi[0]={outputs['ion_eflux'][0]:.4f}"
+                )
+
+        self._inprocess_cache.update(results_by_folder)
+        self.simulation_job = None   # keep attribute consistent with parent
+
     # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run(
         self,
@@ -145,12 +345,88 @@ class TGLF(SIMtools.mitim_simulation):
         forceClosestUnstableWF=True,    # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         **kwargs_generic_run
     ):
-        
-        code_executor_full = super().run(subfolder, **kwargs_generic_run)
+        if runWaveForms and self.in_process:
+            print("\t- runWaveForms not supported in in-process mode — skipping", typeMsg="w")
+            runWaveForms = None
 
-        kwargs_generic_run['runWaveForms'] = runWaveForms
-        kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
-        self._helper_wf(code_executor_full, **kwargs_generic_run)
+        if not self.in_process:
+            # Standard subprocess / SLURM path
+            code_executor_full = super().run(subfolder, **kwargs_generic_run)
+            kwargs_generic_run['runWaveForms'] = runWaveForms
+            kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
+            self._helper_wf(code_executor_full, **kwargs_generic_run)
+            return
+
+        # ------------------------------------------------------------------
+        # In-process path: route through overridden _run_prepare + _run
+        # (zero file I/O — folder never created, no input.tglf written)
+        # ------------------------------------------------------------------
+        super().run(subfolder, **kwargs_generic_run)
+        # FolderSimLast is now the resolved Path set by _run_prepare()
+
+    def run_inprocess(
+        self,
+        subfolder,
+        code_settings=None,
+        extraOptions={},
+        multipliers={},
+    ):
+        """
+        Run TGLF fully in-memory — zero file I/O for both input preparation
+        and physics execution.
+
+        Inputs are built directly from ``self.profiles`` via
+        ``PROFILES_GACODE.to_tglf()``, with ``code_settings``,
+        ``extraOptions``, and ``multipliers`` applied in memory.
+        The Fortran physics subroutine is called directly via ctypes —
+        no subprocess fork, no ``input.tglf*`` files written.
+
+        Only ``out.tglf.gbflux_{rho:.4f}`` is written per rho (the minimal
+        file needed by ``read()``).
+
+        Prerequisites
+        -------------
+            Build the shared library once before first use::
+
+                cd <MITIM-fusion>/src/mitim_tools/simulation_tools/interfaces
+                bash build_tglf_lib.sh
+
+        Usage
+        -----
+            tglf.prep(...)
+            tglf.run_inprocess("run1/", code_settings="SAT1")
+            tglf.read(label="run1", require_all_files=False)
+        """
+        from mitim_tools.simulation_tools.interfaces import tglf_inprocess as _tip
+        from mitim_tools.misc_tools import IOtools
+
+        # ------------------------------------------------------------------
+        # 1. Build inputs in memory via to_tglf() and run physics
+        # ------------------------------------------------------------------
+        runner = _tip.TGLFInProcess()
+        runner.prepare(
+            self.profiles,
+            rhos=self.rhos,
+            code_settings=code_settings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+        )
+        results = runner.run_all()   # {rho: output_dict} — zero file I/O
+
+        # ------------------------------------------------------------------
+        # 2. Create output folder and write the minimal file read() needs
+        # ------------------------------------------------------------------
+        Folder_sim = IOtools.expandPath(self.FolderGACODE / subfolder)
+        Folder_sim.mkdir(parents=True, exist_ok=True)
+
+        for rho, outputs in results.items():
+            _tip.write_gbflux(outputs, Folder_sim / f"out.tglf.gbflux_{rho:.4f}")
+            print(
+                f"\t- [in-process] rho={rho:.4f}  Qe={outputs['elec_eflux']:.4f}"
+                f"  Qi[0]={outputs['ion_eflux'][0]:.4f}"
+            )
+
+        return results
 
     # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run_scan(
@@ -859,6 +1135,64 @@ class TGLF(SIMtools.mitim_simulation):
         input_gacode = None, # Only needed to grab normalizations if they weren't populated already (e.g. this is just a "read" of an already run folder
         save_and_cleanup = None,  # If a Path/str is given, save npz there then delete the raw run folder
     ):
+        # ------------------------------------------------------------------
+        # In-process path: build results entirely from memory (no file I/O)
+        # ------------------------------------------------------------------
+        if self.in_process:
+            subfolder = folder if folder is not None else self.FolderSimLast
+            cache_key = str(subfolder)
+            if cache_key not in self._inprocess_cache:
+                raise RuntimeError(
+                    f"No in-process results cached for key '{cache_key}'. "
+                    "Call run() first."
+                )
+            cached   = self._inprocess_cache[cache_key]
+            raw      = cached["raw"]       # {rho: outputs_dict}
+            inp_files = cached["inputs"]   # {rho: TGLFinput}
+
+            if "d_perp_dict" not in self.__dict__:
+                self.d_perp_dict = None
+
+            self.updateConvolution()
+
+            output_list, inputclasses, parsed = [], [], []
+            for rho in self.rhos:
+                inputclass = inp_files.get(rho) or inp_files.get(float(rho))
+                outputs    = raw.get(rho)    or raw.get(float(rho))
+                out = TGLFoutput.from_inprocess(inputclass, outputs)
+                out.unnormalize(
+                    self.NormalizationSets["SELECTED"],
+                    rho=rho,
+                    convolution_fun_fluct=self.convolution_fun_fluct,
+                    factorTot_to_Perp=self.factorTot_to_Perp,
+                )
+                output_list.append(out)
+                inputclasses.append(inputclass)
+                # Build the flat input dict so read_scan() can access scan variables
+                if inputclass is not None:
+                    flat_parsed = {}
+                    flat_parsed.update(inputclass.controls)
+                    flat_parsed.update(inputclass.plasma)
+                    for i, sp_data in inputclass.species.items():
+                        for var, val in sp_data.items():
+                            flat_parsed[f"{var}_{i}"] = val
+                else:
+                    flat_parsed = {}
+                parsed.append(flat_parsed)
+
+            self.results[label] = {
+                "output":      output_list,
+                "inputclasses": inputclasses,
+                "parsed":      parsed,
+                "x":           np.array(self.rhos),
+                "convolution_fun_fluct": self.convolution_fun_fluct,
+                "DRMAJDX_LOC": self.DRMAJDX_LOC,
+                "profiles":    self.NormalizationSets.get("input_gacode"),
+                "wavefunction": {},
+            }
+            print(f"\t- [in-process] Read results for label '{label}' ({len(self.rhos)} rho values)")
+            return
+
         print("> Reading TGLF results")
 
         if d_perp_cm is not None:
@@ -4569,7 +4903,7 @@ def readTGLFresults(
 class TGLFoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", require_all_files=True):
         super().__init__()
-        
+
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
         if self.suffix == "":
@@ -4584,6 +4918,139 @@ class TGLFoutput(SIMtools.GACODEoutput):
         self.postprocess()
 
         print(f"\t- TGLF was run with {self.num_species} species, {self.num_nmodes} modes, {self.num_fields} field(s) ({', '.join(self.fields)}), {self.num_ky} wavenumbers",)
+
+    @classmethod
+    def from_inprocess(cls, inputclass, outputs):
+        """
+        Create a TGLFoutput from in-process ctypes results — no file I/O.
+
+        Replicates the ``require_all_files=False`` path of ``TGLFoutput.read()``:
+        all flux quantities are populated from *outputs*; spectral arrays are
+        set to dummy zeros so that ``postprocess()`` and ``unnormalize()`` can
+        run without error.  Spectral/growth-rate metrics will be zero/NaN.
+
+        Parameters
+        ----------
+        inputclass : TGLFinput
+            Processed input object for this rho (provides species ordering,
+            SIGN_IT correction).  May be None (conservative fallback used).
+        outputs : dict
+            Output dict from ``TGLFInProcess.run_from_dict()`` — keys:
+            ``ns``, ``elec_pflux``, ``elec_eflux``, ``elec_mflux``,
+            ``elec_expwd``, ``ion_pflux``, ``ion_eflux``, ``ion_mflux``,
+            ``ion_expwd``.
+        """
+        obj = cls.__new__(cls)
+        SIMtools.GACODEoutput.__init__(obj)   # sets obj.inputFile = None
+
+        obj.FolderGACODE  = None
+        obj.suffix        = ""
+        obj.inputclass    = inputclass
+        obj.roa           = inputclass.plasma["RMIN_LOC"] if inputclass is not None else 0.0
+        obj.inputFile     = ""
+        obj.inputFile_gen = ""
+
+        # --- Species accounting (same logic as TGLFoutput.read()) ---
+        if inputclass is not None:
+            extras = [i - 1 for i in inputclass.ions_info["thermal_list_extras"]]
+            obj.ions_included = (1,) + tuple(extras)
+            obj.fast_included = tuple(i - 1 for i in inputclass.ions_info["fast_list"])
+        else:
+            obj.ions_included = (1,)
+            obj.fast_included = ()
+
+        # --- Flux values ---
+        ns = outputs["ns"]
+        ni = ns - 1
+
+        obj.Ge    = outputs["elec_pflux"]
+        obj.Qe    = outputs["elec_eflux"]
+        obj.Me    = outputs["elec_mflux"]
+        obj.Se    = outputs["elec_expwd"]
+        obj.GiAll = np.array(outputs["ion_pflux"][:ni])
+        obj.QiAll = np.array(outputs["ion_eflux"][:ni])
+        obj.MiAll = np.array(outputs["ion_mflux"][:ni])
+        obj.SiAll = np.array(outputs["ion_expwd"][:ni])
+
+        # Build [e, ion1, ion2, ...] arrays for ions_included indexing
+        Gfull = np.concatenate([[obj.Ge], obj.GiAll])
+        Qfull = np.concatenate([[obj.Qe], obj.QiAll])
+        obj.Gi    = float(Gfull[list(obj.ions_included)].sum())
+        obj.Qi    = float(Qfull[list(obj.ions_included)].sum())
+        obj.Qifast = float(Qfull[list(obj.fast_included)].sum()) if obj.fast_included else 0.0
+
+        # SIGN_IT correction for momentum (same as read())
+        sign_it = inputclass.plasma["SIGN_IT"] if inputclass is not None else 1.0
+        signMt   = -sign_it
+        obj.Me   = obj.Me  * signMt
+        obj.MiAll = obj.MiAll * signMt
+        obj.Mt   = obj.Me + float(obj.MiAll.sum())
+        obj.Si   = float(obj.SiAll.sum())
+
+        # --- Spectral placeholders (mirrors require_all_files=False block) ---
+        obj.ky         = np.zeros((1,))
+        obj.num_ky     = 1
+        obj.num_nmodes = 1
+        obj.num_species = ns
+        obj.num_fields = 1
+        obj.fields     = []
+        obj.Eigenvalues = np.zeros((2, 1, 1))
+        obj.g           = np.zeros((1, 1))
+        obj.f           = np.zeros((1, 1))
+        obj.tglf_model  = {"width": np.zeros((1,)), "spectral_shift": np.zeros((1,)), "ave_p0": np.zeros((1,))}
+        obj.AmplitudeSpectrum    = np.zeros((1, 1, 1))
+        obj.AmplitudeSpectrum_Te = np.zeros((1,))
+        obj.AmplitudeSpectrum_Ti = np.zeros((1, 1))
+        obj.AmplitudeSpectrum_ne = np.zeros((1,))
+        obj.AmplitudeSpectrum_ni = np.zeros((1, 1))
+        obj.nTSpectrum   = np.zeros((1, 1, 1))
+        obj.neTeSpectrum = np.zeros((1, 1))
+        obj.niTiSpectrum = np.zeros((1, 1, 1))
+        obj.FieldSpectrum    = np.zeros((4, 1, 1))
+        obj.v_spectrum       = np.zeros((1, 1))
+        obj.phi_spectrum     = np.zeros((1, 1))
+        obj.a_par_spectrum   = np.zeros((1, 1))
+        obj.a_per_spectrum   = np.zeros((1, 1))
+        obj.SumFluxSpectrum  = np.zeros((5, 1, 1, 1))
+        obj.SumFlux_Qe_phi   = np.zeros((1,)); obj.SumFlux_Ge_phi   = np.zeros((1,))
+        obj.SumFlux_QiAll_phi = np.zeros((1, 1))
+        obj.SumFlux_Qe_a_par = np.zeros((1,)); obj.SumFlux_Ge_a_par = np.zeros((1,))
+        obj.SumFlux_QiAll_a_par = np.zeros((1, 1))
+        obj.SumFlux_Qe_a_per = np.zeros((1,)); obj.SumFlux_Ge_a_per = np.zeros((1,))
+        obj.SumFlux_QiAll_a_per = np.zeros((1, 1))
+        obj.SumFlux_Qe_a  = np.zeros((1,)); obj.SumFlux_Ge_a  = np.zeros((1,))
+        obj.SumFlux_QiAll_a = np.zeros((1, 1))
+        obj.SumFlux_Qe    = np.zeros((1,)); obj.SumFlux_Ge    = np.zeros((1,))
+        obj.SumFlux_QiAll = np.zeros((1, 1))
+        obj.SumFlux_Qi_phi = np.zeros((1,)); obj.SumFlux_Qi_a = np.zeros((1,))
+        obj.SumFlux_Qi     = np.zeros((1,))
+        obj.SumFlux_GiAll_phi = np.zeros((1, 1)); obj.SumFlux_GiAll_a = np.zeros((1, 1))
+        obj.SumFlux_GiAll = np.zeros((1, 1))
+        obj.SumFlux_Gi_phi = np.zeros((1,)); obj.SumFlux_Gi_a = np.zeros((1,))
+        obj.SumFlux_Gi     = np.zeros((1,))
+        obj.SumFlux_MtAll_phi = np.zeros((1, 1)); obj.SumFlux_MtAll_a = np.zeros((1, 1))
+        obj.SumFlux_MtAll  = np.zeros((1, 1))
+        obj.SumFlux_Mt_phi = np.zeros((1,)); obj.SumFlux_Mt_a = np.zeros((1,))
+        obj.SumFlux_Mt     = np.zeros((1,))
+        obj.QLFluxSpectrum  = np.zeros((5, 1, 1, 1, 1))
+        obj.QLFluxSpectrum_Ge_phi    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_phi    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_Ge_a_par    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_par    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_Ge_a_per    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_per    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_per = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_per = np.zeros((1, 1))
+        obj.IntensitySpectrum    = np.zeros((4, 1, 1, 1))
+        obj.IntensitySpectrum_ne = np.zeros((1, 1)); obj.IntensitySpectrum_Te = np.zeros((1, 1))
+        obj.IntensitySpectrum_ni = np.zeros((1, 1, 1)); obj.IntensitySpectrum_Ti = np.zeros((1, 1, 1))
+
+        obj.postprocess()
+
+        print(f"\t- [in-process] rho={obj.roa:.4f}  "
+              f"Qe={obj.Qe:.4f}  Qi={obj.Qi:.4f}  Ge={obj.Ge:.4f}")
+        return obj
 
     def postprocess(self):
         coeff, klow = 0.0, 0.8

@@ -1,0 +1,8 @@
+# Build artefacts from build_tglf_lib.sh — platform-specific, never commit.
+tglf_build/
+
+# f2py generated stubs and build logs
+*.c
+*.f
+*.log
+__pycache__/
