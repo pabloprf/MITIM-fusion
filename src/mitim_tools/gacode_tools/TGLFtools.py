@@ -20,6 +20,7 @@ from mitim_tools.gacode_tools.utils import (
     GACODEdefaults,
     GACODEplotting,
     GACODErun,
+    GACODEinprocess,
 )
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -29,7 +30,19 @@ from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
-class TGLF(SIMtools.mitim_simulation):
+class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
+    """
+    TGLF wrapper.  Uses multiple inheritance to combine two engines:
+
+    * ``SIMtools.mitim_simulation`` — the standard subprocess / SLURM engine
+      (the file-based ``prep`` / ``_run_prepare`` / ``_run`` / ``read``).
+    * ``GACODEinprocess.TGLFInProcess`` — the pure in-process (ctypes)
+      mixin providing ``prep_inprocess`` / ``_run_prepare_inprocess`` /
+      ``_run_inprocess`` / ``read_inprocess``.
+
+    The four small dispatch methods below decide between the two engines
+    based on the ``self.in_process`` flag set at construction time.
+    """
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
@@ -40,8 +53,10 @@ class TGLF(SIMtools.mitim_simulation):
         alreadyRun=None,  # Option2: Do more stuff with a class that has already been created and store
     ):
 
-        super().__init__(rhos=rhos)
+        SIMtools.mitim_simulation.__init__(self, rhos=rhos)
         self.in_process = in_process
+        # In-process result cache (lazy-init via mixin); harmless when not used.
+        self._init_inprocess()
 
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
             return f"tglf -e {folder} -n {n} -p {p} {additional_command}"
@@ -139,203 +154,36 @@ class TGLF(SIMtools.mitim_simulation):
                 "SELECTED": None,
             }
 
-            self._inprocess_cache: dict = {}   # {subfolder: raw {rho: outputs_dict}}
+    # ------------------------------------------------------------------
+    # In-process / subprocess dispatch.  Each method picks the engine
+    # based on self.in_process and forwards to either:
+    #   * GACODEinprocess.TGLFInProcess.<method>_inprocess  (in-process)
+    #   * SIMtools.mitim_simulation.<method> via super()    (subprocess)
+    # The actual physics/IO logic lives in those two parents — these
+    # dispatchers are intentionally tiny.
+    # ------------------------------------------------------------------
 
     def prep(self, mitim_state, FolderGACODE=None, **kwargs):
-        """
-        Prepare the TGLF run from a MITIM state (input.gacode path or object).
+        if self.in_process:
+            # In-process needs no folder — anything passed for FolderGACODE
+            # is silently ignored, and a synthetic in-memory path is used
+            # internally for cache keys.
+            return self.prep_inprocess(mitim_state)
+        return super().prep(mitim_state, FolderGACODE, **kwargs)
 
-        When ``self.in_process=True``, *FolderGACODE* is optional.  If omitted
-        a temporary directory is used as a logical base path — nothing is ever
-        written to it.  No ``input.tglf*`` or ``input.gacode_torun`` files are
-        created.
+    def _run_prepare(self, subfolder_simulation, **kwargs):
+        if self.in_process:
+            return self._run_prepare_inprocess(subfolder_simulation, **kwargs)
+        return super()._run_prepare(subfolder_simulation, **kwargs)
 
-        When ``self.in_process=False`` the behaviour is identical to the parent:
-        *FolderGACODE* is required and all files are written normally.
-        """
-        if not self.in_process:
-            return super().prep(mitim_state, FolderGACODE, **kwargs)
+    def _run(self, code_executor, **kwargs):
+        if self.in_process:
+            return self._run_inprocess(code_executor, **kwargs)
+        return super()._run(code_executor, **kwargs)
 
-        # ------------------------------------------------------------------
-        # Zero-file in-process prep
-        # ------------------------------------------------------------------
-        import tempfile
-        from mitim_tools.gacode_tools import PROFILEStools
-        from mitim_tools.gacode_tools.utils import NORMtools
-        from mitim_tools.misc_tools.PLASMAtools import md_u
-
-        # Use the provided folder as a logical base (no mkdir); fall back to temp.
-        if FolderGACODE is None:
-            self.FolderGACODE = Path(tempfile.mkdtemp(prefix="tglf_inprocess_"))
-        else:
-            self.FolderGACODE = Path(FolderGACODE).resolve()
-
-        # Load profiles
-        if isinstance(mitim_state, (str, Path)):
-            self.profiles = PROFILEStools.gacode_state(str(mitim_state))
-        else:
-            self.profiles = mitim_state
-
-        self.profiles.derive_quantities(mi_ref=md_u)
-
-        # Build TGLFinput objects in memory — no files written
-        raw = self.profiles.to_tglf(r=self.rhos, r_is_rho=True)
-        self.inputs_files = {}
-        for rho, d in raw.items():
-            inp = TGLFinput.initialize_in_memory(d)
-            # Set a logical (never-created) file path so later code that
-            # inspects inp.file doesn't hit AttributeError
-            inp.file = self.FolderGACODE / f"input.tglf_{float(rho):.4f}"
-            self.inputs_files[rho] = inp
-
-        # Normalizations (pure in-memory)
-        print("> Setting up normalizations")
-        self.NormalizationSets, cdf = NORMtools.normalizations(self.profiles)
-        return cdf
-
-    def _run_prepare(self, subfolder_simulation, code_executor=None, code_executor_full=None,
-                     code_settings=None, extraOptions={}, multipliers={}, minimum_delta_abs={},
-                     cold_start=False, forceIfcold_start=False, only_minimal_files=False,
-                     launchSlurm=True, slurm_setup=None, additional_files_to_send=None,
-                     **kwargs_control):
-        """
-        When ``self.in_process=True``: build TGLFinput objects in memory via
-        ``modifyInputs()`` — no folder creation, no file writes.
-        When ``self.in_process=False``: delegate to the parent implementation.
-        """
-        if not self.in_process:
-            return super()._run_prepare(
-                subfolder_simulation,
-                code_executor=code_executor,
-                code_executor_full=code_executor_full,
-                code_settings=code_settings,
-                extraOptions=extraOptions,
-                multipliers=multipliers,
-                minimum_delta_abs=minimum_delta_abs,
-                cold_start=cold_start,
-                forceIfcold_start=forceIfcold_start,
-                only_minimal_files=only_minimal_files,
-                launchSlurm=launchSlurm,
-                slurm_setup=slurm_setup,
-                additional_files_to_send=additional_files_to_send,
-                **kwargs_control,
-            )
-
-        # ------------------------------------------------------------------
-        # Zero-file in-process path
-        # ------------------------------------------------------------------
-        from mitim_tools.simulation_tools.SIMtools import modifyInputs
-
-        if code_executor is None:
-            code_executor = {}
-        if code_executor_full is None:
-            code_executor_full = {}
-
-        # Compute the logical folder path (never created on disk)
-        Folder_sim = (self.FolderGACODE / subfolder_simulation).resolve()
-
-        inputs = copy.deepcopy(self.inputs_files)
-
-        mod_input_file = {}
-        for i, rho in enumerate(self.rhos):
-            print(f"\t- [in-process] Preparing input for rho={rho:.4f}")
-            input_sim_rho = modifyInputs(
-                inputs[rho],
-                code_settings=code_settings,
-                extraOptions=extraOptions,
-                multipliers=multipliers,
-                minimum_delta_abs=minimum_delta_abs if minimum_delta_abs else {},
-                position_change=i,
-                addControlFunction=self.run_specifications["control_function"],
-                controls_file=self.run_specifications["controls_file"],
-                NS=inputs[rho].num_recorded,
-            )
-            if code_settings is not None:
-                input_sim_rho.removeLowDensitySpecie()
-                input_sim_rho.remove_fast()
-            if kwargs_control.get("Quasineutral", False):
-                input_sim_rho.ensureQuasineutrality()
-            input_sim_rho.anticipate_problems()
-            mod_input_file[rho] = input_sim_rho
-
-        code_executor_full[subfolder_simulation] = {}
-        code_executor[subfolder_simulation] = {}
-        for irho in self.rhos:
-            entry = {
-                "folder":     Folder_sim,
-                "dictionary": mod_input_file[irho],
-                "inputs":     None,
-                "extraOptions": extraOptions,
-                "multipliers":  multipliers,
-                "additional_files_to_send": None,
-            }
-            code_executor_full[subfolder_simulation][irho] = entry
-            code_executor[subfolder_simulation][irho] = entry
-
-        self.FolderSimLast = Folder_sim
-        return code_executor, code_executor_full
-
-    def _run(self, code_executor, run_type='normal', **kwargs_run):
-        """
-        Dispatch to in-process ctypes engine or parent subprocess/SLURM engine.
-
-        When ``self.in_process=True`` the Fortran physics is called directly via
-        ctypes for every (subfolder, rho) in *code_executor* — no file I/O.
-        Results are stored in ``self._inprocess_cache[str(folder_sim)]``.
-        """
-        if not self.in_process:
-            return super()._run(code_executor, run_type=run_type, **kwargs_run)
-
-        import os
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        from mitim_tools.simulation_tools.interfaces import tglf_inprocess as _tip
-
-        # Build work items — one per (subfolder_variation, rho)
-        work_items = []   # (subfolder_sim, rho, flat, tglf_input, folder_sim)
-        for subfolder_sim, rho_dict in code_executor.items():
-            for rho, rho_info in rho_dict.items():
-                folder_sim = rho_info["folder"]
-                tglf_input = rho_info["dictionary"]
-                flat = {}
-                flat.update(tglf_input.controls)
-                flat.update(tglf_input.plasma)
-                for i, sp_data in tglf_input.species.items():
-                    for var, val in sp_data.items():
-                        flat[f"{var}_{i}"] = val
-                work_items.append((subfolder_sim, rho, flat, tglf_input, folder_sim))
-
-        n_workers = os.cpu_count() or 1
-        n_jobs    = len(work_items)
-        print(f"\t- [in-process] Submitting {n_jobs} TGLF cases across {min(n_workers, n_jobs)} workers")
-
-        results_by_folder: dict = {}
-
-        # Use threads, not processes.
-        # • ctypes releases the GIL during Fortran calls → true parallelism.
-        # • Each thread loads a private copy of the .so (via _get_thread_lib())
-        #   so Fortran module-level globals are independent per thread.
-        # • No macOS spawn/fork/forkserver issues; no __main__ re-execution.
-        with ThreadPoolExecutor(max_workers=min(n_workers, n_jobs)) as pool:
-            future_map = {
-                pool.submit(_tip._parallel_worker, flat): (subfolder_sim, rho, tglf_input, folder_sim)
-                for subfolder_sim, rho, flat, tglf_input, folder_sim in work_items
-            }
-            for future in as_completed(future_map):
-                subfolder_sim, rho, tglf_input, folder_sim = future_map[future]
-                outputs = future.result()
-                key = str(folder_sim)
-                if key not in results_by_folder:
-                    results_by_folder[key] = {"raw": {}, "inputs": {}}
-                results_by_folder[key]["raw"][float(rho)]    = outputs
-                results_by_folder[key]["inputs"][float(rho)] = tglf_input
-                print(
-                    f"\t- [in-process] rho={rho:.4f}  "
-                    f"Qe={outputs['elec_eflux']:.4f}  "
-                    f"Qi[0]={outputs['ion_eflux'][0]:.4f}"
-                )
-
-        self._inprocess_cache.update(results_by_folder)
-        self.simulation_job = None   # keep attribute consistent with parent
+    # NOTE: read() is defined further down because it accepts TGLF-specific
+    # kwargs (d_perp_cm, suffix, save_and_cleanup, ...) and dispatches
+    # there.  See its body below.
 
     # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run(
@@ -1136,62 +984,11 @@ class TGLF(SIMtools.mitim_simulation):
         save_and_cleanup = None,  # If a Path/str is given, save npz there then delete the raw run folder
     ):
         # ------------------------------------------------------------------
-        # In-process path: build results entirely from memory (no file I/O)
+        # In-process path: delegate to GACODEinprocess.TGLFInProcess
+        # mixin, which builds results entirely from the in-process cache.
         # ------------------------------------------------------------------
         if self.in_process:
-            subfolder = folder if folder is not None else self.FolderSimLast
-            cache_key = str(subfolder)
-            if cache_key not in self._inprocess_cache:
-                raise RuntimeError(
-                    f"No in-process results cached for key '{cache_key}'. "
-                    "Call run() first."
-                )
-            cached   = self._inprocess_cache[cache_key]
-            raw      = cached["raw"]       # {rho: outputs_dict}
-            inp_files = cached["inputs"]   # {rho: TGLFinput}
-
-            if "d_perp_dict" not in self.__dict__:
-                self.d_perp_dict = None
-
-            self.updateConvolution()
-
-            output_list, inputclasses, parsed = [], [], []
-            for rho in self.rhos:
-                inputclass = inp_files.get(rho) or inp_files.get(float(rho))
-                outputs    = raw.get(rho)    or raw.get(float(rho))
-                out = TGLFoutput.from_inprocess(inputclass, outputs)
-                out.unnormalize(
-                    self.NormalizationSets["SELECTED"],
-                    rho=rho,
-                    convolution_fun_fluct=self.convolution_fun_fluct,
-                    factorTot_to_Perp=self.factorTot_to_Perp,
-                )
-                output_list.append(out)
-                inputclasses.append(inputclass)
-                # Build the flat input dict so read_scan() can access scan variables
-                if inputclass is not None:
-                    flat_parsed = {}
-                    flat_parsed.update(inputclass.controls)
-                    flat_parsed.update(inputclass.plasma)
-                    for i, sp_data in inputclass.species.items():
-                        for var, val in sp_data.items():
-                            flat_parsed[f"{var}_{i}"] = val
-                else:
-                    flat_parsed = {}
-                parsed.append(flat_parsed)
-
-            self.results[label] = {
-                "output":      output_list,
-                "inputclasses": inputclasses,
-                "parsed":      parsed,
-                "x":           np.array(self.rhos),
-                "convolution_fun_fluct": self.convolution_fun_fluct,
-                "DRMAJDX_LOC": self.DRMAJDX_LOC,
-                "profiles":    self.NormalizationSets.get("input_gacode"),
-                "wavefunction": {},
-            }
-            print(f"\t- [in-process] Read results for label '{label}' ({len(self.rhos)} rho values)")
-            return
+            return self.read_inprocess(label=label, folder=folder)
 
         print("> Reading TGLF results")
 

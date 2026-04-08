@@ -64,13 +64,9 @@ tglf_sub = TGLFtools.TGLF(rhos=rhos, in_process=False)
 tglf_sub.prep(input_gacode, folder_sub)
 tglf_sub.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
 
-# in-process run (zero file I/O)
-folder_ip = __mitimroot__ / "tests" / "scratch" / "tglf_drives_ip"
-if cold_start and folder_ip.exists():
-    os.system(f"rm -r {folder_ip.resolve()}")
-
+# in-process run (zero file I/O — no folder needed at any step)
 tglf_ip = TGLFtools.TGLF(rhos=rhos, in_process=True)
-tglf_ip.prep(input_gacode, folder_ip)
+tglf_ip.prep(input_gacode)
 tglf_ip.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
 
 # comparison

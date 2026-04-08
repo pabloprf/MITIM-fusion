@@ -74,13 +74,9 @@ neo_sub = NEOtools.NEO(rhos=rhos, in_process=False)
 neo_sub.prep(input_gacode, folder_sub)
 neo_sub.run_scan(subfolder="scan_dltdr1", **SCAN_KWARGS)
 
-# in-process run (zero file I/O)
-folder_ip = __mitimroot__ / "tests" / "scratch" / "neo_scan_ip"
-if cold_start and folder_ip.exists():
-    os.system(f"rm -r {folder_ip.resolve()}")
-
+# in-process run (zero file I/O — no folder needed at any step)
 neo_ip = NEOtools.NEO(rhos=rhos, in_process=True)
-neo_ip.prep(input_gacode, folder_ip)
+neo_ip.prep(input_gacode)
 neo_ip.run_scan(subfolder="scan_dltdr1", **SCAN_KWARGS)
 
 # comparison
