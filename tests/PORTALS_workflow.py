@@ -31,7 +31,6 @@ portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65,
 portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", "w0"] 
 portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
-portals_fun.portals_parameters["transport"]["options"]["neo"]["vgen_exb_shear"] = True  # Compute neoclassical E×B shear from NEO (zero toroidal rotation)
 
 # Prepare case to run
 plasma_state = PROFILEStools.gacode_state(inputgacode)

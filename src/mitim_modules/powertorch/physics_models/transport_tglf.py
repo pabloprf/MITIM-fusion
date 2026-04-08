@@ -245,7 +245,7 @@ def _run_tglf_uncertainty_model(
         print_context = IOtools.nullcontext()
     else:
         print(f"\n\t- Running TGLF scans for turbulence drives (logs are hidden to avoid cluttering the log file)...\n", typeMsg="i")
-        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed"])
+        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed", "[in-process]"])
 
     with print_context:
         tglf.runScanTurbulenceDrives(
