@@ -274,8 +274,13 @@ class power_transport:
             print(f"\t\t- VGEN rho_range: [{rho_lo:.3f}, {rho_hi:.3f}] (PORTALS rho: [{rho_portals.min():.3f}, {rho_portals.max():.3f}])", typeMsg="i")
 
             # minutes for VGEN from the NEO slurm_setup (same source as neo.run()), defaulting to 60
-            neo_slurm    = self.transport_evaluator_options.get("neo", {}).get("run", {}).get("slurm_setup", {})
+            neo_opts     = self.transport_evaluator_options.get("neo", {})
+            neo_slurm    = neo_opts.get("run", {}).get("slurm_setup", {})
             minutes_vgen = neo_slurm.get("minutes", 60)
+            # Reuse the namelist's `neo.in_process` flag for VGEN as well —
+            # if the user wants in-process NEO they almost certainly want
+            # in-process VGEN too (same ctypes path, no SLURM overhead).
+            in_process_vgen = neo_opts.get("in_process", False)
 
             neo_exb = NEOtools.NEO(rhos=[])
             neo_exb.FolderGACODE = self.folder
@@ -284,7 +289,8 @@ class power_transport:
             # smooth_profiles=True: smooth Te/Ti/ne/ni before VGEN so piecewise-linear
             # kinks in the gradients do not pollute the computed Er
             neo_exb.run_vgen(subfolder="vgen_neo_exb", vgenOptions=vgenOptions, cold_start=self.cold_start,
-                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=True)
+                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=True,
+                             in_process=in_process_vgen)
             neo_exb.read_vgen()
             
             # Insert w0 by interpolating

@@ -593,7 +593,8 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         plt.tight_layout()
 
     def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False, rho_range=None,
-                 numcores=None, minutes=60, smooth_profiles=False, relative_smoothing=0.005):
+                 numcores=None, minutes=60, smooth_profiles=False, relative_smoothing=0.005,
+                 in_process=False):
         """
         Submit profiles_gen -vgen to compute the neoclassical radial electric field (Er)
         and populate w0(rad/s) in the profiles.  Must be followed by read_vgen().
@@ -698,10 +699,37 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             if numcores is None:
                 numcores = 16
 
-        # ---- Run (submit job and wait)
+        # ---- Run ---------------------------------------------------------
         if runThisCase:
-            print(f'\t- Running VGEN to compute Er and populate w0 in profiles, using {numcores} cores for {minutes} minutes, on {len(self.profiles.profiles["rho(-)"])} surfaces', typeMsg="i")
-            GACODErun.runVGEN(self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder, numcores=numcores, minutes=minutes)
+            n_surfaces = len(self.profiles.profiles["rho(-)"])
+            if in_process:
+                # In-process path: ctypes call into libvgen_serial.so, no
+                # mitim_job, no SLURM submission, no tarballing.  Each NEO
+                # solve still runs sequentially over surfaces inside the
+                # Fortran library — same physics as profiles_gen -vgen.
+                from mitim_tools.simulation_tools.interfaces.vgen_inprocess import VGENInProcess
+
+                print(f'\t- [in-process] Running VGEN on {n_surfaces} surfaces (no SLURM, no subprocess fork)', typeMsg="i")
+
+                # vgenOptions["numspecies"] is the value MITIM passes as
+                # `-in N` to profiles_gen -vgen.  The actual NEO N_SPECIES
+                # is N+1 (the wrapper script appends N_SPECIES=$((N+1))),
+                # so mirror that here.
+                n_species = int(vgenOptions.get("numspecies", len(self.profiles.Species))) + 1
+
+                _vgen_runner = VGENInProcess()
+                _vgen_runner.run(
+                    folder         = self.folder_vgen,
+                    er_method      = int(vgenOptions.get("er", 2)),
+                    vel_method     = int(vgenOptions.get("vel", 1)),
+                    erspecies_indx = int(vgenOptions.get("matched_ion", 1)),
+                    nth_min        = int(str(vgenOptions.get("nth", "17,39")).split(",")[0]),
+                    nth_max        = int(str(vgenOptions.get("nth", "17,39")).split(",")[-1]),
+                    n_species      = n_species,
+                )
+            else:
+                print(f'\t- Running VGEN to compute Er and populate w0 in profiles, using {numcores} cores for {minutes} minutes, on {n_surfaces} surfaces', typeMsg="i")
+                GACODErun.runVGEN(self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder, numcores=numcores, minutes=minutes)
         else:
             print(f"\t- Required files found in {subfolder}, not running VGEN", typeMsg="i")
 
