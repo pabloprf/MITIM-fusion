@@ -20,13 +20,16 @@ class tglf_model:
 
         simulation_options = self.transport_evaluator_options["tglf"]
         cold_start = self.cold_start
-        
+
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
         use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
         reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
         percent_error = simulation_options["percent_error"]
+        # If True, TGLF runs in-process via ctypes (libtglf_serial.so) — no
+        # subprocess fork, no folder / file I/O.  See namelist.portals.yaml.
+        in_process = simulation_options.get("in_process", False)
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
@@ -37,8 +40,8 @@ class tglf_model:
         # ------------------------------------------------------------------------------------------------------------------------
         
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        
-        tglf = TGLFtools.TGLF(rhos=rho_locations)
+
+        tglf = TGLFtools.TGLF(rhos=rho_locations, in_process=in_process)
 
         _ = tglf.prep(
             self.powerstate.profiles_transport,

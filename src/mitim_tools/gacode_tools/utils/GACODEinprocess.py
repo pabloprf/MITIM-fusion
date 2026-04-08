@@ -342,9 +342,13 @@ class TGLFInProcess(_GACODEInProcessMixin):
         return _tip._parallel_worker
 
     def _inprocess_postprocess_input(self, input_sim_rho, code_settings, kwargs_control):
-        # TGLF: drop low-density / fast species and optionally enforce
+        # TGLF: drop low-density / fast species (gated by ApplyCorrections,
+        # mirroring SIMtools.change_and_write_code) and optionally enforce
         # quasineutrality before passing the input to the Fortran engine.
-        if code_settings is not None:
+        # PORTALS' transport_tglf passes ApplyCorrections=False — without
+        # this gate the in-process path would silently strip species the
+        # subprocess path keeps and produce different fluxes.
+        if code_settings is not None and kwargs_control.get("ApplyCorrections", True):
             input_sim_rho.removeLowDensitySpecie()
             input_sim_rho.remove_fast()
         if kwargs_control.get("Quasineutral", False):

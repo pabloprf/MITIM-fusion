@@ -13,8 +13,11 @@ class neo_model:
 
         simulation_options = self.transport_evaluator_options["neo"]
         cold_start = self.cold_start
-        
+
         percent_error = simulation_options["percent_error"]
+        # If True, NEO runs in-process via ctypes (libneo_serial.so) — no
+        # subprocess fork, no folder / file I/O.  See namelist.portals.yaml.
+        in_process = simulation_options.get("in_process", False)
         # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
         ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
                 
@@ -23,8 +26,8 @@ class neo_model:
         # ------------------------------------------------------------------------------------------------------------------------
         
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        
-        neo = NEOtools.NEO(rhos=rho_locations)
+
+        neo = NEOtools.NEO(rhos=rho_locations, in_process=in_process)
 
         _ = neo.prep(
             self.powerstate.profiles_transport,
