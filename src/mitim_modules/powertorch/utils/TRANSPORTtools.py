@@ -6,7 +6,7 @@ from functools import partial
 import copy
 import shutil
 from mitim_tools.misc_tools import IOtools, PLASMAtools
-from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.gacode_tools import PROFILEStools, NEOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -259,6 +259,41 @@ class power_transport:
         if impurityPosition_new != self.powerstate.impurityPosition:
             print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
             self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
+
+        # --- Optional: compute neoclassical E×B shear from NEO VGEN (zero toroidal rotation assumed)
+        vgen_exb_options = self.powerstate.transport_options.get("options", {}).get("neo", {}).get("vgen_exb_shear", None)
+        if vgen_exb_options is not None:
+            print("\t- Computing neoclassical ExB shear via NEO VGEN (zero toroidal rotation)", typeMsg="i")
+            rho_range = None
+            vgenOptions = {} if vgen_exb_options is True else dict(vgen_exb_options)
+
+            # minutes for VGEN from the NEO slurm_setup (same source as neo.run()), defaulting to 60
+            neo_slurm    = self.transport_evaluator_options.get("neo", {}).get("run", {}).get("slurm_setup", {})
+            minutes_vgen = neo_slurm.get("minutes", 60)
+
+            neo_exb = NEOtools.NEO(rhos=[])
+            neo_exb.FolderGACODE = self.folder
+            neo_exb.profiles = self.powerstate.profiles_transport
+            # numcores=None → run_vgen() resolves from machineSettings (same logic as SIMtools._run())
+            neo_exb.run_vgen(subfolder="vgen_neo_exb", vgenOptions=vgenOptions, cold_start=self.cold_start,
+                             rho_range=rho_range, minutes=minutes_vgen)
+            neo_exb.read_vgen()
+            
+            # Insert w0 by interpolating
+            if rho_range is not None:
+                w0 = np.interp(
+                    self.powerstate.profiles_transport.profiles['rho(-)'],
+                    neo_exb.profiles_vgen.profiles['rho(-)'],
+                    neo_exb.profiles_vgen.profiles['w0(rad/s)']
+                )
+            else:
+                w0 = neo_exb.profiles_vgen.profiles['w0(rad/s)']
+                
+            self.powerstate.profiles_transport.profiles['w0(rad/s)'] = w0
+
+            # Propagate to powerstate.profiles so the stored iteration profiles also carry the NEO w0
+            self.powerstate.profiles.profiles['w0(rad/s)'] = w0
+            self.powerstate.profiles.write_state(file=self.file_profs)
 
     def _profiles_to_store(self):
 

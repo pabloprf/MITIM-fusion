@@ -1,6 +1,7 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools
+from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, FARMINGtools
 from mitim_tools.gacode_tools.utils import GACODErun, GACODEdefaults
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -543,31 +544,40 @@ class NEO(SIMtools.mitim_simulation):
         
         plt.tight_layout()
 
+    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False, rho_range=None, numcores=None, minutes=60):
+        """
+        Submit profiles_gen -vgen to compute the neoclassical radial electric field (Er)
+        and populate w0(rad/s) in the profiles.  Must be followed by read_vgen().
 
+        Uses self.FolderGACODE (set by prep()) as the parent directory and
+        self.profiles (set by prep()) as the input gacode state.
 
-    # def prep(self, inputgacode, folder):
-    #     self.inputgacode = inputgacode
-    #     self.folder = IOtools.expandPath(folder)
+        Options for vgenOptions:
+            er          : Method to compute Er
+                            1 = Force balance from given omega0
+                            2 = NEO weak rotation limit (recommended for zero toroidal rotation)
+                            3 = NEO strong rotation limit
+                            4 = Return given omega0
+            vel         : Method to compute velocities
+                            1 = NEO weak rotation limit
+                            2 = NEO strong rotation limit
+            nth         : Min,max theta resolutions (e.g. "17,39")
+            matched_ion : Index of ion species to match NEO and given velocities (1-indexed)
+        """
 
-    #     self.folder.mkdir(parents=True, exist_ok=True)
+        self.folder_vgen = self.FolderGACODE / f"{subfolder}"
 
-
-
-    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False):
-
-        self.folder_vgen = self.folder / f"{subfolder}"
-
-        # ---- Default options
-
+        # ---- Default options (mutable default arg: always copy before mutating)
+        vgenOptions = dict(vgenOptions)
         vgenOptions.setdefault("er", 2)
         vgenOptions.setdefault("vel", 1)
-        vgenOptions.setdefault("numspecies", len(self.inputgacode.Species))
+        vgenOptions.setdefault("numspecies", len(self.profiles.Species))
         vgenOptions.setdefault("matched_ion", 1)
         vgenOptions.setdefault("nth", "17,39")
+        vgenOptions.setdefault("rho_range", rho_range)
 
-        # ---- Prepare
-
-        runThisCase = check_if_files_exist(
+        # ---- Decide whether to (re)run
+        runThisCase = not check_if_files_exist(
             self.folder_vgen,
             [
                 ["vgen", "input.gacode"],
@@ -581,26 +591,323 @@ class NEO(SIMtools.mitim_simulation):
 
         if (not runThisCase) and cold_start:
             runThisCase = print("\t- Files found in folder, but cold_start requested. Are you sure?",typeMsg="q",)
-
             if runThisCase:
                 IOtools.askNewFolder(self.folder_vgen, force=True)
 
-        self.inputgacode.write_state(file=(self.folder_vgen / f"input.gacode"))
+        self.folder_vgen.mkdir(parents=True, exist_ok=True)
+        
+        # Potentially change the rho_range
+        if rho_range is not None:
+            rho_new = self.profiles.profiles['rho(-)'][np.argmin(np.abs(self.profiles.profiles['rho(-)'] - rho_range[0])):np.argmin(np.abs(self.profiles.profiles['rho(-)'] - rho_range[1]))+1]
+            self.profiles.changeResolution(rho_new=rho_new)
+        
+        self.profiles.write_state(file=(self.folder_vgen / "input.gacode"))
 
-        # ---- Run
+        # ---- Resolve numcores from machine config (same pattern as SIMtools._run())
+        if numcores is None:
+            machineSettings  = FARMINGtools.mitim_job.grab_machine_settings("profiles_gen")
+            numcores = machineSettings["cores_per_node"]
 
+            if machineSettings["machine"] == "local":
+                slurm_ntasks    = os.environ.get("SLURM_NTASKS")
+                slurm_cpus      = os.environ.get("SLURM_CPUS_PER_TASK")
+                if slurm_ntasks is not None and slurm_cpus is not None:
+                    cores_allocated = int(slurm_ntasks) * int(slurm_cpus)
+                elif slurm_ntasks is not None:
+                    cores_allocated = int(slurm_ntasks)
+                elif slurm_cpus is not None:
+                    cores_allocated = int(slurm_cpus)
+                else:
+                    cores_allocated = os.cpu_count()
+
+                if cores_allocated is not None:
+                    if numcores is None or cores_allocated < numcores:
+                        numcores = cores_allocated
+
+            if numcores is None:
+                numcores = 16
+
+        # ---- Run (submit job and wait)
         if runThisCase:
-            file_new = GACODErun.runVGEN(
-                self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder
-            )
+            print(f'\t- Running VGEN to compute Er and populate w0 in profiles, using {numcores} cores for {minutes} minutes, on {len(self.profiles.profiles["rho(-)"])} surfaces', typeMsg="i")
+            GACODErun.runVGEN(self.folder_vgen, vgenOptions=vgenOptions, name_run=subfolder, numcores=numcores, minutes=minutes)
         else:
-            print(f"\t- Required files found in {subfolder}, not running VGEN",typeMsg="i",)
-            file_new = self.folder_vgen / f"vgen" / f"input.gacode"
+            print(f"\t- Required files found in {subfolder}, not running VGEN", typeMsg="i")
 
-        # ---- Postprocess
+    def read_vgen(self, subfolder=None):
+        """
+        Read outputs produced by run_vgen():
+            vgen/input.gacode  → self.profiles_vgen  (gacode_state with updated w0)
+            out.vgen.ercomp    → self.vgen_ercomp     (dict of Er component profiles vs rho)
+            out.vgen.vel       → self.vgen_vel        (dict of velocity component profiles vs rho)
 
+        Call after run_vgen() (or on an already-completed folder).
+        If subfolder is None, uses self.folder_vgen set by run_vgen().
+        """
+        if subfolder is not None:
+            self.folder_vgen = self.FolderGACODE / subfolder
+
+        folder = self.folder_vgen / "vgen"
+        file_gacode = folder / "input.gacode"
+
+        # ---- Updated gacode profiles (w0 now populated from NEO Er) ----
         from mitim_tools.gacode_tools import PROFILEStools
-        self.inputgacode_vgen = PROFILEStools.gacode_state(file_new, derive_quantities=True, mi_ref=self.inputgacode.mi_ref)
+        self.profiles_vgen = PROFILEStools.gacode_state(file_gacode, derive_quantities=True)
+
+        # ---- Er component decomposition (out.vgen.ercomp) ----
+        # Columns (all in V/m):
+        #   0  rho
+        #   1  Er_total         total Er (force balance)
+        #   2  Er_db            diamagnetic (pressure-gradient) term
+        #   3  Er_vtor          toroidal rotation term  (0 in weak-rotation limit)
+        #   4  Er_vpol_total    total poloidal-flow term
+        #   5  Er_vpol_neo      NEO poloidal-flow term
+        #   6  Er_vpol_vtor     toroidal-rotation contribution to poloidal flow
+        #   7  Er_dia_total     total diamagnetic correction
+        #   8  Er_dia_neo       NEO diamagnetic correction
+        #   9  Er_dia_vtor      toroidal contribution to diamagnetic correction
+        #  10  Er_offset        constant offset
+        #  11  Er_check         consistency check
+        #  12  Er_dia2          secondary diamagnetic term
+        #  13  Er_total2        secondary total Er
+        ercomp_file = folder / "out.vgen.ercomp"
+        if ercomp_file.exists():
+            data = np.loadtxt(ercomp_file)
+            col_names = [
+                "rho", "Er_total", "Er_db", "Er_vtor",
+                "Er_vpol_total", "Er_vpol_neo", "Er_vpol_vtor",
+                "Er_dia_total", "Er_dia_neo", "Er_dia_vtor",
+                "Er_offset", "Er_check", "Er_dia2", "Er_total2",
+            ]
+            self.vgen_ercomp = {name: data[:, i] for i, name in enumerate(col_names)}
+        else:
+            self.vgen_ercomp = {}
+
+        # ---- Velocity components (out.vgen.vel) ----
+        # Columns (V/m for Er, m/s for velocities):
+        #   0  rho
+        #   1  Mach_neo
+        #   2  Er_total
+        #   3  Er_tot_alt
+        #   4  vpol_neo
+        #   5  zero (placeholder)
+        #   6  Er_dia
+        #   7  Er_dia_alt
+        #   8  vpol_total
+        #   9  vpol_dia
+        #  10  vpol_neo2
+        #  11  vpol_dia2
+        #  12  vpol_diff
+        #  13  vpol_vtor_corr
+        #  14  vpol_alt
+        #  15  vpol_alt2
+        #  16  vpol_ion
+        #  17  vpol_ion2
+        #  18  vpol_ion3
+        #  19  Er_ion
+        vel_file = folder / "out.vgen.vel"
+        if vel_file.exists():
+            data = np.loadtxt(vel_file)
+            vel_col_names = [
+                "rho", "Mach_neo", "Er_total", "Er_tot_alt",
+                "vpol_neo", "zero", "Er_dia", "Er_dia_alt",
+                "vpol_total", "vpol_dia", "vpol_neo2", "vpol_dia2",
+                "vpol_diff", "vpol_vtor_corr", "vpol_alt", "vpol_alt2",
+                "vpol_ion", "vpol_ion2", "vpol_ion3", "Er_ion",
+            ]
+            ncols = min(data.shape[1], len(vel_col_names))
+            self.vgen_vel = {vel_col_names[i]: data[:, i] for i in range(ncols)}
+        else:
+            self.vgen_vel = {}
+
+        print(
+            f"\t- VGEN read: w0 range [{self.profiles_vgen.profiles['w0(rad/s)'].min():.3e}, "
+            f"{self.profiles_vgen.profiles['w0(rad/s)'].max():.3e}] rad/s",
+            typeMsg="i",
+        )
+
+    def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1):
+        """
+        Plot VGEN results: Er component decomposition, w0 and VEXB_SHEAR before/after.
+        Requires read_vgen() to have been called first.
+
+        rho_min : float
+            Minimum rho to include in Er/velocity plots (default 0.1).
+            Near-axis values can diverge and obscure the physically relevant region.
+        """
+        apply_theme()
+
+        if fn is None:
+            self.fn = GUItools.FigureNotebook("NEO VGEN Notebook", geometry="1700x900", vertical=True)
+        else:
+            self.fn = fn
+
+        colors = GRAPHICStools.listColors()
+
+        # ---- Tab 1: kinetic profiles + gradients (left) | Er decomposition (right) ----
+        fig1 = self.fn.add_figure(label=f"{label} Er components", tab_color=fn_color)
+        grid1 = plt.GridSpec(2, 5, hspace=0.55, wspace=0.45, width_ratios=[1, 1, 1, 1, 1])
+
+        ax_prof = fig1.add_subplot(grid1[0, 0])
+        ax_grad = fig1.add_subplot(grid1[1, 0])
+        ax_Er   = fig1.add_subplot(grid1[0, 1])
+        ax_db   = fig1.add_subplot(grid1[0, 2])
+        ax_vpol = fig1.add_subplot(grid1[0, 3])
+        ax_all  = fig1.add_subplot(grid1[0, 4])
+        ax_vtor = fig1.add_subplot(grid1[1, 1])
+        ax_dia  = fig1.add_subplot(grid1[1, 2])
+
+        # ---- Kinetic profiles (top-left) and gradients (bottom-left) ----
+        src = self.profiles_vgen if (hasattr(self, "profiles_vgen") and self.profiles_vgen is not None) else None
+        if src is not None:
+            rho_s = src.profiles.get("rho(-)", None)
+            if rho_s is not None:
+                ms = rho_s >= rho_min
+
+                Te     = src.profiles.get("te(keV)", None)
+                ne     = src.profiles.get("ne(10^19/m^3)", None)
+                Ti_all = src.profiles.get("ti(keV)", None)
+                Ti     = Ti_all[:, 0] if Ti_all is not None and Ti_all.ndim == 2 else Ti_all
+
+                ax_ne = ax_prof.twinx()
+                if Te is not None:
+                    ax_prof.plot(rho_s[ms], Te[ms], color=colors[0], lw=1.8, label="$T_e$")
+                if Ti is not None:
+                    ax_prof.plot(rho_s[ms], Ti[ms], color=colors[1], lw=1.8, ls="--", label="$T_i$")
+                if ne is not None:
+                    ax_ne.plot(rho_s[ms], ne[ms], color=colors[2], lw=1.5, ls=":", label="$n_e$")
+                ax_prof.set_xlabel(r"$\rho_{tor}$"); ax_prof.set_xlim(left=rho_min)
+                ax_prof.set_ylabel("Temperature (keV)")
+                ax_ne.set_ylabel("$n_e$ ($10^{19}\\,m^{-3}$)", color=colors[2])
+                ax_prof.set_title("Kinetic profiles")
+                lines_T, labs_T = ax_prof.get_legend_handles_labels()
+                lines_n, labs_n = ax_ne.get_legend_handles_labels()
+                ax_prof.legend(lines_T + lines_n, labs_T + labs_n, loc="best", fontsize=7)
+
+                aLTe     = src.derived.get("aLTe", None)
+                aLTi_all = src.derived.get("aLTi", None)
+                aLTi     = aLTi_all[:, 0] if aLTi_all is not None and np.ndim(aLTi_all) == 2 else aLTi_all
+                aLne     = src.derived.get("aLne", None)
+                if aLTe is not None:
+                    ax_grad.plot(rho_s[ms], aLTe[ms], color=colors[0], lw=1.8, label="$a/L_{T_e}$")
+                if aLTi is not None:
+                    ax_grad.plot(rho_s[ms], aLTi[ms], color=colors[1], lw=1.8, ls="--", label="$a/L_{T_i}$")
+                if aLne is not None:
+                    ax_grad.plot(rho_s[ms], aLne[ms], color=colors[2], lw=1.5, ls=":", label="$a/L_{n_e}$")
+                ax_grad.set_xlabel(r"$\rho_{tor}$"); ax_grad.set_xlim(left=rho_min)
+                ax_grad.set_ylabel("$a/L$"); ax_grad.set_title("Norm. gradients")
+                ax_grad.axhline(0, color="k", lw=0.7, ls="--")
+                ax_grad.legend(loc="best", fontsize=7)
+
+        # ---- Er components (right columns) ----
+        if self.vgen_ercomp:
+            rho = self.vgen_ercomp["rho"]
+            mask = rho >= rho_min
+
+            ax_Er.plot(rho[mask],   self.vgen_ercomp["Er_total"][mask],      color=colors[0], lw=1.8, label="$E_r$ total")
+            ax_Er.plot(rho[mask],   self.vgen_ercomp.get("Er_total2", rho*0)[mask], color=colors[1], lw=1.2, ls="--", label="$E_r$ total (alt)")
+            ax_db.plot(rho[mask],   self.vgen_ercomp["Er_db"][mask],         color=colors[2], lw=1.8, label="diamagnetic")
+            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_total"][mask], color=colors[3], lw=1.8, label="pol. flow (total)")
+            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_neo"][mask],   color=colors[4], lw=1.2, ls="--", label="pol. flow (NEO)")
+            ax_vtor.plot(rho[mask], self.vgen_ercomp["Er_vtor"][mask],       color=colors[5], lw=1.8, label="toroidal rot.")
+            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_total"][mask],  color=colors[6], lw=1.8, label="dia. total")
+            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_neo"][mask],    color=colors[7], lw=1.2, ls="--", label="dia. NEO")
+            for key, lbl, c in [
+                ("Er_total",      "$E_r$ total",   colors[0]),
+                ("Er_db",         "diamagnetic",    colors[2]),
+                ("Er_vpol_total", "pol. flow",      colors[3]),
+                ("Er_dia_total",  "dia. total",     colors[6]),
+            ]:
+                if key in self.vgen_ercomp:
+                    ax_all.plot(rho[mask], self.vgen_ercomp[key][mask], color=c, lw=1.5, label=lbl)
+
+        for ax in [ax_Er, ax_db, ax_vpol, ax_vtor, ax_dia, ax_all]:
+            ax.set_xlabel(r"$\rho_{tor}$")
+            ax.set_ylabel("$E_r$ (V/m)")
+            ax.set_xlim(left=rho_min)
+            ax.axhline(0, color="k", lw=0.7, ls="--")
+            ax.legend(loc="best", fontsize=7)
+        ax_Er.set_title("$E_r$ total")
+        ax_db.set_title("Diamagnetic term")
+        ax_vpol.set_title("Poloidal-flow term")
+        ax_vtor.set_title("Toroidal-rot. term (≈0)")
+        ax_dia.set_title("Diamagnetic correction")
+        ax_all.set_title("All components")
+
+        # ---- Tab 2: w0 and VEXB_SHEAR before/after ----
+        fig2 = self.fn.add_figure(label=f"{label} w0 & VEXB", tab_color=fn_color)
+        grid2 = plt.GridSpec(1, 3, hspace=0.4, wspace=0.35)
+        ax_w0     = fig2.add_subplot(grid2[0, 0])
+        ax_vexb   = fig2.add_subplot(grid2[0, 1])
+        ax_mach   = fig2.add_subplot(grid2[0, 2])
+
+        # Before VGEN: from original profiles
+        if hasattr(self, "profiles") and self.profiles is not None:
+            rho_orig = self.profiles.profiles.get("rho(-)", None)
+            w0_orig  = self.profiles.profiles.get("w0(rad/s)", None)
+            if rho_orig is not None and w0_orig is not None:
+                m = rho_orig >= rho_min
+                ax_w0.plot(rho_orig[m], w0_orig[m], color=colors[1], lw=1.5, ls="--", label="before VGEN")
+
+            vexb_orig = _compute_vexb_shear(self.profiles)
+            if vexb_orig is not None:
+                m = rho_orig >= rho_min
+                ax_vexb.plot(rho_orig[m], vexb_orig[m], color=colors[1], lw=1.5, ls="--", label="before VGEN")
+
+        # After VGEN: from profiles_vgen
+        if hasattr(self, "profiles_vgen") and self.profiles_vgen is not None:
+            rho_new  = self.profiles_vgen.profiles.get("rho(-)", None)
+            w0_new   = self.profiles_vgen.profiles.get("w0(rad/s)", None)
+            if rho_new is not None and w0_new is not None:
+                m = rho_new >= rho_min
+                ax_w0.plot(rho_new[m], w0_new[m], color=colors[0], lw=1.8, label="after VGEN (NEO)")
+
+            vexb_new = _compute_vexb_shear(self.profiles_vgen)
+            if vexb_new is not None:
+                m = rho_new >= rho_min
+                ax_vexb.plot(rho_new[m], vexb_new[m], color=colors[0], lw=1.8, label="after VGEN (NEO)")
+
+        # Mach number from vel file
+        if self.vgen_vel and "rho" in self.vgen_vel and "Mach_neo" in self.vgen_vel:
+            rho_v = self.vgen_vel["rho"]
+            m = rho_v >= rho_min
+            ax_mach.plot(rho_v[m], self.vgen_vel["Mach_neo"][m], color=colors[3], lw=1.8, label="NEO Mach")
+
+        for ax in [ax_w0, ax_vexb, ax_mach]:
+            ax.set_xlabel(r"$\rho_{tor}$")
+            ax.set_xlim(left=rho_min)
+            ax.axhline(0, color="k", lw=0.7, ls="--")
+            ax.legend(loc="best", fontsize=7)
+        ax_w0.set_ylabel("$\\omega_0$ (rad/s)"); ax_w0.set_title("Toroidal rotation $\\omega_0$")
+        ax_vexb.set_ylabel("$\\gamma_{E}$ (norm.)"); ax_vexb.set_title("E×B shearing rate (VEXB_SHEAR)")
+        ax_mach.set_ylabel("Mach number"); ax_mach.set_title("NEO Mach number")
+
+
+
+def _compute_vexb_shear(profiles_obj):
+    """
+    Compute the normalised E×B shearing rate (VEXB_SHEAR in TGLF notation) from a
+    gacode_state object using the same formula as MITIMstate.to_tglf():
+
+        gamma_eb0   = -(dw0/dr) * r / |q|
+        vexb_shear  = -sign_It * gamma_eb0 * a / c_s
+
+    Returns a numpy array on the profiles grid, or None if any required
+    quantity is missing.
+    """
+    try:
+        from mitim_tools.misc_tools import MATHtools
+        w0  = profiles_obj.profiles["w0(rad/s)"]
+        r   = profiles_obj.derived["r"]
+        q   = profiles_obj.profiles["q(-)"]
+        a   = profiles_obj.derived["a"]
+        c_s = profiles_obj.derived["c_s"]
+        sign_it = -np.sign(profiles_obj.profiles["current(MA)"][-1])
+        dw0_dr    = MATHtools.deriv(r, w0, array=True)
+        gamma_eb0 = -dw0_dr * r / np.abs(q)
+        return -sign_it * gamma_eb0 * a / c_s
+    except Exception:
+        return None
 
 
 def check_if_files_exist(folder, list_files):

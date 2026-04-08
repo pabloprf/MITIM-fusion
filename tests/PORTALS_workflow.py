@@ -10,7 +10,7 @@ cold_start = True
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 # Inputs
-inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+inputgacode = "/Users/pablorf/envs/dev-pixi/MFE-IM/private_data/PLASMAS/input.gacode_SPARC_LmodeInvestigation_20230313"
 folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
 if cold_start and folderWork.exists():
@@ -28,9 +28,10 @@ portals_fun.optimization_options["initialization_options"]["initial_training"] =
 portals_fun.portals_parameters["solution"]['turbulent_exchange_as_surrogate'] = True
 
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
-portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", "w0"] 
-portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
+portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne"] #, "nZ", "w0"] 
+# portals_fun.portals_parameters["solution"]["trace_impurity"] = 'N'
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
+portals_fun.portals_parameters["transport"]["options"]["neo"]["vgen_exb_shear"] = True  # Compute neoclassical E×B shear from NEO (zero toroidal rotation)
 
 # Prepare case to run
 plasma_state = PROFILEStools.gacode_state(inputgacode)

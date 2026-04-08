@@ -166,13 +166,25 @@ transport:
     # *********************************************************************************************************
     neo:
 
-      run: 
+      run:
         code_settings: "Sonic"
 
       read: {}
 
       # (%) Error (std, in percent) of model evaluation
       percent_error: 10.0
+
+      # Compute the neoclassical E×B shearing rate from NEO (profiles_gen -vgen) and pass it to TGLF as VEXB_SHEAR.
+      # This is appropriate when toroidal rotation is zero or negligible: Er is then determined by the
+      # combination of the ion pressure gradient and the neoclassical poloidal rotation (Waltz-Miller formula).
+      # Set to null (default) or false to disable. Set to true to use default NEO resolution settings, or
+      # provide a dict to override specific options, e.g.:
+      #   vgen_exb_shear:
+      #     er: 2          # Er method: 2 = NEO weak rotation limit (recommended for zero Vtor)
+      #     vel: 1         # Velocity method: 1 = NEO weak rotation limit
+      #     nth: "17,39"   # Min,max poloidal theta resolution
+      #     matched_ion: 1 # Ion species index to match (1-indexed)
+      vgen_exb_shear: null
 
     # *********************************************************************************************************
     # CGYRO
