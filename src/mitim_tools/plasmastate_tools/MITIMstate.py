@@ -1291,6 +1291,84 @@ class mitim_state:
 
         print(f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}")
 
+    def smooth_profiles(self, variables=None, relative_smoothing=0.005):
+        """
+        Smooth kinetic profiles in-place by:
+          1. fitting a smoothing spline to the normalised log-gradient (aLTe, aLne, …)
+          2. integrating that smoothed gradient inward from the edge boundary value
+
+        This preserves the edge value exactly and produces profiles whose gradients
+        are smooth — which is what VGEN uses to compute Er.
+
+        The smoothing spline operates on the normalised gradient (divided by its
+        peak absolute value) so the smoothing parameter is scale-independent:
+
+            s = len(rho) * relative_smoothing²
+
+        Parameters
+        ----------
+        variables : list of str, optional
+            Profile keys to smooth.  Defaults to ['te(keV)', 'ti(keV)',
+            'ne(10^19/m^3)', 'ni(10^19/m^3)'].
+        relative_smoothing : float, optional
+            Target RMS deviation of the spline relative to the peak gradient
+            (default 0.02 = 2 %).  Larger → smoother but less faithful.
+        """
+        from scipy.interpolate import UnivariateSpline
+        from scipy.integrate import cumulative_trapezoid
+
+        if variables is None:
+            variables = ["te(keV)", "ti(keV)", "ne(10^19/m^3)", "ni(10^19/m^3)"]
+
+        rho = self.profiles["rho(-)"]
+        r   = self.derived["r"]           # geometric minor radius [m]
+        a   = float(self.derived["a"])    # minor radius at LCFS [m]
+        s_norm = float(len(rho)) * relative_smoothing ** 2
+
+        # Map profile key → derived log-gradient key
+        _grad_map = {
+            "te(keV)":       "aLTe",
+            "ti(keV)":       "aLTi",
+            "ne(10^19/m^3)": "aLne",
+            "ni(10^19/m^3)": "aLni",
+        }
+
+        def _smooth_and_integrate_1d(X, aLX):
+            """Smooth the log-gradient then integrate inward from the edge."""
+            scale_g = np.max(np.abs(aLX))
+            if scale_g == 0:
+                return X.copy()
+            spl = UnivariateSpline(rho, aLX / scale_g, k=3, s=s_norm)
+            aLX_smooth = spl(rho) * scale_g
+            # d(ln X)/dr = -aLX/a; integrate from axis outward, anchor at edge
+            dlnX_dr = -aLX_smooth / a
+            cum = cumulative_trapezoid(dlnX_dr, r, initial=0.0)
+            # cum[i] = ln X[i] - ln X[0]  (unknown); re-anchor at edge
+            lnX = np.log(np.maximum(X[-1], 1e-30)) + (cum - cum[-1])
+            return np.exp(lnX)
+
+        for key in variables:
+            if key not in self.profiles:
+                continue
+            grad_key = _grad_map.get(key)
+            if grad_key is None or grad_key not in self.derived:
+                continue
+
+            arr  = self.profiles[key]
+            aLXX = self.derived[grad_key]
+
+            if arr.ndim == 1:
+                self.profiles[key] = _smooth_and_integrate_1d(arr, aLXX)
+            else:
+                smoothed = np.empty_like(arr)
+                for col in range(arr.shape[1]):
+                    aLXX_col = aLXX[:, col] if np.ndim(aLXX) == 2 else aLXX
+                    smoothed[:, col] = _smooth_and_integrate_1d(arr[:, col], aLXX_col)
+                self.profiles[key] = smoothed
+
+        self.derive_quantities()
+        print(f"\t\t- Profiles smoothed via gradient-integration (relative_smoothing={relative_smoothing:.3f}): {variables}", typeMsg="i")
+
     def DTplasma(self):
         self.Dion, self.Tion = None, None
         try:

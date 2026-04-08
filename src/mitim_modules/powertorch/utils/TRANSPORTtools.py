@@ -264,8 +264,14 @@ class power_transport:
         vgen_exb_options = self.powerstate.transport_options.get("options", {}).get("neo", {}).get("vgen_exb_shear", None)
         if vgen_exb_options is not None:
             print("\t- Computing neoclassical ExB shear via NEO VGEN (zero toroidal rotation)", typeMsg="i")
-            rho_range = None
             vgenOptions = {} if vgen_exb_options is True else dict(vgen_exb_options)
+
+            # Limit VGEN to the region PORTALS predicts, with a 0.05 margin on each side
+            rho_portals = self.powerstate.plasma["rho"][0, 1:].cpu().numpy()
+            rho_lo = float(np.clip(rho_portals.min() - 0.05, 0.0, 1.0))
+            rho_hi = float(np.clip(rho_portals.max() + 0.05, 0.0, 1.0))
+            rho_range = [rho_lo, rho_hi]
+            print(f"\t\t- VGEN rho_range: [{rho_lo:.3f}, {rho_hi:.3f}] (PORTALS rho: [{rho_portals.min():.3f}, {rho_portals.max():.3f}])", typeMsg="i")
 
             # minutes for VGEN from the NEO slurm_setup (same source as neo.run()), defaulting to 60
             neo_slurm    = self.transport_evaluator_options.get("neo", {}).get("run", {}).get("slurm_setup", {})
@@ -275,8 +281,10 @@ class power_transport:
             neo_exb.FolderGACODE = self.folder
             neo_exb.profiles = self.powerstate.profiles_transport
             # numcores=None → run_vgen() resolves from machineSettings (same logic as SIMtools._run())
+            # smooth_profiles=True: smooth Te/Ti/ne/ni before VGEN so piecewise-linear
+            # kinks in the gradients do not pollute the computed Er
             neo_exb.run_vgen(subfolder="vgen_neo_exb", vgenOptions=vgenOptions, cold_start=self.cold_start,
-                             rho_range=rho_range, minutes=minutes_vgen)
+                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=True)
             neo_exb.read_vgen()
             
             # Insert w0 by interpolating

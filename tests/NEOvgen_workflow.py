@@ -29,6 +29,7 @@ neo.run_vgen(
         "nth": "17,39",   # Min/max poloidal theta resolution
         "matched_ion": 1, # Ion species index to match (1-indexed)
     },
+    smooth_profiles=True,
     cold_start=cold_start,
 )
 

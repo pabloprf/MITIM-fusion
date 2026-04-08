@@ -544,7 +544,8 @@ class NEO(SIMtools.mitim_simulation):
         
         plt.tight_layout()
 
-    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False, rho_range=None, numcores=None, minutes=60):
+    def run_vgen(self, subfolder="vgen1", vgenOptions={}, cold_start=False, rho_range=None,
+                 numcores=None, minutes=60, smooth_profiles=False, relative_smoothing=0.005):
         """
         Submit profiles_gen -vgen to compute the neoclassical radial electric field (Er)
         and populate w0(rad/s) in the profiles.  Must be followed by read_vgen().
@@ -563,7 +564,17 @@ class NEO(SIMtools.mitim_simulation):
                             2 = NEO strong rotation limit
             nth         : Min,max theta resolutions (e.g. "17,39")
             matched_ion : Index of ion species to match NEO and given velocities (1-indexed)
+
+        smooth_profiles : bool
+            If True, smooth Te, Ti, ne, ni with a cubic spline before writing the
+            VGEN input so that piecewise-linear kinks in the gradients do not
+            pollute the computed Er.  The original self.profiles is never modified.
+        relative_smoothing : float
+            Passed to gacode_state.smooth_profiles(); target RMS deviation relative
+            to the peak profile value (default 0.02 = 2 %).
         """
+
+        import copy as _copy
 
         self.folder_vgen = self.FolderGACODE / f"{subfolder}"
 
@@ -595,13 +606,25 @@ class NEO(SIMtools.mitim_simulation):
                 IOtools.askNewFolder(self.folder_vgen, force=True)
 
         self.folder_vgen.mkdir(parents=True, exist_ok=True)
-        
-        # Potentially change the rho_range
+
+        # ---- Build the profiles object to write (never mutate self.profiles)
+        profiles_to_write = _copy.deepcopy(self.profiles)
+
+        if smooth_profiles:
+            print("\t- Smoothing kinetic profiles before VGEN run (smooth_profiles=True)", typeMsg="i")
+            # Save the original full-grid profiles so read_vgen() can show raw vs. smoothed
+            profiles_to_write.write_state(file=(self.folder_vgen / "input.gacode.raw"))
+            # Smooth on the full grid (before any rho_range truncation)
+            profiles_to_write.smooth_profiles(relative_smoothing=relative_smoothing)
+
+        # Truncate to rho_range AFTER smoothing so the spline sees the full profile
         if rho_range is not None:
-            rho_new = self.profiles.profiles['rho(-)'][np.argmin(np.abs(self.profiles.profiles['rho(-)'] - rho_range[0])):np.argmin(np.abs(self.profiles.profiles['rho(-)'] - rho_range[1]))+1]
-            self.profiles.changeResolution(rho_new=rho_new)
-        
-        self.profiles.write_state(file=(self.folder_vgen / "input.gacode"))
+            rho_arr = profiles_to_write.profiles["rho(-)"]
+            i0 = np.argmin(np.abs(rho_arr - rho_range[0]))
+            i1 = np.argmin(np.abs(rho_arr - rho_range[1]))
+            profiles_to_write.changeResolution(rho_new=rho_arr[i0:i1+1])
+
+        profiles_to_write.write_state(file=(self.folder_vgen / "input.gacode"))
 
         # ---- Resolve numcores from machine config (same pattern as SIMtools._run())
         if numcores is None:
@@ -653,6 +676,23 @@ class NEO(SIMtools.mitim_simulation):
         # ---- Updated gacode profiles (w0 now populated from NEO Er) ----
         from mitim_tools.gacode_tools import PROFILEStools
         self.profiles_vgen = PROFILEStools.gacode_state(file_gacode, derive_quantities=True)
+
+        # ---- Input profiles: raw vs. smoothed ----
+        # When smooth_profiles=True was used, run_vgen() saved the original (pre-smoothing)
+        # profiles as input.gacode.raw and the smoothed version as input.gacode (the one
+        # actually fed to VGEN).  When smoothing was not used, only input.gacode exists.
+        file_raw      = self.folder_vgen / "input.gacode.raw"
+        file_smoothed = self.folder_vgen / "input.gacode"   # always the file passed to VGEN
+
+        if file_raw.exists():
+            # Smoothing was used: raw = original, smoothed = what VGEN received
+            self.profiles          = PROFILEStools.gacode_state(file_raw,      derive_quantities=True)
+            self.profiles_smoothed = PROFILEStools.gacode_state(file_smoothed, derive_quantities=True)
+        else:
+            # No smoothing: only the raw input exists
+            if not hasattr(self, "profiles") or self.profiles is None:
+                self.profiles = PROFILEStools.gacode_state(file_smoothed, derive_quantities=True)
+            self.profiles_smoothed = None
 
         # ---- Er component decomposition (out.vgen.ercomp) ----
         # Columns (all in V/m):
@@ -728,11 +768,12 @@ class NEO(SIMtools.mitim_simulation):
 
     def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1):
         """
-        Plot VGEN results: Er component decomposition, w0 and VEXB_SHEAR before/after.
+        Plot VGEN results: Er component decomposition, w0 and VEXB_SHEAR before/after,
+        and (when smoothing was used) a raw-vs-smoothed comparison per profile.
         Requires read_vgen() to have been called first.
 
         rho_min : float
-            Minimum rho to include in Er/velocity plots (default 0.1).
+            Minimum rho to include in plots (default 0.1).
             Near-axis values can diverge and obscure the physically relevant region.
         """
         apply_theme()
@@ -744,7 +785,14 @@ class NEO(SIMtools.mitim_simulation):
 
         colors = GRAPHICStools.listColors()
 
-        # ---- Tab 1: kinetic profiles + gradients (left) | Er decomposition (right) ----
+        raw      = self.profiles if (hasattr(self, "profiles") and self.profiles is not None) else None
+        smoothed = getattr(self, "profiles_smoothed", None)
+        # The profiles actually fed to VGEN: smoothed if available, else raw
+        src = smoothed if smoothed is not None else raw
+
+        # ------------------------------------------------------------------
+        # Tab 1: kinetic profiles (left, smoothed = actually used) + Er components (right)
+        # ------------------------------------------------------------------
         fig1 = self.fn.add_figure(label=f"{label} Er components", tab_color=fn_color)
         grid1 = plt.GridSpec(2, 5, hspace=0.55, wspace=0.45, width_ratios=[1, 1, 1, 1, 1])
 
@@ -757,66 +805,61 @@ class NEO(SIMtools.mitim_simulation):
         ax_vtor = fig1.add_subplot(grid1[1, 1])
         ax_dia  = fig1.add_subplot(grid1[1, 2])
 
-        # ---- Kinetic profiles (top-left) and gradients (bottom-left) ----
-        src = self.profiles_vgen if (hasattr(self, "profiles_vgen") and self.profiles_vgen is not None) else None
+        # Kinetic profiles: show the ones actually used by VGEN (smoothed if available, else raw)
         if src is not None:
             rho_s = src.profiles.get("rho(-)", None)
             if rho_s is not None:
-                ms = rho_s >= rho_min
+                mp = rho_s >= rho_min
 
-                Te     = src.profiles.get("te(keV)", None)
-                ne     = src.profiles.get("ne(10^19/m^3)", None)
+                Te_s   = src.profiles.get("te(keV)", None)
                 Ti_all = src.profiles.get("ti(keV)", None)
-                Ti     = Ti_all[:, 0] if Ti_all is not None and Ti_all.ndim == 2 else Ti_all
+                Ti_s   = Ti_all[:, 0] if Ti_all is not None and Ti_all.ndim == 2 else Ti_all
+                ne_s   = src.profiles.get("ne(10^19/m^3)", None)
+                aLTe_s = src.derived.get("aLTe", None)
+                aLTi_a = src.derived.get("aLTi", None)
+                aLTi_s = aLTi_a[:, 0] if aLTi_a is not None and np.ndim(aLTi_a) == 2 else aLTi_a
+                aLne_s = src.derived.get("aLne", None)
 
                 ax_ne = ax_prof.twinx()
-                if Te is not None:
-                    ax_prof.plot(rho_s[ms], Te[ms], color=colors[0], lw=1.8, label="$T_e$")
-                if Ti is not None:
-                    ax_prof.plot(rho_s[ms], Ti[ms], color=colors[1], lw=1.8, ls="--", label="$T_i$")
-                if ne is not None:
-                    ax_ne.plot(rho_s[ms], ne[ms], color=colors[2], lw=1.5, ls=":", label="$n_e$")
+                if Te_s   is not None: ax_prof.plot(rho_s[mp], Te_s[mp],   color=colors[0], lw=1.8, label="$T_e$")
+                if Ti_s   is not None: ax_prof.plot(rho_s[mp], Ti_s[mp],   color=colors[1], lw=1.8, label="$T_i$")
+                if ne_s   is not None: ax_ne.plot(  rho_s[mp], ne_s[mp],   color=colors[2], lw=1.8, label="$n_e$")
+                if aLTe_s is not None: ax_grad.plot(rho_s[mp], aLTe_s[mp], color=colors[0], lw=1.8, label="$a/L_{T_e}$")
+                if aLTi_s is not None: ax_grad.plot(rho_s[mp], aLTi_s[mp], color=colors[1], lw=1.8, label="$a/L_{T_i}$")
+                if aLne_s is not None: ax_grad.plot(rho_s[mp], aLne_s[mp], color=colors[2], lw=1.8, label="$a/L_{n_e}$")
+
                 ax_prof.set_xlabel(r"$\rho_{tor}$"); ax_prof.set_xlim(left=rho_min)
                 ax_prof.set_ylabel("Temperature (keV)")
                 ax_ne.set_ylabel("$n_e$ ($10^{19}\\,m^{-3}$)", color=colors[2])
-                ax_prof.set_title("Kinetic profiles")
+                prof_title = "Profiles (smoothed)" if smoothed is not None else "Profiles"
+                ax_prof.set_title(prof_title)
                 lines_T, labs_T = ax_prof.get_legend_handles_labels()
                 lines_n, labs_n = ax_ne.get_legend_handles_labels()
                 ax_prof.legend(lines_T + lines_n, labs_T + labs_n, loc="best", fontsize=7)
 
-                aLTe     = src.derived.get("aLTe", None)
-                aLTi_all = src.derived.get("aLTi", None)
-                aLTi     = aLTi_all[:, 0] if aLTi_all is not None and np.ndim(aLTi_all) == 2 else aLTi_all
-                aLne     = src.derived.get("aLne", None)
-                if aLTe is not None:
-                    ax_grad.plot(rho_s[ms], aLTe[ms], color=colors[0], lw=1.8, label="$a/L_{T_e}$")
-                if aLTi is not None:
-                    ax_grad.plot(rho_s[ms], aLTi[ms], color=colors[1], lw=1.8, ls="--", label="$a/L_{T_i}$")
-                if aLne is not None:
-                    ax_grad.plot(rho_s[ms], aLne[ms], color=colors[2], lw=1.5, ls=":", label="$a/L_{n_e}$")
                 ax_grad.set_xlabel(r"$\rho_{tor}$"); ax_grad.set_xlim(left=rho_min)
-                ax_grad.set_ylabel("$a/L$"); ax_grad.set_title("Norm. gradients")
+                ax_grad.set_ylabel("$a/L$")
+                ax_grad.set_title("Norm. gradients" + (" (smoothed)" if smoothed is not None else ""))
                 ax_grad.axhline(0, color="k", lw=0.7, ls="--")
                 ax_grad.legend(loc="best", fontsize=7)
 
-        # ---- Er components (right columns) ----
         if self.vgen_ercomp:
-            rho = self.vgen_ercomp["rho"]
+            rho  = self.vgen_ercomp["rho"]
             mask = rho >= rho_min
 
-            ax_Er.plot(rho[mask],   self.vgen_ercomp["Er_total"][mask],      color=colors[0], lw=1.8, label="$E_r$ total")
+            ax_Er.plot(rho[mask],   self.vgen_ercomp["Er_total"][mask],       color=colors[0], lw=1.8, label="$E_r$ total")
             ax_Er.plot(rho[mask],   self.vgen_ercomp.get("Er_total2", rho*0)[mask], color=colors[1], lw=1.2, ls="--", label="$E_r$ total (alt)")
-            ax_db.plot(rho[mask],   self.vgen_ercomp["Er_db"][mask],         color=colors[2], lw=1.8, label="diamagnetic")
-            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_total"][mask], color=colors[3], lw=1.8, label="pol. flow (total)")
-            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_neo"][mask],   color=colors[4], lw=1.2, ls="--", label="pol. flow (NEO)")
-            ax_vtor.plot(rho[mask], self.vgen_ercomp["Er_vtor"][mask],       color=colors[5], lw=1.8, label="toroidal rot.")
-            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_total"][mask],  color=colors[6], lw=1.8, label="dia. total")
-            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_neo"][mask],    color=colors[7], lw=1.2, ls="--", label="dia. NEO")
+            ax_db.plot(rho[mask],   self.vgen_ercomp["Er_db"][mask],          color=colors[2], lw=1.8, label="diamagnetic")
+            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_total"][mask],  color=colors[3], lw=1.8, label="pol. flow (total)")
+            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_neo"][mask],    color=colors[4], lw=1.2, ls="--", label="pol. flow (NEO)")
+            ax_vtor.plot(rho[mask], self.vgen_ercomp["Er_vtor"][mask],        color=colors[5], lw=1.8, label="toroidal rot.")
+            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_total"][mask],   color=colors[6], lw=1.8, label="dia. total")
+            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_neo"][mask],     color=colors[7], lw=1.2, ls="--", label="dia. NEO")
             for key, lbl, c in [
-                ("Er_total",      "$E_r$ total",   colors[0]),
-                ("Er_db",         "diamagnetic",    colors[2]),
-                ("Er_vpol_total", "pol. flow",      colors[3]),
-                ("Er_dia_total",  "dia. total",     colors[6]),
+                ("Er_total",      "$E_r$ total",  colors[0]),
+                ("Er_db",         "diamagnetic",   colors[2]),
+                ("Er_vpol_total", "pol. flow",     colors[3]),
+                ("Er_dia_total",  "dia. total",    colors[6]),
             ]:
                 if key in self.vgen_ercomp:
                     ax_all.plot(rho[mask], self.vgen_ercomp[key][mask], color=c, lw=1.5, label=lbl)
@@ -834,40 +877,37 @@ class NEO(SIMtools.mitim_simulation):
         ax_dia.set_title("Diamagnetic correction")
         ax_all.set_title("All components")
 
-        # ---- Tab 2: w0 and VEXB_SHEAR before/after ----
+        # ------------------------------------------------------------------
+        # Tab 2: w0 and VEXB_SHEAR before/after VGEN
+        # ------------------------------------------------------------------
         fig2 = self.fn.add_figure(label=f"{label} w0 & VEXB", tab_color=fn_color)
         grid2 = plt.GridSpec(1, 3, hspace=0.4, wspace=0.35)
-        ax_w0     = fig2.add_subplot(grid2[0, 0])
-        ax_vexb   = fig2.add_subplot(grid2[0, 1])
-        ax_mach   = fig2.add_subplot(grid2[0, 2])
+        ax_w0   = fig2.add_subplot(grid2[0, 0])
+        ax_vexb = fig2.add_subplot(grid2[0, 1])
+        ax_mach = fig2.add_subplot(grid2[0, 2])
 
-        # Before VGEN: from original profiles
-        if hasattr(self, "profiles") and self.profiles is not None:
-            rho_orig = self.profiles.profiles.get("rho(-)", None)
-            w0_orig  = self.profiles.profiles.get("w0(rad/s)", None)
+        if raw is not None:
+            rho_orig = raw.profiles.get("rho(-)", None)
+            w0_orig  = raw.profiles.get("w0(rad/s)", None)
             if rho_orig is not None and w0_orig is not None:
                 m = rho_orig >= rho_min
                 ax_w0.plot(rho_orig[m], w0_orig[m], color=colors[1], lw=1.5, ls="--", label="before VGEN")
-
-            vexb_orig = _compute_vexb_shear(self.profiles)
-            if vexb_orig is not None:
+            vexb_orig = _compute_vexb_shear(raw)
+            if vexb_orig is not None and rho_orig is not None:
                 m = rho_orig >= rho_min
                 ax_vexb.plot(rho_orig[m], vexb_orig[m], color=colors[1], lw=1.5, ls="--", label="before VGEN")
 
-        # After VGEN: from profiles_vgen
         if hasattr(self, "profiles_vgen") and self.profiles_vgen is not None:
-            rho_new  = self.profiles_vgen.profiles.get("rho(-)", None)
-            w0_new   = self.profiles_vgen.profiles.get("w0(rad/s)", None)
+            rho_new = self.profiles_vgen.profiles.get("rho(-)", None)
+            w0_new  = self.profiles_vgen.profiles.get("w0(rad/s)", None)
             if rho_new is not None and w0_new is not None:
                 m = rho_new >= rho_min
                 ax_w0.plot(rho_new[m], w0_new[m], color=colors[0], lw=1.8, label="after VGEN (NEO)")
-
             vexb_new = _compute_vexb_shear(self.profiles_vgen)
-            if vexb_new is not None:
+            if vexb_new is not None and rho_new is not None:
                 m = rho_new >= rho_min
                 ax_vexb.plot(rho_new[m], vexb_new[m], color=colors[0], lw=1.8, label="after VGEN (NEO)")
 
-        # Mach number from vel file
         if self.vgen_vel and "rho" in self.vgen_vel and "Mach_neo" in self.vgen_vel:
             rho_v = self.vgen_vel["rho"]
             m = rho_v >= rho_min
@@ -878,9 +918,71 @@ class NEO(SIMtools.mitim_simulation):
             ax.set_xlim(left=rho_min)
             ax.axhline(0, color="k", lw=0.7, ls="--")
             ax.legend(loc="best", fontsize=7)
-        ax_w0.set_ylabel("$\\omega_0$ (rad/s)"); ax_w0.set_title("Toroidal rotation $\\omega_0$")
-        ax_vexb.set_ylabel("$\\gamma_{E}$ (norm.)"); ax_vexb.set_title("E×B shearing rate (VEXB_SHEAR)")
-        ax_mach.set_ylabel("Mach number"); ax_mach.set_title("NEO Mach number")
+        ax_w0.set_ylabel("$\\omega_0$ (rad/s)");      ax_w0.set_title("Toroidal rotation $\\omega_0$")
+        ax_vexb.set_ylabel("$\\gamma_{E}$ (norm.)");  ax_vexb.set_title("E×B shearing rate (VEXB_SHEAR)")
+        ax_mach.set_ylabel("Mach number");             ax_mach.set_title("NEO Mach number")
+
+        # ------------------------------------------------------------------
+        # Tab 3: Raw vs. smoothed profiles comparison (only when smoothing was used)
+        # ------------------------------------------------------------------
+        if raw is not None and smoothed is not None:
+            fig3 = self.fn.add_figure(label=f"{label} smoothing", tab_color=fn_color)
+            grid3 = plt.GridSpec(2, 3, hspace=0.5, wspace=0.4)
+
+            ax_Te  = fig3.add_subplot(grid3[0, 0])
+            ax_Ti  = fig3.add_subplot(grid3[0, 1])
+            ax_ne  = fig3.add_subplot(grid3[0, 2])
+            ax_aLTe = fig3.add_subplot(grid3[1, 0])
+            ax_aLTi = fig3.add_subplot(grid3[1, 1])
+            ax_aLne = fig3.add_subplot(grid3[1, 2])
+
+            def _get(p, key):
+                v = p.profiles.get(key, None)
+                if v is None:
+                    v = p.derived.get(key, None)
+                return v
+
+            def _col0(arr):
+                if arr is None:
+                    return None
+                return arr[:, 0] if np.ndim(arr) == 2 else arr
+
+            for p, lw, ls, lbl in [(raw, 1.2, "--", "raw"), (smoothed, 1.8, "-", "smoothed")]:
+                rho_p = _get(p, "rho(-)")
+                if rho_p is None:
+                    continue
+                mp = rho_p >= rho_min
+
+                Te_p   = _col0(_get(p, "te(keV)"))
+                Ti_p   = _col0(_get(p, "ti(keV)"))
+                ne_p   = _col0(_get(p, "ne(10^19/m^3)"))
+                aLTe_p = _col0(_get(p, "aLTe"))
+                aLTi_p = _col0(_get(p, "aLTi"))
+                aLne_p = _col0(_get(p, "aLne"))
+
+                c_map = {"raw": colors[1], "smoothed": colors[0]}
+                c = c_map[lbl]
+
+                if Te_p   is not None: ax_Te.plot(rho_p[mp],   Te_p[mp],   color=c, lw=lw, ls=ls, label=lbl)
+                if Ti_p   is not None: ax_Ti.plot(rho_p[mp],   Ti_p[mp],   color=c, lw=lw, ls=ls, label=lbl)
+                if ne_p   is not None: ax_ne.plot(rho_p[mp],   ne_p[mp],   color=c, lw=lw, ls=ls, label=lbl)
+                if aLTe_p is not None: ax_aLTe.plot(rho_p[mp], aLTe_p[mp], color=c, lw=lw, ls=ls, label=lbl)
+                if aLTi_p is not None: ax_aLTi.plot(rho_p[mp], aLTi_p[mp], color=c, lw=lw, ls=ls, label=lbl)
+                if aLne_p is not None: ax_aLne.plot(rho_p[mp], aLne_p[mp], color=c, lw=lw, ls=ls, label=lbl)
+
+            ax_Te.set_title("$T_e$");           ax_Te.set_ylabel("keV")
+            ax_Ti.set_title("$T_i$");           ax_Ti.set_ylabel("keV")
+            ax_ne.set_title("$n_e$");           ax_ne.set_ylabel("$10^{19}\\,m^{-3}$")
+            ax_aLTe.set_title("$a/L_{T_e}$");  ax_aLTe.set_ylabel("$a/L$")
+            ax_aLTi.set_title("$a/L_{T_i}$");  ax_aLTi.set_ylabel("$a/L$")
+            ax_aLne.set_title("$a/L_{n_e}$");  ax_aLne.set_ylabel("$a/L$")
+
+            for ax in [ax_Te, ax_Ti, ax_ne, ax_aLTe, ax_aLTi, ax_aLne]:
+                ax.set_xlabel(r"$\rho_{tor}$")
+                ax.set_xlim(left=rho_min)
+                ax.legend(loc="best", fontsize=7)
+            for ax in [ax_aLTe, ax_aLTi, ax_aLne]:
+                ax.axhline(0, color="k", lw=0.7, ls="--")
 
 
 
