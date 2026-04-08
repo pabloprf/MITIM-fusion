@@ -18,6 +18,7 @@ Prerequisites — build the shared library once per machine:
 """
 
 import os
+import time
 import numpy as np
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
@@ -29,18 +30,54 @@ cold_start = True
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 rhos = [0.5, 0.7]
 
+# ---------------------------------------------------------------------------
+# Timing helper — collects (label, wall_seconds) into TIMINGS so we can print
+# a summary table at the end.  Use as: with timed("label"): ...
+# ---------------------------------------------------------------------------
+from contextlib import contextmanager
+
+TIMINGS: list[tuple[str, float]] = []
+
+@contextmanager
+def timed(label: str):
+    print(f"\n>>> [{label}] start")
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        dt = time.perf_counter() - t0
+        TIMINGS.append((label, dt))
+        print(f"<<< [{label}] done in {dt:.2f}s")
+
+# Echo the BLAS / OpenMP thread environment so we can correlate timings with
+# whatever thread pinning is in effect (the in_process modules pin to 1 by
+# default; values may have been overridden by the calling shell).
+print(
+    "[env] MKL_NUM_THREADS={}  OPENBLAS_NUM_THREADS={}  OMP_NUM_THREADS={}  "
+    "MKL_DYNAMIC={}  cpu_count={}".format(
+        os.environ.get("MKL_NUM_THREADS"),
+        os.environ.get("OPENBLAS_NUM_THREADS"),
+        os.environ.get("OMP_NUM_THREADS"),
+        os.environ.get("MKL_DYNAMIC"),
+        os.cpu_count(),
+    )
+)
+
 # ── single-point runs (zero file I/O) ───────────────────────────────────────
 
 # in_process=True: no folder needed — prep() works with just the input file
-tglf = TGLFtools.TGLF(rhos=rhos, in_process=True)
-tglf.prep(input_gacode)
+with timed("single: prep"):
+    tglf = TGLFtools.TGLF(rhos=rhos, in_process=True)
+    tglf.prep(input_gacode)
 
-tglf.run("run1/", code_settings="SAT1", cold_start=cold_start, forceIfcold_start=True)
-tglf.read(label="SAT1")
+with timed("single: run SAT1"):
+    tglf.run("run1/", code_settings="SAT1", cold_start=cold_start, forceIfcold_start=True)
+    tglf.read(label="SAT1")
 
-tglf.run("run2/", code_settings="SAT1", cold_start=cold_start, forceIfcold_start=True,
-         extraOptions={"USE_BPER": True, "USE_BPAR": True})
-tglf.read(label="SAT1 EM")
+with timed("single: run SAT1 EM"):
+    tglf.run("run2/", code_settings="SAT1", cold_start=cold_start, forceIfcold_start=True,
+             extraOptions={"USE_BPER": True, "USE_BPAR": True})
+    tglf.read(label="SAT1 EM")
 
 print(f"\nQe (SAT1):    {[f'{r.Qe:.4f}' for r in tglf.results['SAT1']['output']]}")
 print(f"Qe (SAT1 EM): {[f'{r.Qe:.4f}' for r in tglf.results['SAT1 EM']['output']]}")
@@ -60,14 +97,16 @@ folder_sub = __mitimroot__ / "tests" / "scratch" / "tglf_drives_sub"
 if cold_start and folder_sub.exists():
     os.system(f"rm -r {folder_sub.resolve()}")
 
-tglf_sub = TGLFtools.TGLF(rhos=rhos, in_process=False)
-tglf_sub.prep(input_gacode, folder_sub)
-tglf_sub.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
+with timed("scanTurbulenceDrives: subprocess"):
+    tglf_sub = TGLFtools.TGLF(rhos=rhos, in_process=False)
+    tglf_sub.prep(input_gacode, folder_sub)
+    tglf_sub.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
 
 # in-process run (zero file I/O — no folder needed at any step)
-tglf_ip = TGLFtools.TGLF(rhos=rhos, in_process=True)
-tglf_ip.prep(input_gacode)
-tglf_ip.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
+with timed("scanTurbulenceDrives: in-process"):
+    tglf_ip = TGLFtools.TGLF(rhos=rhos, in_process=True)
+    tglf_ip.prep(input_gacode)
+    tglf_ip.runScanTurbulenceDrives(subfolder="drives", **DRIVES_KWARGS)
 
 # comparison
 shared_labels = sorted(k for k in tglf_sub.results if k in tglf_ip.results)
@@ -97,4 +136,16 @@ for label in shared_labels:
 
 print(f"\n{'='*65}")
 print(f"Overall: {'ALL PASS' if all_ok else 'FAILURES DETECTED'}")
+print(f"{'='*65}")
+
+# ── timing summary ──────────────────────────────────────────────────────────
+print(f"\n{'='*65}")
+print("Timing summary")
+print(f"{'='*65}")
+total = 0.0
+for label, dt in TIMINGS:
+    print(f"  {label:<40s}  {dt:8.2f}s")
+    total += dt
+print(f"  {'-'*40}  {'-'*9}")
+print(f"  {'TOTAL':<40s}  {total:8.2f}s")
 print(f"{'='*65}")

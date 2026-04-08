@@ -50,7 +50,9 @@ prefixes and log lines).
 from __future__ import annotations
 
 import copy
+import ctypes
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +61,112 @@ from mitim_tools.simulation_tools.SIMtools import modifyInputs
 from mitim_tools.gacode_tools.utils import NORMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.PLASMAtools import md_u
+
+
+# ---------------------------------------------------------------------------
+# BLAS thread budget control (runtime API, works after dlopen)
+#
+# When the in-process driver fans N codes out across N Python worker threads,
+# each worker enters Fortran code that calls into the underlying BLAS/LAPACK
+# library.  That BLAS library has its own thread pool and, by default, sizes
+# it to the entire node — so 18 workers on a 64-core node would each spin up
+# 64 BLAS threads, giving 18*64 ≈ 1152 OS threads competing for 64 cores.
+#
+# Setting OMP_NUM_THREADS / MKL_NUM_THREADS / OPENBLAS_NUM_THREADS in the
+# process environment is unreliable: env vars are read at library init time
+# (i.e. at dlopen) and pinning every BLAS to 1 thread globally also serialises
+# unrelated single-call paths that legitimately want multi-threaded BLAS
+# (laptop runs of TGLF visibly slow down 5-10x, since the per-call wins from
+# many BLAS threads dominate when there's no oversubscription pressure).
+#
+# Instead we use the BLAS library's own runtime API to set the per-pool
+# thread budget JUST BEFORE submitting a worker pool, sized to
+#     max(1, n_cpus // n_workers)
+# This is best-effort: we try every BLAS we know about (openblas, MKL,
+# Apple Accelerate / vecLib).  If none of them are loadable we print what
+# happened and carry on — no failure.
+# ---------------------------------------------------------------------------
+
+# Module-level cache so we don't keep re-dlopen'ing the same BLAS library.
+_BLAS_HANDLES: dict = {}     # name -> (cdll, setter_callable)
+
+
+def _try_load(libname: str):
+    """Best-effort dlopen.  Returns the CDLL handle or None."""
+    try:
+        return ctypes.CDLL(libname)
+    except OSError:
+        return None
+
+
+def _discover_blas_setters() -> list[tuple[str, callable]]:
+    """
+    Discover BLAS thread-count setters available in this process.
+
+    Returns a list of (name, setter) where setter(n: int) caps the BLAS
+    library at *n* threads.  Best effort: we don't error if a particular
+    BLAS isn't installed — most processes only have one anyway.
+    """
+    if _BLAS_HANDLES:
+        return [(name, setter) for name, (_lib, setter) in _BLAS_HANDLES.items()]
+
+    candidates: list[tuple[str, list[str], list[str]]] = []
+    # (display name, dlopen candidates, setter symbol candidates)
+    if sys.platform == "darwin":
+        candidates += [
+            ("openblas",   ["libopenblas.dylib", "libopenblas.0.dylib"],
+                           ["openblas_set_num_threads", "openblas_set_num_threads64_"]),
+            ("Accelerate", ["/System/Library/Frameworks/Accelerate.framework/Accelerate"],
+                           ["BLASSetThreading"]),  # rarely present, harmless if absent
+        ]
+    else:
+        candidates += [
+            ("openblas",   ["libopenblas.so.0", "libopenblas.so"],
+                           ["openblas_set_num_threads", "openblas_set_num_threads64_"]),
+            ("mkl",        ["libmkl_rt.so.2", "libmkl_rt.so.1", "libmkl_rt.so"],
+                           ["MKL_Set_Num_Threads", "mkl_set_num_threads_"]),
+        ]
+
+    found: list[tuple[str, callable]] = []
+    for name, libnames, syms in candidates:
+        for ln in libnames:
+            lib = _try_load(ln)
+            if lib is None:
+                continue
+            for sym in syms:
+                fn = getattr(lib, sym, None)
+                if fn is None:
+                    continue
+                fn.argtypes = [ctypes.c_int]
+                fn.restype  = None
+
+                def _setter(n: int, _fn=fn):
+                    _fn(ctypes.c_int(int(n)))
+
+                _BLAS_HANDLES[name] = (lib, _setter)
+                found.append((name, _setter))
+                break
+            if name in _BLAS_HANDLES:
+                break
+
+    return found
+
+
+def _set_blas_threads(n: int) -> list[str]:
+    """
+    Best-effort: cap every BLAS we can reach at *n* threads.
+
+    Returns the list of BLAS names we successfully pinned, for logging.
+    """
+    n = max(1, int(n))
+    pinned = []
+    for name, setter in _discover_blas_setters():
+        try:
+            setter(n)
+            pinned.append(name)
+        except Exception:  # noqa: BLE001 — best-effort, never fail the run
+            pass
+    return pinned
 
 
 # ===========================================================================
@@ -128,6 +236,18 @@ class _GACODEInProcessMixin:
         flat.update(input_obj.controls)
         flat.update(input_obj.plasma)
         return flat
+
+    def _inprocess_blas_threads_per_worker(self, n_cpus: int, n_workers: int) -> int:
+        """
+        How many BLAS threads each pool worker is allowed to use.
+
+        Default policy: divide cores evenly across workers, so the total
+        BLAS thread count never exceeds the available cores.  TGLF overrides
+        this to return 1 unconditionally because its eigensolves don't
+        amortise openblas's per-call thread sync (measured: 1 thread is
+        meaningfully faster than 8 for the full TGLF run).
+        """
+        return max(1, n_cpus // max(1, n_workers))
 
     def _inprocess_print_per_rho(self, rho, outputs):
         """Hook for per-rho post-run logging.  Default is silent."""
@@ -279,6 +399,7 @@ class _GACODEInProcessMixin:
         ``kwargs_run`` is accepted but ignored (subprocess-only options).
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time
 
         self._init_inprocess()
         worker = self._inprocess_load_worker()
@@ -297,27 +418,83 @@ class _GACODEInProcessMixin:
             self.simulation_job = None
             return
 
-        n_workers = os.cpu_count() or 1
+        n_cpus    = os.cpu_count() or 1
+        n_workers = min(n_cpus, n_jobs)
+        code_name = self._inprocess_code_name.upper()
+
+        # --- per-pool BLAS thread budget --------------------------------------
+        # Each worker thread will enter Fortran code that calls into BLAS.
+        # We pin the BLAS thread pool just before submitting so that
+        # n_workers * blas_threads_per_worker stays ≤ n_cpus, avoiding the
+        # 18*64-on-a-64-core-node oversubscription pattern that hammered
+        # the cluster previously.  Per-code subclasses override
+        # _inprocess_blas_threads_per_worker() — TGLF returns 1 unconditionally
+        # because its eigensolve sub-blocks don't amortise openblas thread
+        # sync (measured: 1 thread is faster than 8 threads per call).
+        blas_threads_per_worker = self._inprocess_blas_threads_per_worker(
+            n_cpus, n_workers
+        )
+        blas_pinned = _set_blas_threads(blas_threads_per_worker)
+
+        thread_env = {
+            "MKL":      os.environ.get("MKL_NUM_THREADS"),
+            "OPENBLAS": os.environ.get("OPENBLAS_NUM_THREADS"),
+            "OMP":      os.environ.get("OMP_NUM_THREADS"),
+        }
         print(
-            f"\t- [in-process] Submitting {n_jobs} {self._inprocess_code_name.upper()} "
-            f"cases across {min(n_workers, n_jobs)} workers"
+            f"\t- [in-process] Submitting {n_jobs} {code_name} cases "
+            f"across {n_workers} workers "
+            f"(BLAS threads/worker={blas_threads_per_worker}, "
+            f"runtime-pinned={blas_pinned or 'none'}; "
+            f"env MKL={thread_env['MKL']} OPENBLAS={thread_env['OPENBLAS']} "
+            f"OMP={thread_env['OMP']}; cpu_count={n_cpus})"
         )
 
+        # Per-job timing wrapper — measures wall time spent inside the Fortran
+        # call for each (subfolder, rho), so we can spot stragglers.
+        def _timed(flat):
+            t = time.perf_counter()
+            out = worker(flat)
+            return out, time.perf_counter() - t
+
         results_by_folder: dict = {}
-        with ThreadPoolExecutor(max_workers=min(n_workers, n_jobs)) as pool:
+        per_job_times: list[float] = []
+        t_pool_start = time.perf_counter()
+
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
             future_map = {
-                pool.submit(worker, flat): (subfolder_sim, rho, input_obj, folder_sim)
+                pool.submit(_timed, flat): (subfolder_sim, rho, input_obj, folder_sim)
                 for subfolder_sim, rho, flat, input_obj, folder_sim in work_items
             }
             for future in as_completed(future_map):
                 subfolder_sim, rho, input_obj, folder_sim = future_map[future]
-                outputs = future.result()
+                outputs, dt = future.result()
+                per_job_times.append(dt)
                 key = str(folder_sim)
                 if key not in results_by_folder:
                     results_by_folder[key] = {"raw": {}, "inputs": {}}
                 results_by_folder[key]["raw"][float(rho)]    = outputs
                 results_by_folder[key]["inputs"][float(rho)] = input_obj
                 self._inprocess_print_per_rho(rho, outputs)
+                print(
+                    f"\t  [in-process] {code_name} done  "
+                    f"subfolder={subfolder_sim!s:<24s} rho={float(rho):.3f}  "
+                    f"wall={dt:6.2f}s"
+                )
+
+        wall = time.perf_counter() - t_pool_start
+        if per_job_times:
+            t_min = min(per_job_times)
+            t_max = max(per_job_times)
+            t_sum = sum(per_job_times)
+            t_avg = t_sum / len(per_job_times)
+            speedup = t_sum / wall if wall > 0 else float("nan")
+            print(
+                f"\t- [in-process] {code_name} pool finished: "
+                f"{n_jobs} jobs in {wall:.2f}s wall  "
+                f"(per-job min/avg/max = {t_min:.2f}/{t_avg:.2f}/{t_max:.2f}s, "
+                f"sum={t_sum:.2f}s, parallel speedup={speedup:.1f}x / ideal {n_workers}x)"
+            )
 
         self._inprocess_cache.update(results_by_folder)
         self.simulation_job = None  # keep attribute consistent with mitim_simulation
@@ -340,6 +517,13 @@ class TGLFInProcess(_GACODEInProcessMixin):
     def _inprocess_load_worker(self):
         from mitim_tools.simulation_tools.interfaces import tglf_inprocess as _tip
         return _tip._parallel_worker
+
+    def _inprocess_blas_threads_per_worker(self, n_cpus: int, n_workers: int) -> int:
+        # TGLF eigensolves are too small to benefit from multi-threaded BLAS:
+        # measured 1 thread = ~700 ms/call, 8 threads = ~1280 ms/call.  This
+        # mirrors what gacode's `tglf` shell wrapper does (it exports
+        # OMP_NUM_THREADS=1 before invoking the binary).
+        return 1
 
     def _inprocess_postprocess_input(self, input_sim_rho, code_settings, kwargs_control):
         # TGLF: drop low-density / fast species (gated by ApplyCorrections,

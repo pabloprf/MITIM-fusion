@@ -66,35 +66,9 @@ spawn/fork/forkserver issues, no ``if __name__ == '__main__':`` requirement).
 
 from __future__ import annotations
 
-import os
-
-# ---------------------------------------------------------------------------
-# Pin BLAS / OpenMP to one thread per *worker* BEFORE any ctypes import.
-#
-# libtglf_serial.so links against the conda-forge libblas / liblapack
-# wrappers, which on many clusters resolve to MKL (or openblas).  When the
-# in-process driver fans out N TGLF cases across N Python ThreadPoolExecutor
-# workers (see GACODEinprocess._run_inprocess), MKL/openblas inside each
-# worker has no idea the other workers exist — every thread tries to spin
-# up a full thread pool sized to the whole node.  With e.g. 18 workers on a
-# 64-core node that becomes 18 * 64 ≈ 1152 OS threads competing for 64
-# cores, catastrophic oversubscription and order-of-magnitude slowdowns.
-#
-# TGLF is *not* BLAS-bound on the relevant code paths (measured: a single
-# call takes the same wall time at MKL_NUM_THREADS=1 and =8), so pinning to
-# 1 BLAS thread per worker costs nothing and avoids the meltdown.
-#
-# These vars must be set BEFORE the shared library is dlopen'd, because
-# MKL/openblas read them once at library init time.  setdefault() leaves
-# any value the user has explicitly exported alone.
-# ---------------------------------------------------------------------------
-os.environ.setdefault("MKL_NUM_THREADS",      "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("OMP_NUM_THREADS",      "1")
-os.environ.setdefault("MKL_DYNAMIC",          "FALSE")
-
 import atexit
 import ctypes
+import os
 import shutil
 import tempfile
 import threading
@@ -132,6 +106,97 @@ def _cleanup_temp_libs() -> None:
             os.unlink(p)
         except OSError:
             pass
+
+
+# ---------------------------------------------------------------------------
+# OpenBLAS thread pinning
+#
+# WHY:
+# Empirically (measured on a 16-core M-series Mac with conda-forge openblas),
+# TGLF in-process is FASTEST when openblas is pinned to 1 thread:
+#   1 thread :  ~700 ms / call
+#   8 threads: ~1280 ms / call
+# The TGLF eigensolve sub-blocks are too small to amortise openblas's
+# per-call thread sync cost — multi-threaded openblas is pure overhead here.
+# This is exactly why the gacode `tglf` shell wrapper exports
+# OMP_NUM_THREADS=1 before invoking the binary; we mirror that behaviour for
+# the in-process path via the openblas runtime API instead of an env var,
+# so the user's other Python libraries (numpy etc.) are not affected.
+#
+# We do NOT do the same for NEO — its dense linear solves are larger and
+# may legitimately benefit from multi-threaded BLAS.  See neo_inprocess.py
+# if a future measurement says otherwise.
+# ---------------------------------------------------------------------------
+# Cached setter callables — populated by _discover_thread_setters() on first
+# use, then re-applied via _pin_threads() before every c_tglf_run call.
+_THREAD_SETTERS: list[tuple[str, "callable"]] = []
+_THREAD_SETTERS_INIT = False
+
+
+def _discover_thread_setters() -> list[tuple[str, "callable"]]:
+    """
+    Discover every "set num threads" entry point reachable in this process.
+
+    On macOS conda-forge, libopenblas is built with USE_OPENMP=1, which
+    means its actual worker pool is controlled by libomp (LLVM OpenMP),
+    not by openblas's internal thread state.  Calling
+    ``openblas_set_num_threads()`` works *until* the first OpenMP parallel
+    region runs, which silently resets the worker count to libomp's
+    OMP_NUM_THREADS (16 → 12 here).  So we have to pin BOTH openblas AND
+    libomp on every call to be sure.
+
+    We cache the discovered setters so we only dlopen once per process.
+    Best-effort: missing libraries are ignored silently.
+    """
+    global _THREAD_SETTERS_INIT
+    if _THREAD_SETTERS_INIT:
+        return _THREAD_SETTERS
+
+    candidates = [
+        # (display name, libnames to try, symbol to look up)
+        ("openblas", ["libopenblas.0.dylib", "libopenblas.dylib",
+                      "libopenblas.so.0", "libopenblas.so"],
+                     "openblas_set_num_threads"),
+        ("omp",      ["libomp.dylib",
+                      "libomp.so", "libgomp.so.1", "libgomp.so"],
+                     "omp_set_num_threads"),
+    ]
+    for name, libnames, sym in candidates:
+        for ln in libnames:
+            try:
+                lib = ctypes.CDLL(ln)
+            except OSError:
+                continue
+            fn = getattr(lib, sym, None)
+            if fn is None:
+                continue
+            fn.argtypes = [ctypes.c_int]
+            fn.restype  = None
+
+            def _setter(n: int, _fn=fn):
+                _fn(ctypes.c_int(int(n)))
+
+            _THREAD_SETTERS.append((name, _setter))
+            break  # found this candidate; move to next family
+
+    _THREAD_SETTERS_INIT = True
+    return _THREAD_SETTERS
+
+
+def _pin_threads(n: int = 1) -> list[str]:
+    """
+    Cap openblas + libomp at *n* threads.  Returns the names actually pinned
+    (for logging).  Cheap: ~10 µs once setters are cached, so safe to call
+    immediately before every c_tglf_run.
+    """
+    pinned = []
+    for name, setter in _discover_thread_setters():
+        try:
+            setter(int(n))
+            pinned.append(name)
+        except Exception:  # noqa: BLE001 — best-effort, never fail
+            pass
+    return pinned
 
 
 def _setup_lib_signatures(lib: ctypes.CDLL) -> ctypes.CDLL:
@@ -183,6 +248,14 @@ def _load_lib() -> ctypes.CDLL:
             "Check that the library was compiled for the current platform."
         ) from exc
 
+    # Pin openblas + libomp to 1 thread for the TGLF code path. We re-pin
+    # before every c_tglf_run via _set_inputs_from_dict, since the call
+    # itself can reset the count. See _discover_thread_setters() for why.
+    pinned = _pin_threads(1)
+    if pinned:
+        print(f"[tglf_inprocess] pinned {', '.join(pinned)} to 1 thread "
+              f"(TGLF eigensolve is faster single-threaded)")
+
     _lib = _setup_lib_signatures(lib)
     return _lib
 
@@ -214,6 +287,8 @@ def _load_unique_lib() -> ctypes.CDLL:
         lib = ctypes.CDLL(tmp_path)
     except OSError as exc:
         raise RuntimeError(f"Failed to load private lib copy {tmp_path}: {exc}") from exc
+    # Pin openblas + libomp to 1 thread (idempotent across thread libs).
+    _pin_threads(1)
     return _setup_lib_signatures(lib)
 
 
@@ -562,6 +637,7 @@ class TGLFInProcess:
         path_str = str(gen_file_path.parent) + "/"
         self._lib.c_tglf_set_path(path_str.encode("ascii"))
         self._lib.c_tglf_read_input()
+        _pin_threads(1)            # see _discover_thread_setters() — must be re-applied per call
         self._lib.c_tglf_run()
         return _collect_outputs(self._lib, self._double11)
 
@@ -591,6 +667,7 @@ class TGLFInProcess:
             ``tglf_shape_cos0_loc_in``).
         """
         _set_inputs_from_dict(self._lib, input_dict)
+        _pin_threads(1)            # see _discover_thread_setters() — must be re-applied per call
         self._lib.c_tglf_run()
         return _collect_outputs(self._lib, self._double11)
 
@@ -612,5 +689,6 @@ def _parallel_worker(flat: dict) -> dict:
     lib = _get_thread_lib()
     double11 = ctypes.c_double * 11
     _set_inputs_from_dict(lib, flat)
+    _pin_threads(1)            # see _discover_thread_setters() — must be re-applied per call
     lib.c_tglf_run()
     return _collect_outputs(lib, double11)

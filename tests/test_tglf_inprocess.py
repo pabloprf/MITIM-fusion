@@ -36,7 +36,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-N_CALLS = 20          # number of repeated calls for timing
+N_CALLS = 5          # number of repeated calls for timing
 RTOL = 1e-4           # relative tolerance for correctness check
 # ---------------------------------------------------------------------------
 

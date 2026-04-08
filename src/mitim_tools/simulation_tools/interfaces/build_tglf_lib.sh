@@ -97,8 +97,12 @@ echo "  OUTPUT     : ${BUILD_DIR}/libtglf_serial.so"
 # Common flags. -fdefault-real-8/-fdefault-double-8 must match the GACODE
 # build so REAL == c_double on the C-binding side. -fPIC is mandatory on
 # Linux for shared-library linking; harmless on macOS.
+#
+# -O3 mirrors gacode's PIXI_OPENMP FOPT.  At -O2 the in-process .so was
+# measurably ~1.5-1.7x slower than the subprocess gacode binary (which
+# is built at -O3) on the same input — the gap closed when we matched -O3.
 # ---------------------------------------------------------------------------
-FFLAGS=(-O2 -fPIC
+FFLAGS=(-O3 -fPIC
         -fdefault-real-8 -fdefault-double-8
         -fallow-argument-mismatch
         -fall-intrinsics)
