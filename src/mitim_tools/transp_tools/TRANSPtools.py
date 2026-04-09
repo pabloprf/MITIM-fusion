@@ -20,6 +20,10 @@ def TRANSP(*args):
         from mitim_tools.transp_tools.src.TRANSPglobus import (
             TRANSPglobus as TRANSPclass,
         )
+    elif s["preferences"]["transp"] == "docker":
+        from mitim_tools.transp_tools.src.TRANSPdocker import (
+            TRANSPdocker as TRANSPclass,
+        )
     else:
         from mitim_tools.transp_tools.src.TRANSPsingularity import (
             TRANSPsingularity as TRANSPclass,
