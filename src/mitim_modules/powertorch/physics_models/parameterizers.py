@@ -14,6 +14,7 @@ def piecewise_linear(
     x_coarse_tensor,
     parameterize_in_aLx=True,
     multiplier_quantity=1.0,
+    smooth_around_coarsing=True,
     ):
     """
     Notes:
@@ -47,26 +48,16 @@ def piecewise_linear(
 
     x_coarse = x_coarse_tensor[1:].cpu().numpy()
 
-    """
-    Define region to get control points from
-    ------------------------------------------------------------
-	Trick: Addition of extra point
-		This is important because if I don't, when I combine the trailing edge and the new
-		modified profile, there's going to be a discontinuity in the gradient.
-	"""
-    
+    # Index of the last control point on the fine grid
     ir_end = np.argmin(np.abs(x_coord - x_coarse[-1]))
 
-    if ir_end < len(x_coord) - 1:
-        ir = ir_end + 2  # To prevent that TGYRO does a 2nd order derivative
-        x_coarse = np.append(x_coarse, [x_coord[ir]])
-    else:
-        ir = ir_end
+    # Trailing edge: everything beyond the last control point
+    x_trail = torch.from_numpy(x_coord[ir_end:]).to(x_coarse_tensor)
+    y_trail = y_coord[ir_end:]
+    x_notrail = torch.from_numpy(x_coord[: ir_end + 1]).to(x_coarse_tensor)
 
-	# Definition of trailing edge. Any point after, and including, the extra point
-    x_trail = torch.from_numpy(x_coord[ir:]).to(x_coarse_tensor)
-    y_trail = y_coord[ir:]
-    x_notrail = torch.from_numpy(x_coord[: ir + 1]).to(x_coarse_tensor)
+    # Gradient of the original profile at the trailing edge start (for Hermite blending)
+    ygrad_trail_start = ygrad_coord[ir_end]
 
     # Produce control points, including a zero at the beginning
     aLy_coarse = [[0.0, 0.0]]
@@ -76,14 +67,8 @@ def piecewise_linear(
 
     aLy_coarse = torch.from_numpy(np.array(aLy_coarse)).to(ygrad_coord)
 
-    # Since the last one is an extra point very close, I'm making it the same
-    aLy_coarse[-1, 1] = aLy_coarse[-2, 1]
-
-    # Boundary condition at point moved by gridPointsAllowed
-    y_bc = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
-
-    # Boundary condition at point (ACTUAL THAT I WANT to keep fixed, i.e. rho=0.8)
-    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-2]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
+    # Boundary condition at the last control point
+    y_bc_real = torch.from_numpy(interpolation_function([x_coarse[-1]], x_coord, y_coord.cpu().numpy())).to(ygrad_coord)
 
     # **********************************************************************************************************
     # Define profile_constructor functions
@@ -106,7 +91,7 @@ def piecewise_linear(
         Reason why something like this is not used for the full profile is because derivative of this will not be as original,
                 which is needed to match TGYRO
         """
-        yCPs = CALCtools.Interp1d_torch()(aLy_coarse[:, 0][:-1].repeat((y.shape[0], 1)), y, x)
+        yCPs = CALCtools.Interp1d_torch()(aLy_coarse[:, 0].repeat((y.shape[0], 1)), y, x)
         return x, integrator_function(x, yCPs, y_bc_real) / multiplier
 
     def profile_constructor_fine(x, y, multiplier=multiplier_quantity):
@@ -119,51 +104,69 @@ def piecewise_linear(
         y = torch.atleast_2d(y)
         x = x[0, :] if x.dim() == 2 else x
 
-        # Add the extra trick point
-        x = torch.cat((x, aLy_coarse[-1][0].repeat((1))))
-        y = torch.cat((y, aLy_coarse[-1][-1].repeat((y.shape[0], 1))), dim=1)
-
-        # Model curve (basically, what happens in between points)
+        # Piecewise-linear interpolation of gradients from coarse to fine grid
         yBS = CALCtools.Interp1d_torch()(x.repeat(y.shape[0], 1), y, x_notrail.repeat(y.shape[0], 1))
 
-        """
-        ---------------------------------------------------------------------------------------------------------
-            Trick 1: smoothAroundCoarsing
-                TGYRO will use a 2nd order scheme to obtain gradients out of the profile, so a piecewise linear
-                will simply not give the right derivatives.
-                Here, this rough trick is to modify the points in gradient space around the coarse grid with the
-                same value of gradient, so in principle it doesn't matter the order of the derivative.
-        """
-        num_around = 1
-        for i in range(x.shape[0] - 2):
-            ir = torch.argmin(torch.abs(x[i + 1] - x_notrail))
-            for k in range(-num_around, num_around + 1, 1):
-                yBS[:, ir + k] = yBS[:, ir]
-        # --------------------------------------------------------------------------------------------------------
+        # smoothAroundCoarsing: flatten gradient at neighbors of each control point so that
+        # any derivative stencil (including higher-order) recovers the correct gradient value.
+        if smooth_around_coarsing:
+            num_around = 1
+            for i in range(x.shape[0] - 1):
+                ir = torch.argmin(torch.abs(x[i + 1] - x_notrail))
+                for k in range(-num_around, num_around + 1, 1):
+                    if 0 <= ir + k < yBS.shape[1]:
+                        yBS[:, ir + k] = yBS[:, ir]
 
-        yBS = integrator_function(x_notrail.repeat(yBS.shape[0], 1), yBS.clone(), y_bc)
+        # Integrate with BC directly at the last control point (no extra point, no rescaling)
+        yBS = integrator_function(x_notrail.repeat(yBS.shape[0], 1), yBS.clone(), y_bc_real)
 
-        """
-        Trick 2: Correct y_bc
-            The y_bc for the profile integration started at gridPointsAllowed, but that's not the real
-            y_bc. I want the temperature fixed at my first point that I actually care for.
-            Here, I multiply the profile to get that.
-            Multiplication works because:
-                1/LT = 1/T * dT/dr
-                1/LT' = 1/(T*m) * d(T*m)/dr = 1/T * dT/dr = 1/LT
-            Same logarithmic gradient, but with the right boundary condition
+        # Smooth Hermite blending into the trailing edge
+        # -----------------------------------------------
+        # At the junction (last control point), the reconstructed profile has value y_bc_real
+        # and gradient from the last coarse a/LT. The original profile continues beyond.
+        # A cubic Hermite blend over a small region ensures C1 continuity (no kink).
 
-        """
-        ir = torch.argmin(torch.abs(x_notrail - x[-2]))
-        yBS = yBS * torch.transpose((y_bc_real / yBS[:, ir]).repeat(yBS.shape[1], 1), 0, 1)
+        n_trail = x_trail.shape[0]
+        if n_trail > 1:
+            # Blend width: a few grid points into the trailing edge
+            n_blend = min(max(3, n_trail // 3), n_trail)
+            x_blend = x_trail[:n_blend]
+            blend_width = x_blend[-1] - x_blend[0]
 
-        # Add trailing edge
-        y_trailnew = copy.deepcopy(y_trail).repeat(yBS.shape[0], 1)
+            if blend_width > 0:
+                # Smoothstep: 0 at junction, 1 at end of blend region
+                t = (x_blend - x_blend[0]) / blend_width
+                w = 3 * t**2 - 2 * t**3  # C1 Hermite smoothstep
 
-        x_notrail_t = torch.cat((x_notrail[:-1], x_trail), dim=0)
-        yBS = torch.cat((yBS[:, :-1], y_trailnew), dim=1)
+                # Reconstructed value at junction = yBS[:, -1] (the BC point)
+                y_junction = yBS[:, -1:]  # (batch, 1)
 
-        return x_notrail_t, yBS / multiplier
+                # Original trailing edge values
+                y_orig_blend = y_trail[:n_blend].unsqueeze(0).repeat(yBS.shape[0], 1)
+                y_orig_rest = y_trail[n_blend:].unsqueeze(0).repeat(yBS.shape[0], 1) if n_blend < n_trail else torch.empty(yBS.shape[0], 0).to(yBS)
+
+                # Blend: (1-w)*junction_extrapolated + w*original
+                # For the extrapolation from the junction, use the last gradient to extend
+                last_grad = yBS[:, -1:] - yBS[:, -2:-1]  # finite diff of profile at junction
+                dx_from_junction = (x_blend - x_blend[0]).unsqueeze(0)
+                y_extrap = y_junction + last_grad / (x_notrail[-1] - x_notrail[-2]) * dx_from_junction
+
+                y_blended = (1 - w).unsqueeze(0) * y_extrap + w.unsqueeze(0) * y_orig_blend
+
+                # Assemble: notrail[:-1] + blended + rest of original
+                x_full = torch.cat((x_notrail[:-1], x_trail), dim=0)
+                yBS_full = torch.cat((yBS[:, :-1], y_blended, y_orig_rest), dim=1)
+            else:
+                # Blend width is zero (single trailing point), just concat
+                x_full = torch.cat((x_notrail[:-1], x_trail), dim=0)
+                y_trailnew = y_trail.unsqueeze(0).repeat(yBS.shape[0], 1)
+                yBS_full = torch.cat((yBS[:, :-1], y_trailnew), dim=1)
+        else:
+            # No trailing edge points, return as-is
+            x_full = x_notrail
+            yBS_full = yBS
+
+        return x_full, yBS_full / multiplier
 
     # **********************************************************************************************************
 
