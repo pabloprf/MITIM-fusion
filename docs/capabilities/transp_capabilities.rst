@@ -1,8 +1,8 @@
 TRANSP
 ======
 
-**MITIM** can be used to run TRANSP, interpret results and plot revelant quantities.
-This framework does not provide linceses or support to run TRANSP, therefore, please see :ref:`Installation` for information on how to get TRANSP working and how to configure your setup.
+**MITIM** can be used to run TRANSP, interpret results and plot relevant quantities.
+This framework does not provide licenses or support to run TRANSP, therefore, please see :ref:`Installation` for information on how to get TRANSP working and how to configure your setup.
 
 Once setup has been successful, the following regression test should run smoothly:
 

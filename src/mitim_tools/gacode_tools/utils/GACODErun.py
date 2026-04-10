@@ -471,7 +471,8 @@ def obtainNTphase(
     else:
         gaussW = np.ones(len(x))
 
-    neTe = np.sum(y * gaussW) / np.sum(gaussW)
+    sumW = np.sum(gaussW)
+    neTe = np.sum(y * gaussW) / sumW if sumW != 0.0 else np.nan
 
     return neTe
 

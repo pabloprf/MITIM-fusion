@@ -33,7 +33,7 @@ Use ``pip`` to install all the required MITIM requirements:
 
 .. note::
    
-   The optional argument ``[pyqt]`` added in the intallation command above must only be used if the machine allows for graphic interfaces.
+   The optional argument ``[pyqt]`` added in the installation command above must only be used if the machine allows for graphic interfaces.
    If running in a computing cluster, remove that flag.
    The ``pyqt`` package is used to create condensed figures into a single notebook when interpreting and plotting simulation results.
 

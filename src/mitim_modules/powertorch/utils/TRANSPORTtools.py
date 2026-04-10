@@ -76,7 +76,7 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
 
             json.dump(json_dict, f, indent=4)
 
-        print(f"\t* Written JSON with {suffix} information to {self.folder / file_name}")
+        print(f"\t* Written JSON with {suffix} information to {IOtools.clipstr(self.folder / file_name)}")
         
     else:
         
@@ -357,7 +357,7 @@ class power_transport:
         Populate the powerstate.plasma from the json file
         **********************************************************************************************
         '''
-        print(f"\t* Populating powerstate.plasma with JSON data from {self.folder / file_name}")
+        print(f"\t* Populating powerstate.plasma with JSON data from {IOtools.clipstr(self.folder / file_name)}")
 
         with open(self.folder / file_name, 'r') as f:
             json_dict = json.load(f)

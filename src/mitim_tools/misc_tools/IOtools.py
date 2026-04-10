@@ -2003,9 +2003,15 @@ def print_machine_info(output_file=None):
 
     # System Information
     info_lines.append("=== System Information ===")
+    info_lines.append(f"Python:    {platform.python_version()} ({platform.python_implementation()})")
     info_lines.append(f"System:    {platform.system()} {platform.release()}  ({platform.machine()})")
     info_lines.append(f"Node:      {platform.node()}")
     info_lines.append(f"Processor: {platform.processor()}")
+    try:
+        from mitim_tools import __version__ as mitim_version
+        info_lines.append(f"MITIM:     {mitim_version}")
+    except Exception:
+        pass
 
     # CPU Information
     info_lines.append("\n=== CPU Information ===")
@@ -2022,6 +2028,8 @@ def print_machine_info(output_file=None):
         mem = psutil.virtual_memory()
         info_lines.append(f"RAM:           {mem.total / 2**30:.1f} GB total, {mem.available / 2**30:.1f} GB available")
         proc = psutil.Process()
+        proc_mem = proc.memory_info()
+        info_lines.append(f"Process RSS:   {proc_mem.rss / 2**30:.2f} GB")
         if hasattr(proc, "cpu_affinity"):
             affinity = proc.cpu_affinity()
             info_lines.append(f"CPU affinity:  {len(affinity)} cores {affinity}")
@@ -2042,12 +2050,34 @@ def print_machine_info(output_file=None):
 
     # PyTorch threading state
     info_lines.append("\n=== PyTorch Information ===")
+    info_lines.append(f"Default dtype:  {torch.get_default_dtype()}")
     info_lines.append(f"Intraop threads (current): {torch.get_num_threads()}")
     info_lines.append(f"Interop threads (current): {torch.get_num_interop_threads()}")
     openmp_enabled = getattr(torch.backends, 'openmp', None)
     mkl_enabled    = getattr(torch.backends, 'mkl', None)
     info_lines.append(f"OpenMP: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}   "
                       f"MKL: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # GPU / CUDA
+    info_lines.append("\n=== GPU / CUDA ===")
+    if torch.cuda.is_available():
+        info_lines.append(f"CUDA available:  True  (version {torch.version.cuda})")
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            mem_total = props.total_mem / 2**30
+            mem_alloc = torch.cuda.memory_allocated(i) / 2**30
+            mem_reserved = torch.cuda.memory_reserved(i) / 2**30
+            info_lines.append(f"  GPU {i}: {props.name}  ({mem_total:.1f} GB total, {mem_alloc:.2f} GB allocated, {mem_reserved:.2f} GB reserved)")
+        if torch.backends.cudnn.is_available():
+            info_lines.append(f"  cuDNN: {torch.backends.cudnn.version()}  (enabled={torch.backends.cudnn.enabled})")
+        else:
+            info_lines.append("  cuDNN: not available")
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        info_lines.append(f"CUDA available:  False")
+        info_lines.append(f"MPS available:   True  (Apple Silicon GPU)")
+    else:
+        info_lines.append(f"CUDA available:  False")
+        info_lines.append(f"MPS available:   False")
 
     # BLAS thread pool state (threadpoolctl, if available)
     try:
@@ -2079,12 +2109,12 @@ def print_machine_info(output_file=None):
 
     # Package versions
     info_lines.append("\n=== Package Versions ===")
-    for pkg in ["torch", "gpytorch", "botorch", "linear_operator"]:
+    for pkg in ["numpy", "scipy", "torch", "gpytorch", "botorch", "linear_operator", "tensorflow"]:
         try:
             mod = __import__(pkg)
-            info_lines.append(f"  {pkg}: {mod.__version__}")
+            info_lines.append(f"  {pkg:<20s} {mod.__version__}")
         except Exception:
-            info_lines.append(f"  {pkg}: not available")
+            info_lines.append(f"  {pkg:<20s} not installed")
 
     info_lines.append("=============================\n")
 

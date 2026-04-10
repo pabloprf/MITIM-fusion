@@ -51,7 +51,7 @@ As a starting point of VITALS, you need to prepare and run TGLF for the base cas
 
 	    tglf.read( label = 'run_base', d_perp_cm = { rho: 1.9 } )
 
-	Currently, the synhetic diagnostic to produce fluctuation levels out of amplitude spectra is handled by the ``convolution_CECE`` function in ``mitim/gacode_tools/GACODEdefaults.py``. To understand the meaning of the ``d_perp_cm`` keyword argument provided above, please check out the code.
+	Currently, the synthetic diagnostic to produce fluctuation levels out of amplitude spectra is handled by the ``convolution_CECE`` function in ``mitim_tools/gacode_tools/utils/GACODEdefaults.py``. To understand the meaning of the ``d_perp_cm`` keyword argument provided above, please check out the code.
 
 Now, once TGLF has run and outputs have been read and stored in the ``tglf.results`` dictionary, information about the experiment needs to be provided. Note that the errors (standard deviation) are provided in absolute units (MW/m^2), but the Qe and Qi errors in the example above are written such as they are 20% from the base case. This is because the TGLF object already includes those experimental fluxes because they existed in the *input.gacode* file. However, this way of specifying the error is completely up to the user.
 
@@ -73,7 +73,7 @@ Now, once TGLF has run and outputs have been read and stored in the ``tglf.resul
 
 		tglf.NormalizationSets['EXP']['exp_TeFluct_rho']    = [rho]
 		tglf.NormalizationSets['EXP']['exp_TeFluct']        = [1.12] # Percent fluctuation
-		tglf.NormalizationSets['EXP']['exp_TeFluct_error']  = [0.1]  # Abolute error
+		tglf.NormalizationSets['EXP']['exp_TeFluct_error']  = [0.1]  # Absolute error
 
 		tglf.NormalizationSets['EXP']['exp_neTe_rho']       = [rho]
 		tglf.NormalizationSets['EXP']['exp_neTe']           = [-130] # Degrees
@@ -88,7 +88,7 @@ At this point, the TGLF class is ready to go into VITALS. One can give the ``tgl
 	tglf.save_pkl(tglf_file)
 
 
-1. VITALS Run 
+2. VITALS Run
 -------------
 
 First you must select the objective functions (``ofs``) you want VITALS to match:
@@ -125,7 +125,7 @@ Once the VITALS object has been created, parameters such as the TGLF control inp
 
 .. note::
 
-	At this point, the parameter ``vitals_fun.VITALSparameters['launchSlurm']`` is defaulted to ``False``. However, if the user wants to run VITALS as a slurm job in a cluster, this parameter should be set to ``True``.
+	At this point, the parameter ``vitals_fun.VITALSparameters['launchSlurm']`` is defaulted to ``True``. If the user does not want to run VITALS as a slurm job, this parameter should be set to ``False``.
 
 We are now ready to prepare the VITALS class. Here we have two options:
 
@@ -155,9 +155,9 @@ We can plot the VITALS results easily with:
 
 .. code-block:: python
 
-	vitals_fun.plot_optimization_results(full=True)
+	vitals_fun.plot_optimization_results(analysis_level=2)
 
-In the previous command, ``full=True`` means that VITALS will now run TGLF again for the base case (Evaluation #0) and the best case (best in terms of the lowest mean residual), then it will plot them together as a TGLF Notebook.
+In the previous command, ``analysis_level=2`` means that VITALS will perform a full analysis, running TGLF again for the base case (Evaluation #0) and the best case (best in terms of the lowest mean residual), then plotting them together as a TGLF Notebook.
 All information of the optimization process is also included in tabs in the notebook.
 
 .. figure:: ./figs/VITALSnotebook1.png
