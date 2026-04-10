@@ -177,7 +177,8 @@ class powerstate:
 
         # Resolution of input.gacode
         if increase_profile_resol:
-            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec)
+            smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
+            TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec, smooth_around_coarsing=smooth_around_coarsing)
 
         # Convert to powerstate
         self.to_powerstate(self)

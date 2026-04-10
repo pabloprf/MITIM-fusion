@@ -116,6 +116,13 @@ transport:
   # Function to post-process input.gacode only *before* passing to transport codes (i.e. not for targets)
   profiles_postprocessing_fun: null
 
+  # Flatten the gradient at fine-grid neighbors of each coarse control point, creating a small
+  # plateau that ensures any derivative stencil (including TGYRO/GACODE's higher-order Lagrange)
+  # recovers the correct gradient value from the reconstructed profile. Also adds extra fine-grid
+  # points at +-1e-3 around each control point to support the plateau. Set to false to skip both
+  # (more uniform grid, but gradient recomputation by transport codes may see slope-change artifacts).
+  flatten_gradients_at_control_points: true
+
   # Corrections to be applied to each iteration input.gacode file
   applyCorrections:
     Ti_thermals: true       # Keep all *thermal* ion temperatures equal to the main Ti
