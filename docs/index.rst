@@ -41,6 +41,7 @@ significantly boosting the efficiency and effectiveness of their studies (see :r
    installation
    capabilities/standalone
    capabilities/optimization
+   detailed/index
    faq
 
 .. note:: 

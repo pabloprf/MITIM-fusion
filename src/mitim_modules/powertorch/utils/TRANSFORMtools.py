@@ -177,6 +177,8 @@ def gacode_to_powerstate(self, rho_vec=None):
     for i in range(input_gacode.profiles['ni(10^19/m^3)'].shape[1]):
         cases_to_parameterize.append([f"ni{i}", "ni(10^19/m^3)", i, 1.0, True])
 
+    smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
+
     self.profile_constructors_fine, self.profile_constructors_coarse, self.profile_constructors_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
         quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
@@ -192,9 +194,10 @@ def gacode_to_powerstate(self, rho_vec=None):
             self.plasma["roa"],
             parameterize_in_aLx=key[4],
             multiplier_quantity=key[3],
+            smooth_around_coarsing=smooth_around_coarsing,
         )
 
-        self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
+        self.plasma[f"aL{key[0]}"] = aLy_coarse[:, 1]
 
         # Check that it's not completely zero
         if key[0] in self.predicted_channels:
@@ -470,7 +473,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ions_set_Tion"] = Tion
     self.plasma["ions_set_c_rad"] = c_rad
 
-def improve_resolution_profiles(profiles, rhoMODEL):
+def improve_resolution_profiles(profiles, rhoMODEL, smooth_around_coarsing=True):
     """
     Resolution of input.gacode
     **************************
@@ -507,13 +510,16 @@ def improve_resolution_profiles(profiles, rhoMODEL):
 
     # ----------------------------------------------------------------------------------
     # 2. Add extra resolution around the modelled (e.g. TGYRO) points
+    #    (only needed when smoothAroundCoarsing is enabled, to provide the
+    #    neighboring fine-grid points that get flattened)
     # ----------------------------------------------------------------------------------
 
-    for i in range(points_updown):
-        rho_new = np.append(
-            np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
-            rhoMODEL - d_spacing_coarse * (i + 1),
-        )
+    if smooth_around_coarsing:
+        for i in range(points_updown):
+            rho_new = np.append(
+                np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
+                rhoMODEL - d_spacing_coarse * (i + 1),
+            )
 
     # ----------------------------------------------------------------------------------
     # Change resolution

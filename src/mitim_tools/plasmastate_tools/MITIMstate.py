@@ -2391,14 +2391,14 @@ class mitim_state:
 
     def to_tglf(self, r=[0.5], code_settings='SAT0', r_is_rho = True):
 
-        # <> Function to interpolate a curve <> 
+        # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-        # Determine if the input radius is rho toroidal or r/a
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r_interpolation = self.profiles['rho(-)']
-        else:
-            r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
+        r_interpolation = self.derived['roa']
 
         # Determine the number of species to use in TGLF
         max_species_tglf = 6  # TGLF only accepts up to 6 species  
@@ -2463,19 +2463,19 @@ class mitim_state:
         # ---------------------------------------------------------------------------------------------------------------------------------------
 
         input_parameters = {}
-        for rho in r:
+        for roa, rho_label in zip(r, r_labels):
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            # Define interpolator at this rho
+            # Define interpolator at this r/a
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             def interpolator(y):
-                return interpolation_function(rho, r_interpolation,y).item()
-            
+                return interpolation_function(roa, r_interpolation,y).item()
+
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            
+
             controls = GACODEdefaults.addTGLFcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2548,17 +2548,17 @@ class mitim_state:
                 'Q_PRIME_LOC':  self.derived['s_q'],
                 'P_PRIME_LOC':  pprime,
             }
-            
+
             # Add MXH and derivatives
             for ikey in self.profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
-                    
+
                     # TGLF only accepts 6, as of July 2025
                     if int(ikey[-4]) > 6:
                         continue
-                    
+
                     key_mod = ikey.upper().split('(')[0]
-                    
+
                     parameters[key_mod] = self.profiles[ikey]
                     parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
 
@@ -2579,20 +2579,20 @@ class mitim_state:
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            input_parameters[rho] = input_dict
-            
+            input_parameters[rho_label] = input_dict
+
         return input_parameters
 
     def to_neo(self, r=[0.5], r_is_rho = True, code_settings='Sonic'):
 
-        # <> Function to interpolate a curve <> 
+        # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-        # Determine if the input radius is rho toroidal or r/a
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r_interpolation = self.profiles['rho(-)']
-        else:
-            r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
+        r_interpolation = self.derived['roa']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -2624,19 +2624,19 @@ class mitim_state:
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
 
         input_parameters = {}
-        for rho in r:
+        for roa, rho_label in zip(r, r_labels):
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            # Define interpolator at this rho
+            # Define interpolator at this r/a
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             def interpolator(y):
-                return interpolation_function(rho, r_interpolation,y).item()
+                return interpolation_function(roa, r_interpolation,y).item()
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            
+
             controls = GACODEdefaults.addNEOcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -2729,20 +2729,20 @@ class mitim_state:
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            input_parameters[rho] = input_dict
+            input_parameters[rho_label] = input_dict
 
         return input_parameters
 
     def to_cgyro(self, r=[0.5], r_is_rho = True, code_settings = 'Linear'):
 
-        # <> Function to interpolate a curve <> 
+        # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-        # Determine if the input radius is rho toroidal or r/a
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r_interpolation = self.profiles['rho(-)']
-        else:
-            r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
+        r_interpolation = self.derived['roa']
             
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -2780,19 +2780,19 @@ class mitim_state:
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
             
         input_parameters = {}
-        for rho in r:
+        for roa, rho_label in zip(r, r_labels):
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            # Define interpolator at this rho
+            # Define interpolator at this r/a
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             def interpolator(y):
-                return interpolation_function(rho, r_interpolation,y).item()
+                return interpolation_function(roa, r_interpolation,y).item()
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            
+
             controls = GACODEdefaults.addCGYROcontrol(code_settings)
             controls['PROFILE_MODEL'] = 1
 
@@ -2885,20 +2885,20 @@ class mitim_state:
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            input_parameters[rho] = input_dict
+            input_parameters[rho_label] = input_dict
 
         return input_parameters
 
     def to_gx(self, r=[0.5], r_is_rho = True, code_settings = 'Linear Tokamak'):
 
-        # <> Function to interpolate a curve <> 
+        # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
-        # Determine if the input radius is rho toroidal or r/a
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r_interpolation = self.profiles['rho(-)']
-        else:
-            r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
+        r_interpolation = self.derived['roa']
             
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -2921,19 +2921,19 @@ class mitim_state:
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
             
         input_parameters = {}
-        for rho in r:
+        for roa, rho_label in zip(r, r_labels):
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            # Define interpolator at this rho
+            # Define interpolator at this r/a
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             def interpolator(y):
-                return interpolation_function(rho, r_interpolation,y).item()
+                return interpolation_function(roa, r_interpolation,y).item()
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
             # Controls come from options
             # ---------------------------------------------------------------------------------------------------------------------------------------
-            
+
             controls = GACODEdefaults.addGXcontrol(code_settings)
 
             # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -3023,10 +3023,10 @@ class mitim_state:
                 for k in species[i+1]:
                     input_dict[f'{k}_{i+1}'] = species[i+1][k]
 
-            input_parameters[rho] = input_dict
+            input_parameters[rho_label] = input_dict
 
         return input_parameters
-    
+
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5):
 
