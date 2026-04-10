@@ -29,7 +29,7 @@ class tglf_model:
         percent_error = simulation_options["percent_error"]
         # If True, TGLF runs in-process via ctypes (libtglf_serial.so) — no
         # subprocess fork, no folder / file I/O.  See namelist.portals.yaml.
-        in_process = simulation_options.get("in_process", False)
+        in_process = self.powerstate.transport_options.get("in_process", False)
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2

@@ -277,10 +277,10 @@ class power_transport:
             neo_opts     = self.transport_evaluator_options.get("neo", {})
             neo_slurm    = neo_opts.get("run", {}).get("slurm_setup", {})
             minutes_vgen = neo_slurm.get("minutes", 60)
-            # Reuse the namelist's `neo.in_process` flag for VGEN as well —
-            # if the user wants in-process NEO they almost certainly want
+            # Reuse the top-level `transport.in_process` flag for VGEN as well —
+            # if the user wants in-process codes they almost certainly want
             # in-process VGEN too (same ctypes path, no SLURM overhead).
-            in_process_vgen = neo_opts.get("in_process", False)
+            in_process_vgen = self.powerstate.transport_options.get("in_process", False)
 
             neo_exb = NEOtools.NEO(rhos=[])
             neo_exb.FolderGACODE = self.folder

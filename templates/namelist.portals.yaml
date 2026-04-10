@@ -104,6 +104,15 @@ transport:
   # Transport model class
   evaluator: "import::mitim_modules.powertorch.utils.TRANSPORTtools.portals_transport_model"
 
+  # If True, run transport models in-process if they allow that option.
+  #     E.g.,
+  #         TGLF and NEO via ctypes, libtglf_serial.so / libneo_serial.so) instead of forking subprocesses.
+  #         Requires the shared libraries to be built once per machine via:
+  #             cd src/mitim_tools/simulation_tools/interfaces && bash build_tglf_lib.sh
+  #             cd src/mitim_tools/simulation_tools/interfaces && bash build_neo_lib.sh
+  # When True, every PORTALS transport call is executed in-memory with no folder / file I/O.
+  in_process: true
+
   # Select transport models (when instantiating the evaluator, assign these parameters)
   evaluator_instance_attributes:
 
@@ -139,14 +148,6 @@ transport:
     # *********************************************************************************************************
     tglf:
 
-      # If True, run TGLF in-process via ctypes (libtglf_serial.so) instead of
-      # forking a `tglf` subprocess.  Requires the shared library to be built
-      # once per machine via:
-      #   cd src/mitim_tools/simulation_tools/interfaces && bash build_tglf_lib.sh
-      # When True, every PORTALS TGLF call (base run + scan-trick uncertainty
-      # scans) is executed in-memory with no folder / file I/O.
-      in_process: false
-
       # Kwargs to be passed to the run command
       run:
         code_settings: "SAT3"
@@ -180,12 +181,6 @@ transport:
     # NEO
     # *********************************************************************************************************
     neo:
-
-      # If True, run NEO in-process via ctypes (libneo_serial.so) instead of
-      # forking a `neo` subprocess.  Requires the shared library to be built
-      # once per machine via:
-      #   cd src/mitim_tools/simulation_tools/interfaces && bash build_neo_lib.sh
-      in_process: false
 
       run:
         code_settings: "Sonic"
