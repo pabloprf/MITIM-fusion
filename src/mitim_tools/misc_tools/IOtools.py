@@ -2256,15 +2256,41 @@ class CPU_Unpickler(pickle_dill.Unpickler):
 
 def read_mitim_yaml(path: str):
 
+    yaml_dir = Path(path).resolve().parent
+
+    def _import_from_string(modattr):
+        """Import a function/class from an 'import::' string, with sidecar file support."""
+        import importlib
+        import importlib.util
+
+        if modattr.startswith("import::"):
+            modattr = modattr[len("import::"):]
+        module_name, attr = modattr.rsplit(".", 1)
+
+        # If the module is a sidecar file next to this YAML, load it from disk
+        sidecar = yaml_dir / f"{module_name}.py"
+        if sidecar.exists():
+            spec = importlib.util.spec_from_file_location(module_name, sidecar)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return getattr(mod, attr)
+
+        return getattr(importlib.import_module(module_name), attr)
+
     def resolve(x):
         if isinstance(x, dict):
+            # Reconstruct functools.partial from serialized form
+            if "_partial_import" in x:
+                import functools
+                func = _import_from_string(x["_partial_import"])
+                args = resolve(x.get("args", []))
+                kwargs = resolve(x.get("kwargs", {}))
+                return functools.partial(func, *args, **kwargs)
             return {k: resolve(v) for k, v in x.items()}
         if isinstance(x, list):
             return [resolve(v) for v in x]
         if isinstance(x, str) and x.startswith("import::"):
-            modattr = x[len("import::"):]
-            module_name, attr = modattr.rsplit(".", 1)
-            return getattr(importlib.import_module(module_name), attr)
+            return _import_from_string(x)
         return x
 
     with open(path, "r") as f:
@@ -2275,13 +2301,22 @@ def read_mitim_yaml(path: str):
 import yaml
 import numpy as np
 import inspect
+import functools
 from pathlib import Path
 from typing import Any, Mapping
+
+# Module-level collector for __main__ functions encountered during YAML normalization.
+# Populated by _as_import_string, consumed and cleared by write_mitim_yaml.
+_main_functions_to_save = {}
+
+_SIDECAR_MODULE = "_saved_functions"
 
 def _as_import_string(obj: Any) -> str:
     """
     Return an 'import::module.qualname' for callables/classes.
-    Falls back to str(obj) if module/name aren't available.
+    If the callable is from __main__, its source is collected into
+    _main_functions_to_save for later writing to a sidecar file,
+    and the import string references the sidecar module instead.
     """
     # Handle bound methods
     if inspect.ismethod(obj):
@@ -2289,6 +2324,8 @@ def _as_import_string(obj: Any) -> str:
         mod = func.__module__
         qn = getattr(func, "__qualname__", func.__name__)
         qn = qn.replace("<locals>.", "")
+        if mod == "__main__":
+            return _collect_main_function(func, qn)
         return f"import::{mod}.{qn}"
     # Handle functions, classes, other callables with module/name
     if inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
@@ -2296,6 +2333,8 @@ def _as_import_string(obj: Any) -> str:
         name = getattr(obj, "__qualname__", getattr(obj, "__name__", None))
         if mod and name:
             name = name.replace("<locals>.", "")
+            if mod == "__main__":
+                return _collect_main_function(obj, name)
             return f"import::{mod}.{name}"
         return f"import::{str(obj)}"
 
@@ -2306,12 +2345,59 @@ def _as_import_string(obj: Any) -> str:
     # Fallback
     return f"import::{str(obj)}"
 
+
+def _collect_main_function(func, name):
+    """
+    Collect a __main__ function's source code for saving to a sidecar file.
+    Returns the import string referencing the sidecar module.
+    """
+    try:
+        source = inspect.getsource(func)
+        # Dedent in case the function was defined inside a block
+        import textwrap
+        source = textwrap.dedent(source)
+        _main_functions_to_save[name] = source
+    except (OSError, TypeError):
+        from mitim_tools.misc_tools.LOGtools import printMsg as _print
+        _print(
+            f"Could not extract source for __main__ function '{name}'. "
+            f"It will not be reproducible from the saved namelist.",
+            typeMsg="w",
+        )
+    return f"import::{_SIDECAR_MODULE}.{name}"
+
+
+def _extract_imports_from_main():
+    """
+    Extract all import statements from the __main__ module's source file.
+    These are needed so the saved functions can find their dependencies.
+    """
+    import sys
+    main_mod = sys.modules.get("__main__")
+    if main_mod is None:
+        return ""
+
+    main_file = getattr(main_mod, "__file__", None)
+    if main_file is None or not Path(main_file).exists():
+        return ""
+
+    import_lines = []
+    with open(main_file, "r") as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith("import ") or stripped.startswith("from "):
+                import_lines.append(line.rstrip())
+
+    return "\n".join(import_lines)
+
+
 def _normalize_for_yaml(obj: Any) -> Any:
     """
     Recursively convert objects into YAML-safe Python builtins.
     - NumPy arrays/scalars -> lists/scalars
     - Paths -> str
     - sets -> lists
+    - functools.partial -> structured dict with _partial_import/args/kwargs
     - callables/classes/methods -> 'import::module.qualname'
     Leaves basic builtins as-is.
     """
@@ -2335,12 +2421,20 @@ def _normalize_for_yaml(obj: Any) -> Any:
 
     # Mappings
     if isinstance(obj, Mapping):
-        # ensure keys are YAML-safe (coerce to str if needed)
         return {str(k): _normalize_for_yaml(v) for k, v in obj.items()}
 
     # Sequences
     if isinstance(obj, (list, tuple)):
         return [_normalize_for_yaml(v) for v in obj]
+
+    # functools.partial -> structured dict with function + args + kwargs
+    if isinstance(obj, functools.partial):
+        result = {"_partial_import": _as_import_string(obj.func)}
+        if obj.args:
+            result["args"] = [_normalize_for_yaml(a) for a in obj.args]
+        if obj.keywords:
+            result["kwargs"] = {str(k): _normalize_for_yaml(v) for k, v in obj.keywords.items()}
+        return result
 
     # Anything callable or class-like -> import string
     if inspect.ismethod(obj) or inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
@@ -2360,10 +2454,18 @@ def write_mitim_yaml(parameters: Mapping[str, Any], path: str) -> None:
     General YAML writer:
     - No assumptions about keys (works for solution/transport/target and also optimization_options).
     - Normalizes everything to YAML-safe types, including function objects.
+    - Functions defined in __main__ are saved to a sidecar _saved_functions.py
+      file next to the YAML, and referenced via import::_saved_functions.func_name.
     """
     if not isinstance(parameters, Mapping):
         raise TypeError("parameters must be a dict-like mapping")
+
+    # Clear the collector before normalization
+    _main_functions_to_save.clear()
+
     clean = _normalize_for_yaml(parameters)
+
+    path = Path(path)
 
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(
@@ -2375,3 +2477,20 @@ def write_mitim_yaml(parameters: Mapping[str, Any], path: str) -> None:
             allow_unicode=True,
             width=1000,
         )
+
+    # Write sidecar file with __main__ functions if any were collected
+    if _main_functions_to_save:
+        imports = _extract_imports_from_main()
+        sidecar_path = path.parent / f"{_SIDECAR_MODULE}.py"
+
+        with open(sidecar_path, "w", encoding="utf-8") as f:
+            f.write(f"# Auto-generated by MITIM write_mitim_yaml — source extracted from __main__\n")
+            if imports:
+                f.write(f"\n{imports}\n")
+            for name, source in _main_functions_to_save.items():
+                f.write(f"\n{source}\n")
+
+        from mitim_tools.misc_tools.LOGtools import printMsg as _print
+        _print(f"Saved {len(_main_functions_to_save)} __main__ function(s) to {sidecar_path}", typeMsg="i")
+
+        _main_functions_to_save.clear()
