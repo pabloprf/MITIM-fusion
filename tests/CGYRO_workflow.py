@@ -108,6 +108,45 @@ cgyro.run(
 cgyro.read(label="cgyro2")
 
 # ---------------------------------------------------------------------------
+# Nonlinear with automatic BOX_SIZE / N_RADIAL via preprocess_options
+# (run_type='prep' so no SLURM submission: we only check the input files)
+# ---------------------------------------------------------------------------
+
+cgyro.run(
+    'Nonlinear_preprocessed',
+    code_settings="Nonlinear",
+    extraOptions={
+        'MAX_TIME': 10.0,
+    },
+    preprocess_options={
+        'ky_min': 0.3,
+        'L_x': 90,
+        'N_radial': 256,
+    },
+    slurm_setup={'cores': 16, 'minutes': 10},
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    run_type='prep',
+)
+
+for rho in cgyro.rhos:
+    input_file = cgyro.FolderSimLast / f'input.cgyro_{rho:.4f}'
+    with open(input_file, 'r') as f:
+        txt = f.read()
+    parsed = {}
+    for line in txt.splitlines():
+        if '=' in line and not line.strip().startswith('#'):
+            k, v = line.split('=', 1)
+            parsed[k.strip()] = v.strip().split()[0]
+    box_size = int(parsed['BOX_SIZE'])
+    n_radial = int(parsed['N_RADIAL'])
+    assert n_radial % 2 == 0, f"N_RADIAL={n_radial} must be even"
+    assert n_radial % box_size == 0, (
+        f"N_RADIAL={n_radial} must be divisible by BOX_SIZE={box_size}"
+    )
+    print(f"[preprocess test] rho={rho}: BOX_SIZE={box_size} N_RADIAL={n_radial}")
+
+# ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
 

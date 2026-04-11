@@ -1,4 +1,5 @@
 import os
+import math
 import scipy
 import numpy as np
 from pathlib import Path
@@ -17,6 +18,57 @@ except ModuleNotFoundError:
     print("\t- Could not find pygacode module in this environment. Please install it if you need CGYRO capabilities", typeMsg='w')
 from IPython import embed
 import pandas as pd
+
+
+def compute_box_and_nradial(
+    q,
+    shear,
+    rmin,
+    ky_min,
+    L_x=90.0,
+    N_radial=256,
+    min_box_size=100,
+):
+    """
+    Pick CGYRO BOX_SIZE and N_RADIAL from local equilibrium quantities.
+
+    Port of an IDL recipe: targets a radial box length of ~L_x (in the IDL
+    author's convention) and ~N_radial radial modes, with N_RADIAL
+    constrained so N_RADIAL/BOX_SIZE is a positive integer and N_RADIAL
+    is even.
+
+    rmin is r/a (i.e., the CGYRO RMIN parameter), ky_min is the CGYRO KY
+    parameter (k_theta * rho_s at the surface). Returns (BOX_SIZE, N_RADIAL)
+    as Python ints.
+    """
+
+    rhostar_int = ky_min / (q / rmin)
+    box_fac = (rmin / (q * shear)) / rhostar_int
+    box_calc = L_x / box_fac
+
+    box_floor = int(math.floor(box_calc))
+    box_ceil = box_floor + 1
+
+    # Literal port of the IDL guard. The raw integer comparison only matches
+    # the original "never smaller than 100 rho_s" comment when box_fac ~ 1.
+    if box_floor < min_box_size:
+        box_size = box_ceil
+    else:
+        candidates = [box_floor, box_ceil]
+        deltas = [abs(c * box_fac - L_x) for c in candidates]
+        box_size = candidates[int(np.argmin(deltas))]
+
+    r_fac = N_radial / box_size
+    if (r_fac - math.floor(r_fac)) >= 0.5:
+        r_test = int(math.floor(r_fac)) + 1
+    else:
+        r_test = int(math.floor(r_fac))
+    if (r_test * box_size) % 2 != 0:
+        r_test += 1
+    n_radial_out = int(r_test * box_size)
+
+    return int(box_size), n_radial_out
+
 
 class CGYROlinear_scan:
     def __init__(self, labels, results, irho = 0):   

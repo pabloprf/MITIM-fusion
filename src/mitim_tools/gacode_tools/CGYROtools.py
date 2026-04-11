@@ -20,6 +20,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         super().__init__(**kwargs)
 
+        # Transient state used by run() to feed preprocess_options into _run_prepare()
+        self._preprocess_options = None
+
         def code_call(folder, p, n=1, additional_command="", **kwargs):
             # `n` is cores_per_code_call (total cores for ONE radius), not MPI tasks.
             # On GPU machines we translate it into CGYRO's -n/-nomp/-numa/-mpinuma
@@ -163,6 +166,14 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
         
 
+    # Thin wrapper: capture preprocess_options and delegate to the generic run()
+    def run(self, *args, preprocess_options=None, **kwargs):
+        self._preprocess_options = preprocess_options
+        try:
+            return super().run(*args, **kwargs)
+        finally:
+            self._preprocess_options = None
+
     # Redefine to raise warning and allow selection of output files
     def _run_prepare(
         self,
@@ -171,7 +182,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         multipliers=None,
         **kwargs,
     ):
-        
+
         # ---------------------------------------------
         # Check if any *_SCALE_* variable is being used
         # ---------------------------------------------
@@ -183,13 +194,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 dictionary_check = extraOptions
         elif multipliers is not None:
                 dictionary_check = multipliers
-        
+
         for key in dictionary_check:
             if '_SCALE_' in key:
                 print("The use of *_SCALE_* is discouraged, please use the appropriate variable instead.", typeMsg='q')
-            
+
         # ---------------------------------------------
-            
+
         # Check if it's linear
         if 'Nonlinear' not in kwargs.get('code_settings', ''):
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_linear"])
@@ -197,14 +208,88 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         else:
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
             self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
-            
-            
+
+        # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested
+        if getattr(self, "_preprocess_options", None) is not None:
+            extraOptions = self._apply_cgyro_preprocessing(extraOptions or {})
+
         return super()._run_prepare(
             subfolder_simulation,
             extraOptions=extraOptions,
             multipliers=multipliers,
             **kwargs,
         )
+
+    def _apply_cgyro_preprocessing(self, extraOptions):
+        """
+        Compute BOX_SIZE and N_RADIAL per rho from the caller-provided
+        ky_min plus Q, S, RMIN from self.inputs_files[rho], and inject them
+        (along with KY=ky_min) into a copy of extraOptions as per-rho arrays.
+        """
+
+        allowed_keys = {'ky_min', 'L_x', 'N_radial', 'min_box_size'}
+        opts = dict(self._preprocess_options) if self._preprocess_options else {}
+        unknown = set(opts) - allowed_keys
+        if unknown:
+            raise ValueError(
+                f"[MITIM] Unknown preprocess_options keys: {sorted(unknown)}. "
+                f"Allowed: {sorted(allowed_keys)}"
+            )
+        ky_min_opt    = opts.get('ky_min', 0.1)
+        L_x           = opts.get('L_x', 90.0)
+        N_radial      = opts.get('N_radial', 256)
+        min_box_size  = opts.get('min_box_size', 100)
+
+        extraOptions = copy.deepcopy(extraOptions)
+
+        for conflict_key in ('KY', 'BOX_SIZE', 'N_RADIAL'):
+            if conflict_key in extraOptions:
+                print(
+                    f"\t- [preprocess] {conflict_key} was set in extraOptions; "
+                    f"it will be overwritten by the preprocessing result",
+                    typeMsg="w",
+                )
+
+        box_sizes = []
+        n_radials = []
+        ky_mins   = []
+
+        print("\t- [preprocess] Computing BOX_SIZE and N_RADIAL per rho:")
+        for i, rho in enumerate(self.rhos):
+            input_rho = self.inputs_files[rho]
+            q     = float(input_rho.plasma['Q'])
+            shear = float(input_rho.plasma['S'])
+            rmin  = float(input_rho.plasma['RMIN'])
+
+            if isinstance(ky_min_opt, (list, np.ndarray)):
+                ky_min = float(ky_min_opt[i])
+            else:
+                ky_min = float(ky_min_opt)
+
+            box_size, n_radial_val = CGYROutils.compute_box_and_nradial(
+                q=q,
+                shear=shear,
+                rmin=rmin,
+                ky_min=ky_min,
+                L_x=L_x,
+                N_radial=N_radial,
+                min_box_size=min_box_size,
+            )
+
+            print(
+                f"\t\t* rho={rho:.4f}: q={q:.3f} s={shear:.3f} r/a={rmin:.3f} "
+                f"KY={ky_min:.4f} -> BOX_SIZE={box_size} N_RADIAL={n_radial_val}",
+                typeMsg="i",
+            )
+
+            box_sizes.append(box_size)
+            n_radials.append(n_radial_val)
+            ky_mins.append(ky_min)
+
+        extraOptions['KY']       = ky_mins
+        extraOptions['BOX_SIZE'] = box_sizes
+        extraOptions['N_RADIAL'] = n_radials
+        return extraOptions
 
     # Re-defined to make specific arguments explicit
     def read(
