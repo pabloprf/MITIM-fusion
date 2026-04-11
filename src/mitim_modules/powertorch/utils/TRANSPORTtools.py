@@ -120,19 +120,47 @@ class power_transport:
 
         '''
         ******************************************************************************************************
-        Evaluate neoclassical and turbulent transport (*in GB units*). 
-        These functions use a hook to write the .json files to communicate the results to powerstate.plasma
+        Cache short-circuit.
+
+        If the target folder already contains both fluxes_turb.json and fluxes_neoc.json, trust them
+        and skip the turbulence / neoclassical backends entirely — go straight to the populate +
+        postprocess tail of this method. This is what makes initialization_simple_relax's SR copy
+        actually save work at BO time under *both* subprocess and in-process TGLF: the write_json
+        hook (decorating evaluate_turbulence / evaluate_neoclassical) wrote the JSON pair at every
+        SR step regardless of how transport was executed, and the SR copy loop already carries that
+        pair into Execution/Evaluation.{i}/transport_simulation_folder. The subprocess path used to
+        rely on cold_start_checker matching out.tglf.gbflux_{rho:.4f} inside the same folder, which
+        the in-process path never writes — so a pure JSON-pair gate at this level subsumes the
+        lower-level reuse path and fixes both.
         ******************************************************************************************************
         '''
-        
-        # Initialize them as zeros
-        for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
-            for suffix in ['turb', 'neoc']:
-                for suffix0 in ['', '_stds']:
-                    self.__dict__[f"{var}_{suffix}{suffix0}"] = torch.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
-        
-        neoclassical = self.evaluate_neoclassical()
-        turbulence = self.evaluate_turbulence()
+        cache_hit = (
+            (self.folder / 'fluxes_turb.json').exists()
+            and (self.folder / 'fluxes_neoc.json').exists()
+        )
+
+        if cache_hit:
+            print(
+                f"\t- Reusing cached flux JSONs from {IOtools.clipstr(self.folder)} "
+                f"(SR copy or previous evaluation); skipping turbulence / neoclassical runs",
+                typeMsg='i',
+            )
+        else:
+            '''
+            ******************************************************************************************************
+            Evaluate neoclassical and turbulent transport (*in GB units*).
+            These functions use a hook to write the .json files to communicate the results to powerstate.plasma
+            ******************************************************************************************************
+            '''
+
+            # Initialize them as zeros
+            for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
+                for suffix in ['turb', 'neoc']:
+                    for suffix0 in ['', '_stds']:
+                        self.__dict__[f"{var}_{suffix}{suffix0}"] = torch.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
+
+            neoclassical = self.evaluate_neoclassical()
+            turbulence = self.evaluate_turbulence()
 
         '''
         ******************************************************************************************************
