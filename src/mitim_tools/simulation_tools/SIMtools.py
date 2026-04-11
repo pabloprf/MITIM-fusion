@@ -469,11 +469,15 @@ class mitim_simulation:
                 print(f"\t- Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
                 max_cores_per_node_compare = machineSettings['gpus_per_node']
 
+            force_submission_type = self.run_specifications.get('force_submission_type', None)
+
             if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
                 type_of_submission = "bash"
+            elif force_submission_type is not None:
+                type_of_submission = force_submission_type
             elif total_cores_required < max_cores_per_node_compare:
                 type_of_submission = "slurm_standard"
-            elif total_cores_required >= max_cores_per_node_compare:
+            else:
                 type_of_submission = "slurm_array"
 
             shellPreCommands, shellPostCommands = None, None

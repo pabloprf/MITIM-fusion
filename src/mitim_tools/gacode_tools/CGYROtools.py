@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 import numpy as np
 import copy
@@ -19,46 +20,77 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         super().__init__(**kwargs)
 
-        def code_call(folder, p, n = 1, additional_command="", **kwargs):
-            
-            # machineSettings = CONFIGread.machineSettings(code='cgyro')
-            
-            # nomp = 32 if n>=32 else (16 if n>=16 else (8 if n>=8 else (4 if n>=4 else 2)))
-            # numa = machineSettings['cores_per_node'] // nomp if n >= machineSettings['cores_per_node'] else 1
-            # mpinuma = 1
+        def code_call(folder, p, n=1, additional_command="", **kwargs):
+            # `n` is cores_per_code_call (total cores for ONE radius), not MPI tasks.
+            # On GPU machines we translate it into CGYRO's -n/-nomp/-numa/-mpinuma
+            # layout (1 MPI task per GPU, 1 NUMA domain per GPU).
+            machineSettings = CONFIGread.machineSettings(code='cgyro')
+            cores_per_node = machineSettings.get('cores_per_node') or 1
+            gpus_per_node = machineSettings.get('gpus_per_node') or 0
+            cores_per_call = int(n)
 
-            # return f"cgyro -e {folder} -n {n} -nomp {nomp} -numa {numa} -mpinuma {mpinuma} -p {p} {additional_command}"
-        
-            nomp = 1
-            return f"cgyro -e {folder} -n {n} -nomp {nomp} -p {p} {additional_command}"
+            if gpus_per_node > 0:
+                nodes_per_call = max(1, math.ceil(cores_per_call / cores_per_node))
+                mpi_tasks = nodes_per_call * gpus_per_node
+                nomp = cores_per_node // gpus_per_node
+                numa = nodes_per_call * gpus_per_node
+                mpinuma = 1
+                return (f"cgyro -e {folder} -n {mpi_tasks} -nomp {nomp} "
+                        f"-numa {numa} -mpinuma {mpinuma} -p {p} {additional_command}")
+
+            return f"cgyro -e {folder} -n {cores_per_call} -nomp 1 -p {p} {additional_command}"
 
         def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
 
             slurm_settings = {
                 "name": name,
                 "minutes": minutes,
-                'job_array_limit': None,    # Limit to this number at most running jobs at the same time?
+                'job_array_limit': None,
             }
 
-            # Gather if this is a GPU enabled machine
             machineSettings = CONFIGread.machineSettings(code='cgyro')
+            cores_per_node = machineSettings.get('cores_per_node') or 1
+            gpus_per_node = machineSettings.get('gpus_per_node') or 0
 
-            if type_of_submission == "slurm_standard":
-                
-                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
+            if gpus_per_node > 0:
+                if machineSettings.get('cores_per_node') is None:
+                    raise Exception("[MITIM] CGYRO GPU path requires 'cores_per_node' in machine config")
+                if cores_per_code_call % cores_per_node != 0:
+                    print(f"\t- CGYRO: cores_per_code_call={cores_per_code_call} not a multiple of "
+                          f"cores_per_node={cores_per_node}; rounding up to whole-node granularity",
+                          typeMsg="w")
 
-            elif type_of_submission == "slurm_array":
+                nodes_per_call = max(1, math.ceil(cores_per_code_call / cores_per_node))
+                mpi_tasks_per_call = nodes_per_call * gpus_per_node
+                omp_per_task = cores_per_node // gpus_per_node
 
-                slurm_settings['ntasks'] = 1
-                
-                slurm_settings['job_array'] = ",".join(array_list)
+                # On GPU machines all of these are PER ARRAY TASK when type_of_submission
+                # is slurm_array (SLURM does not multiply by the number of array tasks).
+                if type_of_submission == "slurm_standard":
+                    n_radii = max(1, total_cores_required // cores_per_code_call)
+                    slurm_settings['nodes'] = nodes_per_call * n_radii
+                    slurm_settings['ntasks'] = mpi_tasks_per_call * n_radii
+                elif type_of_submission == "slurm_array":
+                    slurm_settings['job_array'] = ",".join(array_list)
+                    slurm_settings['nodes'] = nodes_per_call
+                    slurm_settings['ntasks'] = mpi_tasks_per_call
 
-            # Each simulation call will use these resources (must match what the code_call requests)
-            if machineSettings['gpus_per_node'] > 0:
-                slurm_settings['gpuspertask'] = cores_per_code_call
-            slurm_settings['cpuspertask'] = cores_per_code_call 
+                slurm_settings['cpuspertask'] = omp_per_task
+                slurm_settings['gpuspernode'] = gpus_per_node
+
+            else:
+                if type_of_submission == "slurm_standard":
+                    slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
+                elif type_of_submission == "slurm_array":
+                    slurm_settings['ntasks'] = 1
+                    slurm_settings['job_array'] = ",".join(array_list)
+                slurm_settings['cpuspertask'] = cores_per_code_call
 
             return slurm_settings
+
+        # On GPU machines, always use a job array so each radius gets its own full-node allocation.
+        _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
+        _force_submission_type = 'slurm_array' if (_cgyro_machine_settings.get('gpus_per_node') or 0) > 0 else None
 
         self.run_specifications = {
             'code': 'cgyro',
@@ -72,6 +104,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'complete_variation': None,
             'default_cores': 16,  # Default cores to use in the simulation
             'output_class': CGYROutils.CGYROoutput,
+            'force_submission_type': _force_submission_type,
         }
         
         print("\n-----------------------------------------------------------------------------------------")

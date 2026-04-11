@@ -1132,6 +1132,7 @@ def create_slurm_execution_files(
     cpuspertask = slurm_settings.setdefault("cpuspertask", None)
     ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
     gpuspertask = slurm_settings.setdefault("gpuspertask", None)
+    gpuspernode = slurm_settings.setdefault("gpuspernode", None)
 
     job_array = slurm_settings.setdefault("job_array", None)
     job_array_limit = slurm_settings.setdefault("job_array_limit", None)
@@ -1216,6 +1217,8 @@ def create_slurm_execution_files(
         commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
     if gpuspertask is not None:
         commandSBATCH.append(f"#SBATCH --gpus-per-task {gpuspertask}")
+    if gpuspernode is not None:
+        commandSBATCH.append(f"#SBATCH --gpus-per-node={gpuspernode}")
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
 
@@ -1225,6 +1228,8 @@ def create_slurm_execution_files(
     # ~~~~ Commands ~~~~~~~~~~~~~~~
     commandSBATCH.append("")
     commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
+    if gpuspernode is not None:
+        commandSBATCH.append('export SLURM_CPU_BIND="cores"')
     commandSBATCH.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
     commandSBATCH.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
     commandSBATCH.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
