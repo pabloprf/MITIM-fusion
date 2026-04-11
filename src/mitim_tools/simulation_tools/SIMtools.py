@@ -721,6 +721,179 @@ class mitim_simulation:
         else:
             print("\t\t- Some files were not retrieved", typeMsg="w")
 
+    def run_over_plasmas(
+        self,
+        list_of_states,           # List of mitim_state / input.gacode path / gacode_state objects, one per plasma
+        base_subfolder,           # 'base' -> produces subfolder labels base_plasma0, base_plasma1, ...
+        cold_start=False,
+        forceIfcold_start=False,
+        code_settings=None,
+        extraOptions=None,
+        multipliers=None,
+        minimum_delta_abs=None,
+        ApplyCorrections=True,
+        Quasineutral=False,
+        launchSlurm=True,
+        extra_name="exe",
+        slurm_setup=None,
+        attempts_execution=1,
+        only_minimal_files=False,
+        run_type='normal',
+        additional_files_to_send=None,
+        helper_lostconnection=False,
+    ):
+        '''
+        Phase-1 multi-plasma runner. Runs the same simulation configuration (same rhos,
+        same code_settings, same non-scan multipliers, ...) for N independent plasma
+        states in a single parallel submission by reusing the subfolder_simulation
+        axis that scans already rely on.
+
+        Each plasma p ends up under subfolder_simulation = f"{base_subfolder}_plasma{p}"
+        and its prep-time state (profiles, inputs_files, normalizations, FolderSim) is
+        cached on self.results_per_plasma[p] so the caller can read each plasma's
+        results afterwards via self.read_plasma(p).
+
+        Notes:
+            - Requires self.FolderGACODE to be set. Call prep(...) once before this
+              helper, or rely on the first iteration's prep call to create it.
+            - The i-th prep(...) call overwrites the single staging input.gacode_torun
+              under self.FolderGACODE, then this helper copies it to
+              input.gacode_torun_plasma{p} for traceability. The in-memory
+              self.inputs_files is snapshotted into the code_executor before the next
+              plasma's prep touches it, so per-plasma inputs do not leak across.
+        '''
+
+        if extraOptions is None:
+            extraOptions = {}
+        if multipliers is None:
+            multipliers = {}
+        if minimum_delta_abs is None:
+            minimum_delta_abs = {}
+
+        if slurm_setup is None:
+            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 10}
+
+        if not hasattr(self, 'FolderGACODE') or self.FolderGACODE is None:
+            raise Exception(
+                "[MITIM] run_over_plasmas requires FolderGACODE to be set. Either call "
+                "prep(...) once before run_over_plasmas or pass FolderGACODE via a "
+                "preceding prep call."
+            )
+
+        code_executor, code_executor_full = {}, {}
+        self.results_per_plasma = {}
+        plasma_labels = {}
+
+        for p, state in enumerate(list_of_states):
+            subfolder_simulation = f"{base_subfolder}_plasma{p}"
+            plasma_labels[p] = subfolder_simulation
+
+            print(f"\n=============================================================")
+            print(f"  run_over_plasmas: preparing plasma {p} -> {subfolder_simulation}")
+            print(f"=============================================================")
+
+            # Populate self.profiles / self.inputs_files / self.NormalizationSets for plasma p.
+            # Only the first prep may need to create FolderGACODE; subsequent plasmas reuse it.
+            self.prep(
+                state,
+                self.FolderGACODE,
+                cold_start=cold_start if p == 0 else False,
+                forceIfcold_start=forceIfcold_start,
+            )
+
+            # Keep a per-plasma copy of the input.gacode alongside the shared staging one.
+            shutil.copy2(
+                self.FolderGACODE / "input.gacode_torun",
+                self.FolderGACODE / f"input.gacode_torun_plasma{p}",
+            )
+
+            # _run_prepare snapshots self.inputs_files into code_executor[subfolder][rho]['inputs']
+            # so plasma p's inputs are frozen here; subsequent per-plasma prep calls do not
+            # corrupt already-queued work.
+            self._run_prepare(
+                subfolder_simulation,
+                code_executor=code_executor,
+                code_executor_full=code_executor_full,
+                code_settings=code_settings,
+                extraOptions=extraOptions,
+                multipliers=multipliers,
+                cold_start=cold_start,
+                forceIfcold_start=forceIfcold_start,
+                only_minimal_files=only_minimal_files,
+                launchSlurm=launchSlurm,
+                slurm_setup=slurm_setup,
+                additional_files_to_send=additional_files_to_send,
+                ApplyCorrections=ApplyCorrections,
+                minimum_delta_abs=minimum_delta_abs,
+                Quasineutral=Quasineutral,
+            )
+
+            self.results_per_plasma[p] = {
+                'subfolder': subfolder_simulation,
+                'folder': self.FolderSimLast,
+                'profiles': self.profiles,
+                'inputs_files': copy.deepcopy(self.inputs_files),
+                'NormalizationSets': self.NormalizationSets,
+            }
+
+        # Parallel dispatch of every (plasma, rho) work unit via the existing _run path.
+        self._run(
+            code_executor,
+            code_executor_full=code_executor_full,
+            code_settings=code_settings,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            slurm_setup=slurm_setup,
+            only_minimal_files=only_minimal_files,
+            attempts_execution=attempts_execution,
+            run_type=run_type,
+            helper_lostconnection=helper_lostconnection,
+        )
+
+        return plasma_labels
+
+    def read_plasma(self, plasma_idx, label=None, **read_kwargs):
+        '''
+        Read results for a specific plasma produced by run_over_plasmas.
+
+        Temporarily activates that plasma's in-memory prep state (profiles /
+        inputs_files / NormalizationSets / FolderSimLast) so that the existing
+        read(...) path can reuse per-plasma profiles and normalizations without
+        being aware of the plasma axis.
+        '''
+        if not hasattr(self, 'results_per_plasma') or plasma_idx not in self.results_per_plasma:
+            raise KeyError(
+                f"No cached plasma run for index {plasma_idx}. Call run_over_plasmas(...) first."
+            )
+
+        info = self.results_per_plasma[plasma_idx]
+        effective_label = label if label is not None else info['subfolder']
+
+        saved_profiles = self.profiles
+        saved_inputs_files = self.inputs_files
+        saved_NormalizationSets = self.NormalizationSets
+        saved_FolderSimLast = getattr(self, 'FolderSimLast', None)
+
+        self.profiles = info['profiles']
+        self.inputs_files = info['inputs_files']
+        self.NormalizationSets = info['NormalizationSets']
+        self.FolderSimLast = info['folder']
+
+        try:
+            self.read(label=effective_label, folder=info['folder'], **read_kwargs)
+        finally:
+            self.profiles = saved_profiles
+            self.inputs_files = saved_inputs_files
+            self.NormalizationSets = saved_NormalizationSets
+            if saved_FolderSimLast is not None:
+                self.FolderSimLast = saved_FolderSimLast
+
+        return effective_label
+
     def run_scan(
         self,
         subfolder,  # 'scan1',
