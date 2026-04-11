@@ -125,8 +125,30 @@ def initialization_simple_relax(self):
     # (see STATEtools.flux_match) interleaves the step-s outputs of every trajectory into
     # positions `s * n_traj + t` so the resulting sequence portals_sr_ev_0..N-1 is step-major
     # and matches the Execution.{i} numbering downstream.
-    def _make_namer(traj_idx, n):
-        return lambda step: f"portals_sr_ev_{step * n + traj_idx}"
+    #
+    # Multi-trajectory subtlety: simple_relaxation records x_initial (= base_X) as the very
+    # first x_history entry of every trajectory. If we were to keep those, the step-0 row
+    # of every trajectory would be *identical* base_X, train_X would contain N duplicate
+    # rows, and optimization_data.find_point(base_X) downstream would match all N rows and
+    # crash on `df['Iteration'].item()`. To avoid that we run one extra relax iteration per
+    # trajectory (effective_maxiter = steps_per_traj + 1) and skip x_history[0] when
+    # collecting training points. That extra evaluation lands in a throwaway sub-folder
+    # `portals_sr_base_traj{t}` that is intentionally *not* matched by the
+    # `portals_sr_ev_*` glob used by PORTALSinitializer and the Evaluation.{i} copy loop.
+    # For the single-trajectory case no duplication is possible, so we keep the historical
+    # behaviour (x_initial included as the first training point, no throwaway folder).
+    skip_initial = n_traj > 1
+    effective_maxiter = steps_per_traj + (1 if skip_initial else 0)
+
+    if skip_initial:
+        def _make_namer(traj_idx, n):
+            return lambda step: (
+                f"portals_sr_base_traj{traj_idx}" if step == 0
+                else f"portals_sr_ev_{(step - 1) * n + traj_idx}"
+            )
+    else:
+        def _make_namer(traj_idx, n):
+            return lambda step: f"portals_sr_ev_{step * n + traj_idx}"
 
     Xopt_per_traj = []
     for t, user_overrides in enumerate(traj_params):
@@ -135,7 +157,7 @@ def initialization_simple_relax(self):
         # The seed-driven jitter is applied on top of the (possibly user-overridden) relax value
         # so setting `relax: 0.1` in the namelist lands at 0.1 ± addon_relax, not 0.2 ± addon_relax.
         solver_options["relax"] = solver_options["relax"] + addon_relax
-        solver_options["maxiter"] = steps_per_traj
+        solver_options["maxiter"] = effective_maxiter
         solver_options["folder"] = MainFolder
         solver_options["folder_namer"] = _make_namer(t, n_traj)
         # `namingConvention` is still consulted by the evaluator for `nameRun` logging — keep it
@@ -148,7 +170,10 @@ def initialization_simple_relax(self):
             algorithm="simple_relax",
             solver_options=solver_options,
         )
-        Xopt_per_traj.append(traj_state.FluxMatch_Xopt)
+        Xopt_traj = traj_state.FluxMatch_Xopt
+        if skip_initial:
+            Xopt_traj = Xopt_traj[1:]   # drop the shared base_X so the stack has no duplicates
+        Xopt_per_traj.append(Xopt_traj)
 
     # -------------------------------------------------------------------------------------------
     # Once every trajectory has completed, copy the step-major folder sequence into
