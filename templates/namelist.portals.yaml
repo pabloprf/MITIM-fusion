@@ -292,11 +292,31 @@ optimization_namelist_location: null # If null, it will grab the default at: __m
 
 optimization_options:
 
-  initialization_options: 
+  initialization_options:
 
     # PORTALS works well with 5 initial training points obtained with simple relaxation
     initial_training: 5
     initialization_fun: "import::mitim_modules.portals.utils.PORTALSoptimization.initialization_simple_relax"
+
+    # Optional list of per-trajectory solver-option overrides for the simple-relax initializer.
+    # Each list entry defines one trajectory; all trajectories run sequentially, each producing
+    # `initial_training / len(initialization_params)` sequential training points. Use this to
+    # seed the initial set with several distinct relax shapes (e.g. cautious + aggressive walks).
+    # Requirements:
+    #   - initial_training must be divisible by the number of entries
+    #   - permitted keys: relax, dx_max, dx_max_abs, dx_min_abs, relax_dyn, relax_dyn_decrease,
+    #     relax_dyn_num, tol, tol_rel, print_each
+    #   - omit or set to null to keep the default single-trajectory behaviour
+    #
+    # Example (uncomment and edit to activate; initial_training above would need to be a multiple
+    # of the number of entries):
+    # initialization_params:
+    #   - relax: 0.2
+    #     dx_max: 0.2
+    #     dx_min_abs: 0.1
+    #   - relax: 0.1
+    #     dx_max: 0.4
+    #     dx_min_abs: 0.05
 
   # Convergence options for the optimization process
   convergence_options:

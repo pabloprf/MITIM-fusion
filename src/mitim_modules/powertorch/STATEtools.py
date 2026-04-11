@@ -369,16 +369,21 @@ class powerstate:
 
         folder_main = solver_options.get("folder", None)
         namingConvention = solver_options.get("namingConvention", "powerstate_sr_ev")
+        # Optional callable `step -> sub-folder name`. Lets the caller lay out folders in a
+        # non-sequential order (e.g. interleaving several parallel simple-relax trajectories
+        # into one step-major sequence). If not provided, the default "{name}_{cont}" is used.
+        folder_namer = solver_options.get("folder_namer", None)
 
         cont = 0
         def evaluator(X, y_history=None, x_history=None, metric_history=None):
 
             nonlocal cont
 
-            nameRun = f"{namingConvention}_{cont}"
+            sub_name = folder_namer(cont) if folder_namer is not None else f"{namingConvention}_{cont}"
+            nameRun = sub_name
 
             if folder_main is not None:
-                folder = IOtools.expandPath(folder_main) /  f"{namingConvention}_{cont}"
+                folder = IOtools.expandPath(folder_main) /  sub_name
                 if issubclass(self.transport_options["evaluator"], TRANSPORTtools.power_transport):
                     (folder / "transport_simulation_folder").mkdir(parents=True, exist_ok=True)
 

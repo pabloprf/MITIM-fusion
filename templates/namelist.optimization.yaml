@@ -23,6 +23,7 @@ initialization_options:
   type_initialization: 3
   read_initial_training_from_csv: false
   initialization_fun: null
+  initialization_params: null
   ensure_within_bounds: false
   expand_bounds: true
 

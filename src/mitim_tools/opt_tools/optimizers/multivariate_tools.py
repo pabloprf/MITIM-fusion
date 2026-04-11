@@ -208,7 +208,9 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     # Initial condition
     # ********************************************************************************************
 
-    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel
+    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel.
+    # Any of {relax0, dx_max, dx_max_abs, dx_min_abs} may arrive as a per-batch tensor (shape
+    # broadcastable to x_initial); torch.where in _sr_step handles either case transparently.
     relax = torch.ones_like(x_initial) * relax0
 
     x_history, y_history, metric_history = [], [], []
@@ -227,7 +229,13 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         tol = tol_rel * M.max().item()
         print(f"\t* Relative tolerance of {tol_rel:.1e} will be used, resulting in an absolute tolerance of {tol:.1e}")
 
-    print(f"\t* Flux-grad relationship of {relax0} and maximum gradient jump of {dx_max}")
+    def _fmt_knob(v):
+        if isinstance(v, torch.Tensor):
+            flat = v.flatten().tolist()
+            return flat[0] if len(flat) == 1 else flat
+        return v
+
+    print(f"\t* Flux-grad relationship of {_fmt_knob(relax0)} and maximum gradient jump of {_fmt_knob(dx_max)}")
 
     # ********************************************************************************************
     # Iterative strategy
@@ -400,27 +408,27 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     return x_best, y_history, x_history, metric_history, relax_history, tol, osc_check_iters
 
 def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10, bounds=None, thr_bounds=1e-4):
-    
+
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
     dx = relax * (QT - Q) / (Q**2 + QT**2).clamp(min=threshold_zero_flux_issue) ** 0.5
 
-    # Prevent big steps - Clamp to the max step (with the right sign)
-    ix = dx.abs() > dx_max
-    dx[ix] = dx_max * (dx[ix] / dx[ix].abs())
+    # Prevent big steps - Clamp to the max step (with the right sign). Use torch.where so
+    # dx_max can be either a scalar float or a tensor broadcastable against dx (per-batch).
+    dx = torch.where(dx.abs() > dx_max, dx.sign() * dx_max, dx)
 
     # Define absolute step (Note for PRF: abs() was added by me, I think it performs better that way!)
     x_step = dx * x.abs()
-    
-    # Absolute steps limits
+
+    # Absolute steps limits. Both dx_max_abs and dx_min_abs also accept scalar or broadcastable tensor.
+    # Preserve the original convention of using sign=+1 when x_step is exactly 0 (matches the old
+    # nan_to_num(0/0 -> 1.0) path).
     if dx_max_abs is not None:
-        ix = x_step.abs() > dx_max_abs
-        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
-        x_step[ix] = dx_max_abs * direction
-    
+        direction = torch.where(x_step != 0, x_step.sign(), torch.ones_like(x_step))
+        x_step = torch.where(x_step.abs() > dx_max_abs, direction * dx_max_abs, x_step)
+
     if dx_min_abs is not None:
-        ix = x_step.abs() < dx_min_abs
-        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
-        x_step[ix] = dx_min_abs * direction
+        direction = torch.where(x_step != 0, x_step.sign(), torch.ones_like(x_step))
+        x_step = torch.where(x_step.abs() < dx_min_abs, direction * dx_min_abs, x_step)
 
     # Update
     x_new = x + x_step

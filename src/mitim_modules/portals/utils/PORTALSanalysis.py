@@ -1,4 +1,5 @@
 import copy
+import re
 import torch
 import json
 import numpy as np
@@ -13,6 +14,16 @@ from mitim_modules.powertorch import STATEtools
 from mitim_modules.powertorch.utils import POWERplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
+
+_TRAILING_INT_RE = re.compile(r"(\d+)$")
+
+
+def _extract_trailing_int(name):
+    """Return the trailing integer of a folder / file name, or None if there isn't one.
+    Used to sort `portals_sr_ev_<n>` folders and `input.gacode.<n>` files numerically."""
+    m = _TRAILING_INT_RE.search(name)
+    return int(m.group(1)) if m else None
 
 class PORTALSanalyzer:
     # ****************************************************************************
@@ -1018,28 +1029,57 @@ class PORTALSinitializer:
     def __init__(self, folder):
         self.folder = IOtools.expandPath(folder)
 
-        # Read powerstates
-        self.powerstates = []
+        # Read profiles that have already been emitted by the Evaluation pipeline.
+        # We glob + numerically sort rather than walking a contiguous integer range so that
+        # partial-initialization states with gaps (e.g. trajectory 0 finished, trajectory 1
+        # still running) do not truncate the list at the first missing index.
         self.profiles = []
-        for i in range(100):
+        profiles_dir = self.folder / "Outputs" / "portals_profiles"
+        profile_files = sorted(
+            profiles_dir.glob("input.gacode.*"),
+            key=lambda p: _extract_trailing_int(p.name),
+        ) if profiles_dir.exists() else []
+        for prof_path in profile_files:
+            if _extract_trailing_int(prof_path.name) is None:
+                continue
             try:
-                prof = PROFILEStools.gacode_state(
-                    self.folder / "Outputs" / "portals_profiles" / f"input.gacode.{i}"
-                )
+                self.profiles.append(PROFILEStools.gacode_state(prof_path))
             except FileNotFoundError:
-                break
-            self.profiles.append(prof)
+                continue
 
-        for i in range(100):
-            try:
-                p = STATEtools.read_saved_state(
-                    self.folder / "Initialization" / "initialization_simple_relax" / f"portals_sr_ev_{i}" / "powerstate.pkl"
-                )
-            except FileNotFoundError:
-                break
-
-            p.profiles.derive_quantities()
-            self.powerstates.append(p)
+        # Read powerstates written by initialization_simple_relax. Folders are laid out in
+        # step-major order across parallel trajectories (see PORTALSoptimization.initialization_simple_relax),
+        # so we glob every `portals_sr_ev_*` directory and sort by the numeric suffix. Each folder
+        # may or may not yet contain `powerstate.pkl` — skip the ones that don't.
+        self.powerstates = []
+        init_dir = self.folder / "Initialization" / "initialization_simple_relax"
+        if init_dir.exists():
+            powerstate_dirs = sorted(
+                (d for d in init_dir.glob("portals_sr_ev_*") if d.is_dir()),
+                key=lambda d: _extract_trailing_int(d.name) or 0,
+            )
+            for d in powerstate_dirs:
+                pkl = d / "powerstate.pkl"
+                if not pkl.exists():
+                    continue
+                try:
+                    p = STATEtools.read_saved_state(pkl)
+                except FileNotFoundError:
+                    continue
+                # A powerstate saved during a multi-trajectory parallel relax could, in principle,
+                # carry batch_size > 1. Fan it out into one single-batch copy per batch element so
+                # the downstream plotting code — which iterates `self.powerstates` and calls
+                # `.item()` on scalar residuals — keeps working without per-site batch handling.
+                batch_size = getattr(p, "batch_size", 0) or 1
+                if batch_size <= 1:
+                    p.profiles.derive_quantities()
+                    self.powerstates.append(p)
+                else:
+                    for b in range(batch_size):
+                        p_b = copy.deepcopy(p)
+                        p_b._repeat_tensors(batch_size=1, positionToUnrepeat=b)
+                        p_b.profiles.derive_quantities()
+                        self.powerstates.append(p_b)
 
         self.fn = None
 
