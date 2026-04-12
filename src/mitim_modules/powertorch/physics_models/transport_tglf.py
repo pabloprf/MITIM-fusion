@@ -123,42 +123,31 @@ class tglf_model:
             Flux_mean = Flux_base
             Flux_std = np.abs(Flux_mean) * percent_error / 100.0
         else:
-            # Per-plasma scan-trick uncertainty. For each plasma p, re-activate its per-
-            # plasma state on the tglf instance (profiles, inputs_files, NormalizationSets)
-            # via read_plasma and call _run_tglf_uncertainty_model with a per-plasma
-            # subfolder_name so scans from different plasmas don't collide on disk.
-            # Each call internally parallelizes across (N_variables × 2 × N_rhos) work
-            # units; different plasmas' scans run sequentially.
-            Flux_mean_per_plasma = []
-            Flux_std_per_plasma = []
-            for p, label in plasma_labels.items():
-                tglf.read_plasma(p, label=label, require_all_files=False, **simulation_options["read"])
-                Flux_base_p = np.array([
-                    Qe_batch[p], Qi_batch[p], Ge_batch[p],
-                    GZ_batch[p], Mt_batch[p], S_batch[p],
-                ])
-                Fmean_p, Fstd_p = _run_tglf_uncertainty_model(
-                    tglf,
-                    rho_locations,
-                    self.powerstate.predicted_channels,
-                    Flux_base=Flux_base_p,
-                    ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
-                    delta=use_tglf_scan_trick,
-                    cold_start=cold_start,
-                    extra_name=f"{self.name}_plasma{p}",
-                    cores_per_tglf_instance=cores_per_tglf_instance,
-                    Qi_includes_fast=Qi_includes_fast,
-                    only_minimal_files=keep_tglf_files in ["none", "base"],
-                    reuse_scan_ball_file=reuse_scan_ball_file,
-                    subfolder_name=f"turb_drives_plasma{p}",
-                    **simulation_options["run"],
-                )
-                Flux_mean_per_plasma.append(np.array(Fmean_p))
-                Flux_std_per_plasma.append(np.array(Fstd_p))
-
-            # Stack per-plasma lists of shape [(nrho,) × 6] into (6, N, nrho)
-            Flux_mean = np.stack(Flux_mean_per_plasma, axis=1)
-            Flux_std  = np.stack(Flux_std_per_plasma,  axis=1)
+            # All N plasmas' scan work is accumulated into one code_executor and dispatched
+            # in a single _run call, so N × ~65 scan jobs run concurrently.
+            Flux_base_per_plasma = {
+                p: np.array([Qe_batch[p], Qi_batch[p], Ge_batch[p],
+                             GZ_batch[p], Mt_batch[p], S_batch[p]])
+                for p in plasma_labels
+            }
+            run_kwargs = {k: v for k, v in simulation_options["run"].items() if k != "code_settings"}
+            Flux_mean, Flux_std = _run_tglf_uncertainty_model_batched(
+                tglf,
+                rho_locations,
+                self.powerstate.predicted_channels,
+                Flux_base_per_plasma=Flux_base_per_plasma,
+                plasma_labels=plasma_labels,
+                ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
+                delta=use_tglf_scan_trick,
+                cold_start=cold_start,
+                extra_name=self.name,
+                cores_per_tglf_instance=cores_per_tglf_instance,
+                Qi_includes_fast=Qi_includes_fast,
+                only_minimal_files=keep_tglf_files in ["none", "base"],
+                reuse_scan_ball_file=reuse_scan_ball_file,
+                code_settings=simulation_options["run"].get("code_settings"),
+                **run_kwargs,
+            )
 
         if pass_info:
             self.QeGB_turb      = Flux_mean[0]
@@ -444,6 +433,31 @@ def _run_tglf_uncertainty_model(
     if remove_folders_out:
         IOtools.shutil_rmtree(tglf.FolderGACODE)
 
+    return _aggregate_scan_fluxes(
+        tglf, name, variables_to_scan, relative_scan, rho_locations,
+        Flux_base=Flux_base,
+        ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
+        Qi_includes_fast=Qi_includes_fast,
+        reuse_scan_ball_file=reuse_scan_ball_file,
+        delta=delta,
+    )
+
+
+def _aggregate_scan_fluxes(
+    tglf, scan_subfolder_name, variables_to_scan, relative_scan, rho_locations,
+    Flux_base=None,
+    ion_OI_position_in_ion_list=1,
+    Qi_includes_fast=False,
+    reuse_scan_ball_file=None,
+    delta=0.02,
+):
+    '''
+    Shared aggregation logic: collect per-variable scan results from tglf.scans[...]
+    into (nrho, n_scan_cases) flux arrays, optionally prepend the base flux, then
+    compute nanmean / nanstd across the scan axis. Used by both the single-plasma
+    _run_tglf_uncertainty_model and the batched _run_tglf_uncertainty_model_batched.
+    '''
+
     Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     Qi = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
     Ge = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
@@ -453,22 +467,20 @@ def _run_tglf_uncertainty_model(
 
     cont = 0
     for vari in variables_to_scan:
-        jump = tglf.scans[f'{name}_{vari}']['Qe'].shape[-1]
+        jump = tglf.scans[f'{scan_subfolder_name}_{vari}']['Qe'].shape[-1]
 
-        # Outputs
-        Qe[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qe_gb']
-        Qi[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Qi_gb'] + (0 if not Qi_includes_fast else tglf.scans[f'{name}_{vari}']['Qifast_gb'])
-        Ge[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Ge_gb']
-        GZ[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Gi_gb']
-        Mt[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['Mt_gb']
-        S[:,cont:cont+jump] = tglf.scans[f'{name}_{vari}']['S_gb']
-        
+        Qe[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['Qe_gb']
+        Qi[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['Qi_gb'] + (0 if not Qi_includes_fast else tglf.scans[f'{scan_subfolder_name}_{vari}']['Qifast_gb'])
+        Ge[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['Ge_gb']
+        GZ[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['Gi_gb']
+        Mt[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['Mt_gb']
+        S[:,cont:cont+jump] = tglf.scans[f'{scan_subfolder_name}_{vari}']['S_gb']
+
         cont += jump
 
     if Qi_includes_fast:
         print(f"\t- Qi includes fast ions, adding their contribution")
 
-    # Add the base that was calculated earlier
     if Flux_base is not None:
         Qe = np.append(np.atleast_2d(Flux_base[0]).T, Qe, axis=1)
         Qi = np.append(np.atleast_2d(Flux_base[1]).T, Qi, axis=1)
@@ -480,21 +492,8 @@ def _run_tglf_uncertainty_model(
     if reuse_scan_ball_file is not None:
         Qe, Qi, Ge, GZ, Mt, S = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
 
-    # Calculate the standard deviation of the scans, that's going to be the reported stds
-
     def calculate_mean_std(Q):
-        # Assumes Q is [radii, points], with [radii, 0] being the baseline
-
-        Qm = np.nanmean(Q, axis=1)
-        Qstd = np.nanstd(Q, axis=1)
-
-        # Qm = Q[:,0]
-        # Qstd = np.std(Q, axis=1)
-
-        # Qstd    = ( Q.max(axis=1)-Q.min(axis=1) )/2 /2  # Such that the range is 2*std
-        # Qm      = Q.min(axis=1) + Qstd*2                # Mean is at the middle of the range
-
-        return  Qm, Qstd
+        return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
 
     Qe_point, Qe_std = calculate_mean_std(Qe)
     Qi_point, Qi_std = calculate_mean_std(Qi)
@@ -503,9 +502,170 @@ def _run_tglf_uncertainty_model(
     Mt_point, Mt_std = calculate_mean_std(Mt)
     S_point, S_std = calculate_mean_std(S)
 
-    #TODO: Careful with fast particles
     Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, S_point]
     Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
+
+    return Flux_mean, Flux_std
+
+
+def _run_tglf_uncertainty_model_batched(
+    tglf,
+    rho_locations,
+    predicted_channels,
+    Flux_base_per_plasma,
+    plasma_labels,
+    ion_OI_position_in_ion_list=1,
+    delta=0.02,
+    minimum_abs_gradient=0.005,
+    cold_start=False,
+    extra_name="",
+    cores_per_tglf_instance=4,
+    Qi_includes_fast=False,
+    only_minimal_files=True,
+    reuse_scan_ball_file=None,
+    print_logs=False,
+    code_settings=None,
+    extraOptions=None,
+    **kwargs_run,
+):
+    '''
+    Multi-plasma version of _run_tglf_uncertainty_model. Instead of calling
+    runScanTurbulenceDrives once (which dispatches ~65 scan jobs for one plasma),
+    this function accumulates scan work from ALL N plasmas into a single
+    code_executor dict and dispatches ONE _run call — so all N × ~65 scan jobs
+    run concurrently through FARMINGtools.
+    '''
+
+    print(f"\t- Running batched TGLF scans ({delta = }) for {len(plasma_labels)} plasmas in parallel")
+
+    ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2
+
+    # Build the scan-variable list (same logic as the single-plasma path)
+    variables_to_scan = []
+    for i in predicted_channels:
+        if i == 'te': variables_to_scan.append('RLTS_1')
+        if i == 'ti': variables_to_scan.append('RLTS_2')
+        if i == 'ne': variables_to_scan.append('RLNS_1')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{ion_OI_position_in_total_padded_list}')
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR')
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('XNUE')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('BETAE')
+
+    relative_scan = [1 - delta, 1 + delta]
+
+    minimum_delta_abs = {}
+    for ikey in variables_to_scan:
+        if 'RL' in ikey:
+            minimum_delta_abs[ikey] = minimum_abs_gradient
+
+    N = len(plasma_labels)
+    num_cases_total = N * len(rho_locations) * len(variables_to_scan) * len(relative_scan)
+    if cores_per_tglf_instance == 1:
+        minutes = 10 * (num_cases_total / 60)
+    else:
+        minutes = 1 * (num_cases_total / 60)
+    minutes = max(2, minutes)
+
+    tglf.rhos = rho_locations
+
+    # varUpDown dict (no baseline added — same as add_baseline_to='none' in the single-plasma path)
+    varUpDown_dict = {variable: np.array(relative_scan) for variable in variables_to_scan}
+
+    # ---- Phase 1: Accumulate scan work for ALL plasmas ----
+    code_executor, code_executor_full, folders_per_plasma = {}, {}, {}
+
+    if print_logs:
+        print_context = IOtools.nullcontext()
+    else:
+        print(f"\n\t- Preparing TGLF scans for {N} plasmas x {len(variables_to_scan)} variables x {len(relative_scan)} deltas x {len(rho_locations)} rhos = {num_cases_total} total jobs...\n", typeMsg="i")
+        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed", "[in-process] Submitting"])
+
+    scan_kwargs = dict(
+        code_settings=code_settings,
+        extraOptions=extraOptions or {},
+        ApplyCorrections=False,
+        cold_start=cold_start,
+        forceIfcold_start=True,
+        slurm_setup={"cores": cores_per_tglf_instance, "minutes": minutes},
+        only_minimal_files=only_minimal_files,
+        **kwargs_run,
+    )
+
+    with print_context:
+        for p, label in plasma_labels.items():
+            tglf.read_plasma(p, label=label, require_all_files=False)
+            tglf.variablesDrives = variables_to_scan
+            folders_per_plasma[p] = {}
+
+            for cont_var, variable in enumerate(variables_to_scan):
+                scan_name = f"turb_drives_plasma{p}_{variable}"
+                scan_kwargs["forceIfcold_start"] = (p > 0 or cont_var > 0) or scan_kwargs.get("forceIfcold_start", True)
+
+                ce0, cef0, fld0, _ = tglf._prepare_scan(
+                    scan_name,
+                    variable=variable,
+                    varUpDown=varUpDown_dict[variable],
+                    minimum_delta_abs=minimum_delta_abs,
+                    **scan_kwargs,
+                )
+                code_executor |= ce0
+                code_executor_full |= cef0
+                folders_per_plasma[p][variable] = fld0
+
+        # ---- Phase 2: ONE dispatch of all N × vars × mults × rhos ----
+        tglf._run(
+            code_executor,
+            code_executor_full=code_executor_full,
+            extra_name=f"{extra_name}_turb_drives_batched",
+            **scan_kwargs,
+        )
+
+    # ---- Phase 3: Read results per plasma and aggregate ----
+    Flux_mean_list, Flux_std_list = [], []
+    for p, label in plasma_labels.items():
+        tglf.read_plasma(p, label=label, require_all_files=False)
+
+        cont_folder = 0
+        for variable in variables_to_scan:
+            scan_name = f"turb_drives_plasma{p}_{variable}"
+            folders = folders_per_plasma[p][variable]
+            for mult_idx, mult in enumerate(varUpDown_dict[variable]):
+                tglf.read(
+                    label=f"{tglf.subfolder_scan}_{variable}_{mult}",
+                    folder=folders[mult_idx],
+                    cold_startWF=False,
+                    require_all_files=not only_minimal_files,
+                )
+                cont_folder += 1
+
+            tglf.read_scan(
+                label=scan_name,
+                variable=variable,
+                ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
+            )
+
+        Fmean_p, Fstd_p = _aggregate_scan_fluxes(
+            tglf,
+            f"turb_drives_plasma{p}",
+            variables_to_scan,
+            relative_scan,
+            rho_locations,
+            Flux_base=Flux_base_per_plasma.get(p),
+            ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
+            Qi_includes_fast=Qi_includes_fast,
+            reuse_scan_ball_file=reuse_scan_ball_file,
+            delta=delta,
+        )
+        Flux_mean_list.append(np.array(Fmean_p))
+        Flux_std_list.append(np.array(Fstd_p))
+
+    # Stack: list of (6, nrho) -> (6, N, nrho)
+    Flux_mean = np.stack(Flux_mean_list, axis=1)
+    Flux_std  = np.stack(Flux_std_list,  axis=1)
 
     return Flux_mean, Flux_std
 
