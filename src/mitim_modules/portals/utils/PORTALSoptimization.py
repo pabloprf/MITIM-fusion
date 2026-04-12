@@ -90,9 +90,46 @@ def initialization_simple_relax(self):
     # `optimization_options.initialization_options.initialization_params` (a list of
     # per-trajectory solver-option dicts). Each trajectory walks toward flux matching with
     # its own (relax, dx_max, …) and contributes `initial_training / N` points to the
-    # initial training set. All trajectories land in a single step-major folder sequence
-    # `portals_sr_ev_0..initial_training-1` so downstream code (Execution.{i} copy loop,
-    # PORTALSinitializer plotting) sees a flat list of evaluations exactly as before.
+    # initial training set.
+    #
+    # Implementation — one batched flux_match call, not a Python for-loop over trajectories:
+    #
+    #   1. Deep-copy the caller's powerstate once and tile its plasma tensors to N batches
+    #      via `_repeat_tensors(batch_size=n_traj)`. Every `plasma[*]` tensor now carries an
+    #      explicit leading batch axis of length n_traj.
+    #   2. Build per-trajectory tensor versions of the simple-relax solver knobs
+    #      (relax, dx_max, dx_max_abs, dx_min_abs) of shape (n_traj, 1) — `_sr_step` already
+    #      accepts per-batch tensors via its torch.where clamps, so the relax math iterates
+    #      in lockstep over the N trajectories for free.
+    #   3. Call `powerstate.flux_match(algorithm="simple_relax", solver_options=...)` exactly
+    #      once. Inside STATEtools.flux_match the evaluator constructs `x0` of shape
+    #      (n_traj, dvs) straight from the batched plasma and calls `self.calculate(X, ...)`
+    #      on the N-wide batch. `power_transport.evaluate` dispatches to `_evaluate_batched`,
+    #      which fans every (plasma, rho) work unit through `mitim_simulation.run_over_plasmas`
+    #      — the same FARMINGtools pipeline TGLFmulti_plasma_workflow.py exercises. One
+    #      parallel submission per relax step, so N TGLF calls fire concurrently.
+    #   4. Read the full `FluxMatch_Xopt_batches` tensor (shape (maxiter, n_traj, dvs))
+    #      instead of the scalar-best column `FluxMatch_Xopt`, and reshape to step-major
+    #      order for the downstream Execution/Evaluation.{i} copy loop.
+    #
+    # Folder layout under this scheme: each SR step writes ONE
+    # `MainFolder/portals_sr_ev_{s}/transport_simulation_folder` directory whose children
+    # are per-plasma sub-folders `plasma_{t}` (one per trajectory) holding the single-plasma
+    # `fluxes_{turb,neoc}.json` pair plus an `input.gacode`. The copy loop walks (step,
+    # trajectory) pairs and moves each `plasma_{t}` sub-folder into the matching
+    # `Execution/Evaluation.{s*n_traj + t}/transport_simulation_folder`, matching the
+    # step-major order of the flattened Xopt.
+    #
+    # Multi-trajectory `base_X` duplicate guard: `simple_relaxation` always records
+    # `x_initial` (= base_X) as the first entry of `x_history`. For n_traj>1 every
+    # trajectory shares the same base_X row, which would land as N identical training
+    # rows and crash `optimization_data.find_point(base_X)` downstream via `.item()` on a
+    # multi-row Series. We run one extra relax iteration (`effective_maxiter = steps_per_traj + 1`)
+    # and drop `Xopt_batches[0]` when skip_initial is True. Step 0 lands in a throwaway
+    # sub-folder `portals_sr_base_step0` whose name is deliberately *not* matched by the
+    # `portals_sr_ev_*` glob used by the copy loop and PORTALSinitializer. For
+    # single-trajectory runs no duplication is possible and the historical behaviour
+    # (include base_X, no throwaway folder) is preserved.
     # ------------------------------------------------------------------------------------
 
     traj_params = _normalize_initialization_params(
@@ -117,86 +154,126 @@ def initialization_simple_relax(self):
     else:
         addon_relax = 0.0
 
-    base_X = torch.from_numpy(
-        self.optimization_options["problem_options"]["dvs_base"]
-    ).to(self.dfT).unsqueeze(0)
-
-    # Each trajectory is run as an independent flux_match call. The folder_namer hook
-    # (see STATEtools.flux_match) interleaves the step-s outputs of every trajectory into
-    # positions `s * n_traj + t` so the resulting sequence portals_sr_ev_0..N-1 is step-major
-    # and matches the Execution.{i} numbering downstream.
-    #
-    # Multi-trajectory subtlety: simple_relaxation records x_initial (= base_X) as the very
-    # first x_history entry of every trajectory. If we were to keep those, the step-0 row
-    # of every trajectory would be *identical* base_X, train_X would contain N duplicate
-    # rows, and optimization_data.find_point(base_X) downstream would match all N rows and
-    # crash on `df['Iteration'].item()`. To avoid that we run one extra relax iteration per
-    # trajectory (effective_maxiter = steps_per_traj + 1) and skip x_history[0] when
-    # collecting training points. That extra evaluation lands in a throwaway sub-folder
-    # `portals_sr_base_traj{t}` that is intentionally *not* matched by the
-    # `portals_sr_ev_*` glob used by PORTALSinitializer and the Evaluation.{i} copy loop.
-    # For the single-trajectory case no duplication is possible, so we keep the historical
-    # behaviour (x_initial included as the first training point, no throwaway folder).
     skip_initial = n_traj > 1
     effective_maxiter = steps_per_traj + (1 if skip_initial else 0)
 
+    # Folder_namer hook: each relax step gets one folder. When we are running with
+    # skip_initial=True, step 0 is the throwaway base_X evaluation — route it to a
+    # differently-prefixed folder so the `portals_sr_ev_*` glob used below (and by
+    # PORTALSinitializer) does not see it.
     if skip_initial:
-        def _make_namer(traj_idx, n):
-            return lambda step: (
-                f"portals_sr_base_traj{traj_idx}" if step == 0
-                else f"portals_sr_ev_{(step - 1) * n + traj_idx}"
+        def folder_namer(step):
+            return (
+                "portals_sr_base_step0" if step == 0
+                else f"portals_sr_ev_{step - 1}"
             )
     else:
-        def _make_namer(traj_idx, n):
-            return lambda step: f"portals_sr_ev_{step * n + traj_idx}"
+        def folder_namer(step):
+            return f"portals_sr_ev_{step}"
 
-    Xopt_per_traj = []
-    for t, user_overrides in enumerate(traj_params):
-        solver_options = dict(_SIMPLE_RELAX_DEFAULTS)
-        solver_options.update(user_overrides)
-        # The seed-driven jitter is applied on top of the (possibly user-overridden) relax value
-        # so setting `relax: 0.1` in the namelist lands at 0.1 ± addon_relax, not 0.2 ± addon_relax.
-        solver_options["relax"] = solver_options["relax"] + addon_relax
-        solver_options["maxiter"] = effective_maxiter
-        solver_options["folder"] = MainFolder
-        solver_options["folder_namer"] = _make_namer(t, n_traj)
-        # `namingConvention` is still consulted by the evaluator for `nameRun` logging — keep it
-        # informative even though folder layout is owned by folder_namer.
-        solver_options["namingConvention"] = f"portals_sr_ev_traj{t}"
+    # Build per-trajectory tensor versions of each solver-option knob.
+    def _per_batch_tensor(key, scalar_default):
+        vals = []
+        any_value = False
+        for tp in traj_params:
+            v = tp.get(key, scalar_default)
+            if v is None:
+                vals.append(None)
+            else:
+                vals.append(float(v))
+                any_value = True
+        if not any_value:
+            return None
+        if any(v is None for v in vals):
+            # dx_max_abs is allowed to be None per-trajectory; a mixed None/float list is
+            # not something torch.where handles cleanly, so forbid it.
+            raise ValueError(
+                f"initialization_params[*]['{key}'] mixes None and numeric entries; either "
+                "set a numeric value for every trajectory or omit the key from all of them."
+            )
+        return torch.tensor(vals).to(self.dfT).view(n_traj, 1)
 
-        traj_state = copy.deepcopy(self.optimization_object.powerstate)
-        traj_state.modify(base_X)
-        traj_state.flux_match(
-            algorithm="simple_relax",
-            solver_options=solver_options,
-        )
-        Xopt_traj = traj_state.FluxMatch_Xopt
-        if skip_initial:
-            Xopt_traj = Xopt_traj[1:]   # drop the shared base_X so the stack has no duplicates
-        Xopt_per_traj.append(Xopt_traj)
+    relax_tensor       = _per_batch_tensor('relax',       _SIMPLE_RELAX_DEFAULTS['relax'])
+    if relax_tensor is not None:
+        relax_tensor = relax_tensor + addon_relax
+    dx_max_tensor      = _per_batch_tensor('dx_max',      _SIMPLE_RELAX_DEFAULTS['dx_max'])
+    dx_max_abs_tensor  = _per_batch_tensor('dx_max_abs',  _SIMPLE_RELAX_DEFAULTS['dx_max_abs'])
+    dx_min_abs_tensor  = _per_batch_tensor('dx_min_abs',  _SIMPLE_RELAX_DEFAULTS['dx_min_abs'])
+
+    # Scalar knobs inherit from the first trajectory's overrides (they must agree across
+    # trajectories because simple_relaxation reads them as scalars).
+    scalar_defaults = dict(_SIMPLE_RELAX_DEFAULTS)
+    scalar_defaults.update(traj_params[0])
+    scalar_defaults.pop('relax', None)
+    scalar_defaults.pop('dx_max', None)
+    scalar_defaults.pop('dx_max_abs', None)
+    scalar_defaults.pop('dx_min_abs', None)
+
+    solver_options = {
+        'tol':             scalar_defaults.get('tol', None),
+        'maxiter':         effective_maxiter,
+        'relax':           relax_tensor,
+        'dx_max':          dx_max_tensor,
+        'dx_max_abs':      dx_max_abs_tensor,
+        'dx_min_abs':      dx_min_abs_tensor,
+        'relax_dyn':       scalar_defaults.get('relax_dyn', False),
+        'print_each':      scalar_defaults.get('print_each', 1),
+        'folder':          MainFolder,
+        'folder_namer':    folder_namer,
+        'namingConvention': 'portals_sr_ev_batched',
+    }
+
+    # Replicate the caller's powerstate to an N-batched view and stamp base_X across every
+    # batch row. flux_match builds x0 as (plasma.rho.shape[0], dvs) = (n_traj, dvs) and
+    # simple_relaxation walks all n_traj trajectories in lockstep, calling the evaluator
+    # once per step with the full batched X. The evaluator in turn runs one batched
+    # `self.calculate(X, folder=folder_run)` per step, which now routes to
+    # `power_transport._evaluate_batched` (triggered on powerstate.batch_size > 1).
+    traj_state = copy.deepcopy(self.optimization_object.powerstate)
+    traj_state._repeat_tensors(batch_size=n_traj)
+
+    base_X_row = torch.from_numpy(
+        self.optimization_options["problem_options"]["dvs_base"]
+    ).to(self.dfT)
+    base_X_batched = base_X_row.unsqueeze(0).repeat(n_traj, 1)
+    traj_state.modify(base_X_batched)
+
+    traj_state.flux_match(
+        algorithm="simple_relax",
+        solver_options=solver_options,
+    )
+
+    # Full batched trajectory: shape (effective_maxiter, n_traj, dvs). For skip_initial
+    # we drop the very first step (the shared base_X row) so the downstream
+    # Execution/Evaluation.{i} layout never carries duplicate training rows.
+    Xopt_batches = traj_state.FluxMatch_Xopt_batches
+    if skip_initial:
+        Xopt_batches = Xopt_batches[1:]   # (steps_per_traj, n_traj, dvs)
 
     # -------------------------------------------------------------------------------------------
-    # Once every trajectory has completed, copy the step-major folder sequence into
-    # Execution/Evaluation.{i} as if they were ordinary MITIM evaluations.
+    # Fan the per-step batched folders into per-(step, trajectory) Execution/Evaluation.{i}
+    # entries. Each `MainFolder/portals_sr_ev_{s}/transport_simulation_folder` carries
+    # `plasma_{0..n_traj-1}/` sub-folders with per-plasma single-plasma flux JSON pairs
+    # produced by `power_transport._evaluate_batched`.
     # -------------------------------------------------------------------------------------------
 
     (self.folderExecution / "Execution").mkdir(parents=True, exist_ok=True)
 
-    for i in range(self.Originalinitial_training):
-        ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
-        ff.mkdir(parents=True, exist_ok=True)
-        source = MainFolder / f"portals_sr_ev_{i}" / "transport_simulation_folder"
+    for s in range(steps_per_traj):
+        for t in range(n_traj):
+            i = s * n_traj + t
+            ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
+            ff.mkdir(parents=True, exist_ok=True)
+            source = MainFolder / f"portals_sr_ev_{s}" / "transport_simulation_folder" / f"plasma_{t}"
 
-        if (ff / "transport_simulation_folder").exists():
-            IOtools.shutil_rmtree(ff / "transport_simulation_folder")
+            if (ff / "transport_simulation_folder").exists():
+                IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
-        shutil.copytree(source, ff / "transport_simulation_folder")
+            shutil.copytree(source, ff / "transport_simulation_folder")
 
-    # Assemble the train_X array in step-major order so it lines up with the folder naming:
-    # Xopt_per_traj[t] has shape (steps_per_traj, dvs); stacking gives (steps_per_traj, n_traj, dvs)
-    # and the reshape below flattens to (steps_per_traj * n_traj, dvs) = (initial_training, dvs).
-    Xopt_stack = torch.stack(Xopt_per_traj, dim=1)  # (steps_per_traj, n_traj, dvs)
-    Xopt = Xopt_stack.reshape(self.Originalinitial_training, -1)
+    # Flatten the (steps_per_traj, n_traj, dvs) Xopt tensor into step-major (N, dvs) training
+    # rows that line up with the Evaluation.{i} layout above (i = s * n_traj + t).
+    Xopt = Xopt_batches.reshape(self.Originalinitial_training, -1)
 
     return Xopt.cpu().numpy()
 

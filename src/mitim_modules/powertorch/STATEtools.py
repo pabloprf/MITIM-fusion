@@ -446,6 +446,12 @@ class powerstate:
         index_best = divmod(idx_flat.item(), metric_history.shape[1])
 
         self.FluxMatch_Yopt, self.FluxMatch_Xopt = Yopt[:,index_best[1],:], Xopt[:,index_best[1],:]
+        # Full batched trajectories: (iter, N_batches, dvs) / (iter, N_batches, dimY).
+        # Callers that need per-batch trajectories — e.g. PORTALS parallel simple-relax
+        # initialization which runs one flux_match across N trajectories at once — read
+        # these instead of the scalar-best column above.
+        self.FluxMatch_Xopt_batches = Xopt
+        self.FluxMatch_Yopt_batches = Yopt
         self.FluxMatch_relax     = relax_history[:, index_best[1], :] if relax_history.numel() > 0 else relax_history
         self.FluxMatch_tol       = -solver_tol if solver_tol is not None else None   # positive residual threshold
         self.FluxMatch_osc_iters = osc_check_iters

@@ -83,25 +83,63 @@ mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestio
 mitim_bo.run()
 
 # ---------------------------------------------------------------------------
-# Assertions: after initialization the folder layout must reflect the
-# step-major interleaving of the two trajectories:
-#   portals_sr_ev_{s*n_traj + t}  for s in [0..steps_per_traj-1], t in [0..n_traj-1]
-# For this test (initial_training=4, n_traj=2) that means folders 0..3 must
-# all exist, plus Execution/Evaluation.0..3 copied from them.
+# Assertions: after initialization the folder layout must reflect the new
+# batched simple-relax shape:
+#
+#   portals_sr_ev_{s}                            for s in [0..steps_per_traj-1]
+#     └── transport_simulation_folder/
+#          ├── plasma_0/ (per-trajectory flux JSON + input.gacode)
+#          └── plasma_1/
+#
+# and Execution/Evaluation.{s*n_traj+t} is populated from `plasma_{t}` for the
+# step s, each carrying the single-plasma `fluxes_{turb,neoc}.json` pair that
+# the BO-time cache gate in `power_transport.evaluate` will pick up for zero-
+# work reuse.
+#
+# For this test (initial_training=4, n_traj=2) that means:
+#   - portals_sr_ev_{0,1} exist, each with plasma_{0,1} sub-dirs containing
+#     fluxes_turb.json + fluxes_neoc.json
+#   - Evaluation.{0..3}/transport_simulation_folder exist and each contain the
+#     single-plasma JSON pair at their top level.
 # ---------------------------------------------------------------------------
 
+N_TRAJ = 2
+STEPS_PER_TRAJ = 2
+N_POINTS = N_TRAJ * STEPS_PER_TRAJ  # = initial_training (4)
+
 init_dir = folderWork / "Initialization" / "initialization_simple_relax"
-for i in range(4):
-    expected = init_dir / f"portals_sr_ev_{i}"
-    assert expected.exists(), f"Expected {expected} from parallel SR initialization"
+for s in range(STEPS_PER_TRAJ):
+    step_folder = init_dir / f"portals_sr_ev_{s}" / "transport_simulation_folder"
+    assert step_folder.exists(), f"Expected {step_folder} from batched SR step {s}"
+    for t in range(N_TRAJ):
+        plasma_sub = step_folder / f"plasma_{t}"
+        assert plasma_sub.exists(), f"Expected per-plasma sub-folder {plasma_sub}"
+        assert (plasma_sub / "input.gacode").exists(), (
+            f"Expected {plasma_sub/'input.gacode'} written by _evaluate_batched"
+        )
+        assert (plasma_sub / "fluxes_turb.json").exists(), (
+            f"Expected single-plasma {plasma_sub/'fluxes_turb.json'}"
+        )
+        assert (plasma_sub / "fluxes_neoc.json").exists(), (
+            f"Expected single-plasma {plasma_sub/'fluxes_neoc.json'}"
+        )
 
 exec_dir = folderWork / "Execution"
-for i in range(4):
-    expected = exec_dir / f"Evaluation.{i}" / "transport_simulation_folder"
-    assert expected.exists(), f"Expected {expected} from parallel SR initialization"
+for i in range(N_POINTS):
+    exec_tr = exec_dir / f"Evaluation.{i}" / "transport_simulation_folder"
+    assert exec_tr.exists(), f"Expected {exec_tr} from parallel SR initialization"
+    assert (exec_tr / "fluxes_turb.json").exists(), (
+        f"Expected cached turbulence JSON at {exec_tr/'fluxes_turb.json'}"
+    )
+    assert (exec_tr / "fluxes_neoc.json").exists(), (
+        f"Expected cached neoclassical JSON at {exec_tr/'fluxes_neoc.json'}"
+    )
 
-print("\n[PORTALSparallel_SR_workflow] Four portals_sr_ev_* folders and "
-      "matching Evaluation.{0..3} folders found. Step-major layout OK.")
+print(
+    f"\n[PORTALSparallel_SR_workflow] {STEPS_PER_TRAJ} batched portals_sr_ev_* folders "
+    f"each with {N_TRAJ} plasma_* sub-folders, matching {N_POINTS} Evaluation.* "
+    "folders carrying single-plasma JSON pairs. Step-major batched layout OK."
+)
 
 # ---------------------------------------------------------------------------
 # Plot

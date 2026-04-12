@@ -8,8 +8,140 @@ from IPython import embed
 
 class tglf_model:
 
-    def evaluate_turbulence(self):        
+    def evaluate_turbulence(self):
         self._evaluate_tglf()
+
+    def evaluate_turbulence_batched(self, list_of_states):
+        self._evaluate_tglf_batched(list_of_states)
+
+    # ----------------------------------------------------------------------------------------
+    # Multi-plasma TGLF — fan a list of profile states through run_over_plasmas so that every
+    # (plasma, rho) work unit is dispatched concurrently by the existing FARMINGtools pipeline.
+    # Used by power_transport._evaluate_batched() when the powerstate carries batch_size > 1.
+    # ----------------------------------------------------------------------------------------
+    def _evaluate_tglf_batched(self, list_of_states, pass_info=True):
+
+        simulation_options = self.transport_evaluator_options["tglf"]
+        cold_start = self.cold_start
+
+        Qi_includes_fast = simulation_options["Qi_includes_fast"]
+        use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
+        cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
+        keep_tglf_files = simulation_options["keep_files"]
+        percent_error = simulation_options["percent_error"]
+        in_process = self.powerstate.transport_options.get("in_process", False)
+
+        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
+
+        if use_tglf_scan_trick is not None:
+            print(
+                "\t- [batched] use_tglf_scan_trick is set but scan-based uncertainty is not "
+                "yet wired into the multi-plasma TGLF path; falling back to the ad-hoc "
+                "percent_error uncertainty model for this run.",
+                typeMsg="w",
+            )
+
+        # All per-plasma powerstates are tiled from the same rho grid, so the rho locations
+        # come from batch 0 of the (already batched) self.powerstate exactly as the single-
+        # plasma path does — not from list_of_states, whose gacode_state objects use their
+        # own rho grid and do not need to agree with predicted_rho.
+        rho_locations = [
+            self.powerstate.plasma["rho"][0, 1:][i].item()
+            for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
+        ]
+
+        tglf = TGLFtools.TGLF(rhos=rho_locations, in_process=in_process)
+
+        # Bootstrap FolderGACODE / NormalizationSets for the first plasma; run_over_plasmas
+        # re-preps once per plasma and snapshots per-plasma state on self.results_per_plasma
+        # before the parallel dispatch kicks in.
+        _ = tglf.prep(
+            list_of_states[0],
+            self.folder,
+            cold_start=cold_start,
+        )
+
+        plasma_labels = tglf.run_over_plasmas(
+            list_of_states,
+            base_subfolder="base_tglf",
+            cold_start=cold_start,
+            forceIfcold_start=True,
+            extra_name=self.name,
+            slurm_setup={
+                "cores": cores_per_tglf_instance,
+                "minutes": 2,
+            },
+            attempts_execution=2,
+            only_minimal_files=keep_tglf_files in ["none"],
+            **simulation_options["run"],
+        )
+
+        N = len(plasma_labels)
+        nrho = len(rho_locations)
+        Qe_batch = np.zeros((N, nrho))
+        Qi_batch = np.zeros((N, nrho))
+        Ge_batch = np.zeros((N, nrho))
+        GZ_batch = np.zeros((N, nrho))
+        Mt_batch = np.zeros((N, nrho))
+        S_batch = np.zeros((N, nrho))
+
+        for p, label in plasma_labels.items():
+            tglf.read_plasma(
+                p,
+                label=label,
+                require_all_files=False,
+                **simulation_options["read"],
+            )
+            outputs = tglf.results[label]["output"]
+
+            Qe = np.array([outputs[i].Qe for i in range(nrho)])
+            Qi = np.array([outputs[i].Qi for i in range(nrho)])
+            Ge = np.array([outputs[i].Ge for i in range(nrho)])
+            GZ = np.array([outputs[i].GiAll[ion_OI_position_in_ion_list] for i in range(nrho)])
+            Mt = np.array([outputs[i].Mt for i in range(nrho)])
+            S = np.array([outputs[i].Se for i in range(nrho)])
+
+            if Qi_includes_fast:
+                Qifast = np.array([outputs[i].Qifast for i in range(nrho)])
+                if Qifast.sum() != 0.0:
+                    print(f"\t- Qi includes fast ions for plasma {p}, adding their contribution")
+                    Qi = Qi + Qifast
+
+            Qe_batch[p, :] = Qe
+            Qi_batch[p, :] = Qi
+            Ge_batch[p, :] = Ge
+            GZ_batch[p, :] = GZ
+            Mt_batch[p, :] = Mt
+            S_batch[p, :] = S
+
+            # Warnings reuse the single-plasma helper by temporarily pointing tglf at the
+            # per-plasma profiles/inputs that read_plasma() already cached.
+            self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
+
+        Flux_base = np.stack([Qe_batch, Qi_batch, Ge_batch, GZ_batch, Mt_batch, S_batch], axis=0)
+        Flux_mean = Flux_base
+        Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+
+        if pass_info:
+            self.QeGB_turb      = Flux_mean[0]
+            self.QeGB_turb_stds = Flux_std[0]
+
+            self.QiGB_turb      = Flux_mean[1]
+            self.QiGB_turb_stds = Flux_std[1]
+
+            self.GeGB_turb      = Flux_mean[2]
+            self.GeGB_turb_stds = Flux_std[2]
+
+            self.GZGB_turb      = Flux_mean[3]
+            self.GZGB_turb_stds = Flux_std[3]
+
+            self.MtGB_turb      = Flux_mean[4]
+            self.MtGB_turb_stds = Flux_std[4]
+
+            self.QieGB_turb      = Flux_mean[5]
+            self.QieGB_turb_stds = Flux_std[5]
+
+        return tglf
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
     def _evaluate_tglf(self, pass_info = True):
@@ -245,7 +377,7 @@ def _run_tglf_uncertainty_model(
         print_context = IOtools.nullcontext()
     else:
         print(f"\n\t- Running TGLF scans for turbulence drives (logs are hidden to avoid cluttering the log file)...\n", typeMsg="i")
-        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed", "[in-process]"])
+        print_context = LOGtools.HiddenPrints(show_if_contains=["* Executing", "-------------- Running process", "- TGLF will be executed", "[in-process] Submitting"])
 
     with print_context:
         tglf.runScanTurbulenceDrives(

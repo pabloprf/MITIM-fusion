@@ -139,12 +139,31 @@ class power_transport:
             and (self.folder / 'fluxes_neoc.json').exists()
         )
 
+        batched = (
+            getattr(self.powerstate, "batch_size", 0) or 0
+        ) > 1
+
+        # Initialize all GB flux arrays to zeros up front. The backends overwrite
+        # whichever fluxes they compute; anything left untouched stays at zero (e.g.
+        # QieGB_neoc, which NEO never produces). For the batched path the 2D (N, nrho)
+        # arrays written by the batched backends overwrite these 1D zeros; the in-memory
+        # fallback in _populate_from_json then broadcasts them correctly.
+        nrho_m1 = self.powerstate.plasma['rho'].shape[-1] - 1
+        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
+            for suffix in ['turb', 'neoc']:
+                for suffix0 in ['', '_stds']:
+                    self.__dict__[f"{var}_{suffix}{suffix0}"] = torch.zeros(nrho_m1)
+
         if cache_hit:
             print(
                 f"\t- Reusing cached flux JSONs from {IOtools.clipstr(self.folder)} "
                 f"(SR copy or previous evaluation); skipping turbulence / neoclassical runs",
                 typeMsg='i',
             )
+        elif batched:
+            # Multi-plasma simple-relax path: fan N plasmas through run_over_plasmas in one
+            # parallel submission via _evaluate_batched. See docstring on that method.
+            self._evaluate_batched()
         else:
             '''
             ******************************************************************************************************
@@ -152,12 +171,6 @@ class power_transport:
             These functions use a hook to write the .json files to communicate the results to powerstate.plasma
             ******************************************************************************************************
             '''
-
-            # Initialize them as zeros
-            for var in ['QeGB','QiGB','GeGB','GZGB','MtGB','QieGB']:
-                for suffix in ['turb', 'neoc']:
-                    for suffix0 in ['', '_stds']:
-                        self.__dict__[f"{var}_{suffix}{suffix0}"] = torch.zeros(self.powerstate.plasma['rho'].shape[-1]-1)
 
             neoclassical = self.evaluate_neoclassical()
             turbulence = self.evaluate_turbulence()
@@ -179,7 +192,143 @@ class power_transport:
         ******************************************************************************************************
         '''
         self._postprocess()
-        
+
+    def _evaluate_batched(self):
+        '''
+        Multi-plasma (batched) evaluate path, reached from evaluate() when
+        self.powerstate.batch_size > 1 — today that is the PORTALS parallel simple-relax
+        initialization, which asks one flux_match call to walk N trajectories in lockstep.
+
+        The responsibility split:
+
+            - Write one input.gacode per batch element under
+              self.folder / f"plasma_{b}" / "input.gacode" by deepcopy + _repeat_tensors(
+              batch_size=1, positionToUnrepeat=b) on self.powerstate, then call
+              from_powerstate(...) to materialise a gacode_state and its input.gacode file.
+            - Assemble list_of_states (one per plasma) and hand it to the batched
+              backend dispatchers evaluate_neoclassical_batched / evaluate_turbulence_batched,
+              which route to neo_model._evaluate_neo_batched / tglf_model._evaluate_tglf_batched
+              respectively. Those methods run one `tglf.run_over_plasmas` / `neo.run_over_plasmas`
+              call, reap per-plasma results, and populate self.QeGB_{turb,neoc}, ... as
+              (N, nrho) numpy arrays.
+            - Suppress the bundled-folder write_json decorators (via
+              _write_json_from_variables_{turb,neoc} = False) so we do not emit a 2D
+              fluxes_*.json at self.folder — that would confuse the single-plasma
+              _populate_from_json reader that fires at BO time via the cache-hit gate.
+            - Write one single-plasma fluxes_turb.json + fluxes_neoc.json pair under each
+              self.folder / f"plasma_{b}" / using the *existing* 1D schema. These are the
+              files the SR copy loop in initialization_simple_relax moves into
+              Execution/Evaluation.{i}/transport_simulation_folder, and they are what the
+              evaluate() cache-hit gate picks up at BO time for zero-work reuse.
+
+        The in-memory (N, nrho) arrays are then fed through _populate_from_json's
+        file-missing fallback (which now uses [:, 1:] broadcasting) and _postprocess
+        (which now detects 1D vs 2D inputs), so the caller sees (N, nrho+1) batched
+        torch tensors in self.powerstate.plasma[Q*_tr_*] exactly like the single-plasma
+        path does for its own (1, nrho+1) case.
+        '''
+
+        N = int(self.powerstate.batch_size)
+
+        # (1) Materialise N per-plasma input.gacodes + gacode_state profile objects.
+        list_of_states = []
+        per_plasma_folders = []
+        for b in range(N):
+            sub_folder = self.folder / f"plasma_{b}"
+            sub_folder.mkdir(parents=True, exist_ok=True)
+            per_plasma_folders.append(sub_folder)
+
+            sub_powerstate = copy.deepcopy(self.powerstate)
+            sub_powerstate._repeat_tensors(batch_size=1, positionToUnrepeat=b)
+
+            sub_profile = sub_powerstate.copy_state().from_powerstate(
+                write_input_gacode=sub_folder / "input.gacode",
+                postprocess_input_gacode=self.powerstate.transport_options.get("applyCorrections", True),
+                rederive_profiles=True,
+                insert_highres_powers=True,
+            )
+            list_of_states.append(sub_profile)
+
+        # (2) Suppress the bundled-folder write_json decorators — each per-plasma JSON pair
+        # is written explicitly below so the top-level self.folder does not carry a 2D
+        # fluxes_*.json that would confuse single-plasma readers (including the cache-hit
+        # gate at BO time). The flag must be set *before* the decorator fires, which means
+        # before evaluate_turbulence_batched / evaluate_neoclassical_batched run.
+        self._write_json_from_variables_turb = False
+        self._write_json_from_variables_neoc = False
+
+        # (3) Run both backends once across all N plasmas via run_over_plasmas.
+        self.evaluate_neoclassical_batched(list_of_states)
+        self.evaluate_turbulence_batched(list_of_states)
+
+        # (4) Emit one single-plasma JSON pair per batch element for downstream reuse.
+        rho_arr   = self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist()
+        roa_arr   = self.powerstate.plasma["roa"][0, 1:].cpu().numpy().tolist()
+        for b, sub_folder in enumerate(per_plasma_folders):
+            # Shared additional_info is taken from batch 0 — rho / roa / aLx do not vary
+            # across the batch replication, they are just tiled copies.
+            self._write_per_plasma_json(
+                sub_folder,
+                batch_index=b,
+                suffix='turb',
+                rho_arr=rho_arr,
+                roa_arr=roa_arr,
+            )
+            self._write_per_plasma_json(
+                sub_folder,
+                batch_index=b,
+                suffix='neoc',
+                rho_arr=rho_arr,
+                roa_arr=roa_arr,
+            )
+
+    def _write_per_plasma_json(self, sub_folder, batch_index, suffix, rho_arr, roa_arr):
+        '''
+        Per-plasma, single-plasma-shaped writer used by _evaluate_batched to carve one
+        row out of the (N, nrho) self.QeGB_{turb,neoc} / ... arrays and drop it into
+        sub_folder as a 1D fluxes_{turb,neoc}.json that matches the write_json schema.
+        '''
+        file_name = f"fluxes_{suffix}.json"
+        fluxes_mean, fluxes_stds = {}, {}
+
+        def _slice_batch(arr, b):
+            '''Extract a 1D per-plasma slice from an array that may be 2D (N, nrho) or 1D (nrho).
+            1D arrays are shared across all batches (e.g. the zero-init for QieGB_neoc which NEO
+            never overwrites), so they are returned as-is regardless of batch index.'''
+            arr = np.asarray(arr) if not isinstance(arr, np.ndarray) else arr
+            return arr[b, :] if arr.ndim >= 2 else arr
+
+        for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
+            key_mean = f"{var}_{suffix}"
+            key_std  = f"{var}_{suffix}_stds"
+            if key_mean not in self.__dict__:
+                continue
+            try:
+                fluxes_mean[var] = _slice_batch(self.__dict__[key_mean], batch_index).tolist()
+                fluxes_stds[var] = _slice_batch(self.__dict__[key_std],  batch_index).tolist()
+            except (KeyError, IndexError, TypeError):
+                pass
+
+        json_dict = {
+            'fluxes_mean': fluxes_mean,
+            'fluxes_stds': fluxes_stds,
+            'additional_info': {
+                'rho': rho_arr,
+                'roa': roa_arr,
+                'Qgb':  self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy().tolist(),
+                'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
+                'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
+                'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
+            },
+        }
+
+        with open(sub_folder / file_name, 'w') as f:
+            json.dump(json_dict, f, indent=4)
+        print(
+            f"\t* Written per-plasma JSON with {suffix} information to "
+            f"{IOtools.clipstr(sub_folder / file_name)}"
+        )
+
     def _postprocess(self):
         '''
         Curate information for the powerstate (e.g. add models, add batch dimension, rho=0.0, and tensorize)
@@ -194,14 +343,26 @@ class power_transport:
         for variable in variables:
             for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
 
-                # Make them tensors and add a batch dimension
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.Tensor(self.powerstate.plasma[f"{variable}{suffix}"]).to(self.powerstate.dfT).unsqueeze(0)
- 
-                # Pad with zeros at rho=0.0
-                self.powerstate.plasma[f"{variable}{suffix}"] = torch.cat((
-                    torch.zeros((1, 1)),
-                    self.powerstate.plasma[f"{variable}{suffix}"],
+                arr = self.powerstate.plasma[f"{variable}{suffix}"]
+                # _populate_from_json hands us either a numpy ndarray (single plasma fallback)
+                # or a torch tensor (JSON-on-disk read path, or 2D (N,nrho) from the
+                # multi-plasma batched in-memory fallback). Normalise to torch first, then
+                # only unsqueeze(0) if the array is still 1D (single-plasma case). For a
+                # pre-2D array (batched SR path) we keep the explicit N batch axis and pad
+                # the rho=0 column per batch row.
+                if not isinstance(arr, torch.Tensor):
+                    arr = torch.as_tensor(arr)
+                arr = arr.to(self.powerstate.dfT)
+                if arr.dim() == 1:
+                    arr = arr.unsqueeze(0)
+
+                # Pad with zeros at rho=0.0 — shape (N, 1) matching the current batch size
+                arr = torch.cat((
+                    torch.zeros((arr.shape[0], 1), dtype=arr.dtype, device=arr.device),
+                    arr,
                 ), dim=1)
+
+                self.powerstate.plasma[f"{variable}{suffix}"] = arr
 
         # -----------------------------------------------------------
         # Sum the turbulent and neoclassical contributions
@@ -373,10 +534,16 @@ class power_transport:
         if not (self.folder / file_name).exists():
             print(f"\t* File {self.folder / file_name} does not exist, cannot populate powerstate.plasma", typeMsg='w')
             print(f"\t- Tranforming from GB to real units:")
-            
+
+            # Use [:, 1:] rather than [0, 1:] so this in-memory fallback broadcasts for both
+            # single-plasma and multi-plasma inputs without collapsing the batch axis. gb is
+            # first converted to numpy because self.__dict__[*_turb] arrives as a numpy array
+            # from _evaluate_tglf / _evaluate_tglf_batched and `np.ndarray * torch.Tensor`
+            # raises TypeError (only the torch-lhs form works).
             for var in mapper:
-                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"] = self.__dict__[f"{var}_{suffix}"] * self.powerstate.plasma[f"{mapper[var][0]}"][0,1:]
-                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds"] = self.__dict__[f"{var}_{suffix}_stds"] * self.powerstate.plasma[f"{mapper[var][0]}"][0,1:]
+                gb = self.powerstate.plasma[f"{mapper[var][0]}"][:, 1:].cpu().numpy()
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"] = self.__dict__[f"{var}_{suffix}"] * gb
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds"] = self.__dict__[f"{var}_{suffix}_stds"] * gb
 
             return
         
@@ -495,7 +662,7 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
         
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
-        
+
         if self.turbulence_model.lower() == 'tglf':
             return tglf_model.evaluate_turbulence(self)
         elif self.turbulence_model.lower() == 'cgyro':
@@ -505,8 +672,20 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
         else:
             raise Exception(f"Unknown turbulence model {self.turbulence_model}")
 
+    def evaluate_turbulence_batched(self, list_of_states):
+        # Multi-plasma dispatcher — powerstate.batch_size > 1 path. No @hook_method here:
+        # _evaluate_batched() writes per-plasma JSON pairs itself and disables the single-
+        # folder write_json decorator via self._write_json_from_variables_turb = False.
+        if self.turbulence_model.lower() == 'tglf':
+            return tglf_model.evaluate_turbulence_batched(self, list_of_states)
+        else:
+            raise NotImplementedError(
+                f"Batched turbulence dispatch not yet implemented for model "
+                f"{self.turbulence_model!r}. Use single-plasma SR or extend this dispatcher."
+            )
+
     def _stable_correction(self, simulation_options):
-        
+
         if self.turbulence_model.lower() == 'cgyro':
             cgyro_model._stable_correction(self, simulation_options)
 
@@ -518,3 +697,16 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return neo_model.evaluate_neoclassical(self)
         else:
             raise Exception(f"Unknown neoclassical model {self.neoclassical_model}")
+
+    def evaluate_neoclassical_batched(self, list_of_states):
+        # Multi-plasma dispatcher — no @hook_method decorator for the same reason as
+        # evaluate_turbulence_batched above.
+        if self.neoclassical_model is None:
+            print('Neoclassical model chosen', typeMsg='w')
+        elif self.neoclassical_model.lower() == 'neo':
+            return neo_model.evaluate_neoclassical_batched(self, list_of_states)
+        else:
+            raise NotImplementedError(
+                f"Batched neoclassical dispatch not yet implemented for model "
+                f"{self.neoclassical_model!r}."
+            )

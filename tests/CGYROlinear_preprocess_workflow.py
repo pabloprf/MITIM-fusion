@@ -15,7 +15,7 @@ from mitim_tools import __mitimroot__
 # ---------------------------------------------------------------------------
 
 cold_start = True
-save_figures = True
+save_figures = False
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "cgyro_linear_preprocess_test"

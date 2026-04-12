@@ -801,11 +801,12 @@ class mitim_simulation:
                 forceIfcold_start=forceIfcold_start,
             )
 
-            # Keep a per-plasma copy of the input.gacode alongside the shared staging one.
-            shutil.copy2(
-                self.FolderGACODE / "input.gacode_torun",
-                self.FolderGACODE / f"input.gacode_torun_plasma{p}",
-            )
+            # Keep a per-plasma copy of the input.gacode alongside the shared staging one
+            # (subprocess path writes this file; in-process prep uses synthetic in-memory
+            # paths that never touch disk, so the file may not exist — skip gracefully).
+            src_gacode = self.FolderGACODE / "input.gacode_torun"
+            if src_gacode.exists():
+                shutil.copy2(src_gacode, self.FolderGACODE / f"input.gacode_torun_plasma{p}")
 
             # _run_prepare snapshots self.inputs_files into code_executor[subfolder][rho]['inputs']
             # so plasma p's inputs are frozen here; subsequent per-plasma prep calls do not
