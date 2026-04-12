@@ -553,8 +553,8 @@ class TGLFInProcess(_GACODEInProcessMixin):
     def _inprocess_print_per_rho(self, rho, outputs):
         print(
             f"\t- [in-process] rho={rho:.4f}  "
-            f"Qe={outputs['elec_eflux']:.4f}  "
-            f"Qi[0]={outputs['ion_eflux'][0]:.4f}"
+            f"Qe={outputs['elec_eflux']:.4e}  "
+            f"Qi[0]={outputs['ion_eflux'][0]:.4e}"
         )
 
     def read_inprocess(self, label="run1", folder=None):
@@ -622,6 +622,12 @@ class NEOInProcess(_GACODEInProcessMixin):
         return _nip._parallel_worker
 
     def _inprocess_print_per_rho(self, rho, outputs):
+        Qe = outputs.get("efluxtot_dke", [0])[0] + outputs.get("efluxtot_gv", [0])[0]
+        Qi0 = (outputs.get("efluxtot_dke", [0, 0])[1] + outputs.get("efluxtot_gv", [0, 0])[1]) if outputs.get("ns", 0) > 1 else 0.0
+        print(
+            f"\t- [in-process] rho={rho:.4f}  "
+            f"Qe={Qe:.4e}  Qi[0]={Qi0:.4e}"
+        )
         if outputs.get("error_status", 0) != 0:
             print(
                 f"\t- [in-process] rho={rho:.4f}  "

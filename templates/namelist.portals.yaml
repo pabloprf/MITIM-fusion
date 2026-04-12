@@ -298,25 +298,20 @@ optimization_options:
     initial_training: 5
     initialization_fun: "import::mitim_modules.portals.utils.PORTALSoptimization.initialization_simple_relax"
 
-    # Optional list of per-trajectory solver-option overrides for the simple-relax initializer.
-    # Each list entry defines one trajectory; all trajectories run sequentially, each producing
-    # `initial_training / len(initialization_params)` sequential training points. Use this to
-    # seed the initial set with several distinct relax shapes (e.g. cautious + aggressive walks).
+    # Per-trajectory solver-option overrides for the simple-relax initializer.
+    # Each list entry defines one trajectory; all trajectories run in parallel (one batched
+    # flux_match call dispatching N concurrent TGLF+NEO evaluations per step). Each trajectory
+    # contributes `initial_training / len(initialization_params)` training points.
     # Requirements:
     #   - initial_training must be divisible by the number of entries
-    #   - permitted keys: relax, dx_max, dx_max_abs, dx_min_abs, relax_dyn, relax_dyn_decrease,
-    #     relax_dyn_num, tol, tol_rel, print_each
-    #   - omit or set to null to keep the default single-trajectory behaviour
-    #
-    # Example (uncomment and edit to activate; initial_training above would need to be a multiple
-    # of the number of entries):
-    # initialization_params:
-    #   - relax: 0.2
-    #     dx_max: 0.2
-    #     dx_min_abs: 0.1
-    #   - relax: 0.1
-    #     dx_max: 0.4
-    #     dx_min_abs: 0.05
+    #   - permitted keys per trajectory: relax, dx_max, dx_max_abs, dx_min_abs, relax_dyn,
+    #     relax_dyn_decrease, relax_dyn_num, tol, tol_rel, print_each, perturbation_base
+    #   - perturbation_base (default 0) shifts the starting gradients by the given fraction
+    #     (e.g. 0.1 = all a/Lx increased by 10% from the base), creating diversity in the
+    #     initial training set without changing the relax dynamics
+    # Single trajectory with default parameters (equivalent to the historical behaviour):
+    initialization_params:
+      - {}
 
   # Convergence options for the optimization process
   convergence_options:

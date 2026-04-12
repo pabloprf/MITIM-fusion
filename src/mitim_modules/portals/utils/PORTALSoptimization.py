@@ -34,6 +34,7 @@ _SIMPLE_RELAX_ALLOWED_KEYS = {
     "relax", "dx_max", "dx_max_abs", "dx_min_abs",
     "relax_dyn", "relax_dyn_decrease", "relax_dyn_num",
     "tol", "tol_rel", "print_each",
+    "perturbation_base",
 }
 
 
@@ -185,8 +186,6 @@ def initialization_simple_relax(self):
         if not any_value:
             return None
         if any(v is None for v in vals):
-            # dx_max_abs is allowed to be None per-trajectory; a mixed None/float list is
-            # not something torch.where handles cleanly, so forbid it.
             raise ValueError(
                 f"initialization_params[*]['{key}'] mixes None and numeric entries; either "
                 "set a numeric value for every trajectory or omit the key from all of them."
@@ -208,6 +207,7 @@ def initialization_simple_relax(self):
     scalar_defaults.pop('dx_max', None)
     scalar_defaults.pop('dx_max_abs', None)
     scalar_defaults.pop('dx_min_abs', None)
+    scalar_defaults.pop('perturbation_base', None)
 
     solver_options = {
         'tol':             scalar_defaults.get('tol', None),
@@ -223,12 +223,10 @@ def initialization_simple_relax(self):
         'namingConvention': 'portals_sr_ev_batched',
     }
 
-    # Replicate the caller's powerstate to an N-batched view and stamp base_X across every
-    # batch row. flux_match builds x0 as (plasma.rho.shape[0], dvs) = (n_traj, dvs) and
-    # simple_relaxation walks all n_traj trajectories in lockstep, calling the evaluator
-    # once per step with the full batched X. The evaluator in turn runs one batched
-    # `self.calculate(X, folder=folder_run)` per step, which now routes to
-    # `power_transport._evaluate_batched` (triggered on powerstate.batch_size > 1).
+    # Replicate the caller's powerstate to an N-batched view. Each trajectory's starting
+    # point is base_X * (1 + perturbation_base), where perturbation_base defaults to 0
+    # (exact base) and can be set per-trajectory to create diversity (e.g. 0.1 = gradients
+    # increased by 10%).
     traj_state = copy.deepcopy(self.optimization_object.powerstate)
     traj_state._repeat_tensors(batch_size=n_traj)
 
@@ -236,7 +234,40 @@ def initialization_simple_relax(self):
         self.optimization_options["problem_options"]["dvs_base"]
     ).to(self.dfT)
     base_X_batched = base_X_row.unsqueeze(0).repeat(n_traj, 1)
+
+    perturbations = [float(tp.get('perturbation_base', 0.0)) for tp in traj_params]
+    for t in range(n_traj):
+        if perturbations[t] != 0.0:
+            base_X_batched[t, :] = base_X_row * (1.0 + perturbations[t])
+
     traj_state.modify(base_X_batched)
+
+    # ---------------------------------------------------------------------------
+    # Print SR information block before starting
+    # ---------------------------------------------------------------------------
+    n_radii = traj_state.plasma["rho"].shape[1] - 1
+    n_channels = len(traj_state.predicted_channels)
+
+    print("\n" + "=" * 80)
+    print("  PORTALS Simple-Relax Initialization")
+    print("=" * 80)
+    print(f"  Trajectories:         {n_traj}")
+    print(f"  Steps per trajectory: {steps_per_traj}")
+    print(f"  Total training pts:   {self.Originalinitial_training}")
+    print(f"  Effective maxiter:    {effective_maxiter} (skip_initial={skip_initial})")
+    print(f"  Radii (per plasma):   {n_radii}  ({', '.join(traj_state.predicted_channels)})")
+    print(f"  Seed addon_relax:     {addon_relax:+.4f}")
+    print(f"  Base X (dvs_base):    [{', '.join(f'{v:.3f}' for v in base_X_row.tolist())}]")
+    print(f"  ----- Per-step parallelism: {n_traj} trajectories x {n_radii} radii "
+          f"= {n_traj * n_radii} concurrent transport calls (TGLF + NEO)")
+    for t, tp in enumerate(traj_params):
+        pert = perturbations[t]
+        relax_val = relax_tensor[t].item() if relax_tensor is not None else _SIMPLE_RELAX_DEFAULTS['relax'] + addon_relax
+        dx_max_val = dx_max_tensor[t].item() if dx_max_tensor is not None else _SIMPLE_RELAX_DEFAULTS['dx_max']
+        dx_min_val = dx_min_abs_tensor[t].item() if dx_min_abs_tensor is not None else _SIMPLE_RELAX_DEFAULTS['dx_min_abs']
+        print(f"  Trajectory {t}: relax={relax_val:.4f}  dx_max={dx_max_val:.3f}  "
+              f"dx_min_abs={dx_min_val:.3f}  perturbation_base={pert:+.2%}")
+    print("=" * 80 + "\n")
 
     traj_state.flux_match(
         algorithm="simple_relax",

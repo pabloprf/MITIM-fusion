@@ -46,17 +46,20 @@ portals_fun.optimization_options["initialization_options"]["initial_training"] =
 
 # Two deliberately contrasting trajectories so the initial training set covers
 # a wide range of a/Lx states. Trajectory 0 is cautious (small dx_max, slower
-# relax); trajectory 1 is aggressive (bigger steps, smaller min abs step).
+# relax, starts from the unperturbed base); trajectory 1 is aggressive (bigger
+# steps, smaller min abs step, gradients bumped by 10% via perturbation_base).
 portals_fun.optimization_options["initialization_options"]["initialization_params"] = [
     {
         "relax": 0.15,
         "dx_max": 0.15,
         "dx_min_abs": 0.10,
+        "perturbation_base": 0.0,
     },
     {
         "relax": 0.30,
         "dx_max": 0.30,
         "dx_min_abs": 0.05,
+        "perturbation_base": 0.1,
     },
 ]
 
