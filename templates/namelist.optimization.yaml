@@ -1,97 +1,124 @@
+# -----------------------------------------------------------------
+# Problem definition
+# -----------------------------------------------------------------
+
 problem_options:
-  ofs: ["y0", "y1"]
-  dvs: ["x0", "x1"]
-  dvs_min: [0.8, 0.8]
-  dvs_base: null
-  dvs_max: [1.2, 1.2]
+  ofs: ["y0", "y1"]        # Objective function names (outputs to minimize / match)
+  dvs: ["x0", "x1"]        # Decision variable names (inputs the optimizer varies)
+  dvs_min: [0.8, 0.8]      # Lower bounds for each DV
+  dvs_base: null            # Baseline DV values (null = no baseline point in the initial set)
+  dvs_max: [1.2, 1.2]      # Upper bounds for each DV
+
+# -----------------------------------------------------------------
+# Evaluation options
+# -----------------------------------------------------------------
 
 evaluation_options:
-  parallel_evaluations: 1
-  train_Ystd: null
+  parallel_evaluations: 1   # Number of model evaluations to run concurrently (>1 uses multiprocessing)
+  train_Ystd: null          # Fixed observation noise; null = infer from the model
 
-# Convergence options for the BO optimization process
+# -----------------------------------------------------------------
+# Convergence criteria for the Bayesian Optimization loop
+# -----------------------------------------------------------------
+
 convergence_options:
-  maximum_iterations: 5
+  maximum_iterations: 5     # Hard cap on BO iterations
   stopping_criteria: "import::mitim_tools.opt_tools.STRATEGYtools.stopping_criteria_default"
   stopping_criteria_parameters:
-    maximum_value: -0.001
-    maximum_value_is_rel: false
-    minimum_inputs_variation: [10, 3, 0.01]
+    maximum_value: -0.001           # Stop if the best objective exceeds this threshold
+    maximum_value_is_rel: false     # If true, maximum_value is relative to iteration 0
+    minimum_inputs_variation: [10, 3, 0.01]  # [after_iter, window, tol%]: stop if DVs vary < tol% over the last <window> iterations, checked after <after_iter>
+
+# -----------------------------------------------------------------
+# Initialization: how the first training points are generated
+# -----------------------------------------------------------------
 
 initialization_options:
-  initial_training: 5
-  type_initialization: 3
-  read_initial_training_from_csv: false
-  initialization_fun: null
-  initialization_params: null
-  ensure_within_bounds: false
-  expand_bounds: true
+  initial_training: 5               # Number of initial training points
+  type_initialization: 3            # 1 = LHS, 3 = read from CSV, 4 = read from Execution folders
+  read_initial_training_from_csv: false  # If true, read initial DVs from a CSV file instead of generating them
+  initialization_fun: null          # Custom initialization function (e.g. PORTALS simple-relax); null = use type_initialization
+  initialization_params: null       # Per-trajectory parameter overrides for custom initialization_fun (see namelist.portals.yaml for the full schema)
+  ensure_within_bounds: false       # Remove initial points that fall outside dvs_min / dvs_max
+  expand_bounds: true               # Expand bounds to include any initial point that lies outside them
+
+# -----------------------------------------------------------------
+# Acquisition function: how the next candidate point is chosen
+# -----------------------------------------------------------------
 
 acquisition_options:
-  type: noisy_logei_mc
+  type: noisy_logei_mc      # Acquisition function type (noisy_logei_mc = noisy Log Expected Improvement via MC)
   parameters:
-    mc_samples: 1024
-  optimizers: ["botorch"]
+    mc_samples: 1024        # Monte Carlo samples for the acquisition estimator
+  optimizers: ["botorch"]   # Which optimizer(s) to use for maximizing the acquisition function
   optimizer_options:
     botorch:
-      num_restarts: 64
-      raw_samples: 4096
-      maxiter: 1000
-      sequential_q: true
-      keep_best: 1
+      num_restarts: 64                          # Multi-start restarts for the acquisition optimizer
+      raw_samples: 4096                         # Random samples for initial candidate generation
+      maxiter: 1000                             # Max L-BFGS-B iterations per restart
+      sequential_q: true                        # Optimize q-batch candidates sequentially (greedy)
+      keep_best: 1                              # Return the top-K candidates from all restarts
     root:
       num_restarts: 5
-      solver: lm
+      solver: lm                                # Scipy root solver ('lm' = Levenberg-Marquardt)
       maxiter: 1000
       relative_improvement_for_stopping: 0.0001
       keep_best: 1
     sr:
       num_restarts: 5                           # How many points to initialize with (parallel optimization)
       maxiter: 1000                             # Maximum number of iterations in acquisition optimization
-      relative_improvement_for_stopping: 0.001  # Treshold (relative improvement) to stop the acquisition optimization
-      relax: 0.1                                # Initial relaxation parameter (will be updated during the dynamic adjustments, if relax_dyn: true)
+      relative_improvement_for_stopping: 0.001  # Threshold (relative improvement) to stop the acquisition optimization
+      relax: 0.1                                # Initial relaxation parameter (updated during dynamic adjustments if relax_dyn: true)
       relax_dyn: true                           # Use Dynamic Simple Relaxation
-      keep_best: 1                              # How many best points to keep (#TODO: >1 not fully defined yet)
+      keep_best: 1                              # How many best points to keep
     ga:
       num_restarts: 1
       keep_best: 32
-  relative_improvement_for_stopping: null
-  favor_proximity_type: 0
-  ensure_new_points: true
-  points_per_step: 1
+  relative_improvement_for_stopping: null  # Global fallback; overridden per optimizer above
+  favor_proximity_type: 0                  # 0 = off; >0 penalizes candidates far from the current best
+  ensure_new_points: true                  # Reject a candidate if it is too close to an already-evaluated point
+  points_per_step: 1                       # Number of new points proposed per BO iteration (q-batch size)
+
+# -----------------------------------------------------------------
+# Surrogate (Gaussian Process) model options
+# -----------------------------------------------------------------
 
 surrogate_options:
-  TypeKernel: 0
-  TypeMean: 0
-  surrogate_selection: null
-  
-  additional_constraints: null
+  TypeKernel: 0             # 0 = Matern 5/2 (default); see BOgraphics for other kernels
+  TypeMean: 0               # 0 = constant mean; 1 = linear mean
+  surrogate_selection: null  # null = train one GP per output; or a list of output indices to model
 
-  # Noise treatment options
-  FixedNoise: true
-  ExtraNoise: false
-  ConstrainNoise: -0.001
-  MinimumRelativeNoise: null
+  additional_constraints: null  # Extra constraints on the GP hyperparameters
 
-  # Capability to remove outliers
-  stds_outside: null      # Standard deviations outside the mean to consider a point as an outlier
-  stds_outside_checker: 5 # Check for outliers only if there are at least these many points
+  # Noise treatment
+  FixedNoise: true          # If true, observation noise is fixed to train_Ystd (not learned)
+  ExtraNoise: false         # If true, add a learned homoscedastic noise term on top of FixedNoise
+  ConstrainNoise: -0.001    # Lower bound on the learned noise variance (log scale); negative = very small
+  MinimumRelativeNoise: null # If set, enforce a minimum noise floor relative to the output range
 
-  # Capability to add points to surrogates based on files
-  extrapointsFile: null
-  extrapointsModels: null
-  extrapointsModelsAvoidContent: null
+  # Outlier removal
+  stds_outside: null        # Remove points > this many stds from the GP posterior mean (null = off)
+  stds_outside_checker: 5   # Only check for outliers when the training set has at least this many points
+
+  # External data injection
+  extrapointsFile: null             # Path to a CSV with extra (X, Y) rows to add to the training set
+  extrapointsModels: null           # Path(s) to pre-trained surrogate model(s) to augment the GP
+  extrapointsModelsAvoidContent: null  # Exclude models whose path contains this substring
+
+# -----------------------------------------------------------------
+# Strategy options: bounds management, TURBO, and other BO heuristics
+# -----------------------------------------------------------------
 
 strategy_options:
-  AllowedExcursions: [0.0, 0.0]
-  HitBoundsIncrease: [1.0, 1.0]
-  boundsRefine: null
-  RandomRangeBounds: 0.5
-  ToleranceNiche: 0.001
-  applyCorrections: true
-  SwitchIterationsReduction: [null, null]
+  AllowedExcursions: [0.0, 0.0]     # Fraction of the bound range by which the optimizer may exceed dvs_min / dvs_max
+  HitBoundsIncrease: [1.0, 1.0]     # Multiplicative expansion of bounds when the best point sits at a boundary
+  boundsRefine: null                 # Manual per-DV bound override [min, max] applied after initialization
+  RandomRangeBounds: 0.5            # Fraction of the range used for random perturbation of initial LHS points
+  ToleranceNiche: 0.001             # Minimum distance between candidates to count as distinct (niche radius)
+  applyCorrections: true            # Apply post-processing corrections to the surrogate predictions
+  SwitchIterationsReduction: [null, null]  # [iter_start, iter_end]: reduce acquisition aggressiveness between these iterations
   TURBO_options:
-    apply: false
-    points: 32
-    bounds: [0.75, 1.33]
-    metrics: [3, 3]
+    apply: false            # If true, enable Trust Region Bayesian Optimization (TuRBO)
+    points: 32              # Number of candidate points sampled inside the trust region
+    bounds: [0.75, 1.33]    # Trust region shrink / expand factors
+    metrics: [3, 3]         # [success_tol, failure_tol]: consecutive successes/failures before adjusting the trust region
