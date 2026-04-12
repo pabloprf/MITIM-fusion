@@ -33,13 +33,7 @@ class tglf_model:
 
         ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
 
-        if use_tglf_scan_trick is not None:
-            print(
-                "\t- [batched] use_tglf_scan_trick is set but scan-based uncertainty is not "
-                "yet wired into the multi-plasma TGLF path; falling back to the ad-hoc "
-                "percent_error uncertainty model for this run.",
-                typeMsg="w",
-            )
+        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
 
         # All per-plasma powerstates are tiled from the same rho grid, so the rho locations
         # come from batch 0 of the (already batched) self.powerstate exactly as the single-
@@ -119,8 +113,52 @@ class tglf_model:
             self._raise_warnings(tglf, rho_locations, Qi_includes_fast)
 
         Flux_base = np.stack([Qe_batch, Qi_batch, Ge_batch, GZ_batch, Mt_batch, S_batch], axis=0)
-        Flux_mean = Flux_base
-        Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+
+        # ------------------------------------------------------------------------------------------------------------------------
+        # Evaluate TGLF uncertainty — same choice as the single-plasma path:
+        # either ad-hoc percent_error or the scan-based uncertainty model.
+        # ------------------------------------------------------------------------------------------------------------------------
+
+        if use_tglf_scan_trick is None:
+            Flux_mean = Flux_base
+            Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+        else:
+            # Per-plasma scan-trick uncertainty. For each plasma p, re-activate its per-
+            # plasma state on the tglf instance (profiles, inputs_files, NormalizationSets)
+            # via read_plasma and call _run_tglf_uncertainty_model with a per-plasma
+            # subfolder_name so scans from different plasmas don't collide on disk.
+            # Each call internally parallelizes across (N_variables × 2 × N_rhos) work
+            # units; different plasmas' scans run sequentially.
+            Flux_mean_per_plasma = []
+            Flux_std_per_plasma = []
+            for p, label in plasma_labels.items():
+                tglf.read_plasma(p, label=label, require_all_files=False, **simulation_options["read"])
+                Flux_base_p = np.array([
+                    Qe_batch[p], Qi_batch[p], Ge_batch[p],
+                    GZ_batch[p], Mt_batch[p], S_batch[p],
+                ])
+                Fmean_p, Fstd_p = _run_tglf_uncertainty_model(
+                    tglf,
+                    rho_locations,
+                    self.powerstate.predicted_channels,
+                    Flux_base=Flux_base_p,
+                    ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
+                    delta=use_tglf_scan_trick,
+                    cold_start=cold_start,
+                    extra_name=f"{self.name}_plasma{p}",
+                    cores_per_tglf_instance=cores_per_tglf_instance,
+                    Qi_includes_fast=Qi_includes_fast,
+                    only_minimal_files=keep_tglf_files in ["none", "base"],
+                    reuse_scan_ball_file=reuse_scan_ball_file,
+                    subfolder_name=f"turb_drives_plasma{p}",
+                    **simulation_options["run"],
+                )
+                Flux_mean_per_plasma.append(np.array(Fmean_p))
+                Flux_std_per_plasma.append(np.array(Fstd_p))
+
+            # Stack per-plasma lists of shape [(nrho,) × 6] into (6, N, nrho)
+            Flux_mean = np.stack(Flux_mean_per_plasma, axis=1)
+            Flux_std  = np.stack(Flux_std_per_plasma,  axis=1)
 
         if pass_info:
             self.QeGB_turb      = Flux_mean[0]
@@ -312,22 +350,23 @@ class tglf_model:
 
 def _run_tglf_uncertainty_model(
     tglf,
-    rho_locations, 
-    predicted_channels, 
+    rho_locations,
+    predicted_channels,
     Flux_base = None,
     code_settings=None,
     extraOptions=None,
     ion_OI_position_in_ion_list=1,
-    delta=0.02, 
+    delta=0.02,
     minimum_abs_gradient=0.005, # This is 0.5% of aLx=1.0, to avoid extremely small scans when, for example, having aLn ~ 0.0
-    cold_start=False, 
-    extra_name="", 
+    cold_start=False,
+    extra_name="",
     remove_folders_out = False,
     cores_per_tglf_instance = 4, # e.g. 4 core per radius, since this is going to launch ~ Nr=5 x (Nv=6 x Nd=2 + 1) = 65 TGLFs at once
     Qi_includes_fast=False,
     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
     reuse_scan_ball_file=None,      # If not None, it will reuse previous evaluations within the delta ball (to capture combinations)
-    print_logs = False
+    print_logs = False,
+    subfolder_name = 'turb_drives',  # Base subfolder for the scan; per-plasma callers override to avoid collisions
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -359,7 +398,7 @@ def _run_tglf_uncertainty_model(
         if 'RL' in ikey:
             minimum_delta_abs[ikey] = minimum_abs_gradient
 
-    name = 'turb_drives'
+    name = subfolder_name
 
     tglf.rhos = rho_locations # To avoid the case in which TGYRO was run with an extra rho point
 
