@@ -38,7 +38,7 @@ if cold_start and folderWork.exists():
 portals_fun = PORTALSmain.portals(folderWork)
 
 # Shorten the BO loop so the test is about the *initialization*, not the BO.
-portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 1
+portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 
 # Total deterministic simple-relax points. Must be divisible by the number of
 # trajectories below (2). 4 points = 2 trajectories x 2 steps each.

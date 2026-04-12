@@ -433,6 +433,17 @@ class PORTALSanalyzer:
 
             self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000", show=not noshow)
 
+        # Always attempt to render the SR initialization as the first tab — it shows the
+        # simple-relax trajectory that seeded the BO loop, which is useful context even
+        # (especially) after the run has progressed past initialization.
+        try:
+            sr_init = PORTALSinitializer(self.opt_fun.folder)
+            if len(sr_init.powerstates) > 0:
+                fig_init = self.fn.add_figure(label="SR Initialization", tab_color=tab_color_istart if tabs_colors_common is None else tabs_colors_common)
+                sr_init.plotMetrics(fig=fig_init)
+        except Exception:
+            pass
+
         fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=tab_color_istart if tabs_colors_common is None else tabs_colors_common)
         self.plotRanges(fig=fig)
 
@@ -1036,7 +1047,7 @@ class PORTALSinitializer:
         self.profiles = []
         profiles_dir = self.folder / "Outputs" / "portals_profiles"
         profile_files = sorted(
-            profiles_dir.glob("input.gacode.*"),
+            (p for p in profiles_dir.glob("input.gacode.*") if _extract_trailing_int(p.name) is not None),
             key=lambda p: _extract_trailing_int(p.name),
         ) if profiles_dir.exists() else []
         for prof_path in profile_files:
@@ -1052,6 +1063,7 @@ class PORTALSinitializer:
         # so we glob every `portals_sr_ev_*` directory and sort by the numeric suffix. Each folder
         # may or may not yet contain `powerstate.pkl` — skip the ones that don't.
         self.powerstates = []
+        self.n_trajectories = 1
         init_dir = self.folder / "Initialization" / "initialization_simple_relax"
         if init_dir.exists():
             powerstate_dirs = sorted(
@@ -1066,11 +1078,9 @@ class PORTALSinitializer:
                     p = STATEtools.read_saved_state(pkl)
                 except FileNotFoundError:
                     continue
-                # A powerstate saved during a multi-trajectory parallel relax could, in principle,
-                # carry batch_size > 1. Fan it out into one single-batch copy per batch element so
-                # the downstream plotting code — which iterates `self.powerstates` and calls
-                # `.item()` on scalar residuals — keeps working without per-site batch handling.
                 batch_size = getattr(p, "batch_size", 0) or 1
+                if batch_size > 1:
+                    self.n_trajectories = batch_size
                 if batch_size <= 1:
                     p.profiles.derive_quantities()
                     self.powerstates.append(p)
@@ -1104,7 +1114,29 @@ class PORTALSinitializer:
 
         axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].predicted_channels)]))
 
-        colors = GRAPHICStools.listColors()
+        n_traj = self.n_trajectories
+        n_ps = len(self.powerstates)
+        steps_per_traj = n_ps // n_traj if n_traj > 1 else n_ps
+
+        # Per-trajectory color palette: each trajectory gets a distinct base color.
+        # Within a trajectory, steps use the same color with increasing alpha.
+        _TRAJ_COLORS = ['tab:blue', 'tab:red', 'tab:green', 'tab:orange', 'tab:purple',
+                        'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+        if n_traj > 1:
+            import matplotlib.colors as mcolors
+            def _color_for(traj, step):
+                base = mcolors.to_rgba(_TRAJ_COLORS[traj % len(_TRAJ_COLORS)])
+                alpha = 0.35 + 0.65 * (step / max(steps_per_traj - 1, 1))
+                return (*base[:3], alpha)
+            def _label_for(traj, step):
+                return f"T{traj} s{step}"
+        else:
+            all_colors = GRAPHICStools.listColors()
+            def _color_for(traj, step):
+                return all_colors[step % len(all_colors)]
+            def _label_for(traj, step):
+                return f"#{step}"
+
         axsGrads_extra = []
         cont = 0
         for i in range(np.max([3,len(self.powerstates[-1].predicted_channels)])):
@@ -1117,16 +1149,25 @@ class PORTALSinitializer:
         # ---------------------------------------------------------------------------------
 
         if len(self.powerstates) > 0:
-            for i in range(len(self.powerstates)):
-                self.powerstates[i].plot(axs=axs, c=colors[i], label=f"#{i}")
+            for i in range(n_ps):
+                if n_traj > 1:
+                    # Step-major order: index i maps to (step, traj)
+                    traj_idx = i % n_traj
+                    step_idx = i // n_traj
+                else:
+                    traj_idx, step_idx = 0, i
 
-                # Add profiles too
+                c = _color_for(traj_idx, step_idx)
+                lab = _label_for(traj_idx, step_idx)
+
+                self.powerstates[i].plot(axs=axs, c=c, label=lab)
+
                 self.powerstates[i].profiles.plot_gradients(
                     axsGrads_extra,
-                    color=colors[i],
+                    color=c,
                     plotImpurity=self.powerstates[-1].impurityPosition if 'nZ' in self.powerstates[-1].predicted_channels else None,
                     plotRotation='w0' in self.powerstates[0].predicted_channels,
-                    ls='-',
+                    ls='-' if n_traj <= 1 else ('-' if traj_idx == 0 else '--'),
                     lw=0.5,
                     lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
                     label='',
@@ -1135,10 +1176,11 @@ class PORTALSinitializer:
             axs[0].legend(prop={"size": 8})
 
         # Add next profile
+        next_color = 'k'
         if len(self.profiles) > len(self.powerstates):
             self.profiles[-1].plot_gradients(
                 axsGrads_extra,
-                color=colors[i+1],
+                color=next_color,
                 plotImpurity=self.powerstates[-1].impurityPosition_transport if 'nZ' in self.powerstates[-1].predicted_channels else None,
                 plotRotation='w0' in self.powerstates[0].predicted_channels,
                 ls='-',
@@ -1152,7 +1194,8 @@ class PORTALSinitializer:
             axsM,
             self.powerstates,
             profiles = self.profiles[-1] if len(self.profiles) > len(self.powerstates) else None,
-            profiles_color=colors[i+1],
+            profiles_color=next_color,
+            n_trajectories=n_traj,
         )
 
         # GRADIENTS
@@ -1161,24 +1204,30 @@ class PORTALSinitializer:
                 grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
                 axsGrads = []
                 for j in range(5):
-                    for i in range(2):
-                        axsGrads.append(figG.add_subplot(grid[i, j]))
+                    for ii in range(2):
+                        axsGrads.append(figG.add_subplot(grid[ii, j]))
                 for i, p in enumerate(self.powerstates):
+                    if n_traj > 1:
+                        traj_idx = i % n_traj
+                        step_idx = i // n_traj
+                    else:
+                        traj_idx, step_idx = 0, i
+                    c = _color_for(traj_idx, step_idx)
+                    lab = _label_for(traj_idx, step_idx)
                     p.profiles.plot_gradients(
                         axsGrads,
-                        color=colors[i],
+                        color=c,
                         plotImpurity=p.impurityPosition if 'nZ' in p.predicted_channels else None,
                         plotRotation='w0' in p.predicted_channels,
                         lastRho=self.powerstates[0].plasma["rho"][-1, -1].item(),
-                        label=f"profile #{i}",
+                        label=lab,
                     )
-
 
                 if len(self.profiles) > len(self.powerstates):
                     prof = self.profiles[-1]
                     prof.plot_gradients(
                         axsGrads,
-                        color=colors[i+1],
+                        color=next_color,
                         plotImpurity=p.impurityPosition_transport if 'nZ' in p.predicted_channels else None,
                         plotRotation='w0' in p.predicted_channels,
                         lastRho=p.plasma["rho"][-1, -1].item(),

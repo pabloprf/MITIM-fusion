@@ -254,39 +254,67 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
         GRAPHICStools.addDenseAxis(ax)
 
 
-def plot_metrics_powerstates(axsM, powerstates, profiles=None, profiles_color='b'):
+def plot_metrics_powerstates(axsM, powerstates, profiles=None, profiles_color='b', n_trajectories=1):
 
+    _TRAJ_COLORS = ['tab:blue', 'tab:red', 'tab:green', 'tab:orange', 'tab:purple',
+                    'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+
+    n_ps = len(powerstates)
+    n_traj = n_trajectories
+
+    # --- Residual panel ---
     ax = axsM[0]
-    x , y = [], []
-    for h in range(len(powerstates)):
-        x.append(h)
-        y.append(powerstates[h].plasma['residual'].item())
-        
-    ax.plot(x,y,'-s', color='b', lw=1, ms=5)
+    if n_traj > 1:
+        for t in range(n_traj):
+            xs, ys = [], []
+            for i in range(n_ps):
+                if i % n_traj == t:
+                    xs.append(i)
+                    ys.append(powerstates[i].plasma['residual'].item())
+            ax.plot(xs, ys, '-s', color=_TRAJ_COLORS[t % len(_TRAJ_COLORS)],
+                    lw=1, ms=4, label=f'T{t}')
+        ax.legend(prop={"size": 7})
+    else:
+        x, y = [], []
+        for h in range(n_ps):
+            x.append(h)
+            y.append(powerstates[h].plasma['residual'].item())
+        ax.plot(x, y, '-s', color='b', lw=1, ms=5)
     ax.set_yscale('log')
-    #ax.set_xlabel('Evaluation')
     ax.set_ylabel('Mean Residual')
-    ax.set_xlim([0,len(powerstates)+1])
+    ax.set_xlim([0, n_ps + 1])
     GRAPHICStools.addDenseAxis(ax)
 
+    # --- Fusion power panel ---
     ax = axsM[1]
-    x , y = [], []
-    for h in range(len(powerstates)):
-        x.append(h)
-        Pfus = powerstates[h].from_density_to_flux(
-            (powerstates[h].plasma["qfuse"] + powerstates[h].plasma["qfusi"]) * 5.0
+    if n_traj > 1:
+        for t in range(n_traj):
+            xs, ys = [], []
+            for i in range(n_ps):
+                if i % n_traj == t:
+                    xs.append(i)
+                    Pfus = powerstates[i].from_density_to_flux(
+                        (powerstates[i].plasma["qfuse"] + powerstates[i].plasma["qfusi"]) * 5.0
+                    ) * powerstates[i].plasma["volp"]
+                    ys.append(Pfus[..., -1].item())
+            ax.plot(xs, ys, '-s', color=_TRAJ_COLORS[t % len(_TRAJ_COLORS)],
+                    lw=1, ms=4, label=f'T{t}')
+    else:
+        x, y = [], []
+        for h in range(n_ps):
+            x.append(h)
+            Pfus = powerstates[h].from_density_to_flux(
+                (powerstates[h].plasma["qfuse"] + powerstates[h].plasma["qfusi"]) * 5.0
             ) * powerstates[h].plasma["volp"]
-        y.append(Pfus[..., -1].item())
-
-    if profiles is not None:
-        x.append(h+1)
-        y.append(profiles.derived["Pfus"])
-    ax.plot(x,y,'-s', color='b', lw=1, ms=5)
-    if profiles is not None:
-            ax.plot(x[-1],y[-1],'s', color=profiles_color, ms=5)
-
+            y.append(Pfus[..., -1].item())
+        if profiles is not None:
+            x.append(h + 1)
+            y.append(profiles.derived["Pfus"])
+        ax.plot(x, y, '-s', color='b', lw=1, ms=5)
+        if profiles is not None:
+            ax.plot(x[-1], y[-1], 's', color=profiles_color, ms=5)
     ax.set_xlabel('Evaluation')
     ax.set_ylabel('Fusion Power (MW)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim(bottom=0)
-    ax.set_xlim([0,len(powerstates)+1])
+    ax.set_xlim([0, n_ps + 1])

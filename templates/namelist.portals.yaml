@@ -111,7 +111,7 @@ transport:
   #             cd src/mitim_tools/simulation_tools/interfaces && bash build_tglf_lib.sh
   #             cd src/mitim_tools/simulation_tools/interfaces && bash build_neo_lib.sh
   # When True, every PORTALS transport call is executed in-memory with no folder / file I/O.
-  in_process: true
+  in_process: false
 
   # Select transport models (when instantiating the evaluator, assign these parameters)
   evaluator_instance_attributes:

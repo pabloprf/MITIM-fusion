@@ -295,7 +295,13 @@ def initialization_simple_relax(self):
             i = s * n_traj + t
             ff = self.folderExecution / "Execution" / f"Evaluation.{i}"
             ff.mkdir(parents=True, exist_ok=True)
-            source = MainFolder / f"portals_sr_ev_{s}" / "transport_simulation_folder" / f"plasma_{t}"
+
+            # For n_traj > 1 the batched evaluate path writes per-plasma sub-folders
+            # (plasma_0/, plasma_1/, ...) under each step's transport_simulation_folder.
+            # For n_traj == 1 the normal single-plasma evaluate path writes directly at
+            # the transport_simulation_folder level (no plasma_* sub-dir).
+            step_folder = MainFolder / f"portals_sr_ev_{s}" / "transport_simulation_folder"
+            source = step_folder / f"plasma_{t}" if n_traj > 1 else step_folder
 
             if (ff / "transport_simulation_folder").exists():
                 IOtools.shutil_rmtree(ff / "transport_simulation_folder")
