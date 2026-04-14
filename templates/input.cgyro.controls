@@ -24,7 +24,7 @@ FIELD_PRINT_FLAG=1
 #VELOCITY_ORDER=2
 
 #Toroidal modes per processor
-TOROIDALS_PER_PROC=1
+TOROIDALS_PER_PROC=4
 
 # Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugama #5 = Fast diagonal Lorentz)
 COLLISION_MODEL=4

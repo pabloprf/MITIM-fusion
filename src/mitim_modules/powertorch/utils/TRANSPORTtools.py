@@ -231,6 +231,7 @@ class power_transport:
         N = int(self.powerstate.batch_size)
 
         # (1) Materialise N per-plasma input.gacodes + gacode_state profile objects.
+        profiles_postprocessing_fun = self.powerstate.transport_options.get("profiles_postprocessing_fun")
         list_of_states = []
         per_plasma_folders = []
         for b in range(N):
@@ -241,12 +242,36 @@ class power_transport:
             sub_powerstate = copy.deepcopy(self.powerstate)
             sub_powerstate._repeat_tensors(batch_size=1, positionToUnrepeat=b)
 
+            gacode_file = sub_folder / "input.gacode"
             sub_profile = sub_powerstate.copy_state().from_powerstate(
-                write_input_gacode=sub_folder / "input.gacode",
+                write_input_gacode=gacode_file,
                 postprocess_input_gacode=self.powerstate.transport_options.get("applyCorrections", True),
                 rederive_profiles=True,
                 insert_highres_powers=True,
             )
+
+            # Apply profiles postprocessing (e.g. impurity lumping), mirroring _modify_profiles()
+            if profiles_postprocessing_fun is not None:
+                # Save unmodified species list to detect impurity position changes
+                p_old = PROFILEStools.gacode_state(gacode_file)
+                species_before = list(p_old.Species)
+
+                sub_profile = profiles_postprocessing_fun(gacode_file)
+
+                # Update impurityPosition_transport if lumping changed the species list
+                # (only need to do this once — all plasmas share the same species structure)
+                if b == 0:
+                    p_new = PROFILEStools.gacode_state(gacode_file)
+                    impurity_of_interest = species_before[self.powerstate.impurityPosition]
+                    try:
+                        impurityPosition_new = p_new.Species.index(impurity_of_interest)
+                    except ValueError:
+                        print(f"\t- Impurity {impurity_of_interest} not found in post-processed profiles, keeping position {self.powerstate.impurityPosition}", typeMsg="w")
+                        impurityPosition_new = self.powerstate.impurityPosition
+                    if impurityPosition_new != self.powerstate.impurityPosition:
+                        print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}", typeMsg="i")
+                        self.powerstate.impurityPosition_transport = impurityPosition_new
+
             list_of_states.append(sub_profile)
 
         # (2) Suppress the bundled-folder write_json decorators — each per-plasma JSON pair
@@ -678,6 +703,8 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
         # folder write_json decorator via self._write_json_from_variables_turb = False.
         if self.turbulence_model.lower() == 'tglf':
             return tglf_model.evaluate_turbulence_batched(self, list_of_states)
+        elif self.turbulence_model.lower() == 'cgyro':
+            return cgyro_model.evaluate_turbulence_batched(self, list_of_states)
         else:
             raise NotImplementedError(
                 f"Batched turbulence dispatch not yet implemented for model "

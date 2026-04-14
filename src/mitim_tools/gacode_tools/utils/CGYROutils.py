@@ -51,7 +51,7 @@ def compute_box_and_nradial(
 
     # Literal port of the IDL guard. The raw integer comparison only matches
     # the original "never smaller than 100 rho_s" comment when box_fac ~ 1.
-    if box_floor < min_box_size:
+    if box_floor*box_fac < min_box_size:
         box_size = box_ceil
     else:
         candidates = [box_floor, box_ceil]
