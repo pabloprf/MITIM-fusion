@@ -27,10 +27,10 @@ FIELD_PRINT_FLAG=1
 TOROIDALS_PER_PROC=1
 
 # Collision Model (1=Lorentz, 2=Conner, 3=Hirsh-Sigmar, 4=Sugama #5 = Fast diagonal Lorentz)
-COLLISION_MODEL=4
+COLLISION_MODEL=5
 
 #Rotation
-ROTATION_MODEL=2
+ROTATION_MODEL=1
 SHEAR_METHOD=2
 
 # ===================================

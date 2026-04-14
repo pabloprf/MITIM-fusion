@@ -240,48 +240,71 @@ class CGYROoutput(SIMtools.GACODEoutput):
     def read_using_cgyroplot(self, folder, suffix):
 
         original_dir = os.getcwd()
-        
-        # Handle files with suffix by creating temporary symbolic links
         self.temp_links = []
+
+        # With job arrays, CGYRO output files for each rho live side-by-side in
+        # the parent folder with a per-rho suffix (e.g. out.cgyro.info_0.8519).
+        # pygacode expects canonical names, so we stage symlinks from canonical
+        # -> suffixed for the duration of the read and clean them up after.
         if suffix:
             import glob
-            
-            # Find all files with the suffix pattern
-            pattern = f"{folder.resolve()}{os.sep}*{suffix}"
-            suffixed_files = glob.glob(pattern)
-            
-            for suffixed_file in suffixed_files:
-                # Create expected filename without suffix
-                original_name = suffixed_file.replace(suffix, '')
-                
-                # Only create symlink if the original doesn't exist and the suffixed file does
-                if not os.path.exists(original_name) and os.path.exists(suffixed_file):
-                    try:
-                        os.symlink(suffixed_file, original_name)
-                        self.temp_links.append(original_name)
-                        print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {os.path.basename(suffixed_file)}")
-                    except (OSError, FileExistsError) as e:
-                        print(f"\t- Warning: Could not create symlink for {os.path.basename(suffixed_file)}: {e}", typeMsg='w')
-        
-        try:
-            print(f"\t- Reading CGYRO data from {folder.resolve()}")
-            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-        except FileNotFoundError:
-            raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
-        except Exception as e:
-            print(f"\t- Error reading CGYRO data: {e}")
-            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.chdir(folder)
-                os.system("cgyro -t")
-            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-        finally:
 
+            folder_abs = folder.resolve()
+            pattern = f"{folder_abs}{os.sep}*{suffix}"
+
+            for suffixed_file in glob.glob(pattern):
+                basename = os.path.basename(suffixed_file)
+                # Strip suffix only from the basename, and only if it is a true
+                # trailing suffix — avoids collateral damage when the suffix
+                # substring happens to appear elsewhere in the path.
+                if not basename.endswith(suffix):
+                    continue
+                original_name = os.path.join(folder_abs, basename[:-len(suffix)])
+
+                # Sweep any stale symlink from a previous (possibly crashed)
+                # read so that symlink creation below is idempotent.
+                if os.path.islink(original_name):
+                    try:
+                        os.unlink(original_name)
+                    except OSError:
+                        pass
+
+                # Skip if a real file already sits at the canonical name.
+                if os.path.exists(original_name) and not os.path.islink(original_name):
+                    continue
+
+                try:
+                    os.symlink(suffixed_file, original_name)
+                    self.temp_links.append(original_name)
+                    print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {basename}")
+                except OSError as e:
+                    print(f"\t- Warning: Could not create symlink for {basename}: {e}", typeMsg='w')
+
+        try:
+            try:
+                print(f"\t- Reading CGYRO data from {folder.resolve()}")
+                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+            except FileNotFoundError:
+                raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
+            except Exception as e:
+                print(f"\t- Error reading CGYRO data: {e}")
+                if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
+                    os.chdir(folder)
+                    os.system("cgyro -t")
+                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+        except Exception:
+            # Guarantee cleanup if the read raises so a subsequent re-read
+            # doesn't trip over stale symlinks.
+            self.remove_symlinks()
+            raise
+        finally:
             os.chdir(original_dir)
-                        
+
         return cgyrodata
 
     def remove_symlinks(self):
-        # Remove temporary symbolic links
+        # Remove temporary symbolic links (idempotent).
+        remaining = []
         for temp_link in self.temp_links:
             try:
                 if os.path.islink(temp_link):
@@ -289,6 +312,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
                     print(f"\t- Removed temporary link: {os.path.basename(temp_link)}")
             except OSError as e:
                 print(f"\t- Warning: Could not remove temporary link {os.path.basename(temp_link)}: {e}", typeMsg='w')
+                remaining.append(temp_link)
+        self.temp_links = remaining
 
     def _process_linear(self):
 

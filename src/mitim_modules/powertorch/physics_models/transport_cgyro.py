@@ -73,19 +73,22 @@ class gyrokinetic_model:
                     **simulation_options["read"]
                     )
                 
-                # Special case to keep only the pickle file but remove all heavy files
+                # Special case to keep only the pickle file but remove all heavy files.
+                # Save pickle FIRST; only unlink the heavy files if the pickle is on disk,
+                # otherwise a save failure would leave the run with no data at all.
                 if keep_gk_files in ['pickle']:
-                    
-                    # Remove results files in subfolder
-                    for file in gk_object.output_files_simulation["complete"]:
-                        
-                        for rho in gk_object.rhos:
-                            fileN = f"{file}_{rho:.4f}"
-                        
-                            (self.folder / f"{subfolder_name}" / fileN).unlink(missing_ok=True)
-                    
-                    # Save the gk_object as pickle
+                    pickle_file.parent.mkdir(parents=True, exist_ok=True)
                     gk_object.save_pickle(pickle_file)
+                    if pickle_file.exists():
+                        for file in gk_object.output_files_simulation["complete"]:
+                            for rho in gk_object.rhos:
+                                fileN = f"{file}_{rho:.4f}"
+                                (self.folder / f"{subfolder_name}" / fileN).unlink(missing_ok=True)
+                    else:
+                        print(
+                            f"\t- save_pickle did not produce {pickle_file}; keeping raw CGYRO files",
+                            typeMsg='w',
+                        )
         
             # ------------------------------------------------------------------------------------------------------------------------
             # Pass the information to what power_transport expects
@@ -139,11 +142,16 @@ class gyrokinetic_model:
 
     def _stable_correction(self, simulation_options_all):
 
-        print(f"\n- Checking if any radius has Qi below the stability criterion to apply a stable correction if needed...", typeMsg='i')
-
         simulation_options = simulation_options_all["cgyro"]
 
         Qi_stable_criterion = simulation_options["Qi_stable_criterion"]
+        # Setting Qi_stable_criterion to null/None in the namelist disables the check entirely.
+        if Qi_stable_criterion is None:
+            print("\n- Qi_stable_criterion is null; skipping CGYRO stable-flux check", typeMsg='i')
+            return
+
+        print(f"\n- Checking if any radius has Qi below the stability criterion to apply a stable correction if needed...", typeMsg='i')
+
         Qi_stable_percent_error = simulation_options["Qi_stable_percent_error"]
 
         # Check if Qi in MW/m2 < Qi_stable_criterion
@@ -306,15 +314,22 @@ class cgyro_model(gyrokinetic_model):
             S_batch[p, :]      = 0.0  # TODO
             S_std_batch[p, :]  = 0.0  # TODO
 
-        # Save pickle and remove heavy files (mirrors single-plasma path)
+        # Save pickle first, then remove heavy files only if the pickle is on disk.
+        # This mirrors the single-plasma path and prevents data loss if save_pickle raises.
         if keep_gk_files in ["pickle"] and not cgyro_unpickled:
-            for p, label in plasma_labels.items():
-                for file in cgyro.output_files_simulation["complete"]:
-                    for rho in cgyro.rhos:
-                        fileN = f"{file}_{rho:.4f}"
-                        (self.folder / label / fileN).unlink(missing_ok=True)
             pickle_file.parent.mkdir(parents=True, exist_ok=True)
             cgyro.save_pickle(pickle_file)
+            if pickle_file.exists():
+                for p, label in plasma_labels.items():
+                    for file in cgyro.output_files_simulation["complete"]:
+                        for rho in cgyro.rhos:
+                            fileN = f"{file}_{rho:.4f}"
+                            (self.folder / label / fileN).unlink(missing_ok=True)
+            else:
+                print(
+                    f"\t- save_pickle did not produce {pickle_file}; keeping raw CGYRO files",
+                    typeMsg='w',
+                )
 
         if pass_info:
             self.QeGB_turb      = Qe_batch

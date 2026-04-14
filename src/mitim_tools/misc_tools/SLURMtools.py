@@ -43,7 +43,8 @@ from mitim_tools.misc_tools import CONFIGread
 CODE_HINTS = {
     "tglf":  {"default_resources_per_call": 4,  "uses_gpu": False, "full_node_mpi": False},
     "neo":   {"default_resources_per_call": 1,  "uses_gpu": False, "full_node_mpi": False},
-    "cgyro": {"default_resources_per_call": 16, "uses_gpu": True,  "full_node_mpi": True},
+    "cgyro": {"default_resources_per_call": 16, "uses_gpu": True,  "full_node_mpi": True,
+              "cores_per_mpi": 8},  # OMP threads per MPI rank on GPU machines (1 rank per GPU)
     "gx":    {"default_resources_per_call": 4,  "uses_gpu": True,  "full_node_mpi": False,
               "fixed_mem": "100GB", "gpus_per_task": 1, "requires_gpu": True},
     # Add others (tgyro, ...) here as they adopt the resolver.
@@ -126,6 +127,7 @@ def resolve(
     # caller passed a raw dict (tests) or a typed MachineConfig (real runs).
     cores_per_node = int(machine_settings.get("cores_per_node") or 0)
     gpus_per_node = int(machine_settings.get("gpus_per_node") or 0)
+    code_cores_per_mpi = hints.get("cores_per_mpi")
     machine_slurm = machine_settings.get("slurm", {}) or {}
     has_slurm = bool(machine_slurm.get("partition"))
 
@@ -152,7 +154,7 @@ def resolve(
             submission_type = "slurm_array"
 
     # --- MPI layout (consumed by code_call) --------------------------------
-    mpi = _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node)
+    mpi = _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi)
 
     # --- Bash concurrency (non-SLURM mode) ---------------------------------
     concurrency = 1
@@ -187,6 +189,7 @@ def resolve(
             resources_per_call=resources_per_call,
             cores_per_node=cores_per_node,
             gpus_per_node=gpus_per_node,
+            code_cores_per_mpi=code_cores_per_mpi,
             n_rhos=n_rhos,
             n_subfolders=n_subfolders,
             array_list=array_list,
@@ -209,36 +212,40 @@ def resolve(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node):
+def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi=None):
     """MPI parameters that the per-code `code_call` needs."""
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and cores_per_node > 0:
-        # CGYRO on GPU machines: always full-node MPI (ppr:gpus_per_node:node).
-        # `resources_per_call` only controls --gpus-per-node, not MPI ranks.
+        # CGYRO on GPU machines: 1 MPI rank per GPU. `resources_per_call` = GPUs/call.
+        # --> resources_per_call=1 → 1 rank / 1 GPU (four cases fit on a 4-GPU node)
+        # --> resources_per_call=4 → 4 ranks / 4 GPUs (one case saturates a node)
+        n_ranks = max(1, min(int(resources_per_call), gpus_per_node))
+        nomp = int(code_cores_per_mpi) if code_cores_per_mpi else max(1, cores_per_node // gpus_per_node)
         return {
-            "n": gpus_per_node,
-            "nomp": cores_per_node // gpus_per_node,
-            "numa": gpus_per_node,
+            "n": n_ranks,
+            "nomp": nomp,
+            "numa": n_ranks,
             "mpinuma": 1,
         }
     return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None}
 
 
 def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
-                        cores_per_node, gpus_per_node, n_rhos, n_subfolders, array_list):
+                        cores_per_node, gpus_per_node, code_cores_per_mpi,
+                        n_rhos, n_subfolders, array_list):
     """Populate nodes/ntasks/cpus-per-task/gpus-per-node etc. using native names."""
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0:
-        # CGYRO GPU path: full-node MPI layout required by exec.*_GPU scripts.
-        # One resource == one GPU here.
-        n_gpus_requested = min(resources_per_call, gpus_per_node)
-        omp_per_task = cores_per_node // gpus_per_node if cores_per_node else 1
+        # CGYRO GPU path: 1 MPI rank per GPU. `resources_per_call` = GPUs/call.
+        # Array tasks with resources_per_call < gpus_per_node pack onto one node.
+        n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))
+        omp_per_task = int(code_cores_per_mpi) if code_cores_per_mpi else (
+            cores_per_node // gpus_per_node if cores_per_node else 1)
 
         if submission_type == "slurm_standard":
             n_radii = n_rhos * n_subfolders
-            sbatch["nodes"] = n_radii
-            sbatch["ntasks"] = gpus_per_node * n_radii
+            sbatch["ntasks"] = n_gpus_requested * n_radii
         elif submission_type == "slurm_array":
-            sbatch["nodes"] = 1  # required for ppr:N:node mapping
-            sbatch["ntasks"] = gpus_per_node
+            sbatch["nodes"] = 1
+            sbatch["ntasks-per-node"] = n_gpus_requested
             sbatch["array"] = ",".join(array_list or [])
 
         sbatch["cpus-per-task"] = omp_per_task

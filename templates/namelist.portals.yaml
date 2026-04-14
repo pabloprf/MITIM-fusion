@@ -217,7 +217,8 @@ transport:
       read:
         tmin: -0.3 # Last 30% of the simulation
       
-      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
+      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable.
+      # Set to null to disable the stable-flux check entirely (no std inflation).
       Qi_stable_criterion: 0.001
 
       # (%) For CGYRO runs, minimum error based on target if case is considered stable

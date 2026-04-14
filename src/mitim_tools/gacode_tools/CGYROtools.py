@@ -28,7 +28,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # knobs (full-node MPI on GPU machines, MPS sharing) live in one
             # place instead of being duplicated here and in code_slurm_settings.
             from mitim_tools.misc_tools import SLURMtools
-            resolved = SLURMtools.resolve(code='cgyro', allocation={'cores': int(n)})
+            resolved = SLURMtools.resolve(code='cgyro', allocation={'resources_per_call': int(n)})
             mpi = resolved.mpi
 
             if mpi.get("numa") is not None:
@@ -159,12 +159,287 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         if getattr(self, "_preprocess_options", None) is not None:
             extraOptions = self._apply_cgyro_preprocessing(extraOptions or {})
 
+        # Enforce TOROIDALS_PER_PROC compatibility with N_TOROIDAL and MPI rank count.
+        # Resolution order matches what _run_prepare will eventually write:
+        #   input.cgyro.controls  ->  input.cgyro.models.yaml[code_settings]  ->  extraOptions
+        extraOptions = self._enforce_toroidals_per_proc(
+            extraOptions or {},
+            kwargs.get("allocation"),
+            code_settings=kwargs.get("code_settings"),
+        )
+
+        # Enforce PRINT_STEP so that DELTA_T * PRINT_STEP == 1.0 (integer PRINT_STEP).
+        # Same resolution order as above: controls -> yaml -> extraOptions.
+        extraOptions = self._enforce_print_step(
+            extraOptions or {},
+            code_settings=kwargs.get("code_settings"),
+        )
+
+        # Ensure RESTART_STEP >= total number of data outputs so the restart file
+        # is written at least once at the end. One data output == DELTA_T*PRINT_STEP,
+        # so n_outputs = ceil(MAX_TIME / (DELTA_T*PRINT_STEP)).
+        extraOptions = self._enforce_restart_step(
+            extraOptions or {},
+            code_settings=kwargs.get("code_settings"),
+        )
+
         return super()._run_prepare(
             subfolder_simulation,
             extraOptions=extraOptions,
             multipliers=multipliers,
             **kwargs,
         )
+
+    def _enforce_toroidals_per_proc(self, extraOptions, allocation, code_settings=None):
+        """
+        CGYRO distributes N_TOROIDAL across MPI ranks (= resources_per_call GPUs).
+        Each rank holds N_TOROIDAL/resources toroidal modes, so TOROIDALS_PER_PROC
+        must be a multiple of that ratio. If the user's value is incompatible (or
+        missing), coerce it to the minimum valid value and warn.
+
+        Resolution order for N_TOROIDAL / TOROIDALS_PER_PROC mirrors the one
+        _run_prepare applies when materializing input.cgyro:
+            inputs_files[rho].controls       (base input.cgyro.controls)
+                ->  input.cgyro.models.yaml[code_settings]   (e.g. Nonlinear sets N_TOROIDAL=12)
+                ->  extraOptions             (user/per-rho override)
+        """
+        from mitim_tools.misc_tools import SLURMtools
+        from mitim_tools.gacode_tools.utils import GACODEdefaults
+
+        allocation = allocation or {}
+        default_rpc = SLURMtools.CODE_HINTS.get('cgyro', {}).get("default_resources_per_call", 1)
+        resources_per_call = int(allocation.get("resources_per_call", default_rpc))
+        if resources_per_call <= 0:
+            return extraOptions
+
+        # Start from the per-rho controls snapshot (input.cgyro.controls) and,
+        # if a code_settings label was provided, layer the yaml overrides on top
+        # so we see the same N_TOROIDAL that will be written to disk.
+        controls = {}
+        if self.rhos is not None and len(self.rhos) > 0:
+            controls = dict(self.inputs_files[self.rhos[0]].controls)
+        if code_settings is not None:
+            try:
+                controls = GACODEdefaults.addCGYROcontrol(code_settings)
+            except Exception as e:
+                print(
+                    f"\t- [preprocess] Could not resolve code_settings={code_settings!r} "
+                    f"against input.cgyro.models.yaml ({e}); falling back to controls file only",
+                    typeMsg="w",
+                )
+
+        n_tor_src = extraOptions.get('N_TOROIDAL', controls.get('N_TOROIDAL', 1))
+        n_tor_list = [int(v) for v in n_tor_src] if isinstance(n_tor_src, (list, np.ndarray)) else [int(n_tor_src)]
+
+        if any(nt <= 0 or nt % resources_per_call != 0 for nt in n_tor_list):
+            print(
+                f"\t- [preprocess] N_TOROIDAL={n_tor_list} not divisible by "
+                f"resources_per_call={resources_per_call}; leaving TOROIDALS_PER_PROC as-is",
+                typeMsg="w",
+            )
+            return extraOptions
+
+        # Respect an explicit user-supplied TOROIDALS_PER_PROC in extraOptions:
+        # if set there, leave it untouched (user is overriding on purpose).
+        if 'TOROIDALS_PER_PROC' in extraOptions:
+            return extraOptions
+
+        required_divisors = [nt // resources_per_call for nt in n_tor_list]
+        extraOptions = copy.deepcopy(extraOptions)
+        tpp_src = controls.get('TOROIDALS_PER_PROC', required_divisors[0])
+        tpp_list = [int(v) for v in tpp_src] if isinstance(tpp_src, (list, np.ndarray)) else [int(tpp_src)] * len(required_divisors)
+
+        # Broadcast a scalar constraint to match len(tpp_list); pad divisors if N_TOROIDAL was scalar.
+        if len(required_divisors) == 1 and len(tpp_list) > 1:
+            required_divisors = required_divisors * len(tpp_list)
+        if len(tpp_list) != len(required_divisors):
+            print(
+                f"\t- [preprocess] TOROIDALS_PER_PROC length {len(tpp_list)} mismatches "
+                f"N_TOROIDAL length {len(required_divisors)}; leaving as-is",
+                typeMsg="w",
+            )
+            return extraOptions
+
+        coerced = [
+            v if (v > 0 and v % d == 0) else d
+            for v, d in zip(tpp_list, required_divisors)
+        ]
+
+        if coerced != tpp_list:
+            print(
+                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted to be a multiple of "
+                f"N_TOROIDAL/resources={required_divisors}: {coerced}",
+                typeMsg="w",
+            )
+
+        # Preserve scalar shape if the caller originally gave a scalar and all coerced match.
+        if not isinstance(tpp_src, (list, np.ndarray)) and len(set(coerced)) == 1:
+            extraOptions['TOROIDALS_PER_PROC'] = coerced[0]
+        else:
+            extraOptions['TOROIDALS_PER_PROC'] = coerced
+
+        return extraOptions
+
+    def _enforce_print_step(self, extraOptions, code_settings=None):
+        """
+        Set PRINT_STEP so that DELTA_T * PRINT_STEP == 1.0 (PRINT_STEP integer).
+        DELTA_T resolves through the same layering _run_prepare applies:
+            inputs_files[rho].controls  ->  input.cgyro.models.yaml[code_settings]  ->  extraOptions
+        If the user explicitly sets PRINT_STEP in extraOptions, it is respected.
+        """
+        from mitim_tools.gacode_tools.utils import GACODEdefaults
+
+        if 'PRINT_STEP' in extraOptions:
+            return extraOptions
+
+        controls = {}
+        if self.rhos is not None and len(self.rhos) > 0:
+            controls = dict(self.inputs_files[self.rhos[0]].controls)
+        if code_settings is not None:
+            try:
+                controls = GACODEdefaults.addCGYROcontrol(code_settings)
+            except Exception as e:
+                print(
+                    f"\t- [preprocess] Could not resolve code_settings={code_settings!r} "
+                    f"against input.cgyro.models.yaml ({e}); falling back to controls file only",
+                    typeMsg="w",
+                )
+
+        dt_src = extraOptions.get('DELTA_T', controls.get('DELTA_T', None))
+        if dt_src is None:
+            return extraOptions
+
+        dt_list = (
+            [float(v) for v in dt_src]
+            if isinstance(dt_src, (list, np.ndarray))
+            else [float(dt_src)]
+        )
+        if any(dt <= 0 for dt in dt_list):
+            print(
+                f"\t- [preprocess] DELTA_T={dt_list} contains non-positive values; leaving PRINT_STEP as-is",
+                typeMsg="w",
+            )
+            return extraOptions
+
+        # PRINT_STEP * DELTA_T should equal 1.0 -> PRINT_STEP = round(1.0 / DELTA_T).
+        print_steps = [max(1, int(round(1.0 / dt))) for dt in dt_list]
+
+        extraOptions = copy.deepcopy(extraOptions)
+        if not isinstance(dt_src, (list, np.ndarray)) and len(set(print_steps)) == 1:
+            extraOptions['PRINT_STEP'] = print_steps[0]
+        else:
+            extraOptions['PRINT_STEP'] = print_steps
+
+        print(
+            f"\t- [preprocess] PRINT_STEP set to {extraOptions['PRINT_STEP']} "
+            f"(DELTA_T={dt_src} -> DELTA_T*PRINT_STEP ~= 1.0)",
+            typeMsg="i",
+        )
+        return extraOptions
+
+    def _enforce_restart_step(self, extraOptions, code_settings=None):
+        """
+        Ensure CGYRO writes a restart by the end of the run. The restart trigger
+        inside cgyro_restart.F90 is `mod(i_time, restart_step*print_step) == 0`,
+        with i_time running 1..n_time and n_time = nint(MAX_TIME/DELTA_T). So the
+        firing condition requires RESTART_STEP*PRINT_STEP <= n_time, i.e.
+        RESTART_STEP <= n_outputs = MAX_TIME / (DELTA_T*PRINT_STEP).
+
+        To guarantee exactly one restart at end-of-run, we set RESTART_STEP equal
+        to n_outputs (this divides itself and fires at i_time == n_time).
+        If the user's controls-file / yaml value is already <= n_outputs and
+        divides it evenly, we keep it; otherwise we coerce to n_outputs.
+
+        Resolution order matches _run_prepare:
+            inputs_files[rho].controls  ->  input.cgyro.models.yaml[code_settings]  ->  extraOptions
+        If the user explicitly sets RESTART_STEP in extraOptions, it is respected.
+        """
+        import math
+        from mitim_tools.gacode_tools.utils import GACODEdefaults
+
+        if 'RESTART_STEP' in extraOptions:
+            return extraOptions
+
+        controls = {}
+        if self.rhos is not None and len(self.rhos) > 0:
+            controls = dict(self.inputs_files[self.rhos[0]].controls)
+        if code_settings is not None:
+            try:
+                controls = GACODEdefaults.addCGYROcontrol(code_settings)
+            except Exception as e:
+                print(
+                    f"\t- [preprocess] Could not resolve code_settings={code_settings!r} "
+                    f"against input.cgyro.models.yaml ({e}); falling back to controls file only",
+                    typeMsg="w",
+                )
+
+        def _as_list(key):
+            src = extraOptions.get(key, controls.get(key, None))
+            if src is None:
+                return None, None
+            if isinstance(src, (list, np.ndarray)):
+                return [float(v) for v in src], src
+            return [float(src)], src
+
+        dt_list, dt_src = _as_list('DELTA_T')
+        ps_list, ps_src = _as_list('PRINT_STEP')
+        mt_list, mt_src = _as_list('MAX_TIME')
+
+        if dt_list is None or ps_list is None or mt_list is None:
+            return extraOptions
+        if any(v <= 0 for v in dt_list + ps_list + mt_list):
+            print(
+                f"\t- [preprocess] Non-positive DELTA_T/PRINT_STEP/MAX_TIME; leaving RESTART_STEP as-is",
+                typeMsg="w",
+            )
+            return extraOptions
+
+        # Broadcast to common length.
+        n = max(len(dt_list), len(ps_list), len(mt_list))
+        def _bcast(lst):
+            return lst * n if len(lst) == 1 else lst
+        dt_list, ps_list, mt_list = _bcast(dt_list), _bcast(ps_list), _bcast(mt_list)
+        if not (len(dt_list) == len(ps_list) == len(mt_list) == n):
+            print(
+                "\t- [preprocess] DELTA_T/PRINT_STEP/MAX_TIME length mismatch; leaving RESTART_STEP as-is",
+                typeMsg="w",
+            )
+            return extraOptions
+
+        n_outputs = [max(1, math.ceil(mt / (dt * ps))) for dt, ps, mt in zip(dt_list, ps_list, mt_list)]
+
+        rs_src = extraOptions.get('RESTART_STEP', controls.get('RESTART_STEP', 0))
+        rs_list = (
+            [int(v) for v in rs_src]
+            if isinstance(rs_src, (list, np.ndarray))
+            else [int(rs_src)] * n
+        )
+        if len(rs_list) != n:
+            rs_list = rs_list + [rs_list[-1]] * (n - len(rs_list)) if len(rs_list) < n else rs_list[:n]
+
+        # Keep the user/controls value if it is a valid divisor of n_outputs
+        # (fires at least once by end-of-run); otherwise coerce to n_outputs so
+        # a single restart is written exactly at t = MAX_TIME.
+        coerced = [
+            rs if (0 < rs <= no and no % rs == 0) else no
+            for rs, no in zip(rs_list, n_outputs)
+        ]
+
+        extraOptions = copy.deepcopy(extraOptions)
+        # Preserve scalar shape if inputs were all scalar and all coerced agree.
+        scalars = not any(isinstance(x, (list, np.ndarray)) for x in (dt_src, ps_src, mt_src, rs_src))
+        if scalars and len(set(coerced)) == 1:
+            extraOptions['RESTART_STEP'] = coerced[0]
+        else:
+            extraOptions['RESTART_STEP'] = coerced
+
+        print(
+            f"\t- [preprocess] RESTART_STEP set to {extraOptions['RESTART_STEP']} "
+            f"(<= n_outputs = ceil(MAX_TIME/(DELTA_T*PRINT_STEP)) = {n_outputs}; "
+            f"restart fires when mod(i_time, RESTART_STEP*PRINT_STEP) == 0)",
+            typeMsg="i",
+        )
+        return extraOptions
 
     def _apply_cgyro_preprocessing(self, extraOptions):
         """
@@ -310,19 +585,26 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     # Redefined to remove potential large objects
     def save_pickle(self, file, **kwargs):
-        
+
         class_to_store = super().prepare_for_save()
-        
-        # Remove heavy objects
-        
-        class_to_store = copy.deepcopy(class_to_store)
-        
+
+        # cgyrodata carries _thread.lock through its internal HDF/file handles,
+        # which breaks copy.deepcopy. Temporarily detach each cgyrodata from the
+        # live object, deepcopy the rest, then restore them so the in-memory
+        # object is unchanged after save.
+        stashed = []
         for key in class_to_store.results:
             for irho in range(len(class_to_store.results[key]['output'])):
-                if 'cgyrodata' in class_to_store.results[key]['output'][irho].__dict__:
-                    print(f'\t- Removing cgyrodata object before pickling for {key}, irho={irho}')
-                    del class_to_store.results[key]['output'][irho].cgyrodata
-            
+                out = class_to_store.results[key]['output'][irho]
+                if 'cgyrodata' in out.__dict__:
+                    stashed.append((out, out.cgyrodata))
+                    out.cgyrodata = None
+        try:
+            class_to_store = copy.deepcopy(class_to_store)
+        finally:
+            for out, data in stashed:
+                out.cgyrodata = data
+
         super().save_pickle(file, class_to_store = class_to_store, **kwargs)
                 
                 

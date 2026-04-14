@@ -369,6 +369,8 @@ class mitim_simulation:
         
         else:
             
+            print(f"\t- {self.run_specifications['code'].upper()} needs to run because not all results files found",typeMsg="i")
+            
             # ----------------------------------------------------------------------------------------------------------------
             # Run simulation
             # ----------------------------------------------------------------------------------------------------------------
