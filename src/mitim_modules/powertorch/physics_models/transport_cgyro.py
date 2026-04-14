@@ -16,7 +16,7 @@ class gyrokinetic_model:
         cold_start = self.cold_start
 
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
-        run_type = simulation_options["run"]["run_type"]    
+        run_type = SIMtools._normalize_run_type(simulation_options["run"]["run_type"])
         keep_gk_files = simulation_options.get("keep_files", 'all')
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -204,7 +204,7 @@ class cgyro_model(gyrokinetic_model):
         simulation_options = self.transport_evaluator_options["cgyro"]
         cold_start = self.cold_start
 
-        run_type = simulation_options["run"].get("run_type", "normal")
+        run_type = SIMtools._normalize_run_type(simulation_options["run"].get("run_type", "normal"))
         if run_type == "prep":
             raise NotImplementedError(
                 "run_type='prep' (interactive external CGYRO run) is not supported in "

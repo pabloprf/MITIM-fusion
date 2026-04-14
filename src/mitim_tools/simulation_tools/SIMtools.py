@@ -15,6 +15,11 @@ from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
+_RUN_TYPE_ALIASES = {'run': 'normal'}
+
+def _normalize_run_type(run_type):
+    return _RUN_TYPE_ALIASES.get(run_type, run_type)
+
 class mitim_simulation:
     '''
     Main class for running GACODE simulations.
@@ -125,7 +130,9 @@ class mitim_simulation:
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
-        
+
+        run_type = _normalize_run_type(run_type)
+
         if allocation is None:
             from mitim_tools.misc_tools import SLURMtools
             allocation = {
@@ -767,6 +774,8 @@ class mitim_simulation:
               self.inputs_files is snapshotted into the code_executor before the next
               plasma's prep touches it, so per-plasma inputs do not leak across.
         '''
+
+        run_type = _normalize_run_type(run_type)
 
         if extraOptions is None:
             extraOptions = {}

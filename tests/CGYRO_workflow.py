@@ -3,7 +3,7 @@ from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 
-cold_start = False
+cold_start = True
 save_figures = False # if True, do not show the plot to screen, save to subfolder instead (good to test in non-interactive HPC)
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
