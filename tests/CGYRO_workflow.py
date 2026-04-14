@@ -3,8 +3,8 @@ from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 
-cold_start = True
-save_figures = True # if True, do not show the plot to screen, save to subfolder instead (good to test in non-interactive HPC)
+cold_start = False
+save_figures = False # if True, do not show the plot to screen, save to subfolder instead (good to test in non-interactive HPC)
 
 gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "cgyro_test"
@@ -31,8 +31,8 @@ cgyro.run(
         'KY':0.5,
         'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
     },
-    slurm_setup={
-        'cores':16, # Each CGYRO instance (each radius will have this number of cores or gpus)
+    allocation={
+        'resources_per_call': 16, # Each CGYRO instance (each radius will have this number of cores or gpus)
         'minutes': 10,
         },
     cold_start=cold_start,
@@ -61,8 +61,8 @@ cgyro.run_scan(
     variable='KY',
     varUpDown=[0.3,0.4],
     relativeChanges=False,
-    slurm_setup={
-        'cores':16,
+    allocation={
+        'resources_per_call': 16,
         'minutes': 10,
         },
     cold_start=cold_start,
@@ -96,8 +96,8 @@ cgyro.run(
         'COLLISION_MODEL': 5,
         'ROTATION_MODEL': 1,
     },
-    slurm_setup={
-        'cores':16, # Each CGYRO instance (each radius will have this number of cores or gpus)
+    allocation={
+        'resources_per_call': 16, # Each CGYRO instance (each radius will have this number of cores or gpus)
         'minutes': 10,
         },
     cold_start=cold_start,
@@ -123,7 +123,7 @@ cgyro.run(
         'L_x': 90,
         'N_radial': 256,
     },
-    slurm_setup={'cores': 16, 'minutes': 10},
+    allocation={'resources_per_call': 16, 'minutes': 10},
     cold_start=cold_start,
     forceIfcold_start=True,
     run_type='prep',

@@ -23,7 +23,7 @@ tglf.run(
     runWaveForms  = [0.67, 10.0],
     forceIfcold_start=True,
     extraOptions={"USE_BPER": False, "USE_BPAR": False},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
 tglf.read(label="ES (SAT1)", save_and_cleanup=npz_file)
@@ -34,7 +34,7 @@ tglf.run(
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
 tglf.read(label="EM (SAT1)", save_and_cleanup=npz_file)
@@ -45,7 +45,7 @@ tglf.run(
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
 tglf.read(label="EM (SAT3)", save_and_cleanup=npz_file)

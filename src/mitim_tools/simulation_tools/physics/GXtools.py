@@ -21,45 +21,10 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         def code_call(folder, n, p, additional_command="", **kwargs):
             return f"cd {folder}; gx -n {n} gxplasma.in > gxplasma.mitim.log"
 
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, raise_warning=True,array_list=None):
-
-            slurm_settings = {
-                "name": name,
-                "minutes": minutes,
-                "memory_req_by_job": "100GB", # Otherwise it would allocate something like... 4GB/core (not GPU!)
-            }
-
-            # Gather if this is a GPU enabled machine
-            machineSettings = CONFIGread.machineSettings(code='gx')
-            
-            if machineSettings['gpus_per_node'] == 0:
-                if raise_warning:
-                    raise Exception("[MITIM] GX needs GPUs to run, but the selected machine does not have any GPU configured. Please select another machine in the config file with gpus_per_node>0.")
-                else:
-                    print("[MITIM] Warning: GX needs GPUs to run, but the selected machine does not have any GPU configured. Running without GPUs, but this will likely fail.", typeMsg="w")
-
-            if type_of_submission == "slurm_standard":
-
-                slurm_settings['ntasks'] = total_cores_required
-                
-                slurm_settings['job_array'] = None
-
-            elif type_of_submission == "slurm_array":
-
-                slurm_settings['ntasks'] = cores_per_code_call
-
-                slurm_settings['job_array'] = ",".join(array_list)
-
-            # Each simulation call will use these resources (must match what the code_call requests)
-            slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
-
-            return slurm_settings
-
         self.run_specifications = {
             'code': 'gx',
             'input_file': 'gxplasma.in',
             'code_call': code_call,
-            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addGXcontrol,
             'controls_file': 'input.gx.controls',
             'state_converter': 'to_gx',

@@ -36,15 +36,16 @@ def runTGYRO(
 
     tgyro_job = FARMINGtools.mitim_job(folderWork)
 
+    from mitim_tools.misc_tools import SLURMtools
     tgyro_job.define_machine(
         "tgyro",
         f"mitim_{nameRunid}",
         launchSlurm=launchSlurm,
         slurm_settings={
-            "minutes": minutes,
+            "time": SLURMtools.format_time(minutes),
             "ntasks": 1,
-            "name": nameJob,
-            "cpuspertask": nparallel,
+            "job-name": nameJob,
+            "cpus-per-task": nparallel,
         },
     )
 

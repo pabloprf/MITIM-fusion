@@ -61,34 +61,10 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
             return f"tglf -e {folder} -n {n} -p {p} {additional_command}"
 
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
-
-            slurm_settings = {
-                "name": name,
-                "minutes": minutes,
-                'job_array_limit': None,    # Limit to this number at most running jobs at the same time?
-            }
-
-            if type_of_submission == "slurm_standard":
-                
-                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call  # How many independent TGLF calls is this?
-
-            elif type_of_submission == "slurm_array":
-
-                slurm_settings['ntasks'] = 1                                            # Each job in the array is one TGLF call
-                
-                slurm_settings['job_array'] = ",".join(array_list)
-
-            # Each simulation call will use these resources (must match what the code_call requests)
-            slurm_settings['cpuspertask'] = cores_per_code_call 
-
-            return slurm_settings
-
         self.run_specifications = {
             'code': 'tglf',
             'input_file': 'input.tglf',
             'code_call': code_call,
-            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addTGLFcontrol,
             'controls_file': 'input.tglf.controls',
             'state_converter': 'to_tglf',
@@ -2568,7 +2544,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
           {subfolder}_{variable1}_{mult1}_{variable2}_{mult2}
 
         kwargs_run is forwarded to _run_prepare / _run (code_settings, extraOptions,
-        cold_start, slurm_setup, …).
+        cold_start, allocation, …).
         """
         self.subfolder_scan = subfolder
         if not hasattr(self, "scan2d_configs"):

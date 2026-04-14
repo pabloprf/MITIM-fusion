@@ -7,6 +7,54 @@ from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
 
+
+class MachineConfig(dict):
+    """
+    Typed view of a machine configuration.
+
+    Backed by a plain ``dict`` so all existing ``d[key]``, ``d.get(...)``,
+    and mutation call-sites keep working unchanged. In addition, a small set
+    of well-known fields is exposed as attributes for readable access and
+    static-analysis friendliness:
+
+        machine, user, folderWork, cores_per_node, gpus_per_node,
+        slurm, modules, tunnel, port, identity, isTunnelSameMachine
+
+    Keeping it a ``dict`` subclass is deliberate — it lets the typed shape
+    slide in without a repo-wide refactor of every access pattern. Tools that
+    want the types can read attributes; tools that don't still see a dict.
+    """
+
+    _TYPED_FIELDS = (
+        "machine", "user", "folderWork", "cores_per_node", "gpus_per_node",
+        "slurm", "modules", "tunnel", "port", "identity",
+        "isTunnelSameMachine",
+    )
+
+    def __getattr__(self, name):
+        if name in self._TYPED_FIELDS:
+            return self.get(name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name in self._TYPED_FIELDS:
+            self[name] = value
+        else:
+            super().__setattr__(name, value)
+
+    # Helpful accessors for the resolver
+    @property
+    def has_slurm(self) -> bool:
+        return bool((self.get("slurm") or {}).get("partition"))
+
+    @property
+    def gpus(self) -> int:
+        return int(self.get("gpus_per_node") or 0)
+
+    @property
+    def cores(self) -> int:
+        return int(self.get("cores_per_node") or 0)
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Configuration file
 # ---------------------------------------------------------------------------------------------------------------------
@@ -134,7 +182,7 @@ def machineSettings(
     scratch = scratch[:255]
     # ----  
 
-    machineSettings = {
+    machineSettings = MachineConfig({
         "machine": s[machine]["machine"],
         "user": username,
         "tunnel": None,
@@ -150,7 +198,7 @@ def machineSettings(
             if "isTunnelSameMachine" in s[machine]
             else False
         ),
-    }
+    })
 
     # I can give extra things to load in the config file
     if (

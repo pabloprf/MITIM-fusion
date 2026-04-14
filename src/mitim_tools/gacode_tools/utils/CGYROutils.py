@@ -3,10 +3,7 @@ import math
 import scipy
 import numpy as np
 from pathlib import Path
-try:
-    import statsmodels.api as sm
-except:
-    print("could not load statsmodel")
+import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools import SIMtools

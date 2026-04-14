@@ -32,9 +32,9 @@ gx.run(
         'y0' :10.0,     # kymin = 1/y0 = 0.1
         'ny': 34,       # nky = 1 + (ny-1)/3 = 12 -> ky_range = 0.1 - 1.2
     },
-    slurm_setup = {
-        "cores": 4,    # Each of the two radius with 4 GPUs each
-        "minutes": 10
+    allocation = {
+        "resources_per_call": 4,    # Each of the two radii with 4 GPUs
+        "minutes": 10,
         }
     )
 gx.read('gx1')

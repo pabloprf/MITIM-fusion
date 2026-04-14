@@ -45,8 +45,8 @@ cgyro.run_scan(
     variable='KY',
     varUpDown=np.linspace(0.1,2.3,24),
     relativeChanges=False,
-    slurm_setup={
-        'cores':16,
+    allocation={
+        'resources_per_call': 16,
         'minutes': 30,
         },
     cold_start=cold_start,
@@ -72,9 +72,9 @@ gx.run(
         'y0' :10.0,      # kymin = 1/y0 = 0.1
         'ny': 70,        # nky = 1 + (ny-1)/3 = 24 -> ky_range = 0.0 - 2.3
     },
-    slurm_setup = {
-        "cores": 4,
-        "minutes": 30
+    allocation = {
+        "resources_per_call": 4,
+        "minutes": 30,
         }
     )
 

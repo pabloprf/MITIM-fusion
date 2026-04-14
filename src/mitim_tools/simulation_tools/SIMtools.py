@@ -118,7 +118,7 @@ class mitim_simulation:
         cold_start=False,
         forceIfcold_start=False,
         extra_name="exe",
-        slurm_setup=None,  # Cores per call (so, when running nR radii -> nR*4)
+        allocation=None,   # {'resources_per_call': int, 'minutes': int, 'mem': str|None}
         attempts_execution=1,
         only_minimal_files=False,
         run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
@@ -126,8 +126,14 @@ class mitim_simulation:
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
         
-        if slurm_setup is None:
-            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 10}
+        if allocation is None:
+            from mitim_tools.misc_tools import SLURMtools
+            allocation = {
+                "resources_per_call": SLURMtools.CODE_HINTS.get(
+                    self.run_specifications.get('code', ''),
+                    {}).get("default_resources_per_call", 1),
+                "minutes": 10,
+            }
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Prepare inputs
@@ -148,7 +154,7 @@ class mitim_simulation:
             only_minimal_files=only_minimal_files,
             #
             launchSlurm=launchSlurm,
-            slurm_setup=slurm_setup,
+            allocation=allocation,
             #
             additional_files_to_send=additional_files_to_send,
             #
@@ -171,13 +177,13 @@ class mitim_simulation:
             cold_start=cold_start,
             forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
-            slurm_setup=slurm_setup,
+            allocation=allocation,
             only_minimal_files=only_minimal_files,
             attempts_execution=attempts_execution,
             run_type=run_type,
             helper_lostconnection=helper_lostconnection,
         )
-        
+
         return code_executor_full
 
     def _run_prepare(
@@ -204,7 +210,7 @@ class mitim_simulation:
         # Slurm settings (for warnings)
         # ********************************
         launchSlurm=True,
-        slurm_setup=None, 
+        allocation=None,
         # ********************************
         # Additional files to send (e.g. restarts). Must be a dictionary with rho keys
         # ********************************
@@ -215,8 +221,14 @@ class mitim_simulation:
         **kwargs_control
         ):
 
-        if slurm_setup is None:
-            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 5}
+        if allocation is None:
+            from mitim_tools.misc_tools import SLURMtools
+            allocation = {
+                "resources_per_call": SLURMtools.CODE_HINTS.get(
+                    self.run_specifications.get('code', ''),
+                    {}).get("default_resources_per_call", 1),
+                "minutes": 5,
+            }
 
         if self.run_specifications is None:
             raise Exception("[MITIM] Simulation child class did not define run specifications")
@@ -287,7 +299,7 @@ class mitim_simulation:
             multipliers=multipliers,
             addControlFunction=self.run_specifications['control_function'],
             controls_file=self.run_specifications['controls_file'],
-            slurm_setup=slurm_setup,
+            allocation=allocation,
             **kwargs_control
         )
         
@@ -311,16 +323,16 @@ class mitim_simulation:
 
         # Check cores problem
         # if launchSlurm:
-        #     self._check_cores(rhosEvaluate, slurm_setup)
+        #     self._check_cores(rhosEvaluate, allocation)
 
         self.FolderSimLast = Folder_sim
             
         return code_executor, code_executor_full
 
-    def _check_cores(self, rhosEvaluate, slurm_setup, warning = 32 * 2):
-        expected_allocated_cores = int(len(rhosEvaluate) * slurm_setup["cores"])
-        
-        print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {slurm_setup["cores"]} cores/radius)',
+    def _check_cores(self, rhosEvaluate, allocation, warning = 32 * 2):
+        expected_allocated_cores = int(len(rhosEvaluate) * allocation["cores"])
+
+        print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {allocation["cores"]} cores/radius)',
             typeMsg="" if expected_allocated_cores < warning else "q",)
 
     def _run(
@@ -361,12 +373,16 @@ class mitim_simulation:
             # Get code info
             code = self.run_specifications.get('code', 'tglf')
             input_file = self.run_specifications.get('input_file', 'input.tglf')
-            code_call = self.run_specifications.get('code_call', None)  
-            code_slurm_settings = self.run_specifications.get('code_slurm_settings', None)  
-        
+            code_call = self.run_specifications.get('code_call', None)
+
             # Get execution info
-            minutes = kwargs_run.get("slurm_setup", {}).get("minutes", 5)
-            cores_per_code_call = kwargs_run.get("slurm_setup", {}).get("cores", self.run_specifications['default_cores'])
+            allocation = kwargs_run.get("allocation") or {}
+            minutes = allocation.get("minutes", 5)
+            from mitim_tools.misc_tools import SLURMtools as _SLURM
+            _default_rpc = _SLURM.CODE_HINTS.get(
+                self.run_specifications.get('code', ''), {}
+            ).get("default_resources_per_call", 1)
+            resources_per_call = allocation.get("resources_per_call", _default_rpc)
             launchSlurm = kwargs_run.get("launchSlurm", True)
             
             extraFlag = kwargs_run.get('extra_name', '')
@@ -417,81 +433,56 @@ class mitim_simulation:
             # ---------------------------------------------
 
             # Grab machine local limits -------------------------------------------------
+            from mitim_tools.misc_tools import SLURMtools
             machineSettings = FARMINGtools.mitim_job.grab_machine_settings(code)
-            max_cores_per_node = machineSettings["cores_per_node"]
 
-            # If the run is local and not slurm, let's check the number of cores
+            # For local-bash, also consider env-provided SLURM limits (nested SLURM jobs)
+            # and the machine's own cpu_count as an upper bound on concurrency.
             if (machineSettings["machine"] == "local") and \
                 not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
-                
-                cores_in_machine = int(os.cpu_count())
-                
-                # Understand the SLURM allocated cores if any
-                slurm_ntasks = os.environ.get('SLURM_NTASKS')
-                slurm_cpus_per_task = os.environ.get('SLURM_CPUS_PER_TASK')
-                if (slurm_cpus_per_task is not None) and (slurm_ntasks is not None):
-                    cores_allocated = int(slurm_cpus_per_task) * int(slurm_ntasks)
-                elif slurm_cpus_per_task is not None:
-                    cores_allocated = int(slurm_cpus_per_task)
-                elif slurm_ntasks is not None:
-                    cores_allocated = int(slurm_ntasks)
+                _slurm_ntasks = os.environ.get('SLURM_NTASKS')
+                _slurm_cpt = os.environ.get('SLURM_CPUS_PER_TASK')
+                if (_slurm_cpt is not None) and (_slurm_ntasks is not None):
+                    _env_cores = int(_slurm_cpt) * int(_slurm_ntasks)
+                elif _slurm_cpt is not None:
+                    _env_cores = int(_slurm_cpt)
+                elif _slurm_ntasks is not None:
+                    _env_cores = int(_slurm_ntasks)
                 else:
-                    cores_allocated = None
-                # ------
-                
-                if cores_allocated is not None:
-                    if max_cores_per_node is None or (cores_allocated < max_cores_per_node):
-                        print(f"\t- Detected {cores_allocated} cores allocated by SLURM, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
-                        max_cores_per_node = cores_allocated
-                elif cores_in_machine is not None:
-                    if max_cores_per_node is None or (cores_in_machine < max_cores_per_node):
-                        print(f"\t- Detected {cores_in_machine} cores in machine, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
-                        max_cores_per_node = cores_in_machine
-                else:
-                    # Default to just 16 just in case
-                    if max_cores_per_node is None: 
-                        max_cores_per_node = 16
-            else:
-                # For remote execution, default to just 16 just in case
-                if max_cores_per_node is None: 
-                    max_cores_per_node = 16
-            # ---------------------------------------------------------------------------
+                    _env_cores = int(os.cpu_count() or 16)
+                cpn_for_resolver = machineSettings.get("cores_per_node")
+                if cpn_for_resolver is None or _env_cores < cpn_for_resolver:
+                    print(f"\t- Local execution capped at {_env_cores} cores (machine config says {cpn_for_resolver})", typeMsg="i")
+                    machineSettings = dict(machineSettings)
+                    machineSettings["cores_per_node"] = _env_cores
 
-            # Grab the total number of cores of this job --------------------------------
             total_simulation_executions = len(rhos) * len(code_executor)
-            total_cores_required = int(cores_per_code_call) * total_simulation_executions
-            # ---------------------------------------------------------------------------
+            total_cores_required = int(resources_per_call) * total_simulation_executions
 
-            # If it's GPUS enable machine, do the comparison based on it
-            if machineSettings['gpus_per_node'] == 0:
-                max_cores_per_node_compare = max_cores_per_node
-            else:
-                print(f"\t- Detected {machineSettings['gpus_per_node']} GPUs in machine, using this value as maximum for non-array execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
-                max_cores_per_node_compare = machineSettings['gpus_per_node']
-
-            force_submission_type = self.run_specifications.get('force_submission_type', None)
-
-            if not (launchSlurm and ("partition" in self.simulation_job.machineSettings["slurm"])):
-                type_of_submission = "bash"
-            elif force_submission_type is not None:
-                type_of_submission = force_submission_type
-            elif total_cores_required < max_cores_per_node_compare:
-                type_of_submission = "slurm_standard"
-            else:
-                type_of_submission = "slurm_array"
+            # ---- Resolve allocation once (submission_type + sbatch dict + mpi + concurrency)
+            array_list_preview = [str(i) for i in range(total_simulation_executions)]
+            resolved = SLURMtools.resolve(
+                code=code,
+                allocation={"resources_per_call": resources_per_call, "minutes": minutes,
+                            "mem": allocation.get("mem")},
+                n_rhos=len(rhos), n_subfolders=len(code_executor),
+                machine_settings=machineSettings,
+                launch_slurm=launchSlurm,
+                force_submission_type=self.run_specifications.get('force_submission_type'),
+                job_name=code + '_sim',
+                array_list=array_list_preview,
+            )
+            type_of_submission = resolved.submission_type
+            max_cores_per_node = machineSettings.get("cores_per_node") or 16
 
             shellPreCommands, shellPostCommands = None, None
 
             # Simply bash, no slurm
             if type_of_submission == "bash":
 
-                if cores_per_code_call > max_cores_per_node:
-                    print(f"\t- Detected {cores_per_code_call} cores required, using this value as maximum for local execution (vs {max_cores_per_node} specified as available)",typeMsg="i")
-                    max_cores_per_node = cores_per_code_call
-                
-                max_parallel_execution = max_cores_per_node // cores_per_code_call # Make sure we don't overload the machine when running locally (assuming no farming trans-node)
+                max_parallel_execution = max(1, resolved.concurrency)
 
-                print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {cores_per_code_call}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
+                print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {resources_per_call}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
 
                 # Build the bash script with job control enabled and a loop to limit parallel jobs
                 GACODEcommand = "#!/usr/bin/env bash\n"
@@ -507,7 +498,7 @@ class mitim_simulation:
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
                 folder_str = '"$folder"'  # literal double quotes around $folder
-                GACODEcommand += f'    {code_call(folder=folder_str, n=cores_per_code_call, p=self.simulation_job.folderExecution)} &\n'
+                GACODEcommand += f'    {code_call(folder=folder_str, n=resources_per_call, p=self.simulation_job.folderExecution)} &\n'
                 GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
@@ -520,7 +511,7 @@ class mitim_simulation:
                 # Code launches
                 GACODEcommand = ""
                 for folder in folders_red:
-                    GACODEcommand += f'    {code_call(folder = folder, n = cores_per_code_call, p = self.simulation_job.folderExecution)}  &\n'
+                    GACODEcommand += f'    {code_call(folder = folder, n = resources_per_call, p = self.simulation_job.folderExecution)}  &\n'
                 GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
             
             # Job array 
@@ -541,7 +532,7 @@ class mitim_simulation:
                 indexed_folder = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
                 GACODEcommand += code_call(
                     folder = indexed_folder,
-                    n = cores_per_code_call,
+                    n = resources_per_call,
                     p = self.simulation_job.folderExecution,
                     additional_command = f'1> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
 
@@ -549,18 +540,29 @@ class mitim_simulation:
             # Execute
             # ---------------------------------------------
 
-            mem = kwargs_run.get("slurm_setup", {}).get("mem", None)
+            # Re-resolve with the final array_list (folder indices) now that
+            # we know them, then either use the resolver's sbatch dict directly
+            # or fall back to a code-specific `code_slurm_settings` hook for
+            # codes that have not been registered in SLURMtools.CODE_HINTS.
+            if type_of_submission == "slurm_array":
+                resolved = SLURMtools.resolve(
+                    code=code,
+                    allocation={"resources_per_call": resources_per_call, "minutes": minutes,
+                                "mem": allocation.get("mem")},
+                    n_rhos=len(rhos), n_subfolders=len(code_executor),
+                    machine_settings=machineSettings,
+                    launch_slurm=launchSlurm,
+                    force_submission_type=self.run_specifications.get('force_submission_type'),
+                    job_name=code + '_sim',
+                    array_list=array_list,
+                )
 
-            slurm_settings = code_slurm_settings(
-                name=code+'_sim',
-                minutes=minutes,
-                total_cores_required=total_cores_required,
-                cores_per_code_call=cores_per_code_call,
-                type_of_submission=type_of_submission,
-                array_list=array_list if type_of_submission == "slurm_array" else None,
-                mem=mem,
-                raise_warning= run_type == 'normal'
-            )
+            if code not in SLURMtools.CODE_HINTS:
+                raise Exception(
+                    f"[MITIM] Code '{code}' is not registered in SLURMtools.CODE_HINTS. "
+                    f"Add a hints entry ({{'default_resources_per_call', 'uses_gpu', ...}})."
+                )
+            slurm_settings = resolved.sbatch
 
             self.simulation_job.define_machine(
                 code,
@@ -738,7 +740,7 @@ class mitim_simulation:
         Quasineutral=False,
         launchSlurm=True,
         extra_name="exe",
-        slurm_setup=None,
+        allocation=None,
         attempts_execution=1,
         only_minimal_files=False,
         run_type='normal',
@@ -773,8 +775,14 @@ class mitim_simulation:
         if minimum_delta_abs is None:
             minimum_delta_abs = {}
 
-        if slurm_setup is None:
-            slurm_setup = {"cores": self.run_specifications['default_cores'], "minutes": 10}
+        if allocation is None:
+            from mitim_tools.misc_tools import SLURMtools
+            allocation = {
+                "resources_per_call": SLURMtools.CODE_HINTS.get(
+                    self.run_specifications.get('code', ''),
+                    {}).get("default_resources_per_call", 1),
+                "minutes": 10,
+            }
 
         if not hasattr(self, 'FolderGACODE') or self.FolderGACODE is None:
             raise Exception(
@@ -825,7 +833,7 @@ class mitim_simulation:
                 forceIfcold_start=forceIfcold_start,
                 only_minimal_files=only_minimal_files,
                 launchSlurm=launchSlurm,
-                slurm_setup=slurm_setup,
+                allocation=allocation,
                 additional_files_to_send=additional_files_to_send,
                 ApplyCorrections=ApplyCorrections,
                 minimum_delta_abs=minimum_delta_abs,
@@ -851,7 +859,7 @@ class mitim_simulation:
             cold_start=cold_start,
             forceIfcold_start=forceIfcold_start,
             extra_name=extra_name,
-            slurm_setup=slurm_setup,
+            allocation=allocation,
             only_minimal_files=only_minimal_files,
             attempts_execution=attempts_execution,
             run_type=run_type,
@@ -1250,7 +1258,7 @@ def change_and_write_code(
             addControlFunction=addControlFunction,
             controls_file=controls_file,
             NS=inputs[rho].num_recorded,
-            slurm_setup=kwargs.get("slurm_setup", None),
+            allocation=kwargs.get("allocation", None),
         )
 
         input_file = input_sim_rho.file.name.split('_')[0]

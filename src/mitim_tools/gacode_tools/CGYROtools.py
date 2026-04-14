@@ -24,73 +24,19 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self._preprocess_options = None
 
         def code_call(folder, p, n=1, additional_command="", **kwargs):
-            # On GPU machines, CGYRO always uses the full-node MPI layout
-            # (gpus_per_node MPI ranks across gpus_per_node NUMA domains).
-            # The number of MPI ranks is dictated by the physics decomposition,
-            # not the GPU count. When fewer GPUs are allocated, MPS (Multi-Process
-            # Service) shares GPUs across MPI ranks.
-            # `n` (cores_per_code_call) controls only how many GPUs SLURM allocates.
-            machineSettings = CONFIGread.machineSettings(code='cgyro')
-            cores_per_node = machineSettings.get('cores_per_node') or 1
-            gpus_per_node = machineSettings.get('gpus_per_node') or 0
+            # MPI layout is resolved centrally in SLURMtools so the invented
+            # knobs (full-node MPI on GPU machines, MPS sharing) live in one
+            # place instead of being duplicated here and in code_slurm_settings.
+            from mitim_tools.misc_tools import SLURMtools
+            resolved = SLURMtools.resolve(code='cgyro', allocation={'cores': int(n)})
+            mpi = resolved.mpi
 
-            if gpus_per_node > 0:
-                mpi_tasks = gpus_per_node
-                nomp = cores_per_node // gpus_per_node
-                return (f"cgyro -e {folder} -n {mpi_tasks} -nomp {nomp} "
-                        f"-numa {mpi_tasks} -mpinuma 1 -p {p} {additional_command}")
+            if mpi.get("numa") is not None:
+                return (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                        f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
+                        f"-p {p} {additional_command}")
 
-            return f"cgyro -e {folder} -n {int(n)} -nomp 1 -p {p} {additional_command}"
-
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, mem=None, **kwargs_slurm):
-
-            slurm_settings = {
-                "name": name,
-                "minutes": minutes,
-                'job_array_limit': None,
-            }
-
-            if mem is not None:
-                slurm_settings['memory_req_by_job'] = mem
-
-            machineSettings = CONFIGread.machineSettings(code='cgyro')
-            cores_per_node = machineSettings.get('cores_per_node') or 1
-            gpus_per_node = machineSettings.get('gpus_per_node') or 0
-
-            if gpus_per_node > 0:
-                if machineSettings.get('cores_per_node') is None:
-                    raise Exception("[MITIM] CGYRO GPU path requires 'cores_per_node' in machine config")
-
-                # CGYRO always uses the full-node MPI layout (gpus_per_node MPI ranks).
-                # cores_per_code_call controls how many GPUs SLURM allocates per array task.
-                # When fewer GPUs than MPI ranks, MPS shares GPUs across ranks.
-                n_gpus_requested = min(cores_per_code_call, gpus_per_node)
-                omp_per_task = cores_per_node // gpus_per_node
-
-                if type_of_submission == "slurm_standard":
-                    n_radii = max(1, total_cores_required // cores_per_code_call)
-                    slurm_settings['nodes'] = n_radii
-                    slurm_settings['ntasks'] = gpus_per_node * n_radii
-                elif type_of_submission == "slurm_array":
-                    slurm_settings['job_array'] = ",".join(array_list)
-                    # Each array task needs a full node because the GACODE exec
-                    # script maps MPI ranks with ppr:N:node, requiring all ranks
-                    # to land on the same node.
-                    slurm_settings['nodes'] = 1
-                    slurm_settings['ntasks'] = gpus_per_node
-
-                slurm_settings['cpuspertask'] = omp_per_task
-                slurm_settings['gpuspernode'] = n_gpus_requested
-
-            else:
-                if type_of_submission == "slurm_standard":
-                    slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
-                elif type_of_submission == "slurm_array":
-                    slurm_settings['ntasks'] = 1
-                    slurm_settings['job_array'] = ",".join(array_list)
-                slurm_settings['cpuspertask'] = cores_per_code_call
-
-            return slurm_settings
+            return f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} -p {p} {additional_command}"
 
         # On GPU machines, always use a job array so each radius gets its own GPU allocation.
         _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
@@ -100,7 +46,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'code': 'cgyro',
             'input_file': 'input.cgyro',
             'code_call': code_call,
-            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addCGYROcontrol,
             'controls_file': 'input.cgyro.controls',
             'state_converter': 'to_cgyro',

@@ -48,8 +48,8 @@ cgyro.run(
         "N_radial": 256,
         "min_box_size": 100,
     },
-    slurm_setup={
-        "cores": 16,
+    allocation={
+        "resources_per_call": 16,
         "minutes": 10,
     },
     cold_start=cold_start,

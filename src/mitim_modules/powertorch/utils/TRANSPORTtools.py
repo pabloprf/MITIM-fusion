@@ -487,10 +487,11 @@ class power_transport:
             rho_range = [rho_lo, rho_hi]
             print(f"\t\t- VGEN rho_range: [{rho_lo:.3f}, {rho_hi:.3f}] (PORTALS rho: [{rho_portals.min():.3f}, {rho_portals.max():.3f}])", typeMsg="i")
 
-            # minutes for VGEN from the NEO slurm_setup (same source as neo.run()), defaulting to 60
+            # minutes for VGEN from the NEO allocation (same source as neo.run()), defaulting to 60.
             neo_opts     = self.transport_evaluator_options.get("neo", {})
-            neo_slurm    = neo_opts.get("run", {}).get("slurm_setup", {})
-            minutes_vgen = neo_slurm.get("minutes", 60)
+            neo_run      = neo_opts.get("run", {})
+            neo_alloc    = neo_run.get("allocation", {})
+            minutes_vgen = neo_alloc.get("minutes", 60)
             # Reuse the top-level `transport.in_process` flag for VGEN as well —
             # if the user wants in-process codes they almost certainly want
             # in-process VGEN too (same ctypes path, no SLURM overhead).

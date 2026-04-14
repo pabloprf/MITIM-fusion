@@ -85,26 +85,36 @@ class mitim_job:
             self.launchSlurm = False
             print("\t- slurm requested but no slurm setup to this machine in config... not doing slurm",typeMsg="i",)
 
-        # Print Slurm info
+        # Print Slurm info — one header line + one compact key=value line.
         if self.launchSlurm:
-            print("\t- Slurm Settings:")
-            print("\t\t- Job settings (different than MITIM default):")
-            for key in self.slurm_settings:
-                if self.slurm_settings[key] is not None:
-                    print(f"\t\t\t- {key}: {self.slurm_settings[key]}")
-            print("\t\t- Partition settings:")
-            print(f'\t\t\t- machine: {self.machineSettings["machine"]}')
-            print(f'\t\t\t- username: {self.machineSettings["user"]}')
-            for key in self.machineSettings["slurm"]:
-                print(f'\t\t\t- {key}: {self.machineSettings["slurm"][key]}')
+            host = f'{self.machineSettings["user"]}@{self.machineSettings["machine"]}'
+            partition = (self.machineSettings.get("slurm") or {}).get("partition", "?")
+            job = self.slurm_settings.get("job-name", "mitim_job")
+            print(f"\t- SLURM: {job} @ {host}:{partition}")
+
+            parts = []
+            _skip = {"job-name"}  # already in the header
+            for k, v in self.slurm_settings.items():
+                if k in _skip or v is None or v is False:
+                    continue
+                parts.append(f"{k}={v}")
+            for k in ("qos", "account", "constraint", "exclusive", "exclude"):
+                v = (self.machineSettings.get("slurm") or {}).get(k)
+                if v is None or v is False:
+                    continue
+                parts.append(f"{k}={'yes' if v is True else v}")
+            if parts:
+                print("\t\t" + "  ".join(parts))
+        else:
+            print(f"\t- Bash (no SLURM) on {self.machineSettings['machine']}")
 
     def define_machine_quick(self, code, nameScratch, slurm_settings=None):
 
         self.slurm_settings = slurm_settings if slurm_settings is not None else {}
-        
-        # In case there's no name, I need it
-        self.slurm_settings.setdefault("name", "mitim_job")
-        
+
+        # In case there's no job name, ensure one (native sbatch key)
+        self.slurm_settings.setdefault("job-name", "mitim_job")
+
         self.machineSettings = CONFIGread.machineSettings(
             code=code,
             nameScratch=nameScratch,
@@ -1123,19 +1133,20 @@ def create_slurm_execution_files(
     if slurm_settings is None:
         slurm_settings = {}
 
-    nameJob = slurm_settings.setdefault("name", "mitim_job")
-    minutes = int(slurm_settings.setdefault("minutes", 10))
-    memory_req_by_job = slurm_settings.setdefault("memory_req_by_job", None)
+    # ---- Native sbatch keys (the only schema we support) -----------------
+    nameJob         = slurm_settings.setdefault("job-name", "mitim_job")
+    time_com        = slurm_settings.setdefault("time", "10:00")
+    memory_req_by_job = slurm_settings.setdefault("mem", None)
 
-    nodes = slurm_settings.setdefault("nodes", None)
-    ntasks = slurm_settings.setdefault("ntasks", None)
-    cpuspertask = slurm_settings.setdefault("cpuspertask", None)
-    ntaskspernode = slurm_settings.setdefault("ntaskspernode", None)
-    gpuspertask = slurm_settings.setdefault("gpuspertask", None)
-    gpuspernode = slurm_settings.setdefault("gpuspernode", None)
+    nodes           = slurm_settings.setdefault("nodes", None)
+    ntasks          = slurm_settings.setdefault("ntasks", None)
+    cpuspertask     = slurm_settings.setdefault("cpus-per-task", None)
+    ntaskspernode   = slurm_settings.setdefault("ntasks-per-node", None)
+    gpuspertask     = slurm_settings.setdefault("gpus-per-task", None)
+    gpuspernode     = slurm_settings.setdefault("gpus-per-node", None)
 
-    job_array = slurm_settings.setdefault("job_array", None)
-    job_array_limit = slurm_settings.setdefault("job_array_limit", None)
+    job_array       = slurm_settings.setdefault("array", None)
+    job_array_limit = slurm_settings.setdefault("array_limit", None)
 
     # ---------------------------------------------------
     # slurm_allocation indicate the machine specifications as given by the config instead of individual job
@@ -1162,12 +1173,8 @@ def create_slurm_execution_files(
             print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
         memory_req =  memory_req_by_config
     
-    if minutes >= 60:
-        hours = minutes // 60
-        minutes = minutes - hours * 60
-        time_com = f"{str(hours).zfill(2)}:{str(minutes).zfill(2)}:00"
-    else:
-        time_com = f"{str(minutes).zfill(2)}:00"
+    # `time_com` is already a formatted sbatch --time string (set above
+    # from the native 'time' key or migrated from legacy 'minutes').
 
     """
 	********************************************************************************************

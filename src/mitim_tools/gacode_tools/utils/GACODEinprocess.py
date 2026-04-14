@@ -334,7 +334,7 @@ class _GACODEInProcessMixin:
         no folder creation, no file writes.
 
         ``kwargs_control`` accepts and silently ignores any subprocess-only
-        keyword arguments (cold_start, launchSlurm, slurm_setup, etc.) so
+        keyword arguments (cold_start, launchSlurm, allocation, etc.) so
         the host class can simply forward ``**kwargs`` without filtering.
         """
         if code_executor is None:

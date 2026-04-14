@@ -78,15 +78,16 @@ class EPED:
         # Initialize Job
         self.eped_job = FARMINGtools.mitim_job(self.folder_run)
 
+        from mitim_tools.misc_tools import SLURMtools
         self.eped_job.define_machine(
             "eped",
             "mitim_eped",
             slurm_settings={
-                'name': 'mitim_eped',
-                'minutes': minutes_slurm,
-                'ntaskspernode': nproc_per_run,
-                'job_array': job_array, 
-                'job_array_limit': job_array_limit,
+                'job-name': 'mitim_eped',
+                'time': SLURMtools.format_time(minutes_slurm),
+                'ntasks-per-node': nproc_per_run,
+                'array': job_array,
+                'array_limit': job_array_limit,
             }
         )
 

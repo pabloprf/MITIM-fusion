@@ -253,7 +253,7 @@ class cgyro_model(gyrokinetic_model):
             # CGYRO-specific keys (preprocess_options) are handled above.
             _run_over_plasmas_keys = {
                 "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
-                "ApplyCorrections", "Quasineutral", "launchSlurm", "slurm_setup",
+                "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation",
                 "run_type", "additional_files_to_send", "helper_lostconnection",
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}

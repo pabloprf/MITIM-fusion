@@ -61,8 +61,8 @@ def addGXcontrol(code_settings, *args, **kwargs):
     Check right number of GPUs, as per GX documentation: https://gx.readthedocs.io/en/latest/MultiGPU.html
     '''
 
-    if "slurm_setup" in kwargs and kwargs["slurm_setup"] is not None:
-        Ngpu = kwargs["slurm_setup"].get("cores", 1)
+    if "allocation" in kwargs and kwargs["allocation"] is not None:
+        Ngpu = kwargs["allocation"].get("resources_per_call", 1)
         
         Nsp = kwargs["NS"]
         

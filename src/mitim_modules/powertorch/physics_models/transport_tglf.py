@@ -61,8 +61,8 @@ class tglf_model:
             cold_start=cold_start,
             forceIfcold_start=True,
             extra_name=self.name,
-            slurm_setup={
-                "cores": cores_per_tglf_instance,
+            allocation={
+                "resources_per_call": cores_per_tglf_instance,
                 "minutes": 2,
             },
             attempts_execution=2,
@@ -218,8 +218,8 @@ class tglf_model:
             cold_start= cold_start,
             forceIfcold_start=True,
             extra_name= self.name,
-            slurm_setup={
-                "cores": cores_per_tglf_instance,      
+            allocation={
+                "resources_per_call": cores_per_tglf_instance,      
                 "minutes": 2,
                 },
             attempts_execution=2,
@@ -419,8 +419,8 @@ def _run_tglf_uncertainty_model(
                         add_baseline_to = 'none',
                         cold_start=cold_start,
                         forceIfcold_start=True,
-                        slurm_setup={
-                            "cores": cores_per_tglf_instance,
+                        allocation={
+                            "resources_per_call": cores_per_tglf_instance,
                             "minutes": minutes,
                                      },
                         extra_name = f'{extra_name}_{name}',
@@ -590,7 +590,7 @@ def _run_tglf_uncertainty_model_batched(
         ApplyCorrections=False,
         cold_start=cold_start,
         forceIfcold_start=True,
-        slurm_setup={"cores": cores_per_tglf_instance, "minutes": minutes},
+        allocation={"resources_per_call": cores_per_tglf_instance, "minutes": minutes},
         only_minimal_files=only_minimal_files,
         **kwargs_run,
     )

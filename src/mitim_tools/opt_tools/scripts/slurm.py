@@ -6,6 +6,14 @@ from IPython import embed
 This script is used to launch a slurm job with a scpecific script like... python3 run_case.py 0 --R 6.0
 """
 
+def _fmt_minutes(minutes):
+    """Format minutes as the sbatch 'time' string (MM:00 or HH:MM:00)."""
+    minutes = int(minutes)
+    if minutes >= 60:
+        h, m = divmod(minutes, 60)
+        return f"{h:02d}:{m:02d}:00"
+    return f"{minutes:02d}:00"
+
 def run_slurm(
         script,
         folder,
@@ -63,17 +71,17 @@ def run_slurm(
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Slurm job information  (settings for sbatch)
         
-        if are_n_threads: ntask, cpuspertask = 1, n
-        else:             ntask, cpuspertask = n, 1
-        
+        if are_n_threads: ntask, cpus_per_task = 1, n
+        else:             ntask, cpus_per_task = n, 1
+
         slurm_settings = {
-            'name': nameJob,
-            'minutes': int(60 * hours),
+            'job-name': nameJob,
+            'time': _fmt_minutes(int(60 * hours)),
             'ntasks': ntask,
-            'ntaskspernode': ntasks_per_node,
-            'cpuspertask': cpuspertask,
-            'memory_req_by_job': mem,
-            'job_array': job_array
+            'ntasks-per-node': ntasks_per_node,
+            'cpus-per-task': cpus_per_task,
+            'mem': mem,
+            'array': job_array,
         }
 
         _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
@@ -169,17 +177,17 @@ def run_slurm_array(
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Slurm job information  (settings for sbatch)
         
-        if are_n_threads: ntask, cpuspertask = 1, n
-        else:             ntask, cpuspertask = n, 1
-        
+        if are_n_threads: ntask, cpus_per_task = 1, n
+        else:             ntask, cpus_per_task = n, 1
+
         slurm_settings = {
-            'name': nameJob,
-            'minutes': int(60 * hours),
+            'job-name': nameJob,
+            'time': _fmt_minutes(int(60 * hours)),
             'ntasks': ntask,
-            'ntaskspernode': ntasks_per_node,
-            'cpuspertask': cpuspertask,
-            'memory_req_by_job': mem,
-            'job_array': f'{string_of_array_input}%{max_concurrent_jobs}'
+            'ntasks-per-node': ntasks_per_node,
+            'cpus-per-task': cpus_per_task,
+            'mem': mem,
+            'array': f'{string_of_array_input}%{max_concurrent_jobs}',
         }
 
 
