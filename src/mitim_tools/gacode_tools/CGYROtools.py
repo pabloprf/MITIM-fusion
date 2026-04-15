@@ -155,9 +155,20 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
             self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
 
-        # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested
-        if getattr(self, "_preprocess_options", None) is not None:
-            extraOptions = self._apply_cgyro_preprocessing(extraOptions or {})
+        # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested.
+        # Model yaml (input.cgyro.models.yaml) can supply per-model defaults;
+        # user-supplied self._preprocess_options override on a per-key basis.
+        from mitim_tools.gacode_tools.utils import GACODEdefaults
+        model_preprocess = GACODEdefaults.getCGYROpreprocessDefaults(kwargs.get("code_settings"))
+        user_preprocess = getattr(self, "_preprocess_options", None) or {}
+        merged_preprocess = {**model_preprocess, **user_preprocess}
+        if merged_preprocess:
+            saved_preprocess = getattr(self, "_preprocess_options", None)
+            self._preprocess_options = merged_preprocess
+            try:
+                extraOptions = self._apply_cgyro_preprocessing(extraOptions or {})
+            finally:
+                self._preprocess_options = saved_preprocess
 
         # Enforce TOROIDALS_PER_PROC compatibility with N_TOROIDAL and MPI rank count.
         # Resolution order matches what _run_prepare will eventually write:

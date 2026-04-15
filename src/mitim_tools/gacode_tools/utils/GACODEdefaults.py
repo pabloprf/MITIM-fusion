@@ -105,35 +105,44 @@ def addCGYROcontrol(code_settings, rmin=None, **kwargs):
     
     return options
 
+def _resolve_model_entry(settings, code_settings):
+    """Resolve a model entry in a *.models.yaml file by label or deprecated_descriptor.
+
+    Returns the model dict if found, else None.
+    """
+    code_settings = str(code_settings)
+    if code_settings in settings:
+        return settings[code_settings]
+    for ikey in settings:
+        entry = settings[ikey]
+        if isinstance(entry, dict) and entry.get("deprecated_descriptor") == code_settings:
+            return entry
+    return None
+
 def add_code_settings(options,code_settings, models_file = "input.tglf.models.yaml"):
 
     settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)
 
-    code_settings = str(code_settings)
-
-    found = False
-    
-    # Search by label first
-    if str(code_settings) in settings:
-        sett = settings[str(code_settings)]
+    sett = _resolve_model_entry(settings, code_settings)
+    if sett is not None and "controls" in sett:
         for ikey in sett["controls"]:
             options[ikey] = sett["controls"][ikey]
-        found = True
     else:
-        # Search by deprecated descriptor (if available)
-        for ikey in settings:
-            if "deprecated_descriptor" in settings[ikey]:
-                if settings[ikey]["deprecated_descriptor"] == code_settings:
-                    sett = settings[ikey]
-                    for jkey in sett["controls"]:
-                        options[jkey] = sett["controls"][jkey]
-                    found = True
-                break
-            
-    if not found:
         print(f"\t- {code_settings = } not found in {models_file}, using defaults",typeMsg="w")
 
     return options
+
+def getCGYROpreprocessDefaults(code_settings):
+    """Return the preprocess_options dict defined for the given CGYRO model in
+    input.cgyro.models.yaml (or {} if the model / block is absent).
+    """
+    if code_settings is None:
+        return {}
+    settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "input.cgyro.models.yaml")
+    sett = _resolve_model_entry(settings, code_settings)
+    if sett is None:
+        return {}
+    return dict(sett.get("preprocess_options", {}) or {})
 
 
 def TGLFinTRANSP(code_settings, NS=3):

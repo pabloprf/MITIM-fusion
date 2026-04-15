@@ -6,4 +6,41 @@
 "Nonlinear":
   controls:
     NONLINEAR_FLAG: 1
+    COLLISION_MODEL: 4
+    ROTATION_MODEL: 2
     N_TOROIDAL: 12
+    N_XI: 16  
+    N_THETA: 16
+  preprocess_options:
+    ky_min: 0.1
+    L_x: 90
+    N_radial: 256
+    min_box_size: 85
+
+"Nonlinear_fast":
+  controls:
+    NONLINEAR_FLAG: 1
+    COLLISION_MODEL: 5
+    ROTATION_MODEL: 1
+    N_TOROIDAL: 12
+    N_XI: 16  
+    N_THETA: 16
+  preprocess_options:
+    ky_min: 0.1
+    L_x: 90
+    N_radial: 192
+    min_box_size: 85
+
+"Nonlinear_silly":
+  controls:
+    NONLINEAR_FLAG: 1
+    COLLISION_MODEL: 5
+    ROTATION_MODEL: 1
+    N_TOROIDAL: 12
+    N_XI: 8  
+    N_THETA: 8
+  preprocess_options:
+    ky_min: 0.1
+    L_x: 90
+    N_radial: 96
+    min_box_size: 85
