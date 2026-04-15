@@ -171,16 +171,33 @@ def machineSettings(
     -------------------------------------------------
     """
 
-    if forceUsername is not None:
+    # Detect in-place local execution: machine is local AND scratch is null/missing/empty.
+    # In that case the job runs directly in folder_local with no copy-in/copy-out roundtrip.
+    is_local_machine = s[machine].get("machine") == "local"
+    scratch_cfg = s[machine].get("scratch", None)
+    run_in_place = (
+        is_local_machine
+        and forceUsername is None
+        and (scratch_cfg is None or str(scratch_cfg).strip() == "")
+    )
+
+    if run_in_place:
+        username = s[machine].get("username", "dummy")
+        # When called without a local folder (e.g. grab_machine_settings peeks for cpu_count),
+        # leave folderWork empty; real job dispatch always provides append_folder_local.
+        if append_folder_local is None:
+            scratch = ""
+        else:
+            scratch = str(IOtools.expandPath(append_folder_local))
+    elif forceUsername is not None:
         username = forceUsername
         scratch = f"/home/{username}/scratch/{nameScratch_full}"
+        scratch = scratch[:255]
     else:
         username = s[machine]["username"] if ("username" in s[machine]) else "dummy"
         scratch = f"{s[machine]['scratch']}/{nameScratch_full}"
-
-    # General limit of 255 characters in path
-    scratch = scratch[:255]
-    # ----  
+        scratch = scratch[:255]
+    # ----
 
     machineSettings = MachineConfig({
         "machine": s[machine]["machine"],
@@ -190,6 +207,7 @@ def machineSettings(
         "identity": None,
         "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
+        "run_in_place": run_in_place,
         "slurm": {},
         "cores_per_node": s[machine].get("cores_per_node", None),
         "gpus_per_node": s[machine].get("gpus_per_node", 0),

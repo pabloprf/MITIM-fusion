@@ -122,6 +122,10 @@ class mitim_job:
         )
         # Left as string due to potentially referencing a remote file system
         self.folderExecution = self.machineSettings["folderWork"]
+        # In-place local execution: no scratch staging, runs directly in folder_local
+        self.run_in_place = bool(self.machineSettings.get("run_in_place", False))
+        if self.run_in_place:
+            print("\t- In-place local execution: folderExecution == folder_local (no scratch staging)")
 
     @staticmethod
     def grab_machine_settings(code):
@@ -289,12 +293,15 @@ class mitim_job:
         self.connect(log_file=self.folder_local / "paramiko.log")
 
         # ~~~~~~ Prepare scratch folder
-        if removeScratchFolders_goingIn:
-            self.remove_scratch_folder()
-        self.create_scratch_folder()
+        if not self.run_in_place:
+            if removeScratchFolders_goingIn:
+                self.remove_scratch_folder()
+            self.create_scratch_folder()
 
-        # ~~~~~~ Send
-        self.send()
+            # ~~~~~~ Send
+            self.send()
+        else:
+            print("\t* In-place local execution: skipping scratch setup and file staging")
 
         # ~~~~~~ Execute
         execution_counter = 0
@@ -329,8 +336,8 @@ class mitim_job:
 
         # ~~~~~~ Remove scratch folder
         if received:
-            
-            if wait_for_all_commands and removeScratchFolders_goingOut:
+
+            if wait_for_all_commands and removeScratchFolders_goingOut and not self.run_in_place:
                 self.remove_scratch_folder()
                 
         else:
@@ -501,6 +508,9 @@ class mitim_job:
                         self.key_filename = None
 
     def create_scratch_folder(self):
+        if getattr(self, "run_in_place", False):
+            return None, None
+
         print(f'\t* Creating{" remote" if self.ssh is not None else ""} folder:')
         print(f"\t\t{self.folderExecution}")
 
@@ -511,6 +521,9 @@ class mitim_job:
         return output, error
 
     def send(self):
+        if getattr(self, "run_in_place", False):
+            return
+
         print(f'\t* Sending files{" to remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the local directory
@@ -586,7 +599,13 @@ class mitim_job:
         lines = []
         lines.append("==================== MITIM Simulation Execution Log ====================\n")
         lines.append(f"Date (finished): {now}")
-        lines.append(f"Execution Type: {'Remote' if is_remote else 'Local'}\n")
+        if is_remote:
+            exec_type = "Remote"
+        elif getattr(self, "run_in_place", False):
+            exec_type = "Local (in-place)"
+        else:
+            exec_type = "Local"
+        lines.append(f"Execution Type: {exec_type}\n")
         lines.append("--- Execution Details ---")
         if is_remote:
             lines.append(f"SSH User: {getattr(self, 'target_user', 'N/A')}")
@@ -681,6 +700,15 @@ class mitim_job:
         return output, error
 
     def retrieve(self, check_if_files_received=True, check_files_in_folder={}):
+        if getattr(self, "run_in_place", False):
+            print("\t* In-place local execution: outputs already in folder_local (skipping retrieval)")
+            if check_if_files_received:
+                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
+                if received:
+                    print("\t\t- All correct", typeMsg="i")
+                return received
+            return True
+
         print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
 
         # Create a tarball of the output files & folders on the remote machine
@@ -769,6 +797,11 @@ class mitim_job:
         return received
 
     def remove_scratch_folder(self):
+        # Safety guard: never rm -rf the user's working directory in in-place mode
+        if getattr(self, "run_in_place", False):
+            print("\t* Skipping scratch-folder removal (in-place local execution)")
+            return None, None
+
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
         output, error = self.execute(f"rm -rf {self.folderExecution}")
