@@ -9,25 +9,45 @@ Read and plot results from an existing profiles_gen -vgen run.
 """
 
 import argparse
+from pathlib import Path
 from IPython import embed
 from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.gacode_tools import NEOtools
 
 def main():
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("folder", type=str, help="Directory containing the VGEN run (parent of vgen/ sub-folder)")
+    parser.add_argument("--save", type=str, required=False, default=None,
+                        help="Folder to save the figures.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
 
     args = parser.parse_args()
 
     folder = IOtools.expandPath(args.folder)
+    folder_save = Path(args.save) if args.save is not None else None
+    noshow = args.noshow
+    dpi_fig = args.dpi
 
     neo = NEOtools.NEO(rhos=[])
     neo.FolderGACODE = folder.parent
     neo.read_vgen(subfolder=folder.name)
 
-    neo.plot_vgen()
-    neo.fn.show()
+    fn = FigureNotebook("NEO VGEN Notebook", geometry="1700x900", vertical=True, show=not noshow)
+    neo.plot_vgen(fn=fn)
+
+    if not noshow:
+        neo.fn.show()
+
+    if folder_save is not None:
+        if not folder_save.exists():
+            folder_save.mkdir(parents=True)
+        neo.fn.save(folder_save, dpi=dpi_fig)
+
     embed()
 
 if __name__ == "__main__":

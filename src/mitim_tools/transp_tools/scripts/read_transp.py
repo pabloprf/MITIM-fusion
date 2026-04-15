@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 from IPython import embed
 from mitim_tools.transp_tools import CDFtools
 
@@ -12,11 +13,20 @@ def main():
     parser.add_argument(
         "--read", "-r", required=False, default=False, action="store_true"  # Only read
     )
+    parser.add_argument("--save", type=str, required=False, default=None,
+                        help="Folder to save the figures.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
     args = parser.parse_args()
 
     expl = args.files
     plotYN = not args.read
     fullYN = args.full
+    folder_save = Path(args.save) if args.save is not None else None
+    noshow = args.noshow
+    dpi_fig = args.dpi
 
     cdfs = []
 
@@ -54,11 +64,17 @@ def main():
     if plotYN:
         from mitim_tools.misc_tools.GUItools import FigureNotebook
 
-        fn = FigureNotebook("TRANSP run")
+        fn = FigureNotebook("TRANSP run", show=not noshow)
         for i in range(len(cdfs)):
             cdfs[i].plot(fn=fn, tab_color=i)
 
-        fn.show()
+        if not noshow:
+            fn.show()
+
+        if folder_save is not None:
+            if not folder_save.exists():
+                folder_save.mkdir(parents=True)
+            fn.save(folder_save, dpi=dpi_fig)
 
     embed()
 
