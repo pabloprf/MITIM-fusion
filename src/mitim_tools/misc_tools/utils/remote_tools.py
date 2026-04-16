@@ -1,4 +1,4 @@
-import os, shutil
+import os, shutil, tempfile
 from mitim_tools.misc_tools import IOtools, FARMINGtools, CONFIGread
 from IPython import embed
 
@@ -14,32 +14,45 @@ def retrieve_remote_folders(folders_local, remote, remote_folder_parent, remote_
     else:
         folders_remote = folders_local
 
-    # Retrieve remote
-    s = CONFIGread.load_settings()
-    scratch_local_folder = s['local']['scratch']
-    
     if remote is not None:
-            
-        _, folders = FARMINGtools.retrieve_files_from_remote(
-            scratch_local_folder,
-            remote,
-            folders_remote = folders_remote,
-            purge_tmp_files = True,
-            only_folder_structure_with_files=only_folder_structure_with_files)
 
-        # Renaming
-        for i in range(len(folders)):
-            folder = IOtools.expandPath(folders[i])
-            folder_orig = IOtools.expandPath(folders_local[i])
-        
-            if folder == folder_orig:
-                continue
-            
-            if folder_orig.exists():
-                IOtools.shutil_rmtree(folder_orig)
-                
-            shutil.copytree(folder, folder_orig)
-            IOtools.shutil_rmtree(folder)
-            
+        # scp/rsync staging directory. Prefer the user's configured local.scratch; when
+        # that's null (run-in-place configs), stage under ./tmp/ so retrieved data lands
+        # somewhere visible next to the run and a mid-transfer crash leaves recoverable
+        # artifacts. The staging subdir is cleaned up after the rename loop copies
+        # everything into folders_local.
+        s = CONFIGread.load_settings()
+        scratch_local_folder = s['local']['scratch']
+        using_tempdir = scratch_local_folder is None
+        if using_tempdir:
+            local_tmp_root = IOtools.expandPath('./tmp').resolve()
+            local_tmp_root.mkdir(exist_ok=True)
+            scratch_local_folder = tempfile.mkdtemp(prefix='remote_retrieve_', dir=local_tmp_root)
+
+        try:
+            _, folders = FARMINGtools.retrieve_files_from_remote(
+                scratch_local_folder,
+                remote,
+                folders_remote = folders_remote,
+                purge_tmp_files = True,
+                only_folder_structure_with_files=only_folder_structure_with_files)
+
+            # Renaming
+            for i in range(len(folders)):
+                folder = IOtools.expandPath(folders[i])
+                folder_orig = IOtools.expandPath(folders_local[i])
+
+                if folder == folder_orig:
+                    continue
+
+                if folder_orig.exists():
+                    IOtools.shutil_rmtree(folder_orig)
+
+                shutil.copytree(folder, folder_orig)
+                IOtools.shutil_rmtree(folder)
+        finally:
+            if using_tempdir:
+                shutil.rmtree(scratch_local_folder, ignore_errors=True)
+
 
     return folders_local

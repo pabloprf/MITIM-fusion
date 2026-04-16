@@ -1397,6 +1397,7 @@ def perform_quick_remote_execution(
     job.slurm_settings, job.launchSlurm = {}, False
     job.machineSettings = CONFIGread.machineSettings(code=None,nameScratch=job_name,forceMachine=machine,append_folder_local=folder_local)
     job.folderExecution = job.machineSettings["folderWork"]
+    job.run_in_place = bool(job.machineSettings.get("run_in_place", False))
 
     # Submit
     job.prep(
