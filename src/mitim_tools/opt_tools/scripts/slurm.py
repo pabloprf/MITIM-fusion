@@ -1,3 +1,4 @@
+import math
 import os
 from mitim_tools.misc_tools import FARMINGtools, IOtools
 from IPython import embed
@@ -28,6 +29,7 @@ def run_slurm(
     # Job size:
         n = 32,
         hours = 8,
+        max_hours = 8,   # Max hours per sbatch allocation; hours>max_hours chains dependent jobs
         are_n_threads = True,
         ntasks_per_node = None,
     # For farming different seeds that the script understands:
@@ -67,38 +69,76 @@ def run_slurm(
             'exclude': exclude,
             'exclusive': exclusive
             }
-        
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Slurm job information  (settings for sbatch)
-        
+        # Split the requested wall-time into chunks of at most max_hours. Each
+        # chunk is a separate sbatch submission; chunks after the first use
+        # --dependency=afterany:<previous_job_id> so they launch as soon as
+        # the preceding chunk ends (successfully or not), effectively running
+        # the same script repeatedly until the total wall-time is covered.
+
+        if max_hours <= 0:
+            raise ValueError("max_hours must be positive")
+
+        n_chunks = max(1, math.ceil(hours / max_hours))
+        chunk_hours = [min(max_hours, hours - i * max_hours) for i in range(n_chunks)]
+
+        if n_chunks > 1:
+            print(f"* Requested {hours}h exceeds max_hours={max_hours}h; chaining {n_chunks} dependent jobs: {chunk_hours}")
+
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Slurm job information (settings for sbatch). One sbatch file per chunk.
+
         if are_n_threads: ntask, cpus_per_task = 1, n
         else:             ntask, cpus_per_task = n, 1
 
-        slurm_settings = {
-            'job-name': nameJob,
-            'time': _fmt_minutes(int(60 * hours)),
-            'ntasks': ntask,
-            'ntasks-per-node': ntasks_per_node,
-            'cpus-per-task': cpus_per_task,
-            'mem': mem,
-            'array': job_array,
-        }
+        sbatch_files = []
+        for i, ch in enumerate(chunk_hours):
+            label = "" if n_chunks == 1 else f"_chunk{i}"
+            slurm_settings = {
+                'job-name': nameJob + (f"_c{i}" if n_chunks > 1 else ""),
+                'time': _fmt_minutes(int(60 * ch)),
+                'ntasks': ntask,
+                'ntasks-per-node': ntasks_per_node,
+                'cpus-per-task': cpus_per_task,
+                'mem': mem,
+                'array': job_array,
+            }
 
-        _, fileSBATCH, _ = FARMINGtools.create_slurm_execution_files(
-            command,
-            folder,
-            folder_local=folder,
-            slurm_allocation = slurm_allocation,
-            slurm_settings = slurm_settings,
-            if_array_relabel=True,
-            wait_until_sbatch=wait,
-        )
+            _, fileSBATCH_i, _ = FARMINGtools.create_slurm_execution_files(
+                command,
+                folder,
+                folder_local=folder,
+                slurm_allocation=slurm_allocation,
+                slurm_settings=slurm_settings,
+                label_log_files=label,
+                if_array_relabel=True,
+                wait_until_sbatch=wait,
+            )
+            sbatch_files.append(fileSBATCH_i)
 
-        if wait:
-            print('* Waiting for job to complete...')
-            command_execution = f"sbatch --wait {fileSBATCH}"
-        else: 
-            command_execution = f"sbatch {fileSBATCH}"
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Build the submission command. For a single chunk this is just a plain
+        # sbatch call. For multiple chunks we capture each job id via
+        # `sbatch --parsable` and pass it as the dependency of the next chunk.
+        # When wait=True we only apply --wait to the last chunk so the caller
+        # blocks until the full chain finishes.
+
+        if n_chunks == 1:
+            wait_flag = "--wait " if wait else ""
+            if wait:
+                print('* Waiting for job to complete...')
+            command_execution = f"sbatch {wait_flag}{sbatch_files[0]}"
+        else:
+            parts = []
+            for i, f in enumerate(sbatch_files):
+                dep = f"--dependency=afterany:$JOBID{i-1} " if i > 0 else ""
+                wait_flag = "--wait " if (wait and i == n_chunks - 1) else ""
+                parts.append(f"JOBID{i}=$(sbatch --parsable {dep}{wait_flag}{f})")
+                parts.append(f"echo \"Submitted chunk {i+1}/{n_chunks} as job $JOBID{i}\"")
+            if wait:
+                print('* Waiting for dependent job chain to complete...')
+            command_execution = " && ".join(parts)
 
         if machine == "local":
             os.system(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log')
@@ -107,7 +147,7 @@ def run_slurm(
                 folder,
                 machine,
                 command_execution,
-                input_files=[fileSBATCH],
+                input_files=sbatch_files,
                 job_name = nameJob,
                 )
 
