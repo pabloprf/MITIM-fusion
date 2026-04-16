@@ -393,6 +393,14 @@ class mitim_simulation:
             ).get("default_resources_per_call", 1)
             resources_per_call = allocation.get("resources_per_call", _default_rpc)
             launchSlurm = kwargs_run.get("launchSlurm", True)
+            # Optional per-call YAML overrides:
+            #   submission_type: 'slurm_array' | 'slurm_standard' | 'bash' to override
+            #                    the resolver heuristic / per-code default
+            #   exclusive:       True/False to force/disable --exclusive (handy
+            #                    for array elements on clusters without strict
+            #                    per-job GPU isolation — guarantees whole-node)
+            user_submission_type = allocation.get("submission_type")
+            user_exclusive = allocation.get("exclusive")
             
             extraFlag = kwargs_run.get('extra_name', '')
             name = f"{self.run_specifications['code']}_{self.nameRunid}{extraFlag}"
@@ -469,7 +477,11 @@ class mitim_simulation:
             total_cores_required = int(resources_per_call) * total_simulation_executions
 
             # ---- Resolve allocation once (submission_type + sbatch dict + mpi + concurrency)
+            # YAML override (allocation.submission_type) takes precedence over the
+            # per-code default in run_specifications (e.g. CGYRO defaults to
+            # 'slurm_array' on GPU machines).
             array_list_preview = [str(i) for i in range(total_simulation_executions)]
+            forced_submission_type = user_submission_type or self.run_specifications.get('force_submission_type')
             resolved = SLURMtools.resolve(
                 code=code,
                 allocation={"resources_per_call": resources_per_call, "minutes": minutes,
@@ -477,9 +489,10 @@ class mitim_simulation:
                 n_rhos=len(rhos), n_subfolders=len(code_executor),
                 machine_settings=machineSettings,
                 launch_slurm=launchSlurm,
-                force_submission_type=self.run_specifications.get('force_submission_type'),
+                force_submission_type=forced_submission_type,
                 job_name=code + '_sim',
                 array_list=array_list_preview,
+                exclusive=user_exclusive,
             )
             type_of_submission = resolved.submission_type
             max_cores_per_node = machineSettings.get("cores_per_node") or 16
@@ -522,8 +535,8 @@ class mitim_simulation:
                 for folder in folders_red:
                     GACODEcommand += f'    {code_call(folder = folder, n = resources_per_call, p = self.simulation_job.folderExecution)}  &\n'
                 GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
-            
-            # Job array 
+
+            # Job array
             elif type_of_submission == "slurm_array":
 
                 print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
@@ -537,7 +550,7 @@ class mitim_simulation:
 
                 # Code launches
                 GACODEcommand = folders_list + "\n\n"
-                
+
                 indexed_folder = "${FOLDERS[$SLURM_ARRAY_TASK_ID]}"
                 GACODEcommand += code_call(
                     folder = indexed_folder,
@@ -561,9 +574,10 @@ class mitim_simulation:
                     n_rhos=len(rhos), n_subfolders=len(code_executor),
                     machine_settings=machineSettings,
                     launch_slurm=launchSlurm,
-                    force_submission_type=self.run_specifications.get('force_submission_type'),
+                    force_submission_type=forced_submission_type,
                     job_name=code + '_sim',
                     array_list=array_list,
+                    exclusive=user_exclusive,
                 )
 
             if code not in SLURMtools.CODE_HINTS:

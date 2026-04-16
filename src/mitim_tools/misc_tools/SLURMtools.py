@@ -11,9 +11,10 @@ This module resolves three inputs into a single allocation description:
                       ├── sbatch:  dict of LITERAL sbatch flag names
                       │            (e.g. 'cpus-per-task', 'gpus-per-node',
                       │             'mem', 'time', 'array', 'nodes',
-                      │             'ntasks', 'ntasks-per-node')
+                      │             'ntasks', 'ntasks-per-node', 'exclusive')
                       ├── mpi:     {'n', 'nomp', 'numa', 'mpinuma'} for code_call
-                      └── concurrency: max parallel radii in bash mode
+                      ├── concurrency: max parallel radii in bash mode
+                      └── submission_type: bash | slurm_standard | slurm_array
 
 The resolver is the single place where:
     - default cores per code live (TGLF=4, NEO=1, CGYRO=16)
@@ -79,6 +80,7 @@ def resolve(
     force_submission_type=None,
     job_name="mitim_job",
     array_list=None,
+    exclusive=None,
 ):
     """
     Resolve user `allocation` + machine config + code hints → ResolvedAllocation.
@@ -101,11 +103,15 @@ def resolve(
     launch_slurm : bool
         If False, force bash mode regardless of machine config.
     force_submission_type : str | None
-        'slurm_standard' | 'slurm_array' | 'bash' to override heuristic.
+        'slurm_standard' | 'slurm_array' | 'bash' to override the heuristic.
     job_name : str
         SLURM job name.
     array_list : list[str] | None
         Array indices for slurm_array submissions (e.g. ['0','1','2']).
+    exclusive : bool | None
+        If True, force `--exclusive` on the sbatch (whole-node reservation —
+        useful with slurm_array on clusters that don't enforce per-job GPU
+        isolation). If None, defer to the machine config's slurm.exclusive.
     """
     hints = CODE_HINTS.get(code, {"default_resources_per_call": 1, "uses_gpu": False, "full_node_mpi": False})
     allocation = dict(allocation or {})
@@ -194,6 +200,14 @@ def resolve(
             n_subfolders=n_subfolders,
             array_list=array_list,
         )
+
+        # Explicit user override for --exclusive (e.g. force whole-node
+        # ownership for each slurm_array element on clusters that don't
+        # enforce per-job GPU isolation). None = defer to machine config.
+        if exclusive is True:
+            sbatch["exclusive"] = True
+        elif exclusive is False:
+            sbatch["exclusive"] = False
 
     # --- One log line documenting the abstract → native mapping ------------
     _log_mapping(code, hints, resources_per_call, submission_type, sbatch)
@@ -300,5 +314,3 @@ def format_time(minutes):
         h, m = divmod(minutes, 60)
         return f"{h:02d}:{m:02d}:00"
     return f"{minutes:02d}:00"
-
-

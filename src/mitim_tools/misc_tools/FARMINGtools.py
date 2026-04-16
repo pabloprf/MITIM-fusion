@@ -1180,6 +1180,7 @@ def create_slurm_execution_files(
 
     job_array       = slurm_settings.setdefault("array", None)
     job_array_limit = slurm_settings.setdefault("array_limit", None)
+    job_exclusive   = slurm_settings.setdefault("exclusive", False)
 
     # ---------------------------------------------------
     # slurm_allocation indicate the machine specifications as given by the config instead of individual job
@@ -1245,7 +1246,11 @@ def create_slurm_execution_files(
         commandSBATCH.append(f"#SBATCH --mem {memory_req}")
     if job_array is not None:
         commandSBATCH.append(f"#SBATCH --array={job_array}{f'%{job_array_limit} ' if job_array_limit is not None else ''}")
-    elif request_exclusive_node:
+    # --exclusive can co-exist with arrays (one whole node per array element)
+    # and with packed jobs (whole nodes via per-job slurm_settings). Honor
+    # both the machine config (`slurm_allocation`) and the per-job override
+    # (`slurm_settings.exclusive`).
+    if request_exclusive_node or job_exclusive:
         commandSBATCH.append("#SBATCH --exclusive")
     if nodes is not None:
         commandSBATCH.append(f"#SBATCH --nodes {nodes}")
