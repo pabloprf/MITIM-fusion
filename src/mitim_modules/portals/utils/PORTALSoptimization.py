@@ -121,22 +121,31 @@ def initialization_simple_relax(self):
     # `Execution/Evaluation.{s*n_traj + t}/transport_simulation_folder`, matching the
     # step-major order of the flattened Xopt.
     #
-    # Multi-trajectory `base_X` duplicate guard: `simple_relaxation` always records
-    # `x_initial` (= base_X) as the first entry of `x_history`. For n_traj>1 every
-    # trajectory shares the same base_X row, which would land as N identical training
-    # rows and crash `optimization_data.find_point(base_X)` downstream via `.item()` on a
-    # multi-row Series. We run one extra relax iteration (`effective_maxiter = steps_per_traj + 1`)
-    # and drop `Xopt_batches[0]` when skip_initial is True. Step 0 lands in a throwaway
-    # sub-folder `portals_sr_base_step0` whose name is deliberately *not* matched by the
-    # `portals_sr_ev_*` glob used by the copy loop and PORTALSinitializer. For
-    # single-trajectory runs no duplication is possible and the historical behaviour
-    # (include base_X, no throwaway folder) is preserved.
+    # `ev_0` holds the per-trajectory perturbed-base evaluation (x_0 = base_X * (1 +
+    # perturbation_base[t])) — `simple_relaxation` always evaluates x_initial as the first
+    # entry of `x_history`, and we keep that evaluation as training-point 0 of each
+    # trajectory. `ev_{s>0}` holds the s'th SR update from those starting points.
+    #
+    # Pairwise-distinct perturbations are required when n_traj > 1 (validated below):
+    # identical `perturbation_base` values would create duplicate base_X rows and crash
+    # `optimization_data.find_point(base_X).item()` downstream, and (when other relax knobs
+    # also match) would produce identical SR sequences anyway.
     # ------------------------------------------------------------------------------------
 
     traj_params = _normalize_initialization_params(
         self.optimization_options["initialization_options"].get("initialization_params")
     )
     n_traj = len(traj_params)
+
+    if n_traj > 1:
+        perturbations_check = [float(tp.get('perturbation_base', 0.0)) for tp in traj_params]
+        if len(set(perturbations_check)) < n_traj:
+            raise ValueError(
+                f"initialization_params: with n_traj={n_traj} trajectories, every "
+                f"'perturbation_base' must be unique (got {perturbations_check}). "
+                "Identical perturbations produce duplicate base-X training rows and, "
+                "when other relax knobs also match, identical SR sequences."
+            )
 
     if self.Originalinitial_training % n_traj != 0:
         raise ValueError(
@@ -155,22 +164,10 @@ def initialization_simple_relax(self):
     else:
         addon_relax = 0.0
 
-    skip_initial = n_traj > 1
-    effective_maxiter = steps_per_traj + (1 if skip_initial else 0)
+    effective_maxiter = steps_per_traj
 
-    # Folder_namer hook: each relax step gets one folder. When we are running with
-    # skip_initial=True, step 0 is the throwaway base_X evaluation — route it to a
-    # differently-prefixed folder so the `portals_sr_ev_*` glob used below (and by
-    # PORTALSinitializer) does not see it.
-    if skip_initial:
-        def folder_namer(step):
-            return (
-                "portals_sr_base_step0" if step == 0
-                else f"portals_sr_ev_{step - 1}"
-            )
-    else:
-        def folder_namer(step):
-            return f"portals_sr_ev_{step}"
+    def folder_namer(step):
+        return f"portals_sr_ev_{step}"
 
     # Build per-trajectory tensor versions of each solver-option knob.
     def _per_batch_tensor(key, scalar_default):
@@ -254,7 +251,7 @@ def initialization_simple_relax(self):
     print(f"  Trajectories:         {n_traj}")
     print(f"  Steps per trajectory: {steps_per_traj}")
     print(f"  Total training pts:   {self.Originalinitial_training}")
-    print(f"  Effective maxiter:    {effective_maxiter} (skip_initial={skip_initial})")
+    print(f"  SR iterations:        {effective_maxiter}")
     print(f"  Radii (per plasma):   {n_radii}  ({', '.join(traj_state.predicted_channels)})")
     print(f"  Seed addon_relax:     {addon_relax:+.4f}")
     print(f"  Base X (dvs_base):    [{', '.join(f'{v:.3f}' for v in base_X_row.tolist())}]")
@@ -274,12 +271,10 @@ def initialization_simple_relax(self):
         solver_options=solver_options,
     )
 
-    # Full batched trajectory: shape (effective_maxiter, n_traj, dvs). For skip_initial
-    # we drop the very first step (the shared base_X row) so the downstream
-    # Execution/Evaluation.{i} layout never carries duplicate training rows.
+    # Full batched trajectory: shape (steps_per_traj, n_traj, dvs). Step 0 is the
+    # perturbed-base evaluation (training point 0 per trajectory); subsequent steps are
+    # the SR updates from there.
     Xopt_batches = traj_state.FluxMatch_Xopt_batches
-    if skip_initial:
-        Xopt_batches = Xopt_batches[1:]   # (steps_per_traj, n_traj, dvs)
 
     # -------------------------------------------------------------------------------------------
     # Fan the per-step batched folders into per-(step, trajectory) Execution/Evaluation.{i}
