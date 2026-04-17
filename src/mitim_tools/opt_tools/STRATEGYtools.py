@@ -344,6 +344,7 @@ class MITIM_BO:
         seed=0,
         askQuestions=True,
         ENABLE_EMBED=False, # If True, will enable IPython embed, useful for debugging (but won't write .log files)
+        write_log_file=True, # If False, skip the stdout->optimization_log.txt redirection (prints flow straight to whatever fd was captured, e.g. sbatch --output for slurm runs). Useful on clusters with slow IO where buffering the in-folder log hides progress from the slurm stdout.
     ):
         """
         Inputs:
@@ -445,9 +446,11 @@ class MITIM_BO:
    
             self.timings_file = self.folderOutputs / "timing.jsonl"
 
-            # Logger            
-            if not ENABLE_EMBED:
+            # Logger
+            if not ENABLE_EMBED and write_log_file:
                 sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
+            elif not write_log_file:
+                print("- Skipping optimization_log.txt (write_log_file=False); output flows directly to the captured stdout (e.g. slurm_output.dat)")
                 
             print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")

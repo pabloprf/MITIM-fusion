@@ -678,7 +678,7 @@ class mitim_simulation:
                 if self._submission_metadata_filename is not None:
                     self._write_submission_metadata(kwargs_run.get("base_subfolder"))
 
-    def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2):
+    def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2, custom_checker=None):
         '''
         Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2).
 
@@ -694,6 +694,12 @@ class mitim_simulation:
         polls, exit the loop with a warning so `fetch()` can pull whatever is
         on disk rather than sleeping forever on a dead node. Set to None to
         disable the heuristic.
+
+        custom_checker: optional callable invoked as `custom_checker(self)`
+        after every squeue poll. Intended for subclass-specific inspection
+        (e.g. CGYRO's per-(subfolder,rho) out.cgyro.info / out.cgyro.timing
+        walk) — the generic check() stays code-agnostic. Exceptions are
+        caught and logged so a flaky remote query does not abort the poll.
         '''
 
         if self.simulation_job is None:
@@ -713,6 +719,13 @@ class mitim_simulation:
                 first = False
                 state = self.simulation_job.infoSLURM.get("STATE")
                 print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({state})')
+
+                if custom_checker is not None:
+                    try:
+                        custom_checker(self)
+                    except Exception as _e:
+                        print(f"\t- custom_checker raised: {_e}; continuing poll", typeMsg='w')
+
                 if self.simulation_job.status == 2:
                     print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
                     break

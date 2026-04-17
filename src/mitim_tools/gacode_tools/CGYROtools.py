@@ -12,12 +12,114 @@ from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
+
+def _format_wall_seconds(s):
+    s = int(s)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h > 0:
+        return f"{h}h{m:02d}m{sec:02d}s"
+    if m > 0:
+        return f"{m}m{sec:02d}s"
+    return f"{sec}s"
+
+
+def cgyro_per_task_status(sim):
+    '''
+    Custom checker for `mitim_simulation.check(custom_checker=...)` that
+    prints, for every (subfolder, rho) currently tracked by
+    `sim.kwargs_organize`, a per-task status line derived from the CGYRO
+    output files on the remote (`out.cgyro.info` and `out.cgyro.timing`)
+    plus a wall-clock proxy based on `stat -c %Y out.cgyro.info`.
+
+    One SSH round-trip per check poll — the remote side loops through all
+    folders and emits a `folder|state|avg_total|steps|wall_seconds` line
+    per element, which we then parse and pretty-print locally.
+
+    State decision tree:
+        out.cgyro.info missing                   -> NOT_STARTED (pending on the scheduler)
+        out.cgyro.info present, no timing yet    -> INITIALIZED (cgyro warming up)
+        both present                             -> RUNNING + avg TOTAL per step
+    '''
+
+    job = getattr(sim, "simulation_job", None)
+    kwargs_organize = getattr(sim, "kwargs_organize", None)
+    if job is None or kwargs_organize is None or not getattr(job, "launchSlurm", False):
+        return
+
+    # Flatten code_executor into an ordered list of "subfolder/rho_{val:.4f}"
+    # folder paths matching the slurm-array layout built by SIMtools._run.
+    folders = []
+    for sub, rhos in kwargs_organize["code_executor"].items():
+        for rho in rhos:
+            folders.append(f"{sub}/rho_{float(rho):.4f}")
+    if not folders:
+        return
+
+    folder_list_sh = " ".join(f'"{f}"' for f in folders)
+
+    # Single shell script executed remotely. Avg/steps awk reads every numeric
+    # line in the "Run time" block (header "... TOTAL" is skipped by the
+    # numeric-field guard) and averages the last column (TOTAL).
+    script = (
+        f"cd {job.folderExecution} && for folder in {folder_list_sh}; do\n"
+        '    info="$folder/out.cgyro.info"; timing="$folder/out.cgyro.timing"\n'
+        '    if [ -f "$info" ]; then\n'
+        '        if [ -f "$timing" ]; then\n'
+        "            avg=$(awk '/^Run time/{run=1; next} run && NF>=14 && ($NF+0==$NF){s+=$NF; n++} END{if(n>0) printf \"%.3f\", s/n; else printf \"NA\"}' \"$timing\")\n"
+        "            steps=$(awk '/^Run time/{run=1; next} run && NF>=14 && ($NF+0==$NF){n++} END{print n+0}' \"$timing\")\n"
+        '            mtime=$(stat -c %Y "$info"); now=$(date +%s); wall=$((now - mtime))\n'
+        '            echo "$folder|RUNNING|$avg|$steps|$wall"\n'
+        "        else\n"
+        '            mtime=$(stat -c %Y "$info"); now=$(date +%s); wall=$((now - mtime))\n'
+        '            echo "$folder|INITIALIZED|NA|0|$wall"\n'
+        "        fi\n"
+        "    else\n"
+        '        echo "$folder|NOT_STARTED|NA|0|0"\n'
+        "    fi\n"
+        "done"
+    )
+
+    try:
+        job.connect()
+        out, _err = job.execute(script, printYN=False)
+        job.close()
+    except Exception as e:
+        print(f"\t- [per-task status] remote inspection failed ({e}); continuing", typeMsg='w')
+        return
+
+    if isinstance(out, bytes):
+        out = out.decode(errors="replace")
+    out = out or ""
+
+    print(f"\t- Per-task CGYRO status ({len(folders)} element(s)):")
+    for raw in out.splitlines():
+        parts = raw.strip().split("|")
+        if len(parts) < 5:
+            continue
+        folder, state, avg, steps, wall = parts[:5]
+        wall_str = _format_wall_seconds(wall) if wall.isdigit() and int(wall) > 0 else "—"
+        if state == "NOT_STARTED":
+            print(f"\t     {folder}: pending — no out.cgyro.info on disk yet")
+        elif state == "INITIALIZED":
+            print(f"\t     {folder}: initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall_str})")
+        elif state == "RUNNING":
+            print(f"\t     {folder}: running — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})")
+        else:
+            print(f"\t     {folder}: {state} — raw='{raw}'")
+
 class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     # Opts CGYRO into persisting slurm-submission metadata (jobid, remote
     # folder, retrieval plan) whenever run_type='submit' is used, so a later
     # PORTALS restart can re-attach to the in-flight job rather than resubmit.
     _submission_metadata_filename = "cgyro_submission.json"
+
+    # Per-task inspection for `check(custom_checker=...)`. Picked up by
+    # transport_cgyro.py via `getattr(gk_object, '_custom_check_callback', None)`
+    # so the generic gyrokinetic_model evaluator stays code-agnostic (GX etc.
+    # simply get None and skip).
+    _custom_check_callback = staticmethod(cgyro_per_task_status)
 
     def __init__(
         self,

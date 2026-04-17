@@ -133,7 +133,11 @@ class gyrokinetic_model:
                     print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
                     print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
                     print("")
-                    gk_object.check(every_n_minutes=every_n_minutes, skip_first_iteration_squeue=reattached)
+                    gk_object.check(
+                        every_n_minutes=every_n_minutes,
+                        skip_first_iteration_squeue=reattached,
+                        custom_checker=getattr(gk_object, "_custom_check_callback", None),
+                    )
 
                     print("")
                     print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-rho folders.", typeMsg='i')
@@ -463,7 +467,11 @@ class cgyro_model(gyrokinetic_model):
                 print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the batched CGYRO job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
                 print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
                 print("")
-                cgyro.check(every_n_minutes=every_n_minutes, skip_first_iteration_squeue=reattached)
+                cgyro.check(
+                    every_n_minutes=every_n_minutes,
+                    skip_first_iteration_squeue=reattached,
+                    custom_checker=getattr(cgyro, "_custom_check_callback", None),
+                )
 
                 print("")
                 print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-(plasma,rho) folders.", typeMsg='i')
