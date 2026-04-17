@@ -450,7 +450,19 @@ class MITIM_BO:
             if not ENABLE_EMBED and write_log_file:
                 sys.stdout = LOGtools.Logger(logFile=self.folderOutputs / "optimization_log.txt", writeAlsoTerminal=True)
             elif not write_log_file:
-                print("- Skipping optimization_log.txt (write_log_file=False); output flows directly to the captured stdout (e.g. slurm_output.dat)")
+                # Without the Logger, prints flow straight to whatever fd was
+                # captured by the shell. Under slurm that fd is a FILE
+                # (sbatch --output), which Python defaults to *full* buffering
+                # on — so without reconfiguring you'd see nothing in
+                # slurm_output.dat until the buffer filled or the process
+                # exited. Flip stdout/stderr to line-buffered so every '\n'
+                # triggers a flush.
+                for _stream in (sys.stdout, sys.stderr):
+                    try:
+                        _stream.reconfigure(line_buffering=True)
+                    except Exception:
+                        pass
+                print("- Skipping optimization_log.txt (write_log_file=False); stdout/stderr reconfigured to line-buffered so the captured stdout (e.g. slurm_output.dat) flushes on every newline")
                 
             print("\n-----------------------------------------------------------------------------------------")
             print("\t\t\t BO class module")
