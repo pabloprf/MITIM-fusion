@@ -13,6 +13,22 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
+def _annotate_missing(ax, reason):
+    '''
+    Stamp a small "data unavailable" note on an axes when the underlying
+    CGYRO output files weren't written or weren't retrieved (e.g.
+    MOMENT_PRINT_FLAG=0 drops kxky_n/e/v; FIELD_PRINT_FLAG=0 drops
+    kxky_apar/bpar). Keeps the surrounding title/labels intact so the reader
+    sees which panel was supposed to be there.
+    '''
+    ax.text(
+        0.5, 0.5, f"Data unavailable\n({reason})",
+        ha='center', va='center', transform=ax.transAxes,
+        color='gray', style='italic', fontsize=10,
+        bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.4),
+    )
+
+
 def _format_wall_seconds(s):
     s = int(s)
     h, rem = divmod(s, 3600)
@@ -170,12 +186,6 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         self.output_files_simulation["minimal_base"] = [
             "bin.cgyro.geo",
-            "bin.cgyro.kxky_e",
-            "bin.cgyro.kxky_n",
-            "bin.cgyro.kxky_phi",
-            "bin.cgyro.kxky_apar", 
-            "bin.cgyro.kxky_bpar", 
-            "bin.cgyro.kxky_v",
             "bin.cgyro.ky_cflux",
             "bin.cgyro.ky_flux",
             "input.cgyro.gen",
@@ -198,14 +208,23 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "mitim.out",
         ]
 
-        # Best-effort retrievals: restart blobs plus the companion .flag / .tag
-        # files that track them. CGYRO may skip writing these when the run is
-        # short-lived, crashes early, or hits the wall-clock during COMPLETING;
-        # treat their absence as a warning rather than a hard failure.
+        # Best-effort retrievals: tarred if present, absence logged once (no
+        # 60s retry, no cold-start trigger). Two groups:
+        #   - restart blobs + companion .flag/.tag that CGYRO may skip writing
+        #     on short runs, crashes, or COMPLETING-timeouts.
+        #   - large bin.cgyro.kxky_* dumps (tens to hundreds of MB each) that
+        #     diagnostics can do without and whose retrieval over a slow
+        #     shared filesystem was the dominant cost of fetch().
         self.output_files_simulation["optional_base"] = [
             "bin.cgyro.restart",
             "bin.cgyro.restart.flag",
             "out.cgyro.tag",
+            "bin.cgyro.kxky_apar",
+            "bin.cgyro.kxky_bpar",
+            "bin.cgyro.kxky_e",
+            "bin.cgyro.kxky_n",
+            "bin.cgyro.kxky_phi",
+            "bin.cgyro.kxky_v",
         ]
 
         # Nonlinear sim
@@ -842,66 +861,77 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         colors = GRAPHICStools.listColors()
 
+        # Safety net: if one sub-plot method raises (e.g. a missing optional
+        # CGYRO output file that the per-panel guards didn't cover), we do
+        # NOT want it to abort the whole notebook build. Wrap each call in a
+        # try/except that logs a warning and continues.
+        def _safe_plot(fn, *args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as _e:
+                print(f"\t- {fn.__name__} failed ({_e}); skipping this figure and continuing", typeMsg='w')
+                return None
+
         colorbars_all = []  # Store all colorbars for later use
         for j in range(len(labels)):
-            
-            self.plot_fluxes(
+
+            _safe_plot(self.plot_fluxes,
                 axs=axsFluxes_t,
                 label=labels[j],
                 c=colors[j],
                 plotLegend=j == len(labels) - 1,
             )
-            self.plot_fluxes_ky(
+            _safe_plot(self.plot_fluxes_ky,
                 axs=axsFluxes_ky,
                 label=labels[j],
                 c=colors[j],
                 plotLegend=j == len(labels) - 1,
             )
-            self.plot_intensities_ky(
+            _safe_plot(self.plot_intensities_ky,
                 axs=axsIntensities_ky,
                 label=labels[j],
                 c=colors[j],
                 addText=j == len(labels) - 1,
             )
-            self.plot_intensities(
+            _safe_plot(self.plot_intensities,
                 axs=axsIntensities,
                 label=labels[j],
                 c=colors[j],
                 addText=j == len(labels) - 1,  # Add text only for the last label
             )
-            self.plot_intensities_kx(
+            _safe_plot(self.plot_intensities_kx,
                 axs=axsIntensities_kx,
                 label=labels[j],
                 c=colors[j],
                 addText=j == len(labels) - 1,  # Add text only for the last label
             )
-            self.plot_turbulence(
+            _safe_plot(self.plot_turbulence,
                 axs=axsTurbulence,
                 label=labels[j],
                 c=colors[j],
             )
-            self.plot_cross_phases(
+            _safe_plot(self.plot_cross_phases,
                 axs=axsCrossPhases,
                 label=labels[j],
                 c=colors[j],
             )
             if create_ballooning:
-                self.plot_ballooning(
+                _safe_plot(self.plot_ballooning,
                     axs=axsBallooning,
                     label=labels[j],
                     c=colors[j],
                 )
-            
+
             if include_2D:
-                
-                colorbars = self.plot_2D(
+
+                colorbars = _safe_plot(self.plot_2D,
                     axs=axs2D[j],
                     label=labels[j],
                 )
-                
+
                 colorbars_all.append(colorbars)
-            
-            self.plot_inputs(
+
+            _safe_plot(self.plot_inputs,
                 ax=axsInputs["A"],
                 label=labels[j],
                 c=colors[j],
@@ -909,8 +939,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 normalization_label= labels[0],  # Normalize to the first label
                 only_plot_differences=len(labels) > 1,  # Only plot differences if there are multiple labels
             )
-            
-            self.plot_inputs(
+
+            _safe_plot(self.plot_inputs,
                 ax=axsInputs["B"],
                 label=labels[j],
                 c=colors[j],
@@ -1046,15 +1076,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
 
         ax = axs["C"]
-        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
-        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
-  
+        try:
+            ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+            ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+            ax.plot(self.results[label].t, self.results[label].ne_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta n_e/n_{e,0}/n_{e0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron Density intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
         # Add mathematical definitions text
         if addText:
@@ -1068,15 +1101,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
 
         ax = axs["D"]
-        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
-        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+        try:
+            ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+            ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+            ax.plot(self.results[label].t, self.results[label].Te_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta T_e/T_{e,0}/T_{e0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron Temperature intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
         # Add mathematical definitions text
         if addText:
@@ -1091,15 +1127,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
 
         ax = axs["E"]
-        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
-        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
-  
+        try:
+            ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+            ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+            ax.plot(self.results[label].t, self.results[label].ni_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta n_i/n_{i,0}/n_{i0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion Density intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
         # Add mathematical definitions text
         if addText:
@@ -1113,15 +1152,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
 
         ax = axs["F"]
-        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
-        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
-        ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+        try:
+            ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn*100.0, '-', c=c, lw=2, label=f"{label}")
+            ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_n0*100.0, '-.', c=c, lw=0.5, label=f"{label}, $n=0$")
+            ax.plot(self.results[label].t, self.results[label].Ti_rms_sumnr_sumn1*100.0, '--', c=c, lw=0.5, label=f"{label}, $n>0$")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta T_i/T_{i,0}/T_{i0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion Temperature intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
         # Add mathematical definitions text
         if addText:
@@ -1134,25 +1176,31 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
 
         ax = axs["G"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].t, self.results[label].ni_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
-  
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].t, self.results[label].ni_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta n_i/n_{i,0}/n_{i0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ions (all) Density intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
 
         ax = axs["H"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].t, self.results[label].Ti_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
-  
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].t, self.results[label].Ti_all_rms_sumnr_sumn[ion]*100.0, ls[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]}")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\delta T_i/T_{i,0}/n_{i0}$ (%)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ions (all) Temperature intensity fluctuations')
-        ax.legend(loc='best', prop={'size': 8},)
 
 
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
@@ -1221,14 +1269,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Electron particle intensity
         ax = axs["C"]
-        ax.plot(self.results[label].ky, self.results[label].ne_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].ne_rms_sumnr_mean-self.results[label].ne_rms_sumnr_std, self.results[label].ne_rms_sumnr_mean+self.results[label].ne_rms_sumnr_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].ne_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].ne_rms_sumnr_mean-self.results[label].ne_rms_sumnr_std, self.results[label].ne_rms_sumnr_mean+self.results[label].ne_rms_sumnr_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta n_e/n_{e,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         # Add mathematical definitions text
@@ -1242,14 +1293,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Electron temperature intensity
         ax = axs["D"]
-        ax.plot(self.results[label].ky, self.results[label].Te_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].Te_rms_sumnr_mean-self.results[label].Te_rms_sumnr_std, self.results[label].Te_rms_sumnr_mean+self.results[label].Te_rms_sumnr_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].Te_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].Te_rms_sumnr_mean-self.results[label].Te_rms_sumnr_std, self.results[label].Te_rms_sumnr_mean+self.results[label].Te_rms_sumnr_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta T_e/T_{e,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron temperature intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         if addText:
@@ -1263,14 +1317,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         # Ion particle intensity
         ax = axs["E"]
-        ax.plot(self.results[label].ky, self.results[label].ni_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].ni_rms_sumnr_mean-self.results[label].ni_rms_sumnr_std, self.results[label].ni_rms_sumnr_mean+self.results[label].ni_rms_sumnr_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].ni_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].ni_rms_sumnr_mean-self.results[label].ni_rms_sumnr_std, self.results[label].ni_rms_sumnr_mean+self.results[label].ni_rms_sumnr_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta n_i/n_{i,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion particle intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         # Add mathematical definitions text
@@ -1284,14 +1341,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Ion temperature intensity
         ax = axs["F"]
-        ax.plot(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
-        ax.fill_between(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean-self.results[label].Ti_rms_sumnr_std, self.results[label].Ti_rms_sumnr_mean+self.results[label].Ti_rms_sumnr_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+            ax.fill_between(self.results[label].ky, self.results[label].Ti_rms_sumnr_mean-self.results[label].Ti_rms_sumnr_std, self.results[label].Ti_rms_sumnr_mean+self.results[label].Ti_rms_sumnr_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta T_i/T_{i,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion temperature intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         if addText:
@@ -1305,29 +1365,33 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         # Ion particle intensity
         ax = axs["G"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].ky, self.results[label].ni_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
-
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].ky, self.results[label].ni_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta n_i/n_{i,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ions (all) particle intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
-        
-        
+
+
         # Ion temperature intensity
         ax = axs["H"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].ky, self.results[label].Ti_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
-
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].ky, self.results[label].Ti_all_rms_sumnr_mean[ion], ls[ion]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[ion]} (mean)")
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\delta T_i/T_{i,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ions (all) temperature intensity vs. $k_\\theta\\rho_s$')
-        ax.legend(loc='best', prop={'size': 8},)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
@@ -1393,16 +1457,19 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Electron particle intensity
         ax = axs["B"]
-        ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
-        ax.plot(self.results[label].kx, self.results[label].ne_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
-        ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+        try:
+            ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
+            ax.plot(self.results[label].kx, self.results[label].ne_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
+            ax.plot(self.results[label].kx, self.results[label].ne_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+            ax.legend(loc='best', prop={'size': 8},)
+            ax.set_yscale('log')
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{x}$")
         ax.set_ylabel("$\\delta n_e/n_{e,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle intensity vs kx')
-        ax.legend(loc='best', prop={'size': 8},)
-        ax.set_yscale('log')
 
         # Add mathematical definitions text
         if addText:
@@ -1415,16 +1482,19 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             
         # Electron temperature intensity
         ax = axs["D"]
-        ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
-        ax.plot(self.results[label].kx, self.results[label].Te_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
-        ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+        try:
+            ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn_mean, '-o', markersize=1.0, lw=1.0, color=c, label=label+' (mean)')
+            ax.plot(self.results[label].kx, self.results[label].Te_rms_n0_mean, '-.', markersize=0.5, lw=0.5, color=c, label=label+', $n=0$ (mean)')
+            ax.plot(self.results[label].kx, self.results[label].Te_rms_sumn1_mean, '--', markersize=0.5, lw=0.5, color=c, label=label+', $n>0$ (mean)')
+            ax.legend(loc='best', prop={'size': 8},)
+            ax.set_yscale('log')
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{x}$")
         ax.set_ylabel("$\\delta T_e/T_{e,0}$")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron temperature intensity vs kx')
-        ax.legend(loc='best', prop={'size': 8},)
-        ax.set_yscale('log')
         
         if addText:
             ax.text(0.02, 0.95, 
@@ -1454,95 +1524,121 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         m = GRAPHICStools.listmarkers()
             
         ax = axs["A"]
-        ax.plot(self.results[label].ky, self.results[label].neTe_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].neTe_kx0_mean-self.results[label].neTe_kx0_std, self.results[label].neTe_kx0_mean+self.results[label].neTe_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].neTe_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].neTe_kx0_mean-self.results[label].neTe_kx0_std, self.results[label].neTe_kx0_mean+self.results[label].neTe_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n + kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$n_e-T_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$n_e-T_e$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
 
 
         ax = axs["B"]
-        ax.plot(self.results[label].ky, self.results[label].niTi_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].niTi_kx0_mean-self.results[label].niTi_kx0_std, self.results[label].niTi_kx0_mean+self.results[label].niTi_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].niTi_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].niTi_kx0_mean-self.results[label].niTi_kx0_std, self.results[label].niTi_kx0_mean+self.results[label].niTi_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n + kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$n_i-T_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$n_i-T_i$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
 
         ax = axs["C"]
-        ax.plot(self.results[label].ky, self.results[label].phine_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].phine_kx0_mean-self.results[label].phine_kx0_std, self.results[label].phine_kx0_mean+self.results[label].phine_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].phine_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].phine_kx0_mean-self.results[label].phine_kx0_std, self.results[label].phine_kx0_mean+self.results[label].phine_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-n_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-n_e$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
 
         ax = axs["D"]
-        ax.plot(self.results[label].ky, self.results[label].phini_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].phini_kx0_mean-self.results[label].phini_kx0_std, self.results[label].phini_kx0_mean+self.results[label].phini_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].phini_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].phini_kx0_mean-self.results[label].phini_kx0_std, self.results[label].phini_kx0_mean+self.results[label].phini_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-n_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-n_i$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
 
 
         ax = axs["E"]
-        ax.plot(self.results[label].ky, self.results[label].phiTe_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].phiTe_kx0_mean-self.results[label].phiTe_kx0_std, self.results[label].phiTe_kx0_mean+self.results[label].phiTe_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].phiTe_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].phiTe_kx0_mean-self.results[label].phiTe_kx0_std, self.results[label].phiTe_kx0_mean+self.results[label].phiTe_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-T_e$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-T_e$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
-        
+
 
         ax = axs["F"]
-        ax.plot(self.results[label].ky, self.results[label].phiTi_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
-        ax.fill_between(self.results[label].ky, self.results[label].phiTi_kx0_mean-self.results[label].phiTi_kx0_std, self.results[label].phiTi_kx0_mean+self.results[label].phiTi_kx0_std, color=c, alpha=0.2)
+        try:
+            ax.plot(self.results[label].ky, self.results[label].phiTi_kx0_mean, '-o', c=c, lw=2, label=f"{label} (mean)")
+            ax.fill_between(self.results[label].ky, self.results[label].phiTi_kx0_mean-self.results[label].phiTi_kx0_std, self.results[label].phiTi_kx0_mean+self.results[label].phiTi_kx0_std, color=c, alpha=0.2)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-T_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-T_i$ cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
-        
-        
+
+
         ax = axs["G"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].ky, self.results[label].phiTi_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].ky, self.results[label].phiTi_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_e (MOMENT_PRINT_FLAG=1)")
 
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-T_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-T_i$ (all) cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
-        
+
 
         ax = axs["H"]
-        for ion in self.results[label].ions_flags:
-            ax.plot(self.results[label].ky, self.results[label].phini_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
-        
+        try:
+            for ion in self.results[label].ions_flags:
+                ax.plot(self.results[label].ky, self.results[label].phini_all_kx0_mean[ion], ls[ion]+m[ion], c=c, lw=1, label=f"{label}, {self.results[label].all_names[ion]} (mean)", markersize=4)
+            ax.legend(loc='best', prop={'size': 8},)
+        except AttributeError:
+            _annotate_missing(ax, "needs bin.cgyro.kxky_n (MOMENT_PRINT_FLAG=1)")
+
         ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$\\phi-n_i$ cross-phase (degrees)"); ax.set_ylim([-180, 180])
         GRAPHICStools.addDenseAxis(ax)
         ax.axhline(0.0, color='k', ls='--', lw=1)
         ax.set_title('$\\phi-n_i$ (all) cross-phase ($k_x=0$)')
-        ax.legend(loc='best', prop={'size': 8},)
         
         
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
@@ -1658,7 +1754,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
     def plot_2D(self, label="cgyro1", axs=None, times = None):
-    
+
+        # plot_2D needs kxky_phi (always), kxky_n (MOMENT_PRINT_FLAG=1) and
+        # kxky_e (MOMENT_PRINT_FLAG=1). If any of the underlying fluctuation
+        # arrays is missing (typically because the user disabled the print
+        # flags to save disk / retrieval time), skip cleanly instead of
+        # aborting the whole plot chain.
+        _res = self.results.get(label) if hasattr(self, 'results') else None
+        if _res is None or not all(hasattr(_res, _a) for _a in ('phi', 'ne', 'Te')):
+            print("\t- plot_2D skipped: needs phi/ne/Te (requires bin.cgyro.kxky_phi + kxky_n + kxky_e; enable MOMENT_PRINT_FLAG=1 / FIELD_PRINT_FLAG=1)", typeMsg='w')
+            return
+
         if times is None:
             times = []
             
