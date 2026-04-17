@@ -213,7 +213,14 @@ transport:
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
-      
+
+        # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
+        # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
+        check_existing_runs: False
+
+        # Polling cadence for .check() when run_type=="submit" (minutes)
+        every_n_minutes: 10
+
       read:
         tmin: -0.3 # Last 30% of the simulation
       

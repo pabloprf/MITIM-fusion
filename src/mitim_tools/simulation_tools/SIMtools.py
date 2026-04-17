@@ -1,5 +1,6 @@
 import shutil
 import datetime
+import json
 import time
 import os
 import copy
@@ -24,6 +25,12 @@ class mitim_simulation:
     '''
     Main class for running GACODE simulations.
     '''
+
+    # Subclasses that want `_run(run_type='submit')` to persist slurm-job metadata
+    # (so a later process can re-attach instead of resubmitting) set this to a
+    # filename (e.g. "cgyro_submission.json"). Leave as None to opt out.
+    _submission_metadata_filename = None
+
     def __init__(
         self,
         rhos=[None],  # rho locations of interest, e.g. [0.4,0.6,0.8]
@@ -189,6 +196,7 @@ class mitim_simulation:
             attempts_execution=attempts_execution,
             run_type=run_type,
             helper_lostconnection=helper_lostconnection,
+            base_subfolder=subfolder,
         )
 
         return code_executor_full
@@ -356,6 +364,12 @@ class mitim_simulation:
             filesToRetrieve = self.output_files_simulation["minimal"]
         else:
             filesToRetrieve = self.output_files_simulation["complete"]
+
+        # Best-effort retrievals: tarred if present on the remote, but their
+        # absence only emits a warning (no 60s retry, no cold-start trigger).
+        # Populated by subclasses via `self.output_files_simulation["optional"]`
+        # (e.g. CGYRO's bin.cgyro.restart / .restart.flag / out.cgyro.tag).
+        optional_files_to_retrieve = list(self.output_files_simulation.get("optional", []))
 
         c = 0
         for subfolder_simulation in code_executor:
@@ -594,18 +608,23 @@ class mitim_simulation:
                 slurm_settings=slurm_settings,
             )
             
-            # I would like the mitim_job to check if the retrieved folders were complete
-            files_we_care_about = {}
+            # Mandatory vs best-effort retrieval lists. `files_we_must_check` is
+            # what check_all_received flags as missing (triggers the retry). The
+            # tarball (`files_we_want_to_tar`) additionally includes optional
+            # files so they come down if present on the remote.
+            files_we_must_check = {}
+            files_we_want_to_tar = {}
             for folder in folders_red:
-                files_we_care_about[folder] = filesToRetrieve
+                files_we_must_check[folder] = list(filesToRetrieve)
+                files_we_want_to_tar[folder] = list(filesToRetrieve) + list(optional_files_to_retrieve)
             # ---------------------------------------------
 
             self.simulation_job.prep(
                 GACODEcommand,
                 input_folders=folders,
                 output_folders=folders_red,
-                output_folders_selective=files_we_care_about,
-                check_files_in_folder=files_we_care_about,
+                output_folders_selective=files_we_want_to_tar,
+                check_files_in_folder=files_we_must_check,
                 shellPreCommands=shellPreCommands,
                 shellPostCommands=shellPostCommands,
             )
@@ -628,11 +647,11 @@ class mitim_simulation:
                         print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
                         run_status_int += 1
                     
-                self._organize_results(code_executor, tmpFolder, filesToRetrieve)
+                self._organize_results(code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=optional_files_to_retrieve)
 
             # Submit run but do not wait; the user should do checks and fetch results
             elif run_type == 'submit':
-            
+
                 self.simulation_job.run(
                     waitYN=False,
                     check_if_files_received=False,
@@ -643,7 +662,8 @@ class mitim_simulation:
                 self.kwargs_organize = {
                     "code_executor": code_executor,
                     "tmpFolder": tmpFolder,
-                    "filesToRetrieve": filesToRetrieve
+                    "filesToRetrieve": filesToRetrieve,
+                    "optional_files_to_retrieve": optional_files_to_retrieve,
                 }
 
                 self.slurm_output = "slurm_output.dat"
@@ -652,7 +672,29 @@ class mitim_simulation:
                 self.simulation_job.launchSlurm = True
                 self.simulation_job.slurm_settings['name'] = Path(self.simulation_job.folderExecution).name
 
-    def check(self, every_n_minutes=None):
+                # Persist submission metadata so a future process can re-attach
+                # to this in-flight job instead of resubmitting. Opt-in via
+                # subclass `_submission_metadata_filename` (e.g. CGYRO).
+                if self._submission_metadata_filename is not None:
+                    self._write_submission_metadata(kwargs_run.get("base_subfolder"))
+
+    def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2):
+        '''
+        Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2).
+
+        skip_first_iteration_squeue: when True, the first loop iteration does NOT
+        run a fresh `squeue`; instead it reuses `self.simulation_job.status`
+        already populated by an earlier call (e.g. the re-attach liveness probe
+        in transport_cgyro.py) so the poller does not immediately redo a squeue
+        that we just ran seconds ago.
+
+        max_completing_polls: safety valve for jobs stuck in slurm state
+        "COMPLETING" (usually a node/IO/epilog hang after the compute already
+        finished). When squeue reports COMPLETING for this many consecutive
+        polls, exit the loop with a warning so `fetch()` can pull whatever is
+        on disk rather than sleeping forever on a dead node. Set to None to
+        disable the heuristic.
+        '''
 
         if self.simulation_job is None:
             print("- Not checking status because simulation job is not defined (not run)", typeMsg="i")
@@ -661,13 +703,34 @@ class mitim_simulation:
         if self.simulation_job.launchSlurm:
             print("- Checker job status")
 
+            first = True
+            completing_streak = 0
             while True:
-                self.simulation_job.check(file_output = self.slurm_output)
-                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({self.simulation_job.infoSLURM["STATE"]})')
+                if first and skip_first_iteration_squeue:
+                    print(f"\t- Reusing status from the earlier liveness probe (skipping redundant squeue)", typeMsg='i')
+                else:
+                    self.simulation_job.check(file_output = self.slurm_output)
+                first = False
+                state = self.simulation_job.infoSLURM.get("STATE")
+                print(f'\t- Current status (as of  {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}): {self.simulation_job.status} ({state})')
                 if self.simulation_job.status == 2:
                     print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
                     break
-                elif every_n_minutes is None:
+
+                # Track consecutive COMPLETING polls — slurm's "COMPLETING"
+                # state normally lasts seconds; when it persists it is almost
+                # always an epilog/filesystem hang on the node rather than the
+                # user code still running. Give up after max_completing_polls
+                # so fetch() can run against whatever has been flushed.
+                if state == "COMPLETING":
+                    completing_streak += 1
+                    if max_completing_polls is not None and completing_streak >= max_completing_polls:
+                        print(f"\n\t* Slurm state has been COMPLETING for {completing_streak} consecutive polls — likely node/IO/epilog hang; giving up on the poll loop and letting fetch() pull whatever is on the remote", typeMsg='w')
+                        break
+                else:
+                    completing_streak = 0
+
+                if every_n_minutes is None:
                     print("\n\t* Job not finished yet")
                     break
                 else:
@@ -710,14 +773,17 @@ class mitim_simulation:
 
         self.simulation_job.run()
 
-    def _organize_results(self, code_executor, tmpFolder, filesToRetrieve):
-    
+    def _organize_results(self, code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=None):
+
         # ---------------------------------------------
         # Organize
         # ---------------------------------------------
 
+        optional_files_to_retrieve = list(optional_files_to_retrieve) if optional_files_to_retrieve else []
+
         print("\t- Retrieving files and changing names for storing")
         fineall = True
+        missing_optional = []
         for subfolder_sim in code_executor:
 
             for rho in code_executor[subfolder_sim].keys():
@@ -728,17 +794,34 @@ class mitim_simulation:
                     final_destination.unlink(missing_ok=True)
 
                     temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
-                    
+
                     if not temp_file.exists():
                         print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
                         continue
-                    
+
                     temp_file.replace(final_destination)
 
                     fineall = fineall and final_destination.exists()
 
                     if not final_destination.exists():
                         print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+
+                # Optional retrievals — move if present, silently skip if not;
+                # we aggregate the misses and emit one summary warning so the
+                # log is not flooded with "restart not found" noise per rho.
+                for file in optional_files_to_retrieve:
+                    original_file = f"{file}_{rho:.4f}"
+                    final_destination = code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+                    final_destination.unlink(missing_ok=True)
+                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                    if not temp_file.exists():
+                        missing_optional.append((subfolder_sim, float(rho), file))
+                        continue
+                    temp_file.replace(final_destination)
+
+        if missing_optional:
+            distinct = sorted({f for _, _, f in missing_optional})
+            print(f"\t- Optional file(s) not present on the remote (ok, proceeding): {distinct}   [{len(missing_optional)} (subfolder, rho, file) tuples]", typeMsg="w")
 
         if fineall:
             print("\t\t- All files were successfully retrieved")
@@ -748,6 +831,145 @@ class mitim_simulation:
 
         else:
             print("\t\t- Some files were not retrieved", typeMsg="w")
+
+    # ------------------------------------------------------------------
+    # Submission-state persistence: lets a later process re-attach to an
+    # already-submitted (run_type='submit') slurm job instead of resubmitting.
+    # Write is triggered from `_run()`'s submit branch when the subclass opts in
+    # via `_submission_metadata_filename`. Load is invoked by the caller of
+    # `run()` (e.g. transport_cgyro.py) before `check()` / `fetch()` / `read()`.
+    # ------------------------------------------------------------------
+
+    def _submission_metadata_path(self, base_subfolder):
+        if self._submission_metadata_filename is None or base_subfolder is None:
+            return None
+        return self.FolderGACODE / base_subfolder / self._submission_metadata_filename
+
+    def _write_submission_metadata(self, base_subfolder):
+        path = self._submission_metadata_path(base_subfolder)
+        if path is None:
+            return
+
+        job = self.simulation_job
+        # Only the fields _organize_results actually reads from code_executor
+        # (folder per (subfolder, rho)) — everything else is derivable from the
+        # staged input files on disk and re-prep on rehydration.
+        code_executor_serial = {}
+        for sub, rhos in self.kwargs_organize["code_executor"].items():
+            code_executor_serial[sub] = {
+                f"{float(rho):.6f}": {"folder": str(v["folder"])}
+                for rho, v in rhos.items()
+            }
+
+        results_per_plasma_serial = None
+        if getattr(self, "results_per_plasma", None):
+            results_per_plasma_serial = {
+                str(int(p)): {"subfolder": info["subfolder"], "folder": str(info["folder"])}
+                for p, info in self.results_per_plasma.items()
+            }
+
+        payload = {
+            "schema_version": 1,
+            "mode": "batched" if results_per_plasma_serial is not None else "single",
+            "code": self.run_specifications.get("code"),
+            "created_utc": datetime.datetime.utcnow().isoformat() + "Z",
+            "base_subfolder": base_subfolder,
+            "slurm_output": self.slurm_output,
+            "kwargs_organize": {
+                "tmpFolder": str(self.kwargs_organize["tmpFolder"]),
+                "filesToRetrieve": list(self.kwargs_organize["filesToRetrieve"]),
+                "optional_files_to_retrieve": list(self.kwargs_organize.get("optional_files_to_retrieve", [])),
+                "code_executor": code_executor_serial,
+            },
+            "results_per_plasma": results_per_plasma_serial,
+            "job": {
+                "folder_local": str(job.folder_local),
+                "folderExecution": str(job.folderExecution),
+                "jobid": job.jobid,
+                "launchSlurm": bool(job.launchSlurm),
+                "slurm_settings": job.slurm_settings,
+                "machineSettings": job.machineSettings,
+                "output_files": [str(f) for f in getattr(job, "output_files", [])],
+                "output_folders": [str(f) for f in getattr(job, "output_folders", [])],
+                "check_files_in_folder": getattr(job, "check_files_in_folder", {}),
+                "output_folders_selective": getattr(job, "output_folders_selective", {}),
+                "log_simulation_file": str(job.log_simulation_file) if job.log_simulation_file else None,
+                "run_in_place": bool(getattr(job, "run_in_place", False)),
+            },
+        }
+
+        # TODO(multi-process-safety): concurrent PORTALS drivers writing to the
+        # same folder could race here — add fcntl.flock if that becomes real.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2, default=str)
+        print(f"\t- Submission metadata written to {path}", typeMsg="i")
+
+    def load_submission_state(self, path):
+        '''
+        Rehydrate `self.simulation_job`, `self.kwargs_organize`, `self.slurm_output`,
+        and (for batched mode) `self.results_per_plasma` from a JSON file written
+        by `_write_submission_metadata`, so `check()` / `fetch()` can talk to the
+        already-running slurm job without resubmitting.
+        '''
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        job = FARMINGtools.mitim_job(
+            data["job"]["folder_local"],
+            log_simulation_file=data["job"]["log_simulation_file"],
+        )
+        job.folderExecution = data["job"]["folderExecution"]
+        job.jobid = data["job"]["jobid"]
+        job.launchSlurm = data["job"]["launchSlurm"]
+        job.slurm_settings = data["job"]["slurm_settings"]
+        job.machineSettings = data["job"]["machineSettings"]
+        job.output_files = list(data["job"]["output_files"])
+        job.output_folders = list(data["job"]["output_folders"])
+        job.check_files_in_folder = data["job"]["check_files_in_folder"]
+        job.output_folders_selective = data["job"]["output_folders_selective"]
+        job.run_in_place = data["job"].get("run_in_place", False)
+
+        self.simulation_job = job
+        self.slurm_output = data["slurm_output"]
+
+        code_executor_rehydrated = {}
+        for sub, rhos in data["kwargs_organize"]["code_executor"].items():
+            code_executor_rehydrated[sub] = {
+                float(rho): {"folder": Path(v["folder"])} for rho, v in rhos.items()
+            }
+        self.kwargs_organize = {
+            "code_executor": code_executor_rehydrated,
+            "tmpFolder": Path(data["kwargs_organize"]["tmpFolder"]),
+            "filesToRetrieve": list(data["kwargs_organize"]["filesToRetrieve"]),
+            "optional_files_to_retrieve": list(data["kwargs_organize"].get("optional_files_to_retrieve", [])),
+        }
+
+        # Note: results_per_plasma is rebuilt in memory by the caller via
+        # `_prepare_plasmas_state`, which also restores `profiles` /
+        # `inputs_files` / `NormalizationSets` that `read_plasma` needs.
+        # We do not overwrite it here.
+
+        return data
+
+    def _local_results_complete(self):
+        '''
+        True when every expected result file (per rho per subfolder) from
+        `kwargs_organize` already exists on disk — used by the re-attach path to
+        skip check()+fetch() when the prior job finished while no PORTALS
+        process was watching.
+        '''
+        if not getattr(self, "kwargs_organize", None):
+            return False
+        code_executor = self.kwargs_organize["code_executor"]
+        files_to_retrieve = self.kwargs_organize["filesToRetrieve"]
+        for sub, rhos in code_executor.items():
+            for rho, v in rhos.items():
+                folder = Path(v["folder"])
+                for fname in files_to_retrieve:
+                    if not (folder / f"{fname}_{float(rho):.4f}").exists():
+                        return False
+        return True
 
     def run_over_plasmas(
         self,
@@ -816,6 +1038,76 @@ class mitim_simulation:
                 "preceding prep call."
             )
 
+        code_executor, code_executor_full, plasma_labels = self._prepare_plasmas_state(
+            list_of_states,
+            base_subfolder,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            code_settings=code_settings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+            minimum_delta_abs=minimum_delta_abs,
+            only_minimal_files=only_minimal_files,
+            launchSlurm=launchSlurm,
+            allocation=allocation,
+            additional_files_to_send=additional_files_to_send,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            announce=True,
+        )
+
+        # Parallel dispatch of every (plasma, rho) work unit via the existing _run path.
+        self._run(
+            code_executor,
+            code_executor_full=code_executor_full,
+            code_settings=code_settings,
+            ApplyCorrections=ApplyCorrections,
+            Quasineutral=Quasineutral,
+            launchSlurm=launchSlurm,
+            cold_start=cold_start,
+            forceIfcold_start=forceIfcold_start,
+            extra_name=extra_name,
+            allocation=allocation,
+            only_minimal_files=only_minimal_files,
+            attempts_execution=attempts_execution,
+            run_type=run_type,
+            helper_lostconnection=helper_lostconnection,
+            base_subfolder=base_subfolder,
+        )
+
+        return plasma_labels
+
+    def _prepare_plasmas_state(
+        self,
+        list_of_states,
+        base_subfolder,
+        cold_start=False,
+        forceIfcold_start=False,
+        code_settings=None,
+        extraOptions=None,
+        multipliers=None,
+        minimum_delta_abs=None,
+        only_minimal_files=False,
+        launchSlurm=True,
+        allocation=None,
+        additional_files_to_send=None,
+        ApplyCorrections=True,
+        Quasineutral=False,
+        announce=False,
+    ):
+        '''
+        Build per-plasma `code_executor` and populate `self.results_per_plasma`
+        in memory without submitting anything. Extracted from `run_over_plasmas`
+        so the re-attach path (transport_cgyro.py) can rebuild the per-plasma
+        state that `read_plasma` needs after a prior process submitted the job.
+        '''
+        if extraOptions is None:
+            extraOptions = {}
+        if multipliers is None:
+            multipliers = {}
+        if minimum_delta_abs is None:
+            minimum_delta_abs = {}
+
         code_executor, code_executor_full = {}, {}
         self.results_per_plasma = {}
         plasma_labels = {}
@@ -824,9 +1116,10 @@ class mitim_simulation:
             subfolder_simulation = f"{base_subfolder}_plasma{p}"
             plasma_labels[p] = subfolder_simulation
 
-            print(f"\n=============================================================")
-            print(f"  run_over_plasmas: preparing plasma {p} -> {subfolder_simulation}")
-            print(f"=============================================================")
+            if announce:
+                print(f"\n=============================================================")
+                print(f"  run_over_plasmas: preparing plasma {p} -> {subfolder_simulation}")
+                print(f"=============================================================")
 
             # Populate self.profiles / self.inputs_files / self.NormalizationSets for plasma p.
             # Only the first prep may need to create FolderGACODE; subsequent plasmas reuse it.
@@ -873,25 +1166,7 @@ class mitim_simulation:
                 'NormalizationSets': self.NormalizationSets,
             }
 
-        # Parallel dispatch of every (plasma, rho) work unit via the existing _run path.
-        self._run(
-            code_executor,
-            code_executor_full=code_executor_full,
-            code_settings=code_settings,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-            launchSlurm=launchSlurm,
-            cold_start=cold_start,
-            forceIfcold_start=forceIfcold_start,
-            extra_name=extra_name,
-            allocation=allocation,
-            only_minimal_files=only_minimal_files,
-            attempts_execution=attempts_execution,
-            run_type=run_type,
-            helper_lostconnection=helper_lostconnection,
-        )
-
-        return plasma_labels
+        return code_executor, code_executor_full, plasma_labels
 
     def read_plasma(self, plasma_idx, label=None, **read_kwargs):
         '''

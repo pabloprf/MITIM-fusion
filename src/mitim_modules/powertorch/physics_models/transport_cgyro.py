@@ -15,16 +15,27 @@ class gyrokinetic_model:
         simulation_options = self.transport_evaluator_options[code]
         cold_start = self.cold_start
 
-        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]        
+        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         run_type = SIMtools._normalize_run_type(simulation_options["run"]["run_type"])
         keep_gk_files = simulation_options.get("keep_files", 'all')
+
+        # Re-attach controls (see templates/namelist.portals.yaml). Read via .get()
+        # so we do not mutate the shared namelist dict between PORTALS iterations;
+        # the two keys are stripped from the kwargs actually forwarded to run().
+        check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
+        every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
+        if check_existing_runs and run_type != 'submit':
+            print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
+            check_existing_runs = False
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes')}
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare object
         # ------------------------------------------------------------------------------------------------------------------------
-               
+
         subfolder_name = f"base_{code}"
-            
+        metadata_path = self.folder / subfolder_name / "cgyro_submission.json"
+
         # <><><><><><>
         # If the way to store data is in pickle, try first to read the stored pickled in the folder (e.g. for SR stage)
         # <><><><><><>
@@ -39,10 +50,12 @@ class gyrokinetic_model:
                 gk_object_unpickled = False
                 print('\t- Pickle file could not be read, with error:', typeMsg='w')
                 print(e)
-                
+
         # <><><><><><>
         # Standard run
         # <><><><><><>
+        reattached = False
+        skip_check_fetch = False
         if not gk_object_unpickled:
             gk_object = gk_object(rhos=rho_locations)
 
@@ -51,32 +64,107 @@ class gyrokinetic_model:
                 self.folder,
                 )
 
-            _ = gk_object.run(
-                subfolder_name,
-                cold_start=cold_start,
-                forceIfcold_start=True,
-                only_minimal_files=keep_gk_files in ['none', 'pickle'],
-                **simulation_options["run"]
-                )
-        
+            # <><><><><><>
+            # Optional re-attach: if a prior process submitted this job and
+            # wrote submission metadata, skip run() and go straight to
+            # check/fetch/read against the existing slurm allocation.
+            # <><><><><><>
+            if check_existing_runs:
+                if metadata_path.exists():
+                    print("")
+                    print(f"\t==================== [check_existing_runs] Re-attach to existing CGYRO submission ====================", typeMsg='i')
+                    print("")
+                    print(f"\t- Submission metadata found at:", typeMsg='i')
+                    print(f"\t     {metadata_path}", typeMsg='i')
+                    data = gk_object.load_submission_state(metadata_path)
+                    _jobinfo = data.get("job", {})
+                    print("")
+                    print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')
+                    print(f"\t     remote folder: {_jobinfo.get('folderExecution')}", typeMsg='i')
+                    print(f"\t     submitted at:  {data.get('created_utc')} (schema v{data.get('schema_version')})", typeMsg='i')
+                    print("")
+                    print(f"\t- Skipping run()/sbatch; polling this job with every_n_minutes={every_n_minutes}", typeMsg='i')
+                    print("")
+                    reattached = True
+
+                    # Liveness probe — if the job is gone from the queue but all
+                    # result files are already local, skip check/fetch and jump to
+                    # read(); if files are missing, fall back to a fresh submission.
+                    print(f"\t- Liveness probe via squeue...", typeMsg='i')
+                    gk_object.simulation_job.check(file_output=gk_object.slurm_output)
+                    print("")
+                    if gk_object.simulation_job.status == 2:
+                        print(f"\t- Slurm reports job is NOT in the queue (state={gk_object.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
+                        if gk_object._local_results_complete():
+                            print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read()", typeMsg='i')
+                            skip_check_fetch = True
+                        else:
+                            print(f"\t- Expected CGYRO output files are incomplete on local disk — the prior submission apparently failed.", typeMsg='w')
+                            print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
+                            metadata_path.unlink(missing_ok=True)
+                            reattached = False
+                    else:
+                        print(f"\t- Slurm reports job is still live (jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
+                    print("")
+                else:
+                    print("")
+                    print(f"\t==================== [check_existing_runs] No prior CGYRO submission to re-attach ====================", typeMsg='i')
+                    print("")
+                    print(f"\t- Looked for metadata at:", typeMsg='i')
+                    print(f"\t     {metadata_path}", typeMsg='i')
+                    print(f"\t- File does not exist; this is a fresh PORTALS evaluation, submitting CGYRO normally", typeMsg='i')
+                    print("")
+
+            if not reattached:
+                _ = gk_object.run(
+                    subfolder_name,
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
+                    only_minimal_files=keep_gk_files in ['none', 'pickle'],
+                    **run_kwargs
+                    )
+
         if run_type in ['normal', 'submit', 'send']:
-            
+
             if not gk_object_unpickled:
-                
-                if run_type in ['submit']:
-                    gk_object.check(every_n_minutes=10)
+
+                if run_type in ['submit'] and not skip_check_fetch:
+                    print("")
+                    print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
+                    print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
+                    print("")
+                    gk_object.check(every_n_minutes=every_n_minutes, skip_first_iteration_squeue=reattached)
+
+                    print("")
+                    print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-rho folders.", typeMsg='i')
+                    print("")
                     gk_object.fetch()
+                elif run_type in ['submit'] and skip_check_fetch:
+                    print("")
+                    print(f"\t- [submit] Results were already local — reading them directly without polling or fetching.", typeMsg='i')
+                    print("")
 
                 gk_object.read(
                     label=subfolder_name,
                     minimal=True,  # In case I pickle, I don't want to be extra heavy
                     **simulation_options["read"]
                     )
-                
+
+                # Invariant for re-attach: "metadata present => job in flight (or
+                # retrieval not yet complete)". Read succeeded, so drop the file.
+                if metadata_path.exists():
+                    print(f"\t- [check_existing_runs] Read finished — removing stale submission metadata at {metadata_path.name} so the next PORTALS iteration submits fresh", typeMsg='i')
+                metadata_path.unlink(missing_ok=True)
+
                 # Special case to keep only the pickle file but remove all heavy files.
                 # Save pickle FIRST; only unlink the heavy files if the pickle is on disk,
                 # otherwise a save failure would leave the run with no data at all.
-                if keep_gk_files in ['pickle']:
+                # Skip pickle on a re-attached run — `inputs_files` / normalization
+                # state may be incomplete (reconstructed via prep only), which would
+                # produce an unusable pickle.
+                if keep_gk_files in ['pickle'] and reattached:
+                    print("\t- pickle requested but run was re-attached; skipping pickle save (inputs not fully available)", typeMsg='i')
+                elif keep_gk_files in ['pickle']:
                     pickle_file.parent.mkdir(parents=True, exist_ok=True)
                     gk_object.save_pickle(pickle_file)
                     if pickle_file.exists():
@@ -219,6 +307,14 @@ class cgyro_model(gyrokinetic_model):
                 "batched mode. Use single-plasma evaluation or run_type='normal'/'submit'."
             )
 
+        # Re-attach controls (see templates/namelist.portals.yaml). Read via .get()
+        # so we do not mutate the shared namelist between PORTALS iterations.
+        check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
+        every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
+        if check_existing_runs and run_type != 'submit':
+            print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
+            check_existing_runs = False
+
         keep_gk_files = simulation_options.get("keep_files", "all")
 
         rho_locations = [
@@ -228,6 +324,8 @@ class cgyro_model(gyrokinetic_model):
 
         N = len(list_of_states)
         nrho = len(rho_locations)
+
+        metadata_path = self.folder / "base_cgyro" / "cgyro_submission.json"
 
         # Try to restore from pickle if keep_files == 'pickle' (mirrors single-plasma path)
         cgyro_unpickled = False
@@ -243,22 +341,19 @@ class cgyro_model(gyrokinetic_model):
                 print("\t- Pickle file could not be read, with error:", typeMsg="w")
                 print(e)
 
+        reattached = False
+        skip_check_fetch = False
         if not cgyro_unpickled:
             cgyro = CGYROtools.CGYRO(rhos=rho_locations)
 
-            _ = cgyro.prep(
-                list_of_states[0],
-                self.folder,
-                cold_start=cold_start,
-            )
-
-            # run_over_plasmas calls _run_prepare directly (not CGYRO.run()), so
-            # preprocess_options must be set on the object beforehand for
+            # run_over_plasmas / _prepare_plasmas_state call _run_prepare directly
+            # (not CGYRO.run()), so preprocess_options must be set beforehand for
             # _run_prepare -> _apply_cgyro_preprocessing to pick it up.
             cgyro._preprocess_options = simulation_options["run"].get("preprocess_options")
 
             # Filter simulation_options["run"] to only keys that run_over_plasmas accepts;
-            # CGYRO-specific keys (preprocess_options) are handled above.
+            # CGYRO-specific keys (preprocess_options) are handled above; re-attach
+            # controls (check_existing_runs, every_n_minutes) are consumed here.
             _run_over_plasmas_keys = {
                 "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
                 "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation",
@@ -266,16 +361,118 @@ class cgyro_model(gyrokinetic_model):
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}
 
-            plasma_labels = cgyro.run_over_plasmas(
-                list_of_states,
-                base_subfolder="base_cgyro",
-                cold_start=cold_start,
-                forceIfcold_start=True,
-                extra_name=self.name,
-                attempts_execution=2,
-                only_minimal_files=keep_gk_files in ["none", "pickle"],
-                **run_kwargs,
-            )
+            if check_existing_runs:
+                if metadata_path.exists():
+                    print("")
+                    print(f"\t==================== [check_existing_runs] Re-attach to existing batched CGYRO submission ====================", typeMsg='i')
+                    print("")
+                    print(f"\t- Submission metadata found at:", typeMsg='i')
+                    print(f"\t     {metadata_path}", typeMsg='i')
+                    print("")
+                    print(f"\t- Rebuilding per-plasma state for {N} plasma(s) (profiles, inputs, normalizations) without re-submitting...", typeMsg='i')
+                    print("")
+
+                    # Rebuild per-plasma state (profiles, inputs_files, normalizations)
+                    # that read_plasma() relies on, without contacting the cluster.
+                    _ = cgyro.prep(
+                        list_of_states[0],
+                        self.folder,
+                        cold_start=False,
+                    )
+                    # forceIfcold_start=True so _run_prepare's askNewFolder() does
+                    # not prompt the user mid-re-attach; inputs are deterministic
+                    # from namelist+powerstate so re-staging the per-plasma folder
+                    # is harmless (and the slurm job already has its own copy).
+                    _, _, plasma_labels = cgyro._prepare_plasmas_state(
+                        list_of_states,
+                        base_subfolder="base_cgyro",
+                        cold_start=False,
+                        forceIfcold_start=True,
+                        code_settings=run_kwargs.get("code_settings"),
+                        extraOptions=run_kwargs.get("extraOptions"),
+                        multipliers=run_kwargs.get("multipliers"),
+                        minimum_delta_abs=run_kwargs.get("minimum_delta_abs"),
+                        only_minimal_files=keep_gk_files in ["none", "pickle"],
+                        launchSlurm=run_kwargs.get("launchSlurm", True),
+                        allocation=run_kwargs.get("allocation"),
+                        additional_files_to_send=run_kwargs.get("additional_files_to_send"),
+                        ApplyCorrections=run_kwargs.get("ApplyCorrections", True),
+                        Quasineutral=run_kwargs.get("Quasineutral", False),
+                        announce=False,
+                    )
+                    data = cgyro.load_submission_state(metadata_path)
+                    _jobinfo = data.get("job", {})
+                    print("")
+                    print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')
+                    print(f"\t     remote folder: {_jobinfo.get('folderExecution')}", typeMsg='i')
+                    print(f"\t     submitted at:  {data.get('created_utc')} (schema v{data.get('schema_version')})", typeMsg='i')
+                    print("")
+                    print(f"\t- Skipping run_over_plasmas()/sbatch; polling this job with every_n_minutes={every_n_minutes}", typeMsg='i')
+                    print("")
+                    reattached = True
+
+                    # Liveness probe — same stale-job decision tree as single-plasma.
+                    print(f"\t- Liveness probe via squeue...", typeMsg='i')
+                    cgyro.simulation_job.check(file_output=cgyro.slurm_output)
+                    print("")
+                    if cgyro.simulation_job.status == 2:
+                        print(f"\t- Slurm reports job is NOT in the queue (state={cgyro.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
+                        if cgyro._local_results_complete():
+                            print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read_plasma()", typeMsg='i')
+                            skip_check_fetch = True
+                        else:
+                            print(f"\t- Expected CGYRO output files are incomplete on local disk — the prior submission apparently failed.", typeMsg='w')
+                            print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
+                            metadata_path.unlink(missing_ok=True)
+                            reattached = False
+                    else:
+                        print(f"\t- Slurm reports job is still live (jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
+                    print("")
+                else:
+                    print("")
+                    print(f"\t==================== [check_existing_runs] No prior batched CGYRO submission to re-attach ====================", typeMsg='i')
+                    print("")
+                    print(f"\t- Looked for metadata at:", typeMsg='i')
+                    print(f"\t     {metadata_path}", typeMsg='i')
+                    print(f"\t- File does not exist; this is a fresh PORTALS evaluation, submitting CGYRO normally", typeMsg='i')
+                    print("")
+
+            if not reattached:
+                _ = cgyro.prep(
+                    list_of_states[0],
+                    self.folder,
+                    cold_start=cold_start,
+                )
+
+                plasma_labels = cgyro.run_over_plasmas(
+                    list_of_states,
+                    base_subfolder="base_cgyro",
+                    cold_start=cold_start,
+                    forceIfcold_start=True,
+                    extra_name=self.name,
+                    attempts_execution=2,
+                    only_minimal_files=keep_gk_files in ["none", "pickle"],
+                    **run_kwargs,
+                )
+
+            # run_over_plasmas does not poll/fetch for run_type='submit'; do it
+            # here so batched `submit` actually works (also covers the re-attach
+            # path, since reattached runs need the same check/fetch cycle).
+            if run_type == "submit" and not skip_check_fetch:
+                print("")
+                print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the batched CGYRO job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
+                print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
+                print("")
+                cgyro.check(every_n_minutes=every_n_minutes, skip_first_iteration_squeue=reattached)
+
+                print("")
+                print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-(plasma,rho) folders.", typeMsg='i')
+                print("")
+                cgyro.fetch()
+            elif run_type == "submit" and skip_check_fetch:
+                print("")
+                print(f"\t- [submit] Results were already local — reading them directly without polling or fetching.", typeMsg='i')
+                print("")
         Qe_batch     = np.zeros((N, nrho))
         Qe_std_batch = np.zeros((N, nrho))
         Qi_batch     = np.zeros((N, nrho))
@@ -314,9 +511,19 @@ class cgyro_model(gyrokinetic_model):
             S_batch[p, :]      = 0.0  # TODO
             S_std_batch[p, :]  = 0.0  # TODO
 
+        # Invariant for re-attach: "metadata present => job in flight (or
+        # retrieval not yet complete)". Read loop succeeded, so drop the file.
+        if metadata_path.exists():
+            print(f"\t- [check_existing_runs] Batched read finished — removing stale submission metadata at {metadata_path.name} so the next PORTALS iteration submits fresh", typeMsg='i')
+        metadata_path.unlink(missing_ok=True)
+
         # Save pickle first, then remove heavy files only if the pickle is on disk.
         # This mirrors the single-plasma path and prevents data loss if save_pickle raises.
-        if keep_gk_files in ["pickle"] and not cgyro_unpickled:
+        # Skip on a re-attached run — per-plasma `inputs_files` / normalization
+        # state was reconstructed minimally via prep, so a pickle would be incomplete.
+        if keep_gk_files in ["pickle"] and reattached:
+            print("\t- pickle requested but run was re-attached; skipping pickle save (inputs not fully available)", typeMsg="i")
+        elif keep_gk_files in ["pickle"] and not cgyro_unpickled:
             pickle_file.parent.mkdir(parents=True, exist_ok=True)
             cgyro.save_pickle(pickle_file)
             if pickle_file.exists():

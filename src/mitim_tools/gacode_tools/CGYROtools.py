@@ -13,6 +13,12 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
+
+    # Opts CGYRO into persisting slurm-submission metadata (jobid, remote
+    # folder, retrieval plan) whenever run_type='submit' is used, so a later
+    # PORTALS restart can re-attach to the in-flight job rather than resubmit.
+    _submission_metadata_filename = "cgyro_submission.json"
+
     def __init__(
         self,
         **kwargs,
@@ -86,10 +92,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "out.cgyro.version",
         ]
 
-        self.output_files_simulation["complete_base"] = self.output_files_simulation["minimal_base"] + [   
-            "bin.cgyro.restart",    # I may not want to bring restarts always
-            "out.cgyro.tag",        # Related to the restart
+        self.output_files_simulation["complete_base"] = self.output_files_simulation["minimal_base"] + [
             "mitim.out",
+        ]
+
+        # Best-effort retrievals: restart blobs plus the companion .flag / .tag
+        # files that track them. CGYRO may skip writing these when the run is
+        # short-lived, crashes early, or hits the wall-clock during COMPLETING;
+        # treat their absence as a warning rather than a hard failure.
+        self.output_files_simulation["optional_base"] = [
+            "bin.cgyro.restart",
+            "bin.cgyro.restart.flag",
+            "out.cgyro.tag",
         ]
 
         # Nonlinear sim
@@ -102,14 +116,15 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         for key in ['minimal', 'complete']:
             self.output_files_simulation[f"{key}_linear"] = self.output_files_simulation[f"{key}_base"] + [
                 "out.cgyro.freq",
-                "bin.cgyro.phib", 
+                "bin.cgyro.phib",
                 "bin.cgyro.aparb",
                 "bin.cgyro.bparb",
                 ]
-        
+
         # Make sure, just in case, that "complete" and "minimal" are populated from this __init__, even if it will be re-defined later
         self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
         self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
+        self.output_files_simulation["optional"] = copy.deepcopy(self.output_files_simulation["optional_base"])
         
 
     # Thin wrapper: capture preprocess_options and delegate to the generic run()
@@ -154,6 +169,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         else:
             self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
             self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
+        # Optional-retrieval set is the same for linear and nonlinear.
+        self.output_files_simulation["optional"] = copy.deepcopy(self.output_files_simulation["optional_base"])
 
         # Pre-process BOX_SIZE / N_RADIAL from local equilibrium if requested.
         # Model yaml (input.cgyro.models.yaml) can supply per-model defaults;

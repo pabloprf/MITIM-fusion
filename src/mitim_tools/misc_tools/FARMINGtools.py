@@ -699,7 +699,16 @@ class mitim_job:
 
         return output, error
 
-    def retrieve(self, check_if_files_received=True, check_files_in_folder={}):
+    def retrieve(self, check_if_files_received=True, check_files_in_folder={}, optional_files=None):
+        '''
+        optional_files: files that we still try to pull from the remote (added
+        to the tarball and unlinked locally before retrieval like the mandatory
+        ones) but which are NOT flagged as "not received" when absent — used by
+        `check()` for the slurm-job log, which does not exist yet while the job
+        is PENDING and shouldn't cause a 60s retry on every status poll.
+        '''
+        optional_files = list(optional_files) if optional_files else []
+
         if getattr(self, "run_in_place", False):
             print("\t* In-place local execution: outputs already in folder_local (skipping retrieval)")
             if check_if_files_received:
@@ -713,7 +722,7 @@ class mitim_job:
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Removing local output files & folders that potentially exist from previous runs")
-        for file in self.output_files:
+        for file in list(self.output_files) + optional_files:
             (self.folder_local / file).unlink(missing_ok=True)
         for folder in self.output_folders:
             if (self.folder_local / folder).exists():
@@ -725,8 +734,9 @@ class mitim_job:
         # Build tar command with selective folder content
         tar_items = []
 
-        # Add all output files
+        # Add all output files (mandatory + best-effort)
         tar_items.extend(self.output_files)
+        tar_items.extend(optional_files)
 
         # Add folders - either full folders or selective content
         for folder in self.output_folders:
@@ -789,7 +799,7 @@ class mitim_job:
             else:
                 print(f"\t* Not all received, trying retrieval once again after waiting {time_wait} seconds", typeMsg="i")
                 time.sleep(time_wait)
-                _ = self.retrieve(check_if_files_received=False)
+                _ = self.retrieve(check_if_files_received=False, optional_files=optional_files)
                 received = self.check_all_received(check_files_in_folder=check_files_in_folder)
         else:
             received = True
@@ -848,15 +858,18 @@ class mitim_job:
         else:
             wasThere = False
 
-        self.output_files = [
-            file_output,  # The slurm results of the main job!
-            "squeue_output.dat",  # The output of the squeue command
-        ]
+        # Only squeue_output.dat is mandatory — it is what interpret_status()
+        # parses. The slurm job log (`file_output`) is best-effort: it does not
+        # exist on the remote while the job is still PENDING, and its absence
+        # simply means `interpret_status` sets `self.log_file = None`. Marking
+        # it optional avoids a spurious "File not received" warning plus a 60s
+        # retry on every status poll while the job is queued.
+        self.output_files = ["squeue_output.dat"]
         self.output_folders = []
 
         self.connect()
         output, error = self.execute(command, printYN=True)
-        received = self.retrieve()
+        received = self.retrieve(optional_files=[file_output])
         if not received:
             self._write_debugging_files(output, error, extra_name = '_check')
         self.close()
