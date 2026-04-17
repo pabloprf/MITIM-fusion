@@ -76,6 +76,10 @@ class gyrokinetic_model:
                     print("")
                     print(f"\t- Submission metadata found at:", typeMsg='i')
                     print(f"\t     {metadata_path}", typeMsg='i')
+                    # Normally _run_prepare sets FolderSimLast (consumed by
+                    # read()); re-attach skips that call to avoid the folder
+                    # wipe / prompt, so set it manually here.
+                    gk_object.FolderSimLast = self.folder / subfolder_name
                     data = gk_object.load_submission_state(metadata_path)
                     _jobinfo = data.get("job", {})
                     print("")
@@ -87,9 +91,14 @@ class gyrokinetic_model:
                     print("")
                     reattached = True
 
-                    # Liveness probe — if the job is gone from the queue but all
-                    # result files are already local, skip check/fetch and jump to
-                    # read(); if files are missing, fall back to a fresh submission.
+                    # Liveness probe — decision tree when the job is gone:
+                    #   1. local result files already complete  -> skip to read()
+                    #   2. otherwise try fetch() once: the job may have
+                    #      finished cleanly while we were offline and the
+                    #      results are still sitting in the remote scratch
+                    #      folder waiting to be pulled.
+                    #   3. only fall back to a fresh submission when fetch()
+                    #      also can't produce a complete local set.
                     print(f"\t- Liveness probe via squeue...", typeMsg='i')
                     gk_object.simulation_job.check(file_output=gk_object.slurm_output)
                     print("")
@@ -99,10 +108,19 @@ class gyrokinetic_model:
                             print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read()", typeMsg='i')
                             skip_check_fetch = True
                         else:
-                            print(f"\t- Expected CGYRO output files are incomplete on local disk — the prior submission apparently failed.", typeMsg='w')
-                            print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
-                            metadata_path.unlink(missing_ok=True)
-                            reattached = False
+                            print(f"\t- Local results incomplete; attempting fetch() from remote scratch folder in case the job finished while we were offline...", typeMsg='i')
+                            try:
+                                gk_object.fetch()
+                            except Exception as _fe:
+                                print(f"\t- fetch() raised ({_fe})", typeMsg='w')
+                            if gk_object._local_results_complete():
+                                print(f"\t- Remote scratch had the results — fetch complete, skipping check()/fetch() in the main loop and jumping to read()", typeMsg='i')
+                                skip_check_fetch = True
+                            else:
+                                print(f"\t- Even after fetch() the expected CGYRO output files are incomplete — the prior submission apparently failed.", typeMsg='w')
+                                print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
+                                metadata_path.unlink(missing_ok=True)
+                                reattached = False
                     else:
                         print(f"\t- Slurm reports job is still live (jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
                     print("")
@@ -415,7 +433,11 @@ class cgyro_model(gyrokinetic_model):
                     print("")
                     reattached = True
 
-                    # Liveness probe — same stale-job decision tree as single-plasma.
+                    # Liveness probe — same stale-job decision tree as
+                    # single-plasma: job gone + local complete -> read;
+                    # job gone + local incomplete -> try fetch() once
+                    # (results may still be in remote scratch); if fetch
+                    # still can't fill the local set -> resubmit.
                     print(f"\t- Liveness probe via squeue...", typeMsg='i')
                     cgyro.simulation_job.check(file_output=cgyro.slurm_output)
                     print("")
@@ -425,10 +447,19 @@ class cgyro_model(gyrokinetic_model):
                             print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read_plasma()", typeMsg='i')
                             skip_check_fetch = True
                         else:
-                            print(f"\t- Expected CGYRO output files are incomplete on local disk — the prior submission apparently failed.", typeMsg='w')
-                            print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
-                            metadata_path.unlink(missing_ok=True)
-                            reattached = False
+                            print(f"\t- Local results incomplete; attempting fetch() from remote scratch folder in case the job finished while we were offline...", typeMsg='i')
+                            try:
+                                cgyro.fetch()
+                            except Exception as _fe:
+                                print(f"\t- fetch() raised ({_fe})", typeMsg='w')
+                            if cgyro._local_results_complete():
+                                print(f"\t- Remote scratch had the results — fetch complete, skipping check()/fetch() in the main loop and jumping to read_plasma()", typeMsg='i')
+                                skip_check_fetch = True
+                            else:
+                                print(f"\t- Even after fetch() the expected CGYRO output files are incomplete — the prior submission apparently failed.", typeMsg='w')
+                                print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
+                                metadata_path.unlink(missing_ok=True)
+                                reattached = False
                     else:
                         print(f"\t- Slurm reports job is still live (jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
                     print("")

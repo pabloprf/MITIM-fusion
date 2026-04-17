@@ -943,6 +943,13 @@ class mitim_simulation:
         job.output_folders_selective = data["job"]["output_folders_selective"]
         job.run_in_place = data["job"].get("run_in_place", False)
 
+        # On the original submit path `_run()` creates this folder via
+        # askNewFolder(force=True); on re-attach the folder_local may not
+        # exist yet (fresh process, scratch folder wiped, etc). `retrieve()`
+        # writes mitim_receive.tar.gz here, so guarantee it exists before
+        # the first check()/fetch() call.
+        job.folder_local.mkdir(parents=True, exist_ok=True)
+
         self.simulation_job = job
         self.slurm_output = data["slurm_output"]
 
