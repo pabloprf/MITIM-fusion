@@ -158,11 +158,12 @@ def cgyro_per_task_status(sim):
 
         # Stale-output threshold scales with the run's own step time so a slow
         # nonlinear case (~30s/step) is not flagged after a single missed step
-        # while a fast linear case (~0.5s/step) does not have to wait minutes
-        # to be called dead. Floor 60s, ceiling 600s. When avg is unknown
-        # (INITIALIZED), fall back to a fixed 180s.
+        # while a fast linear case (~0.5s/step) still gets a generous grace
+        # window. Floor 300s (5min) so short I/O pauses, checkpoint writes,
+        # and intermittent filesystem blips don't false-flag healthy runs;
+        # ceiling 600s. When avg is unknown (INITIALIZED), fall back to 180s.
         if avg_f is not None and avg_f > 0:
-            stale_threshold = max(60, min(600, int(3 * avg_f)))
+            stale_threshold = max(300, min(600, int(3 * avg_f)))
         else:
             stale_threshold = 180
 
