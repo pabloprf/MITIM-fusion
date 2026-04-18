@@ -2363,8 +2363,12 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     # fall back to False if the path isn't resolvable.
     try:
         cgyro_run_cfg = self.powerstate.transport_options['options']['cgyro']['run']
-        concatenate_traces = bool(cgyro_run_cfg.get('restart_from_first')) or \
-                             (cgyro_run_cfg.get('restart_from_folder') not in (None, ""))
+        _cases = cgyro_run_cfg.get('restart_from_cases')
+        concatenate_traces = (
+            (_cases is not None and str(_cases).lower() in ("first", "all"))
+            or bool(cgyro_run_cfg.get('restart_from_first'))  # legacy
+            or (cgyro_run_cfg.get('restart_from_folder') not in (None, ""))
+        )
     except Exception:
         concatenate_traces = False
 

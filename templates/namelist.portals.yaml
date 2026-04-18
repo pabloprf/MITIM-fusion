@@ -235,26 +235,39 @@ transport:
         # time since the original iteration 0.
         restart_from_folder: null
 
-        # If True and restart_from_folder is null, every CGYRO evaluation at
-        # iteration >= 1 restarts (warm-start, see restart_from_folder above)
-        # from Evaluation.0/transport_simulation_folder/base_cgyro — or, during
-        # the simple-relax initializer, from portals_sr_ev_0/... — picked up
-        # automatically once iteration 0 has finished.
+        # Automatic warm-start chain across PORTALS iterations when
+        # restart_from_folder is null. Options:
+        #   null       no automatic restart (default).
+        #   "first"    every iteration N >= 1 warm-starts from iteration 0's
+        #              bin.cgyro.restart (cheap: same seed state reused every
+        #              time; requires iteration 0 to have written restarts).
+        #   "all"      every iteration N >= 1 warm-starts from iteration
+        #              N-1's restart (chained: each iter picks up where the
+        #              previous one left off; requires *every* iteration to
+        #              write restarts, not just ev0).
+        # Source folder (picked up automatically once the source iteration
+        # has finished):
+        #   Execution/Evaluation.{src}/transport_simulation_folder/base_cgyro
+        # or, during the simple-relax initializer:
+        #   Initialization/initialization_simple_relax/portals_sr_ev_{src}/
+        #     transport_simulation_folder/base_cgyro
         # IMPORTANT:
         #   - You MUST configure RESTART_STEP (and any related CGYRO restart
-        #     settings) in extraOptions so that iteration 0 writes
+        #     settings) in extraOptions so the source iteration writes
         #     bin.cgyro.restart_<rho:.4f> files; otherwise later iterations
         #     will proceed WITHOUT a restart and a warning will be printed.
-        #   - Iteration 0 must keep those files on disk. keep_files: "all" is
-        #     safest; "pickle"/"none" may unlink CGYRO outputs after the run.
+        #   - Source iterations must keep those files on disk. keep_files:
+        #     "all" is safest; "pickle"/"none" may unlink CGYRO outputs.
         #   - MAX_TIME on iterations >= 1 should be sized as the ADDITIONAL
         #     time you want to simulate on top of the saved state (CGYRO
-        #     warm-start resets t to 0). If iteration 0 wrote its restart at
-        #     e.g. t=200 a/cs and you want another 100 a/cs of statistics,
+        #     warm-start resets t to 0). Example: if iteration 0 wrote its
+        #     restart at t=200 a/cs and you want another 100 a/cs of stats,
         #     set MAX_TIME: 100 — not 300.
-        #   - If restart_from_folder is also set, it takes precedence and this
-        #     flag is ignored (with a warning).
-        restart_from_first: false
+        #   - If restart_from_folder is also set, it takes precedence and
+        #     this option is ignored (with a warning).
+        # DEPRECATED: the older `restart_from_first: true` still works as an
+        # alias for restart_from_cases: "first" but prints a notice.
+        restart_from_cases: null
 
         # CGYRO extraOptions applied ONLY on iteration 0 (Evaluation.0), merged on
         # top of `extraOptions` key-by-key (iter-0 wins on overlapping keys). No

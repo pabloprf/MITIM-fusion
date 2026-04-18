@@ -70,7 +70,7 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     return resolved
 
 
-def _resolve_cgyro_restart_from_first(
+def _resolve_cgyro_restart_chain(
     run_options,
     evaluation_number,
     folder,
@@ -79,13 +79,22 @@ def _resolve_cgyro_restart_from_first(
     plasma_subfolder=None,
 ):
     '''
-    Automatic-restart companion to `_resolve_cgyro_restart_folder`. When
-    `restart_from_first` is True (and `restart_from_folder` is null), every
-    PORTALS iteration with evaluation_number >= 1 pulls its CGYRO restart
-    files from iteration 0's base_cgyro subfolder:
+    Automatic-restart companion to `_resolve_cgyro_restart_folder`. Driven
+    by the namelist-level `restart_from_cases` option:
 
-        <root>/Execution/Evaluation.0/transport_simulation_folder/base_cgyro
-           (+ /base_cgyro_plasma0 in batched mode)
+      None / null  -> no-op (no automatic restart)
+      "first"      -> every iteration N >= 1 restarts from iteration 0
+      "all"        -> every iteration N >= 1 restarts from iteration N-1
+                      (chained; each iter warm-starts from the previous)
+
+    Source folder for iteration N is derived as:
+      <root>/Execution/Evaluation.{source_iter}/transport_simulation_folder/base_cgyro
+        (+ /base_cgyro_plasma0 in batched mode)
+    or, during the simple-relax initializer:
+      <root>/Initialization/initialization_simple_relax/portals_sr_ev_{source_iter}/
+        transport_simulation_folder/base_cgyro
+
+    where source_iter is 0 for "first" and (N-1) for "all".
 
     The binary restart file is named bin.cgyro.restart_<rho:.4f>, matching
     what CGYRO writes and MITIM retrieves after a PORTALS run. It is
@@ -95,24 +104,48 @@ def _resolve_cgyro_restart_from_first(
     binary is staged (warm start, restart_flag=2) and not the companion
     out.cgyro.tag file.
 
-    Unlike `_resolve_cgyro_restart_folder`, missing files are NON-FATAL:
-    iteration N runs cold (without restart) and a warning is printed. This
-    handles the case where iteration 0 didn't have RESTART_STEP configured,
-    or `keep_files` unlinked the restart blobs before iteration N could
-    consume them.
+    Missing files are NON-FATAL: iteration N runs cold (without restart)
+    and a warning is printed. This handles early-iter folders that aren't
+    on disk yet, or cases where RESTART_STEP wasn't configured / keep_files
+    unlinked the restart blobs before the next iteration consumes them.
+
+    Backward-compat: legacy `restart_from_first: true` still works and is
+    mapped to `restart_from_cases: "first"` (with a one-line notice).
 
     Returns the merged additional_files_to_send dict, or the existing one
-    unchanged if the flag is off, if restart_from_folder takes precedence,
-    or if iteration 0 (no prior iteration to restart from).
+    unchanged when: the mode is None/empty, restart_from_folder takes
+    precedence, iteration 0 (no prior iteration), or the source folder
+    cannot be found on disk.
     '''
 
-    if not run_options.get("restart_from_first", False):
+    # Resolve the mode, with backward-compat for the retired
+    # `restart_from_first: true` flag.
+    mode = run_options.get("restart_from_cases")
+    if mode in (None, "", "null"):
+        # Check legacy flag.
+        if run_options.get("restart_from_first", False):
+            print(
+                "\t- [CGYRO restart] `restart_from_first: true` is deprecated; "
+                "mapping to `restart_from_cases: \"first\"`. Please update your namelist.",
+                typeMsg='w',
+            )
+            mode = "first"
+        else:
+            return existing_additional_files_to_send
+
+    mode_lower = str(mode).lower()
+    if mode_lower not in ("first", "all"):
+        print(
+            f"\t- [CGYRO restart] Unknown restart_from_cases={mode!r}; expected one of "
+            "null / \"first\" / \"all\". Ignoring.",
+            typeMsg='w',
+        )
         return existing_additional_files_to_send
 
-    # restart_from_folder explicit beats restart_from_first automatic.
+    # restart_from_folder explicit beats automatic chain.
     if run_options.get("restart_from_folder") not in (None, ""):
         print(
-            "\t- [CGYRO restart] restart_from_folder is set; restart_from_first ignored.",
+            f"\t- [CGYRO restart] restart_from_folder is set; restart_from_cases={mode_lower!r} ignored.",
             typeMsg='w',
         )
         return existing_additional_files_to_send
@@ -121,14 +154,13 @@ def _resolve_cgyro_restart_from_first(
     # under <root>/Initialization/initialization_simple_relax/portals_sr_ev_{N}/
     # transport_simulation_folder. The BO loop uses <root>/Execution/Evaluation.{N}/
     # transport_simulation_folder. Both share the pattern folder.parent.parent /
-    # <iter-0 sibling name> / folder.name, only the sibling-0 name differs.
+    # <sibling name> / folder.name; only the sibling's stem differs.
     in_simple_relax = "initialization_simple_relax" in folder.parts
-    iter0_sibling = "portals_sr_ev_0" if in_simple_relax else "Evaluation.0"
     context_label = "portals_sr_ev" if in_simple_relax else "Evaluation"
 
     if evaluation_number == 0:
         print(
-            f"\n- [CGYRO restart_from_first] This is {context_label}.0 — no prior iteration to restart from.\n"
+            f"\n- [CGYRO restart_from_cases={mode_lower!r}] This is {context_label}.0 — no prior iteration to restart from.\n"
             "\t  REMINDER: for subsequent iterations to resume from this one, RESTART_STEP\n"
             "\t  (and any related CGYRO restart settings) MUST be set in extraOptions so\n"
             "\t  that bin.cgyro.restart_<rho:.4f> files are written, and keep_files must\n"
@@ -137,30 +169,33 @@ def _resolve_cgyro_restart_from_first(
         )
         return existing_additional_files_to_send
 
-    # Iter 0 sibling of the current evaluation folder (SR or BO).
-    iter0_folder = folder.parent.parent / iter0_sibling / folder.name / "base_cgyro"
-    if plasma_subfolder:
-        iter0_folder = iter0_folder / plasma_subfolder
+    source_iter = 0 if mode_lower == "first" else (evaluation_number - 1)
+    source_sibling = (f"portals_sr_ev_{source_iter}" if in_simple_relax
+                      else f"Evaluation.{source_iter}")
 
-    if not iter0_folder.is_dir():
+    source_folder = folder.parent.parent / source_sibling / folder.name / "base_cgyro"
+    if plasma_subfolder:
+        source_folder = source_folder / plasma_subfolder
+
+    if not source_folder.is_dir():
         print(
-            f"\n- [CGYRO restart_from_first] {iter0_sibling} base_cgyro folder not found at:\n"
-            f"\t  {iter0_folder}\n"
+            f"\n- [CGYRO restart_from_cases={mode_lower!r}] {source_sibling} base_cgyro folder not found at:\n"
+            f"\t  {source_folder}\n"
             f"\t  Proceeding WITHOUT restart for {context_label}.{evaluation_number}.",
             typeMsg='w',
         )
         return existing_additional_files_to_send
 
     print(
-        f"\n- [CGYRO restart_from_first] {context_label}.{evaluation_number} will restart from:\n"
-        f"\t{iter0_folder}",
+        f"\n- [CGYRO restart_from_cases={mode_lower!r}] {context_label}.{evaluation_number} will restart from {source_sibling}:\n"
+        f"\t{source_folder}",
         typeMsg='i',
     )
 
     resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
     missing_bin = []
     for rho in rho_locations:
-        bin_file = iter0_folder / f"bin.cgyro.restart_{rho:.4f}"
+        bin_file = source_folder / f"bin.cgyro.restart_{rho:.4f}"
         if not bin_file.is_file():
             missing_bin.append(bin_file.name)
             continue
@@ -169,10 +204,10 @@ def _resolve_cgyro_restart_from_first(
 
     if missing_bin:
         print(
-            f"\t- [CGYRO restart_from_first] Missing binary restart files in {iter0_sibling}: {missing_bin}.\n"
+            f"\t- [CGYRO restart_from_cases={mode_lower!r}] Missing binary restart files in {source_sibling}: {missing_bin}.\n"
             f"\t  Check that RESTART_STEP was set in extraOptions and that keep_files did\n"
-            f"\t  not unlink them after iteration 0. Proceeding WITHOUT restart for those\n"
-            f"\t  radii (partial restart for any radii that do have a binary).",
+            f"\t  not unlink them. Proceeding WITHOUT restart for those radii (partial\n"
+            f"\t  restart for any radii that do have a binary).",
             typeMsg='w',
         )
         # If literally nothing was found, fall back to existing (no-op).
@@ -180,6 +215,11 @@ def _resolve_cgyro_restart_from_first(
             return existing_additional_files_to_send
 
     return resolved
+
+
+# Deprecated alias — kept so any external imports of the old name keep working
+# until the retiring release. Delegates to the new chain resolver.
+_resolve_cgyro_restart_from_first = _resolve_cgyro_restart_chain
 
 
 def _resolve_cgyro_extra_options_first(run_options, evaluation_number, existing_extra_options):
@@ -280,7 +320,7 @@ class gyrokinetic_model:
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'extraOptions_first', 'allocation_first')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'allocation_first')}
 
         # Translate namelist-level restart_from_folder into per-rho
         # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
@@ -292,9 +332,10 @@ class gyrokinetic_model:
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
 
-        # Automatic restart from Evaluation.0/base_cgyro when restart_from_first=True
-        # and restart_from_folder is null (the helper short-circuits otherwise).
-        resolved_additional = _resolve_cgyro_restart_from_first(
+        # Automatic restart chain from prior iteration's base_cgyro folder,
+        # driven by restart_from_cases ("first"=from iter 0, "all"=from iter N-1).
+        # Skipped when restart_from_folder is set (the helper short-circuits).
+        resolved_additional = _resolve_cgyro_restart_chain(
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
             self.folder,
@@ -689,11 +730,12 @@ class cgyro_model(gyrokinetic_model):
             if resolved_additional is not None:
                 run_kwargs["additional_files_to_send"] = resolved_additional
 
-            # Automatic restart from Evaluation.0/base_cgyro/base_cgyro_plasma0 when
-            # restart_from_first=True and restart_from_folder is null. All plasmas in
-            # the current batched call use plasma 0 of iteration 0 as the reference
-            # restart state (the seed of the flux-match trajectory).
-            resolved_additional = _resolve_cgyro_restart_from_first(
+            # Automatic restart chain in batched mode: for every iteration N>=1,
+            # pull bin.cgyro.restart from plasma 0 of the source iteration
+            # (iter 0 for "first", iter N-1 for "all"). All plasmas in the
+            # current batched call warm-start from the same plasma-0 reference
+            # since they share the seed-iteration semantics.
+            resolved_additional = _resolve_cgyro_restart_chain(
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
                 self.folder,
