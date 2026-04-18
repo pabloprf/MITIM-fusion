@@ -34,7 +34,16 @@
 # Nonlinear setup with reduced resolution and collision model
 # ------------------------------------------------------------
 
-"Nonlinear_fast":
+"Nonlinear_reduced1":
+  base: "Nonlinear"
+  controls:
+    COLLISION_MODEL: 1 # Lorentz operator
+    ROTATION_MODEL: 1
+    N_TOROIDAL: 12
+  preprocess_options:
+    N_radial: 192
+
+"Nonlinear_reduced2":
   base: "Nonlinear"
   controls:
     COLLISION_MODEL: 5 # Diagonal Lorentz operator
@@ -48,7 +57,7 @@
 # ------------------------------------------------------------
 
 "Nonlinear_silly":
-  base: "Nonlinear_fast"
+  base: "Nonlinear_reduced2"
   controls:
     N_XI: 8
     N_THETA: 8
