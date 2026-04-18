@@ -763,14 +763,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # Re-defined to make specific arguments explicit
     def read(
         self,
-        tmin = 0.0, 
-        minimal = False, 
+        tmin = 0.0,
+        tmin_is_rel = True,
+        minimal = False,
         last_tmin_for_linear = True,
         **kwargs
     ):
-    
+
         super().read(
             tmin = tmin,
+            tmin_is_rel = tmin_is_rel,
             minimal = minimal,
             last_tmin_for_linear = last_tmin_for_linear,
             **kwargs)

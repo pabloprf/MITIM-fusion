@@ -120,11 +120,16 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, **kwargs):
         '''
-        tmin can be used to indicate from which time onwards I want to do the signal analysis
-        if negative, it represents the relative time from the end of the simulation. e.g.
-        -0.25 means I want to consider the last 25% of the simulation time
+        tmin sets the left edge of the window used for signal analysis.
+          tmin >= 0                    : absolute time (a/cs).
+          tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
+                                         counted from the end. e.g. tmin=-0.25
+                                         -> the last 25% of the run.
+          tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
+                                         e.g. tmin=-200 -> the last 200 a/cs
+                                         of the run (self.tmin = t[-1] - 200).
         '''
         
         super().__init__()
@@ -195,9 +200,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         if tmin >= 0.0:
             self.tmin = tmin
-        else:
+        elif tmin_is_rel:
             self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
-            print(f"\t- Negative tmin provided, setting tmin to {self.tmin:.3f}", typeMsg='i')
+            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
+        else:
+            self.tmin = self.t[-1] + tmin
+            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
+            if self.tmin < self.t[0]:
+                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
         
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm

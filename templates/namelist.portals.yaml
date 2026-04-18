@@ -280,8 +280,15 @@ transport:
         #                        the machine config's slurm.exclusive.
 
       read:
-        tmin: -0.3 # Last 30% of the simulation
-      
+        # tmin: left edge of the signal-analysis window.
+        #   tmin >= 0                    : absolute time (a/cs).
+        #   tmin <  0, tmin_is_rel: true : fraction of the total sim time from the end
+        #                                  (e.g. tmin: -0.3 -> last 30% of the run).
+        #   tmin <  0, tmin_is_rel: false: absolute offset (a/cs) from the end
+        #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
+        tmin: -0.3
+        tmin_is_rel: true
+
       # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable.
       # Set to null to disable the stable-flux check entirely (no std inflation).
       Qi_stable_criterion: 0.001
