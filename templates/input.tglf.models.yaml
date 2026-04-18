@@ -49,11 +49,8 @@
 # Experimentation
 "SAT3em basis":
   deprecated_descriptor: "101"
+  base: "SAT3"
   controls:
-    SAT_RULE: 2
-    UNITS: CGYRO
-    XNU_MODEL: 3
-    WDIA_TRAPPED: 1.0
     USE_BPER: true
     KYGRID_MODEL: 4
     NBASIS_MAX: 6

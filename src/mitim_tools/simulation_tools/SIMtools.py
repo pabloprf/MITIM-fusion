@@ -1694,6 +1694,16 @@ def modifyInputs(
 
         # ~~~~~~~~~~ Change with presets
         print(f" \t- Using presets code_settings = {code_settings}", typeMsg="i")
+        # Show the actual preset overrides (post-inheritance) so the log
+        # records what knobs the named preset is flipping on top of the
+        # defaults, not just its label.
+        preset_resolved = GACODEdefaults.resolve_preset(code_settings, controls_file=controls_file)
+        preset_controls = preset_resolved.get("controls", {}) if isinstance(preset_resolved, dict) else {}
+        if preset_controls:
+            width = max(len(str(k)) for k in preset_controls)
+            print("\t     controls applied by preset:")
+            for k, v in preset_controls.items():
+                print(f"\t        {str(k):<{width}} = {v}")
         input_class.controls = CodeOptions
 
     else:
