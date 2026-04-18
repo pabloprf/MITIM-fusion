@@ -222,80 +222,164 @@ def _resolve_cgyro_restart_chain(
 _resolve_cgyro_restart_from_first = _resolve_cgyro_restart_chain
 
 
-def _resolve_cgyro_extra_options_first(run_options, evaluation_number, existing_extra_options):
+def _iteration_matches_spec_key(key, iteration):
     '''
-    Merge the namelist-level `extraOptions_first` dict on top of the
-    baseline `extraOptions` when evaluation_number == 0, so that iteration 0
-    can carry CGYRO input overrides that later iterations do not see.
+    Test whether a PORTALS iteration index matches a *_special spec key:
 
-    Canonical use with restart_from_first: have iteration 0 set
-    RESTART_STEP so it writes a restart blob that downstream iterations can
-    resume from, without polluting every iteration's input.cgyro with the
-    seed-only setting.
+      "N"    -> exact match: iteration == N
+      ">N"   -> iteration >  N
+      ">=N"  -> iteration >= N
+      "<N"   -> iteration <  N
+      "<=N"  -> iteration <= N
 
-    Returns the merged dict for iteration 0 (a fresh dict, never the
-    incoming reference), or `existing_extra_options` unchanged in every
-    other case (flag off, override empty, iteration != 0). The caller-side
-    namelist dict is never mutated — PORTALS re-reads `simulation_options`
-    on every iteration, so mutation here would leak the iter-0 override
-    into iteration 1+.
+    Malformed keys (non-integer right-hand-side, unknown operator) return
+    False and a warning is printed.
     '''
+    key = str(key).strip()
+    for op, cmp in (
+        (">=", lambda a, b: a >= b),
+        ("<=", lambda a, b: a <= b),
+        (">",  lambda a, b: a >  b),
+        ("<",  lambda a, b: a <  b),
+    ):
+        if key.startswith(op):
+            try:
+                return cmp(iteration, int(key[len(op):].strip()))
+            except ValueError:
+                print(f"\t- [CGYRO *_special] Malformed spec key {key!r}; ignoring", typeMsg='w')
+                return False
+    try:
+        return iteration == int(key)
+    except ValueError:
+        print(f"\t- [CGYRO *_special] Malformed spec key {key!r}; expected integer or comparison (e.g. '5', '>5'); ignoring", typeMsg='w')
+        return False
 
-    if evaluation_number != 0:
-        return existing_extra_options
 
-    override = run_options.get("extraOptions_first") or {}
-    if not override:
-        return existing_extra_options
+def _resolve_cgyro_per_iter_override(spec_dict, evaluation_number, existing_baseline):
+    '''
+    Generic helper for extraOptions_special / allocation_special: walk
+    the per-iteration spec dict and merge any override entries whose key
+    matches `evaluation_number` on top of `existing_baseline`.
 
-    merged = dict(existing_extra_options) if existing_extra_options else {}
-    overridden = []
-    for key, value in override.items():
-        overridden.append(key)
-        merged[key] = value
+    Match semantics:
+      - Range-style keys (">N", "<N", ">=N", "<=N") are applied first.
+      - Exact-integer keys ("N") are applied last so they override
+        range-matched values when both match (e.g. "5" wins over ">4"
+        for iteration 5).
 
-    print(
-        f"\n- [CGYRO extraOptions_first] Iteration 0: overriding {overridden}",
-        typeMsg='i',
+    Returns (merged_dict, matched_keys). When no key matches or the spec
+    is empty, returns (existing_baseline, []) unchanged.
+
+    Never mutates the incoming namelist dict — PORTALS re-reads
+    simulation_options on every iteration, so mutation would leak
+    per-iter overrides across iterations.
+    '''
+    if not spec_dict:
+        return existing_baseline, []
+
+    range_keys = []
+    exact_keys = []
+    for k in spec_dict:
+        ks = str(k).strip()
+        if any(ks.startswith(op) for op in (">=", "<=", ">", "<")):
+            range_keys.append(k)
+        else:
+            exact_keys.append(k)
+
+    merged = dict(existing_baseline) if existing_baseline else {}
+    matched = []
+
+    # Ranges first (so exact matches applied after take precedence).
+    for k in range_keys:
+        if _iteration_matches_spec_key(k, evaluation_number):
+            matched.append(str(k))
+            for kk, vv in (spec_dict[k] or {}).items():
+                merged[kk] = vv
+
+    # Exact matches last so they win on conflicts.
+    for k in exact_keys:
+        if _iteration_matches_spec_key(k, evaluation_number):
+            matched.append(str(k))
+            for kk, vv in (spec_dict[k] or {}).items():
+                merged[kk] = vv
+
+    if not matched:
+        return existing_baseline, []
+    return merged, matched
+
+
+def _resolve_cgyro_extra_options_special(run_options, evaluation_number, existing_extra_options):
+    '''
+    Per-iteration CGYRO `extraOptions` overrides driven by
+    `extraOptions_special`, a dict keyed by iteration selectors. See
+    `_resolve_cgyro_per_iter_override` for match semantics.
+
+    Backward compatibility: the retired `extraOptions_first: {...}` is
+    treated as an implicit `{"0": {...}}` under the new spec, with a
+    one-line deprecation notice.
+    '''
+    spec = run_options.get("extraOptions_special")
+    legacy_first = run_options.get("extraOptions_first")
+    if not spec and legacy_first:
+        print(
+            "\t- [CGYRO extraOptions_special] `extraOptions_first` is deprecated; "
+            "treating as `extraOptions_special: {\"0\": ...}`. Please update your namelist.",
+            typeMsg='w',
+        )
+        spec = {"0": legacy_first}
+
+    merged, matched = _resolve_cgyro_per_iter_override(
+        spec or {}, evaluation_number, existing_extra_options,
     )
-
+    if matched:
+        print(
+            f"\n- [CGYRO extraOptions_special] Iteration {evaluation_number}: "
+            f"overrides from keys {matched} -> {sorted(set(merged) - set(existing_extra_options or {}))}"
+            if existing_extra_options is not None
+            else f"\n- [CGYRO extraOptions_special] Iteration {evaluation_number}: overrides from keys {matched}",
+            typeMsg='i',
+        )
     return merged
 
 
-def _resolve_cgyro_allocation_first(run_options, evaluation_number, existing_allocation):
+def _resolve_cgyro_allocation_special(run_options, evaluation_number, existing_allocation):
     '''
-    Partial-override counterpart of `_resolve_cgyro_extra_options_first` for
-    the SLURM allocation dict. Merges `allocation_first` on top of the
-    baseline `allocation` when evaluation_number == 0, so iteration 0 can
-    claim a different wall-clock / resource envelope than later iterations
-    (typical use: iter 0 needs more `minutes` because it pays the full
-    transient before writing a restart; iter 1+ only needs MAX_TIME above
-    the warm-start window and can fit in a shorter slot).
+    Per-iteration SLURM allocation overrides driven by
+    `allocation_special`, a dict keyed by iteration selectors. See
+    `_resolve_cgyro_per_iter_override` for match semantics.
 
-    Same non-mutating merge semantics as `_resolve_cgyro_extra_options_first`:
-    returns a fresh dict for iter 0, and `existing_allocation` unchanged for
-    every other case (iter != 0, override empty/missing).
+    Backward compatibility: the retired `allocation_first: {...}` is
+    treated as an implicit `{"0": {...}}` under the new spec, with a
+    one-line deprecation notice.
     '''
+    spec = run_options.get("allocation_special")
+    legacy_first = run_options.get("allocation_first")
+    if not spec and legacy_first:
+        print(
+            "\t- [CGYRO allocation_special] `allocation_first` is deprecated; "
+            "treating as `allocation_special: {\"0\": ...}`. Please update your namelist.",
+            typeMsg='w',
+        )
+        spec = {"0": legacy_first}
 
-    if evaluation_number != 0:
-        return existing_allocation
-
-    override = run_options.get("allocation_first") or {}
-    if not override:
-        return existing_allocation
-
-    merged = dict(existing_allocation) if existing_allocation else {}
-    overridden = []
-    for key, value in override.items():
-        overridden.append(key)
-        merged[key] = value
-
-    print(
-        f"\n- [CGYRO allocation_first] Iteration 0: overriding {overridden}",
-        typeMsg='i',
+    merged, matched = _resolve_cgyro_per_iter_override(
+        spec or {}, evaluation_number, existing_allocation,
     )
-
+    if matched:
+        print(
+            f"\n- [CGYRO allocation_special] Iteration {evaluation_number}: "
+            f"overrides from keys {matched} -> {dict((k, merged[k]) for k in sorted(set(merged) - set(existing_allocation or {})))}"
+            if existing_allocation is not None
+            else f"\n- [CGYRO allocation_special] Iteration {evaluation_number}: overrides from keys {matched}",
+            typeMsg='i',
+        )
     return merged
+
+
+# Deprecated aliases — preserve the names from the previous API so any
+# external import paths keep working while callers migrate.
+_resolve_cgyro_extra_options_first = _resolve_cgyro_extra_options_special
+_resolve_cgyro_allocation_first = _resolve_cgyro_allocation_special
 
 
 class gyrokinetic_model:
@@ -320,7 +404,7 @@ class gyrokinetic_model:
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'allocation_first')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special')}
 
         # Translate namelist-level restart_from_folder into per-rho
         # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
@@ -345,18 +429,20 @@ class gyrokinetic_model:
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
 
-        # Iteration-0-only extraOptions overrides (e.g. RESTART_STEP for the
-        # restart_from_first seed). No-op on iterations >= 1.
-        run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_first(
+        # Per-iteration extraOptions overrides (extraOptions_special), e.g.
+        # RESTART_STEP/MAX_TIME tuning for the seed iteration vs. the rest.
+        # No-op for iterations that match no spec key.
+        run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_special(
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
             run_kwargs.get("extraOptions"),
         )
 
-        # Iteration-0-only SLURM allocation overrides (e.g. longer `minutes`
-        # on the seed iteration that has to converge the full transient
-        # before writing its restart blob). No-op on iterations >= 1.
-        run_kwargs["allocation"] = _resolve_cgyro_allocation_first(
+        # Per-iteration SLURM allocation overrides (allocation_special), e.g.
+        # longer `minutes` on the seed iteration that has to converge the
+        # full transient before writing its restart blob; shorter on later
+        # iterations that only run MAX_TIME past the warm-start.
+        run_kwargs["allocation"] = _resolve_cgyro_allocation_special(
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
             run_kwargs.get("allocation"),
@@ -746,19 +832,17 @@ class cgyro_model(gyrokinetic_model):
             if resolved_additional is not None:
                 run_kwargs["additional_files_to_send"] = resolved_additional
 
-            # Iteration-0-only extraOptions overrides. All plasmas in the batched
-            # iter-0 call share the seed-iteration semantics and receive the same
-            # overrides uniformly; no-op on iterations >= 1.
-            run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_first(
+            # Per-iteration extraOptions overrides (extraOptions_special). All
+            # plasmas in a batched call share the iteration index and therefore
+            # apply the same merged overrides.
+            run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_special(
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
                 run_kwargs.get("extraOptions"),
             )
 
-            # Iteration-0-only SLURM allocation overrides (e.g. longer `minutes`).
-            # Batched iter 0 shares the seed-iteration semantics, so every plasma
-            # in the call uses the same merged allocation.
-            run_kwargs["allocation"] = _resolve_cgyro_allocation_first(
+            # Per-iteration SLURM allocation overrides (allocation_special).
+            run_kwargs["allocation"] = _resolve_cgyro_allocation_special(
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
                 run_kwargs.get("allocation"),

@@ -269,29 +269,52 @@ transport:
         # alias for restart_from_cases: "first" but prints a notice.
         restart_from_cases: null
 
-        # CGYRO extraOptions applied ONLY on iteration 0 (Evaluation.0), merged on
-        # top of `extraOptions` key-by-key (iter-0 wins on overlapping keys). No
-        # effect on iterations >= 1.
-        # Canonical use with restart_from_first: have iteration 0 write a restart
-        # blob that later iterations can resume from:
-        #   extraOptions: {}
-        #   extraOptions_first:
-        #     RESTART_STEP: 10
-        extraOptions_first: {}
+        # Per-iteration CGYRO extraOptions overrides, merged on top of
+        # `extraOptions` key-by-key. Keyed by iteration selectors:
+        #   "N"    -> applies to iteration N
+        #   ">N"   -> applies to every iteration > N
+        #   ">=N"  -> applies to every iteration >= N
+        #   "<N"   -> applies to every iteration < N
+        #   "<=N"  -> applies to every iteration <= N
+        # Multiple matching keys are applied in order (ranges first, then
+        # exact-integer keys, so an exact "5" wins over ">4" for iter 5).
+        # Example — iter 0 seeds the restart chain with frequent writes
+        # and a long window; iter 5 resets with a shorter window; every
+        # iter after 5 runs with a minimal window:
+        #   extraOptions_special:
+        #     "0":
+        #       RESTART_STEP: 100
+        #       MAX_TIME: 800
+        #     "5":
+        #       MAX_TIME: 200
+        #     ">5":
+        #       MAX_TIME: 100
+        # DEPRECATED: the older `extraOptions_first: {...}` still works as
+        # an alias for `extraOptions_special: {"0": {...}}` but prints a
+        # notice.
+        extraOptions_special: {}
 
-        # SLURM allocation overrides applied ONLY on iteration 0, merged on top
-        # of `allocation` key-by-key (iter-0 wins). Typical use: iter 0 pays the
-        # full transient before writing a restart blob, so it needs a longer
-        # slot; iter 1+ only runs the MAX_TIME window past the warm-start and
-        # can fit in a shorter allocation.
-        # Example — iter 0 gets 300 min wall-clock, iter 1+ fall back to
-        # whatever `allocation.minutes` (or the per-code default) is:
+        # Per-iteration SLURM allocation overrides, merged on top of
+        # `allocation` key-by-key. Same selector syntax as
+        # extraOptions_special ("N", ">N", ">=N", "<N", "<=N"; exact keys
+        # win over ranges). Typical use: iter 0 pays the full transient
+        # before writing its restart blob and needs the most wall-clock;
+        # later iterations only run MAX_TIME past the warm-start and can
+        # fit in shorter slots.
+        # Example — iter 0 gets 480 min, iter 5 gets 4 min, iters 6+ get 2 min:
         #   allocation:
-        #     minutes: 60
-        #   allocation_first:
-        #     minutes: 300
-        # No effect on iterations >= 1.
-        allocation_first: {}
+        #     minutes: 60     # baseline for un-matched iters
+        #   allocation_special:
+        #     "0":
+        #       minutes: 480
+        #     "5":
+        #       minutes: 4
+        #     ">5":
+        #       minutes: 2
+        # DEPRECATED: the older `allocation_first: {...}` still works as
+        # an alias for `allocation_special: {"0": {...}}` but prints a
+        # notice.
+        allocation_special: {}
 
         # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
