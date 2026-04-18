@@ -13,23 +13,29 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     `additional_files_to_send` entries.
 
     `restart_from_folder` is expected to be a directory containing the
-    per-radius restart bundle CGYRO produces (and MITIM retrieves): a
-    binary state file `bin.cgyro.restart_<rho:.4f>` plus a companion text
-    tag file `out.cgyro.tag_<rho:.4f>`. For every rho in `rho_locations`,
-    the binary is staged as `bin.cgyro.restart` and the tag as
-    `out.cgyro.tag` inside the rho subfolder via SIMtools' rename-on-copy
-    mechanism.
+    per-radius binary restart file CGYRO produces (and MITIM retrieves):
+    `bin.cgyro.restart_<rho:.4f>`. For every rho in `rho_locations`, the
+    binary is staged as `bin.cgyro.restart` inside the rho subfolder via
+    SIMtools' rename-on-copy mechanism.
 
     CGYRO auto-detects the restart at startup (cgyro_init_h.f90):
       - tag present + bin present  -> restart_flag=1 (TRUE restart;
-        continues from t_current stamped in the tag; requires new MAX_TIME
-        > t_current or CGYRO exits immediately).
+        continues from t_current stamped in the tag; requires new
+        MAX_TIME > t_current AND the full out.cgyro.* time-series bundle
+        on disk to rewind via io_control=3 — cgyro_init_kernel.F90:82).
       - tag missing, bin present   -> restart_flag=2 (warm start; uses
-        restart data as initial condition, t resets to 0).
+        restart data as initial condition, t resets to 0, out.cgyro.*
+        files are overwritten fresh via io_control=1).
+
+    For PORTALS this helper deliberately stages ONLY the binary (no tag):
+    each iteration changes input.cgyro parameters, so *continuing* in
+    time from a prior run with different physics is not physically
+    meaningful; warm-start is the correct semantics, and it also avoids
+    the io_control=3 rewind crash when the full output bundle isn't
+    staged alongside the restart file.
 
     Raises if the folder doesn't exist or if any rho is missing its
-    `bin.cgyro.restart_<rho:.4f>` file. A missing tag file degrades that
-    rho to warm-start and prints a warning, but does not raise.
+    `bin.cgyro.restart_<rho:.4f>` file.
     '''
 
     restart_folder = run_options.get("restart_from_folder")
@@ -48,21 +54,11 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     missing_bin = []
     for rho in rho_locations:
         bin_file = restart_folder / f"bin.cgyro.restart_{rho:.4f}"
-        tag_file = restart_folder / f"out.cgyro.tag_{rho:.4f}"
         if not bin_file.is_file():
             missing_bin.append(bin_file.name)
             continue
-        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart", typeMsg='i')
+        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart (warm start)", typeMsg='i')
         resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
-        if tag_file.is_file():
-            print(f"\t              {tag_file.name} -> out.cgyro.tag", typeMsg='i')
-            resolved[float(rho)].append((tag_file, "out.cgyro.tag"))
-        else:
-            print(
-                f"\t              (no {tag_file.name} alongside — CGYRO will do "
-                f"warm-start (restart_flag=2, t resets to 0) instead of true restart)",
-                typeMsg='w',
-            )
 
     if missing_bin:
         raise FileNotFoundError(
@@ -91,14 +87,13 @@ def _resolve_cgyro_restart_from_first(
         <root>/Execution/Evaluation.0/transport_simulation_folder/base_cgyro
            (+ /base_cgyro_plasma0 in batched mode)
 
-    Files must be named bin.cgyro.restart_<rho:.4f> (binary restart data)
-    and out.cgyro.tag_<rho:.4f> (companion tag with timestep counter and
-    simulation time), matching what CGYRO writes and MITIM retrieves after
-    a PORTALS run. Each is staged into the rho subfolder renamed to
-    "bin.cgyro.restart" / "out.cgyro.tag" via the (src, dst) tuple
-    mechanism in SIMtools. With both files present CGYRO does a true
-    restart (restart_flag=1); with only the binary it does a warm start
-    (restart_flag=2, time resets to 0).
+    The binary restart file is named bin.cgyro.restart_<rho:.4f>, matching
+    what CGYRO writes and MITIM retrieves after a PORTALS run. It is
+    staged into the rho subfolder renamed to "bin.cgyro.restart" via the
+    (src, dst) tuple mechanism in SIMtools. See
+    `_resolve_cgyro_restart_folder` for the rationale on why only the
+    binary is staged (warm start, restart_flag=2) and not the companion
+    out.cgyro.tag file.
 
     Unlike `_resolve_cgyro_restart_folder`, missing files are NON-FATAL:
     iteration N runs cold (without restart) and a warning is printed. This
@@ -136,8 +131,8 @@ def _resolve_cgyro_restart_from_first(
             f"\n- [CGYRO restart_from_first] This is {context_label}.0 — no prior iteration to restart from.\n"
             "\t  REMINDER: for subsequent iterations to resume from this one, RESTART_STEP\n"
             "\t  (and any related CGYRO restart settings) MUST be set in extraOptions so\n"
-            "\t  that bin.cgyro.restart_<rho:.4f> (+ out.cgyro.tag_<rho:.4f>) files are\n"
-            "\t  written, and keep_files must preserve them (keep_files: \"all\" is safest).",
+            "\t  that bin.cgyro.restart_<rho:.4f> files are written, and keep_files must\n"
+            "\t  preserve them (keep_files: \"all\" is safest).",
             typeMsg='w',
         )
         return existing_additional_files_to_send
@@ -164,28 +159,13 @@ def _resolve_cgyro_restart_from_first(
 
     resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
     missing_bin = []
-    missing_tag = []
     for rho in rho_locations:
         bin_file = iter0_folder / f"bin.cgyro.restart_{rho:.4f}"
-        tag_file = iter0_folder / f"out.cgyro.tag_{rho:.4f}"
         if not bin_file.is_file():
             missing_bin.append(bin_file.name)
             continue
-        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart", typeMsg='i')
+        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart (warm start)", typeMsg='i')
         resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
-        if tag_file.is_file():
-            print(f"\t              {tag_file.name} -> out.cgyro.tag", typeMsg='i')
-            resolved[float(rho)].append((tag_file, "out.cgyro.tag"))
-        else:
-            missing_tag.append(tag_file.name)
-
-    if missing_tag:
-        print(
-            f"\t- [CGYRO restart_from_first] Missing tag files in {iter0_sibling}: {missing_tag}.\n"
-            f"\t  Those radii will warm-start (restart_flag=2, t resets to 0) instead of\n"
-            f"\t  doing a true restart (restart_flag=1, continuing from the saved t_current).",
-            typeMsg='w',
-        )
 
     if missing_bin:
         print(

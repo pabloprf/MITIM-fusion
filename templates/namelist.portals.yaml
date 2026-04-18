@@ -214,33 +214,34 @@ transport:
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
 
-        # Folder containing per-radius CGYRO restart bundles. Expected filenames
-        # (matching what CGYRO writes and MITIM retrieves):
-        #   bin.cgyro.restart_<rho:.4f>  -> staged as bin.cgyro.restart (required)
-        #   out.cgyro.tag_<rho:.4f>      -> staged as out.cgyro.tag     (optional)
-        # With both files present CGYRO does a TRUE restart (restart_flag=1),
-        # continuing from the t_current stamped in the tag — in which case MAX_TIME
-        # in extraOptions must be > t_current or CGYRO will exit immediately. With
-        # only the binary CGYRO does a WARM START (restart_flag=2), reusing the
-        # saved turbulent state as the initial condition but resetting t to 0.
-        # A missing binary raises; a missing tag prints a warning and falls back
-        # to warm-start for that radius.
+        # Folder containing per-radius CGYRO binary restart files named
+        # "bin.cgyro.restart_<rho:.4f>" (matching what CGYRO writes and MITIM
+        # retrieves after a run). Each is staged into the rho subfolder renamed
+        # to "bin.cgyro.restart" so CGYRO picks it up as a WARM START
+        # (restart_flag=2, per cgyro_init_h.f90): the saved turbulent state is
+        # reused as the initial condition, but t resets to 0 and fresh
+        # out.cgyro.* output files are written. Raises if the folder or any
+        # binary file is missing.
+        # Note: the companion "out.cgyro.tag" file is deliberately NOT staged.
+        # Staging it would trigger CGYRO's true-restart mode (restart_flag=1,
+        # io_control=3), which requires the full out.cgyro.* time-series
+        # bundle on disk for rewind/truncate and is not physically meaningful
+        # for PORTALS (each iteration changes input.cgyro parameters, so
+        # continuing in time across them is ill-defined).
         restart_from_folder: null
 
         # If True and restart_from_folder is null, every CGYRO evaluation at
-        # iteration >= 1 restarts from Evaluation.0/transport_simulation_folder/base_cgyro
-        # (picked up automatically once iteration 0 has finished). Binary and tag
-        # filenames are the same as for restart_from_folder.
+        # iteration >= 1 restarts (warm-start, see restart_from_folder above)
+        # from Evaluation.0/transport_simulation_folder/base_cgyro — or, during
+        # the simple-relax initializer, from portals_sr_ev_0/... — picked up
+        # automatically once iteration 0 has finished.
         # IMPORTANT:
         #   - You MUST configure RESTART_STEP (and any related CGYRO restart
         #     settings) in extraOptions so that iteration 0 writes
-        #     bin.cgyro.restart_<rho:.4f> (+ out.cgyro.tag_<rho:.4f>) files;
-        #     otherwise later iterations will proceed WITHOUT a restart and a
-        #     warning will be printed.
+        #     bin.cgyro.restart_<rho:.4f> files; otherwise later iterations
+        #     will proceed WITHOUT a restart and a warning will be printed.
         #   - Iteration 0 must keep those files on disk. keep_files: "all" is
         #     safest; "pickle"/"none" may unlink CGYRO outputs after the run.
-        #   - With tag files staged, MAX_TIME in iteration N's extraOptions must
-        #     be > t_current in the tag or CGYRO exits immediately.
         #   - If restart_from_folder is also set, it takes precedence and this
         #     flag is ignored (with a warning).
         restart_from_first: false
