@@ -236,6 +236,16 @@ transport:
         #     is ignored (with a warning).
         restart_from_first: false
 
+        # CGYRO extraOptions applied ONLY on iteration 0 (Evaluation.0), merged on
+        # top of `extraOptions` key-by-key (iter-0 wins on overlapping keys). No
+        # effect on iterations >= 1.
+        # Canonical use with restart_from_first: have iteration 0 write a restart
+        # blob that later iterations can resume from:
+        #   extraOptions: {}
+        #   extraOptions_first:
+        #     RESTART_STEP: 10
+        extraOptions_first: {}
+
         # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
         check_existing_runs: False

@@ -156,6 +156,46 @@ def _resolve_cgyro_restart_from_first(
     return resolved
 
 
+def _resolve_cgyro_extra_options_first(run_options, evaluation_number, existing_extra_options):
+    '''
+    Merge the namelist-level `extraOptions_first` dict on top of the
+    baseline `extraOptions` when evaluation_number == 0, so that iteration 0
+    can carry CGYRO input overrides that later iterations do not see.
+
+    Canonical use with restart_from_first: have iteration 0 set
+    RESTART_STEP so it writes a restart blob that downstream iterations can
+    resume from, without polluting every iteration's input.cgyro with the
+    seed-only setting.
+
+    Returns the merged dict for iteration 0 (a fresh dict, never the
+    incoming reference), or `existing_extra_options` unchanged in every
+    other case (flag off, override empty, iteration != 0). The caller-side
+    namelist dict is never mutated — PORTALS re-reads `simulation_options`
+    on every iteration, so mutation here would leak the iter-0 override
+    into iteration 1+.
+    '''
+
+    if evaluation_number != 0:
+        return existing_extra_options
+
+    override = run_options.get("extraOptions_first") or {}
+    if not override:
+        return existing_extra_options
+
+    merged = dict(existing_extra_options) if existing_extra_options else {}
+    overridden = []
+    for key, value in override.items():
+        overridden.append(key)
+        merged[key] = value
+
+    print(
+        f"\n- [CGYRO extraOptions_first] Iteration 0: overriding {overridden}",
+        typeMsg='i',
+    )
+
+    return merged
+
+
 class gyrokinetic_model:
 
     def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
@@ -178,7 +218,7 @@ class gyrokinetic_model:
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'extraOptions_first')}
 
         # Translate namelist-level restart_from_folder into per-rho
         # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
@@ -201,6 +241,14 @@ class gyrokinetic_model:
         )
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
+
+        # Iteration-0-only extraOptions overrides (e.g. RESTART_STEP for the
+        # restart_from_first seed). No-op on iterations >= 1.
+        run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_first(
+            simulation_options["run"],
+            getattr(self, "evaluation_number", 0),
+            run_kwargs.get("extraOptions"),
+        )
 
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare object
@@ -583,6 +631,15 @@ class cgyro_model(gyrokinetic_model):
             )
             if resolved_additional is not None:
                 run_kwargs["additional_files_to_send"] = resolved_additional
+
+            # Iteration-0-only extraOptions overrides. All plasmas in the batched
+            # iter-0 call share the seed-iteration semantics and receive the same
+            # overrides uniformly; no-op on iterations >= 1.
+            run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_first(
+                simulation_options["run"],
+                getattr(self, "evaluation_number", 0),
+                run_kwargs.get("extraOptions"),
+            )
 
             if check_existing_runs:
                 if metadata_path.exists():
