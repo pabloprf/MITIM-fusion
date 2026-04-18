@@ -2109,7 +2109,7 @@ def print_machine_info(output_file=None):
 
     # Package versions
     info_lines.append("\n=== Package Versions ===")
-    for pkg in ["numpy", "scipy", "torch", "gpytorch", "botorch", "linear_operator", "tensorflow"]:
+    for pkg in ["numpy", "scipy", "torch", "gpytorch", "botorch", "linear_operator"]:
         try:
             mod = __import__(pkg)
             info_lines.append(f"  {pkg:<20s} {mod.__version__}")
