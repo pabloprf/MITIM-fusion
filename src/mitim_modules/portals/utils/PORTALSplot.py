@@ -2371,11 +2371,17 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     sorted_its = sorted(cache.keys())
     varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
 
-    # Colour palette: plasma restricted to [0.0, 0.75] — avoids the bright
-    # yellow end (unreadable on white) while preserving a wide hue range
-    # from dark purple to orange-red across iterations. ev0 stays black.
+    # Colour palette: reuse the standard MITIM palette from
+    # GRAPHICStools.listColors() — matches other MITIM plots and keeps ev_N
+    # distinguishable without falling into low-contrast hues. ev0 stays
+    # black (drawn separately below, on top of the cycle).
+    _palette = GRAPHICStools.listColors()
+    # Skip 'k' (black) since ev0 owns it; keep ordering otherwise.
+    _iter_palette = [c for c in _palette if c != 'k']
+    non_base_its_for_palette = [i for i in sorted_its if i != 0]
+    _iter_index = {it: idx for idx, it in enumerate(non_base_its_for_palette)}
     def _color_for(it):
-        return plt.cm.plasma(0.0 + 0.75 * (it / max(1, sorted_its[-1])))
+        return _iter_palette[_iter_index[it] % len(_iter_palette)]
 
     for r_idx, rho in enumerate(self.rhos):
         fig = fn.add_figure(label=f"CGYRO traces (rho={float(rho):.3f})", tab_color=fn_color_start + r_idx)
