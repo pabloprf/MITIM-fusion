@@ -222,6 +222,42 @@ def _resolve_cgyro_extra_options_first(run_options, evaluation_number, existing_
     return merged
 
 
+def _resolve_cgyro_allocation_first(run_options, evaluation_number, existing_allocation):
+    '''
+    Partial-override counterpart of `_resolve_cgyro_extra_options_first` for
+    the SLURM allocation dict. Merges `allocation_first` on top of the
+    baseline `allocation` when evaluation_number == 0, so iteration 0 can
+    claim a different wall-clock / resource envelope than later iterations
+    (typical use: iter 0 needs more `minutes` because it pays the full
+    transient before writing a restart; iter 1+ only needs MAX_TIME above
+    the warm-start window and can fit in a shorter slot).
+
+    Same non-mutating merge semantics as `_resolve_cgyro_extra_options_first`:
+    returns a fresh dict for iter 0, and `existing_allocation` unchanged for
+    every other case (iter != 0, override empty/missing).
+    '''
+
+    if evaluation_number != 0:
+        return existing_allocation
+
+    override = run_options.get("allocation_first") or {}
+    if not override:
+        return existing_allocation
+
+    merged = dict(existing_allocation) if existing_allocation else {}
+    overridden = []
+    for key, value in override.items():
+        overridden.append(key)
+        merged[key] = value
+
+    print(
+        f"\n- [CGYRO allocation_first] Iteration 0: overriding {overridden}",
+        typeMsg='i',
+    )
+
+    return merged
+
+
 class gyrokinetic_model:
 
     def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
@@ -244,7 +280,7 @@ class gyrokinetic_model:
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'extraOptions_first')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'extraOptions_first', 'allocation_first')}
 
         # Translate namelist-level restart_from_folder into per-rho
         # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
@@ -274,6 +310,15 @@ class gyrokinetic_model:
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
             run_kwargs.get("extraOptions"),
+        )
+
+        # Iteration-0-only SLURM allocation overrides (e.g. longer `minutes`
+        # on the seed iteration that has to converge the full transient
+        # before writing its restart blob). No-op on iterations >= 1.
+        run_kwargs["allocation"] = _resolve_cgyro_allocation_first(
+            simulation_options["run"],
+            getattr(self, "evaluation_number", 0),
+            run_kwargs.get("allocation"),
         )
 
         # ------------------------------------------------------------------------------------------------------------------------
@@ -666,6 +711,15 @@ class cgyro_model(gyrokinetic_model):
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
                 run_kwargs.get("extraOptions"),
+            )
+
+            # Iteration-0-only SLURM allocation overrides (e.g. longer `minutes`).
+            # Batched iter 0 shares the seed-iteration semantics, so every plasma
+            # in the call uses the same merged allocation.
+            run_kwargs["allocation"] = _resolve_cgyro_allocation_first(
+                simulation_options["run"],
+                getattr(self, "evaluation_number", 0),
+                run_kwargs.get("allocation"),
             )
 
             if check_existing_runs:

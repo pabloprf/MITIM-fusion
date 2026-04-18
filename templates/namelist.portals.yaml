@@ -266,6 +266,20 @@ transport:
         #     RESTART_STEP: 10
         extraOptions_first: {}
 
+        # SLURM allocation overrides applied ONLY on iteration 0, merged on top
+        # of `allocation` key-by-key (iter-0 wins). Typical use: iter 0 pays the
+        # full transient before writing a restart blob, so it needs a longer
+        # slot; iter 1+ only runs the MAX_TIME window past the warm-start and
+        # can fit in a shorter allocation.
+        # Example — iter 0 gets 300 min wall-clock, iter 1+ fall back to
+        # whatever `allocation.minutes` (or the per-code default) is:
+        #   allocation:
+        #     minutes: 60
+        #   allocation_first:
+        #     minutes: 300
+        # No effect on iterations >= 1.
+        allocation_first: {}
+
         # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
         check_existing_runs: False
