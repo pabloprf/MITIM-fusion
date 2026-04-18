@@ -2324,6 +2324,14 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     the root folder from whichever attribute the caller carries
     (self.opt_fun.folder vs self.folder) and by discovering iterations on
     disk via _iterate_portals_evaluation_folders.
+
+    When the PORTALS run used CGYRO's warm-start feature (restart_from_first
+    or restart_from_folder set in the namelist), each iteration after ev0
+    starts its own time axis at t=0 because CGYRO's restart_flag=2 resets
+    the clock. Plotted raw, that collapses N iterations of simulated
+    turbulence into the same visual window. Instead we shift ev_N's time
+    axis by the sum of preceding iterations' durations so the plot reads
+    as a continuous timeline — the way the underlying physics intends it.
     '''
     print("\t- Adding per-rho CGYRO time-trace tabs (Qe, Qi, Ge)")
 
@@ -2349,19 +2357,45 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
         print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO tabs", typeMsg='w')
         return
 
+    # Auto-detect whether this PORTALS run used CGYRO warm-start — if so,
+    # we chain time axes end-to-end so the traces read as a continuous
+    # simulation. The config lives under transport_options.options.cgyro.run;
+    # fall back to False if the path isn't resolvable.
+    try:
+        cgyro_run_cfg = self.powerstate.transport_options['options']['cgyro']['run']
+        concatenate_traces = bool(cgyro_run_cfg.get('restart_from_first')) or \
+                             (cgyro_run_cfg.get('restart_from_folder') not in (None, ""))
+    except Exception:
+        concatenate_traces = False
+
     sorted_its = sorted(cache.keys())
-    # Normalise viridis over the actual iteration span (covers both BO ilast
-    # and SR-only cases where ilast doesn't exist).
-    ilast_for_norm = max(1, sorted_its[-1])
     varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
+
+    # Colour palette: plasma restricted to [0.0, 0.75] — avoids the bright
+    # yellow end (unreadable on white) while preserving a wide hue range
+    # from dark purple to orange-red across iterations. ev0 stays black.
+    def _color_for(it):
+        return plt.cm.plasma(0.0 + 0.75 * (it / max(1, sorted_its[-1])))
 
     for r_idx, rho in enumerate(self.rhos):
         fig = fn.add_figure(label=f"CGYRO traces (rho={float(rho):.3f})", tab_color=fn_color_start + r_idx)
         axs = fig.subplots(ncols=3)
 
-        # Non-base iterations first (low zorder, light colours from viridis).
-        # Label only the first and last non-zero iteration on the legend so the
-        # cloud doesn't blow it up, but the evN range is still readable.
+        # Precompute per-iteration time offsets (cumulative sum of previous
+        # iterations' tmax). With concatenate_traces=False every offset is 0
+        # and the behaviour reduces to the old overlaid plot.
+        offsets = {}
+        cumulative = 0.0
+        for it in sorted_its:
+            offsets[it] = cumulative
+            if concatenate_traces:
+                out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
+                if out is not None and hasattr(out, "t") and len(out.t) > 0:
+                    cumulative += float(out.t[-1])
+
+        # Non-base iterations first (low zorder, plasma colour cycle).
+        # Label only the first and last non-zero iteration on the legend so
+        # the cloud doesn't blow it up, but the evN range is still readable.
         non_base_its = [i for i in sorted_its if i != 0]
         legend_its = {non_base_its[0], non_base_its[-1]} if non_base_its else set()
         for it in sorted_its:
@@ -2370,15 +2404,17 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
             out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
             if out is None or not hasattr(out, "t"):
                 continue
-            color = plt.cm.viridis(it / ilast_for_norm)
+            color = _color_for(it)
+            t_shifted = out.t + offsets[it]
             for (var, _), ax in zip(varss, axs):
                 y = getattr(out, var, None)
                 if y is None:
                     continue
                 lbl = f"ev{it}" if it in legend_its else None
-                ax.plot(out.t, y, color=color, lw=1.0, alpha=0.6, zorder=2, label=lbl)
+                ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.75, zorder=2, label=lbl)
 
-        # Base (ev0) last, on top, in black with thicker line.
+        # Base (ev0) last, on top, in black with thicker line. No shift: ev0
+        # anchors the time axis.
         if 0 in cache:
             out = _pick_cgyro_output_for_rho(cache[0], rho, r_idx)
             if out is not None and hasattr(out, "t"):
@@ -2389,7 +2425,7 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                     ax.plot(out.t, y, color='black', lw=2.0, alpha=1.0, zorder=5, label='ev0 (base)')
 
         for (var, ylabel), ax in zip(varss, axs):
-            ax.set_xlabel("$t \\, c_s/a$")
+            ax.set_xlabel("$t \\, c_s/a$" + (" (chained)" if concatenate_traces else ""))
             ax.set_ylabel(ylabel)
             GRAPHICStools.addDenseAxis(ax)
             if var in ("Qe", "Qi"):
