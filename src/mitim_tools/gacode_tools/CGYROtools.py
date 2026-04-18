@@ -255,11 +255,34 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             mpi = resolved.mpi
 
             if mpi.get("numa") is not None:
-                return (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
-                        f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
-                        f"-p {p} {additional_command}")
+                cgyro_cmd = (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                             f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
+                             f"-p {p} {additional_command}")
+            else:
+                cgyro_cmd = (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                             f"-p {p} {additional_command}")
 
-            return f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} -p {p} {additional_command}"
+            # Post-CGYRO: drop a warm-start bin.cgyro.restart that the run did
+            # not overwrite, so the retrieval tarball doesn't ferry back an
+            # unchanged blob we already have locally. out.cgyro.info is
+            # written by CGYRO at every startup (cgyro_write_timedata.f90),
+            # so its mtime is a reliable "this run started after here"
+            # baseline. If bin.cgyro.restart is strictly newer, CGYRO wrote
+            # it during the run -> keep. Otherwise (older or equal, i.e.
+            # staged by PORTALS before the run, not rewritten) -> delete.
+            # No-op when either file is absent (e.g. CGYRO crashed at init
+            # or the run didn't use a warm-start at all). Wrapped in a
+            # block so the slurm_array additional_command's trailing newline
+            # doesn't break chaining.
+            restart_path = f"{p}/{folder}/bin.cgyro.restart"
+            info_path = f"{p}/{folder}/out.cgyro.info"
+            cleanup_cmd = (
+                f'if [ -f "{restart_path}" ] && [ -f "{info_path}" ] && '
+                f'[ ! "{restart_path}" -nt "{info_path}" ]; then '
+                f'rm -f "{restart_path}"; fi'
+            )
+
+            return cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
 
         # On GPU machines, always use a job array so each radius gets its own GPU allocation.
         _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
