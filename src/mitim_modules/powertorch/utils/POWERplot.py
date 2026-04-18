@@ -232,7 +232,14 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
     ax_Fgb.set_xlim([0, 1])
     ax_Fgb.set_xlabel('$\\rho$')
     ax_Fgb.set_ylabel(ylabel_Fgb)
-    ax_Fgb.set_yscale("log")
+    # Heat fluxes (Qe, Qi) are physically positive -> log. Particle fluxes
+    # (Ge, GZ) and momentum flux (Mt) can be negative under inward pinch /
+    # counter-rotation regimes, so log would drop those points. Use symlog
+    # with a small linthresh so near-zero values don't blow up the axis.
+    if key in ('te', 'ti'):
+        ax_Fgb.set_yscale("log")
+    else:
+        ax_Fgb.set_yscale("symlog", linthresh=1e-2)
     
     ax_F.plot(
         plasma["rho"][batch_num,1:],
