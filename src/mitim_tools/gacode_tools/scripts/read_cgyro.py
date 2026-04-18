@@ -21,7 +21,14 @@ def main():
     parser.add_argument("--suffixes", required=False, type=str, nargs="*", default=None)
     parser.add_argument("--two", action="store_true", help="Include 2D plots")
     parser.add_argument("--linear", action="store_true", help="Just a plot of the linear spectra")
-    parser.add_argument("--tmin", type=float, nargs="*", default=None, help="Minimum time to calculate mean and std")
+    parser.add_argument("--tmin", type=float, nargs="*", default=None,
+                        help="Left edge of the signal-analysis window per folder. tmin>=0 is absolute time (a/cs). "
+                             "tmin<0 is either a fraction-of-run from the end (default) or an absolute a/cs offset "
+                             "from the end if --tmin_absolute is set.")
+    parser.add_argument("--tmin_absolute", action="store_true",
+                        help="Interpret negative --tmin values as absolute a/cs offsets from the end of the run "
+                             "(e.g. --tmin -200 means the last 200 a/cs). Without this flag, negative --tmin is "
+                             "a fraction-of-run (e.g. --tmin -0.3 means the last 30%% of the run).")
     parser.add_argument("--scan_subfolder_id" , type=str, nargs="*", default="KY", help="If reading a linear scan, the subfolders contain this common identifier")
     parser.add_argument("--noplot", action="store_true", help="If set, it will not plot anything, just read the data.")
     parser.add_argument("--pickle", action="store_true", help="If set, it will save the read data in a pickle file for faster reading next time.")
@@ -67,6 +74,8 @@ def main():
     else:
         last_tmin_for_linear = False
 
+    tmin_is_rel = not args.tmin_absolute
+
     # Read
     c = CGYROtools.CGYRO()
 
@@ -88,6 +97,7 @@ def main():
                 label=labels[-1],
                 folder=folder,
                 tmin=tmin[i],
+                tmin_is_rel=tmin_is_rel,
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i],
@@ -98,6 +108,7 @@ def main():
                 label=labels[-1],
                 folder=folder,
                 tmin=tmin[i],
+                tmin_is_rel=tmin_is_rel,
                 last_tmin_for_linear=last_tmin_for_linear,
                 suffix=suffixes[i],
                 preffix=scan_subfolder_id[i],

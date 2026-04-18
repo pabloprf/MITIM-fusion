@@ -14,7 +14,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--suffixes", required=False, type=str, nargs="*", default=None)
-    parser.add_argument("--tmin", type=float, nargs="*", default=[0.0], help="Minimum time to calculate mean and std")
+    parser.add_argument("--tmin", type=float, nargs="*", default=[0.0],
+                        help="Left edge of the signal-analysis window per folder. tmin>=0 is absolute time (a/cs). "
+                             "tmin<0 is either a fraction-of-run from the end (default) or an absolute a/cs offset "
+                             "from the end if --tmin_absolute is set.")
+    parser.add_argument("--tmin_absolute", action="store_true",
+                        help="Interpret negative --tmin values as absolute a/cs offsets from the end of the run "
+                             "(e.g. --tmin -200 means the last 200 a/cs). Without this flag, negative --tmin is "
+                             "a fraction-of-run (e.g. --tmin -0.3 means the last 30%% of the run).")
     parser.add_argument("--noplot", action="store_true", help="If set, it will not plot anything, just read the data.")
     parser.add_argument("--pickle", required=False, type=str, default=None, help="If set, it will save the read data in a pickle file for faster reading next time.")
     parser.add_argument("--save", type=str, required=False, default=None,
@@ -28,6 +35,7 @@ def main():
 
     folders = args.folders
     tmin = args.tmin
+    tmin_is_rel = not args.tmin_absolute
     skip_plotting = args.noplot
     pkl = args.pickle
 
@@ -55,6 +63,7 @@ def main():
             label=labels[-1],
             folder=folder,
             tmin=tmin[i],
+            tmin_is_rel=tmin_is_rel,
             suffix=suffixes[i],
         )
 
