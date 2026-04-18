@@ -214,6 +214,28 @@ transport:
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
 
+        # Folder containing per-radius CGYRO restart files named "out.cgyro.restart_<rho:.4f>"
+        # (e.g. out.cgyro.restart_0.3500), one per predicted radius. When set, each
+        # rho_<rho:.4f>/ subfolder receives its matching file, renamed to
+        # "out.cgyro.restart", so every CGYRO evaluation in PORTALS resumes from it.
+        # The folder must contain one file per radius in predicted_rho/predicted_roa,
+        # matching the exact 4-decimal rho values; a missing file raises an error.
+        restart_from_folder: null
+
+        # If True and restart_from_folder is null, every CGYRO evaluation at
+        # iteration >= 1 restarts from Evaluation.0/transport_simulation_folder/base_cgyro
+        # (picked up automatically once iteration 0 has finished).
+        # IMPORTANT:
+        #   - You MUST configure RESTART_STEP (and any related CGYRO restart settings)
+        #     in extraOptions so that iteration 0 writes out.cgyro.restart_<rho:.4f>
+        #     files; otherwise later iterations will proceed WITHOUT a restart and a
+        #     warning will be printed.
+        #   - Iteration 0 must keep those files on disk. keep_files: "all" is safest;
+        #     "pickle"/"none" may unlink CGYRO outputs after the run.
+        #   - If restart_from_folder is also set, it takes precedence and this flag
+        #     is ignored (with a warning).
+        restart_from_first: false
+
         # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
         # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
         check_existing_runs: False
