@@ -169,49 +169,56 @@ def cgyro_per_task_status(sim):
         wall_str = _format_wall_seconds(wall_i) if wall_i > 0 else "—"
         update_str = _format_wall_seconds(since_update_i)
 
-        # Reclassify (priority: tag > staleness > slurm-terminal > raw).
+        # Reclassify (priority: terminal tag > staleness > slurm-terminal > raw).
+        # Only FINISHED/TIMEOUT/ERROR tag tokens override the state. Any other
+        # non-empty token (e.g. CGYRO phase indicators like "100"/"200") is
+        # informational — surfaced as a suffix on the normal per-state line so
+        # the step/avg/wall detail is preserved instead of being replaced by a
+        # terse raw= fallback.
         effective = state
         reason = ""
-        if tag_token and tag_token != "-":
-            tk = tag_token.upper()
-            if tk == "FINISHED":
-                effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
-            elif tk == "TIMEOUT":
-                effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
-            elif tk == "ERROR":
-                effective, reason = "ERROR", " (out.cgyro.tag=ERROR)"
-            else:
-                effective, reason = tk, f" (out.cgyro.tag={tk})"
-        elif state == "RUNNING" and since_update_i > stale_threshold:
-            if job_terminal:
+        tag_suffix = ""
+        tk = tag_token.upper() if (tag_token and tag_token != "-") else ""
+
+        if tk == "FINISHED":
+            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
+        elif tk == "TIMEOUT":
+            effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
+        elif tk == "ERROR":
+            effective, reason = "ERROR", " (out.cgyro.tag=ERROR)"
+        else:
+            if tk:
+                tag_suffix = f" [out.cgyro.tag={tag_token}]"
+            if state == "RUNNING" and since_update_i > stale_threshold:
+                if job_terminal:
+                    effective = "TIMED_OUT"
+                    reason = f" (no out.cgyro.timing update for {update_str}; slurm STATE={slurm_state})"
+                else:
+                    effective = "STALLED"
+                    reason = f" (no out.cgyro.timing update for {update_str}; threshold {stale_threshold}s — slurm wall-clock kill or rank crash likely)"
+            elif state == "INITIALIZED" and since_update_i > stale_threshold:
+                effective = "STALLED_INIT"
+                reason = f" (no out.cgyro.timing after {update_str}; threshold {stale_threshold}s)"
+            elif state == "RUNNING" and job_terminal:
                 effective = "TIMED_OUT"
-                reason = f" (no out.cgyro.timing update for {update_str}; slurm STATE={slurm_state})"
-            else:
-                effective = "STALLED"
-                reason = f" (no out.cgyro.timing update for {update_str}; threshold {stale_threshold}s — slurm wall-clock kill or rank crash likely)"
-        elif state == "INITIALIZED" and since_update_i > stale_threshold:
-            effective = "STALLED_INIT"
-            reason = f" (no out.cgyro.timing after {update_str}; threshold {stale_threshold}s)"
-        elif state == "RUNNING" and job_terminal:
-            effective = "TIMED_OUT"
-            reason = f" (slurm STATE={slurm_state})"
+                reason = f" (slurm STATE={slurm_state})"
 
         if effective == "NOT_STARTED":
-            print(f"\t     {folder}: pending — no out.cgyro.info on disk yet")
+            print(f"\t     {folder}: pending — no out.cgyro.info on disk yet{tag_suffix}")
         elif effective == "INITIALIZED":
-            print(f"\t     {folder}: initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall_str})")
+            print(f"\t     {folder}: initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall_str}){tag_suffix}")
         elif effective == "RUNNING":
-            print(f"\t     {folder}: running — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago)")
+            print(f"\t     {folder}: running — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago){tag_suffix}")
         elif effective == "STALLED":
-            print(f"\t     {folder}: stalled{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='w')
+            print(f"\t     {folder}: stalled{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}){tag_suffix}", typeMsg='w')
         elif effective == "STALLED_INIT":
-            print(f"\t     {folder}: stalled at init{reason} — out.cgyro.timing never appeared (wall since init: {wall_str})", typeMsg='w')
+            print(f"\t     {folder}: stalled at init{reason} — out.cgyro.timing never appeared (wall since init: {wall_str}){tag_suffix}", typeMsg='w')
         elif effective == "TIMED_OUT":
-            print(f"\t     {folder}: timed out{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago)", typeMsg='w')
+            print(f"\t     {folder}: timed out{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago){tag_suffix}", typeMsg='w')
         elif effective == "FINISHED":
-            print(f"\t     {folder}: finished{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='i')
+            print(f"\t     {folder}: finished{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}){tag_suffix}", typeMsg='i')
         elif effective == "ERROR":
-            print(f"\t     {folder}: ERROR{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='w')
+            print(f"\t     {folder}: ERROR{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}){tag_suffix}", typeMsg='w')
         else:
             print(f"\t     {folder}: {effective.lower()}{reason} — raw='{raw}'")
 
