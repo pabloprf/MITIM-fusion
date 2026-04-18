@@ -45,23 +45,41 @@ def cgyro_per_task_status(sim):
     Custom checker for `mitim_simulation.check(custom_checker=...)` that
     prints, for every (subfolder, rho) currently tracked by
     `sim.kwargs_organize`, a per-task status line derived from the CGYRO
-    output files on the remote (`out.cgyro.info` and `out.cgyro.timing`)
-    plus a wall-clock proxy based on `stat -c %Y out.cgyro.info`.
+    output files on the remote (`out.cgyro.info`, `out.cgyro.timing`,
+    `out.cgyro.tag`) plus the global slurm STATE captured by the outer
+    poller in `simulation_job.infoSLURM`.
 
     One SSH round-trip per check poll — the remote side loops through all
-    folders and emits a `folder|state|avg_total|steps|wall_seconds` line
-    per element, which we then parse and pretty-print locally.
+    folders and emits a
+    `folder|raw_state|avg_total|steps|wall_seconds|since_update_seconds|tag_token`
+    line per element, which we then reclassify and pretty-print locally.
 
-    State decision tree:
-        out.cgyro.info missing                   -> NOT_STARTED (pending on the scheduler)
-        out.cgyro.info present, no timing yet    -> INITIALIZED (cgyro warming up)
-        both present                             -> RUNNING + avg TOTAL per step
+    Per-task classification, in priority order:
+        1. `out.cgyro.tag` present  -> trust its token (FINISHED/TIMEOUT/ERROR/...)
+        2. `out.cgyro.timing` mtime stale (no append for max(60, min(600, 3*avg))s)
+              -> STALLED (or TIMED_OUT if slurm STATE is also terminal). This is
+                 the signal that catches slurm wall-clock kills, since
+                 `out.cgyro.info` mtime never moves after init and the prior
+                 "wall since init" alone made killed runs look identical to
+                 live ones.
+        3. slurm global STATE in {NOT FOUND, COMPLETED, TIMEOUT, FAILED,
+              CANCELLED} while the per-task raw state is still RUNNING
+              -> TIMED_OUT (catches the case where the staleness threshold
+                 has not yet elapsed but the job is already gone).
+        4. otherwise -> raw state (NOT_STARTED / INITIALIZED / RUNNING).
     '''
 
     job = getattr(sim, "simulation_job", None)
     kwargs_organize = getattr(sim, "kwargs_organize", None)
     if job is None or kwargs_organize is None or not getattr(job, "launchSlurm", False):
         return
+
+    # Global slurm STATE from the outer poller. Coarse (one row per job, not
+    # per array task), so we use it only as a tiebreaker on top of the
+    # per-task filesystem signals — never as the primary classifier.
+    info_slurm = getattr(job, "infoSLURM", None) or {}
+    slurm_state = info_slurm.get("STATE")
+    job_terminal = slurm_state in ("NOT FOUND", "COMPLETED", "TIMEOUT", "FAILED", "CANCELLED")
 
     # Flatten code_executor into an ordered list of "subfolder/rho_{val:.4f}"
     # folder paths matching the slurm-array layout built by SIMtools._run.
@@ -76,23 +94,33 @@ def cgyro_per_task_status(sim):
 
     # Single shell script executed remotely. Avg/steps awk reads every numeric
     # line in the "Run time" block (header "... TOTAL" is skipped by the
-    # numeric-field guard) and averages the last column (TOTAL).
+    # numeric-field guard) and averages the last column (TOTAL). We capture
+    # mtime of out.cgyro.timing (live-append signal — moves every step) in
+    # addition to mtime of out.cgyro.info (init timestamp — never moves), and
+    # the first non-empty token of out.cgyro.tag if it exists.
     script = (
         f"cd {job.folderExecution} && for folder in {folder_list_sh}; do\n"
-        '    info="$folder/out.cgyro.info"; timing="$folder/out.cgyro.timing"\n'
+        '    info="$folder/out.cgyro.info"; timing="$folder/out.cgyro.timing"; tag="$folder/out.cgyro.tag"\n'
+        '    now=$(date +%s)\n'
         '    if [ -f "$info" ]; then\n'
+        '        info_mtime=$(stat -c %Y "$info"); wall=$((now - info_mtime))\n'
         '        if [ -f "$timing" ]; then\n'
         "            avg=$(awk '/^Run time/{run=1; next} run && NF>=14 && ($NF+0==$NF){s+=$NF; n++} END{if(n>0) printf \"%.3f\", s/n; else printf \"NA\"}' \"$timing\")\n"
         "            steps=$(awk '/^Run time/{run=1; next} run && NF>=14 && ($NF+0==$NF){n++} END{print n+0}' \"$timing\")\n"
-        '            mtime=$(stat -c %Y "$info"); now=$(date +%s); wall=$((now - mtime))\n'
-        '            echo "$folder|RUNNING|$avg|$steps|$wall"\n'
-        "        else\n"
-        '            mtime=$(stat -c %Y "$info"); now=$(date +%s); wall=$((now - mtime))\n'
-        '            echo "$folder|INITIALIZED|NA|0|$wall"\n'
-        "        fi\n"
-        "    else\n"
-        '        echo "$folder|NOT_STARTED|NA|0|0"\n'
-        "    fi\n"
+        '            timing_mtime=$(stat -c %Y "$timing"); since_update=$((now - timing_mtime))\n'
+        '            state="RUNNING"\n'
+        '        else\n'
+        '            avg="NA"; steps="0"; since_update=$wall; state="INITIALIZED"\n'
+        '        fi\n'
+        '        tag_token="-"\n'
+        '        if [ -f "$tag" ]; then\n'
+        "            tk=$(awk 'NF>0 {print $1; exit}' \"$tag\")\n"
+        '            [ -n "$tk" ] && tag_token="$tk"\n'
+        '        fi\n'
+        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token"\n'
+        '    else\n'
+        '        echo "$folder|NOT_STARTED|NA|0|0|0|-"\n'
+        '    fi\n'
         "done"
     )
 
@@ -111,18 +139,81 @@ def cgyro_per_task_status(sim):
     print(f"\t- Per-task CGYRO status ({len(folders)} element(s)):")
     for raw in out.splitlines():
         parts = raw.strip().split("|")
-        if len(parts) < 5:
+        if len(parts) < 7:
             continue
-        folder, state, avg, steps, wall = parts[:5]
-        wall_str = _format_wall_seconds(wall) if wall.isdigit() and int(wall) > 0 else "—"
-        if state == "NOT_STARTED":
-            print(f"\t     {folder}: pending — no out.cgyro.info on disk yet")
-        elif state == "INITIALIZED":
-            print(f"\t     {folder}: initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall_str})")
-        elif state == "RUNNING":
-            print(f"\t     {folder}: running — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})")
+        folder, state, avg, steps, wall, since_update, tag_token = parts[:7]
+
+        try:
+            wall_i = max(0, int(wall))
+        except ValueError:
+            wall_i = 0
+        try:
+            since_update_i = max(0, int(since_update))
+        except ValueError:
+            since_update_i = 0
+        try:
+            avg_f = float(avg)
+        except ValueError:
+            avg_f = None
+
+        # Stale-output threshold scales with the run's own step time so a slow
+        # nonlinear case (~30s/step) is not flagged after a single missed step
+        # while a fast linear case (~0.5s/step) does not have to wait minutes
+        # to be called dead. Floor 60s, ceiling 600s. When avg is unknown
+        # (INITIALIZED), fall back to a fixed 180s.
+        if avg_f is not None and avg_f > 0:
+            stale_threshold = max(60, min(600, int(3 * avg_f)))
         else:
-            print(f"\t     {folder}: {state} — raw='{raw}'")
+            stale_threshold = 180
+
+        wall_str = _format_wall_seconds(wall_i) if wall_i > 0 else "—"
+        update_str = _format_wall_seconds(since_update_i)
+
+        # Reclassify (priority: tag > staleness > slurm-terminal > raw).
+        effective = state
+        reason = ""
+        if tag_token and tag_token != "-":
+            tk = tag_token.upper()
+            if tk == "FINISHED":
+                effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
+            elif tk == "TIMEOUT":
+                effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
+            elif tk == "ERROR":
+                effective, reason = "ERROR", " (out.cgyro.tag=ERROR)"
+            else:
+                effective, reason = tk, f" (out.cgyro.tag={tk})"
+        elif state == "RUNNING" and since_update_i > stale_threshold:
+            if job_terminal:
+                effective = "TIMED_OUT"
+                reason = f" (no out.cgyro.timing update for {update_str}; slurm STATE={slurm_state})"
+            else:
+                effective = "STALLED"
+                reason = f" (no out.cgyro.timing update for {update_str}; threshold {stale_threshold}s — slurm wall-clock kill or rank crash likely)"
+        elif state == "INITIALIZED" and since_update_i > stale_threshold:
+            effective = "STALLED_INIT"
+            reason = f" (no out.cgyro.timing after {update_str}; threshold {stale_threshold}s)"
+        elif state == "RUNNING" and job_terminal:
+            effective = "TIMED_OUT"
+            reason = f" (slurm STATE={slurm_state})"
+
+        if effective == "NOT_STARTED":
+            print(f"\t     {folder}: pending — no out.cgyro.info on disk yet")
+        elif effective == "INITIALIZED":
+            print(f"\t     {folder}: initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall_str})")
+        elif effective == "RUNNING":
+            print(f"\t     {folder}: running — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago)")
+        elif effective == "STALLED":
+            print(f"\t     {folder}: stalled{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='w')
+        elif effective == "STALLED_INIT":
+            print(f"\t     {folder}: stalled at init{reason} — out.cgyro.timing never appeared (wall since init: {wall_str})", typeMsg='w')
+        elif effective == "TIMED_OUT":
+            print(f"\t     {folder}: timed out{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str}, last update {update_str} ago)", typeMsg='w')
+        elif effective == "FINISHED":
+            print(f"\t     {folder}: finished{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='i')
+        elif effective == "ERROR":
+            print(f"\t     {folder}: ERROR{reason} — {steps} step(s), avg TOTAL/step = {avg}s (wall since init: {wall_str})", typeMsg='w')
+        else:
+            print(f"\t     {folder}: {effective.lower()}{reason} — raw='{raw}'")
 
 class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
