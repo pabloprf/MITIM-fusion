@@ -2210,6 +2210,47 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
         _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start=fn_color + k + 1)
 
 
+def _iterate_portals_evaluation_folders(root_folder):
+    '''
+    Yield (iteration_index, transport_simulation_folder_path) pairs for every
+    PORTALS evaluation visible on disk, preferring the BO layout
+    (Execution/Evaluation.{N}) and falling back to the simple-relax layout
+    (Initialization/initialization_simple_relax/portals_sr_ev_{N}) when BO
+    hasn't started yet.
+
+    Numeric-suffix sorting uses PORTALSanalysis._extract_trailing_int so
+    partial runs (0, 1, 3 with 2 missing) don't truncate at the gap.
+    '''
+    from pathlib import Path
+    from mitim_modules.portals.utils.PORTALSanalysis import _extract_trailing_int
+
+    root = Path(root_folder)
+
+    bo_root = root / "Execution"
+    if bo_root.is_dir():
+        bo_evs = sorted(
+            (d for d in bo_root.glob("Evaluation.*") if d.is_dir() and _extract_trailing_int(d.name) is not None),
+            key=lambda d: _extract_trailing_int(d.name),
+        )
+        if bo_evs:
+            for d in bo_evs:
+                folder = d / "transport_simulation_folder"
+                if folder.is_dir():
+                    yield _extract_trailing_int(d.name), folder
+            return
+
+    sr_root = root / "Initialization" / "initialization_simple_relax"
+    if sr_root.is_dir():
+        sr_evs = sorted(
+            (d for d in sr_root.glob("portals_sr_ev_*") if d.is_dir() and _extract_trailing_int(d.name) is not None),
+            key=lambda d: _extract_trailing_int(d.name),
+        )
+        for d in sr_evs:
+            folder = d / "transport_simulation_folder"
+            if folder.is_dir():
+                yield _extract_trailing_int(d.name), folder
+
+
 def _load_cgyro_tool_for_iteration(folder_execution, rhos):
     '''
     Best-effort load of a CGYRO tool object carrying per-rho CGYROoutput
@@ -2272,16 +2313,28 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     (Qe, Qi, Ge time traces, GB units) overlaying every PORTALS iteration
     that has CGYRO output on disk. Iteration 0 is drawn last / on top in
     a distinct style so the baseline is always visible above the ensemble.
+
+    Works for both PORTALSanalyzer (BO-mode, Execution/Evaluation.N layout)
+    and PORTALSinitializer (SR-only, portals_sr_ev_N layout) by resolving
+    the root folder from whichever attribute the caller carries
+    (self.opt_fun.folder vs self.folder) and by discovering iterations on
+    disk via _iterate_portals_evaluation_folders.
     '''
     print("\t- Adding per-rho CGYRO time-trace tabs (Qe, Qi, Ge)")
+
+    # Resolve the PORTALS root folder in an attribute-agnostic way: analyzer
+    # uses self.opt_fun.folder, initializer just has self.folder.
+    opt_fun = getattr(self, "opt_fun", None)
+    root_folder = opt_fun.folder if (opt_fun is not None and getattr(opt_fun, "folder", None) is not None) else getattr(self, "folder", None)
+    if root_folder is None:
+        print("\t- Cannot resolve PORTALS root folder for CGYRO trace plot; skipping", typeMsg='w')
+        return
 
     # Populate a small per-iteration cache on `self` so re-invocations of
     # the plotter (common in interactive sessions) don't re-read the pickles.
     if getattr(self, "_cgyro_traces_cache", None) is None:
         self._cgyro_traces_cache = {}
-        ilast = int(getattr(self, "ilast", 0) or 0)
-        for it in range(0, ilast + 1):
-            folder_ev = self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder"
+        for it, folder_ev in _iterate_portals_evaluation_folders(root_folder):
             tool = _load_cgyro_tool_for_iteration(folder_ev, self.rhos)
             if tool is not None:
                 self._cgyro_traces_cache[it] = tool
@@ -2292,7 +2345,9 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
         return
 
     sorted_its = sorted(cache.keys())
-    ilast_for_norm = max(1, int(getattr(self, "ilast", 0) or 0))
+    # Normalise viridis over the actual iteration span (covers both BO ilast
+    # and SR-only cases where ilast doesn't exist).
+    ilast_for_norm = max(1, sorted_its[-1])
     varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
 
     for r_idx, rho in enumerate(self.rhos):

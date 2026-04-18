@@ -1093,6 +1093,107 @@ class PORTALSinitializer:
 
         self.fn = None
 
+        # Expose the minimal attribute surface that PORTALSanalyzer_plotTransportModels
+        # (and its CGYRO traces helper) reads: a representative powerstate, the rho grid,
+        # and an empty transport_model_objects dict populated on demand by
+        # read_transport_models_sr().
+        self.transport_model_objects = {}
+        if self.powerstates:
+            self.powerstate = self.powerstates[-1]
+            try:
+                self.rhos = self.powerstate.plasma["rho"][0, 1:].cpu().numpy()
+            except Exception:
+                self.rhos = None
+        else:
+            self.powerstate = None
+            self.rhos = None
+
+    def read_transport_models_sr(self):
+        '''
+        SR-time counterpart to PORTALSanalyzer.read_transport_models. Populates
+        self.transport_model_objects with {'turbulence': tool, 'neoclassical': tool}
+        entries for iteration 0 and the last available SR iteration, reading TGLF
+        and NEO from
+          <folder>/Initialization/initialization_simple_relax/portals_sr_ev_{N}/transport_simulation_folder/
+        Best-effort: missing files / unreadable iterations print a warning and
+        leave transport_model_objects empty, so the downstream plot degrades
+        silently.
+        '''
+        from mitim_modules.portals.utils.PORTALSplot import _iterate_portals_evaluation_folders
+
+        if self.powerstate is None:
+            print("\t- Cannot read SR transport models: no powerstates loaded", typeMsg='w')
+            return
+
+        try:
+            turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+            neoclassical_model = self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+        except Exception as e:
+            print(f"\t- Could not read transport-model config from powerstate ({e}); skipping SR transport-models plot", typeMsg='w')
+            return
+
+        its_and_folders = list(_iterate_portals_evaluation_folders(self.folder))
+        if not its_and_folders:
+            return
+        # Pick iteration 0 and the latest available — same shape as analyzer's [0, ibest].
+        its_map = {it: f for it, f in its_and_folders}
+        its_to_read = [0] if 0 in its_map else []
+        latest = its_and_folders[-1][0]
+        if latest != 0 and latest in its_map:
+            its_to_read.append(latest)
+        if not its_to_read:
+            return
+
+        for it in its_to_read:
+            folder_execution = its_map[it]
+            turb = neo = None
+
+            if str(turbulence_model).lower() == "tglf":
+                try:
+                    from mitim_tools.gacode_tools import TGLFtools
+                    tglf = TGLFtools.TGLF(rhos=self.rhos)
+                    print(f"> [SR] Reading TGLF results for evaluation {it}")
+                    with LOGtools.HiddenPrints():
+                        tglf.read(folder=folder_execution / "base_tglf", label="base",
+                                  input_gacode=folder_execution / "input.gacode_torun")
+                    # Turbulence-drives distributions (mirrors analyzer block).
+                    subfolders = [f for f in folder_execution.iterdir() if f.is_dir() and f.name.startswith("turb_drives_")]
+                    subfolders.append(folder_execution / "base_tglf")
+                    distributions_x = []
+                    distributions_y = {'Qe': [], 'Qi': [], 'Ge': []}
+                    for subfolder in subfolders:
+                        label = subfolder.name
+                        try:
+                            with LOGtools.HiddenPrints():
+                                tglf.read(folder=subfolder, label=label,
+                                          input_gacode=folder_execution / "input.gacode_torun",
+                                          require_all_files=False)
+                        except Exception:
+                            continue
+                        distributions_x.append(label)
+                        distributions_y['Qe'].append([tglf.results[label]['output'][i].Qe_unn for i in range(tglf.rhos.shape[0])])
+                        distributions_y['Qi'].append([tglf.results[label]['output'][i].Qi_unn for i in range(tglf.rhos.shape[0])])
+                        distributions_y['Ge'].append([tglf.results[label]['output'][i].Ge_unn for i in range(tglf.rhos.shape[0])])
+                    tglf.distributions = {'x': distributions_x, 'y': distributions_y}
+                    turb = tglf
+                except Exception as e:
+                    print(f"\t- [SR] TGLF read failed for ev{it} ({e}); skipping", typeMsg='w')
+
+            if str(neoclassical_model).lower() == "neo":
+                try:
+                    from mitim_tools.gacode_tools import NEOtools
+                    neo_tool = NEOtools.NEO(rhos=self.rhos)
+                    print(f"> [SR] Reading NEO results for evaluation {it}")
+                    with LOGtools.HiddenPrints():
+                        neo_tool.read(folder=folder_execution / "base_neo", label="base",
+                                      input_gacode=folder_execution / "input.gacode_torun")
+                    neo = neo_tool
+                except Exception as e:
+                    print(f"\t- [SR] NEO read failed for ev{it} ({e}); skipping", typeMsg='w')
+
+            if turb is not None or neo is not None:
+                self.transport_model_objects[it] = {"turbulence": turb, "neoclassical": neo}
+
     def plotMetrics(self, extra_lab="", **kwargs):
 
         if len(self.powerstates) == 0:
@@ -1236,6 +1337,25 @@ class PORTALSinitializer:
 
                 axs[0].legend(prop={"size": 8})
                 axsGrads[0].legend(prop={"size": 8})
+
+        # --------------------------------------------------------------------
+        # Transport-models tabs (TGLF distributions, NEO, CGYRO traces) — same
+        # tabs a fully-converged BO case produces via
+        # PORTALSanalyzer_plotTransportModels, but reading from the SR layout
+        # so they appear on SR-only runs too. Best-effort: if nothing readable
+        # is on disk, no extra tabs are added.
+        # --------------------------------------------------------------------
+        if self.fn is not None and self.powerstate is not None:
+            try:
+                self.read_transport_models_sr()
+            except Exception as e:
+                print(f"\t- Could not read SR transport-model info ({e}); skipping extra tabs", typeMsg='w')
+            from mitim_modules.portals.utils.PORTALSplot import PORTALSanalyzer_plotTransportModels
+            fn_color_base = kwargs.get('fn_color', 2) if kwargs else 2
+            try:
+                PORTALSanalyzer_plotTransportModels(self, fn=self.fn, fn_color=fn_color_base)
+            except Exception as e:
+                print(f"\t- SR transport-models plot failed ({e}); continuing without extra tabs", typeMsg='w')
 
 
 def surrogate_file_expansion(
