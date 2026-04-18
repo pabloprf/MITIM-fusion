@@ -214,26 +214,35 @@ transport:
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
 
-        # Folder containing per-radius CGYRO restart files named "out.cgyro.restart_<rho:.4f>"
-        # (e.g. out.cgyro.restart_0.3500), one per predicted radius. When set, each
-        # rho_<rho:.4f>/ subfolder receives its matching file, renamed to
-        # "out.cgyro.restart", so every CGYRO evaluation in PORTALS resumes from it.
-        # The folder must contain one file per radius in predicted_rho/predicted_roa,
-        # matching the exact 4-decimal rho values; a missing file raises an error.
+        # Folder containing per-radius CGYRO restart bundles. Expected filenames
+        # (matching what CGYRO writes and MITIM retrieves):
+        #   bin.cgyro.restart_<rho:.4f>  -> staged as bin.cgyro.restart (required)
+        #   out.cgyro.tag_<rho:.4f>      -> staged as out.cgyro.tag     (optional)
+        # With both files present CGYRO does a TRUE restart (restart_flag=1),
+        # continuing from the t_current stamped in the tag — in which case MAX_TIME
+        # in extraOptions must be > t_current or CGYRO will exit immediately. With
+        # only the binary CGYRO does a WARM START (restart_flag=2), reusing the
+        # saved turbulent state as the initial condition but resetting t to 0.
+        # A missing binary raises; a missing tag prints a warning and falls back
+        # to warm-start for that radius.
         restart_from_folder: null
 
         # If True and restart_from_folder is null, every CGYRO evaluation at
         # iteration >= 1 restarts from Evaluation.0/transport_simulation_folder/base_cgyro
-        # (picked up automatically once iteration 0 has finished).
+        # (picked up automatically once iteration 0 has finished). Binary and tag
+        # filenames are the same as for restart_from_folder.
         # IMPORTANT:
-        #   - You MUST configure RESTART_STEP (and any related CGYRO restart settings)
-        #     in extraOptions so that iteration 0 writes out.cgyro.restart_<rho:.4f>
-        #     files; otherwise later iterations will proceed WITHOUT a restart and a
+        #   - You MUST configure RESTART_STEP (and any related CGYRO restart
+        #     settings) in extraOptions so that iteration 0 writes
+        #     bin.cgyro.restart_<rho:.4f> (+ out.cgyro.tag_<rho:.4f>) files;
+        #     otherwise later iterations will proceed WITHOUT a restart and a
         #     warning will be printed.
-        #   - Iteration 0 must keep those files on disk. keep_files: "all" is safest;
-        #     "pickle"/"none" may unlink CGYRO outputs after the run.
-        #   - If restart_from_folder is also set, it takes precedence and this flag
-        #     is ignored (with a warning).
+        #   - Iteration 0 must keep those files on disk. keep_files: "all" is
+        #     safest; "pickle"/"none" may unlink CGYRO outputs after the run.
+        #   - With tag files staged, MAX_TIME in iteration N's extraOptions must
+        #     be > t_current in the tag or CGYRO exits immediately.
+        #   - If restart_from_folder is also set, it takes precedence and this
+        #     flag is ignored (with a warning).
         restart_from_first: false
 
         # CGYRO extraOptions applied ONLY on iteration 0 (Evaluation.0), merged on

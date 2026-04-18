@@ -12,16 +12,24 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     Translate the namelist-level `restart_from_folder` option into per-rho
     `additional_files_to_send` entries.
 
-    `restart_from_folder` is expected to be a directory containing one CGYRO
-    restart blob per radius, named `out.cgyro.restart_<rho:.4f>`. For every
-    rho in `rho_locations`, the matching file is staged into the rho
-    subfolder with SIMtools' rename-on-copy mechanism ((src, dst_name)
-    tuple), with dst_name = "out.cgyro.restart" so CGYRO picks it up
-    automatically on execution.
+    `restart_from_folder` is expected to be a directory containing the
+    per-radius restart bundle CGYRO produces (and MITIM retrieves): a
+    binary state file `bin.cgyro.restart_<rho:.4f>` plus a companion text
+    tag file `out.cgyro.tag_<rho:.4f>`. For every rho in `rho_locations`,
+    the binary is staged as `bin.cgyro.restart` and the tag as
+    `out.cgyro.tag` inside the rho subfolder via SIMtools' rename-on-copy
+    mechanism.
 
-    Returns the merged additional_files_to_send dict, or the existing one
-    unchanged if restart_from_folder is unset. Raises if the folder or any
-    per-rho file is missing.
+    CGYRO auto-detects the restart at startup (cgyro_init_h.f90):
+      - tag present + bin present  -> restart_flag=1 (TRUE restart;
+        continues from t_current stamped in the tag; requires new MAX_TIME
+        > t_current or CGYRO exits immediately).
+      - tag missing, bin present   -> restart_flag=2 (warm start; uses
+        restart data as initial condition, t resets to 0).
+
+    Raises if the folder doesn't exist or if any rho is missing its
+    `bin.cgyro.restart_<rho:.4f>` file. A missing tag file degrades that
+    rho to warm-start and prints a warning, but does not raise.
     '''
 
     restart_folder = run_options.get("restart_from_folder")
@@ -37,20 +45,30 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     print(f"\n- [CGYRO restart] Staging per-radius restart files from:\n\t{restart_folder}", typeMsg='i')
 
     resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
-    missing = []
+    missing_bin = []
     for rho in rho_locations:
-        expected = restart_folder / f"out.cgyro.restart_{rho:.4f}"
-        if not expected.is_file():
-            missing.append(expected.name)
+        bin_file = restart_folder / f"bin.cgyro.restart_{rho:.4f}"
+        tag_file = restart_folder / f"out.cgyro.tag_{rho:.4f}"
+        if not bin_file.is_file():
+            missing_bin.append(bin_file.name)
             continue
-        print(f"\t  rho={rho:.4f}: {expected.name} -> out.cgyro.restart", typeMsg='i')
-        resolved.setdefault(float(rho), []).append((expected, "out.cgyro.restart"))
+        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart", typeMsg='i')
+        resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
+        if tag_file.is_file():
+            print(f"\t              {tag_file.name} -> out.cgyro.tag", typeMsg='i')
+            resolved[float(rho)].append((tag_file, "out.cgyro.tag"))
+        else:
+            print(
+                f"\t              (no {tag_file.name} alongside — CGYRO will do "
+                f"warm-start (restart_flag=2, t resets to 0) instead of true restart)",
+                typeMsg='w',
+            )
 
-    if missing:
+    if missing_bin:
         raise FileNotFoundError(
-            "[MITIM] CGYRO restart_from_folder is missing per-rho files: "
-            f"{missing}. Expected one file per predicted radius, named "
-            f"out.cgyro.restart_<rho:.4f>, in {restart_folder}."
+            "[MITIM] CGYRO restart_from_folder is missing per-rho binary restart files: "
+            f"{missing_bin}. Expected one file per predicted radius, named "
+            f"bin.cgyro.restart_<rho:.4f>, in {restart_folder}."
         )
 
     return resolved
@@ -73,10 +91,14 @@ def _resolve_cgyro_restart_from_first(
         <root>/Execution/Evaluation.0/transport_simulation_folder/base_cgyro
            (+ /base_cgyro_plasma0 in batched mode)
 
-    Files must be named out.cgyro.restart_<rho:.4f>, matching what CGYRO
-    itself writes per-radius after a PORTALS run (transport_cgyro.py:195).
-    Each is staged into the rho subfolder renamed to "out.cgyro.restart"
-    via the (src, dst) tuple mechanism in SIMtools.
+    Files must be named bin.cgyro.restart_<rho:.4f> (binary restart data)
+    and out.cgyro.tag_<rho:.4f> (companion tag with timestep counter and
+    simulation time), matching what CGYRO writes and MITIM retrieves after
+    a PORTALS run. Each is staged into the rho subfolder renamed to
+    "bin.cgyro.restart" / "out.cgyro.tag" via the (src, dst) tuple
+    mechanism in SIMtools. With both files present CGYRO does a true
+    restart (restart_flag=1); with only the binary it does a warm start
+    (restart_flag=2, time resets to 0).
 
     Unlike `_resolve_cgyro_restart_folder`, missing files are NON-FATAL:
     iteration N runs cold (without restart) and a warning is printed. This
@@ -105,8 +127,8 @@ def _resolve_cgyro_restart_from_first(
             "\n- [CGYRO restart_from_first] This is Evaluation.0 — no prior iteration to restart from.\n"
             "\t  REMINDER: for subsequent iterations to resume from this one, RESTART_STEP\n"
             "\t  (and any related CGYRO restart settings) MUST be set in extraOptions so\n"
-            "\t  that out.cgyro.restart_<rho:.4f> files are written, and keep_files must\n"
-            "\t  preserve them (keep_files: \"all\" is safest).",
+            "\t  that bin.cgyro.restart_<rho:.4f> (+ out.cgyro.tag_<rho:.4f>) files are\n"
+            "\t  written, and keep_files must preserve them (keep_files: \"all\" is safest).",
             typeMsg='w',
         )
         return existing_additional_files_to_send
@@ -132,21 +154,36 @@ def _resolve_cgyro_restart_from_first(
     )
 
     resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
-    missing = []
+    missing_bin = []
+    missing_tag = []
     for rho in rho_locations:
-        expected = iter0_folder / f"out.cgyro.restart_{rho:.4f}"
-        if not expected.is_file():
-            missing.append(expected.name)
+        bin_file = iter0_folder / f"bin.cgyro.restart_{rho:.4f}"
+        tag_file = iter0_folder / f"out.cgyro.tag_{rho:.4f}"
+        if not bin_file.is_file():
+            missing_bin.append(bin_file.name)
             continue
-        print(f"\t  rho={rho:.4f}: {expected.name} -> out.cgyro.restart", typeMsg='i')
-        resolved.setdefault(float(rho), []).append((expected, "out.cgyro.restart"))
+        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart", typeMsg='i')
+        resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
+        if tag_file.is_file():
+            print(f"\t              {tag_file.name} -> out.cgyro.tag", typeMsg='i')
+            resolved[float(rho)].append((tag_file, "out.cgyro.tag"))
+        else:
+            missing_tag.append(tag_file.name)
 
-    if missing:
+    if missing_tag:
         print(
-            f"\t- [CGYRO restart_from_first] Missing per-rho files in Evaluation.0: {missing}.\n"
+            f"\t- [CGYRO restart_from_first] Missing tag files in Evaluation.0: {missing_tag}.\n"
+            f"\t  Those radii will warm-start (restart_flag=2, t resets to 0) instead of\n"
+            f"\t  doing a true restart (restart_flag=1, continuing from the saved t_current).",
+            typeMsg='w',
+        )
+
+    if missing_bin:
+        print(
+            f"\t- [CGYRO restart_from_first] Missing binary restart files in Evaluation.0: {missing_bin}.\n"
             f"\t  Check that RESTART_STEP was set in extraOptions and that keep_files did\n"
-            f"\t  not unlink them after iteration 0. Proceeding with partial restart for\n"
-            f"\t  the radii that do have a restart file.",
+            f"\t  not unlink them after iteration 0. Proceeding WITHOUT restart for those\n"
+            f"\t  radii (partial restart for any radii that do have a binary).",
             typeMsg='w',
         )
         # If literally nothing was found, fall back to existing (no-op).
