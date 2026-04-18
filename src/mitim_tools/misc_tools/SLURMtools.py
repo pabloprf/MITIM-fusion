@@ -233,28 +233,22 @@ def resolve(
 def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node, code_cores_per_mpi=None):
     """MPI parameters that the per-code `code_call` needs.
 
-    GPU/full-node-MPI scaling (CGYRO): rank count scales with the *cores* the
-    call is entitled to, not just the GPU count, so we actually use the node's
-    CPU side instead of leaving 87% idle.
+    GPU/full-node-MPI (CGYRO): one MPI rank per requested GPU, one rank per
+    NUMA domain (NUMA is aligned with GPUs on these systems), fixed
+    mpinuma=1. `nomp` comes from the per-code hint (cores_per_mpi).
 
-        cores_per_call = cores_per_node × (resources_per_call / gpus_per_node)
-        n_ranks        = cores_per_call / cores_per_mpi
-        nomp           = cores_per_mpi
-        numa = n_ranks, mpinuma = 1   (1 rank per NUMA, fine up to a node's NUMA count)
+        n       = numa = min(resources_per_call, gpus_per_node)
+        nomp    = cores_per_mpi
+        mpinuma = 1
 
     Concrete on engaging_rpp_gpu_nathan (cores=128, gpus=4, cores_per_mpi=16):
-        rpc=1 -> n=2  / nomp=16 / numa=2  (¼ node)
-        rpc=2 -> n=4  / nomp=16 / numa=4  (½ node, 2 ranks/GPU via MPS)
-        rpc=4 -> n=8  / nomp=16 / numa=8  (full node — numa>physical NUMA, see TODO)
-
-    TODO: when `n_ranks` exceeds physical NUMA-per-node (typically 4 on these
-    GPU nodes), the right move is mpinuma>1 rather than overstating numa.
-    Currently no caller hits this since rpc≤2 is what's used in practice.
+        rpc=1 -> n=1 / nomp=16 / numa=1 / mpinuma=1
+        rpc=2 -> n=2 / nomp=16 / numa=2 / mpinuma=1
+        rpc=4 -> n=4 / nomp=16 / numa=4 / mpinuma=1   (full-node, 1 rank/GPU)
     """
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and cores_per_node > 0:
+        n_ranks = max(1, min(int(resources_per_call), gpus_per_node))
         nomp = int(code_cores_per_mpi) if code_cores_per_mpi else max(1, cores_per_node // gpus_per_node)
-        cores_per_call = max(1, (cores_per_node * int(resources_per_call)) // gpus_per_node)
-        n_ranks = max(1, cores_per_call // nomp)
         return {
             "n": n_ranks,
             "nomp": nomp,
@@ -269,24 +263,19 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
                         n_rhos, n_subfolders, array_list):
     """Populate nodes/ntasks/cpus-per-task/gpus-per-node etc. using native names."""
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0:
-        # CGYRO GPU path. n_ranks scales with cores-per-call (cores_per_node ×
-        # rpc/gpus_per_node) so MPS-shared layouts like Nathan's (4 ranks on 2
-        # GPUs with 16 OMP each) emerge naturally from `resources_per_call=2`.
-        # `gpus-per-node` still tracks the GPU slice so the scheduler honors
-        # GPU partitioning.
+        # CGYRO GPU path: 1 MPI rank per requested GPU. ntasks-per-node tracks
+        # n_gpus_requested so ntasks × cpus-per-task = the actual CPU slice
+        # that matches the cgyro `-n × -nomp` layout.
         n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))
         omp_per_task = int(code_cores_per_mpi) if code_cores_per_mpi else (
             cores_per_node // gpus_per_node if cores_per_node else 1)
-        cores_per_call = max(1, (int(cores_per_node or 0) * int(resources_per_call)) // gpus_per_node) \
-            if cores_per_node else (n_gpus_requested * omp_per_task)
-        n_ranks = max(1, cores_per_call // omp_per_task)
 
         if submission_type == "slurm_standard":
             n_radii = n_rhos * n_subfolders
-            sbatch["ntasks"] = n_ranks * n_radii
+            sbatch["ntasks"] = n_gpus_requested * n_radii
         elif submission_type == "slurm_array":
             sbatch["nodes"] = 1
-            sbatch["ntasks-per-node"] = n_ranks
+            sbatch["ntasks-per-node"] = n_gpus_requested
             sbatch["array"] = ",".join(array_list or [])
 
         sbatch["cpus-per-task"] = omp_per_task
