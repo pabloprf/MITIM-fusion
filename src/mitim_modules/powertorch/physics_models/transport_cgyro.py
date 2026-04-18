@@ -122,9 +122,18 @@ def _resolve_cgyro_restart_from_first(
         )
         return existing_additional_files_to_send
 
+    # Detect context: simple-relax initialization places per-iteration folders
+    # under <root>/Initialization/initialization_simple_relax/portals_sr_ev_{N}/
+    # transport_simulation_folder. The BO loop uses <root>/Execution/Evaluation.{N}/
+    # transport_simulation_folder. Both share the pattern folder.parent.parent /
+    # <iter-0 sibling name> / folder.name, only the sibling-0 name differs.
+    in_simple_relax = "initialization_simple_relax" in folder.parts
+    iter0_sibling = "portals_sr_ev_0" if in_simple_relax else "Evaluation.0"
+    context_label = "portals_sr_ev" if in_simple_relax else "Evaluation"
+
     if evaluation_number == 0:
         print(
-            "\n- [CGYRO restart_from_first] This is Evaluation.0 — no prior iteration to restart from.\n"
+            f"\n- [CGYRO restart_from_first] This is {context_label}.0 — no prior iteration to restart from.\n"
             "\t  REMINDER: for subsequent iterations to resume from this one, RESTART_STEP\n"
             "\t  (and any related CGYRO restart settings) MUST be set in extraOptions so\n"
             "\t  that bin.cgyro.restart_<rho:.4f> (+ out.cgyro.tag_<rho:.4f>) files are\n"
@@ -133,22 +142,22 @@ def _resolve_cgyro_restart_from_first(
         )
         return existing_additional_files_to_send
 
-    # <root>/Execution/Evaluation.N/transport_simulation_folder → iter 0 sibling.
-    iter0_folder = folder.parent.parent / "Evaluation.0" / folder.name / "base_cgyro"
+    # Iter 0 sibling of the current evaluation folder (SR or BO).
+    iter0_folder = folder.parent.parent / iter0_sibling / folder.name / "base_cgyro"
     if plasma_subfolder:
         iter0_folder = iter0_folder / plasma_subfolder
 
     if not iter0_folder.is_dir():
         print(
-            f"\n- [CGYRO restart_from_first] Evaluation.0 base_cgyro folder not found at:\n"
+            f"\n- [CGYRO restart_from_first] {iter0_sibling} base_cgyro folder not found at:\n"
             f"\t  {iter0_folder}\n"
-            f"\t  Proceeding WITHOUT restart for Evaluation.{evaluation_number}.",
+            f"\t  Proceeding WITHOUT restart for {context_label}.{evaluation_number}.",
             typeMsg='w',
         )
         return existing_additional_files_to_send
 
     print(
-        f"\n- [CGYRO restart_from_first] Evaluation.{evaluation_number} will restart from:\n"
+        f"\n- [CGYRO restart_from_first] {context_label}.{evaluation_number} will restart from:\n"
         f"\t{iter0_folder}",
         typeMsg='i',
     )
@@ -172,7 +181,7 @@ def _resolve_cgyro_restart_from_first(
 
     if missing_tag:
         print(
-            f"\t- [CGYRO restart_from_first] Missing tag files in Evaluation.0: {missing_tag}.\n"
+            f"\t- [CGYRO restart_from_first] Missing tag files in {iter0_sibling}: {missing_tag}.\n"
             f"\t  Those radii will warm-start (restart_flag=2, t resets to 0) instead of\n"
             f"\t  doing a true restart (restart_flag=1, continuing from the saved t_current).",
             typeMsg='w',
@@ -180,7 +189,7 @@ def _resolve_cgyro_restart_from_first(
 
     if missing_bin:
         print(
-            f"\t- [CGYRO restart_from_first] Missing binary restart files in Evaluation.0: {missing_bin}.\n"
+            f"\t- [CGYRO restart_from_first] Missing binary restart files in {iter0_sibling}: {missing_bin}.\n"
             f"\t  Check that RESTART_STEP was set in extraOptions and that keep_files did\n"
             f"\t  not unlink them after iteration 0. Proceeding WITHOUT restart for those\n"
             f"\t  radii (partial restart for any radii that do have a binary).",
