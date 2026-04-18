@@ -1,36 +1,57 @@
+# ------------------------------------------------------------
+# Standard linear setup
+# ------------------------------------------------------------
+
 "Linear":
   controls:
     NONLINEAR_FLAG: 0
     N_TOROIDAL: 1
+
+# ------------------------------------------------------------
+# Standard nonlinear setup
+# ------------------------------------------------------------
 
 "Nonlinear":
   controls:
     NONLINEAR_FLAG: 1
     COLLISION_MODEL: 4
     ROTATION_MODEL: 2
-    N_TOROIDAL: 12
+    N_TOROIDAL: 16
     N_XI: 16  
     N_THETA: 16
+    N_ENERGY: 8
+    E_MAX: 8
+    SHEAR_METHOD: 2
+    DELTA_T: 0.04
+    MAX_TIME: 1200
   preprocess_options:
     ky_min: 0.1
     L_x: 90
     N_radial: 256
     min_box_size: 85
 
+# ------------------------------------------------------------
+# Nonlinear setup with reduced resolution and collision model
+# ------------------------------------------------------------
+
 "Nonlinear_fast":
   base: "Nonlinear"
   controls:
-    COLLISION_MODEL: 5
+    COLLISION_MODEL: 5 # Diagonal Lorentz operator
     ROTATION_MODEL: 1
+    N_TOROIDAL: 12
   preprocess_options:
     N_radial: 192
 
+# ------------------------------------------------------------
+# Very low resolution case for testing of workflows
+# ------------------------------------------------------------
+
 "Nonlinear_silly":
-  base: "Nonlinear"
+  base: "Nonlinear_fast"
   controls:
-    COLLISION_MODEL: 5
-    ROTATION_MODEL: 1
     N_XI: 8
     N_THETA: 8
   preprocess_options:
     N_radial: 96
+

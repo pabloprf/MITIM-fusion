@@ -221,6 +221,23 @@ transport:
         # Polling cadence for .check() when run_type=="submit" (minutes)
         every_n_minutes: 10
 
+        # Slurm allocation (optional; each field falls back to per-code defaults +
+        # machine config if omitted).
+        #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
+        #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
+        #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
+        #                        --gpus-per-node / --ntasks-per-node counts
+        #   minutes            : slurm --time in minutes. 300 = 5h, the usual cap for
+        #                        CGYRO nonlinear runs.
+        #   mem                : per-node memory string passed to sbatch --mem
+        #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
+        #   submission_type    : "slurm_array" (default on GPU machines: one array
+        #                        element per rho, whole node per element on
+        #                        OverSubscribe=NO partitions) or "slurm_standard"
+        #                        (single allocation, parallel '&' body).
+        #   exclusive          : force sbatch --exclusive. Omit/null to defer to
+        #                        the machine config's slurm.exclusive.
+
       read:
         tmin: -0.3 # Last 30% of the simulation
       
