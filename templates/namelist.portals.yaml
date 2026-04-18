@@ -228,6 +228,11 @@ transport:
         # bundle on disk for rewind/truncate and is not physically meaningful
         # for PORTALS (each iteration changes input.cgyro parameters, so
         # continuing in time across them is ill-defined).
+        # MAX_TIME tip: CGYRO warm-start resets t to 0, so MAX_TIME in
+        # extraOptions is the ADDITIONAL time the restarted run simulates on
+        # top of the saved state — set it to the window you want for
+        # statistics after the saved turbulent state, not the cumulative
+        # time since the original iteration 0.
         restart_from_folder: null
 
         # If True and restart_from_folder is null, every CGYRO evaluation at
@@ -242,6 +247,11 @@ transport:
         #     will proceed WITHOUT a restart and a warning will be printed.
         #   - Iteration 0 must keep those files on disk. keep_files: "all" is
         #     safest; "pickle"/"none" may unlink CGYRO outputs after the run.
+        #   - MAX_TIME on iterations >= 1 should be sized as the ADDITIONAL
+        #     time you want to simulate on top of the saved state (CGYRO
+        #     warm-start resets t to 0). If iteration 0 wrote its restart at
+        #     e.g. t=200 a/cs and you want another 100 a/cs of statistics,
+        #     set MAX_TIME: 100 — not 300.
         #   - If restart_from_folder is also set, it takes precedence and this
         #     flag is ignored (with a warning).
         restart_from_first: false
