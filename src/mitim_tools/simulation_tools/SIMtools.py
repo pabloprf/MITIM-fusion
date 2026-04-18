@@ -134,7 +134,7 @@ class mitim_simulation:
         attempts_execution=1,
         only_minimal_files=False,
         run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
-        additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart)
+        additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
     ):
 
@@ -227,7 +227,9 @@ class mitim_simulation:
         launchSlurm=True,
         allocation=None,
         # ********************************
-        # Additional files to send (e.g. restarts). Must be a dictionary with rho keys
+        # Additional files to send (e.g. restarts). Must be a dictionary with rho keys;
+        # each list entry is either a path or a (src_path, dst_basename) tuple — tuples
+        # let the file be renamed on stage-in (e.g. CGYRO per-rho restart blobs -> out.cgyro.restart).
         # ********************************
         additional_files_to_send = None,
         # ********************************
@@ -454,10 +456,17 @@ class mitim_simulation:
                     with open(input_file_sim, "w") as f:
                         f.write(code_executor[subfolder_sim][rho]["inputs"])
                         
-                    # Copy potential additional files to send
+                    # Copy potential additional files to send. Entries may be a bare
+                    # path (staged with its own basename) or a (src, dst_basename)
+                    # tuple to rename on stage-in (e.g. CGYRO per-rho restart blobs
+                    # named "out.cgyro.restart_<rho>" renamed to "out.cgyro.restart").
                     if code_executor[subfolder_sim][rho]["additional_files_to_send"] is not None:
-                        for file in code_executor[subfolder_sim][rho]["additional_files_to_send"]:
-                            shutil.copy(file, folder_sim_this / Path(file).name)
+                        for entry in code_executor[subfolder_sim][rho]["additional_files_to_send"]:
+                            if isinstance(entry, tuple):
+                                src, dst_name = entry
+                            else:
+                                src, dst_name = entry, Path(entry).name
+                            shutil.copy(src, folder_sim_this / dst_name)
 
             # ---------------------------------------------
             # Prepare command
