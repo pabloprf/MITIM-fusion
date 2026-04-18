@@ -2140,9 +2140,14 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     k = 0
     for it in self.transport_model_objects:
-        turb = self.transport_model_objects[it]['turbulence']
+        turb = self.transport_model_objects[it].get('turbulence')
+        neo  = self.transport_model_objects[it].get('neoclassical')
+        # Skip iterations with missing halves (e.g. SR CGYRO-only populates
+        # this dict with turb=None, or a partial read where one leg failed).
+        if turb is None or neo is None:
+            continue
         turb.plot(fn=fn, fn_color=fn_color+k, labels = ['base'], extratitle=f"Turb (#{it}) - ")
-        
+
         if "distributions" in turb.__dict__:
             distributions = turb.distributions
             k += 1
@@ -2194,7 +2199,7 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
                 if var in ["Qe", "Qi"]:
                     ax.set_ylim(bottom=0)
         
-        self.transport_model_objects[it]['neoclassical'].plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
+        neo.plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
         k += 2
 
     # CGYRO-specific per-rho time traces: one tab per radius with Qe/Qi/Ge(t)

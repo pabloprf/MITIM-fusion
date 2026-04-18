@@ -1135,12 +1135,16 @@ class PORTALSinitializer:
         its_and_folders = list(_iterate_portals_evaluation_folders(self.folder))
         if not its_and_folders:
             return
-        # Pick iteration 0 and the latest available — same shape as analyzer's [0, ibest].
+        # Pick iteration 0 and the latest *completed* iteration — same shape as
+        # analyzer's [0, ibest]. Completed is determined by len(self.powerstates)
+        # (PORTALSinitializer only appends a powerstate when that iteration's
+        # powerstate.pkl was found), so a half-finished portals_sr_ev_N folder
+        # present on disk isn't mistaken for the latest.
         its_map = {it: f for it, f in its_and_folders}
         its_to_read = [0] if 0 in its_map else []
-        latest = its_and_folders[-1][0]
-        if latest != 0 and latest in its_map:
-            its_to_read.append(latest)
+        latest_completed = len(self.powerstates) - 1 if self.powerstates else -1
+        if latest_completed > 0 and latest_completed in its_map:
+            its_to_read.append(latest_completed)
         if not its_to_read:
             return
 
@@ -1191,7 +1195,13 @@ class PORTALSinitializer:
                 except Exception as e:
                     print(f"\t- [SR] NEO read failed for ev{it} ({e}); skipping", typeMsg='w')
 
-            if turb is not None or neo is not None:
+            # Only populate when BOTH halves are present: PORTALSanalyzer_plotTransportModels
+            # unconditionally calls .plot() on both, so a half-populated entry
+            # would NoneType-crash. For CGYRO-only runs (turb is None because
+            # we skip TGLF), leave transport_model_objects empty — the CGYRO
+            # traces plot downstream still renders the per-rho time traces,
+            # which is the information the user cares about in that case.
+            if turb is not None and neo is not None:
                 self.transport_model_objects[it] = {"turbulence": turb, "neoclassical": neo}
 
     def plotMetrics(self, extra_lab="", **kwargs):
