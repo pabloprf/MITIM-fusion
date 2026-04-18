@@ -2196,7 +2196,152 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
         
         self.transport_model_objects[it]['neoclassical'].plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
         k += 2
-            
+
+    # CGYRO-specific per-rho time traces: one tab per radius with Qe/Qi/Ge(t)
+    # overlaid across every PORTALS iteration, ev0 drawn on top in a distinct
+    # style. Loaded lazily here (not in read_transport_models) so the TGLF/NEO
+    # path doesn't pay the cost, and so missing/failed iterations are skipped
+    # cleanly rather than aborting the plot.
+    try:
+        turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+    except Exception:
+        turbulence_model = None
+    if turbulence_model is not None and str(turbulence_model).lower() == "cgyro":
+        _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start=fn_color + k + 1)
+
+
+def _load_cgyro_tool_for_iteration(folder_execution, rhos):
+    '''
+    Best-effort load of a CGYRO tool object carrying per-rho CGYROoutput
+    instances for one PORTALS iteration. Tries the pickle fast path first
+    (single-plasma keep_files='pickle'), then falls back to re-reading raw
+    CGYRO output files. Returns None if neither works — caller should skip
+    the iteration.
+    '''
+    from mitim_tools.simulation_tools import SIMtools
+    from mitim_tools.gacode_tools import CGYROtools
+    from mitim_tools.misc_tools.LOGtools import HiddenPrints
+
+    base = folder_execution / "base_cgyro"
+    if not base.is_dir():
+        return None
+
+    pickle_file = base / "gk_object.pkl"
+    if pickle_file.is_file():
+        try:
+            with HiddenPrints():
+                return SIMtools.restore_class_pickle(pickle_file)
+        except Exception as e:
+            print(f"\t- CGYRO pickle unreadable at {pickle_file} ({e}); falling back to raw files", typeMsg='w')
+
+    try:
+        with HiddenPrints():
+            c = CGYROtools.CGYRO(rhos=list(rhos))
+            c.read(folder=base, label="base_cgyro", minimal=True)
+        return c
+    except Exception as e:
+        print(f"\t- CGYRO read failed at {base} ({e}); skipping iteration", typeMsg='w')
+        return None
+
+
+def _pick_cgyro_output_for_rho(tool, rho, fallback_idx):
+    '''
+    Locate the CGYROoutput instance inside a tool.results dict that
+    corresponds to `rho`. Matches by nearest-rho against tool.rhos,
+    falling back to positional index if tool.rhos is unavailable.
+    Tries label "base_cgyro" first, then any other label the tool carries.
+    '''
+    if hasattr(tool, "rhos") and tool.rhos is not None and len(tool.rhos) > 0:
+        idx = int(np.argmin(np.abs(np.asarray(tool.rhos, dtype=float) - float(rho))))
+    else:
+        idx = fallback_idx
+
+    results = getattr(tool, "results", None) or {}
+    for label in ("base_cgyro", *[lab for lab in results if lab != "base_cgyro"]):
+        if label not in results:
+            continue
+        outputs = results[label].get("output")
+        if outputs and 0 <= idx < len(outputs):
+            return outputs[idx]
+    return None
+
+
+def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
+    '''
+    Build one FigureNotebook tab per predicted radius with three subplots
+    (Qe, Qi, Ge time traces, GB units) overlaying every PORTALS iteration
+    that has CGYRO output on disk. Iteration 0 is drawn last / on top in
+    a distinct style so the baseline is always visible above the ensemble.
+    '''
+    print("\t- Adding per-rho CGYRO time-trace tabs (Qe, Qi, Ge)")
+
+    # Populate a small per-iteration cache on `self` so re-invocations of
+    # the plotter (common in interactive sessions) don't re-read the pickles.
+    if getattr(self, "_cgyro_traces_cache", None) is None:
+        self._cgyro_traces_cache = {}
+        ilast = int(getattr(self, "ilast", 0) or 0)
+        for it in range(0, ilast + 1):
+            folder_ev = self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder"
+            tool = _load_cgyro_tool_for_iteration(folder_ev, self.rhos)
+            if tool is not None:
+                self._cgyro_traces_cache[it] = tool
+
+    cache = self._cgyro_traces_cache
+    if not cache:
+        print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO tabs", typeMsg='w')
+        return
+
+    sorted_its = sorted(cache.keys())
+    ilast_for_norm = max(1, int(getattr(self, "ilast", 0) or 0))
+    varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
+
+    for r_idx, rho in enumerate(self.rhos):
+        fig = fn.add_figure(label=f"CGYRO traces (rho={float(rho):.3f})", tab_color=fn_color_start + r_idx)
+        axs = fig.subplots(ncols=3)
+
+        # Non-base iterations first (low zorder, light colours from viridis).
+        # Label only the first and last non-zero iteration on the legend so the
+        # cloud doesn't blow it up, but the evN range is still readable.
+        non_base_its = [i for i in sorted_its if i != 0]
+        legend_its = {non_base_its[0], non_base_its[-1]} if non_base_its else set()
+        for it in sorted_its:
+            if it == 0:
+                continue
+            out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
+            if out is None or not hasattr(out, "t"):
+                continue
+            color = plt.cm.viridis(it / ilast_for_norm)
+            for (var, _), ax in zip(varss, axs):
+                y = getattr(out, var, None)
+                if y is None:
+                    continue
+                lbl = f"ev{it}" if it in legend_its else None
+                ax.plot(out.t, y, color=color, lw=1.0, alpha=0.6, zorder=2, label=lbl)
+
+        # Base (ev0) last, on top, in black with thicker line.
+        if 0 in cache:
+            out = _pick_cgyro_output_for_rho(cache[0], rho, r_idx)
+            if out is not None and hasattr(out, "t"):
+                for (var, _), ax in zip(varss, axs):
+                    y = getattr(out, var, None)
+                    if y is None:
+                        continue
+                    ax.plot(out.t, y, color='black', lw=2.0, alpha=1.0, zorder=5, label='ev0 (base)')
+
+        for (var, ylabel), ax in zip(varss, axs):
+            ax.set_xlabel("$t \\, c_s/a$")
+            ax.set_ylabel(ylabel)
+            GRAPHICStools.addDenseAxis(ax)
+            if var in ("Qe", "Qi"):
+                ax.set_ylim(bottom=0)
+
+        # Dedupe legend on the first subplot only.
+        handles, labels = axs[0].get_legend_handles_labels()
+        if handles:
+            by_label = dict(zip(labels, handles))
+            axs[0].legend(by_label.values(), by_label.keys(), loc="best", prop={'size': 7})
+
+
 def PORTALSanalyzer_plotModelComparison(
     self,
     fig=None,
