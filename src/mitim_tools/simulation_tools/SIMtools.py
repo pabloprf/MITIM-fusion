@@ -136,6 +136,7 @@ class mitim_simulation:
         run_type = 'normal', # 'normal': send, submit and wait; 'submit': send and submit and do not wait; 'send': send and do not submit; 'prep': do not submit
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
+        job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_ev{evaluation_number}" to tag submissions by iteration.
     ):
 
         run_type = _normalize_run_type(run_type)
@@ -197,6 +198,7 @@ class mitim_simulation:
             run_type=run_type,
             helper_lostconnection=helper_lostconnection,
             base_subfolder=subfolder,
+            job_name_suffix=job_name_suffix,
         )
 
         return code_executor_full
@@ -420,6 +422,9 @@ class mitim_simulation:
             
             extraFlag = kwargs_run.get('extra_name', '')
             name = f"{self.run_specifications['code']}_{self.nameRunid}{extraFlag}"
+
+            # Slurm --job-name suffix (e.g. '_sim' by default, '_ev{N}' for PORTALS).
+            job_name_suffix = kwargs_run.get('job_name_suffix', '_sim')
             
             attempts_execution = kwargs_run.get("attempts_execution", 1)
             
@@ -513,7 +518,7 @@ class mitim_simulation:
                 machine_settings=machineSettings,
                 launch_slurm=launchSlurm,
                 force_submission_type=forced_submission_type,
-                job_name=code + '_sim',
+                job_name=code + job_name_suffix,
                 array_list=array_list_preview,
                 exclusive=user_exclusive,
             )
@@ -598,7 +603,7 @@ class mitim_simulation:
                     machine_settings=machineSettings,
                     launch_slurm=launchSlurm,
                     force_submission_type=forced_submission_type,
-                    job_name=code + '_sim',
+                    job_name=code + job_name_suffix,
                     array_list=array_list,
                     exclusive=user_exclusive,
                 )
@@ -1020,6 +1025,7 @@ class mitim_simulation:
         run_type='normal',
         additional_files_to_send=None,
         helper_lostconnection=False,
+        job_name_suffix='_sim',
     ):
         '''
         Phase-1 multi-plasma runner. Runs the same simulation configuration (same rhos,
@@ -1102,6 +1108,7 @@ class mitim_simulation:
             run_type=run_type,
             helper_lostconnection=helper_lostconnection,
             base_subfolder=base_subfolder,
+            job_name_suffix=job_name_suffix,
         )
 
         return plasma_labels

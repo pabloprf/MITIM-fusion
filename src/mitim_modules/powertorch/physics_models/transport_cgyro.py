@@ -397,6 +397,7 @@ class gyrokinetic_model:
                     cold_start=cold_start,
                     forceIfcold_start=True,
                     only_minimal_files=keep_gk_files in ['none', 'pickle'],
+                    job_name_suffix=f"_ev{getattr(self, 'evaluation_number', 0)}",
                     **run_kwargs
                     )
 
@@ -782,6 +783,7 @@ class cgyro_model(gyrokinetic_model):
                     extra_name=self.name,
                     attempts_execution=2,
                     only_minimal_files=keep_gk_files in ["none", "pickle"],
+                    job_name_suffix=f"_ev{getattr(self, 'evaluation_number', 0)}",
                     **run_kwargs,
                 )
 
