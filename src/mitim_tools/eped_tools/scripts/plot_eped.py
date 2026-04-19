@@ -10,14 +10,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--param", type=str, default="neped", help="Parameter that was scanned.")
-    parser.add_argument("--save", type=str, required=False, default=None,
-                        help="Folder to save the figures.")
+    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
+                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
                         help="If set, it will not show the figures on screen.")
 
     args = parser.parse_args()
+
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
 
     folders = [IOtools.expandPath(folder) for folder in args.folders]
     param = args.param

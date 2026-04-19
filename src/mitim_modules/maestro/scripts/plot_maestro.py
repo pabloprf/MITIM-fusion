@@ -49,8 +49,8 @@ def main():
                         help="If provided, it will only plot the specified beats (e.g., transp)")
     parser.add_argument("--full", required=False, default=False, action="store_true",
                         help="If set, it will plot the full beat information.")
-    parser.add_argument("--save", type=str, required=False, default=None,
-                        help="Folder to save the figures.")
+    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
+                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
@@ -69,6 +69,10 @@ def main():
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
+
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote

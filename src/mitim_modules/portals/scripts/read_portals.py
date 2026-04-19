@@ -25,8 +25,8 @@ def main():
                         help="If set, it will plot all fluxes, not only the main ones.")
     parser.add_argument("--complete", "-c", "--full", required=False, default=False, action="store_true",
                         help="If set, it will plot the complete PORTALS results, not only the metrics.")
-    parser.add_argument("--save", type=str, required=False, default=None,
-                        help="Folder to save the figures.")
+    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
+                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
@@ -45,6 +45,10 @@ def main():
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
+
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote

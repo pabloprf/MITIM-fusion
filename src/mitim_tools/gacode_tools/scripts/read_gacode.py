@@ -16,13 +16,17 @@ def main():
     parser.add_argument("files", type=str, nargs="*")
     parser.add_argument("--rho", type=float, required=False, default=0.89)  # Last rho for gradients plot
     parser.add_argument("--print", required=False, default=False, action="store_true")  # Last rho for gradients plot
-    parser.add_argument("--save", type=str, required=False, default=None,
-                        help="Folder to save the figures.")
+    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
+                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
                         help="If set, it will not show the figures on screen.")
     args = parser.parse_args()
+
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
 
     files = args.files
     rho = args.rho
