@@ -2384,22 +2384,38 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     sorted_its = sorted(cache.keys())
     varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
 
-    # Colour palette: ev0 is black (drawn on top with a thicker line);
-    # non-base iterations walk a linear blue->red gradient in iteration
-    # order so the reader can visually follow the evolution from earliest
-    # (blue) to latest (red). RGB interpolation is inline to avoid pulling
-    # in matplotlib.colors just for one mapping.
-    non_base_its_for_palette = [i for i in sorted_its if i != 0]
-    _n_non_base = len(non_base_its_for_palette)
-    _iter_index = {it: idx for idx, it in enumerate(non_base_its_for_palette)}
-    def _color_for(it):
-        if _n_non_base <= 1:
-            return (0.0, 0.0, 1.0)
-        frac = _iter_index[it] / (_n_non_base - 1)
-        return (frac, 0.0, 1.0 - frac)
+    # Layout: rows = transport channels, columns = chunks of non-base
+    # iterations. We cap each column at CHUNK_SIZE non-base traces so the
+    # panel stays readable as PORTALS racks up iterations; ev0 is
+    # replicated in every column as the shared baseline reference.
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
 
-    # Suffix the x-axis label so the reader can tell which alignment
-    # convention they are looking at without re-reading the docstring.
+    CHUNK_SIZE = 8
+    non_base_its = [i for i in sorted_its if i != 0]
+    chunks = (
+        [non_base_its[i:i + CHUNK_SIZE] for i in range(0, len(non_base_its), CHUNK_SIZE)]
+        if non_base_its else [[]]
+    )
+    n_cols = len(chunks)
+
+    # One blue->red colormap shared across all columns so the colorbar
+    # and in-panel traces map 1:1. Normalize over ev-numbers (not list
+    # positions) so the bar labels the iteration identity directly.
+    cmap_iter = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
+    if non_base_its:
+        _v0, _v1 = min(non_base_its), max(non_base_its)
+        _norm_iter = (Normalize(vmin=_v0, vmax=_v1) if _v0 != _v1
+                      else Normalize(vmin=_v0 - 0.5, vmax=_v0 + 0.5))
+        def _color_for(it):
+            return cmap_iter(_norm_iter(it))
+    else:
+        _norm_iter = None
+        def _color_for(it):
+            return (0.0, 0.0, 0.0)
+
     _xlabel_suffix = {
         "all": " (chained)",
         "first": " (branched from ev0)",
@@ -2407,13 +2423,20 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
 
     for r_idx, rho in enumerate(self.rhos):
         fig = fn.add_figure(label=f"CGYRO traces (rho={float(rho):.3f})", tab_color=fn_color_start + r_idx)
-        axs = fig.subplots(ncols=3)
+        # squeeze=False keeps axs 2D even with n_cols=1; sharey='row' lets
+        # the eye compare the same channel across iteration chunks at the
+        # same vertical scale.
+        axs = fig.subplots(nrows=len(varss), ncols=n_cols, squeeze=False, sharey='row')
+        fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), 7.8)
 
-        # Per-iteration time offsets depend on restart_mode:
-        #   "none":  everything at t=0 (no warm start, overlay).
-        #   "first": ev0 at 0; every ev_N (N>=1) shifted by tmax(ev0), so
-        #            all non-zero iters fan out from the same endpoint.
-        #   "all":   cumulative sum of prior iterations' tmax (chained).
+        fig.suptitle(
+            f"CGYRO time traces at $\\rho={float(rho):.3f}$  "
+            f"(restart_mode={restart_mode!r}; {len(non_base_its)} non-base iter"
+            f"{'' if len(non_base_its) == 1 else 's'})",
+            fontsize=11,
+        )
+
+        # Per-iteration time offsets (see restart_mode semantics above).
         offsets = {it: 0.0 for it in sorted_its}
         if restart_mode == "all":
             cumulative = 0.0
@@ -2432,49 +2455,133 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                 if it != 0:
                     offsets[it] = base_tmax
 
-        # Non-base iterations first (low zorder, blue->red gradient).
-        # Label only the first and last non-zero iteration on the legend so
-        # the cloud doesn't blow it up, but the evN range is still readable.
-        non_base_its = [i for i in sorted_its if i != 0]
-        legend_its = {non_base_its[0], non_base_its[-1]} if non_base_its else set()
-        for it in sorted_its:
-            if it == 0:
-                continue
-            out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
-            if out is None or not hasattr(out, "t"):
-                continue
-            color = _color_for(it)
-            t_shifted = out.t + offsets[it]
-            for (var, _), ax in zip(varss, axs):
-                y = getattr(out, var, None)
-                if y is None:
-                    continue
-                lbl = f"ev{it}" if it in legend_its else None
-                ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.75, zorder=2, label=lbl)
+        # Resolve ev0 once — it is drawn in every column as the reference.
+        base_out = _pick_cgyro_output_for_rho(cache[0], rho, r_idx) if 0 in cache else None
 
-        # Base (ev0) last, on top, in black with thicker line. No shift: ev0
-        # anchors the time axis.
-        if 0 in cache:
-            out = _pick_cgyro_output_for_rho(cache[0], rho, r_idx)
-            if out is not None and hasattr(out, "t"):
-                for (var, _), ax in zip(varss, axs):
+        for c_idx, chunk in enumerate(chunks):
+            col_axes = axs[:, c_idx]  # length-len(varss): one axis per channel row
+
+            # Non-base traces first (low zorder, blue->red gradient). For
+            # each iteration we also drop a mean+/-std errorbar marker at
+            # the trace end so the time-averaged flux (exactly the value
+            # PORTALS consumes) is visible alongside the raw signal.
+            # out.<Var>_mean / _std are the scalars CGYROtools computes
+            # via apply_ac over the [out.tmin, out.t[-1]] window (see
+            # CGYROutils.py:apply_ac).
+            for it in chunk:
+                out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
+                if out is None or not hasattr(out, "t"):
+                    continue
+                color = _color_for(it)
+                t_shifted = out.t + offsets[it]
+                x_end = float(t_shifted[-1])
+                for row_idx, (var, _) in enumerate(varss):
                     y = getattr(out, var, None)
                     if y is None:
                         continue
-                    ax.plot(out.t, y, color='black', lw=2.0, alpha=1.0, zorder=5, label='ev0 (base)')
+                    col_axes[row_idx].plot(t_shifted, y, color=color, lw=1.0, alpha=0.8, zorder=2)
+                    mean_val = getattr(out, f"{var}_mean", None)
+                    std_val = getattr(out, f"{var}_std", None)
+                    if mean_val is not None and std_val is not None:
+                        col_axes[row_idx].errorbar(
+                            x_end, float(mean_val), yerr=float(std_val),
+                            fmt='s', color=color, ms=3, capsize=2, lw=0.8,
+                            mec='black', mew=0.3, zorder=4,
+                        )
 
-        for (var, ylabel), ax in zip(varss, axs):
-            ax.set_xlabel("$t \\, c_s/a$" + _xlabel_suffix)
-            ax.set_ylabel(ylabel)
-            GRAPHICStools.addDenseAxis(ax)
-            if var in ("Qe", "Qi"):
-                ax.set_ylim(bottom=0)
+            # ev0 on top of the gradient in every column — black, thicker.
+            # Also draw the averaging window (shaded band) and the ev0
+            # mean line so the user can see what region of the trace was
+            # collapsed into the scalar flux PORTALS saw.
+            if base_out is not None and hasattr(base_out, "t"):
+                base_tmin = getattr(base_out, 'tmin', None)
+                base_offset = offsets.get(0, 0.0)
+                for row_idx, (var, _) in enumerate(varss):
+                    y = getattr(base_out, var, None)
+                    if y is None:
+                        continue
+                    ax = col_axes[row_idx]
+                    ax.plot(base_out.t + base_offset, y, color='black', lw=2.0, alpha=1.0, zorder=5)
 
-        # Dedupe legend on the first subplot only.
-        handles, labels = axs[0].get_legend_handles_labels()
-        if handles:
-            by_label = dict(zip(labels, handles))
-            axs[0].legend(by_label.values(), by_label.keys(), loc="best", prop={'size': 7})
+                    # Shaded averaging window for ev0.
+                    if base_tmin is not None:
+                        ax.axvspan(
+                            float(base_tmin) + base_offset,
+                            float(base_out.t[-1]) + base_offset,
+                            alpha=0.12, color='gray', zorder=0,
+                        )
+
+                    mean_val = getattr(base_out, f"{var}_mean", None)
+                    std_val = getattr(base_out, f"{var}_std", None)
+                    if mean_val is not None and std_val is not None:
+                        # Dashed mean line across the window.
+                        if base_tmin is not None:
+                            ax.hlines(
+                                float(mean_val),
+                                float(base_tmin) + base_offset,
+                                float(base_out.t[-1]) + base_offset,
+                                colors='black', linestyles='--', lw=0.8,
+                                alpha=0.7, zorder=6,
+                            )
+                        # Bolder errorbar marker for ev0.
+                        ax.errorbar(
+                            float(base_out.t[-1]) + base_offset,
+                            float(mean_val), yerr=float(std_val),
+                            fmt='s', color='black', ms=5, capsize=3, lw=1.2,
+                            zorder=7,
+                        )
+
+            # Column title shows the iteration range in this column.
+            if chunk:
+                col_title = (f"ev{chunk[0]}\u2013ev{chunk[-1]}"
+                             if chunk[0] != chunk[-1] else f"ev{chunk[0]}")
+            else:
+                col_title = "ev0 only"
+            col_axes[0].set_title(col_title, fontsize=10)
+
+            # Compact per-column legend on the top row: ev0 + chunk endpoints
+            # + markers that explain the averaging window and the right-edge
+            # errorbar points. Full ev-number mapping lives on the colorbar.
+            handles = [Line2D([0], [0], color='black', lw=2.0)]
+            labels_ = ['ev0 (base)']
+            if chunk:
+                first_it, last_it = chunk[0], chunk[-1]
+                handles.append(Line2D([0], [0], color=_color_for(first_it), lw=1.5))
+                labels_.append(f'ev{first_it}')
+                if last_it != first_it:
+                    handles.append(Line2D([0], [0], color=_color_for(last_it), lw=1.5))
+                    labels_.append(f'ev{last_it}')
+            if base_out is not None and getattr(base_out, 'tmin', None) is not None:
+                handles.append(Patch(facecolor='gray', alpha=0.3, edgecolor='none'))
+                labels_.append('ev0 avg window')
+            handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
+                                  markersize=4, mec='black', mew=0.3))
+            labels_.append(r'$\mu \pm \sigma$')
+            col_axes[0].legend(handles, labels_, loc='best', prop={'size': 7}, framealpha=0.85)
+
+            # Axis decorations: y-label on the leftmost column only; x-label
+            # on the bottom row only. Dense grid + non-negative Q floor.
+            for row_idx, (var, ylabel) in enumerate(varss):
+                ax = col_axes[row_idx]
+                if c_idx == 0:
+                    ax.set_ylabel(ylabel)
+                if row_idx == len(varss) - 1:
+                    ax.set_xlabel("$t \\, c_s/a$" + _xlabel_suffix)
+                GRAPHICStools.addDenseAxis(ax)
+                if var in ("Qe", "Qi"):
+                    ax.set_ylim(bottom=0)
+
+        # Shared colorbar: blue->red mapping across the full span of
+        # non-base ev-numbers. Skipped when there are none (nothing to map).
+        if _norm_iter is not None:
+            sm = ScalarMappable(cmap=cmap_iter, norm=_norm_iter)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), shrink=0.8, aspect=35, pad=0.02)
+            cbar.set_label('PORTALS iteration (ev)')
+            # Integer ticks when the span is narrow enough that every
+            # tick fits; otherwise rely on matplotlib's default scaling.
+            if _v1 - _v0 <= 20:
+                cbar.set_ticks(list(range(_v0, _v1 + 1)))
 
 
 def PORTALSanalyzer_plotModelComparison(
