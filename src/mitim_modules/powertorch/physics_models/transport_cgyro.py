@@ -104,18 +104,21 @@ def _resolve_cgyro_restart_chain(
     binary is staged (warm start, restart_flag=2) and not the companion
     out.cgyro.tag file.
 
-    Missing files are NON-FATAL: iteration N runs cold (without restart)
-    and a warning is printed. This handles early-iter folders that aren't
-    on disk yet, or cases where RESTART_STEP wasn't configured / keep_files
-    unlinked the restart blobs before the next iteration consumes them.
+    Missing files are FATAL: if restart_from_cases was requested and either
+    the source base_cgyro folder is absent, or the per-rho restart binary
+    is absent for any rho, a FileNotFoundError is raised. A silent partial
+    restart produced one-rho-cold/others-warm ensembles that were almost
+    impossible to diagnose downstream (and broke the "one key per rho"
+    invariant the stage-in consumer relies on). If you want to proceed
+    without restart, clear restart_from_cases in the namelist.
 
     Backward-compat: legacy `restart_from_first: true` still works and is
     mapped to `restart_from_cases: "first"` (with a one-line notice).
 
     Returns the merged additional_files_to_send dict, or the existing one
-    unchanged when: the mode is None/empty, restart_from_folder takes
-    precedence, iteration 0 (no prior iteration), or the source folder
-    cannot be found on disk.
+    unchanged when the mode is None/empty, restart_from_folder takes
+    precedence, or this is iteration 0 (no prior iteration to restart
+    from — not an error for N=0).
     '''
 
     # Resolve the mode, with backward-compat for the retired
@@ -178,13 +181,12 @@ def _resolve_cgyro_restart_chain(
         source_folder = source_folder / plasma_subfolder
 
     if not source_folder.is_dir():
-        print(
-            f"\n- [CGYRO restart_from_cases={mode_lower!r}] {source_sibling} base_cgyro folder not found at:\n"
-            f"\t  {source_folder}\n"
-            f"\t  Proceeding WITHOUT restart for {context_label}.{evaluation_number}.",
-            typeMsg='w',
+        raise FileNotFoundError(
+            f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
+            f"{context_label}.{evaluation_number}, but the source base_cgyro "
+            f"folder does not exist:\n\t{source_folder}\n"
+            f"Clear restart_from_cases in the namelist to run without restart."
         )
-        return existing_additional_files_to_send
 
     print(
         f"\n- [CGYRO restart_from_cases={mode_lower!r}] {context_label}.{evaluation_number} will restart from {source_sibling}:\n"
@@ -203,16 +205,14 @@ def _resolve_cgyro_restart_chain(
         resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
 
     if missing_bin:
-        print(
-            f"\t- [CGYRO restart_from_cases={mode_lower!r}] Missing binary restart files in {source_sibling}: {missing_bin}.\n"
-            f"\t  Check that RESTART_STEP was set in extraOptions and that keep_files did\n"
-            f"\t  not unlink them. Proceeding WITHOUT restart for those radii (partial\n"
-            f"\t  restart for any radii that do have a binary).",
-            typeMsg='w',
+        raise FileNotFoundError(
+            f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
+            f"{context_label}.{evaluation_number}, but binary restart files are missing in "
+            f"{source_sibling}: {missing_bin}.\n"
+            "Check that RESTART_STEP was set in extraOptions on the source iteration and "
+            "that keep_files did not unlink them. Clear restart_from_cases in the namelist "
+            "to run without restart."
         )
-        # If literally nothing was found, fall back to existing (no-op).
-        if not any(isinstance(v, list) and v for v in resolved.values()):
-            return existing_additional_files_to_send
 
     return resolved
 
