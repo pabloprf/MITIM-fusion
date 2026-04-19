@@ -2256,13 +2256,20 @@ def _iterate_portals_evaluation_folders(root_folder):
                 yield _extract_trailing_int(d.name), folder
 
 
-def _load_cgyro_tool_for_iteration(folder_execution, rhos):
+def _load_cgyro_tool_for_iteration(folder_execution, rhos, read_kwargs=None):
     '''
     Best-effort load of a CGYRO tool object carrying per-rho CGYROoutput
     instances for one PORTALS iteration. Tries the pickle fast path first
     (single-plasma keep_files='pickle'), then falls back to re-reading raw
     CGYRO output files. Returns None if neither works — caller should skip
     the iteration.
+
+    `read_kwargs` forwards tmin / tmin_is_rel (and anything else the read
+    API accepts) from the PORTALS namelist so the plot-time re-read uses
+    exactly the same averaging window PORTALS used at simulation time.
+    Without this the raw fallback defaulted to tmin=0.0 (full window) and
+    every *_mean / _std we later displayed did not match the scalars
+    PORTALS actually consumed.
     '''
     from mitim_tools.simulation_tools import SIMtools
     from mitim_tools.gacode_tools import CGYROtools
@@ -2280,10 +2287,11 @@ def _load_cgyro_tool_for_iteration(folder_execution, rhos):
         except Exception as e:
             print(f"\t- CGYRO pickle unreadable at {pickle_file} ({e}); falling back to raw files", typeMsg='w')
 
+    read_kwargs = dict(read_kwargs) if read_kwargs else {}
     try:
         with HiddenPrints():
             c = CGYROtools.CGYRO(rhos=list(rhos))
-            c.read(folder=base, label="base_cgyro", minimal=True)
+            c.read(folder=base, label="base_cgyro", minimal=True, **read_kwargs)
         return c
     except Exception as e:
         print(f"\t- CGYRO read failed at {base} ({e}); skipping iteration", typeMsg='w')
@@ -2350,12 +2358,23 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
         print("\t- Cannot resolve PORTALS root folder for CGYRO trace plot; skipping", typeMsg='w')
         return
 
+    # Read-time config (tmin / tmin_is_rel) from the PORTALS namelist, so
+    # the raw-fallback re-read uses exactly the averaging window PORTALS
+    # used at simulation time. Pickles already carry this baked in; only
+    # the raw fallback needs the forward.
+    try:
+        _cgyro_read_cfg = self.powerstate.transport_options['options']['cgyro']['read']
+        _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
+                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
+    except Exception:
+        _read_kwargs = {}
+
     # Populate a small per-iteration cache on `self` so re-invocations of
     # the plotter (common in interactive sessions) don't re-read the pickles.
     if getattr(self, "_cgyro_traces_cache", None) is None:
         self._cgyro_traces_cache = {}
         for it, folder_ev in _iterate_portals_evaluation_folders(root_folder):
-            tool = _load_cgyro_tool_for_iteration(folder_ev, self.rhos)
+            tool = _load_cgyro_tool_for_iteration(folder_ev, self.rhos, read_kwargs=_read_kwargs)
             if tool is not None:
                 self._cgyro_traces_cache[it] = tool
 
@@ -2385,15 +2404,17 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
 
     # Layout: rows = transport channels, columns = chunks of non-base
-    # iterations. We cap each column at CHUNK_SIZE non-base traces so the
-    # panel stays readable as PORTALS racks up iterations; ev0 is
-    # replicated in every column as the shared baseline reference.
+    # iterations capped at CHUNK_SIZE traces each. ev0 is replicated in
+    # every column as the shared baseline reference. Each column carries
+    # its own blue->red colormap + colorbar so within every column the
+    # first iter is pure blue and the last is pure red — makes local
+    # progression readable regardless of how many columns there are.
     from matplotlib.colors import LinearSegmentedColormap, Normalize
     from matplotlib.cm import ScalarMappable
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
-    CHUNK_SIZE = 8
+    CHUNK_SIZE = 5
     non_base_its = [i for i in sorted_its if i != 0]
     chunks = (
         [non_base_its[i:i + CHUNK_SIZE] for i in range(0, len(non_base_its), CHUNK_SIZE)]
@@ -2401,20 +2422,16 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     )
     n_cols = len(chunks)
 
-    # One blue->red colormap shared across all columns so the colorbar
-    # and in-panel traces map 1:1. Normalize over ev-numbers (not list
-    # positions) so the bar labels the iteration identity directly.
+    # Shared cmap template; each column builds its own Normalize over
+    # just its chunk, so column-local first->last reads as blue->red.
     cmap_iter = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
-    if non_base_its:
-        _v0, _v1 = min(non_base_its), max(non_base_its)
-        _norm_iter = (Normalize(vmin=_v0, vmax=_v1) if _v0 != _v1
-                      else Normalize(vmin=_v0 - 0.5, vmax=_v0 + 0.5))
-        def _color_for(it):
-            return cmap_iter(_norm_iter(it))
-    else:
-        _norm_iter = None
-        def _color_for(it):
-            return (0.0, 0.0, 0.0)
+    def _make_column_color_fn(chunk):
+        if not chunk:
+            return (None, lambda it: (0.0, 0.0, 0.0))
+        v0, v1 = chunk[0], chunk[-1]
+        norm = (Normalize(vmin=v0, vmax=v1) if v0 != v1
+                else Normalize(vmin=v0 - 0.5, vmax=v0 + 0.5))
+        return (norm, lambda it: cmap_iter(norm(it)))
 
     _xlabel_suffix = {
         "all": " (chained)",
@@ -2460,14 +2477,17 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
 
         for c_idx, chunk in enumerate(chunks):
             col_axes = axs[:, c_idx]  # length-len(varss): one axis per channel row
+            col_norm, _color_for = _make_column_color_fn(chunk)
 
-            # Non-base traces first (low zorder, blue->red gradient). For
-            # each iteration we also drop a mean+/-std errorbar marker at
-            # the trace end so the time-averaged flux (exactly the value
-            # PORTALS consumes) is visible alongside the raw signal.
-            # out.<Var>_mean / _std are the scalars CGYROtools computes
-            # via apply_ac over the [out.tmin, out.t[-1]] window (see
-            # CGYROutils.py:apply_ac).
+            # Non-base traces for this column. For each iteration we draw:
+            #   1. A tinted shaded band over [out.tmin, out.t[-1]] +offset,
+            #      matching the iteration's colour, so it's obvious which
+            #      window collapsed into that iter's mean/std scalar.
+            #   2. The raw time trace.
+            #   3. An errorbar marker at the trace end showing mean +/- std
+            #      (the scalars PORTALS actually consumed, via apply_ac).
+            # out.<Var>_mean / _std come from CGYROutils.apply_ac over
+            # [out.tmin, out.t[-1]] (see CGYROutils.py:apply_ac).
             for it in chunk:
                 out = _pick_cgyro_output_for_rho(cache[it], rho, r_idx)
                 if out is None or not hasattr(out, "t"):
@@ -2475,15 +2495,23 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                 color = _color_for(it)
                 t_shifted = out.t + offsets[it]
                 x_end = float(t_shifted[-1])
+                tmin_it = getattr(out, 'tmin', None)
                 for row_idx, (var, _) in enumerate(varss):
                     y = getattr(out, var, None)
                     if y is None:
                         continue
-                    col_axes[row_idx].plot(t_shifted, y, color=color, lw=1.0, alpha=0.8, zorder=2)
+                    ax = col_axes[row_idx]
+                    if tmin_it is not None:
+                        ax.axvspan(
+                            float(tmin_it) + offsets[it],
+                            x_end,
+                            color=color, alpha=0.08, zorder=0,
+                        )
+                    ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.85, zorder=2)
                     mean_val = getattr(out, f"{var}_mean", None)
                     std_val = getattr(out, f"{var}_std", None)
                     if mean_val is not None and std_val is not None:
-                        col_axes[row_idx].errorbar(
+                        ax.errorbar(
                             x_end, float(mean_val), yerr=float(std_val),
                             fmt='s', color=color, ms=3, capsize=2, lw=0.8,
                             mec='black', mew=0.3, zorder=4,
@@ -2553,14 +2581,20 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                     labels_.append(f'ev{last_it}')
             if base_out is not None and getattr(base_out, 'tmin', None) is not None:
                 handles.append(Patch(facecolor='gray', alpha=0.3, edgecolor='none'))
-                labels_.append('ev0 avg window')
+                labels_.append('avg window (ev0)')
+            if chunk:
+                handles.append(Patch(facecolor=_color_for(chunk[-1]), alpha=0.3, edgecolor='none'))
+                labels_.append('avg window (per iter)')
             handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
                                   markersize=4, mec='black', mew=0.3))
             labels_.append(r'$\mu \pm \sigma$')
             col_axes[0].legend(handles, labels_, loc='best', prop={'size': 7}, framealpha=0.85)
 
             # Axis decorations: y-label on the leftmost column only; x-label
-            # on the bottom row only. Dense grid + non-negative Q floor.
+            # on the bottom row only. No y-floor clamp — CGYRO traces can
+            # dip negative (numerical noise / transient back-flux), and
+            # clipping them at 0 was cutting legitimate data in later
+            # columns.
             for row_idx, (var, ylabel) in enumerate(varss):
                 ax = col_axes[row_idx]
                 if c_idx == 0:
@@ -2568,20 +2602,18 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                 if row_idx == len(varss) - 1:
                     ax.set_xlabel("$t \\, c_s/a$" + _xlabel_suffix)
                 GRAPHICStools.addDenseAxis(ax)
-                if var in ("Qe", "Qi"):
-                    ax.set_ylim(bottom=0)
 
-        # Shared colorbar: blue->red mapping across the full span of
-        # non-base ev-numbers. Skipped when there are none (nothing to map).
-        if _norm_iter is not None:
-            sm = ScalarMappable(cmap=cmap_iter, norm=_norm_iter)
-            sm.set_array([])
-            cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), shrink=0.8, aspect=35, pad=0.02)
-            cbar.set_label('PORTALS iteration (ev)')
-            # Integer ticks when the span is narrow enough that every
-            # tick fits; otherwise rely on matplotlib's default scaling.
-            if _v1 - _v0 <= 20:
-                cbar.set_ticks(list(range(_v0, _v1 + 1)))
+            # Per-column colorbar: blue->red over THIS column's chunk
+            # only, so the first iter in the chunk is blue and the last
+            # is red regardless of how many columns exist.
+            if col_norm is not None:
+                sm = ScalarMappable(cmap=cmap_iter, norm=col_norm)
+                sm.set_array([])
+                cbar = fig.colorbar(sm, ax=col_axes.tolist(), shrink=0.85,
+                                    aspect=30, pad=0.02)
+                cbar.set_label(f'ev {chunk[0]}\u2013{chunk[-1]}', fontsize=8)
+                if len(chunk) <= 10:
+                    cbar.set_ticks(list(chunk))
 
 
 def PORTALSanalyzer_plotModelComparison(
