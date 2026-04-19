@@ -2410,7 +2410,6 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     # first iter is pure blue and the last is pure red — makes local
     # progression readable regardless of how many columns there are.
     from matplotlib.colors import LinearSegmentedColormap, Normalize
-    from matplotlib.cm import ScalarMappable
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
@@ -2427,11 +2426,11 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
     cmap_iter = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
     def _make_column_color_fn(chunk):
         if not chunk:
-            return (None, lambda it: (0.0, 0.0, 0.0))
+            return lambda it: (0.0, 0.0, 0.0)
         v0, v1 = chunk[0], chunk[-1]
         norm = (Normalize(vmin=v0, vmax=v1) if v0 != v1
                 else Normalize(vmin=v0 - 0.5, vmax=v0 + 0.5))
-        return (norm, lambda it: cmap_iter(norm(it)))
+        return lambda it: cmap_iter(norm(it))
 
     _xlabel_suffix = {
         "all": " (chained)",
@@ -2475,9 +2474,17 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
         # Resolve ev0 once — it is drawn in every column as the reference.
         base_out = _pick_cgyro_output_for_rho(cache[0], rho, r_idx) if 0 in cache else None
 
+        # Per-row y-limit candidates accumulated as we draw. We clamp
+        # each row's y-axis to the tightest interval that still contains
+        # every trace's first sample (initial condition) and every
+        # trace's mean+std (the scalar PORTALS consumed). Transient
+        # mid-trace peaks are intentionally allowed to overflow — they
+        # were drowning the stats-relevant part of the plot before.
+        row_y_candidates = {row_idx: [] for row_idx in range(len(varss))}
+
         for c_idx, chunk in enumerate(chunks):
             col_axes = axs[:, c_idx]  # length-len(varss): one axis per channel row
-            col_norm, _color_for = _make_column_color_fn(chunk)
+            _color_for = _make_column_color_fn(chunk)
 
             # Non-base traces for this column. For each iteration we draw:
             #   1. A tinted shaded band over [out.tmin, out.t[-1]] +offset,
@@ -2508,6 +2515,10 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                             color=color, alpha=0.08, zorder=0,
                         )
                     ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.85, zorder=2)
+                    try:
+                        row_y_candidates[row_idx].append(float(y[0]))
+                    except (TypeError, IndexError):
+                        pass
                     mean_val = getattr(out, f"{var}_mean", None)
                     std_val = getattr(out, f"{var}_std", None)
                     if mean_val is not None and std_val is not None:
@@ -2516,6 +2527,7 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                             fmt='s', color=color, ms=3, capsize=2, lw=0.8,
                             mec='black', mew=0.3, zorder=4,
                         )
+                        row_y_candidates[row_idx].append(float(mean_val) + float(std_val))
 
             # ev0 on top of the gradient in every column — black, thicker.
             # Also draw the averaging window (shaded band) and the ev0
@@ -2529,7 +2541,11 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                     if y is None:
                         continue
                     ax = col_axes[row_idx]
-                    ax.plot(base_out.t + base_offset, y, color='black', lw=2.0, alpha=1.0, zorder=5)
+                    ax.plot(base_out.t + base_offset, y, color='black', lw=1.4, alpha=1.0, zorder=5)
+                    try:
+                        row_y_candidates[row_idx].append(float(y[0]))
+                    except (TypeError, IndexError):
+                        pass
 
                     # Shaded averaging window for ev0.
                     if base_tmin is not None:
@@ -2558,6 +2574,7 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                             fmt='s', color='black', ms=5, capsize=3, lw=1.2,
                             zorder=7,
                         )
+                        row_y_candidates[row_idx].append(float(mean_val) + float(std_val))
 
             # Column title shows the iteration range in this column.
             if chunk:
@@ -2570,7 +2587,7 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
             # Compact per-column legend on the top row: ev0 + chunk endpoints
             # + markers that explain the averaging window and the right-edge
             # errorbar points. Full ev-number mapping lives on the colorbar.
-            handles = [Line2D([0], [0], color='black', lw=2.0)]
+            handles = [Line2D([0], [0], color='black', lw=1.4)]
             labels_ = ['ev0 (base)']
             if chunk:
                 first_it, last_it = chunk[0], chunk[-1]
@@ -2588,13 +2605,12 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
             handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
                                   markersize=4, mec='black', mew=0.3))
             labels_.append(r'$\mu \pm \sigma$')
-            col_axes[0].legend(handles, labels_, loc='best', prop={'size': 7}, framealpha=0.85)
+            col_axes[0].legend(handles, labels_, loc='best', prop={'size': 6}, framealpha=0.85)
 
             # Axis decorations: y-label on the leftmost column only; x-label
-            # on the bottom row only. No y-floor clamp — CGYRO traces can
-            # dip negative (numerical noise / transient back-flux), and
-            # clipping them at 0 was cutting legitimate data in later
-            # columns.
+            # on the bottom row only. No y-floor clamp at 0 — CGYRO traces
+            # can dip negative (numerical noise / transient back-flux),
+            # and clipping them was cutting legitimate data.
             for row_idx, (var, ylabel) in enumerate(varss):
                 ax = col_axes[row_idx]
                 if c_idx == 0:
@@ -2603,17 +2619,20 @@ def _plot_cgyro_time_traces_per_radius(self, fn, fn_color_start):
                     ax.set_xlabel("$t \\, c_s/a$" + _xlabel_suffix)
                 GRAPHICStools.addDenseAxis(ax)
 
-            # Per-column colorbar: blue->red over THIS column's chunk
-            # only, so the first iter in the chunk is blue and the last
-            # is red regardless of how many columns exist.
-            if col_norm is not None:
-                sm = ScalarMappable(cmap=cmap_iter, norm=col_norm)
-                sm.set_array([])
-                cbar = fig.colorbar(sm, ax=col_axes.tolist(), shrink=0.85,
-                                    aspect=30, pad=0.02)
-                cbar.set_label(f'ev {chunk[0]}\u2013{chunk[-1]}', fontsize=8)
-                if len(chunk) <= 10:
-                    cbar.set_ticks(list(chunk))
+        # Per-row y-axis clamp: the tightest range covering every trace's
+        # first sample and every trace's mean+sigma. sharey='row' means
+        # setting on column 0 propagates across the row. A small 5% pad
+        # keeps data from touching the frame but stays well shy of mid-
+        # trace transient peaks (which is the whole point of this clamp).
+        for row_idx in range(len(varss)):
+            candidates = row_y_candidates[row_idx]
+            if not candidates:
+                continue
+            y_lo = min(candidates)
+            y_hi = max(candidates)
+            if y_hi > y_lo:
+                pad = 0.05 * (y_hi - y_lo)
+                axs[row_idx, 0].set_ylim(y_lo - pad, y_hi + pad)
 
 
 def PORTALSanalyzer_plotModelComparison(
