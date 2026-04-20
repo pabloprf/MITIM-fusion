@@ -368,6 +368,18 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation["complete_nonlinear"])
         self.output_files_simulation["minimal"] = copy.deepcopy(self.output_files_simulation["minimal_nonlinear"])
         self.output_files_simulation["optional"] = copy.deepcopy(self.output_files_simulation["optional_base"])
+
+        # Primary/fallback pairs for the remote-prune step in retrieve().
+        # bin.cgyro.restart.old is the previous-cycle checkpoint CGYRO keeps
+        # under RESTART_PRESERVATION_MODE>=3 (default 3) as a durability net
+        # while the next .restart is being written. If the job died mid-
+        # write the only intact checkpoint on disk is .old — promote it to
+        # .restart on the remote before tarring so we pull exactly one file
+        # and still recover from the degenerate case. See
+        # gacode/cgyro/src/cgyro_restart.F90:120-220.
+        self.output_file_fallbacks = {
+            "bin.cgyro.restart": "bin.cgyro.restart.old",
+        }
         
 
     # Thin wrapper: capture preprocess_options and delegate to the generic run()

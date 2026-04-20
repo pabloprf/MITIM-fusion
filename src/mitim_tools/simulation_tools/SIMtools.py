@@ -41,7 +41,14 @@ class mitim_simulation:
         self.output_files_simulation = {
             'complete': [],
             'minimal': [],
-        } 
+        }
+
+        # Optional primary/fallback output pairs: if the primary is present
+        # on the remote it is tarred; if only the fallback is present, the
+        # fallback is renamed to the primary on the remote just before the
+        # tar (see FARMINGtools.mitim_job.retrieve). Subclasses populate as
+        # e.g. {"bin.cgyro.restart": "bin.cgyro.restart.old"}.
+        self.output_file_fallbacks = {}
         
         self.nameRunid = "0"
         
@@ -638,6 +645,7 @@ class mitim_simulation:
                 input_folders=folders,
                 output_folders=folders_red,
                 output_folders_selective=files_we_want_to_tar,
+                output_file_fallbacks=self.output_file_fallbacks,
                 check_files_in_folder=files_we_must_check,
                 shellPreCommands=shellPreCommands,
                 shellPostCommands=shellPostCommands,

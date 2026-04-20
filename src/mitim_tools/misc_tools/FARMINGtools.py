@@ -140,6 +140,7 @@ class mitim_job:
         output_folders=None,
         check_files_in_folder={},
         output_folders_selective={},  # New parameter for selective folder content
+        output_file_fallbacks=None,  # {primary_basename: fallback_basename} for retrieve() remote prune
         shellPreCommands=None,
         shellPostCommands=None,
         label_log_files="",
@@ -155,6 +156,15 @@ class mitim_job:
         output_folders_selective is a dictionary with folder name as key and list of specific files/patterns to include as value.
             e.g., {'results': ['*.dat', '*.log'], 'plots': ['figure1.png']}
 
+        output_file_fallbacks maps primary basename -> fallback basename. Before
+        the tarball is built, retrieve() runs one remote bash snippet per
+        folder in output_folders_selective that contains the primary: if the
+        primary is absent but the fallback is present, the fallback is renamed
+        to the primary; if both are present, the fallback is removed. This
+        lets us pull exactly one file per pair (cheap transfer) while still
+        picking up the fallback when the primary write didn't land (e.g. a
+        CGYRO restart that only left bin.cgyro.restart.old behind after a
+        timeout mid-rename).
         """
 
         # Pass to class
@@ -174,6 +184,7 @@ class mitim_job:
         self.label_log_files = label_log_files
 
         self.output_folders_selective = output_folders_selective if isinstance(output_folders_selective, dict) else {}
+        self.output_file_fallbacks = output_file_fallbacks if isinstance(output_file_fallbacks, dict) else {}
 
     def run(
             self,
@@ -730,6 +741,31 @@ class mitim_job:
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remote side)")
+
+        # Remote-side primary/fallback resolution BEFORE the tar, so we only
+        # ever tar & transfer one file per pair (the fallback is typically
+        # same-order-of-magnitude size as the primary — no point paying
+        # double when we only want one). Per (folder, primary, fallback):
+        #   primary present    -> remove fallback (dedup + free remote disk)
+        #   fallback only      -> rename fallback to primary
+        #   neither present    -> no-op
+        # Idempotent and safe if the folders don't exist yet.
+        if self.output_file_fallbacks:
+            fallback_lines = []
+            for folder, patterns in self.output_folders_selective.items():
+                pattern_set = set(patterns)
+                for primary, fallback in self.output_file_fallbacks.items():
+                    if primary not in pattern_set:
+                        continue
+                    p = f"{self.folderExecution}/{folder}/{primary}"
+                    f = f"{self.folderExecution}/{folder}/{fallback}"
+                    fallback_lines.append(
+                        f'if [ -f "{p}" ]; then rm -f "{f}"; '
+                        f'elif [ -f "{f}" ]; then mv "{f}" "{p}"; fi'
+                    )
+            if fallback_lines:
+                print(f"\t\t- Resolving {len(fallback_lines)} primary/fallback pair(s) on remote")
+                self.execute(" ; ".join(fallback_lines))
 
         # Build tar command with selective folder content
         tar_items = []
