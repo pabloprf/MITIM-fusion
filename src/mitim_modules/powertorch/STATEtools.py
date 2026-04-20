@@ -467,7 +467,7 @@ class powerstate:
     # Plotting tools
     # ------------------------------------------------------------------
 
-    def plot(self, axs=None, axsRes=None, axsMetrics=None, figs=None, fn=None,c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig = "b"):
+    def plot(self, axs=None, axsRes=None, axsMetrics=None, figs=None, fn=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig="b", show_stds=False):
         if axs is None:
 
             if fn is None:
@@ -505,7 +505,7 @@ class powerstate:
             compare_to_state._detach_tensors()
             powers.append(compare_to_state)
 
-        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig = c_orig)
+        POWERplot.plot(self, axs, axsRes, figs, c=c, label=label, batch_num=batch_num, compare_to_state=compare_to_state, c_orig=c_orig, show_stds=show_stds)
 
         if axsMetrics is not None:
             POWERplot.plot_metrics_powerstates(axsMetrics,powers[::-1])

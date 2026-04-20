@@ -4,7 +4,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 from mitim_tools.plasmastate_tools.utils import state_plotting
 
-def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, compare_to_state=None, c_orig = "b"):
+def plot(self, axs, axsRes, figs=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig="b", show_stds=False):
     
     # -----------------------------------------------------------------------------------------------------------
     # ---- Plot profiles object
@@ -82,7 +82,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
                 self.plasma,
                 axs[cont], axs[cont+1], axs[cont+2], axs[cont+3],
                 *set_plot,
-                c, label, batch_num=batch_num)
+                c, label, batch_num=batch_num, show_stds=show_stds)
 
             if  cont == 0:
                 axs[cont].legend()
@@ -184,7 +184,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate",batch_num=0, co
             ax.set_xlim(left=0)
             #GRAPHICStools.addDenseAxis(ax)
         
-def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile,labelGB, c, label, batch_num=0):
+def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile, labelGB, c, label, batch_num=0, show_stds=False):
 
     ax.set_title(title)
     ax.plot(
@@ -256,6 +256,35 @@ def plot_kp(plasma,ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, titl
     ax_F.set_xlabel('$\\rho$')
     ax_F.set_ylabel(ylabel_F)
     # ax_F.set_ylim(bottom=0)
+
+    # Optional per-evaluation uncertainty on the transport flux. The turbulent
+    # and neoclassical contributions carry independent stds so we combine them
+    # in quadrature; fall back gracefully for channels (convective Ce/CZ) that
+    # don't expose both halves as _tr_turb_stds / _tr_neoc_stds.
+    if show_stds:
+        turb_std = plasma.get(f"{key_Ftr}_turb_stds")
+        neoc_std = plasma.get(f"{key_Ftr}_neoc_stds")
+        if turb_std is not None and neoc_std is not None:
+            import torch
+            if isinstance(turb_std, torch.Tensor) or isinstance(neoc_std, torch.Tensor):
+                std_all = (turb_std**2 + neoc_std**2).sqrt()
+            else:
+                import numpy as _np
+                std_all = _np.sqrt(turb_std**2 + neoc_std**2)
+            rho = plasma["rho"][batch_num, 1:]
+            std_row = std_all[batch_num, 1:]
+            ax_Fgb.errorbar(
+                rho,
+                plasma[key_Ftr][batch_num, 1:] / plasma[labelGB][batch_num, 1:],
+                yerr=std_row / plasma[labelGB][batch_num, 1:],
+                fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
+            )
+            ax_F.errorbar(
+                rho,
+                plasma[key_Ftr][batch_num, 1:],
+                yerr=std_row,
+                fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
+            )
 
     for ax in [ax, ax_aL, ax_Fgb, ax_F]:
         GRAPHICStools.addDenseAxis(ax)

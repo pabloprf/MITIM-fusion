@@ -1211,6 +1211,7 @@ class PORTALSinitializer:
             return
 
         # Prepare figure --------------------------------------------------
+        figMainStds = None
         if 'fig' in kwargs and kwargs['fig'] is not None:
             print('Using provided figure, assuming I only want a summary')
             figMain = kwargs['fig']
@@ -1220,10 +1221,20 @@ class PORTALSinitializer:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
                 self.fn = FigureNotebook("PowerState", geometry="1800x900")
             figMain = self.fn.add_figure(label=f"{extra_lab} - PowerState")
+            # Same layout as PowerState, but the flux panels carry errorbars
+            # drawn from each evaluation's per-channel std (quadrature sum of
+            # the turbulent and neoclassical _stds). Gives a per-iteration
+            # view of how confident the transport evaluator was, on top of
+            # the mean trace already shown on the PowerState tab.
+            figMainStds = self.fn.add_figure(label=f"{extra_lab} - PowerStateSTDS")
             figG = self.fn.add_figure(label=f"{extra_lab} - Sequence")
         # -----------------------------------------------------------------
 
-        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=np.max([3,len(self.powerstates[-1].predicted_channels)]))
+        num_kp = np.max([3, len(self.powerstates[-1].predicted_channels)])
+        axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=num_kp)
+        axs_stds = None
+        if figMainStds is not None:
+            axs_stds, _ = STATEtools.add_axes_powerstate_plot(figMainStds, num_kp=num_kp)
 
         n_traj = self.n_trajectories
         n_ps = len(self.powerstates)
@@ -1272,6 +1283,9 @@ class PORTALSinitializer:
                 lab = _label_for(traj_idx, step_idx)
 
                 self.powerstates[i].plot(axs=axs, c=c, label=lab)
+
+                if axs_stds is not None:
+                    self.powerstates[i].plot(axs=axs_stds, c=c, label=lab, show_stds=True)
 
                 self.powerstates[i].profiles.plot_gradients(
                     axsGrads_extra,
