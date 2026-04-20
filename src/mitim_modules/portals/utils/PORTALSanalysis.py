@@ -1233,8 +1233,15 @@ class PORTALSinitializer:
         num_kp = np.max([3, len(self.powerstates[-1].predicted_channels)])
         axs, axsM = STATEtools.add_axes_powerstate_plot(figMain, num_kp=num_kp)
         axs_stds = None
+        axsM_stds = None
         if figMainStds is not None:
-            axs_stds, _ = STATEtools.add_axes_powerstate_plot(figMainStds, num_kp=num_kp)
+            axs_stds, axsM_stds = STATEtools.add_axes_powerstate_plot(figMainStds, num_kp=num_kp)
+            # Figure-level note so readers know what the errorbars mean.
+            figMainStds.suptitle(
+                "PowerStateSTDS — errorbars on transport fluxes show $\\pm 2\\sigma$ per evaluation "
+                "($\\sigma$ = quadrature sum of turbulent + neoclassical stds)",
+                fontsize=10,
+            )
 
         n_traj = self.n_trajectories
         n_ps = len(self.powerstates)
@@ -1314,7 +1321,9 @@ class PORTALSinitializer:
                 label=f"next ({len(self.profiles)-len(self.powerstates)})",
             )
 
-        # Metrics
+        # Metrics (residual + Pfus) — replicated on both figures so the
+        # STDS tab is a self-contained parallel of PowerState rather than
+        # a fragment that forces the reader to tab-hop for context.
         POWERplot.plot_metrics_powerstates(
             axsM,
             self.powerstates,
@@ -1322,6 +1331,14 @@ class PORTALSinitializer:
             profiles_color=next_color,
             n_trajectories=n_traj,
         )
+        if axsM_stds is not None:
+            POWERplot.plot_metrics_powerstates(
+                axsM_stds,
+                self.powerstates,
+                profiles=self.profiles[-1] if len(self.profiles) > len(self.powerstates) else None,
+                profiles_color=next_color,
+                n_trajectories=n_traj,
+            )
 
         # GRADIENTS
         if figG is not None:

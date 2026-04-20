@@ -260,7 +260,8 @@ def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, tit
     # Optional per-evaluation uncertainty on the transport flux. The turbulent
     # and neoclassical contributions carry independent stds so we combine them
     # in quadrature; fall back gracefully for channels (convective Ce/CZ) that
-    # don't expose both halves as _tr_turb_stds / _tr_neoc_stds.
+    # don't expose both halves as _tr_turb_stds / _tr_neoc_stds. Errorbars are
+    # +/- 2*sigma (documented on the figure-level suptitle by the caller).
     if show_stds:
         turb_std = plasma.get(f"{key_Ftr}_turb_stds")
         neoc_std = plasma.get(f"{key_Ftr}_neoc_stds")
@@ -276,13 +277,13 @@ def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, tit
             ax_Fgb.errorbar(
                 rho,
                 plasma[key_Ftr][batch_num, 1:] / plasma[labelGB][batch_num, 1:],
-                yerr=std_row / plasma[labelGB][batch_num, 1:],
+                yerr=2.0 * std_row / plasma[labelGB][batch_num, 1:],
                 fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
             )
             ax_F.errorbar(
                 rho,
                 plasma[key_Ftr][batch_num, 1:],
-                yerr=std_row,
+                yerr=2.0 * std_row,
                 fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
             )
 
