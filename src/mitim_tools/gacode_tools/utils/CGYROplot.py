@@ -176,92 +176,107 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
     `var` at `rho`. Returns (trace_count, y_candidates) so the outer grid
     owner can run per-row y-clamp.
 
-    Each non-base trace gets: a tinted axvspan window, the raw plot, and a
-    mean +/- 2*sigma square errorbar at the trace end. The base iteration
-    is drawn in black on top with a dashed mean line across its window and
-    a bolder errorbar marker.
+    Per trace we draw:
+      1. The raw time trace.
+      2. A dashed horizontal line at mean across [tmin, t[-1]] so the
+         averaged scalar the driver consumed is visible alongside the
+         signal.
+      3. A shaded rectangle with x-range = [tmin, t[-1]] (the averaging
+         window) and y-range = [mean - 2*sigma, mean + 2*sigma]. The box
+         thus encodes both the window duration (horizontally) and the
+         post-autocorr uncertainty of the scalar (vertically).
+      4. A square errorbar marker at the trace end showing mean +/- 2*sigma
+         at the precise (t_end, mean) point.
+    The base iteration is drawn in black on top with thicker styling and
+    a gray shading instead of a colour-matched one.
     '''
     y_candidates = []
     trace_count = 0
 
-    # Non-base traces (blue->red gradient).
-    for it in chunk:
-        out = pick_output_for_rho(cache[it], rho, r_idx)
-        if out is None or not hasattr(out, "t"):
-            continue
+    def _draw_single_trace(out, offset_it, color, is_base):
+        nonlocal trace_count
         y = getattr(out, var, None)
-        if y is None:
-            continue
-        color = color_for(it)
-        t_shifted = out.t + offsets[it]
+        if y is None or not hasattr(out, "t"):
+            return
+        t_shifted = out.t + offset_it
         x_end = float(t_shifted[-1])
         tmin_it = getattr(out, 'tmin', None)
-        if tmin_it is not None:
-            ax.axvspan(
-                float(tmin_it) + offsets[it],
-                x_end,
-                color=color, alpha=0.08, zorder=0,
+        mean_val = getattr(out, f"{var}_mean", None)
+        std_val = getattr(out, f"{var}_std", None)
+
+        # Styling split so ev0 reads as the reference.
+        if is_base:
+            lw_trace, lw_mean, ms_err, capsize_err, lw_err = 1.4, 1.0, 5, 3, 1.2
+            z_trace, z_mean, z_err = 5, 6, 7
+            alpha_trace, alpha_mean = 1.0, 0.85
+            shade_color, shade_alpha = 'gray', 0.28
+        else:
+            lw_trace, lw_mean, ms_err, capsize_err, lw_err = 1.0, 0.7, 3, 2, 0.8
+            z_trace, z_mean, z_err = 2, 3, 4
+            alpha_trace, alpha_mean = 0.85, 0.8
+            shade_color, shade_alpha = color, 0.22
+
+        # 2*sigma x window box replaces the old full-height axvspan so the
+        # rectangle's vertical extent is informative. Drawn first (low z)
+        # so it sits behind the signal.
+        if tmin_it is not None and mean_val is not None and std_val is not None:
+            m, s2 = float(mean_val), 2.0 * float(std_val)
+            ax.fill_between(
+                [float(tmin_it) + offset_it, x_end],
+                [m - s2, m - s2],
+                [m + s2, m + s2],
+                color=shade_color, alpha=shade_alpha, linewidth=0, zorder=0,
             )
-        ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.85, zorder=2)
+
+        ax.plot(t_shifted, y, color=color if not is_base else 'black',
+                lw=lw_trace, alpha=alpha_trace, zorder=z_trace)
         trace_count += 1
         try:
             y_candidates.append(float(y[0]))
         except (TypeError, IndexError):
             pass
-        mean_val = getattr(out, f"{var}_mean", None)
-        std_val = getattr(out, f"{var}_std", None)
+
+        # Dashed mean line across the averaging window, for every trace —
+        # not just the base. Colour-matched for non-base so the reader can
+        # associate mean line -> trace.
+        if mean_val is not None and tmin_it is not None:
+            ax.hlines(
+                float(mean_val),
+                float(tmin_it) + offset_it,
+                x_end,
+                colors=color if not is_base else 'black',
+                linestyles='--', lw=lw_mean, alpha=alpha_mean, zorder=z_mean,
+            )
+
         if mean_val is not None and std_val is not None:
             ax.errorbar(
                 x_end, float(mean_val), yerr=2.0 * float(std_val),
-                fmt='s', color=color, ms=3, capsize=2, lw=0.8,
-                mec='black', mew=0.3, zorder=4,
+                fmt='s',
+                color=color if not is_base else 'black',
+                ms=ms_err, capsize=capsize_err, lw=lw_err,
+                mec='black', mew=0.3, zorder=z_err,
             )
             y_candidates.append(float(mean_val) + 2.0 * float(std_val))
+            y_candidates.append(float(mean_val) - 2.0 * float(std_val))
 
-    # Base iteration on top: black, thicker, with shaded avg window and
-    # dashed mean line so its stats value is obvious.
-    if base_out is not None and hasattr(base_out, "t"):
-        base_tmin = getattr(base_out, 'tmin', None)
-        base_offset = offsets.get(base_iter, 0.0)
-        y = getattr(base_out, var, None)
-        if y is not None:
-            ax.plot(base_out.t + base_offset, y, color='black', lw=1.4, alpha=1.0, zorder=5)
-            trace_count += 1
-            try:
-                y_candidates.append(float(y[0]))
-            except (TypeError, IndexError):
-                pass
-            if base_tmin is not None:
-                ax.axvspan(
-                    float(base_tmin) + base_offset,
-                    float(base_out.t[-1]) + base_offset,
-                    alpha=0.12, color='gray', zorder=0,
-                )
-            mean_val = getattr(base_out, f"{var}_mean", None)
-            std_val = getattr(base_out, f"{var}_std", None)
-            if mean_val is not None and std_val is not None:
-                if base_tmin is not None:
-                    ax.hlines(
-                        float(mean_val),
-                        float(base_tmin) + base_offset,
-                        float(base_out.t[-1]) + base_offset,
-                        colors='black', linestyles='--', lw=0.8,
-                        alpha=0.7, zorder=6,
-                    )
-                ax.errorbar(
-                    float(base_out.t[-1]) + base_offset,
-                    float(mean_val), yerr=2.0 * float(std_val),
-                    fmt='s', color='black', ms=5, capsize=3, lw=1.2,
-                    zorder=7,
-                )
-                y_candidates.append(float(mean_val) + 2.0 * float(std_val))
+    # Non-base traces first so the base overlays them.
+    for it in chunk:
+        out = pick_output_for_rho(cache[it], rho, r_idx)
+        if out is None:
+            continue
+        _draw_single_trace(out, offsets[it], color_for(it), is_base=False)
+
+    if base_out is not None:
+        _draw_single_trace(base_out, offsets.get(base_iter, 0.0), color=None, is_base=True)
 
     return trace_count, y_candidates
 
 
 def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
-    '''Compact legend shared by both grid layouts: base + chunk endpoints
-    + window patches + the mu +/- 2*sigma errorbar marker.'''
+    '''Compact legend shared by both grid layouts: base + chunk endpoints,
+    the x=window x y=2*sigma shading patches, the dashed mean line, and
+    the mean +/- 2*sigma errorbar marker. Keeps readers honest about what
+    every visual channel on the plot is encoding.'''
     handles = [Line2D([0], [0], color='black', lw=1.4)]
     labels_ = [f'ev{base_iter} (base)']
     if chunk:
@@ -272,11 +287,13 @@ def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
             handles.append(Line2D([0], [0], color=color_for(last_it), lw=1.5))
             labels_.append(f'ev{last_it}')
     if base_has_window:
-        handles.append(Patch(facecolor='gray', alpha=0.3, edgecolor='none'))
-        labels_.append(f'avg window (ev{base_iter})')
+        handles.append(Patch(facecolor='gray', alpha=0.35, edgecolor='none'))
+        labels_.append(f'window $\\times 2\\sigma$ (ev{base_iter})')
     if chunk:
         handles.append(Patch(facecolor=color_for(chunk[-1]), alpha=0.3, edgecolor='none'))
-        labels_.append('avg window (per iter)')
+        labels_.append(r'window $\times 2\sigma$ (per iter)')
+    handles.append(Line2D([0], [0], color='gray', ls='--', lw=1.0))
+    labels_.append(r'$\mu$ over window')
     handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
                           markersize=4, mec='black', mew=0.3))
     labels_.append(r'$\mu \pm 2\sigma$')
@@ -354,7 +371,7 @@ def plot_time_traces_per_radius(
             label=f"CGYRO traces (rho={float(rho):.3f})",
             tab_color=fn_color_start + r_idx,
         )
-        axs = fig.subplots(nrows=len(_CHANNELS), ncols=n_cols, squeeze=False, sharey='row')
+        axs = fig.subplots(nrows=len(_CHANNELS), ncols=n_cols, squeeze=False, sharex=True, sharey='row')
         fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), 7.8)
 
         fig.suptitle(
@@ -438,7 +455,7 @@ def plot_time_traces_per_channel(
             label=f"CGYRO traces ({var})",
             tab_color=fn_color_start + v_idx,
         )
-        axs = fig.subplots(nrows=n_rows, ncols=n_cols, squeeze=False, sharey='row')
+        axs = fig.subplots(nrows=n_rows, ncols=n_cols, squeeze=False, sharex=True, sharey='row')
         fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), max(3.0, 2.4 * n_rows + 1.2))
 
         fig.suptitle(
