@@ -2322,6 +2322,17 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         restart_mode=restart_mode,
         base_iter=0,
     )
+    # Same data, pivoted: one figure per channel with rhos as rows.
+    # Colour-start offset by the per-rho tab count so tab colours stay
+    # distinct in the notebook.
+    CGYROplot.plot_time_traces_per_channel(
+        fn,
+        fn_color_start + len(self.rhos),
+        self.rhos,
+        self._cgyro_traces_cache,
+        restart_mode=restart_mode,
+        base_iter=0,
+    )
 
 
 def PORTALSanalyzer_plotModelComparison(

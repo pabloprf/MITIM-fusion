@@ -19,6 +19,27 @@ from mitim_tools.misc_tools import GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import HiddenPrints, printMsg as print
 
 
+# Column chunk size: at most this many non-base iterations per column.
+_CHUNK_SIZE = 5
+
+# Channels drawn on the figure. Keeping this module-level so both grid
+# layouts (rows=channels and rows=rhos) agree on order and labels.
+_CHANNELS = [
+    ('Qe', '$Q_e$ [GB]'),
+    ('Qi', '$Q_i$ [GB]'),
+    ('Ge', '$\\Gamma_e$ [GB]'),
+]
+
+# Shared cmap template; each column builds its own Normalize over just its
+# chunk so column-local first->last reads as blue->red.
+_CMAP_ITER = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
+
+
+# ---------------------------------------------------------------------------
+# Loaders
+# ---------------------------------------------------------------------------
+
+
 def load_tool_for_iteration(folder_execution, rhos, read_kwargs=None):
     '''
     Best-effort load of a CGYRO tool object carrying per-rho CGYROoutput
@@ -94,6 +115,200 @@ def load_tools_for_iterations(iteration_folders, rhos, read_kwargs=None):
     return cache
 
 
+# ---------------------------------------------------------------------------
+# Shared plotting helpers
+# ---------------------------------------------------------------------------
+
+
+def _chunk_iterations(sorted_its, base_iter):
+    '''Partition non-base iterations into column chunks of size _CHUNK_SIZE.'''
+    non_base = [i for i in sorted_its if i != base_iter]
+    chunks = (
+        [non_base[i:i + _CHUNK_SIZE] for i in range(0, len(non_base), _CHUNK_SIZE)]
+        if non_base else [[]]
+    )
+    return non_base, chunks
+
+
+def _make_column_color_fn(chunk):
+    '''Blue->red linear colormap scaled over exactly this chunk's ev range.'''
+    if not chunk:
+        return lambda it: (0.0, 0.0, 0.0)
+    v0, v1 = chunk[0], chunk[-1]
+    norm = (Normalize(vmin=v0, vmax=v1) if v0 != v1
+            else Normalize(vmin=v0 - 0.5, vmax=v0 + 0.5))
+    return lambda it: _CMAP_ITER(norm(it))
+
+
+def _xlabel_suffix_for(restart_mode, base_iter):
+    return {
+        "all": " (chained)",
+        "first": f" (branched from ev{base_iter})",
+    }.get(restart_mode, "")
+
+
+def _compute_offsets_for_rho(rho, r_idx, restart_mode, cache, sorted_its, base_iter):
+    '''Per-iteration time offsets at this rho (see restart_mode semantics).'''
+    offsets = {it: 0.0 for it in sorted_its}
+    if restart_mode == "all":
+        cumulative = 0.0
+        for it in sorted_its:
+            offsets[it] = cumulative
+            out = pick_output_for_rho(cache[it], rho, r_idx)
+            if out is not None and hasattr(out, "t") and len(out.t) > 0:
+                cumulative += float(out.t[-1])
+    elif restart_mode == "first":
+        base_tmax = 0.0
+        if base_iter in cache:
+            out0 = pick_output_for_rho(cache[base_iter], rho, r_idx)
+            if out0 is not None and hasattr(out0, "t") and len(out0.t) > 0:
+                base_tmax = float(out0.t[-1])
+        for it in sorted_its:
+            if it != base_iter:
+                offsets[it] = base_tmax
+    return offsets
+
+
+def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
+                     color_for, base_iter):
+    '''
+    Draw one subplot: non-base traces in `chunk` + base iter, for channel
+    `var` at `rho`. Returns (trace_count, y_candidates) so the outer grid
+    owner can run per-row y-clamp.
+
+    Each non-base trace gets: a tinted axvspan window, the raw plot, and a
+    mean +/- 2*sigma square errorbar at the trace end. The base iteration
+    is drawn in black on top with a dashed mean line across its window and
+    a bolder errorbar marker.
+    '''
+    y_candidates = []
+    trace_count = 0
+
+    # Non-base traces (blue->red gradient).
+    for it in chunk:
+        out = pick_output_for_rho(cache[it], rho, r_idx)
+        if out is None or not hasattr(out, "t"):
+            continue
+        y = getattr(out, var, None)
+        if y is None:
+            continue
+        color = color_for(it)
+        t_shifted = out.t + offsets[it]
+        x_end = float(t_shifted[-1])
+        tmin_it = getattr(out, 'tmin', None)
+        if tmin_it is not None:
+            ax.axvspan(
+                float(tmin_it) + offsets[it],
+                x_end,
+                color=color, alpha=0.08, zorder=0,
+            )
+        ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.85, zorder=2)
+        trace_count += 1
+        try:
+            y_candidates.append(float(y[0]))
+        except (TypeError, IndexError):
+            pass
+        mean_val = getattr(out, f"{var}_mean", None)
+        std_val = getattr(out, f"{var}_std", None)
+        if mean_val is not None and std_val is not None:
+            ax.errorbar(
+                x_end, float(mean_val), yerr=2.0 * float(std_val),
+                fmt='s', color=color, ms=3, capsize=2, lw=0.8,
+                mec='black', mew=0.3, zorder=4,
+            )
+            y_candidates.append(float(mean_val) + 2.0 * float(std_val))
+
+    # Base iteration on top: black, thicker, with shaded avg window and
+    # dashed mean line so its stats value is obvious.
+    if base_out is not None and hasattr(base_out, "t"):
+        base_tmin = getattr(base_out, 'tmin', None)
+        base_offset = offsets.get(base_iter, 0.0)
+        y = getattr(base_out, var, None)
+        if y is not None:
+            ax.plot(base_out.t + base_offset, y, color='black', lw=1.4, alpha=1.0, zorder=5)
+            trace_count += 1
+            try:
+                y_candidates.append(float(y[0]))
+            except (TypeError, IndexError):
+                pass
+            if base_tmin is not None:
+                ax.axvspan(
+                    float(base_tmin) + base_offset,
+                    float(base_out.t[-1]) + base_offset,
+                    alpha=0.12, color='gray', zorder=0,
+                )
+            mean_val = getattr(base_out, f"{var}_mean", None)
+            std_val = getattr(base_out, f"{var}_std", None)
+            if mean_val is not None and std_val is not None:
+                if base_tmin is not None:
+                    ax.hlines(
+                        float(mean_val),
+                        float(base_tmin) + base_offset,
+                        float(base_out.t[-1]) + base_offset,
+                        colors='black', linestyles='--', lw=0.8,
+                        alpha=0.7, zorder=6,
+                    )
+                ax.errorbar(
+                    float(base_out.t[-1]) + base_offset,
+                    float(mean_val), yerr=2.0 * float(std_val),
+                    fmt='s', color='black', ms=5, capsize=3, lw=1.2,
+                    zorder=7,
+                )
+                y_candidates.append(float(mean_val) + 2.0 * float(std_val))
+
+    return trace_count, y_candidates
+
+
+def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
+    '''Compact legend shared by both grid layouts: base + chunk endpoints
+    + window patches + the mu +/- 2*sigma errorbar marker.'''
+    handles = [Line2D([0], [0], color='black', lw=1.4)]
+    labels_ = [f'ev{base_iter} (base)']
+    if chunk:
+        first_it, last_it = chunk[0], chunk[-1]
+        handles.append(Line2D([0], [0], color=color_for(first_it), lw=1.5))
+        labels_.append(f'ev{first_it}')
+        if last_it != first_it:
+            handles.append(Line2D([0], [0], color=color_for(last_it), lw=1.5))
+            labels_.append(f'ev{last_it}')
+    if base_has_window:
+        handles.append(Patch(facecolor='gray', alpha=0.3, edgecolor='none'))
+        labels_.append(f'avg window (ev{base_iter})')
+    if chunk:
+        handles.append(Patch(facecolor=color_for(chunk[-1]), alpha=0.3, edgecolor='none'))
+        labels_.append('avg window (per iter)')
+    handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
+                          markersize=4, mec='black', mew=0.3))
+    labels_.append(r'$\mu \pm 2\sigma$')
+    ax.legend(handles, labels_, loc='best', prop={'size': 6}, framealpha=0.85)
+
+
+def _column_title_for_chunk(chunk, base_iter):
+    if chunk:
+        return (f"ev{chunk[0]}\u2013ev{chunk[-1]}"
+                if chunk[0] != chunk[-1] else f"ev{chunk[0]}")
+    return f"ev{base_iter} only"
+
+
+def _apply_row_clamp(axs_row_leftmost, y_candidates, trace_count):
+    '''Clamp the row's y-axis to the tightest interval containing every
+    trace's first sample and mean+2*sigma. Skip when <3 traces are on the
+    row — the transient-peak protection is worth less than just showing
+    everything when there are so few lines.'''
+    if trace_count < 3 or not y_candidates:
+        return
+    y_lo = min(y_candidates)
+    y_hi = max(y_candidates)
+    if y_hi > y_lo:
+        pad = 0.05 * (y_hi - y_lo)
+        axs_row_leftmost.set_ylim(y_lo - pad, y_hi + pad)
+
+
+# ---------------------------------------------------------------------------
+# Top-level plot entry points
+# ---------------------------------------------------------------------------
+
+
 def plot_time_traces_per_radius(
     fn,
     fn_color_start,
@@ -104,15 +319,10 @@ def plot_time_traces_per_radius(
     title_prefix="CGYRO time traces",
 ):
     '''
-    Build one FigureNotebook tab per rho with three rows of subplots
-    (Qe, Qi, Ge time traces, GB units) overlaying every iteration in
-    `tools_by_iteration`. `base_iter` (default 0) is drawn on top in a
-    distinct style as the shared baseline reference and is replicated in
-    every column so the eye has a consistent anchor.
-
-    Columns chunk the non-base iterations CHUNK_SIZE at a time so panels
-    stay readable as iteration count grows; within each column the first
-    iter is blue and the last is red.
+    Build one FigureNotebook tab per rho. Rows = transport channels
+    (Qe, Qi, Ge), columns = iteration chunks. `base_iter` is drawn in
+    every column as the shared baseline; non-base iterations fill each
+    column with a column-local blue->red gradient.
 
     When the driver used CGYRO's warm-start feature each iteration after
     base resets its clock at t=0; time axes are re-aligned per
@@ -124,14 +334,10 @@ def plot_time_traces_per_radius(
       - "all"   -> chained; iter N restarts from iter N-1, offsets are
                    cumulative over prior iterations' tmax.
 
-    Stat overlays per trace: a tinted axvspan over [out.tmin, out.t[-1]]
-    (the window apply_ac used), plus a square errorbar at the trace end
-    showing mean +/- 2*std. The base iteration additionally gets a
-    dashed mean line so its stats value is obvious. Row y-limits are
-    clamped to the tightest range containing every trace's first sample
-    and every trace's mean+2*std (so mid-trace transient peaks don't
-    dominate the view), *unless* the row has fewer than 3 traces — with
-    so few lines the peaks are part of what the user wants to see.
+    Per-trace stats overlays: tinted axvspan window, raw trace, square
+    errorbar marker at trace end for mean +/- 2*sigma. Base iter also
+    gets a dashed mean line across its window. Per-row y-clamp tight to
+    first-sample / mean+2*sigma bounds (skipped when <3 traces).
     '''
     if not tools_by_iteration:
         print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO tabs", typeMsg='w')
@@ -139,38 +345,16 @@ def plot_time_traces_per_radius(
 
     cache = tools_by_iteration
     sorted_its = sorted(cache.keys())
-    varss = [('Qe', '$Q_e$ [GB]'), ('Qi', '$Q_i$ [GB]'), ('Ge', '$\\Gamma_e$ [GB]')]
-
-    CHUNK_SIZE = 5
-    non_base_its = [i for i in sorted_its if i != base_iter]
-    chunks = (
-        [non_base_its[i:i + CHUNK_SIZE] for i in range(0, len(non_base_its), CHUNK_SIZE)]
-        if non_base_its else [[]]
-    )
+    non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-
-    # Shared cmap template; each column builds its own Normalize over just
-    # its chunk, so column-local first->last reads as blue->red.
-    cmap_iter = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
-    def _make_column_color_fn(chunk):
-        if not chunk:
-            return lambda it: (0.0, 0.0, 0.0)
-        v0, v1 = chunk[0], chunk[-1]
-        norm = (Normalize(vmin=v0, vmax=v1) if v0 != v1
-                else Normalize(vmin=v0 - 0.5, vmax=v0 + 0.5))
-        return lambda it: cmap_iter(norm(it))
-
-    _xlabel_suffix = {
-        "all": " (chained)",
-        "first": f" (branched from ev{base_iter})",
-    }.get(restart_mode, "")
+    xlabel_suffix = _xlabel_suffix_for(restart_mode, base_iter)
 
     for r_idx, rho in enumerate(rhos):
-        fig = fn.add_figure(label=f"CGYRO traces (rho={float(rho):.3f})", tab_color=fn_color_start + r_idx)
-        # squeeze=False keeps axs 2D even with n_cols=1; sharey='row' lets
-        # the eye compare the same channel across iteration chunks at the
-        # same vertical scale.
-        axs = fig.subplots(nrows=len(varss), ncols=n_cols, squeeze=False, sharey='row')
+        fig = fn.add_figure(
+            label=f"CGYRO traces (rho={float(rho):.3f})",
+            tab_color=fn_color_start + r_idx,
+        )
+        axs = fig.subplots(nrows=len(_CHANNELS), ncols=n_cols, squeeze=False, sharey='row')
         fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), 7.8)
 
         fig.suptitle(
@@ -180,177 +364,134 @@ def plot_time_traces_per_radius(
             fontsize=11,
         )
 
-        # Per-iteration time offsets (see restart_mode semantics above).
-        offsets = {it: 0.0 for it in sorted_its}
-        if restart_mode == "all":
-            cumulative = 0.0
-            for it in sorted_its:
-                offsets[it] = cumulative
-                out = pick_output_for_rho(cache[it], rho, r_idx)
-                if out is not None and hasattr(out, "t") and len(out.t) > 0:
-                    cumulative += float(out.t[-1])
-        elif restart_mode == "first":
-            base_tmax = 0.0
-            if base_iter in cache:
-                out0 = pick_output_for_rho(cache[base_iter], rho, r_idx)
-                if out0 is not None and hasattr(out0, "t") and len(out0.t) > 0:
-                    base_tmax = float(out0.t[-1])
-            for it in sorted_its:
-                if it != base_iter:
-                    offsets[it] = base_tmax
-
+        offsets = _compute_offsets_for_rho(rho, r_idx, restart_mode, cache, sorted_its, base_iter)
         base_out = pick_output_for_rho(cache[base_iter], rho, r_idx) if base_iter in cache else None
+        base_has_window = base_out is not None and getattr(base_out, 'tmin', None) is not None
 
-        # Per-row y-limit candidates + trace counters. Clamp each row's
-        # y-axis to the tightest interval containing every trace's first
-        # sample and every trace's mean+2*std, UNLESS the row has fewer
-        # than 3 traces (with <3 lines the transient-peak protection the
-        # clamp provides is worth less than just showing everything).
-        row_y_candidates = {row_idx: [] for row_idx in range(len(varss))}
-        row_trace_counts = {row_idx: 0 for row_idx in range(len(varss))}
+        # Per-row aggregators — rows are channels here.
+        row_y_candidates = {row_idx: [] for row_idx in range(len(_CHANNELS))}
+        row_trace_counts = {row_idx: 0 for row_idx in range(len(_CHANNELS))}
 
         for c_idx, chunk in enumerate(chunks):
             col_axes = axs[:, c_idx]
-            _color_for = _make_column_color_fn(chunk)
+            color_for = _make_column_color_fn(chunk)
 
-            # Non-base traces for this column. For each iteration we draw:
-            #   1. A tinted shaded band over [out.tmin, out.t[-1]] +offset
-            #      (the window apply_ac collapsed into the scalar stat).
-            #   2. The raw time trace.
-            #   3. An errorbar marker at the trace end showing mean +/- 2*std.
-            # out.<Var>_mean / _std come from CGYROutils.apply_ac.
-            for it in chunk:
-                out = pick_output_for_rho(cache[it], rho, r_idx)
-                if out is None or not hasattr(out, "t"):
-                    continue
-                color = _color_for(it)
-                t_shifted = out.t + offsets[it]
-                x_end = float(t_shifted[-1])
-                tmin_it = getattr(out, 'tmin', None)
-                for row_idx, (var, _) in enumerate(varss):
-                    y = getattr(out, var, None)
-                    if y is None:
-                        continue
-                    ax = col_axes[row_idx]
-                    if tmin_it is not None:
-                        ax.axvspan(
-                            float(tmin_it) + offsets[it],
-                            x_end,
-                            color=color, alpha=0.08, zorder=0,
-                        )
-                    ax.plot(t_shifted, y, color=color, lw=1.0, alpha=0.85, zorder=2)
-                    row_trace_counts[row_idx] += 1
-                    try:
-                        row_y_candidates[row_idx].append(float(y[0]))
-                    except (TypeError, IndexError):
-                        pass
-                    mean_val = getattr(out, f"{var}_mean", None)
-                    std_val = getattr(out, f"{var}_std", None)
-                    if mean_val is not None and std_val is not None:
-                        ax.errorbar(
-                            x_end, float(mean_val), yerr=2.0 * float(std_val),
-                            fmt='s', color=color, ms=3, capsize=2, lw=0.8,
-                            mec='black', mew=0.3, zorder=4,
-                        )
-                        row_y_candidates[row_idx].append(float(mean_val) + 2.0 * float(std_val))
+            for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+                tc, yc = _draw_chunk_cell(
+                    col_axes[row_idx], var, rho, r_idx, chunk,
+                    cache, base_out, offsets, color_for, base_iter,
+                )
+                row_trace_counts[row_idx] += tc
+                row_y_candidates[row_idx].extend(yc)
 
-            # Base iter on top of the gradient in every column — black,
-            # slightly thicker. Its own averaging window is shaded gray
-            # (neutral reference band) and its mean is drawn as a dashed
-            # horizontal line across the window.
-            if base_out is not None and hasattr(base_out, "t"):
-                base_tmin = getattr(base_out, 'tmin', None)
-                base_offset = offsets.get(base_iter, 0.0)
-                for row_idx, (var, _) in enumerate(varss):
-                    y = getattr(base_out, var, None)
-                    if y is None:
-                        continue
-                    ax = col_axes[row_idx]
-                    ax.plot(base_out.t + base_offset, y, color='black', lw=1.4, alpha=1.0, zorder=5)
-                    row_trace_counts[row_idx] += 1
-                    try:
-                        row_y_candidates[row_idx].append(float(y[0]))
-                    except (TypeError, IndexError):
-                        pass
+            col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
+            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window)
 
-                    if base_tmin is not None:
-                        ax.axvspan(
-                            float(base_tmin) + base_offset,
-                            float(base_out.t[-1]) + base_offset,
-                            alpha=0.12, color='gray', zorder=0,
-                        )
-
-                    mean_val = getattr(base_out, f"{var}_mean", None)
-                    std_val = getattr(base_out, f"{var}_std", None)
-                    if mean_val is not None and std_val is not None:
-                        if base_tmin is not None:
-                            ax.hlines(
-                                float(mean_val),
-                                float(base_tmin) + base_offset,
-                                float(base_out.t[-1]) + base_offset,
-                                colors='black', linestyles='--', lw=0.8,
-                                alpha=0.7, zorder=6,
-                            )
-                        ax.errorbar(
-                            float(base_out.t[-1]) + base_offset,
-                            float(mean_val), yerr=2.0 * float(std_val),
-                            fmt='s', color='black', ms=5, capsize=3, lw=1.2,
-                            zorder=7,
-                        )
-                        row_y_candidates[row_idx].append(float(mean_val) + 2.0 * float(std_val))
-
-            # Column title shows the iteration range in this column.
-            if chunk:
-                col_title = (f"ev{chunk[0]}\u2013ev{chunk[-1]}"
-                             if chunk[0] != chunk[-1] else f"ev{chunk[0]}")
-            else:
-                col_title = f"ev{base_iter} only"
-            col_axes[0].set_title(col_title, fontsize=10)
-
-            # Compact per-column legend on the top row: base iter + chunk
-            # endpoints + markers that explain the averaging window and
-            # the right-edge errorbar points.
-            handles = [Line2D([0], [0], color='black', lw=1.4)]
-            labels_ = [f'ev{base_iter} (base)']
-            if chunk:
-                first_it, last_it = chunk[0], chunk[-1]
-                handles.append(Line2D([0], [0], color=_color_for(first_it), lw=1.5))
-                labels_.append(f'ev{first_it}')
-                if last_it != first_it:
-                    handles.append(Line2D([0], [0], color=_color_for(last_it), lw=1.5))
-                    labels_.append(f'ev{last_it}')
-            if base_out is not None and getattr(base_out, 'tmin', None) is not None:
-                handles.append(Patch(facecolor='gray', alpha=0.3, edgecolor='none'))
-                labels_.append(f'avg window (ev{base_iter})')
-            if chunk:
-                handles.append(Patch(facecolor=_color_for(chunk[-1]), alpha=0.3, edgecolor='none'))
-                labels_.append('avg window (per iter)')
-            handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
-                                  markersize=4, mec='black', mew=0.3))
-            labels_.append(r'$\mu \pm 2\sigma$')
-            col_axes[0].legend(handles, labels_, loc='best', prop={'size': 6}, framealpha=0.85)
-
-            # Axis decorations: y-label on the leftmost column only;
-            # x-label on the bottom row only.
-            for row_idx, (var, ylabel) in enumerate(varss):
+            for row_idx, (var, ylabel) in enumerate(_CHANNELS):
                 ax = col_axes[row_idx]
                 if c_idx == 0:
                     ax.set_ylabel(ylabel)
-                if row_idx == len(varss) - 1:
-                    ax.set_xlabel("$t \\, c_s/a$" + _xlabel_suffix)
+                if row_idx == len(_CHANNELS) - 1:
+                    ax.set_xlabel("$t \\, c_s/a$" + xlabel_suffix)
                 GRAPHICStools.addDenseAxis(ax)
 
-        # Per-row y-axis clamp (see docstring). Skipped when the row has
-        # fewer than 3 total traces — there's not enough happening in the
-        # panel to justify hiding transient peaks.
-        for row_idx in range(len(varss)):
-            if row_trace_counts[row_idx] < 3:
-                continue
-            candidates = row_y_candidates[row_idx]
-            if not candidates:
-                continue
-            y_lo = min(candidates)
-            y_hi = max(candidates)
-            if y_hi > y_lo:
-                pad = 0.05 * (y_hi - y_lo)
-                axs[row_idx, 0].set_ylim(y_lo - pad, y_hi + pad)
+        for row_idx in range(len(_CHANNELS)):
+            _apply_row_clamp(axs[row_idx, 0], row_y_candidates[row_idx], row_trace_counts[row_idx])
+
+
+def plot_time_traces_per_channel(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    restart_mode="none",
+    base_iter=0,
+    title_prefix="CGYRO time traces",
+):
+    '''
+    Companion to `plot_time_traces_per_radius` with the axes pivoted:
+    one FigureNotebook tab per channel (Qe, Qi, Ge), rows = rhos, columns
+    = iteration chunks (same chunking rule). Handy when the interesting
+    view is "how did Qi evolve at every radius over the PORTALS
+    iterations" rather than "what's happening at rho=0.5 across channels".
+
+    Per-cell semantics, color palette, and per-row y-clamp are identical
+    to plot_time_traces_per_radius — rows just carry a different meaning
+    (the rho value) so the clamp is now per-(channel, rho) rather than
+    per-(rho, channel).
+    '''
+    if not tools_by_iteration:
+        print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO per-channel tabs", typeMsg='w')
+        return
+
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
+    n_cols = len(chunks)
+    xlabel_suffix = _xlabel_suffix_for(restart_mode, base_iter)
+
+    rho_list = list(rhos)
+    n_rows = len(rho_list)
+
+    for v_idx, (var, ylabel) in enumerate(_CHANNELS):
+        fig = fn.add_figure(
+            label=f"CGYRO traces ({var})",
+            tab_color=fn_color_start + v_idx,
+        )
+        axs = fig.subplots(nrows=n_rows, ncols=n_cols, squeeze=False, sharey='row')
+        fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), max(3.0, 2.4 * n_rows + 1.2))
+
+        fig.suptitle(
+            f"{title_prefix} - {ylabel.split(' [')[0]}  "
+            f"(restart_mode={restart_mode!r}; {len(non_base_its)} non-base iter"
+            f"{'' if len(non_base_its) == 1 else 's'})",
+            fontsize=11,
+        )
+
+        # Per-row aggregators — rows are rhos here. Each rho has its own
+        # offsets / base_out because those depend on the rho's own CGYRO
+        # output.
+        row_y_candidates = {row_idx: [] for row_idx in range(n_rows)}
+        row_trace_counts = {row_idx: 0 for row_idx in range(n_rows)}
+
+        # Pre-resolve per-rho offsets and base_out once (shared across columns).
+        offsets_per_rho = {
+            r_idx: _compute_offsets_for_rho(rho_list[r_idx], r_idx, restart_mode, cache, sorted_its, base_iter)
+            for r_idx in range(n_rows)
+        }
+        base_out_per_rho = {
+            r_idx: (pick_output_for_rho(cache[base_iter], rho_list[r_idx], r_idx) if base_iter in cache else None)
+            for r_idx in range(n_rows)
+        }
+        base_has_window_any = any(
+            bo is not None and getattr(bo, 'tmin', None) is not None
+            for bo in base_out_per_rho.values()
+        )
+
+        for c_idx, chunk in enumerate(chunks):
+            col_axes = axs[:, c_idx]
+            color_for = _make_column_color_fn(chunk)
+
+            for row_idx in range(n_rows):
+                tc, yc = _draw_chunk_cell(
+                    col_axes[row_idx], var,
+                    rho_list[row_idx], row_idx, chunk,
+                    cache, base_out_per_rho[row_idx], offsets_per_rho[row_idx],
+                    color_for, base_iter,
+                )
+                row_trace_counts[row_idx] += tc
+                row_y_candidates[row_idx].extend(yc)
+
+            col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
+            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window_any)
+
+            for row_idx in range(n_rows):
+                ax = col_axes[row_idx]
+                if c_idx == 0:
+                    ax.set_ylabel(f"$\\rho={float(rho_list[row_idx]):.3f}$  {ylabel}")
+                if row_idx == n_rows - 1:
+                    ax.set_xlabel("$t \\, c_s/a$" + xlabel_suffix)
+                GRAPHICStools.addDenseAxis(ax)
+
+        for row_idx in range(n_rows):
+            _apply_row_clamp(axs[row_idx, 0], row_y_candidates[row_idx], row_trace_counts[row_idx])
