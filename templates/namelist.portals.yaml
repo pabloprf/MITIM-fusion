@@ -323,6 +323,18 @@ transport:
         # Polling cadence for .check() when run_type=="submit" (minutes)
         every_n_minutes: 10
 
+        # When True and run_type=="submit", the remote scratch folder is
+        # rm -rf'd right after fetch() pulls everything locally and read()
+        # succeeds. run_type=="normal" already cleans up via
+        # run(removeScratchFolders=True); submit mode defers that because
+        # fetch is decoupled from run, so scratch folders pile up on the
+        # cluster (one per PORTALS iteration, each holding staged inputs +
+        # whatever keep_files / restart blobs CGYRO produced). Default
+        # False to preserve the current "leave it for debug / re-attach"
+        # behaviour. Set True on long campaigns to stop eating cluster
+        # disk. Does nothing when run_type != "submit".
+        remove_scratch_after_fetch: False
+
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
         #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
@@ -378,6 +390,11 @@ transport:
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
+
+        # See the CGYRO notes on this flag above. Same semantics for GX:
+        # remove the remote scratch folder right after fetch() + read()
+        # succeed when run_type=="submit". Default False.
+        remove_scratch_after_fetch: False
 
       read:
         # tmin: left edge of the signal-analysis window.

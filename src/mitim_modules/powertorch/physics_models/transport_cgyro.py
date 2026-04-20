@@ -404,7 +404,8 @@ class gyrokinetic_model:
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
+        remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
 
         # Translate namelist-level restart_from_folder into per-rho
         # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
@@ -592,6 +593,20 @@ class gyrokinetic_model:
                     **simulation_options["read"]
                     )
 
+                # Optional remote scratch cleanup on the submit path. run_type
+                # 'normal' already cleans up via run(removeScratchFolders=True);
+                # submit mode defers that because fetch is decoupled from run.
+                # Wrapped in a try/except so a flaky connection doesn't abort
+                # the PORTALS iteration just because the rm -rf failed.
+                if run_type == 'submit' and remove_scratch_after_fetch:
+                    try:
+                        gk_object.simulation_job.connect()
+                        gk_object.simulation_job.remove_scratch_folder()
+                        gk_object.simulation_job.close()
+                        print(f"\t- [submit] remove_scratch_after_fetch=true — removed remote scratch {gk_object.simulation_job.folderExecution}", typeMsg='i')
+                    except Exception as _rs_e:
+                        print(f"\t- remote scratch removal raised ({_rs_e}); leaving the folder in place", typeMsg='w')
+
                 # Invariant for re-attach: "metadata present => job in flight (or
                 # retrieval not yet complete)". Read succeeded, so drop the file.
                 if metadata_path.exists():
@@ -753,6 +768,7 @@ class cgyro_model(gyrokinetic_model):
         # so we do not mutate the shared namelist between PORTALS iterations.
         check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
         every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
+        remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
@@ -1015,6 +1031,18 @@ class cgyro_model(gyrokinetic_model):
             Mt_std_batch[p, :] = 0.0  # TODO
             S_batch[p, :]      = 0.0  # TODO
             S_std_batch[p, :]  = 0.0  # TODO
+
+        # Optional remote scratch cleanup on the submit path — see the
+        # single-plasma branch for the rationale. Same try/except shape so
+        # a connection hiccup doesn't abort the PORTALS iteration.
+        if run_type == 'submit' and remove_scratch_after_fetch:
+            try:
+                cgyro.simulation_job.connect()
+                cgyro.simulation_job.remove_scratch_folder()
+                cgyro.simulation_job.close()
+                print(f"\t- [submit] remove_scratch_after_fetch=true — removed remote scratch {cgyro.simulation_job.folderExecution}", typeMsg='i')
+            except Exception as _rs_e:
+                print(f"\t- remote scratch removal raised ({_rs_e}); leaving the folder in place", typeMsg='w')
 
         # Invariant for re-attach: "metadata present => job in flight (or
         # retrieval not yet complete)". Read loop succeeded, so drop the file.
