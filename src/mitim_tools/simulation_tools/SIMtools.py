@@ -928,6 +928,7 @@ class mitim_simulation:
                 "output_folders": [str(f) for f in getattr(job, "output_folders", [])],
                 "check_files_in_folder": getattr(job, "check_files_in_folder", {}),
                 "output_folders_selective": getattr(job, "output_folders_selective", {}),
+                "output_file_fallbacks": getattr(job, "output_file_fallbacks", {}),
                 "log_simulation_file": str(job.log_simulation_file) if job.log_simulation_file else None,
                 "run_in_place": bool(getattr(job, "run_in_place", False)),
             },
@@ -963,6 +964,7 @@ class mitim_simulation:
         job.output_folders = list(data["job"]["output_folders"])
         job.check_files_in_folder = data["job"]["check_files_in_folder"]
         job.output_folders_selective = data["job"]["output_folders_selective"]
+        job.output_file_fallbacks = data["job"].get("output_file_fallbacks", {})
         job.run_in_place = data["job"].get("run_in_place", False)
 
         # On the original submit path `_run()` creates this folder via

@@ -69,6 +69,12 @@ class mitim_job:
         self.jobid = None
         self.log_simulation_file = log_simulation_file
 
+        # Populated in prep() for the submit path and in load_submission_state()
+        # for the re-attach path. Initialised here so retrieve() can read it
+        # unconditionally even on job instances that bypass prep() entirely
+        # (e.g. mitim_job.check() builds a temporary retrieve for squeue output).
+        self.output_file_fallbacks = {}
+
     def define_machine(
         self,
         code,
