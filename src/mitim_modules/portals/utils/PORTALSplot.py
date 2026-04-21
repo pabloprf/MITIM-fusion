@@ -2138,6 +2138,10 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     colors = GRAPHICStools.listColors()
     
+    # Lazy import — avoid dragging CGYROtools into every caller of this module
+    # when the transport-models tab isn't being rendered.
+    from mitim_tools.gacode_tools import CGYROtools
+
     k = 0
     for it in self.transport_model_objects:
         turb = self.transport_model_objects[it].get('turbulence')
@@ -2145,6 +2149,12 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
         # Skip iterations with missing halves (e.g. SR CGYRO-only populates
         # this dict with turb=None, or a partial read where one leg failed).
         if turb is None or neo is None:
+            continue
+        # Skip iterations where turbulence is CGYRO — the transport-models
+        # tab renders TGLF-style plots (fn_color / extratitle kwargs) that
+        # CGYROtools.CGYRO.plot does not accept, and CGYRO has its own
+        # dedicated per-rho / per-channel time-trace tabs below.
+        if isinstance(turb, CGYROtools.CGYRO):
             continue
         turb.plot(fn=fn, fn_color=fn_color+k, labels = ['base'], extratitle=f"Turb (#{it}) - ")
 
