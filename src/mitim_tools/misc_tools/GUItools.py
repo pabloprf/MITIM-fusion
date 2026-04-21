@@ -184,7 +184,7 @@ class FigureNotebook:
 
         return fig, ax
 
-    def addPlot(self, title, figure, tab_color=None, tab_alpha=0.2):
+    def addPlot(self, title, figure, tab_color=None, tab_alpha=0.55):
         """
         tab_color can be a color name or an integer to grab colors in order
         """
@@ -230,6 +230,61 @@ class FigureNotebook:
             tab_color_hex = QtGui.QColor(tab_color_hex)
             tab_color_hex.setAlphaF(tab_alpha)
             self.tabs.tabBar().setTabColor(self.tabs.count() - 1, tab_color_hex)
+
+    def _move_tab(self, from_idx, to_idx):
+        '''
+        Move one tab inside the QTabWidget and keep every parallel tracking
+        list aligned (canvases, figure_handles, toolbar_handles, tab_handles,
+        tab_titles). Per-tab colours are keyed by tab_handle identity during
+        the move so they stay attached to the right tab after Qt reshuffles.
+        No-op in headless mode (no Qt widgets to reorder).
+        '''
+        if self._headless or from_idx == to_idx:
+            return
+
+        tab_bar = self.tabs.tabBar()
+
+        # Snapshot colours by tab-handle identity so the rebuild below
+        # re-attaches each colour to the original tab regardless of which
+        # index it ends up at.
+        color_by_handle = {}
+        for i, handle in enumerate(self.tab_handles):
+            if i in tab_bar.tab_colors:
+                color_by_handle[id(handle)] = tab_bar.tab_colors[i]
+
+        # Reorder the parallel lists the same way Qt is about to reorder
+        # its internal tab model (pop from from_idx, insert at to_idx).
+        for lst in (self.canvases, self.figure_handles, self.toolbar_handles,
+                    self.tab_handles, self.tab_titles):
+            lst.insert(to_idx, lst.pop(from_idx))
+
+        self.tabs.tabBar().moveTab(from_idx, to_idx)
+
+        # Rebuild tab_colors keyed by the new indices.
+        tab_bar.tab_colors = {}
+        for i, handle in enumerate(self.tab_handles):
+            c = color_by_handle.get(id(handle))
+            if c is not None:
+                tab_bar.tab_colors[i] = c
+        tab_bar.update()
+
+    def move_tabs_block_to_front(self, block_start, block_count):
+        '''
+        Move a consecutive block of tabs `[block_start, block_start+block_count)`
+        to the front of the notebook, preserving the block's internal order.
+        Useful when two plotting passes build the notebook in one order but
+        the desired visual order is the reverse (e.g. the OPT generic pass
+        runs first for state-hygiene reasons but should appear after the
+        module-specific block on screen).
+        '''
+        if block_count <= 0:
+            return
+        # Because moveTab(src, dst) only shifts indices in [min, max]
+        # between src and dst, tabs at src+1, src+2, ... still sit at
+        # those same indices after each move — so we can do the moves in
+        # ascending k with a static from-formula.
+        for k in range(block_count):
+            self._move_tab(block_start + k, k)
 
     def show(self):
         if self._headless:
@@ -471,6 +526,10 @@ class TabWidget(QTabWidget):
 
 
 class TabBar(QTabBar):
+    # Tab font. Constant: we rely on scroll buttons for dense notebooks
+    # rather than shrinking text per tab count.
+    _FONT_PT = 9
+
     def __init__(self, parent=None, vertical=False, xextend=1600):
         super().__init__(parent)
 
@@ -481,21 +540,28 @@ class TabBar(QTabBar):
             self.setFixedSize(xextend, 170)
         else:
             self.setFixedSize(xextend, 30)
+        # Scroll buttons apply to both layouts. Elide mode is horizontal
+        # only — in the vertical path labels are painted rotated by our
+        # own paintEvent and Qt's elision uses the un-rotated tab width,
+        # which would drop every label to empty.
+        self.setUsesScrollButtons(True)
+        if not self.vertical:
+            self.setElideMode(QtCore.Qt.TextElideMode.ElideRight)
 
         self.setStyleSheet(
-            """
-                    QTabBar::tab { 
-                        font-size:           9pt;
-                        }
-                    QTabBar::tab:selected {
+            f"""
+                    QTabBar::tab {{
+                        font-size:           {self._FONT_PT}pt;
+                        }}
+                    QTabBar::tab:selected {{
                         background:          #00FF00;
                         color:               #191970;
                         font:                bold;
-                        }
-                    QTabBar::tab:hover {
+                        }}
+                    QTabBar::tab:hover {{
                         background:          #90EE90;
                         color:               #191970;
-                        }
+                        }}
                             """
         )
 
@@ -503,13 +569,41 @@ class TabBar(QTabBar):
         self.tab_colors[index] = color
         self.update()
 
+    # Constant per-tab width. Below this, Qt squeezes tabs into slivers
+    # too narrow to render labels; at this floor, Qt's overflow logic
+    # takes over and shows scroll arrows.
+    #   horizontal mode: labels run left-to-right, 100px is comfortable.
+    #   vertical mode:   labels painted rotated -90 in a 170px-tall tab,
+    #                    15px is enough to fit an 11pt glyph column
+    #                    with minimal padding.
+    _MIN_TAB_WIDTH_PX = 100
+    _MIN_TAB_WIDTH_PX_VERTICAL = 22
+
     def tabSizeHint(self, i):
         if self.vertical:
-            tw = int(self.width() / (self.count()))
+            # Floor at _MIN_TAB_WIDTH_PX_VERTICAL so dense notebooks push
+            # total tab-strip width past xextend and Qt's scroll arrows
+            # kick in instead of collapsing every tab to a few pixels.
+            natural = int(self.width() / max(1, self.count())) if self.count() else self._MIN_TAB_WIDTH_PX_VERTICAL
+            tw = max(self._MIN_TAB_WIDTH_PX_VERTICAL, natural)
             return QtCore.QSize(tw, self.height())
 
         else:
-            return super().tabSizeHint(i)
+            # Respect the style's natural hint for short labels but floor
+            # the width so dense notebooks tip the total tab-row width
+            # past xextend, which is what triggers the scroll buttons we
+            # enabled in __init__.
+            hint = super().tabSizeHint(i)
+            return QtCore.QSize(max(hint.width(), self._MIN_TAB_WIDTH_PX), hint.height())
+
+    def minimumTabSizeHint(self, i):
+        '''Qt uses minimumTabSizeHint() during layout to decide whether tabs
+        can shrink below tabSizeHint(). We floor it at the same minimum so
+        Qt can't bypass our tabSizeHint floor.'''
+        if self.vertical:
+            return QtCore.QSize(self._MIN_TAB_WIDTH_PX_VERTICAL, self.height())
+        hint = super().minimumTabSizeHint(i)
+        return QtCore.QSize(max(hint.width(), self._MIN_TAB_WIDTH_PX), hint.height())
 
     def paintEvent(self, event):
         if self.vertical:
