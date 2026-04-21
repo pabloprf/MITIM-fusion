@@ -285,7 +285,7 @@ class opt_evaluator:
         if plotYN and (analysis_level >= 0):
             if "fn" not in self.__dict__:
                 self.fn = GUItools.FigureNotebook("MITIM Optimization Results", show=not noshow)
-            
+
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
             folderRemote=folderRemote,
@@ -293,6 +293,13 @@ class opt_evaluator:
             pointsEvaluateEachGPdimension=pointsEvaluateEachGPdimension,
             rangePlot=rangesPlot,
         )
+
+        # Record the tab count before analyze_results runs so we can move
+        # the module-specific tabs that it adds to the FRONT of the
+        # notebook afterwards. Plotting order stays generic-first so the
+        # surrogate sensitivity plot doesn't trip over cached
+        # parameters_combined left behind by PORTALS plotExpected.
+        _n_tabs_before_analyze = self.fn.tabs.count() if (plotYN and (analysis_level >= 0) and not getattr(self.fn, "_headless", False)) else 0
 
         self_complete = None
         if analysis_level > 1:
@@ -325,6 +332,16 @@ class opt_evaluator:
                     print('\t- No "analyze_results" method found for this function class',typeMsg="w")
 
         if plotYN and (analysis_level >= 0):
+            # Move the module-specific block to the front so the notebook
+            # opens with e.g. PORTALS tabs on the left and the generic
+            # OPT tabs on the right, while the underlying plot order
+            # stays generic-first (which avoids the cached-powerstate
+            # shape mismatch in input_transform_portals).
+            if not getattr(self.fn, "_headless", False):
+                _n_portals = self.fn.tabs.count() - _n_tabs_before_analyze
+                if _n_portals > 0:
+                    self.fn.move_tabs_block_to_front(_n_tabs_before_analyze, _n_portals)
+
             print(f"\n- Plotting took {IOtools.getTimeDifference(time1)}")
 
             if save_folder is not None:
