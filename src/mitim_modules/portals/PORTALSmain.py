@@ -86,6 +86,18 @@ class portals(STRATEGYtools.opt_evaluator):
         start_from_folder = self.portals_parameters["solution"]["exploration_ranges"]["start_from_folder"]
         reevaluate_targets = self.portals_parameters["solution"]["exploration_ranges"]["reevaluate_targets"]
 
+        # Multi-fidelity detection — turbulence_model / neoclassical_model may be a plain
+        # string (single fidelity, as today) or an int-keyed dict (multi-fidelity). When
+        # multi-fidelity, an extra `fidelity_level` design variable gets appended at the
+        # end of the DV vector so the acquisition optimizer can pick a fidelity to evaluate.
+        def _n_fidelities(spec):
+            return len(spec) if isinstance(spec, dict) else 1
+
+        turb_spec = self.portals_parameters["transport"]["evaluator_instance_attributes"]["turbulence_model"]
+        neo_spec = self.portals_parameters["transport"]["evaluator_instance_attributes"]["neoclassical_model"]
+        n_fidelities = max(_n_fidelities(turb_spec), _n_fidelities(neo_spec))
+        add_fidelity_level_variable = n_fidelities > 1
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Make sure that options that are required by good behavior of PORTALS
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -137,6 +149,8 @@ class portals(STRATEGYtools.opt_evaluator):
             tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
+            add_fidelity_level_variable=add_fidelity_level_variable,
+            n_fidelities=n_fidelities,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -420,6 +434,14 @@ def runModelEvaluator(
 
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
     powerstate.transport_options["cold_start"] = cold_start
+
+    # Multi-fidelity: if the optimizer chose a fidelity_level DV, round it to int and route
+    # it into the transport instance via the existing evaluator_instance_attributes setattr
+    # pipeline (STATEtools.calculateTransport applies these attributes to the transport
+    # instance before calling .evaluate()).
+    if "fidelity_level" in dictDVs:
+        fidelity_level = int(round(float(dictDVs["fidelity_level"]["value"])))
+        powerstate.transport_options["evaluator_instance_attributes"]["fidelity_level"] = fidelity_level
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)

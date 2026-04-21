@@ -2221,10 +2221,23 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     # tools layer so PORTALS stays model-agnostic — this block is just
     # the PORTALS-side discovery + namelist lookup glue.
     try:
-        turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity
+        turbulence_model = _model_highest_fidelity(
+            self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        )
     except Exception:
         turbulence_model = None
-    if turbulence_model is not None and str(turbulence_model).lower() == "cgyro":
+    # Dispatch on the backend code (namelist entry may be a named instance like 'cgyro1'
+    # whose options block sets `code: cgyro`). Fall back to the raw string if the
+    # options block is missing (e.g. during a pre-evaluate dry run).
+    code_for_dispatch = None
+    if turbulence_model is not None:
+        try:
+            opts = self.powerstate.transport_options.get('options', {}).get(turbulence_model, {}) or {}
+            code_for_dispatch = str(opts.get('code', turbulence_model)).lower()
+        except Exception:
+            code_for_dispatch = str(turbulence_model).lower()
+    if code_for_dispatch == "cgyro":
         _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start=fn_color + k + 1)
 
 

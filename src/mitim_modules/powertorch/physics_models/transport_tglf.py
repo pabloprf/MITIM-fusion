@@ -19,9 +19,12 @@ class tglf_model:
     # (plasma, rho) work unit is dispatched concurrently by the existing FARMINGtools pipeline.
     # Used by power_transport._evaluate_batched() when the powerstate carries batch_size > 1.
     # ----------------------------------------------------------------------------------------
-    def _evaluate_tglf_batched(self, list_of_states, pass_info=True):
+    def _evaluate_tglf_batched(self, list_of_states, pass_info=True, options_key=None):
 
-        simulation_options = self.transport_evaluator_options["tglf"]
+        # options_key lets cgyro_model reach in for the base-TGLF diagnostic and pin the
+        # read to options["tglf"] even when the active turbulence fidelity is cgyro.
+        options_key = options_key or getattr(self, "_active_turb_options_key", None) or "tglf"
+        simulation_options = self.transport_evaluator_options[options_key]
         cold_start = self.cold_start
 
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
@@ -57,7 +60,7 @@ class tglf_model:
 
         plasma_labels = tglf.run_over_plasmas(
             list_of_states,
-            base_subfolder="base_tglf",
+            base_subfolder=f"base_{options_key}",
             cold_start=cold_start,
             forceIfcold_start=True,
             extra_name=self.name,
@@ -171,13 +174,16 @@ class tglf_model:
         return tglf
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
-    def _evaluate_tglf(self, pass_info = True):
-        
+    def _evaluate_tglf(self, pass_info = True, options_key=None):
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options = self.transport_evaluator_options["tglf"]
+        # options_key lets cgyro_model reach in for the base-TGLF diagnostic and pin the
+        # read to options["tglf"] even when the active turbulence fidelity is cgyro.
+        options_key = options_key or getattr(self, "_active_turb_options_key", None) or "tglf"
+        simulation_options = self.transport_evaluator_options[options_key]
         cold_start = self.cold_start
 
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
@@ -212,14 +218,18 @@ class tglf_model:
         # Run TGLF (base)
         # ------------------------------------------------------------------------------------------------------------------------
 
+        # Subfolder name tracks the instance (so named multi-fidelity configs like
+        # 'tglf1' / 'tglf2' don't collide on disk). Single-fidelity keeps writing to
+        # 'base_tglf' exactly as before.
+        subfolder_name = f"base_{options_key}"
         tglf.run(
-            'base_tglf',
+            subfolder_name,
             ApplyCorrections=False,
             cold_start= cold_start,
             forceIfcold_start=True,
             extra_name= self.name,
             allocation={
-                "resources_per_call": cores_per_tglf_instance,      
+                "resources_per_call": cores_per_tglf_instance,
                 "minutes": 2,
                 },
             attempts_execution=2,

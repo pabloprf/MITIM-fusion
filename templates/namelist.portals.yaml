@@ -113,7 +113,31 @@ transport:
   # When True, every PORTALS transport call is executed in-memory with no folder / file I/O.
   in_process: false
 
-  # Select transport models (when instantiating the evaluator, assign these parameters)
+  # Select transport models (when instantiating the evaluator, assign these parameters).
+  #
+  # Each entry below points to an `options.<instance_name>` block further down. Every
+  # options block should carry a `code:` field (tglf / cgyro / gx / neo) so the dispatcher
+  # knows which backend to call; if omitted the dispatcher falls back to the block key
+  # itself (back-compat for old namelists).
+  #
+  # Single-fidelity form (default) — plain string matching an entry in `options` below:
+  #     turbulence_model: "tglf"
+  #     neoclassical_model: "neo"
+  #
+  # Multi-fidelity form — int-keyed dict. An extra `fidelity_level` design variable is
+  # appended at the end of the DV vector, bounded [0, N-1], rounded to int at dispatch:
+  #     turbulence_model:
+  #       0: 'tglf'
+  #       1: 'cgyro'
+  #     neoclassical_model: "neo"
+  #
+  # Named instances (e.g. two different TGLF configs). In this case the `code:` field in
+  # each options block is required, since the block key (e.g. `tglf1`) is not itself a
+  # backend code:
+  #     turbulence_model:
+  #       0: 'tglf1'
+  #       1: 'tglf2'
+  # and in `options` below define `tglf1: {code: tglf, run: {...}, ...}` and likewise `tglf2`.
   evaluator_instance_attributes:
 
     # Turbulent transport model
@@ -147,6 +171,11 @@ transport:
     # TGLF
     # *********************************************************************************************************
     tglf:
+
+      # Backend code for this options block (tglf / cgyro / gx / neo). Required when the block
+      # key isn't one of those names (e.g. named multi-fidelity instances like `tglf1`).
+      # If omitted, the dispatcher falls back to the block key itself.
+      code: tglf
 
       # Kwargs to be passed to the run command
       run:
@@ -182,6 +211,9 @@ transport:
     # *********************************************************************************************************
     neo:
 
+      # Backend code (see note on the tglf block above).
+      code: neo
+
       run:
         code_settings: "Sonic"
 
@@ -206,6 +238,9 @@ transport:
     # CGYRO
     # *********************************************************************************************************
     cgyro:
+
+      # Backend code (see note on the tglf block above).
+      code: cgyro
 
       run:
         code_settings: "Nonlinear"
@@ -323,18 +358,6 @@ transport:
         # Polling cadence for .check() when run_type=="submit" (minutes)
         every_n_minutes: 10
 
-        # When True and run_type=="submit", the remote scratch folder is
-        # rm -rf'd right after fetch() pulls everything locally and read()
-        # succeeds. run_type=="normal" already cleans up via
-        # run(removeScratchFolders=True); submit mode defers that because
-        # fetch is decoupled from run, so scratch folders pile up on the
-        # cluster (one per PORTALS iteration, each holding staged inputs +
-        # whatever keep_files / restart blobs CGYRO produced). Default
-        # False to preserve the current "leave it for debug / re-attach"
-        # behaviour. Set True on long campaigns to stop eating cluster
-        # disk. Does nothing when run_type != "submit".
-        remove_scratch_after_fetch: False
-
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
         #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
@@ -383,6 +406,9 @@ transport:
     # *********************************************************************************************************
     gx:
 
+      # Backend code (see note on the tglf block above).
+      code: gx
+
       run:
 
         code_settings: "Nonlinear"
@@ -390,11 +416,6 @@ transport:
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
-
-        # See the CGYRO notes on this flag above. Same semantics for GX:
-        # remove the remote scratch folder right after fetch() + read()
-        # succeed when run_type=="submit". Default False.
-        remove_scratch_after_fetch: False
 
       read:
         # tmin: left edge of the signal-analysis window.

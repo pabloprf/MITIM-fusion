@@ -15,7 +15,8 @@ class neo_model:
     # ----------------------------------------------------------------------------------------
     def _evaluate_neo_batched(self, list_of_states):
 
-        simulation_options = self.transport_evaluator_options["neo"]
+        neo_key = getattr(self, "_active_neo_options_key", None) or "neo"
+        simulation_options = self.transport_evaluator_options[neo_key]
         cold_start = self.cold_start
 
         percent_error = simulation_options["percent_error"]
@@ -37,7 +38,7 @@ class neo_model:
 
         plasma_labels = neo.run_over_plasmas(
             list_of_states,
-            base_subfolder="base_neo",
+            base_subfolder=f"base_{neo_key}",
             cold_start=cold_start,
             forceIfcold_start=True,
             **simulation_options["run"],
@@ -76,12 +77,13 @@ class neo_model:
         return neo
 
     def evaluate_neoclassical(self):
-        
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Grab options
         # ------------------------------------------------------------------------------------------------------------------------
 
-        simulation_options = self.transport_evaluator_options["neo"]
+        neo_key = getattr(self, "_active_neo_options_key", None) or "neo"
+        simulation_options = self.transport_evaluator_options[neo_key]
         cold_start = self.cold_start
 
         percent_error = simulation_options["percent_error"]
@@ -106,7 +108,7 @@ class neo_model:
             )
         
         neo.run(
-            'base_neo',
+            f"base_{neo_key}",
             cold_start=cold_start,
             forceIfcold_start=True,
             **simulation_options["run"]

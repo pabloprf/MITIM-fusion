@@ -25,6 +25,29 @@ def _extract_trailing_int(name):
     m = _TRAILING_INT_RE.search(name)
     return int(m.group(1)) if m else None
 
+
+def _model_highest_fidelity(spec):
+    """In single-fidelity runs the turbulence_model / neoclassical_model entry is a
+    plain string and passes through. In multi-fidelity runs it is an int-keyed dict;
+    return the highest-fidelity (largest key) instance name so analysis / plotting
+    reports the most trusted model. Full multi-fidelity overlays are follow-up work."""
+    if isinstance(spec, dict):
+        return spec[max(spec.keys())]
+    return spec
+
+
+def _resolve_code_from_options(transport_options, instance_name):
+    """Resolve the backend code (tglf / cgyro / gx / neo) for a named instance by
+    reading transport.options.<instance_name>.code. Falls back to the instance name
+    itself (the name-equals-code convention used for the shipped defaults)."""
+    if instance_name is None:
+        return None
+    try:
+        opts = (transport_options.get('options', {}) or {}).get(instance_name, {}) or {}
+    except Exception:
+        opts = {}
+    return str(opts.get('code', instance_name)).lower()
+
 class PORTALSanalyzer:
     # ****************************************************************************
     # INITIALIZATION
@@ -391,34 +414,44 @@ class PORTALSanalyzer:
         its = [0, self.ibest]
 
         try:
-            turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+            turbulence_model = _model_highest_fidelity(
+                self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+            )
         except Exception:
             turbulence_model = None
         try:
-            neoclassical_model = self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+            neoclassical_model = _model_highest_fidelity(
+                self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+            )
         except Exception:
             neoclassical_model = None
 
-        turb_key = str(turbulence_model).lower() if turbulence_model is not None else None
-        neo_key = str(neoclassical_model).lower() if neoclassical_model is not None else None
+        # `turb_key` / `neo_key` are the *instance* names (folder suffixes on disk); the
+        # backend *code* (what we dispatch on) is resolved from transport.options.<name>.code.
+        # In single-fidelity the two are identical (e.g. 'tglf'); in named multi-fidelity
+        # they differ (e.g. turb_key='tglf1', turb_code='tglf').
+        turb_key = str(turbulence_model) if turbulence_model is not None else None
+        neo_key = str(neoclassical_model) if neoclassical_model is not None else None
+        turb_code = _resolve_code_from_options(self.powerstate.transport_options, turb_key)
+        neo_code = _resolve_code_from_options(self.powerstate.transport_options, neo_key)
 
         # Warn once (not per iteration) when the model string isn't one we
         # know how to read. The slots land as None and downstream plotting
         # degrades gracefully.
         _known_turb = {"tglf", "cgyro"}
         _known_neo = {"neo"}
-        if turb_key is not None and turb_key not in _known_turb:
+        if turb_code is not None and turb_code not in _known_turb:
             print(f"\t- read_transport_models: unknown turbulence_model={turbulence_model!r}; leaving turb=None", typeMsg='w')
-        if neo_key is not None and neo_key not in _known_neo:
+        if neo_code is not None and neo_code not in _known_neo:
             print(f"\t- read_transport_models: unknown neoclassical_model={neoclassical_model!r}; leaving neo=None", typeMsg='w')
 
         # CGYRO read kwargs (tmin/tmin_is_rel) come from the same namelist
         # entry the trace-plot dispatcher uses, so the plot-time re-read
         # reproduces the averaging window PORTALS actually used.
         cgyro_read_kwargs = {}
-        if turb_key == "cgyro":
+        if turb_code == "cgyro":
             try:
-                _cgyro_read_cfg = self.powerstate.transport_options['options']['cgyro']['read']
+                _cgyro_read_cfg = self.powerstate.transport_options['options'][turb_key]['read']
                 cgyro_read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
                                      if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
             except Exception:
@@ -431,17 +464,17 @@ class PORTALSanalyzer:
             neo = None
 
             # --- Turbulence leg ---
-            if turb_key == "tglf":
+            if turb_code == "tglf":
                 from mitim_tools.gacode_tools import TGLFtools
                 try:
                     tglf = TGLFtools.TGLF(rhos=self.rhos)
                     print(f"> Reading TGLF results for evaluation {it} (not printing to avoid cluttering the terminal)")
                     with LOGtools.HiddenPrints():
-                        tglf.read(folder=folder_execution / "base_tglf", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                        tglf.read(folder=folder_execution / f"base_{turb_key}", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
 
                     # Extract turbulence-drives distributions (if any).
                     subfolders = [f for f in folder_execution.iterdir() if f.is_dir() and f.name.startswith("turb_drives_")]
-                    subfolders.append(folder_execution / "base_tglf")
+                    subfolders.append(folder_execution / f"base_{turb_key}")
                     distributions_x = []
                     distributions_y = {'Qe': [], 'Qi': [], 'Ge': []}
                     for subfolder in subfolders:
@@ -458,7 +491,7 @@ class PORTALSanalyzer:
                 except Exception as e:
                     print(f"\t- TGLF read failed for evaluation {it} ({e}); leaving turb=None", typeMsg='w')
                     turb = None
-            elif turb_key == "cgyro":
+            elif turb_code == "cgyro":
                 # Same loader the trace-plot dispatcher uses; returns None on
                 # failure, no exceptions bubbled. Scoped to a single iteration
                 # so this is far cheaper than the full-history lazy cache in
@@ -472,13 +505,13 @@ class PORTALSanalyzer:
                     turb = None
 
             # --- Neoclassical leg ---
-            if neo_key == "neo":
+            if neo_code == "neo":
                 from mitim_tools.gacode_tools import NEOtools
                 try:
                     neo_obj = NEOtools.NEO(rhos=self.rhos)
                     print(f"> Reading NEO results for evaluation {it} (not printing to avoid cluttering the terminal)")
                     with LOGtools.HiddenPrints():
-                        neo_obj.read(folder=folder_execution / "base_neo", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
+                        neo_obj.read(folder=folder_execution / f"base_{neo_key}", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
                     neo = neo_obj
                 except Exception as e:
                     print(f"\t- NEO read failed for evaluation {it} ({e}); leaving neo=None", typeMsg='w')
@@ -1202,8 +1235,12 @@ class PORTALSinitializer:
             return
 
         try:
-            turbulence_model = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
-            neoclassical_model = self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+            turbulence_model = _model_highest_fidelity(
+                self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+            )
+            neoclassical_model = _model_highest_fidelity(
+                self.powerstate.transport_options['evaluator_instance_attributes']['neoclassical_model']
+            )
         except Exception as e:
             print(f"\t- Could not read transport-model config from powerstate ({e}); skipping SR transport-models plot", typeMsg='w')
             return
@@ -1224,21 +1261,29 @@ class PORTALSinitializer:
         if not its_to_read:
             return
 
+        # `*_key` is the instance name (drives folder naming); `*_code` is the backend
+        # code (drives dispatch). Identical in single-fidelity; differ under named
+        # multi-fidelity instances (e.g. key='tglf1', code='tglf').
+        turb_key = str(turbulence_model) if turbulence_model is not None else None
+        neo_key = str(neoclassical_model) if neoclassical_model is not None else None
+        turb_code = _resolve_code_from_options(self.powerstate.transport_options, turb_key)
+        neo_code = _resolve_code_from_options(self.powerstate.transport_options, neo_key)
+
         for it in its_to_read:
             folder_execution = its_map[it]
             turb = neo = None
 
-            if str(turbulence_model).lower() == "tglf":
+            if turb_code == "tglf":
                 try:
                     from mitim_tools.gacode_tools import TGLFtools
                     tglf = TGLFtools.TGLF(rhos=self.rhos)
                     print(f"> [SR] Reading TGLF results for evaluation {it}")
                     with LOGtools.HiddenPrints():
-                        tglf.read(folder=folder_execution / "base_tglf", label="base",
+                        tglf.read(folder=folder_execution / f"base_{turb_key}", label="base",
                                   input_gacode=folder_execution / "input.gacode_torun")
                     # Turbulence-drives distributions (mirrors analyzer block).
                     subfolders = [f for f in folder_execution.iterdir() if f.is_dir() and f.name.startswith("turb_drives_")]
-                    subfolders.append(folder_execution / "base_tglf")
+                    subfolders.append(folder_execution / f"base_{turb_key}")
                     distributions_x = []
                     distributions_y = {'Qe': [], 'Qi': [], 'Ge': []}
                     for subfolder in subfolders:
@@ -1259,13 +1304,13 @@ class PORTALSinitializer:
                 except Exception as e:
                     print(f"\t- [SR] TGLF read failed for ev{it} ({e}); skipping", typeMsg='w')
 
-            if str(neoclassical_model).lower() == "neo":
+            if neo_code == "neo":
                 try:
                     from mitim_tools.gacode_tools import NEOtools
                     neo_tool = NEOtools.NEO(rhos=self.rhos)
                     print(f"> [SR] Reading NEO results for evaluation {it}")
                     with LOGtools.HiddenPrints():
-                        neo_tool.read(folder=folder_execution / "base_neo", label="base",
+                        neo_tool.read(folder=folder_execution / f"base_{neo_key}", label="base",
                                       input_gacode=folder_execution / "input.gacode_torun")
                     neo = neo_tool
                 except Exception as e:

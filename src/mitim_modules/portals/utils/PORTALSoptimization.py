@@ -307,6 +307,16 @@ def initialization_simple_relax(self):
     # rows that line up with the Evaluation.{i} layout above (i = s * n_traj + t).
     Xopt = Xopt_batches.reshape(self.Originalinitial_training, -1)
 
+    # Multi-fidelity: SR's flux_match operates only on the physics (gradient) DVs, so Xopt
+    # is (N, N_grads). When the namelist requests multi-fidelity, problem_options["dvs"]
+    # carries an extra `fidelity_level` entry at the end — pad a zeros column so the
+    # returned train_X matches len(dvs). SR is pinned to fidelity_level=0 (base, cheapest
+    # model); runModelEvaluator rounds to int on actual dispatch.
+    dvs_list = self.optimization_options["problem_options"]["dvs"]
+    if "fidelity_level" in dvs_list:
+        pad = torch.zeros((Xopt.shape[0], 1), dtype=Xopt.dtype, device=Xopt.device)
+        Xopt = torch.cat([Xopt, pad], dim=1)
+
     return Xopt.cpu().numpy()
 
 """

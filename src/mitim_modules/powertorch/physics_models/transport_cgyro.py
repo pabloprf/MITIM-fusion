@@ -687,7 +687,7 @@ class gyrokinetic_model:
 
     def _stable_correction(self, simulation_options_all):
 
-        simulation_options = simulation_options_all["cgyro"]
+        simulation_options = simulation_options_all[getattr(self, "_active_turb_options_key", None) or "cgyro"]
 
         Qi_stable_criterion = simulation_options["Qi_stable_criterion"]
         # Setting Qi_stable_criterion to null/None in the namelist disables the check entirely.
@@ -730,14 +730,19 @@ class cgyro_model(gyrokinetic_model):
 
     def evaluate_turbulence(self):
 
-        if self.transport_evaluator_options["cgyro"].get("run_base_tglf", True):
+        # Active cgyro options block (defaults to "cgyro"; differs in named multi-fidelity
+        # instances like "cgyro1"). The base-TGLF diagnostic below intentionally stays on
+        # options["tglf"] — see namelist.portals.yaml notes on the multi-fidelity scoping.
+        cgyro_key = getattr(self, "_active_turb_options_key", None) or "cgyro"
+
+        if self.transport_evaluator_options[cgyro_key].get("run_base_tglf", True):
             # Run base TGLF, to keep track of discrepancies! ---------------------------------------------
             simulation_options_tglf = self.transport_evaluator_options["tglf"]
             simulation_options_tglf["use_scan_trick_for_stds"] = None
-            self._evaluate_tglf(pass_info = False)
+            self._evaluate_tglf(pass_info=False, options_key="tglf")
             # --------------------------------------------------------------------------------------------
 
-        self._evaluate_gyrokinetic_model(code = 'cgyro', gk_object = CGYROtools.CGYRO)
+        self._evaluate_gyrokinetic_model(code=cgyro_key, gk_object=CGYROtools.CGYRO)
 
     # ----------------------------------------------------------------------------------------
     # Multi-plasma CGYRO — fan a list of profile states through run_over_plasmas so that every
@@ -746,15 +751,18 @@ class cgyro_model(gyrokinetic_model):
     # ----------------------------------------------------------------------------------------
     def evaluate_turbulence_batched(self, list_of_states, pass_info=True):
 
+        cgyro_key = getattr(self, "_active_turb_options_key", None) or "cgyro"
+
         # Run base TGLF for diagnostics, same as single-plasma path (pass_info=False
-        # so TGLF results are computed for comparison but don't overwrite the flux arrays)
-        if self.transport_evaluator_options["cgyro"].get("run_base_tglf", True):
+        # so TGLF results are computed for comparison but don't overwrite the flux arrays).
+        # Pin to options["tglf"] even under multi-fidelity, same as the single-plasma branch.
+        if self.transport_evaluator_options[cgyro_key].get("run_base_tglf", True):
             from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
             simulation_options_tglf = self.transport_evaluator_options["tglf"]
             simulation_options_tglf["use_scan_trick_for_stds"] = None
-            tglf_model._evaluate_tglf_batched(self, list_of_states, pass_info=False)
+            tglf_model._evaluate_tglf_batched(self, list_of_states, pass_info=False, options_key="tglf")
 
-        simulation_options = self.transport_evaluator_options["cgyro"]
+        simulation_options = self.transport_evaluator_options[cgyro_key]
         cold_start = self.cold_start
 
         run_type = SIMtools._normalize_run_type(simulation_options["run"].get("run_type", "normal"))

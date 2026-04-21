@@ -96,10 +96,18 @@ class power_transport:
 
         # Model results is None by default, but can be assigned in evaluate
         self.model_results = None
-        
+
         # By default, write the json files after evaluating the variables (will be changed in gyrokinetic "prep" run mode)
         self._write_json_from_variables_turb = True
         self._write_json_from_variables_neoc = True
+
+        # Multi-fidelity scaffolding — a single-fidelity run keeps fidelity_level=0 and the
+        # active-options keys unset; the portals_transport_model dispatcher sets these just
+        # before calling a backend so backend modules can index transport_evaluator_options
+        # by the active instance name rather than the hardcoded code name.
+        self.fidelity_level = 0
+        self._active_turb_options_key = None
+        self._active_neo_options_key = None
 
         # ----------------------------------------------------------------------------------------
         # labels for plotting
@@ -679,62 +687,132 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
 
-        # Defaults
+        # Defaults — single fidelity. `turbulence_model` / `neoclassical_model` may be
+        # overridden via transport_options["evaluator_instance_attributes"] to either a
+        # plain string (single fidelity, as today) or an int-keyed dict (multi-fidelity,
+        # e.g. {0: 'tglf', 1: 'cgyro'} or {0: 'tglf1', 1: 'tglf2'}). See namelist.portals.yaml.
         self.turbulence_model = 'tglf'
         self.neoclassical_model = 'neo'
 
+    # ----------------------------------------------------------------------------------------
+    # Multi-fidelity resolution helpers
+    # ----------------------------------------------------------------------------------------
+    def _resolve_instance_name(self, spec):
+        '''Return the active instance-name string for a model spec. Strings pass through;
+        dicts (int-keyed) are indexed by self.fidelity_level.'''
+        if isinstance(spec, dict):
+            key = int(round(float(self.fidelity_level)))
+            if key not in spec:
+                raise KeyError(
+                    f"fidelity_level={key} not present in model spec {spec!r}; "
+                    f"valid keys are {sorted(spec.keys())}"
+                )
+            return spec[key]
+        return spec
+
+    def _resolve_code(self, instance_name):
+        '''Resolve the backend code (tglf / cgyro / gx / neo) from an instance name by
+        looking at transport.options.<name>.code. When absent, the instance name must
+        itself equal a known code.'''
+        opts = self.transport_evaluator_options.get(instance_name, {})
+        if not isinstance(opts, dict):
+            opts = {}
+        return str(opts.get('code', instance_name)).lower()
+
+    def _announce_multifidelity(self, kind, spec, active_name, code, batched=False):
+        '''Print the resolved fidelity choice — but only when the namelist actually
+        requested multi-fidelity (dict spec). Single-fidelity runs stay silent so the
+        log output doesn't change from today's behaviour.'''
+        if not isinstance(spec, dict):
+            return
+        fid = int(round(float(self.fidelity_level)))
+        tag = " (batched)" if batched else ""
+        fidelities_sorted = sorted(spec.keys())
+        menu = ", ".join(f"{k}:{spec[k]!r}" for k in fidelities_sorted)
+        print(
+            f">> [multi-fidelity] {kind}{tag}: fidelity_level={fid} -> instance={active_name!r} (code={code!r}) "
+            f"| ladder: {{{menu}}}",
+            typeMsg="i",
+        )
+
     def produce_profiles(self):
         self._produce_profiles()
-        
+
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_turb.json', suffix= 'turb'))
     def evaluate_turbulence(self):
 
-        if self.turbulence_model.lower() == 'tglf':
+        active_name = self._resolve_instance_name(self.turbulence_model)
+        self._active_turb_options_key = active_name
+        code = self._resolve_code(active_name)
+        self._announce_multifidelity("turbulence", self.turbulence_model, active_name, code)
+
+        if code == 'tglf':
             return tglf_model.evaluate_turbulence(self)
-        elif self.turbulence_model.lower() == 'cgyro':
+        elif code == 'cgyro':
             return cgyro_model.evaluate_turbulence(self)
-        elif self.turbulence_model.lower() == 'gx':
+        elif code == 'gx':
             return gx_model.evaluate_turbulence(self)
         else:
-            raise Exception(f"Unknown turbulence model {self.turbulence_model}")
+            raise Exception(f"Unknown turbulence code {code!r} (instance {active_name!r})")
 
     def evaluate_turbulence_batched(self, list_of_states):
         # Multi-plasma dispatcher — powerstate.batch_size > 1 path. No @hook_method here:
         # _evaluate_batched() writes per-plasma JSON pairs itself and disables the single-
         # folder write_json decorator via self._write_json_from_variables_turb = False.
-        if self.turbulence_model.lower() == 'tglf':
+        active_name = self._resolve_instance_name(self.turbulence_model)
+        self._active_turb_options_key = active_name
+        code = self._resolve_code(active_name)
+        self._announce_multifidelity("turbulence", self.turbulence_model, active_name, code, batched=True)
+
+        if code == 'tglf':
             return tglf_model.evaluate_turbulence_batched(self, list_of_states)
-        elif self.turbulence_model.lower() == 'cgyro':
+        elif code == 'cgyro':
             return cgyro_model.evaluate_turbulence_batched(self, list_of_states)
         else:
             raise NotImplementedError(
-                f"Batched turbulence dispatch not yet implemented for model "
-                f"{self.turbulence_model!r}. Use single-plasma SR or extend this dispatcher."
+                f"Batched turbulence dispatch not yet implemented for code {code!r} "
+                f"(instance {active_name!r}). Use single-plasma SR or extend this dispatcher."
             )
 
     def _stable_correction(self, simulation_options):
 
-        if self.turbulence_model.lower() == 'cgyro':
+        active_name = self._resolve_instance_name(self.turbulence_model)
+        code = self._resolve_code(active_name)
+        if code == 'cgyro':
             cgyro_model._stable_correction(self, simulation_options)
 
     @IOtools.hook_method(after=partial(write_json, file_name = 'fluxes_neoc.json', suffix= 'neoc'))
     def evaluate_neoclassical(self):
         if self.neoclassical_model is None:
             print('Neoclassical model chosen', typeMsg='w')
-        elif self.neoclassical_model.lower() == 'neo':
+            return
+
+        active_name = self._resolve_instance_name(self.neoclassical_model)
+        self._active_neo_options_key = active_name
+        code = self._resolve_code(active_name)
+        self._announce_multifidelity("neoclassical", self.neoclassical_model, active_name, code)
+
+        if code == 'neo':
             return neo_model.evaluate_neoclassical(self)
         else:
-            raise Exception(f"Unknown neoclassical model {self.neoclassical_model}")
+            raise Exception(f"Unknown neoclassical code {code!r} (instance {active_name!r})")
 
     def evaluate_neoclassical_batched(self, list_of_states):
         # Multi-plasma dispatcher — no @hook_method decorator for the same reason as
         # evaluate_turbulence_batched above.
         if self.neoclassical_model is None:
             print('Neoclassical model chosen', typeMsg='w')
-        elif self.neoclassical_model.lower() == 'neo':
+            return
+
+        active_name = self._resolve_instance_name(self.neoclassical_model)
+        self._active_neo_options_key = active_name
+        code = self._resolve_code(active_name)
+        self._announce_multifidelity("neoclassical", self.neoclassical_model, active_name, code, batched=True)
+
+        if code == 'neo':
             return neo_model.evaluate_neoclassical_batched(self, list_of_states)
         else:
             raise NotImplementedError(
-                f"Batched neoclassical dispatch not yet implemented for model "
-                f"{self.neoclassical_model!r}."
+                f"Batched neoclassical dispatch not yet implemented for code {code!r} "
+                f"(instance {active_name!r})."
             )

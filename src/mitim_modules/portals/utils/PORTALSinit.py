@@ -31,7 +31,9 @@ def initializeProblem(
     tensor_options = {
         "dtype": torch.double,
         "device": torch.device("cpu"),
-    }
+    },
+    add_fidelity_level_variable=False,
+    n_fidelities=1,
     ):
     """
     Notes:
@@ -235,6 +237,16 @@ def initializeProblem(
                 dictDVs[name] = [y1, base_gradient, y2]
             else:
                 dictDVs[name] = [fixed_gradients[name][0], base_gradient, fixed_gradients[name][1]]
+
+    # Multi-fidelity extra DV — must be appended *last* so it sits at the end of the
+    # problem_options["dvs"] ordering. The optimizer treats it as a continuous [0, N-1]
+    # knob; runModelEvaluator rounds to an int when dispatching.
+    if add_fidelity_level_variable:
+        dictDVs["fidelity_level"] = [
+            torch.tensor(0.0).to(dfT),
+            torch.tensor(0.0).to(dfT),
+            torch.tensor(float(n_fidelities - 1)).to(dfT),
+        ]
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Define output dictionaries
