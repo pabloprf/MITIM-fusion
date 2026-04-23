@@ -1092,20 +1092,25 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
         GRAPHICStools.adjust_subplots(axs=axsInputs, vertical=0.4, horizontal=0.3)
         
-        # Modify the colorbars to have a common range
-        if include_2D and common_colorbar and len(colorbars_all) > 0:
+        # Modify the colorbars to have a common range. Skip label indices where
+        # plot_2D was a no-op — e.g. when bin.cgyro.kxky_phi / kxky_n / kxky_e
+        # aren't available (MOMENT_PRINT_FLAG / FIELD_PRINT_FLAG off). _safe_plot
+        # returns None in that case, so colorbars_all can carry None entries
+        # which would crash the common-range aggregation below.
+        valid_cbs = [cbs for cbs in colorbars_all if cbs is not None]
+        if include_2D and common_colorbar and len(valid_cbs) > 0:
             for var in ['phi', 'n', 'e']:
                 min_val = np.inf
                 max_val = -np.inf
-                for ilabel in range(len(colorbars_all)):
-                    cb = colorbars_all[ilabel][0][var]
+                for cbs in valid_cbs:
+                    cb = cbs[0][var]
                     vals = cb.mappable.get_clim()
                     min_val = min(min_val, vals[0])
                     max_val = max(max_val, vals[1])
-                
-                for ilabel in range(len(colorbars_all)):
-                    for it in range(len(colorbars_all[ilabel])):
-                        cb = colorbars_all[ilabel][it][var]
+
+                for cbs in valid_cbs:
+                    for it in range(len(cbs)):
+                        cb = cbs[it][var]
                         cb.mappable.set_clim(min_val, max_val)
                         cb.update_ticks()
                         #cb.set_label(f"{var} (common range)")
