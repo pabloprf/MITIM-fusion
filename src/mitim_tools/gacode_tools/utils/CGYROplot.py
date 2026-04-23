@@ -40,7 +40,7 @@ _CMAP_ITER = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0),
 # ---------------------------------------------------------------------------
 
 
-def load_tool_for_iteration(folder_execution, rhos, read_kwargs=None):
+def load_tool_for_iteration(folder_execution, rhos, read_kwargs=None, base_subfolder="base_cgyro"):
     '''
     Best-effort load of a CGYRO tool object carrying per-rho CGYROoutput
     instances for one iteration folder. Tries the pickle fast path first
@@ -54,8 +54,15 @@ def load_tool_for_iteration(folder_execution, rhos, read_kwargs=None):
     simulation time. Without this the raw path defaults to tmin=0.0
     (full window) and every *_mean / _std displayed disagrees with the
     scalars the driver actually consumed.
+
+    `base_subfolder` names the on-disk artifacts directory to look inside
+    (defaults to "base_cgyro" for single-fidelity). For named multi-fidelity
+    CGYRO instances callers should pass e.g. "base_cgyro1" to match what
+    the dispatcher wrote at run time. The raw-fallback read also labels its
+    results with `base_subfolder` so pick_output_for_rho's generic label
+    iteration still finds the data.
     '''
-    base = folder_execution / "base_cgyro"
+    base = folder_execution / base_subfolder
     if not base.is_dir():
         return None
 
@@ -71,7 +78,7 @@ def load_tool_for_iteration(folder_execution, rhos, read_kwargs=None):
     try:
         with HiddenPrints():
             c = CGYROtools.CGYRO(rhos=list(rhos))
-            c.read(folder=base, label="base_cgyro", minimal=True, **read_kwargs)
+            c.read(folder=base, label=base_subfolder, minimal=True, **read_kwargs)
         return c
     except Exception as e:
         print(f"\t- CGYRO read failed at {base} ({e}); skipping iteration", typeMsg='w')
@@ -100,16 +107,19 @@ def pick_output_for_rho(tool, rho, fallback_idx):
     return None
 
 
-def load_tools_for_iterations(iteration_folders, rhos, read_kwargs=None):
+def load_tools_for_iterations(iteration_folders, rhos, read_kwargs=None, base_subfolder="base_cgyro"):
     '''
     Convenience: given an iterable of (iteration_index, folder) pairs,
     return {iteration_index: tool} skipping any iteration whose folder
     fails to load. Non-destructive if some iterations are missing on
     disk — the result is whatever subset was readable.
+
+    `base_subfolder` is forwarded to load_tool_for_iteration so named
+    multi-fidelity CGYRO instances pick up the right per-iteration directory.
     '''
     cache = {}
     for it, folder in iteration_folders:
-        tool = load_tool_for_iteration(folder, rhos, read_kwargs=read_kwargs)
+        tool = load_tool_for_iteration(folder, rhos, read_kwargs=read_kwargs, base_subfolder=base_subfolder)
         if tool is not None:
             cache[it] = tool
     return cache

@@ -77,6 +77,7 @@ def _resolve_cgyro_restart_chain(
     rho_locations,
     existing_additional_files_to_send=None,
     plasma_subfolder=None,
+    base_subfolder="base_cgyro",
 ):
     '''
     Automatic-restart companion to `_resolve_cgyro_restart_folder`. Driven
@@ -176,14 +177,14 @@ def _resolve_cgyro_restart_chain(
     source_sibling = (f"portals_sr_ev_{source_iter}" if in_simple_relax
                       else f"Evaluation.{source_iter}")
 
-    source_folder = folder.parent.parent / source_sibling / folder.name / "base_cgyro"
+    source_folder = folder.parent.parent / source_sibling / folder.name / base_subfolder
     if plasma_subfolder:
         source_folder = source_folder / plasma_subfolder
 
     if not source_folder.is_dir():
         raise FileNotFoundError(
             f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
-            f"{context_label}.{evaluation_number}, but the source base_cgyro "
+            f"{context_label}.{evaluation_number}, but the source {base_subfolder} "
             f"folder does not exist:\n\t{source_folder}\n"
             f"Clear restart_from_cases in the namelist to run without restart."
         )
@@ -417,15 +418,18 @@ class gyrokinetic_model:
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
 
-        # Automatic restart chain from prior iteration's base_cgyro folder,
+        # Automatic restart chain from prior iteration's base_<code> folder,
         # driven by restart_from_cases ("first"=from iter 0, "all"=from iter N-1).
         # Skipped when restart_from_folder is set (the helper short-circuits).
+        # `subfolder_name` is f"base_{code}" — for named multi-fidelity instances
+        # (e.g. 'cgyro1') this keeps every artifact path tied to the instance name.
         resolved_additional = _resolve_cgyro_restart_chain(
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
             self.folder,
             rho_locations,
             run_kwargs.get("additional_files_to_send"),
+            base_subfolder=subfolder_name,
         )
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
@@ -791,16 +795,22 @@ class cgyro_model(gyrokinetic_model):
         N = len(list_of_states)
         nrho = len(rho_locations)
 
-        metadata_path = self.folder / "base_cgyro" / "cgyro_submission.json"
+        # All on-disk artifacts (base folder, metadata JSON, pickle, per-plasma sub-folders)
+        # track the active instance name so named multi-fidelity configs (e.g. 'cgyro1') do
+        # not collide with plain 'cgyro'. Single-fidelity keeps writing to 'base_cgyro' /
+        # 'base_cgyro_plasma{p}' exactly as before.
+        base_subfolder_name = f"base_{cgyro_key}"
+
+        metadata_path = self.folder / base_subfolder_name / "cgyro_submission.json"
 
         # Try to restore from pickle if keep_files == 'pickle' (mirrors single-plasma path)
         cgyro_unpickled = False
-        pickle_file = self.folder / "base_cgyro" / "gk_object_batched.pkl"
+        pickle_file = self.folder / base_subfolder_name / "gk_object_batched.pkl"
         if keep_gk_files in ["pickle"]:
             try:
                 cgyro = SIMtools.restore_class_pickle(pickle_file)
                 cgyro_unpickled = True
-                plasma_labels = {p: f"base_cgyro_plasma{p}" for p in range(N)}
+                plasma_labels = {p: f"{base_subfolder_name}_plasma{p}" for p in range(N)}
                 print("\t- Pickle file with batched GK object information has been restored successfully", typeMsg="i")
             except Exception as e:
                 cgyro_unpickled = False
@@ -844,14 +854,17 @@ class cgyro_model(gyrokinetic_model):
             # pull bin.cgyro.restart from plasma 0 of the source iteration
             # (iter 0 for "first", iter N-1 for "all"). All plasmas in the
             # current batched call warm-start from the same plasma-0 reference
-            # since they share the seed-iteration semantics.
+            # since they share the seed-iteration semantics. base_subfolder and
+            # plasma_subfolder are both instance-named so multi-fidelity restart
+            # chains resolve to the right ancestor directory on disk.
             resolved_additional = _resolve_cgyro_restart_chain(
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
                 self.folder,
                 rho_locations,
                 run_kwargs.get("additional_files_to_send"),
-                plasma_subfolder="base_cgyro_plasma0",
+                plasma_subfolder=f"{base_subfolder_name}_plasma0",
+                base_subfolder=base_subfolder_name,
             )
             if resolved_additional is not None:
                 run_kwargs["additional_files_to_send"] = resolved_additional
@@ -896,7 +909,7 @@ class cgyro_model(gyrokinetic_model):
                     # is harmless (and the slurm job already has its own copy).
                     _, _, plasma_labels = cgyro._prepare_plasmas_state(
                         list_of_states,
-                        base_subfolder="base_cgyro",
+                        base_subfolder=base_subfolder_name,
                         cold_start=False,
                         forceIfcold_start=True,
                         code_settings=run_kwargs.get("code_settings"),
@@ -970,7 +983,7 @@ class cgyro_model(gyrokinetic_model):
 
                 plasma_labels = cgyro.run_over_plasmas(
                     list_of_states,
-                    base_subfolder="base_cgyro",
+                    base_subfolder=base_subfolder_name,
                     cold_start=cold_start,
                     forceIfcold_start=True,
                     extra_name=self.name,

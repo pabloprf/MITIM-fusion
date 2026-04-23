@@ -495,11 +495,17 @@ class PORTALSanalyzer:
                 # Same loader the trace-plot dispatcher uses; returns None on
                 # failure, no exceptions bubbled. Scoped to a single iteration
                 # so this is far cheaper than the full-history lazy cache in
-                # _plot_cgyro_time_traces_dispatch.
+                # _plot_cgyro_time_traces_dispatch. base_subfolder follows the
+                # active instance name so named multi-fidelity CGYROs (e.g.
+                # 'cgyro1') land in the right per-iteration folder.
                 from mitim_tools.gacode_tools.utils import CGYROplot
                 print(f"> Reading CGYRO results for evaluation {it}")
                 try:
-                    turb = CGYROplot.load_tool_for_iteration(folder_execution, self.rhos, read_kwargs=cgyro_read_kwargs)
+                    turb = CGYROplot.load_tool_for_iteration(
+                        folder_execution, self.rhos,
+                        read_kwargs=cgyro_read_kwargs,
+                        base_subfolder=f"base_{turb_key}",
+                    )
                 except Exception as e:
                     print(f"\t- CGYRO load failed for evaluation {it} ({e}); leaving turb=None", typeMsg='w')
                     turb = None

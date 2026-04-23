@@ -2303,12 +2303,23 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         print("\t- Cannot resolve PORTALS root folder for CGYRO trace plot; skipping", typeMsg='w')
         return
 
+    # Resolve the active CGYRO instance name — defaults to 'cgyro' for single-fidelity,
+    # could be 'cgyro1'/'cgyro2'/... under named multi-fidelity. This drives:
+    #  (a) which options sub-block we read tmin / restart config from, and
+    #  (b) the on-disk base_<name> folder the loaders look inside.
+    try:
+        from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity
+        turb_spec = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        cgyro_key = _model_highest_fidelity(turb_spec) or "cgyro"
+    except Exception:
+        cgyro_key = "cgyro"
+
     # Read-time config from the namelist — so the raw-fallback re-read
     # inside CGYROplot.load_tool_for_iteration uses exactly the window
     # PORTALS used at simulation time (pickles already carry this baked
     # in).
     try:
-        _cgyro_read_cfg = self.powerstate.transport_options['options']['cgyro']['read']
+        _cgyro_read_cfg = self.powerstate.transport_options['options'][cgyro_key]['read']
         _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
                         if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
     except Exception:
@@ -2318,7 +2329,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     # Same precedence as transport_cgyro.py: restart_from_folder forces
     # overlay because we don't know the external sim's tmax.
     try:
-        cgyro_run_cfg = self.powerstate.transport_options['options']['cgyro']['run']
+        cgyro_run_cfg = self.powerstate.transport_options['options'][cgyro_key]['run']
         _raw = cgyro_run_cfg.get('restart_from_cases')
         if _raw in (None, "", "null") and cgyro_run_cfg.get('restart_from_first'):
             _raw = "first"  # legacy alias
@@ -2335,6 +2346,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             _iterate_portals_evaluation_folders(root_folder),
             self.rhos,
             read_kwargs=_read_kwargs,
+            base_subfolder=f"base_{cgyro_key}",
         )
 
     CGYROplot.plot_time_traces_per_radius(
