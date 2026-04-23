@@ -28,6 +28,44 @@ from pathlib import Path
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
+# File-name prefixes we never want to pull during an intermediate inspection.
+# bin.cgyro.restart / bin.cgyro.restart.flag dominate the transfer size on
+# nonlinear runs (tens to hundreds of MB per rho, growing with grid size) and
+# carry zero diagnostic value at plot time — .read() / .plot() only look at
+# out.cgyro.* and bin.cgyro.ky_*.
+_EXCLUDE_FILE_PREFIXES = ("bin.cgyro.restart",)
+
+
+def _looks_excluded(name):
+    base = str(name).rsplit("/", 1)[-1]
+    return any(base.startswith(pref) for pref in _EXCLUDE_FILE_PREFIXES)
+
+
+def _filter_out_excluded(job, kwargs_organize):
+    '''Strip restart-style files from every list the retrieve+organize pipeline
+    consults: mandatory output_files, per-folder selective patterns, and the
+    filesToRetrieve / optional_files_to_retrieve driving _organize_results.'''
+    dropped = []
+
+    if getattr(job, "output_files", None):
+        kept = [f for f in job.output_files if not _looks_excluded(f)]
+        dropped.extend(f for f in job.output_files if _looks_excluded(f))
+        job.output_files = kept
+
+    selective = getattr(job, "output_folders_selective", None) or {}
+    for folder, patterns in list(selective.items()):
+        kept_patterns = [p for p in patterns if not _looks_excluded(p)]
+        dropped.extend(f"{folder}/{p}" for p in patterns if _looks_excluded(p))
+        selective[folder] = kept_patterns
+
+    for k in ("filesToRetrieve", "optional_files_to_retrieve"):
+        if k in kwargs_organize and kwargs_organize[k]:
+            kept = [f for f in kwargs_organize[k] if not _looks_excluded(f)]
+            dropped.extend(f for f in kwargs_organize[k] if _looks_excluded(f))
+            kwargs_organize[k] = kept
+
+    return dropped
+
 
 def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True):
     submission_json = Path(submission_json).expanduser().resolve()
@@ -67,6 +105,16 @@ def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True):
     # --------------------------------------------------------------------
     cgyro = CGYROtools.CGYRO(rhos=rhos)
     cgyro.load_submission_state(submission_json)
+
+    # --------------------------------------------------------------------
+    # Strip heavy restart blobs from the retrieve list BEFORE pulling.
+    # These can be hundreds of MB per rho on nonlinear runs and aren't
+    # needed for .read() / .plot().
+    # --------------------------------------------------------------------
+    dropped = _filter_out_excluded(cgyro.simulation_job, cgyro.kwargs_organize)
+    if dropped:
+        unique_names = sorted(set(str(d).rsplit("/", 1)[-1] for d in dropped))
+        print(f"- Excluding from retrieval ({len(dropped)} entries): {unique_names}")
 
     # --------------------------------------------------------------------
     # Redirect EVERY local path into the user's output folder so the
