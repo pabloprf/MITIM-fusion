@@ -123,8 +123,21 @@ def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True):
     local_base = output_folder / base_subfolder
     local_base.mkdir(parents=True, exist_ok=True)
 
-    cgyro.simulation_job.folder_local = output_folder
-    cgyro.kwargs_organize["tmpFolder"] = output_folder / "tmp_retrieve"
+    # Folder topology — mirror what the original PORTALS run does:
+    #   - local_base       (per-rho DESTINATION, survives organize)
+    #   - local_base/tmp_retrieve  (tmpFolder = folder_local; tarball extracts
+    #                              here; shutil_rmtree'd at the end if every
+    #                              file was retrieved).
+    # retrieve() untars into folder_local, producing folder_local/<sub>/rho_<r>/<file>.
+    # _organize_results then moves each to code_executor[sub][rho]['folder'] /
+    # f"{file}_{rho:.4f}" = local_base / f"{file}_{rho:.4f}". Keeping tmpFolder
+    # strictly inside local_base guarantees the terminal rmtree can never wipe
+    # the organized files sitting in local_base itself.
+    tmp_retrieve = local_base / "tmp_retrieve"
+    tmp_retrieve.mkdir(parents=True, exist_ok=True)
+
+    cgyro.simulation_job.folder_local = tmp_retrieve
+    cgyro.kwargs_organize["tmpFolder"] = tmp_retrieve
     for sub, rhos_map in cgyro.kwargs_organize["code_executor"].items():
         for rho, v in rhos_map.items():
             v["folder"] = local_base
