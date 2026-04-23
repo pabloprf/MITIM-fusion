@@ -14,7 +14,11 @@ Usage:
     python fetch_cgyro_intermediate.py \\
         /path/to/cgyro_submission.json \\
         /path/to/local/output_folder \\
-        [--tmin -0.3] [--tmin-is-rel]
+        [--tmin -0.3] [--tmin-is-rel] [--save [figs]] [--dpi 120]
+
+Passing `--save` (optionally with a subfolder name; defaults to "figs") runs
+headless: no interactive Qt window is shown, and every notebook tab is dumped
+as a PNG under `<output_folder>/<save>/`.
 
 Remote side-effect: a temporary `mitim_receive.tar.gz` is created in the job's
 remote folder and deleted again after download. The CGYRO simulation files
@@ -67,7 +71,8 @@ def _filter_out_excluded(job, kwargs_organize):
     return dropped
 
 
-def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True):
+def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True,
+                   save_subfolder=None, dpi=120):
     submission_json = Path(submission_json).expanduser().resolve()
     output_folder = Path(output_folder).expanduser().resolve()
 
@@ -171,8 +176,24 @@ def fetch_and_plot(submission_json, output_folder, tmin=0.0, tmin_is_rel=True):
     cgyro.read(label=base_subfolder, folder=local_base,
                tmin=tmin, tmin_is_rel=tmin_is_rel)
 
+    # Build the FigureNotebook here (rather than letting CGYRO.plot create its
+    # own default one) so we control the show/save behavior end-to-end. When
+    # `save_subfolder` is given, keep the window hidden and dump each tab to
+    # <output_folder>/<save_subfolder>/ as PNGs; otherwise pop the interactive
+    # notebook and block for the user.
+    from mitim_tools.misc_tools.GUItools import FigureNotebook
+    saving = save_subfolder is not None
+    fn = FigureNotebook("CGYRO Notebook", geometry="1600x1000", show=not saving)
+
     print("- Plotting...")
-    cgyro.plot(labels=[base_subfolder])
+    cgyro.plot(labels=[base_subfolder], fn=fn)
+
+    if saving:
+        save_path = output_folder / save_subfolder
+        print(f"- Saving notebook figures to {save_path}/ at dpi={dpi}")
+        fn.save(save_path, dpi=dpi)
+    else:
+        fn.show()
 
     return cgyro
 
@@ -191,6 +212,12 @@ def main():
                         "Negative + tmin-is-rel -> fraction of total sim time from the end.")
     p.add_argument("--tmin-is-rel", action=argparse.BooleanOptionalAction, default=True,
                    help="Whether tmin<0 is interpreted as a relative fraction of total sim time.")
+    p.add_argument("--save", type=str, nargs="?", const="figs", default=None,
+                   help="Subfolder (under output_folder) in which to save the notebook tabs as "
+                        "PNGs. Bare `--save` uses 'figs'. When set, the interactive window stays "
+                        "hidden (headless mode).")
+    p.add_argument("--dpi", type=int, default=120,
+                   help="Resolution passed to fn.save(); only meaningful with --save.")
     args = p.parse_args()
 
     fetch_and_plot(
@@ -198,6 +225,8 @@ def main():
         args.output_folder,
         tmin=args.tmin,
         tmin_is_rel=args.tmin_is_rel,
+        save_subfolder=args.save,
+        dpi=args.dpi,
     )
 
 
