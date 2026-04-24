@@ -393,6 +393,12 @@ class gyrokinetic_model:
         simulation_options = self.transport_evaluator_options[code]
         cold_start = self.cold_start
 
+        # Defined early so the restart-chain resolver below (which needs the per-
+        # instance folder name for named multi-fidelity CGYROs) can reference it.
+        # Later sections still re-use `subfolder_name` for metadata_path, pickle,
+        # run.subfolder, read.folder, etc.
+        subfolder_name = f"base_{code}"
+
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
         run_type = SIMtools._normalize_run_type(simulation_options["run"]["run_type"])
         keep_gk_files = simulation_options.get("keep_files", 'all')
@@ -457,7 +463,7 @@ class gyrokinetic_model:
         # Prepare object
         # ------------------------------------------------------------------------------------------------------------------------
 
-        subfolder_name = f"base_{code}"
+        # subfolder_name defined earlier (above the restart-chain resolver).
         metadata_path = self.folder / subfolder_name / "cgyro_submission.json"
 
         # <><><><><><>
