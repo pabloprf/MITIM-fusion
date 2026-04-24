@@ -254,12 +254,25 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             resolved = SLURMtools.resolve(code='cgyro', allocation={'resources_per_call': int(n)})
             mpi = resolved.mpi
 
+            # Export OMP_NUM_THREADS + OMP_STACKSIZE BEFORE the cgyro launch so every
+            # MPI rank inherits them. Without OMP_NUM_THREADS the OpenMPI launcher
+            # prints "could not find environment variable OMP_NUM_THREADS" and the
+            # CGYRO launcher's NUMA→GPU binding (driven by -numa/-mpinuma) silently
+            # collapses — all ranks end up on GPU 0 and OOM. OMP_STACKSIZE=1G is
+            # the GACODE-recommended default for GPU offload kernels; too small and
+            # the first large-grid kernel segfaults.
+            omp_prefix = (
+                f"export OMP_NUM_THREADS={mpi['nomp']}\n"
+                f"export OMP_STACKSIZE=1G\n"
+            )
             if mpi.get("numa") is not None:
-                cgyro_cmd = (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                cgyro_cmd = (omp_prefix +
+                             f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
                              f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
                              f"-p {p} {additional_command}")
             else:
-                cgyro_cmd = (f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                cgyro_cmd = (omp_prefix +
+                             f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
                              f"-p {p} {additional_command}")
 
             # Post-CGYRO: drop a warm-start bin.cgyro.restart that the run did
