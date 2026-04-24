@@ -55,22 +55,32 @@ class GKplotting:
             label=label_plot,
         )
 
-        # Track the time-averaged value within tmin per trace, so plot_fluxes can clamp
-        # the y-axis on the averaged magnitudes rather than letting transient peaks
-        # dominate the view. Stored on the axis so it accumulates across multiple
-        # plot_fluxes() calls (one per rho-label) and so the finalize step can
-        # consume them once all traces are laid down.
+        # Track (mean, std) per trace for the factor-based y-clamp in
+        # _finalize_flux_axis. The clamp uses mean+2sigma (upper) and mean-2sigma
+        # (lower) so the uncertainty bars on each trace stay inside the view.
+        # Prefer the driver-side scalars (z_mean / z_std from *_mean / *_std
+        # attributes, which come from proper autocorrelation-aware time-averaging)
+        # and fall back to a raw np.mean within tmin (std=0) when the driver hasn't
+        # populated those. Stored on the axis so it accumulates across multiple
+        # plot_fluxes() calls (one per rho-label).
         try:
-            tmin = getattr(object_grab, "tmin", None)
-            if tmin is not None:
-                z_arr = np.asarray(z)
-                t_arr = np.asarray(t)
-                mask = t_arr > tmin
-                if mask.any():
-                    avg = float(np.mean(z_arr[mask]))
-                    if not hasattr(ax, "_mitim_trace_avgs"):
-                        ax._mitim_trace_avgs = []
-                    ax._mitim_trace_avgs.append(avg)
+            m = s = None
+            if z_mean is not None:
+                m = float(z_mean)
+                s = float(z_std) if z_std is not None else 0.0
+            else:
+                tmin = getattr(object_grab, "tmin", None)
+                if tmin is not None:
+                    z_arr = np.asarray(z)
+                    t_arr = np.asarray(t)
+                    mask = t_arr > tmin
+                    if mask.any():
+                        m = float(np.mean(z_arr[mask]))
+                        s = 0.0
+            if m is not None and np.isfinite(m) and np.isfinite(s):
+                if not hasattr(ax, "_mitim_trace_avgs"):
+                    ax._mitim_trace_avgs = []
+                ax._mitim_trace_avgs.append((m, s))
         except Exception:
             pass
 
@@ -92,27 +102,27 @@ class GKplotting:
             
     def _finalize_flux_axis(self, ax, legend_title=None, factor=2.5):
         """Render the legend outside the axes so it doesn't overlap the traces,
-        and clamp the y-axis to `factor * max(trace_avgs)` so transient peaks
-        don't dominate the view. `_mitim_trace_avgs` is populated by
-        `_plot_trace` during each trace draw.
+        and clamp the y-axis to factor-scaled mean+/-2sigma bounds so transient
+        peaks don't dominate the view while the per-trace uncertainty bars stay
+        inside the frame. `_mitim_trace_avgs` is populated by `_plot_trace` as a
+        list of (mean, std) tuples during each trace draw.
 
-            ymax = factor * max(trace_avgs)
-            ymin = min(0, factor * max(trace_avgs))
+            ymax = factor * max(mean + 2*std)
+            ymin = min(0, factor * min(mean - 2*std))
 
-        Literal interpretation of the user spec: with all-positive averages the
-        clamp becomes [0, factor*max], which crops the transient spikes at plot
-        start / wave-arrival without losing the averaged-trend view.
+        Rationale: transient spikes get cropped (mean-driven ceiling) but each
+        trace's mean +/- 2sigma indicator still lands inside the view.
         """
         GRAPHICStools.addLegendApart(ax, loc='upper left', size=8, ratio=0.7)
 
-        avgs = getattr(ax, "_mitim_trace_avgs", None)
-        if avgs:
-            max_avg = max(avgs)
-            ymax = factor * max_avg
-            ymin = min(0.0, factor * max_avg)
-            # Guard against degenerate cases (all averages exactly zero, or
-            # NaNs creeping through): skip the clamp rather than collapse the
-            # axis to a single point.
+        pairs = getattr(ax, "_mitim_trace_avgs", None)
+        if pairs:
+            uppers = [m + 2.0 * s for (m, s) in pairs]
+            lowers = [m - 2.0 * s for (m, s) in pairs]
+            ymax = factor * max(uppers)
+            ymin = min(0.0, factor * min(lowers))
+            # Guard against degenerate / NaN cases — skip the clamp rather than
+            # collapse the axis to a single point.
             if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
                 ax.set_ylim(ymin, ymax)
 

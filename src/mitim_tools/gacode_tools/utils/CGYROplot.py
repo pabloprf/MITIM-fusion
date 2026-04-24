@@ -263,15 +263,16 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
                 mec='black', mew=0.3, zorder=z_err,
             )
 
-        # Track the averaged scalar (not mean +/- sigma) so the row-level y
-        # clamp can apply the factor-of-max-mean rule. Skipping when the
-        # averaged value isn't defined — pre-window traces would otherwise
-        # push the clamp toward raw transient values.
+        # Track (mean, std) per trace so the row-level clamp can apply the
+        # factor-of-(mean+/-2sigma) rule. Missing std defaults to 0 (treat as
+        # a point). Skip entries whose mean isn't finite so pre-window traces
+        # don't push the clamp toward raw transient values.
         if mean_val is not None:
             try:
                 m = float(mean_val)
-                if np.isfinite(m):
-                    trace_means.append(m)
+                s = float(std_val) if std_val is not None else 0.0
+                if np.isfinite(m) and np.isfinite(s):
+                    trace_means.append((m, s))
             except (TypeError, ValueError):
                 pass
 
@@ -324,26 +325,25 @@ def _column_title_for_chunk(chunk, base_iter):
 
 
 def _apply_row_clamp(axs_row_leftmost, trace_means, trace_count, factor=2.5):
-    '''Clamp the row's y-axis so that transient peaks don't dominate the view:
+    '''Clamp the row's y-axis using factor-scaled mean+/-2sigma bounds so
+    transient peaks don't dominate while each trace's uncertainty bar stays
+    inside the frame:
 
-        ymax = factor * max(trace_means)
-        ymin = min(0, factor * max(trace_means))
+        ymax = factor * max(mean + 2*std)
+        ymin = min(0, factor * min(mean - 2*std))
 
-    Literal reading of the factor spec: all-positive means give [0, factor*max];
-    negative-only means give [factor*max, 0]-ish. `factor` is exposed as a kwarg
-    (default 2.5) so callers can widen/tighten the headroom without editing.
+    `trace_means` is a list of (mean, std) tuples from _draw_chunk_cell.
+    `factor` is exposed as a kwarg (default 2.5) so callers can widen /
+    tighten the headroom without editing.
 
-    Only skip when there are literally zero traces or no valid means — even a
-    single trace benefits from the clamp if its transient peak dominates the
-    raw view (which is the whole point of the factor approach).'''
+    Only skip when there are literally zero traces or no valid means.'''
     if trace_count < 1 or not trace_means:
         return
-    max_mean = max(trace_means)
-    if not np.isfinite(max_mean):
-        return
-    ymax = factor * max_mean
-    ymin = min(0.0, factor * max_mean)
-    if ymax > ymin:
+    uppers = [m + 2.0 * s for (m, s) in trace_means]
+    lowers = [m - 2.0 * s for (m, s) in trace_means]
+    ymax = factor * max(uppers)
+    ymin = min(0.0, factor * min(lowers))
+    if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
         axs_row_leftmost.set_ylim(ymin, ymax)
 
 
