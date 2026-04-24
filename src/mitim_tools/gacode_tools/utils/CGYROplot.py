@@ -333,9 +333,10 @@ def _apply_row_clamp(axs_row_leftmost, trace_means, trace_count, factor=2.5):
     negative-only means give [factor*max, 0]-ish. `factor` is exposed as a kwarg
     (default 2.5) so callers can widen/tighten the headroom without editing.
 
-    Skip when <3 traces are on the row — the transient-peak protection is worth
-    less than just showing everything when there are so few lines.'''
-    if trace_count < 3 or not trace_means:
+    Only skip when there are literally zero traces or no valid means — even a
+    single trace benefits from the clamp if its transient peak dominates the
+    raw view (which is the whole point of the factor approach).'''
+    if trace_count < 1 or not trace_means:
         return
     max_mean = max(trace_means)
     if not np.isfinite(max_mean):
