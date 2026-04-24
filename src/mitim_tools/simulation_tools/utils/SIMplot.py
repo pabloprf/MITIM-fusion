@@ -30,13 +30,13 @@ class GKplotting:
             object_grab = object_or_label
 
         t = object_grab.t
-        
+
         if not isinstance(variable, str):
             z = variable
             if var_meanstd is not None:
                 z_mean = var_meanstd[0]
                 z_std = var_meanstd[1]
-            
+
         else:
             z = object_grab.__dict__[variable]
             if meanstd and (f'{variable}_mean' in object_grab.__dict__):
@@ -45,7 +45,7 @@ class GKplotting:
             else:
                 z_mean = None
                 z_std = None
-        
+
         ax.plot(
             t,
             z,
@@ -54,7 +54,26 @@ class GKplotting:
             c=c,
             label=label_plot,
         )
-        
+
+        # Track the time-averaged value within tmin per trace, so plot_fluxes can clamp
+        # the y-axis on the averaged magnitudes rather than letting transient peaks
+        # dominate the view. Stored on the axis so it accumulates across multiple
+        # plot_fluxes() calls (one per rho-label) and so the finalize step can
+        # consume them once all traces are laid down.
+        try:
+            tmin = getattr(object_grab, "tmin", None)
+            if tmin is not None:
+                z_arr = np.asarray(z)
+                t_arr = np.asarray(t)
+                mask = t_arr > tmin
+                if mask.any():
+                    avg = float(np.mean(z_arr[mask]))
+                    if not hasattr(ax, "_mitim_trace_avgs"):
+                        ax._mitim_trace_avgs = []
+                    ax._mitim_trace_avgs.append(avg)
+        except Exception:
+            pass
+
         if meanstd and z_std>0.0:
             GRAPHICStools.fillGraph(
                 ax,
@@ -71,8 +90,34 @@ class GKplotting:
                 label=label_plot + f" $\\mathbf{{{z_mean:.3f} \\pm {z_std:.3f}}}$ (1$\\sigma$)",
             )
             
+    def _finalize_flux_axis(self, ax, legend_title=None, factor=2.5):
+        """Render the legend outside the axes so it doesn't overlap the traces,
+        and clamp the y-axis to `factor * max(trace_avgs)` so transient peaks
+        don't dominate the view. `_mitim_trace_avgs` is populated by
+        `_plot_trace` during each trace draw.
+
+            ymax = factor * max(trace_avgs)
+            ymin = min(0, factor * max(trace_avgs))
+
+        Literal interpretation of the user spec: with all-positive averages the
+        clamp becomes [0, factor*max], which crops the transient spikes at plot
+        start / wave-arrival without losing the averaged-trend view.
+        """
+        GRAPHICStools.addLegendApart(ax, loc='upper left', size=8, ratio=0.7)
+
+        avgs = getattr(ax, "_mitim_trace_avgs", None)
+        if avgs:
+            max_avg = max(avgs)
+            ymax = factor * max_avg
+            ymin = min(0.0, factor * max_avg)
+            # Guard against degenerate cases (all averages exactly zero, or
+            # NaNs creeping through): skip the clamp rather than collapse the
+            # axis to a single point.
+            if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
+                ax.set_ylim(ymin, ymax)
+
     def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
-        
+
         if axs is None:
             plt.ion()
             fig = plt.figure(figsize=(18, 9))
@@ -89,54 +134,54 @@ class GKplotting:
         # Electron energy flux
         ax = axs["A"]
         self._plot_trace(ax,label,"Qe",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
-        
+
         if "Qe_EM" in self.results[label].__dict__:
             self._plot_trace(ax,label,"Qe_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux')
         if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
+            self._finalize_flux_axis(ax)
 
         # Electron particle flux
         ax = axs["B"]
         self._plot_trace(ax,label,"Ge",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
         if "Ge_EM" in self.results[label].__dict__:
             self._plot_trace(ax,label,"Ge_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux')
         if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
+            self._finalize_flux_axis(ax)
 
         # Ion energy fluxes
         ax = axs["C"]
         self._plot_trace(ax,label,"Qi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
         if "Qi_EM" in self.results[label].__dict__:
             self._plot_trace(ax,label,"Qi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
-        
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes')
         if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
+            self._finalize_flux_axis(ax)
 
         # Ion species energy fluxes
         ax = axs["D"]
         for j, i in enumerate(self.results[label].ions_flags):
             self._plot_trace(ax,label,self.results[label].Qi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
-            
+
         ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes (separate species)')
         if plotLegend:
-            ax.legend(loc='best', prop={'size': 8},)
+            self._finalize_flux_axis(ax)
 
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
 
