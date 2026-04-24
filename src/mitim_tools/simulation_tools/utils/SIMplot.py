@@ -183,7 +183,10 @@ class GKplotting:
         if plotLegend:
             self._finalize_flux_axis(ax)
 
-        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
+        # horizontal=0.9 (vs the default 0.3) gives each column enough slack for
+        # the addLegendApart extrusion on subplots A/C; without this bump the
+        # legend text spills across the gutter onto subplots B/D.
+        GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.9)
 
 
     def plot_fluxes_ky(self, axs=None, label="", c="b", lw=1, plotLegend=True):
