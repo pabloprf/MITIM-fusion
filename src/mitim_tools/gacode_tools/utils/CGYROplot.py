@@ -183,8 +183,8 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
                      color_for, base_iter):
     '''
     Draw one subplot: non-base traces in `chunk` + base iter, for channel
-    `var` at `rho`. Returns (trace_count, y_candidates) so the outer grid
-    owner can run per-row y-clamp.
+    `var` at `rho`. Returns (trace_count, trace_means) so the outer grid
+    owner can run per-row y-clamp based on the 2.5x-of-max-mean rule.
 
     Per trace we draw:
       1. The raw time trace.
@@ -200,7 +200,7 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
     The base iteration is drawn in black on top with thicker styling and
     a gray shading instead of a colour-matched one.
     '''
-    y_candidates = []
+    trace_means = []
     trace_count = 0
 
     def _draw_single_trace(out, offset_it, color, is_base):
@@ -241,10 +241,6 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
         ax.plot(t_shifted, y, color=color if not is_base else 'black',
                 lw=lw_trace, alpha=alpha_trace, zorder=z_trace)
         trace_count += 1
-        try:
-            y_candidates.append(float(y[0]))
-        except (TypeError, IndexError):
-            pass
 
         # Dashed mean line across the averaging window, for every trace —
         # not just the base. Colour-matched for non-base so the reader can
@@ -266,8 +262,18 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
                 ms=ms_err, capsize=capsize_err, lw=lw_err,
                 mec='black', mew=0.3, zorder=z_err,
             )
-            y_candidates.append(float(mean_val) + 2.0 * float(std_val))
-            y_candidates.append(float(mean_val) - 2.0 * float(std_val))
+
+        # Track the averaged scalar (not mean +/- sigma) so the row-level y
+        # clamp can apply the factor-of-max-mean rule. Skipping when the
+        # averaged value isn't defined — pre-window traces would otherwise
+        # push the clamp toward raw transient values.
+        if mean_val is not None:
+            try:
+                m = float(mean_val)
+                if np.isfinite(m):
+                    trace_means.append(m)
+            except (TypeError, ValueError):
+                pass
 
     # Non-base traces first so the base overlays them.
     for it in chunk:
@@ -279,7 +285,7 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
     if base_out is not None:
         _draw_single_trace(base_out, offsets.get(base_iter, 0.0), color=None, is_base=True)
 
-    return trace_count, y_candidates
+    return trace_count, trace_means
 
 
 def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
@@ -317,18 +323,27 @@ def _column_title_for_chunk(chunk, base_iter):
     return f"ev{base_iter} only"
 
 
-def _apply_row_clamp(axs_row_leftmost, y_candidates, trace_count):
-    '''Clamp the row's y-axis to the tightest interval containing every
-    trace's first sample and mean+2*sigma. Skip when <3 traces are on the
-    row — the transient-peak protection is worth less than just showing
-    everything when there are so few lines.'''
-    if trace_count < 3 or not y_candidates:
+def _apply_row_clamp(axs_row_leftmost, trace_means, trace_count, factor=2.5):
+    '''Clamp the row's y-axis so that transient peaks don't dominate the view:
+
+        ymax = factor * max(trace_means)
+        ymin = min(0, factor * max(trace_means))
+
+    Literal reading of the factor spec: all-positive means give [0, factor*max];
+    negative-only means give [factor*max, 0]-ish. `factor` is exposed as a kwarg
+    (default 2.5) so callers can widen/tighten the headroom without editing.
+
+    Skip when <3 traces are on the row — the transient-peak protection is worth
+    less than just showing everything when there are so few lines.'''
+    if trace_count < 3 or not trace_means:
         return
-    y_lo = min(y_candidates)
-    y_hi = max(y_candidates)
-    if y_hi > y_lo:
-        pad = 0.05 * (y_hi - y_lo)
-        axs_row_leftmost.set_ylim(y_lo - pad, y_hi + pad)
+    max_mean = max(trace_means)
+    if not np.isfinite(max_mean):
+        return
+    ymax = factor * max_mean
+    ymin = min(0.0, factor * max_mean)
+    if ymax > ymin:
+        axs_row_leftmost.set_ylim(ymin, ymax)
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +359,7 @@ def plot_time_traces_per_radius(
     restart_mode="none",
     base_iter=0,
     title_prefix="CGYRO time traces",
+    factor=2.5,
 ):
     '''
     Build one FigureNotebook tab per rho. Rows = transport channels
@@ -396,7 +412,7 @@ def plot_time_traces_per_radius(
         base_has_window = base_out is not None and getattr(base_out, 'tmin', None) is not None
 
         # Per-row aggregators — rows are channels here.
-        row_y_candidates = {row_idx: [] for row_idx in range(len(_CHANNELS))}
+        row_trace_means = {row_idx: [] for row_idx in range(len(_CHANNELS))}
         row_trace_counts = {row_idx: 0 for row_idx in range(len(_CHANNELS))}
 
         for c_idx, chunk in enumerate(chunks):
@@ -404,12 +420,12 @@ def plot_time_traces_per_radius(
             color_for = _make_column_color_fn(chunk)
 
             for row_idx, (var, ylabel) in enumerate(_CHANNELS):
-                tc, yc = _draw_chunk_cell(
+                tc, tm = _draw_chunk_cell(
                     col_axes[row_idx], var, rho, r_idx, chunk,
                     cache, base_out, offsets, color_for, base_iter,
                 )
                 row_trace_counts[row_idx] += tc
-                row_y_candidates[row_idx].extend(yc)
+                row_trace_means[row_idx].extend(tm)
 
             col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
             _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window)
@@ -423,7 +439,8 @@ def plot_time_traces_per_radius(
                 GRAPHICStools.addDenseAxis(ax)
 
         for row_idx in range(len(_CHANNELS)):
-            _apply_row_clamp(axs[row_idx, 0], row_y_candidates[row_idx], row_trace_counts[row_idx])
+            _apply_row_clamp(axs[row_idx, 0], row_trace_means[row_idx],
+                             row_trace_counts[row_idx], factor=factor)
 
 
 def plot_time_traces_per_channel(
@@ -434,6 +451,7 @@ def plot_time_traces_per_channel(
     restart_mode="none",
     base_iter=0,
     title_prefix="CGYRO time traces",
+    factor=2.5,
 ):
     '''
     Companion to `plot_time_traces_per_radius` with the axes pivoted:
@@ -478,7 +496,7 @@ def plot_time_traces_per_channel(
         # Per-row aggregators — rows are rhos here. Each rho has its own
         # offsets / base_out because those depend on the rho's own CGYRO
         # output.
-        row_y_candidates = {row_idx: [] for row_idx in range(n_rows)}
+        row_trace_means = {row_idx: [] for row_idx in range(n_rows)}
         row_trace_counts = {row_idx: 0 for row_idx in range(n_rows)}
 
         # Pre-resolve per-rho offsets and base_out once (shared across columns).
@@ -500,14 +518,14 @@ def plot_time_traces_per_channel(
             color_for = _make_column_color_fn(chunk)
 
             for row_idx in range(n_rows):
-                tc, yc = _draw_chunk_cell(
+                tc, tm = _draw_chunk_cell(
                     col_axes[row_idx], var,
                     rho_list[row_idx], row_idx, chunk,
                     cache, base_out_per_rho[row_idx], offsets_per_rho[row_idx],
                     color_for, base_iter,
                 )
                 row_trace_counts[row_idx] += tc
-                row_y_candidates[row_idx].extend(yc)
+                row_trace_means[row_idx].extend(tm)
 
             col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
             _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window_any)
@@ -521,4 +539,5 @@ def plot_time_traces_per_channel(
                 GRAPHICStools.addDenseAxis(ax)
 
         for row_idx in range(n_rows):
-            _apply_row_clamp(axs[row_idx, 0], row_y_candidates[row_idx], row_trace_counts[row_idx])
+            _apply_row_clamp(axs[row_idx, 0], row_trace_means[row_idx],
+                             row_trace_counts[row_idx], factor=factor)

@@ -116,7 +116,7 @@ class GKplotting:
             if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
                 ax.set_ylim(ymin, ymax)
 
-    def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True):
+    def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True, factor=2.5):
 
         if axs is None:
             plt.ion()
@@ -143,7 +143,7 @@ class GKplotting:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron energy flux')
         if plotLegend:
-            self._finalize_flux_axis(ax)
+            self._finalize_flux_axis(ax, factor=factor)
 
         # Electron particle flux
         ax = axs["B"]
@@ -156,7 +156,7 @@ class GKplotting:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Electron particle flux')
         if plotLegend:
-            self._finalize_flux_axis(ax)
+            self._finalize_flux_axis(ax, factor=factor)
 
         # Ion energy fluxes
         ax = axs["C"]
@@ -169,7 +169,7 @@ class GKplotting:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes')
         if plotLegend:
-            self._finalize_flux_axis(ax)
+            self._finalize_flux_axis(ax, factor=factor)
 
         # Ion species energy fluxes
         ax = axs["D"]
@@ -181,7 +181,7 @@ class GKplotting:
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes (separate species)')
         if plotLegend:
-            self._finalize_flux_axis(ax)
+            self._finalize_flux_axis(ax, factor=factor)
 
         # horizontal=0.9 (vs the default 0.3) gives each column enough slack for
         # the addLegendApart extrusion on subplots A/C; without this bump the
