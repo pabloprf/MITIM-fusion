@@ -441,6 +441,10 @@ class mitim_simulation:
             kkeys = [str(keys).replace('/','') for keys in code_executor.keys()]
             log_simulation_file=self.FolderGACODE / f"mitim_simulation_{kkeys[0]}.log" # Refer with the first folder
             self.simulation_job = FARMINGtools.mitim_job(tmpFolder, log_simulation_file=log_simulation_file)
+            # Forward connect_ssh() retry config (e.g. set from portals.namelist
+            # for PORTALS-CGYRO) onto the freshly-built mitim_job. Stays None
+            # for non-PORTALS callers — preserves historical retry behavior.
+            self.simulation_job.connection_retry_settings = getattr(self, "connection_retry_settings", None)
 
             self.simulation_job.define_machine_quick(code,f"mitim_{name}")
 

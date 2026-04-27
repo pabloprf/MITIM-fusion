@@ -75,6 +75,14 @@ class mitim_job:
         # (e.g. mitim_job.check() builds a temporary retrieve for squeue output).
         self.output_file_fallbacks = {}
 
+        # Optional retry config consumed by connect_ssh(). Callers that want
+        # to override the default 5 s wait / 3-attempt cap (e.g. PORTALS-CGYRO,
+        # which reads it from portals.namelist) can set this to a dict of
+        # {"wait_seconds": float, "attempts": int|None} where attempts=None
+        # means retry forever. When self.connection_retry_settings is None,
+        # connect_ssh() falls back to the historical defaults.
+        self.connection_retry_settings = None
+
     def define_machine(
         self,
         code,
@@ -397,16 +405,53 @@ class mitim_job:
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
 
-        # Catch random exceptions
-        max_retries = 3
-        for attempt in range(1, max_retries + 1):
+        # Resolve retry config. Defaults preserve historical behavior (5 s wait,
+        # 3-attempt cap). PORTALS-CGYRO overrides these via portals.namelist:
+        #   transport.options.cgyro.run.ssh_retry_wait_seconds
+        #   transport.options.cgyro.run.ssh_retry_attempts   (int, or null/None for infinite)
+        # which transport_cgyro.py forwards onto self.connection_retry_settings.
+        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
+        retry_wait = float(retry_cfg.get("wait_seconds", 5))
+        retry_attempts = retry_cfg.get("attempts", 3)
+        # None (e.g. YAML `null`) means retry forever; any positive int caps the
+        # attempts. Anything else is a config error and surfaces here.
+        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
+            raise ValueError(
+                f"connection_retry_settings['attempts'] must be a positive int "
+                f"or None (infinite); got {retry_attempts!r}"
+            )
+        max_retries = retry_attempts  # None == unbounded
+
+        # Transient handshake/network errors. TimeoutError is the case Pablo
+        # reported (Errno 60 from paramiko's underlying socket); SSHException
+        # covers paramiko's own transient class; socket.timeout / EOFError /
+        # ConnectionError cover the rest of the typical VPN/firewall flap
+        # modes. Anything outside this tuple is treated as a real failure
+        # and re-raised on the first occurrence.
+        transient_exc = (
+            paramiko.ssh_exception.SSHException,
+            TimeoutError,
+            socket.timeout,
+            EOFError,
+            ConnectionError,
+        )
+
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 self._connect_ssh_item()
                 break
-            except paramiko.ssh_exception.SSHException as e:
-                if attempt == max_retries:
+            except transient_exc as e:
+                if max_retries is not None and attempt >= max_retries:
                     raise
-                print(f"\t<> Paramiko attempt {attempt}/{max_retries} failed with SSHException: {e}. Retrying...", typeMsg="w")
+                cap_str = "infinite" if max_retries is None else f"{max_retries}"
+                print(
+                    f"\t<> Paramiko connect attempt {attempt}/{cap_str} failed "
+                    f"({type(e).__name__}: {e}). Retrying in {retry_wait:g}s...",
+                    typeMsg="w",
+                )
+                time.sleep(retry_wait)
 
     def _connect_ssh_item(self):
 

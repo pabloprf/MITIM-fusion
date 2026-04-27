@@ -408,10 +408,18 @@ class gyrokinetic_model:
         # the two keys are stripped from the kwargs actually forwarded to run().
         check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
         every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
+        # Forwarded to the mitim_job via mitim_simulation; consumed inside
+        # connect_ssh() so submit, check, and fetch all share the same retry
+        # policy. attempts=None means retry forever (recommended for long
+        # PORTALS-CGYRO runs that need to ride out overnight VPN flaps).
+        connection_retry_settings = {
+            "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
+            "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
+        }
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'ssh_retry_wait_seconds', 'ssh_retry_attempts', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
         remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
 
         # Translate namelist-level restart_from_folder into per-rho
@@ -494,6 +502,18 @@ class gyrokinetic_model:
                 self.folder,
                 )
 
+        # Set on gk_object regardless of pickle status, so both the freshly-
+        # constructed and the unpickled instance carry the retry config.
+        # connect_ssh() reads this from the mitim_job; the propagation onto
+        # simulation_job happens at construction time (SIMtools.py) and also
+        # explicitly here for the unpickled / re-attached paths where
+        # simulation_job may already exist on the loaded gk_object.
+        gk_object.connection_retry_settings = connection_retry_settings
+        if getattr(gk_object, "simulation_job", None) is not None:
+            gk_object.simulation_job.connection_retry_settings = connection_retry_settings
+
+        if not gk_object_unpickled:
+
             # <><><><><><>
             # Optional re-attach: if a prior process submitted this job and
             # wrote submission metadata, skip run() and go straight to
@@ -511,6 +531,12 @@ class gyrokinetic_model:
                     # wipe / prompt, so set it manually here.
                     gk_object.FolderSimLast = self.folder / subfolder_name
                     data = gk_object.load_submission_state(metadata_path)
+                    # load_submission_state builds a fresh mitim_job from the
+                    # JSON, so propagate the namelist-tunable retry config
+                    # onto it explicitly (the SIMtools construction-site
+                    # propagation only fires for the run()/sbatch path).
+                    if getattr(gk_object, "simulation_job", None) is not None:
+                        gk_object.simulation_job.connection_retry_settings = connection_retry_settings
                     _jobinfo = data.get("job", {})
                     print("")
                     print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')
@@ -787,6 +813,14 @@ class cgyro_model(gyrokinetic_model):
         check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
         every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
         remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
+        # Forwarded onto the mitim_job (see single-plasma path); consumed inside
+        # connect_ssh() so submit, check, and fetch all share the same retry
+        # policy. attempts=None means retry forever (recommended for long
+        # PORTALS-CGYRO runs that need to ride out overnight VPN flaps).
+        connection_retry_settings = {
+            "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
+            "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
+        }
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
@@ -832,6 +866,17 @@ class cgyro_model(gyrokinetic_model):
             # (not CGYRO.run()), so preprocess_options must be set beforehand for
             # _run_prepare -> _apply_cgyro_preprocessing to pick it up.
             cgyro._preprocess_options = simulation_options["run"].get("preprocess_options")
+
+        # Set on cgyro regardless of pickle status, so both freshly-constructed
+        # and unpickled instances carry the retry config; connect_ssh() picks
+        # this up via simulation_job (propagated either at construction time
+        # in SIMtools.py or explicitly here for the unpickled / re-attached
+        # paths where simulation_job already exists).
+        cgyro.connection_retry_settings = connection_retry_settings
+        if getattr(cgyro, "simulation_job", None) is not None:
+            cgyro.simulation_job.connection_retry_settings = connection_retry_settings
+
+        if not cgyro_unpickled:
 
             # Filter simulation_options["run"] to only keys that run_over_plasmas accepts;
             # CGYRO-specific keys (preprocess_options) are handled above; re-attach
@@ -931,6 +976,11 @@ class cgyro_model(gyrokinetic_model):
                         announce=False,
                     )
                     data = cgyro.load_submission_state(metadata_path)
+                    # load_submission_state builds a fresh mitim_job from the
+                    # JSON, so propagate the namelist-tunable retry config
+                    # onto it explicitly.
+                    if getattr(cgyro, "simulation_job", None) is not None:
+                        cgyro.simulation_job.connection_retry_settings = connection_retry_settings
                     _jobinfo = data.get("job", {})
                     print("")
                     print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')

@@ -358,6 +358,15 @@ transport:
         # Polling cadence for .check() when run_type=="submit" (minutes)
         every_n_minutes: 10
 
+        # SSH connect retry behaviour for the mitim_job that owns the cluster
+        # connection. ssh_retry_wait_seconds is the wait between attempts;
+        # ssh_retry_attempts is either an integer (max attempts before
+        # giving up) or `null` to retry forever — recommended for long
+        # PORTALS-CGYRO workflows that should ride out overnight VPN
+        # flaps. Defaults below match the historical 5 s / 3-attempt cap.
+        ssh_retry_wait_seconds: 5
+        ssh_retry_attempts: 3
+
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
         #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
