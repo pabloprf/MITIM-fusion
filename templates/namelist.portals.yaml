@@ -280,6 +280,16 @@ transport:
         #              N-1's restart (chained: each iter picks up where the
         #              previous one left off; requires *every* iteration to
         #              write restarts, not just ev0).
+        #   "best"     per-radius selection: each rho independently warm-starts
+        #              from the prior iteration whose turbulent flux at that
+        #              rho is closest, by L2 norm over the active channels in
+        #              GB units, to the *current turbulent target*
+        #              (target_GB - current_neoc_GB). Different rhos can pick
+        #              different source iterations. Tie-broken in favor of the
+        #              higher iteration index (more representative profile).
+        #              If a rho has no prior iteration with both fluxes_turb.json
+        #              and bin.cgyro.restart_<rho:.4f>, that rho is cold-started
+        #              with a warning (NON-fatal — different from "first"/"all").
         # Source folder (picked up automatically once the source iteration
         # has finished):
         #   Execution/Evaluation.{src}/transport_simulation_folder/base_cgyro
@@ -298,6 +308,11 @@ transport:
         #     warm-start resets t to 0). Example: if iteration 0 wrote its
         #     restart at t=200 a/cs and you want another 100 a/cs of stats,
         #     set MAX_TIME: 100 — not 300.
+        #   - "best" additionally requires fluxes_turb.json (and ideally
+        #     fluxes_neoc.json) on disk for prior iterations — these are
+        #     written automatically after each iteration's transport read,
+        #     so no extra setup is needed beyond what "first"/"all" already
+        #     require for the binary restart files.
         #   - If restart_from_folder is also set, it takes precedence and
         #     this option is ignored (with a warning).
         # DEPRECATED: the older `restart_from_first: true` still works as an

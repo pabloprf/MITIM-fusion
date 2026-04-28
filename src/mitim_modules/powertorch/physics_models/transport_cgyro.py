@@ -70,6 +70,63 @@ def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additiona
     return resolved
 
 
+def _build_current_turb_target_GB(power_transport_self, plasma_index=0):
+    '''
+    Assemble per-channel "turbulent target" in GB units for the
+    `restart_from_cases: "best"` selection. For each active channel in
+    self.powerstate.predicted_channels, returns:
+
+        current_target_GB - current_neoc_GB
+
+    as a per-rho numpy array (rho=0 stripped to match fluxes_*.json
+    indexing). Targets come from `self.powerstate.plasma["{Q*GB}"]`,
+    populated by `calculateTargets()` before the transport call. Current
+    iteration's neoclassical comes from `self.{Q*GB}_neoc`, populated by
+    the preceding `evaluate_neoclassical()` in `TRANSPORTtools.evaluate()`.
+
+    Channels with no GB-key mapping are skipped. Channels whose neoclassical
+    array is missing/shape-mismatched fall back to neoc=0 for that channel
+    (defensive — should not happen in practice).
+
+    `plasma_index` picks which plasma to use as the reference in batched
+    mode (default 0; matches the existing batched-mode "first"/"all"
+    behavior of pulling restart from plasma 0 of the source iteration).
+    '''
+    channel_to_gb = {
+        "te": "QeGB", "ti": "QiGB", "ne": "GeGB", "nZ": "GZGB", "w0": "MtGB",
+    }
+    out = {}
+    predicted_channels = getattr(power_transport_self.powerstate, "predicted_channels", []) or []
+    for ch in predicted_channels:
+        gb_key = channel_to_gb.get(ch)
+        if gb_key is None:
+            continue
+        target_t = power_transport_self.powerstate.plasma.get(gb_key)
+        if target_t is None:
+            continue
+        # powerstate.plasma["{Q*GB}"] is a torch tensor of shape [batch, nrho]
+        # (rho=0 at index 0). Strip rho=0 and pick the reference plasma.
+        if hasattr(target_t, "detach"):
+            target_arr = target_t[plasma_index, 1:].detach().cpu().numpy()
+        else:
+            target_arr = np.asarray(target_t)[plasma_index, 1:]
+
+        neoc_val = getattr(power_transport_self, f"{gb_key}_neoc", None)
+        if neoc_val is None:
+            neoc_arr = np.zeros_like(target_arr)
+        else:
+            arr = np.asarray(neoc_val)
+            if arr.ndim >= 2:
+                arr = arr[plasma_index] if arr.shape[0] > plasma_index else arr[0]
+            if arr.shape == target_arr.shape:
+                neoc_arr = arr.astype(target_arr.dtype, copy=False)
+            else:
+                neoc_arr = np.zeros_like(target_arr)
+
+        out[gb_key] = target_arr - neoc_arr
+    return out
+
+
 def _resolve_cgyro_restart_chain(
     run_options,
     evaluation_number,
@@ -78,6 +135,7 @@ def _resolve_cgyro_restart_chain(
     existing_additional_files_to_send=None,
     plasma_subfolder=None,
     base_subfolder="base_cgyro",
+    current_turb_target_GB=None,
 ):
     '''
     Automatic-restart companion to `_resolve_cgyro_restart_folder`. Driven
@@ -87,15 +145,21 @@ def _resolve_cgyro_restart_chain(
       "first"      -> every iteration N >= 1 restarts from iteration 0
       "all"        -> every iteration N >= 1 restarts from iteration N-1
                       (chained; each iter warm-starts from the previous)
+      "best"       -> for each radius independently, restart from the prior
+                      iteration whose turbulent flux at that radius is
+                      closest (L2 over active channels in GB units) to the
+                      current "turbulent target" (target - current neoc).
+                      Different radii can pick different source iterations.
 
-    Source folder for iteration N is derived as:
+    Source folder for "first"/"all" iteration N is derived as:
       <root>/Execution/Evaluation.{source_iter}/transport_simulation_folder/base_cgyro
         (+ /base_cgyro_plasma0 in batched mode)
     or, during the simple-relax initializer:
       <root>/Initialization/initialization_simple_relax/portals_sr_ev_{source_iter}/
         transport_simulation_folder/base_cgyro
 
-    where source_iter is 0 for "first" and (N-1) for "all".
+    where source_iter is 0 for "first" and (N-1) for "all". For "best",
+    source_iter is computed per-rho from the fluxes_turb.json comparison.
 
     The binary restart file is named bin.cgyro.restart_<rho:.4f>, matching
     what CGYRO writes and MITIM retrieves after a PORTALS run. It is
@@ -105,16 +169,30 @@ def _resolve_cgyro_restart_chain(
     binary is staged (warm start, restart_flag=2) and not the companion
     out.cgyro.tag file.
 
-    Missing files are FATAL: if restart_from_cases was requested and either
-    the source base_cgyro folder is absent, or the per-rho restart binary
-    is absent for any rho, a FileNotFoundError is raised. A silent partial
-    restart produced one-rho-cold/others-warm ensembles that were almost
+    Missing files are FATAL for "first"/"all": if either the source
+    base_cgyro folder is absent, or the per-rho restart binary is absent
+    for any rho, a FileNotFoundError is raised. A silent partial restart
+    produced one-rho-cold/others-warm ensembles that were almost
     impossible to diagnose downstream (and broke the "one key per rho"
-    invariant the stage-in consumer relies on). If you want to proceed
-    without restart, clear restart_from_cases in the namelist.
+    invariant the stage-in consumer relies on).
+
+    For "best", missing files are NON-FATAL and per-rho: candidates that
+    don't have both fluxes_turb.json and bin.cgyro.restart_<rho:.4f> are
+    dropped from the candidate set for that rho only; if no candidate
+    survives for a given rho, that rho is cold-started (no entry added)
+    with a warning. The "best" mode is inherently dynamic, so a strict
+    "abort on any missing file" contract would defeat the purpose.
+
+    If you want to proceed without restart, clear restart_from_cases in
+    the namelist.
 
     Backward-compat: legacy `restart_from_first: true` still works and is
     mapped to `restart_from_cases: "first"` (with a one-line notice).
+
+    `current_turb_target_GB` is required only for mode == "best" and is
+    a dict of per-channel per-rho numpy arrays (target_GB - current_neoc_GB);
+    its keys define the active channels for the L2 metric. See
+    `_build_current_turb_target_GB` for the canonical assembly.
 
     Returns the merged additional_files_to_send dict, or the existing one
     unchanged when the mode is None/empty, restart_from_folder takes
@@ -138,10 +216,10 @@ def _resolve_cgyro_restart_chain(
             return existing_additional_files_to_send
 
     mode_lower = str(mode).lower()
-    if mode_lower not in ("first", "all"):
+    if mode_lower not in ("first", "all", "best"):
         print(
             f"\t- [CGYRO restart] Unknown restart_from_cases={mode!r}; expected one of "
-            "null / \"first\" / \"all\". Ignoring.",
+            "null / \"first\" / \"all\" / \"best\". Ignoring.",
             typeMsg='w',
         )
         return existing_additional_files_to_send
@@ -172,6 +250,19 @@ def _resolve_cgyro_restart_chain(
             typeMsg='w',
         )
         return existing_additional_files_to_send
+
+    if mode_lower == "best":
+        return _resolve_cgyro_restart_chain_best(
+            evaluation_number=evaluation_number,
+            folder=folder,
+            rho_locations=rho_locations,
+            existing_additional_files_to_send=existing_additional_files_to_send,
+            plasma_subfolder=plasma_subfolder,
+            base_subfolder=base_subfolder,
+            current_turb_target_GB=current_turb_target_GB,
+            in_simple_relax=in_simple_relax,
+            context_label=context_label,
+        )
 
     source_iter = 0 if mode_lower == "first" else (evaluation_number - 1)
     source_sibling = (f"portals_sr_ev_{source_iter}" if in_simple_relax
@@ -213,6 +304,136 @@ def _resolve_cgyro_restart_chain(
             "Check that RESTART_STEP was set in extraOptions on the source iteration and "
             "that keep_files did not unlink them. Clear restart_from_cases in the namelist "
             "to run without restart."
+        )
+
+    return resolved
+
+
+def _resolve_cgyro_restart_chain_best(
+    evaluation_number,
+    folder,
+    rho_locations,
+    existing_additional_files_to_send,
+    plasma_subfolder,
+    base_subfolder,
+    current_turb_target_GB,
+    in_simple_relax,
+    context_label,
+):
+    '''
+    Per-rho "best" warm-start selection for `restart_from_cases: "best"`.
+
+    For each prior iteration i in [0, evaluation_number-1] within the
+    current stage (BO Evaluation.{i} or simple-relax portals_sr_ev_{i}),
+    read fluxes_turb.json. Then for each rho independently, pick the
+    candidate iteration whose turbulent flux at that rho is closest, by
+    L2 norm over the active channels (the keys of current_turb_target_GB),
+    to the "current turbulent target" (target - current neoclassical),
+    among the candidates that also have bin.cgyro.restart_<rho:.4f>
+    on disk. Ties broken by preferring the higher iteration index (its
+    plasma profile is closer to the current iterate, so the warm-start
+    binary is more representative).
+
+    Rhos for which no candidate has both the JSON and the binary are
+    cold-started (omitted from the resolved dict) with a per-rho warning;
+    a consolidated summary lists them so misconfigurations are visible.
+    '''
+
+    if not current_turb_target_GB:
+        print(
+            "\t- [CGYRO restart_from_cases='best'] No current turbulent target was provided "
+            "(active channels empty or target assembly failed). No restart applied.",
+            typeMsg='w',
+        )
+        return existing_additional_files_to_send
+
+    # Build the candidate set: prior iterations whose fluxes_turb.json exists
+    # and contains the active channel keys.
+    candidates = []
+    for i in range(evaluation_number):
+        candidate_subfolder = (f"portals_sr_ev_{i}" if in_simple_relax
+                               else f"Evaluation.{i}")
+        candidate_eval_root = folder.parent.parent / candidate_subfolder / folder.name
+        json_path = candidate_eval_root / "fluxes_turb.json"
+        if not json_path.is_file():
+            continue
+        try:
+            with open(json_path, "r") as f:
+                flux_mean = json.load(f).get("fluxes_mean", {})
+        except (OSError, ValueError) as e:
+            print(
+                f"\t- [CGYRO restart 'best'] Could not load {json_path}: {e}; skipping iter {i}.",
+                typeMsg='w',
+            )
+            continue
+        missing_keys = [k for k in current_turb_target_GB if k not in flux_mean]
+        if missing_keys:
+            print(
+                f"\t- [CGYRO restart 'best'] {context_label}.{i} fluxes_turb.json missing channels "
+                f"{missing_keys}; skipping as candidate.",
+                typeMsg='w',
+            )
+            continue
+        candidates.append((i, candidate_eval_root, flux_mean))
+
+    if not candidates:
+        print(
+            f"\t- [CGYRO restart_from_cases='best'] No prior iteration in "
+            f"[0, {evaluation_number - 1}] had a usable fluxes_turb.json; cold start.",
+            typeMsg='w',
+        )
+        return existing_additional_files_to_send
+
+    print(
+        f"\n- [CGYRO restart_from_cases='best'] {context_label}.{evaluation_number} per-rho selection "
+        f"({len(candidates)} candidate iter(s); active channels: {sorted(current_turb_target_GB.keys())}):",
+        typeMsg='i',
+    )
+
+    resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
+    cold_started_rhos = []
+    for rho_idx, rho in enumerate(rho_locations):
+        # Per-rho candidate filter: only iters that have the binary for THIS rho.
+        per_rho = []
+        for i, candidate_eval_root, flux_mean in candidates:
+            bin_dir = candidate_eval_root / base_subfolder
+            if plasma_subfolder:
+                bin_dir = bin_dir / plasma_subfolder
+            bin_file = bin_dir / f"bin.cgyro.restart_{rho:.4f}"
+            if not bin_file.is_file():
+                continue
+            sq_sum = 0.0
+            for ch_key, target_arr in current_turb_target_GB.items():
+                tr_val = float(flux_mean[ch_key][rho_idx])
+                tg_val = float(target_arr[rho_idx])
+                sq_sum += (tr_val - tg_val) ** 2
+            per_rho.append((sq_sum ** 0.5, i, bin_file))
+
+        if not per_rho:
+            cold_started_rhos.append(rho)
+            print(
+                f"\t  rho={rho:.4f}: cold start (no prior iter had bin+json for this radius)",
+                typeMsg='w',
+            )
+            continue
+
+        # Sort by (distance asc, iter desc) so the higher iter wins on ties.
+        per_rho.sort(key=lambda t: (t[0], -t[1]))
+        chosen_dist, chosen_iter, chosen_bin = per_rho[0]
+        chosen_sibling = (f"portals_sr_ev_{chosen_iter}" if in_simple_relax
+                         else f"Evaluation.{chosen_iter}")
+        print(
+            f"\t  rho={rho:.4f} -> {chosen_sibling} (d={chosen_dist:.3g})",
+            typeMsg='i',
+        )
+        resolved.setdefault(float(rho), []).append((chosen_bin, "bin.cgyro.restart"))
+
+    if cold_started_rhos:
+        print(
+            f"\t- [CGYRO restart 'best'] {len(cold_started_rhos)} of {len(rho_locations)} "
+            f"rho(s) cold-started: {[f'{r:.4f}' for r in cold_started_rhos]}. Check that "
+            "RESTART_STEP/keep_files preserved bin.cgyro.restart_<rho:.4f> on prior iters.",
+            typeMsg='w',
         )
 
     return resolved
@@ -433,10 +654,14 @@ class gyrokinetic_model:
             run_kwargs["additional_files_to_send"] = resolved_additional
 
         # Automatic restart chain from prior iteration's base_<code> folder,
-        # driven by restart_from_cases ("first"=from iter 0, "all"=from iter N-1).
-        # Skipped when restart_from_folder is set (the helper short-circuits).
-        # `subfolder_name` is f"base_{code}" — for named multi-fidelity instances
-        # (e.g. 'cgyro1') this keeps every artifact path tied to the instance name.
+        # driven by restart_from_cases ("first"=from iter 0, "all"=from iter N-1,
+        # "best"=per-rho L2-closest prior iter). Skipped when restart_from_folder
+        # is set (the helper short-circuits). `subfolder_name` is f"base_{code}"
+        # — for named multi-fidelity instances (e.g. 'cgyro1') this keeps every
+        # artifact path tied to the instance name. For "best", we assemble
+        # current_turb_target_GB = target_GB - current_neoc_GB per active channel
+        # so the helper can score prior fluxes_turb.json files against it; the
+        # neoclassical comes from the preceding evaluate_neoclassical() this iter.
         resolved_additional = _resolve_cgyro_restart_chain(
             simulation_options["run"],
             getattr(self, "evaluation_number", 0),
@@ -444,6 +669,7 @@ class gyrokinetic_model:
             rho_locations,
             run_kwargs.get("additional_files_to_send"),
             base_subfolder=subfolder_name,
+            current_turb_target_GB=_build_current_turb_target_GB(self),
         )
         if resolved_additional is not None:
             run_kwargs["additional_files_to_send"] = resolved_additional
@@ -903,11 +1129,14 @@ class cgyro_model(gyrokinetic_model):
 
             # Automatic restart chain in batched mode: for every iteration N>=1,
             # pull bin.cgyro.restart from plasma 0 of the source iteration
-            # (iter 0 for "first", iter N-1 for "all"). All plasmas in the
-            # current batched call warm-start from the same plasma-0 reference
-            # since they share the seed-iteration semantics. base_subfolder and
-            # plasma_subfolder are both instance-named so multi-fidelity restart
-            # chains resolve to the right ancestor directory on disk.
+            # (iter 0 for "first", iter N-1 for "all", per-rho L2-closest for
+            # "best"). All plasmas in the current batched call warm-start from
+            # the same plasma-0 reference since they share the seed-iteration
+            # semantics. base_subfolder and plasma_subfolder are both
+            # instance-named so multi-fidelity restart chains resolve to the
+            # right ancestor directory on disk. For "best", the turbulent
+            # target is built from plasma 0 to match this same plasma-0
+            # reference convention.
             resolved_additional = _resolve_cgyro_restart_chain(
                 simulation_options["run"],
                 getattr(self, "evaluation_number", 0),
@@ -916,6 +1145,7 @@ class cgyro_model(gyrokinetic_model):
                 run_kwargs.get("additional_files_to_send"),
                 plasma_subfolder=f"{base_subfolder_name}_plasma0",
                 base_subfolder=base_subfolder_name,
+                current_turb_target_GB=_build_current_turb_target_GB(self, plasma_index=0),
             )
             if resolved_additional is not None:
                 run_kwargs["additional_files_to_send"] = resolved_additional
