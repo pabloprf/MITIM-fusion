@@ -25,7 +25,7 @@
     DELTA_T: 0.04
     MAX_TIME: 1200
   preprocess_options:
-    ky_min: 0.1
+    ky_min: 0.08
     L_x: 90
     N_radial: 256
     min_box_size: 85
@@ -39,7 +39,6 @@
   controls:
     COLLISION_MODEL: 1 # Lorentz operator
     ROTATION_MODEL: 1
-    N_TOROIDAL: 12
   preprocess_options:
     N_radial: 192
 
@@ -50,6 +49,7 @@
     ROTATION_MODEL: 1
     N_TOROIDAL: 12
   preprocess_options:
+    ky_min: 0.1
     N_radial: 192
 
 # ------------------------------------------------------------
