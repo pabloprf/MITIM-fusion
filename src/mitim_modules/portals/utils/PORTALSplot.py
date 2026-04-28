@@ -2285,11 +2285,15 @@ def _iterate_portals_evaluation_folders(root_folder):
 def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     '''
     PORTALS-side shim for the CGYRO per-rho time-trace plot. Resolves the
-    root folder, discovers iteration folders (BO or SR layout) and reads
-    the namelist's tmin / restart_from_cases config, then delegates both
-    the iteration loading and the drawing to CGYROplot so PORTALS stays
-    transport-model-agnostic. The tool cache is memoised on `self` so
-    interactive re-invocations of the plotter don't re-read pickles.
+    root folder, discovers iteration folders (BO or SR layout), reads each
+    iteration's restart_sources.json (the persisted per-(rho, iter) parent
+    map), then delegates both the iteration loading and the drawing to
+    CGYROplot so PORTALS stays transport-model-agnostic. Restart-mode
+    handling is fully driven by what's on disk: when no restart_sources.json
+    is present (older runs, or restart_from_cases=null), the plotter
+    renders without time-axis alignment. Both the tool cache and the
+    sources cache are memoised on `self` so interactive re-invocations
+    don't re-read pickles or JSONs.
     '''
     from mitim_tools.gacode_tools.utils import CGYROplot
 
@@ -2305,7 +2309,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
 
     # Resolve the active CGYRO instance name — defaults to 'cgyro' for single-fidelity,
     # could be 'cgyro1'/'cgyro2'/... under named multi-fidelity. This drives:
-    #  (a) which options sub-block we read tmin / restart config from, and
+    #  (a) which options sub-block we read tmin from, and
     #  (b) the on-disk base_<name> folder the loaders look inside.
     try:
         from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity
@@ -2325,28 +2329,23 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     except Exception:
         _read_kwargs = {}
 
-    # Resolve restart mode (drives time-axis alignment in the plotter).
-    # Same precedence as transport_cgyro.py: restart_from_folder forces
-    # overlay because we don't know the external sim's tmax.
-    try:
-        cgyro_run_cfg = self.powerstate.transport_options['options'][cgyro_key]['run']
-        _raw = cgyro_run_cfg.get('restart_from_cases')
-        if _raw in (None, "", "null") and cgyro_run_cfg.get('restart_from_first'):
-            _raw = "first"  # legacy alias
-        _mode = str(_raw).lower() if _raw not in (None, "", "null") else "none"
-        if cgyro_run_cfg.get('restart_from_folder') not in (None, ""):
-            _mode = "none"
-        restart_mode = _mode if _mode in ("none", "first", "all") else "none"
-    except Exception:
-        restart_mode = "none"
+    base_subfolder = f"base_{cgyro_key}"
 
-    # Lazy cache on self so re-invocations don't re-read pickles.
+    # Materialize the iter-folder list once so both loaders consume it.
+    iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
+
+    # Lazy caches on self so re-invocations don't re-read pickles / JSONs.
     if getattr(self, "_cgyro_traces_cache", None) is None:
         self._cgyro_traces_cache = CGYROplot.load_tools_for_iterations(
-            _iterate_portals_evaluation_folders(root_folder),
+            iter_folders,
             self.rhos,
             read_kwargs=_read_kwargs,
-            base_subfolder=f"base_{cgyro_key}",
+            base_subfolder=base_subfolder,
+        )
+    if getattr(self, "_cgyro_sources_cache", None) is None:
+        self._cgyro_sources_cache = CGYROplot.load_restart_sources_for_iterations(
+            iter_folders,
+            base_subfolder=base_subfolder,
         )
 
     CGYROplot.plot_time_traces_per_radius(
@@ -2354,7 +2353,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         fn_color_start,
         self.rhos,
         self._cgyro_traces_cache,
-        restart_mode=restart_mode,
+        sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
     )
     # Same data, pivoted: one figure per channel with rhos as rows.
@@ -2365,7 +2364,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         fn_color_start + len(self.rhos),
         self.rhos,
         self._cgyro_traces_cache,
-        restart_mode=restart_mode,
+        sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
     )
 

@@ -127,6 +127,47 @@ def _build_current_turb_target_GB(power_transport_self, plasma_index=0):
     return out
 
 
+def _write_restart_sources_json(folder, base_subfolder, mode, evaluation_number,
+                                 context_label, sources):
+    '''
+    Persist the per-rho parent map for this evaluation so the trace plotter
+    (`CGYROplot.load_restart_sources_for_iterations`) can align CGYRO time
+    traces across warm-started iterations under the same single code path
+    for all three restart modes ("first", "all", "best"). Without this file
+    the plotter treats this iteration as a cold start (no time-axis offset).
+
+    `sources` is {rho_str ("0.2500"): source_iter (int)}; rhos absent from
+    the dict are treated as cold-started by the plotter.
+
+    File: <folder>/<base_subfolder>/restart_sources.json
+    Schema:
+      {"mode": "first" | "all" | "best",
+       "evaluation_number": N,
+       "context_label": "Evaluation" or "portals_sr_ev",
+       "sources": {"0.2500": 0, "0.4500": 0, ...}}
+    '''
+    if not sources:
+        return
+    out_dir = folder / base_subfolder
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"\t- [CGYRO restart] Could not create {out_dir} for restart_sources.json: {e}", typeMsg='w')
+        return
+    out_path = out_dir / "restart_sources.json"
+    payload = {
+        "mode": mode,
+        "evaluation_number": int(evaluation_number),
+        "context_label": context_label,
+        "sources": {str(k): int(v) for k, v in sources.items()},
+    }
+    try:
+        with open(out_path, "w") as f:
+            json.dump(payload, f, indent=2)
+    except OSError as e:
+        print(f"\t- [CGYRO restart] Could not write {out_path}: {e}", typeMsg='w')
+
+
 def _resolve_cgyro_restart_chain(
     run_options,
     evaluation_number,
@@ -306,6 +347,18 @@ def _resolve_cgyro_restart_chain(
             "to run without restart."
         )
 
+    # Persist the per-rho parent map (uniform for "first"/"all": every rho
+    # has the same source iter). Consumed by the plotter via
+    # CGYROplot.load_restart_sources_for_iterations.
+    _write_restart_sources_json(
+        folder=folder,
+        base_subfolder=base_subfolder,
+        mode=mode_lower,
+        evaluation_number=evaluation_number,
+        context_label=context_label,
+        sources={f"{rho:.4f}": source_iter for rho in rho_locations},
+    )
+
     return resolved
 
 
@@ -392,6 +445,7 @@ def _resolve_cgyro_restart_chain_best(
 
     resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
     cold_started_rhos = []
+    chosen_sources = {}  # {rho_str: source_iter} for restart_sources.json
     for rho_idx, rho in enumerate(rho_locations):
         # Per-rho candidate filter: only iters that have the binary for THIS rho.
         per_rho = []
@@ -427,6 +481,7 @@ def _resolve_cgyro_restart_chain_best(
             typeMsg='i',
         )
         resolved.setdefault(float(rho), []).append((chosen_bin, "bin.cgyro.restart"))
+        chosen_sources[f"{rho:.4f}"] = chosen_iter
 
     if cold_started_rhos:
         print(
@@ -435,6 +490,17 @@ def _resolve_cgyro_restart_chain_best(
             "RESTART_STEP/keep_files preserved bin.cgyro.restart_<rho:.4f> on prior iters.",
             typeMsg='w',
         )
+
+    # Persist the per-rho parent map. Cold-started rhos are simply omitted —
+    # the plotter treats their absence as "no offset" for that (rho, iter).
+    _write_restart_sources_json(
+        folder=folder,
+        base_subfolder=base_subfolder,
+        mode="best",
+        evaluation_number=evaluation_number,
+        context_label=context_label,
+        sources=chosen_sources,
+    )
 
     return resolved
 

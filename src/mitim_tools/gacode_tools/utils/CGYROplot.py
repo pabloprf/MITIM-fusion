@@ -8,6 +8,8 @@ their own iteration discovery (folder layout) and namelist lookups (tmin,
 restart mode); this module handles CGYRO-specific loading and drawing.
 """
 
+import json
+
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.lines import Line2D
@@ -125,6 +127,55 @@ def load_tools_for_iterations(iteration_folders, rhos, read_kwargs=None, base_su
     return cache
 
 
+def load_restart_sources_for_iterations(iteration_folders, base_subfolder="base_cgyro"):
+    '''
+    Companion to `load_tools_for_iterations`: load each iteration's
+    restart_sources.json (written by `_resolve_cgyro_restart_chain` in
+    transport_cgyro for all three "first" / "all" / "best" modes via a
+    single code path). The plotter consumes this to align CGYRO time
+    traces across warm-started iterations.
+
+    Returns {iteration_index: {"mode": "first|all|best",
+                               "parents": {"0.2500": <source_iter>, ...}}}
+    Iterations without a JSON contribute no entry — they are treated as
+    cold starts by the plotter (offset = 0). This is also the behavior
+    when no PORTALS run wrote any restart_sources.json files at all
+    (e.g., older runs predating the persistence step, or runs with
+    `restart_from_cases: null`).
+
+    `base_subfolder` matches the on-disk artifacts directory name (e.g.
+    "base_cgyro" for single-fidelity, "base_cgyro1" for named multi-
+    fidelity instances) so the right JSON is picked up per iteration.
+    '''
+    sources_per_iter = {}
+    for it, folder in iteration_folders:
+        json_path = folder / base_subfolder / "restart_sources.json"
+        if not json_path.is_file():
+            continue
+        try:
+            with open(json_path, "r") as f:
+                payload = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"\t- restart_sources.json unreadable at {json_path} ({e}); ignoring", typeMsg='w')
+            continue
+        parents_raw = payload.get("sources", {})
+        if not isinstance(parents_raw, dict):
+            continue
+        parents = {}
+        for k, v in parents_raw.items():
+            try:
+                parents[str(k)] = int(v)
+            except (TypeError, ValueError):
+                continue
+        if not parents:
+            continue
+        sources_per_iter[it] = {
+            "mode": str(payload.get("mode", "")),
+            "parents": parents,
+        }
+    return sources_per_iter
+
+
 # ---------------------------------------------------------------------------
 # Shared plotting helpers
 # ---------------------------------------------------------------------------
@@ -150,33 +201,84 @@ def _make_column_color_fn(chunk):
     return lambda it: _CMAP_ITER(norm(it))
 
 
-def _xlabel_suffix_for(restart_mode, base_iter):
+def _restart_label_from_sources(sources_per_iter):
+    '''Derive a short human-readable label of the restart mode used across
+    iterations. Returns "" when no iteration carries a sources record (so
+    the plotter renders without a restart-aware title/xlabel suffix).'''
+    if not sources_per_iter:
+        return ""
+    modes = {entry.get("mode", "") for entry in sources_per_iter.values()}
+    modes.discard("")
+    if not modes:
+        return ""
+    if len(modes) == 1:
+        return next(iter(modes))
+    return "mixed"
+
+
+def _xlabel_suffix_from_sources(sources_per_iter):
+    '''xlabel suffix that matches the dominant restart mode in the JSONs.
+    Empty string when no JSON was found, which preserves the legacy
+    "no restart context" rendering.'''
+    label = _restart_label_from_sources(sources_per_iter)
     return {
         "all": " (chained)",
-        "first": f" (branched from ev{base_iter})",
-    }.get(restart_mode, "")
+        "first": " (branched from ev0)",
+        "best": " (best per-rho)",
+        "mixed": " (restart-aligned)",
+    }.get(label, "")
 
 
-def _compute_offsets_for_rho(rho, r_idx, restart_mode, cache, sorted_its, base_iter):
-    '''Per-iteration time offsets at this rho (see restart_mode semantics).'''
-    offsets = {it: 0.0 for it in sorted_its}
-    if restart_mode == "all":
-        cumulative = 0.0
-        for it in sorted_its:
-            offsets[it] = cumulative
-            out = pick_output_for_rho(cache[it], rho, r_idx)
-            if out is not None and hasattr(out, "t") and len(out.t) > 0:
-                cumulative += float(out.t[-1])
-    elif restart_mode == "first":
-        base_tmax = 0.0
-        if base_iter in cache:
-            out0 = pick_output_for_rho(cache[base_iter], rho, r_idx)
-            if out0 is not None and hasattr(out0, "t") and len(out0.t) > 0:
-                base_tmax = float(out0.t[-1])
-        for it in sorted_its:
-            if it != base_iter:
-                offsets[it] = base_tmax
-    return offsets
+def _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its):
+    '''
+    Per-(rho, iter) time offsets via parent-map walk. Each iter's offset
+    is the sum of t[parent].t[-1] along its parent chain back to a root
+    (an iter whose restart_sources.json has no entry for this rho — i.e.
+    the rho was cold-started for that iter, or no JSON was written at all).
+    Iters with no parent chain at this rho get offset = 0, which collapses
+    to the legacy "no restart" rendering.
+
+    The parent map is the per-rho mapping read from each child iter's
+    restart_sources.json. "first" produces parent ≡ 0 for every (rho, iter);
+    "all" produces parent ≡ k-1; "best" produces a per-(rho, iter) lookup.
+    The walker is identical for all three modes — that is the whole point
+    of routing every restart mode through this single path.
+
+    Memoised + cycle-broken (cycles can't arise from the writer but the
+    plotter is defensive against hand-edited JSON).
+    '''
+    rho_key = f"{rho:.4f}"
+
+    def _tmax(it):
+        if it not in cache:
+            return 0.0
+        out = pick_output_for_rho(cache[it], rho, r_idx)
+        if out is None or not hasattr(out, "t") or len(out.t) == 0:
+            return 0.0
+        return float(out.t[-1])
+
+    memo = {}
+    visiting = set()
+
+    def _offset(it):
+        if it in memo:
+            return memo[it]
+        if it in visiting:
+            return 0.0
+        visiting.add(it)
+        try:
+            entry = sources_per_iter.get(it) or {}
+            parent = entry.get("parents", {}).get(rho_key)
+            if parent is None or parent not in cache:
+                off = 0.0
+            else:
+                off = _offset(parent) + _tmax(parent)
+        finally:
+            visiting.discard(it)
+        memo[it] = off
+        return off
+
+    return {it: _offset(it) for it in sorted_its}
 
 
 def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
@@ -357,7 +459,7 @@ def plot_time_traces_per_radius(
     fn_color_start,
     rhos,
     tools_by_iteration,
-    restart_mode="none",
+    sources_per_iter=None,
     base_iter=0,
     title_prefix="CGYRO time traces",
     factor=2.5,
@@ -369,14 +471,17 @@ def plot_time_traces_per_radius(
     column with a column-local blue->red gradient.
 
     When the driver used CGYRO's warm-start feature each iteration after
-    base resets its clock at t=0; time axes are re-aligned per
-    `restart_mode`:
-      - "none"  -> no warm-start; overlay every iter at t=0.
-      - "first" -> every ev_N (N != base) restarted from base's final
-                   state; all non-base iters share offset = tmax(base)
-                   and fan out as parallel branches from that endpoint.
-      - "all"   -> chained; iter N restarts from iter N-1, offsets are
-                   cumulative over prior iterations' tmax.
+    base resets its clock at t=0; time axes are re-aligned via the
+    per-(rho, iter) parent map persisted as restart_sources.json by
+    `_resolve_cgyro_restart_chain`. The parent map is loaded by
+    `load_restart_sources_for_iterations` and passed in as
+    `sources_per_iter`. All three restart modes ("first", "all", "best")
+    flow through the same offset walker — modes only differ in the shape
+    of the per-rho parent map.
+
+    If `sources_per_iter` is empty (no JSON found, including older runs),
+    every iter's offset is 0 and the figure renders without restart
+    alignment — equivalent to the legacy `restart_mode="none"`.
 
     Per-trace stats overlays: tinted axvspan window, raw trace, square
     errorbar marker at trace end for mean +/- 2*sigma. Base iter also
@@ -387,11 +492,13 @@ def plot_time_traces_per_radius(
         print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO tabs", typeMsg='w')
         return
 
+    sources_per_iter = sources_per_iter or {}
     cache = tools_by_iteration
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_for(restart_mode, base_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     for r_idx, rho in enumerate(rhos):
         fig = fn.add_figure(
@@ -403,12 +510,12 @@ def plot_time_traces_per_radius(
 
         fig.suptitle(
             f"{title_prefix} at $\\rho={float(rho):.3f}$  "
-            f"(restart_mode={restart_mode!r}; {len(non_base_its)} non-base iter"
+            f"(restart_mode={restart_label!r}; {len(non_base_its)} non-base iter"
             f"{'' if len(non_base_its) == 1 else 's'})",
             fontsize=11,
         )
 
-        offsets = _compute_offsets_for_rho(rho, r_idx, restart_mode, cache, sorted_its, base_iter)
+        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its)
         base_out = pick_output_for_rho(cache[base_iter], rho, r_idx) if base_iter in cache else None
         base_has_window = base_out is not None and getattr(base_out, 'tmin', None) is not None
 
@@ -449,7 +556,7 @@ def plot_time_traces_per_channel(
     fn_color_start,
     rhos,
     tools_by_iteration,
-    restart_mode="none",
+    sources_per_iter=None,
     base_iter=0,
     title_prefix="CGYRO time traces",
     factor=2.5,
@@ -461,6 +568,9 @@ def plot_time_traces_per_channel(
     view is "how did Qi evolve at every radius over the PORTALS
     iterations" rather than "what's happening at rho=0.5 across channels".
 
+    Restart-aware time alignment is identical to plot_time_traces_per_radius:
+    `sources_per_iter` carries the per-(rho, iter) parent map loaded from
+    each iteration's restart_sources.json. Empty / missing -> no offset.
     Per-cell semantics, color palette, and per-row y-clamp are identical
     to plot_time_traces_per_radius — rows just carry a different meaning
     (the rho value) so the clamp is now per-(channel, rho) rather than
@@ -470,11 +580,13 @@ def plot_time_traces_per_channel(
         print("\t- No CGYRO time-trace data available across iterations; skipping CGYRO per-channel tabs", typeMsg='w')
         return
 
+    sources_per_iter = sources_per_iter or {}
     cache = tools_by_iteration
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_for(restart_mode, base_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     rho_list = list(rhos)
     n_rows = len(rho_list)
@@ -489,7 +601,7 @@ def plot_time_traces_per_channel(
 
         fig.suptitle(
             f"{title_prefix} - {ylabel.split(' [')[0]}  "
-            f"(restart_mode={restart_mode!r}; {len(non_base_its)} non-base iter"
+            f"(restart_mode={restart_label!r}; {len(non_base_its)} non-base iter"
             f"{'' if len(non_base_its) == 1 else 's'})",
             fontsize=11,
         )
@@ -502,7 +614,7 @@ def plot_time_traces_per_channel(
 
         # Pre-resolve per-rho offsets and base_out once (shared across columns).
         offsets_per_rho = {
-            r_idx: _compute_offsets_for_rho(rho_list[r_idx], r_idx, restart_mode, cache, sorted_its, base_iter)
+            r_idx: _compute_offsets_for_rho(rho_list[r_idx], r_idx, sources_per_iter, cache, sorted_its)
             for r_idx in range(n_rows)
         }
         base_out_per_rho = {
