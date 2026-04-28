@@ -241,6 +241,17 @@ def _resolve_cgyro_restart_chain(
     from — not an error for N=0).
     '''
 
+    # PORTALS sources `evaluation_number` from the Dakota-style filename
+    # (`IOtools.obtainGeneralParams`) which yields a *string* (e.g. "0", "5").
+    # Coerce here so range(), arithmetic, and the iter-0 short-circuit all
+    # behave correctly. Defensive fallback: leave the value alone if it
+    # doesn't parse as an int — the downstream comparison against 0 will
+    # still short-circuit and the helper will no-op.
+    try:
+        evaluation_number = int(evaluation_number)
+    except (TypeError, ValueError):
+        pass
+
     # Resolve the mode, with backward-compat for the retired
     # `restart_from_first: true` flag.
     mode = run_options.get("restart_from_cases")
