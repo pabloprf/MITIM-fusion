@@ -782,6 +782,15 @@ class mitim_job:
 
         print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
 
+        # Defensively (re)create folder_local before any local FS or SFTP
+        # operation: paramiko's sftp.get() opens the local destination via
+        # `open(localpath, "wb")` and raises FileNotFoundError if the parent
+        # directory is missing — this can hit a long-running PORTALS poll
+        # whenever folder_local got cleaned up between submit and a later
+        # check()/fetch() (mirrors load_submission_state's own re-attach
+        # safety mkdir in SIMtools.py).
+        self.folder_local.mkdir(parents=True, exist_ok=True)
+
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Removing local output files & folders that potentially exist from previous runs")
         for file in list(self.output_files) + optional_files:
@@ -847,19 +856,74 @@ class mitim_job:
         # Download the tarball
         print("\t\t- Downloading (remote -> local)")
         if self.ssh is not None:
-            with TqdmUpTo(
-                unit="B",
-                unit_scale=True,
-                miniters=1,
-                desc="mitim_receive.tar.gz",
-                bar_format=" " * 20
-                + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
-            ) as t:
-                self.sftp.get(
-                    f"{self.folderExecution}/mitim_receive.tar.gz",
-                    self.folder_local / "mitim_receive.tar.gz",
-                    callback=lambda sent, total_size: t.update_to(sent, total_size),
+            # Reuse the same retry policy connect_ssh uses, sourced from the
+            # same self.connection_retry_settings dict the namelist plumbs
+            # through for PORTALS-CGYRO. Defaults preserve historical
+            # behavior (5 s wait, 3-attempt cap). Transient mid-transfer
+            # failures (transport closed by the remote, socket timeout,
+            # EOF, connection reset) reconnect once and re-issue the get;
+            # the remote tarball at folderExecution/mitim_receive.tar.gz
+            # was created above and persists across reconnects.
+            retry_cfg = getattr(self, "connection_retry_settings", None) or {}
+            retry_wait = float(retry_cfg.get("wait_seconds", 5))
+            retry_attempts = retry_cfg.get("attempts", 3)
+            if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
+                raise ValueError(
+                    f"connection_retry_settings['attempts'] must be a positive int "
+                    f"or None (infinite); got {retry_attempts!r}"
                 )
+            transient_exc = (
+                paramiko.ssh_exception.SSHException,
+                TimeoutError,
+                socket.timeout,
+                EOFError,
+                ConnectionError,
+            )
+
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    with TqdmUpTo(
+                        unit="B",
+                        unit_scale=True,
+                        miniters=1,
+                        desc="mitim_receive.tar.gz",
+                        bar_format=" " * 20
+                        + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+                    ) as t:
+                        self.sftp.get(
+                            f"{self.folderExecution}/mitim_receive.tar.gz",
+                            self.folder_local / "mitim_receive.tar.gz",
+                            callback=lambda sent, total_size: t.update_to(sent, total_size),
+                        )
+                    break
+                except transient_exc as e:
+                    if retry_attempts is not None and attempt >= retry_attempts:
+                        raise
+                    cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
+                    print(
+                        f"\t<> Paramiko sftp.get attempt {attempt}/{cap_str} failed "
+                        f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
+                        typeMsg="w",
+                    )
+                    time.sleep(retry_wait)
+                    # Best-effort clear the partial local tarball so the next
+                    # attempt starts from a clean slate (sftp.get does not
+                    # resume; it overwrites, but a half-written file from a
+                    # truncated transfer makes the local progress bar lie).
+                    (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
+                    # Rebuild SSH/SFTP — connect_ssh has its own retry loop
+                    # so a persistent network outage will surface there with
+                    # a clear error rather than spin here.
+                    try:
+                        self.connect()
+                    except Exception as _conn_e:
+                        print(
+                            f"\t<> reconnect during retrieve failed ({_conn_e}); "
+                            "will retry transfer on next loop iteration",
+                            typeMsg="w",
+                        )
         else:
             shutil.copy2(
                 f"{self.folderExecution}/mitim_receive.tar.gz",
