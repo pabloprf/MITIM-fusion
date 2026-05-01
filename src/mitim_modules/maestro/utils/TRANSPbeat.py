@@ -47,7 +47,7 @@ class transp_beat(beat):
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
         transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
-        currentheating_window = 0.001,
+        currentheating_window = 0.1,                # Increased to hopefully avoid RuntimeError
         time_before_end     = 0.001,
         machine_initialization = 'CMOD',
         machine_initialization_match_target = False,
@@ -220,8 +220,8 @@ class transp_beat(beat):
         # Write profiles
         self.profiles_output.write_state(file=self.folder_output / "input.gacode")
         p = PROFILEStools.gacode_state(self.folder_output / "input.gacode")
-        print()
-        aaa
+        print(f' printing p right now: {p}')
+        
 
     def _add_heating_profiles(self, force_auxiliary_heating_at_output = None):
         '''
@@ -233,65 +233,30 @@ class transp_beat(beat):
         for key, pkey, ikey in zip(['Pe','Pi', 'Ge'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qpar_beam(1/m^3/s)'], ['qRFe_MW', 'qRFi_MW', 'ge_10E20']):
             if force_auxiliary_heating_at_output[key] is not None:
                 unit = "MW of power" if key in ('Pe', 'Pi') else "* 1e20 particles/(m^3 s)"
+                print(f'************************************************************')
                 print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} {unit}')
                 self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
                 print(f'************************************************************')
-                print(f'for {key}, {pkey}')
                 print(f'first step:')
                 print(self.profiles_output.profiles[pkey])
                 self.profiles_output.derive_quantities()
                 print(f'second step:')
-                print()
                 print(self.profiles_output.profiles[pkey])
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
                 print(f'third step:')
                 print(self.profiles_output.profiles[pkey])
-                print(f'************************************************************')
+                print(f'fourth step:')
+                print(self.profiles_output.derived[ikey])
+                self.profiles_output.derive_quantities()
+                print(f'four point five step:')
+                print(self.profiles_output.derived[ikey])
+                print(f'fifth step:')
+                print(self.profiles_output.derived["qe_auxONLY_MW"])
+                print(self.profiles_output.derived["qi_auxONLY_MW"])
+
             else:
                 print(f'\t\t- Keeping auxiliary power from TRANSP output')
-        # # preprocess data to get it in units of MW/m^3
-        # r = self.profiles["rmin(m)"]
-        # volp = self.derived["volp_geo"]
 
-        # p_densities = {
-        #     'Pe_density': np.zeros(len(self.profiles["r"])),
-        #     'Pi_density': np.zeros(len(self.profiles["r"]))
-        # }
-
-        # for key, density_key in zip(['Pe','Pi'], ["Pe_density", "Pi_density"]):
-        #     # calc derivative of P with respect to r (dP/dr), np.gradient uses central differences for better accuracy
-        #     profile_data = self.profiles[key]
-        #     dP_dr = np.gradient(profile_data, r)
-
-        #     # divide by the volume derivative (volp) to get the density
-        #     density = (-1) * dP_dr / volp   # the gradient is 0, which makes sense, but the way it is calculated makes the density negative, so put a (-1) here to fix that
-            
-        #     # deal with volp[0] = 0 @ r=0
-        #     if volp[0] == 0:
-        #         density[0] = density[1]     # A simple fix: set the center value equal to the first neighbor
-
-        #     p_densities[density_key] = density
-
-        # for key, pkey, ikey in zip(['Pe_density', 'Pi_density', 'Ge'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qpar_beam(1/m^3/s)'], ['qRFe_MW', 'qRFi_MW', 'ge_10E20']):
-        #     # Pe, Pi are in units of MW, q is in units of MW/m^3
-
-        #     if force_auxiliary_heating_at_output[key] is not None:
-        #         if key == 'Pe_density' or key == 'Pi_density':
-        #             print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} MW of power')
-        #         else:
-        #             print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} keV particles')
-        #         self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])   # takes the shape function (parabolic) and applies it to rho
-        #         self.profiles_output.derive_quantities()    # recalculate integrals to take into account new shape function (but how do we do this when we didn't specify the magnitude yet??)
-        #         # self.profiles_output.profiles[pkey] = np.array(self.profiles_output.profiles[pkey]).astype(float) * force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]    # scale to target power (specify magnitude of the shape function)
-        #         current_integral = float(self.profiles_output.derived[ikey][-1])
-        #         target_val = float(force_auxiliary_heating_at_output[key][1])
-        #         scaling_factor = target_val / current_integral
-        #         current_profile_data = np.array(self.profiles_output.profiles[pkey]).astype(float)
-        #         my_scaling_factor = target_val/np.max(current_profile_data)
-        #         self.profiles_output.profiles[pkey] = current_profile_data * my_scaling_factor    # scale to target power (specify magnitude of the shape function)
-        #         # print(f' the self.profiles_output.profiles[key] value is {current_profile_data * scaling_factor}')
-        #     else:
-        #         print(f'\t\t- Keeping auxiliary power, particles from TRANSP output')
     
     def merge_parameters(self):
         '''
@@ -337,11 +302,17 @@ class transp_beat(beat):
         for key in ['current(MA)', 'bcentr(T)']:
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
+        ## ********************CHANGE HERE******************** ##
         # Power scale
-        print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
-        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
-        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
-
+        if self.maestro_instance.counter_current == 1:
+            print('\t\t\t* NOT Bringing total power of frozen plasma state to new plasma state (NO rescaling the profile)')
+        else:
+            print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
+            self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+            self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+            if self.profiles_output.derived['qRF_MW'][-1] < 0 or abs(self.profiles_output.derived['qRF_MW'][-1]) <= 5e-6:  # to prevent NaNs
+                    profiles_output.profiles['qrfi(MW/m^3)'] = 0
+                    profiles_output.profiles['qrfe(MW/m^3)'] = 0    
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
