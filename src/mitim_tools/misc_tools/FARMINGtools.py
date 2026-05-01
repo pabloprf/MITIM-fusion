@@ -259,17 +259,43 @@ class mitim_job:
         self.input_files = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_files]
         self.input_folders = [IOtools.expandPath(path).relative_to(self.folder_local) for path in self.input_folders]
 
-        # Process
-        self.full_process(
-            comm,
-            removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
-            removeScratchFolders_goingOut=removeScratchFolders_goingOut,
-            timeoutSecs=timeoutSecs,
-            check_if_files_received=waitYN and check_if_files_received,
-            check_files_in_folder=self.check_files_in_folder,
-            attempts_execution=attempts_execution,
-            execute_flag=execute_case_flag and (not helper_lostconnection)
-        )
+        # Submit-mode minimal retrieve: when waitYN=False the only thing we
+        # need locally after `./mitim_shell_executor.sh > mitim.out` is
+        # mitim.out itself (the sbatch banner that carries the jobid for the
+        # later check()/fetch() loop). The rest of self.output_files /
+        # self.output_folders is the post-run output spec, which at this
+        # point on the remote contains *only* what we just uploaded
+        # (input.cgyro per rho, multi-GB restart binaries, etc.) — pulling
+        # it back would round-trip those bytes for nothing. The full spec
+        # is restored before this method returns so the eventual fetch()
+        # (SIMtools.fetch -> simulation_job.retrieve()) sees the original
+        # CGYRO output list. Mirrors the same backup/restore dance used in
+        # `mitim_job.check()` to scope retrieve() to squeue_output.dat.
+        submit_minimal_retrieve = not waitYN
+        if submit_minimal_retrieve:
+            _saved_output_files = list(self.output_files)
+            _saved_output_folders = list(self.output_folders)
+            _saved_output_folders_selective = dict(self.output_folders_selective)
+            self.output_files = ["mitim.out"]
+            self.output_folders = []
+            self.output_folders_selective = {}
+
+        try:
+            self.full_process(
+                comm,
+                removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
+                removeScratchFolders_goingOut=removeScratchFolders_goingOut,
+                timeoutSecs=timeoutSecs,
+                check_if_files_received=waitYN and check_if_files_received,
+                check_files_in_folder=self.check_files_in_folder,
+                attempts_execution=attempts_execution,
+                execute_flag=execute_case_flag and (not helper_lostconnection)
+            )
+        finally:
+            if submit_minimal_retrieve:
+                self.output_files = _saved_output_files
+                self.output_folders = _saved_output_folders
+                self.output_folders_selective = _saved_output_folders_selective
 
         # Get jobid
         if self.launchSlurm:
