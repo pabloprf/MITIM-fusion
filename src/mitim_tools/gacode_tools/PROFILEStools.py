@@ -141,7 +141,7 @@ class gacode_state(MITIMstate.mitim_state):
                     if title in self.titles_singleArr:
                         self.profiles[title] = np.array([float(i) for i in var0])
                     else:
-                        self.profiles[title] = np.array(var0)
+                        self.profiles[title] = np.array([float(i) for i in var0]) if title in ["nexp", "nion", "shot", "time"] else np.array(var0)
                 else:
                     # varT = [float(j) for j in var0[1:]]
                     if len(var0) == 0:
