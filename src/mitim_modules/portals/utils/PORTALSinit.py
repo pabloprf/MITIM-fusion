@@ -63,6 +63,8 @@ def initializeProblem(
     if isinstance(fileStart, MITIMstate.mitim_state):
         fileStart.write_state(file=FolderInitialization / "input.gacode")
     elif isinstance(fileStart, io):
+        if not fileStart.has_output and fileStart.has_input:
+            fileStart.swap()
         fileStart.to("gacode").write(FolderInitialization / "input.gacode", side="input")
     else:
         shutil.copy2(fileStart, FolderInitialization / "input.gacode")
@@ -79,6 +81,8 @@ def initializeProblem(
     if isinstance(fileStart, MITIMstate.mitim_state):
         profiles = copy.deepcopy(fileStart)
     elif isinstance(fileStart, io):
+        if not fileStart.has_output and fileStart.has_input:
+            fileStart.swap()
         profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
     # If it is a file, then assume it is a gacode one (#TODO: check type?)
     else:
