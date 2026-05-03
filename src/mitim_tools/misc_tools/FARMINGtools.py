@@ -451,15 +451,17 @@ class mitim_job:
         # Transient handshake/network errors. TimeoutError is the case Pablo
         # reported (Errno 60 from paramiko's underlying socket); SSHException
         # covers paramiko's own transient class; socket.timeout / EOFError /
-        # ConnectionError cover the rest of the typical VPN/firewall flap
-        # modes. Anything outside this tuple is treated as a real failure
-        # and re-raised on the first occurrence.
+        # ConnectionError / socket.gaierror cover the rest of the typical
+        # VPN/firewall flap modes (gaierror = DNS resolution failure when
+        # the VPN drops mid-poll). Anything outside this tuple is treated
+        # as a real failure and re-raised on the first occurrence.
         transient_exc = (
             paramiko.ssh_exception.SSHException,
             TimeoutError,
             socket.timeout,
             EOFError,
             ConnectionError,
+            socket.gaierror,
         )
 
         attempt = 0
