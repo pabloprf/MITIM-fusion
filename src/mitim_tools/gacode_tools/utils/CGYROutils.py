@@ -17,6 +17,43 @@ from IPython import embed
 import pandas as pd
 
 
+def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
+    """
+    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm=0.0 to
+    out.cgyro.info because the dimensional anchor (T_e[keV], B_unit[T], a[m])
+    isn't supplied. If a dimensional input.gacode is sitting alongside the run
+    (or in any of its parent folders up to `max_parents`), interpolate
+    derived["rho_sa"] from it at the simulation's r/a (= cgyrodata.rmin) and
+    return that value -- mathematically identical to what CGYRO would have
+    computed under PROFILE_MODEL=2 with the same dimensional inputs.
+
+    Caveat the caller is expected to surface to the user: the dimensionless
+    inputs in input.cgyro (T_e/T_norm, n_e/n_norm, gradients, nu, ...) are not
+    guaranteed to be the ones derived from this input.gacode at this radius.
+    For PORTALS that consistency holds by construction; for ad-hoc
+    `mitim_plot_cgyro <folder>` use it's the user's responsibility.
+
+    Returns: (rho_star_norm, source_path) or (None, None) if no readable
+    input.gacode is found.
+    """
+    folder = Path(folder)
+    candidates = [folder] + list(folder.parents)[:max_parents]
+    for d in candidates:
+        f = d / "input.gacode"
+        if not f.exists():
+            continue
+        try:
+            from mitim_tools.gacode_tools import PROFILEStools
+            profiles = PROFILEStools.gacode_state(str(f))
+            roa_grid = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
+            rho_sa = float(np.interp(roa, roa_grid, profiles.derived["rho_sa"]))
+            return rho_sa, f
+        except Exception as e:
+            print(f"\t- Found {f} but could not derive rho_s/a from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
+            continue
+    return None, None
+
+
 def compute_box_and_nradial(
     q,
     shear,
@@ -221,7 +258,48 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.Qgb = self.cgyrodata.q_gb_norm
         self.Ggb = self.cgyrodata.gamma_gb_norm
         
-        self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
+        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm=0 in
+        # out.cgyro.info, which would zero out every fluctuation amplitude at
+        # _process_fluctuations(). If an input.gacode is available alongside
+        # the run, recover rho_star_norm from it at r/a=self.roa. When
+        # PROFILE_MODEL=2 (rho_star_norm already populated) we still cross-
+        # check against input.gacode if present, but always trust CGYRO's own
+        # value as the effective one.
+        rho_star_norm_effective = self.cgyrodata.rho_star_norm
+        self._rho_star_norm_source = ('out.cgyro.info', None)
+        if rho_star_norm_effective <= 0.0:
+            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
+            if rho_sa is not None:
+                print(
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info); "
+                    f"computed rho_star_norm={rho_sa:.4e} from {source} at r/a={self.roa:.4f}. "
+                    f"Fluctuation amplitudes use this *computed* rho_star_norm, not a value the simulation itself used "
+                    f"(input.cgyro dimensionless inputs are assumed consistent with this input.gacode at this radius).",
+                    typeMsg='w',
+                )
+                rho_star_norm_effective = rho_sa
+                self._rho_star_norm_source = ('input.gacode', source)
+            else:
+                print(
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info) and no input.gacode was found "
+                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes will be zero. "
+                    f"Drop an input.gacode next to the run to recover physical amplitudes.",
+                    typeMsg='w',
+                )
+                self._rho_star_norm_source = ('zero', None)
+        else:
+            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
+            if rho_sa is not None:
+                rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
+                print(
+                    f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
+                    f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
+                    f"input.gacode ({source})={rho_sa:.4e}, "
+                    f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
+                    typeMsg='i',
+                )
+
+        self.artificial_rhos_factor = rho_star_norm_effective / self.cgyrodata.rhonorm
 
         self._process_linear()
 
@@ -476,7 +554,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
             self.l_corr = np.nan
         else:
-            self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
+            self.lr_corr = np.nan #calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
 
     def _process_fluxes(self):
         
