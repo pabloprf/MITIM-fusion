@@ -538,6 +538,11 @@ class mitim_simulation:
 
             shellPreCommands, shellPostCommands = None, None
 
+            # Defaults populated only by the slurm_array branch; non-array paths
+            # leave these empty (single-rho-rescue resubmit is array-only).
+            array_index_by_folder = {}
+            per_folder_commands = {}
+
             # Simply bash, no slurm
             if type_of_submission == "bash":
 
@@ -596,6 +601,27 @@ class mitim_simulation:
                     n = resources_per_call,
                     p = self.simulation_job.folderExecution,
                     additional_command = f'1> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_output.dat 2> {self.simulation_job.folderExecution}/{indexed_folder}/slurm_error.dat\n')
+
+                # Stash per-folder bash bodies and folder->array-index map for
+                # the stall-rescue path: if one rho hangs, we can scancel just
+                # that array index and resubmit the same code_call body as a
+                # standalone single-task job (mitim_job.resubmit_single_task)
+                # without re-running the whole array. Composed here (literal
+                # folder, not ${FOLDERS[...]}) so the resubmit primitive stays
+                # code-agnostic.
+                array_index_by_folder = {folder: i for i, folder in enumerate(folders_red)}
+                per_folder_commands = {
+                    folder: code_call(
+                        folder=folder,
+                        n=resources_per_call,
+                        p=self.simulation_job.folderExecution,
+                        additional_command=(
+                            f'1> {self.simulation_job.folderExecution}/{folder}/slurm_output.dat '
+                            f'2> {self.simulation_job.folderExecution}/{folder}/slurm_error.dat\n'
+                        ),
+                    )
+                    for folder in folders_red
+                }
 
             # ---------------------------------------------
             # Execute
@@ -690,6 +716,11 @@ class mitim_simulation:
                     "tmpFolder": tmpFolder,
                     "filesToRetrieve": filesToRetrieve,
                     "optional_files_to_retrieve": optional_files_to_retrieve,
+                    # Empty for non-array submissions; populated for slurm_array
+                    # so the per-rho stall-rescue path can map a stalled folder
+                    # back to its array index and resurface its bash body.
+                    "array_index_by_folder": array_index_by_folder,
+                    "per_folder_commands": per_folder_commands,
                 }
 
                 self.slurm_output = "slurm_output.dat"
@@ -700,9 +731,14 @@ class mitim_simulation:
 
                 # Persist submission metadata so a future process can re-attach
                 # to this in-flight job instead of resubmitting. Opt-in via
-                # subclass `_submission_metadata_filename` (e.g. CGYRO).
+                # subclass `_submission_metadata_filename` (e.g. CGYRO). The
+                # base_subfolder is also stashed on `self` so the stall-rescue
+                # path (CGYROtools._cgyro_handle_stalled_tasks) can re-write the
+                # metadata after every successful resubmit without threading the
+                # arg through the polling-loop callback.
                 if self._submission_metadata_filename is not None:
-                    self._write_submission_metadata(kwargs_run.get("base_subfolder"))
+                    self._base_subfolder = kwargs_run.get("base_subfolder")
+                    self._write_submission_metadata(self._base_subfolder)
 
     def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2, custom_checker=None):
         '''
@@ -919,7 +955,17 @@ class mitim_simulation:
                 "filesToRetrieve": list(self.kwargs_organize["filesToRetrieve"]),
                 "optional_files_to_retrieve": list(self.kwargs_organize.get("optional_files_to_retrieve", [])),
                 "code_executor": code_executor_serial,
+                # Populated only for slurm_array submissions. Persisted so the
+                # rescue path survives PORTALS restart between submit and the
+                # first stall-detection (would-be resubmit) decision.
+                "array_index_by_folder": dict(self.kwargs_organize.get("array_index_by_folder", {})),
+                "per_folder_commands": dict(self.kwargs_organize.get("per_folder_commands", {})),
             },
+            # Per-folder stall-rescue ledger (empty until the first resubmit).
+            # Lives on `self` because it spans poll cycles within one PORTALS
+            # iteration; persisted here so a re-attach picks up child jobids
+            # spawned before the prior process was killed.
+            "resubmit_ledger": dict(getattr(self, "_resubmit_ledger", {})),
             "results_per_plasma": results_per_plasma_serial,
             "job": {
                 "folder_local": str(job.folder_local),
@@ -991,7 +1037,15 @@ class mitim_simulation:
             "tmpFolder": Path(data["kwargs_organize"]["tmpFolder"]),
             "filesToRetrieve": list(data["kwargs_organize"]["filesToRetrieve"]),
             "optional_files_to_retrieve": list(data["kwargs_organize"].get("optional_files_to_retrieve", [])),
+            "array_index_by_folder": dict(data["kwargs_organize"].get("array_index_by_folder", {})),
+            "per_folder_commands": dict(data["kwargs_organize"].get("per_folder_commands", {})),
         }
+
+        # Rehydrate stall-rescue ledger and the base_subfolder needed to
+        # re-write the metadata after future resubmits in this re-attached
+        # process.
+        self._resubmit_ledger = dict(data.get("resubmit_ledger", {}))
+        self._base_subfolder = data.get("base_subfolder")
 
         # Note: results_per_plasma is rebuilt in memory by the caller via
         # `_prepare_plasmas_state`, which also restores `profiles` /

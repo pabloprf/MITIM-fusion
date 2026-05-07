@@ -7,6 +7,64 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
+def _all_child_jobids(gk_object):
+    '''
+    Flatten the auto-resubmit ledger into a deduplicated list of child jobids
+    (preserving insertion order). Empty when no rho has been rescued yet.
+    '''
+    ledger = getattr(gk_object, "_resubmit_ledger", None) or {}
+    seen = []
+    for entry in ledger.values():
+        for jid in entry.get("child_jobids", []):
+            if jid not in seen:
+                seen.append(jid)
+    return seen
+
+
+def _any_child_jobid_alive(gk_object):
+    '''
+    Liveness widening for the re-attach path: when the auto-resubmit
+    orchestrator has spawned rescue jobs for stalled rhos, the parent array
+    may already be gone (its remaining tasks finished cleanly) while one or
+    more rescue children are still running. In that case the run is *not*
+    finished — squeue against the union of child jobids decides. Returns
+    False when no child jobids exist yet, on connection failure (treated as
+    "no signal — let the caller fall through to the existing decision tree"),
+    or when squeue reports none of the child jobids are queued/running.
+    '''
+    child_ids = _all_child_jobids(gk_object)
+    if not child_ids:
+        return False
+
+    job = getattr(gk_object, "simulation_job", None)
+    if job is None:
+        return False
+
+    joined = ",".join(child_ids)
+    cmd = f'squeue -h -j {joined} -o "%.15i %.10T"'
+    try:
+        job.connect()
+        out, _err = job.execute(cmd, printYN=False)
+        job.close()
+    except Exception as e:
+        print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating as no live child", typeMsg='w')
+        return False
+
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    out = (out or "").strip()
+    # Any non-empty squeue output with at least one child jobid line means
+    # something is still queued or running.
+    for line in out.splitlines():
+        toks = line.split()
+        if not toks:
+            continue
+        if toks[0] in child_ids:
+            print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
+            return True
+    return False
+
+
 def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additional_files_to_send=None):
     '''
     Translate the namelist-level `restart_from_folder` option into per-rho
@@ -714,10 +772,21 @@ class gyrokinetic_model:
             "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
             "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
         }
+        # Auto-resubmit settings for the per-rho stall-rescue path
+        # (CGYROtools._cgyro_handle_stalled_tasks). Defaults are conservative:
+        # one rescue attempt per rho, kill threshold 30 min for both stall
+        # types. Users disable per run by setting auto_resubmit_enabled=False
+        # in the namelist.
+        auto_resubmit_settings = {
+            "enabled":                    simulation_options["run"].get("auto_resubmit_enabled", True),
+            "stall_init_kill_seconds":    simulation_options["run"].get("stall_init_kill_seconds", 1800),
+            "stall_running_kill_seconds": simulation_options["run"].get("stall_running_kill_seconds", 1800),
+            "max_resubmits_per_rho":      simulation_options["run"].get("max_resubmits_per_rho", 1),
+        }
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'ssh_retry_wait_seconds', 'ssh_retry_attempts', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
+        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'ssh_retry_wait_seconds', 'ssh_retry_attempts', 'auto_resubmit_enabled', 'stall_init_kill_seconds', 'stall_running_kill_seconds', 'max_resubmits_per_rho', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
         remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
 
         # Translate namelist-level restart_from_folder into per-rho
@@ -812,6 +881,7 @@ class gyrokinetic_model:
         # explicitly here for the unpickled / re-attached paths where
         # simulation_job may already exist on the loaded gk_object.
         gk_object.connection_retry_settings = connection_retry_settings
+        gk_object.auto_resubmit_settings = auto_resubmit_settings
         if getattr(gk_object, "simulation_job", None) is not None:
             gk_object.simulation_job.connection_retry_settings = connection_retry_settings
 
@@ -860,8 +930,14 @@ class gyrokinetic_model:
                     #      also can't produce a complete local set.
                     print(f"\t- Liveness probe via squeue...", typeMsg='i')
                     gk_object.simulation_job.check(file_output=gk_object.slurm_output)
+                    # Auto-resubmit may have spawned child jobids before the
+                    # prior PORTALS process died; consider the run "still live"
+                    # if any child is still in the queue, even when the parent
+                    # array has already left.
+                    parent_alive = (gk_object.simulation_job.status != 2)
+                    any_child_alive = _any_child_jobid_alive(gk_object)
                     print("")
-                    if gk_object.simulation_job.status == 2:
+                    if (not parent_alive) and (not any_child_alive):
                         print(f"\t- Slurm reports job is NOT in the queue (state={gk_object.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
                         if gk_object._local_results_complete():
                             print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read()", typeMsg='i')
@@ -881,7 +957,11 @@ class gyrokinetic_model:
                                 metadata_path.unlink(missing_ok=True)
                                 reattached = False
                     else:
-                        print(f"\t- Slurm reports job is still live (jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
+                        live_summary = f"jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}"
+                        if any_child_alive:
+                            child_ids = _all_child_jobids(gk_object)
+                            live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
+                        print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
                     print("")
                 else:
                     print("")
@@ -1124,6 +1204,13 @@ class cgyro_model(gyrokinetic_model):
             "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
             "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
         }
+        # Auto-resubmit settings (see single-plasma path) — same defaults.
+        auto_resubmit_settings = {
+            "enabled":                    simulation_options["run"].get("auto_resubmit_enabled", True),
+            "stall_init_kill_seconds":    simulation_options["run"].get("stall_init_kill_seconds", 1800),
+            "stall_running_kill_seconds": simulation_options["run"].get("stall_running_kill_seconds", 1800),
+            "max_resubmits_per_rho":      simulation_options["run"].get("max_resubmits_per_rho", 1),
+        }
         if check_existing_runs and run_type != 'submit':
             print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
             check_existing_runs = False
@@ -1176,6 +1263,7 @@ class cgyro_model(gyrokinetic_model):
         # in SIMtools.py or explicitly here for the unpickled / re-attached
         # paths where simulation_job already exists).
         cgyro.connection_retry_settings = connection_retry_settings
+        cgyro.auto_resubmit_settings = auto_resubmit_settings
         if getattr(cgyro, "simulation_job", None) is not None:
             cgyro.simulation_job.connection_retry_settings = connection_retry_settings
 
@@ -1305,8 +1393,14 @@ class cgyro_model(gyrokinetic_model):
                     # still can't fill the local set -> resubmit.
                     print(f"\t- Liveness probe via squeue...", typeMsg='i')
                     cgyro.simulation_job.check(file_output=cgyro.slurm_output)
+                    # Same child-jobid widening as single-plasma path: a
+                    # rescue child job spawned by the auto-resubmit
+                    # orchestrator may still be in the queue even if the
+                    # parent array has already left.
+                    parent_alive = (cgyro.simulation_job.status != 2)
+                    any_child_alive = _any_child_jobid_alive(cgyro)
                     print("")
-                    if cgyro.simulation_job.status == 2:
+                    if (not parent_alive) and (not any_child_alive):
                         print(f"\t- Slurm reports job is NOT in the queue (state={cgyro.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
                         if cgyro._local_results_complete():
                             print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read_plasma()", typeMsg='i')
@@ -1326,7 +1420,11 @@ class cgyro_model(gyrokinetic_model):
                                 metadata_path.unlink(missing_ok=True)
                                 reattached = False
                     else:
-                        print(f"\t- Slurm reports job is still live (jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}); proceeding with check()/fetch()", typeMsg='i')
+                        live_summary = f"jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}"
+                        if any_child_alive:
+                            child_ids = _all_child_jobids(cgyro)
+                            live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
+                        print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
                     print("")
                 else:
                     print("")

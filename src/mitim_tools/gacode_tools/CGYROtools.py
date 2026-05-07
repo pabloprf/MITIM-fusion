@@ -1,4 +1,5 @@
 import math
+import datetime
 from pathlib import Path
 import numpy as np
 import copy
@@ -72,7 +73,7 @@ def cgyro_per_task_status(sim):
     job = getattr(sim, "simulation_job", None)
     kwargs_organize = getattr(sim, "kwargs_organize", None)
     if job is None or kwargs_organize is None or not getattr(job, "launchSlurm", False):
-        return
+        return []
 
     # Global slurm STATE from the outer poller. Coarse (one row per job, not
     # per array task), so we use it only as a tiebreaker on top of the
@@ -81,6 +82,11 @@ def cgyro_per_task_status(sim):
     slurm_state = info_slurm.get("STATE")
     job_terminal = slurm_state in ("NOT FOUND", "COMPLETED", "TIMEOUT", "FAILED", "CANCELLED")
 
+    # Structured rows returned to the caller (cgyro_per_task_callback) so the
+    # auto-resubmit orchestrator can act on STALLED / STALLED_INIT entries
+    # past their kill threshold without re-parsing the printed lines.
+    rows = []
+
     # Flatten code_executor into an ordered list of "subfolder/rho_{val:.4f}"
     # folder paths matching the slurm-array layout built by SIMtools._run.
     folders = []
@@ -88,7 +94,7 @@ def cgyro_per_task_status(sim):
         for rho in rhos:
             folders.append(f"{sub}/rho_{float(rho):.4f}")
     if not folders:
-        return
+        return []
 
     folder_list_sh = " ".join(f'"{f}"' for f in folders)
 
@@ -130,7 +136,7 @@ def cgyro_per_task_status(sim):
         job.close()
     except Exception as e:
         print(f"\t- [per-task status] remote inspection failed ({e}); continuing", typeMsg='w')
-        return
+        return []
 
     if isinstance(out, bytes):
         out = out.decode(errors="replace")
@@ -223,6 +229,211 @@ def cgyro_per_task_status(sim):
         else:
             print(f"\t     {folder}: {effective.lower()}{reason} — raw='{raw}'")
 
+        rows.append({
+            "folder": folder,
+            "raw_state": state,
+            "effective": effective,
+            "since_update_i": since_update_i,
+            "wall_i": wall_i,
+            "avg_f": avg_f,
+            "stale_threshold_warn": stale_threshold,
+            "tag_token": tag_token,
+        })
+
+    return rows
+
+
+def _cgyro_handle_stalled_tasks(sim, rows):
+    '''
+    Stall-rescue orchestrator for CGYRO array submissions. Consumes the rows
+    returned by `cgyro_per_task_status` and, for any rho whose since-update
+    has exceeded the auto-resubmit kill threshold, scancels just that array
+    task, cleans its remote subfolder of stale signal files (preserving
+    bin.cgyro.restart so the new task warm-starts from where the dead one
+    left off), parses the bad node from infoSLURM["NODELIST"], and resubmits
+    a single-task sbatch via `mitim_job.resubmit_single_task` with an
+    --exclude on that node so the rescue lands somewhere else.
+
+    Per-rho retries are capped at `auto_resubmit_settings["max_resubmits_per_rho"]`
+    (default 1). Once exhausted, that rho is left alone — fetch will note the
+    missing per-rho outputs at fetch time and downstream PORTALS handles the
+    gap (e.g. TGLF fallback in transport_cgyro). The ledger is persisted into
+    the submission metadata after every successful resubmit so a re-attached
+    PORTALS picks up child jobids on restart.
+
+    Silently no-ops when:
+      - sim.auto_resubmit_settings is missing or enabled=False
+      - sim.kwargs_organize lacks array_index_by_folder / per_folder_commands
+        (non-array submission — the rescue path is array-only)
+      - no rows are stalled past their kill threshold
+    '''
+    settings = getattr(sim, "auto_resubmit_settings", None) or {}
+    if not settings.get("enabled", False):
+        return
+
+    init_kill_s = int(settings.get("stall_init_kill_seconds", 1800))
+    run_kill_s  = int(settings.get("stall_running_kill_seconds", 1800))
+    cap         = int(settings.get("max_resubmits_per_rho", 1))
+
+    job = getattr(sim, "simulation_job", None)
+    if job is None:
+        return
+
+    array_index_by_folder = (sim.kwargs_organize or {}).get("array_index_by_folder", {})
+    per_folder_commands   = (sim.kwargs_organize or {}).get("per_folder_commands", {})
+    if not array_index_by_folder or not per_folder_commands:
+        return  # not a slurm_array submission — single-task rescue not applicable
+
+    info_slurm = getattr(job, "infoSLURM", None) or {}
+    parent_nodes = info_slurm.get("NODELIST")
+    # squeue prints "(null)" when the job is queued or "n/a" on some sites; both mean "no node yet".
+    if parent_nodes in (None, "(null)", "n/a", "(None)"):
+        parent_nodes = None
+
+    if not hasattr(sim, "_resubmit_ledger") or sim._resubmit_ledger is None:
+        sim._resubmit_ledger = {}
+
+    candidates = []
+    for row in rows:
+        folder, state, since = row["folder"], row["effective"], row["since_update_i"]
+        if state == "STALLED" and since > run_kill_s:
+            candidates.append((row, run_kill_s))
+        elif state == "STALLED_INIT" and since > init_kill_s:
+            candidates.append((row, init_kill_s))
+
+    if not candidates:
+        return
+
+    print(f"\t- [auto-resubmit] {len(candidates)} stalled task(s) past the kill threshold; attempting rescue", typeMsg='w')
+
+    try:
+        job.connect()
+    except Exception as e:
+        print(f"\t- [auto-resubmit] could not open SSH connection ({type(e).__name__}: {e}); skipping rescue this poll", typeMsg='w')
+        return
+
+    metadata_dirty = False
+    try:
+        for row, threshold in candidates:
+            folder = row["folder"]
+            state  = row["effective"]
+            since  = row["since_update_i"]
+
+            ledger = sim._resubmit_ledger.setdefault(folder, {
+                "n_attempts": 0,
+                "child_jobids": [],
+                "last_action_at": None,
+                "status": "active",
+            })
+
+            if ledger.get("status") == "EXHAUSTED" or ledger["n_attempts"] >= cap:
+                if ledger.get("status") != "EXHAUSTED":
+                    ledger["status"] = "EXHAUSTED"
+                    metadata_dirty = True
+                print(
+                    f"\t  - [auto-resubmit] {folder}: {state} {since}s (>{threshold}s) — "
+                    f"RESUBMIT_EXHAUSTED ({ledger['n_attempts']}/{cap}); leaving as-is",
+                    typeMsg='w',
+                )
+                continue
+
+            attempt = ledger["n_attempts"] + 1
+            print(
+                f"\t  - [auto-resubmit] {folder}: {state} {since}s (>{threshold}s) — "
+                f"attempting rescue {attempt}/{cap}",
+                typeMsg='w',
+            )
+
+            array_idx = array_index_by_folder.get(folder)
+
+            # Resolve which jobid to scancel: latest child if the orchestrator
+            # already rescued this rho on a previous poll, otherwise the
+            # parent array's task at the stalled index.
+            if ledger["child_jobids"]:
+                scancel_target = ledger["child_jobids"][-1]
+                rescuing_child = True
+            elif array_idx is not None and job.jobid is not None:
+                scancel_target = f"{job.jobid}_{array_idx}"
+                rescuing_child = False
+            else:
+                print(f"\t    * cannot resolve scancel target (jobid={job.jobid}, array_idx={array_idx}); skipping {folder}", typeMsg='w')
+                continue
+
+            try:
+                _, err = job.execute(f"scancel {scancel_target}", printYN=True)
+                if isinstance(err, bytes):
+                    err = err.decode(errors='replace')
+                if err and err.strip():
+                    print(f"\t    * scancel stderr (non-fatal): {err.strip()}", typeMsg='w')
+            except Exception as e:
+                print(f"\t    * scancel failed ({type(e).__name__}: {e}); skipping rescue for {folder}", typeMsg='w')
+                continue
+
+            cleanup_files = ["out.cgyro.timing", "out.cgyro.tag", "out.cgyro.info", "slurm_output.dat", "slurm_error.dat"]
+            cleanup_cmd = (
+                f"cd {job.folderExecution}/{folder} && rm -f " + " ".join(cleanup_files)
+            )
+            try:
+                job.execute(cleanup_cmd, printYN=False)
+            except Exception as e:
+                print(f"\t    * remote cleanup failed ({type(e).__name__}: {e}); skipping rescue for {folder}", typeMsg='w')
+                continue
+
+            # Bad-node exclusion: only meaningful when the parent array task
+            # was the one that stalled (NODELIST in infoSLURM is the parent
+            # array's nodes). For child-job rescues we don't currently track
+            # per-jobid NODELIST — accept that and let the resubmit land
+            # wherever slurm picks. Defensive: skip parsing if the column
+            # contains squeue's special "no node yet" sentinels.
+            bad_node = parent_nodes if (not rescuing_child) else None
+
+            label = f"_resubmit_{Path(folder).name}_a{attempt}"
+            code_call_str = per_folder_commands.get(folder)
+            if not code_call_str:
+                print(f"\t    * no stored bash body for {folder}; cannot resubmit", typeMsg='w')
+                continue
+
+            try:
+                new_jobid = job.resubmit_single_task(code_call_str, label, exclude_node=bad_node)
+            except Exception as e:
+                print(f"\t    * resubmit_single_task raised ({type(e).__name__}: {e}); ledger NOT incremented (will retry next poll)", typeMsg='w')
+                continue
+
+            if not new_jobid:
+                print(f"\t    * resubmit_single_task returned no jobid; ledger NOT incremented (will retry next poll)", typeMsg='w')
+                continue
+
+            ledger["n_attempts"] = attempt
+            ledger["child_jobids"].append(new_jobid)
+            ledger["last_action_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+            metadata_dirty = True
+            print(f"\t    * rescued {folder}: new jobid={new_jobid} (attempt {attempt}/{cap}, exclude={bad_node})", typeMsg='i')
+    finally:
+        try:
+            job.close()
+        except Exception:
+            pass
+
+    if metadata_dirty:
+        try:
+            sim._write_submission_metadata(getattr(sim, "_base_subfolder", None))
+        except Exception as e:
+            print(f"\t- [auto-resubmit] metadata write failed ({type(e).__name__}: {e}); ledger held in-memory only", typeMsg='w')
+
+
+def cgyro_per_task_callback(sim):
+    '''
+    Wrapper bound as `_custom_check_callback`: runs the existing per-task
+    detector (which prints and returns structured rows), then dispatches
+    stalled rows to the auto-resubmit orchestrator. Two-stage so users who
+    haven't opted into auto_resubmit_settings see byte-identical behavior to
+    the historical detect-only checker.
+    '''
+    rows = cgyro_per_task_status(sim)
+    if rows:
+        _cgyro_handle_stalled_tasks(sim, rows)
+
+
 class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     # Opts CGYRO into persisting slurm-submission metadata (jobid, remote
@@ -233,8 +444,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # Per-task inspection for `check(custom_checker=...)`. Picked up by
     # transport_cgyro.py via `getattr(gk_object, '_custom_check_callback', None)`
     # so the generic gyrokinetic_model evaluator stays code-agnostic (GX etc.
-    # simply get None and skip).
-    _custom_check_callback = staticmethod(cgyro_per_task_status)
+    # simply get None and skip). The wrapper runs the detector (prints + returns
+    # structured rows) and then dispatches to the auto-resubmit orchestrator,
+    # which is a no-op unless the user has opted in via `auto_resubmit_settings`.
+    _custom_check_callback = staticmethod(cgyro_per_task_callback)
 
     def __init__(
         self,

@@ -382,6 +382,28 @@ transport:
         ssh_retry_wait_seconds: 5
         ssh_retry_attempts: 3
 
+        # Auto stall-detect-and-resubmit. The custom checker classifies each
+        # rho on every poll; when a rho has been STALLED (no out.cgyro.timing
+        # update for the existing 5-10 min warn threshold) or STALLED_INIT
+        # (no out.cgyro.timing ever) for longer than the *kill* threshold
+        # below, the polling loop:
+        #   1. scancels just that array index (siblings keep running),
+        #   2. removes stale signal files from the rho's remote subfolder
+        #      (out.cgyro.timing/.tag/.info, slurm logs) but preserves
+        #      bin.cgyro.restart so the rescue keeps the warm start,
+        #   3. resubmits a single-task sbatch into the same subfolder with
+        #      `--exclude=<bad_node>` parsed from the parent array's
+        #      NODELIST so the rescue lands somewhere else.
+        # Cap: max_resubmits_per_rho per BO iteration (the ledger lives on
+        # the gk_object and resets each new evaluation). After the cap is
+        # exhausted that rho is left alone; fetch reports it missing and
+        # downstream handles the gap. Set auto_resubmit_enabled=False to
+        # restore the historical detect-only behavior.
+        auto_resubmit_enabled: True
+        stall_init_kill_seconds: 1800
+        stall_running_kill_seconds: 1800
+        max_resubmits_per_rho: 1
+
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
         #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives

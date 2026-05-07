@@ -310,6 +310,114 @@ class mitim_job:
         else:
             self.jobid = None
 
+    def resubmit_single_task(self, code_call_str, label, exclude_node=None):
+        '''
+        Submit a fresh, single-task (non-array) sbatch that runs `code_call_str`
+        verbatim, reusing this job's machineSettings and live SSH session.
+        Returns the new jobid (string) on success, or None on failure.
+
+        Used by the CGYRO stall-rescue path: when one rho in a job array hangs,
+        we scancel just that array index, clean its remote subfolder, and call
+        this primitive to relaunch the same work as a standalone single-task job
+        while sibling array tasks keep running. Output `slurm_output{label}.dat`
+        and `slurm_error{label}.dat` are written at the top of folderExecution
+        (sbatch banner). The body itself is responsible for any `cd <subfolder>`
+        and per-task stdout/stderr redirection (caller composes these into
+        `code_call_str` so the primitive stays code-agnostic).
+
+        Connection management: requires self.ssh to be live (caller responsibility);
+        does not connect/close on its own so multiple resubmits inside one
+        polling cycle can share a single SSH session.
+
+        `exclude_node` (optional): if provided, added as the SBATCH --exclude
+        list on the resubmit so a known-bad node doesn't get re-tried. Falls
+        back gracefully on None / empty string.
+        '''
+        if not self.launchSlurm:
+            raise RuntimeError("resubmit_single_task requires launchSlurm=True")
+        if self.ssh is None:
+            raise RuntimeError("resubmit_single_task requires a live self.ssh; call self.connect() first")
+
+        # Drop --array on a deep copy so the parent slurm_settings stays intact
+        # (other resubmits in the same poll-cycle reuse it). Also rename the
+        # job so squeue distinguishes the rescue from the parent array.
+        slurm_settings = copy.deepcopy(self.slurm_settings or {})
+        slurm_settings["array"] = None
+        slurm_settings["array_limit"] = None
+        parent_name = slurm_settings.get("job-name", "mitim_job")
+        slurm_settings["job-name"] = f"{parent_name}{label}"
+
+        # Machine-config slurm allocation copy. Append the bad node to whatever
+        # exclude list was already in machineSettings (preserves operator-set
+        # exclusions); never overwrite an existing entry.
+        slurm_allocation = copy.deepcopy((self.machineSettings or {}).get("slurm", {}))
+        if exclude_node:
+            existing = slurm_allocation.get("exclude")
+            if existing:
+                slurm_allocation["exclude"] = f"{existing},{exclude_node}"
+            else:
+                slurm_allocation["exclude"] = exclude_node
+
+        # The SBATCH body: caller-supplied bash, prefixed with the standard
+        # mitim banner echoes from create_slurm_execution_files.
+        body = [code_call_str.rstrip("\n")]
+
+        _, fileSBATCH, _ = create_slurm_execution_files(
+            body,
+            self.folderExecution,
+            modules_remote=self.machineSettings.get("modules"),
+            folder_local=self.folder_local,
+            shellPreCommands=None,
+            shellPostCommands=None,
+            label_log_files=label,
+            wait_until_sbatch=False,
+            slurm_allocation=slurm_allocation,
+            launchSlurm=True,
+            slurm_settings=slurm_settings,
+            if_array_relabel=False,
+        )
+
+        # Ship just the sbatch file (the shell-executor wrapper isn't used —
+        # we sbatch --parsable the file directly to capture the new jobid).
+        sbatch_basename = Path(fileSBATCH).name
+        remote_sbatch_path = f"{self.folderExecution}/{sbatch_basename}"
+        try:
+            self._sftp_transfer_with_retry('put', str(fileSBATCH), remote_sbatch_path)
+        except Exception as e:
+            print(f"\t- resubmit_single_task: failed to upload {sbatch_basename} ({type(e).__name__}: {e})", typeMsg='w')
+            return None
+
+        # `--parsable` makes sbatch print just <jobid>[;<cluster>] on stdout —
+        # easy to parse, no log-file scraping like the run() path needs.
+        submit_cmd = f"cd {self.folderExecution} && chmod +x {sbatch_basename} && sbatch --parsable {sbatch_basename}"
+        out, err = self.execute(submit_cmd, printYN=True)
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+        if isinstance(err, bytes):
+            err = err.decode(errors='replace')
+        out = (out or "").strip()
+        err = (err or "").strip()
+
+        # `sbatch --parsable` returns "<jobid>" or "<jobid>;<cluster>". Pick the
+        # first all-digits token (resilient to either format and to any banner
+        # noise that sneaks onto stdout).
+        new_jobid = None
+        for token in out.replace(';', ' ').split():
+            if token.isdigit():
+                new_jobid = token
+                break
+
+        if new_jobid is None:
+            print(
+                f"\t- resubmit_single_task: sbatch --parsable did not return a numeric jobid "
+                f"(stdout='{out}', stderr='{err}')",
+                typeMsg='w',
+            )
+            return None
+
+        print(f"\t- resubmit_single_task: launched jobid={new_jobid} (label='{label}', exclude={exclude_node})", typeMsg='i')
+        return new_jobid
+
     # --------------------------------------------------------------------
     # SSH executions
     # --------------------------------------------------------------------
