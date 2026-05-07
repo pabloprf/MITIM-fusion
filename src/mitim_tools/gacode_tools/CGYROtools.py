@@ -243,6 +243,51 @@ def cgyro_per_task_status(sim):
     return rows
 
 
+# Slurm task states that mean the work unit is no longer in flight (regardless of
+# whether it succeeded). Hitting any of these is a hard "do not rescue" signal:
+# - COMPLETED / COMPLETING / DEADLINE: cgyro reached MAX_TIME and exited cleanly.
+#   Common false-positive case for the staleness heuristic when CGYRO does not
+#   write out.cgyro.tag (e.g. natural MAX_TIME exit on certain CGYRO versions).
+# - CANCELLED / FAILED / TIMEOUT / NODE_FAIL / OUT_OF_MEMORY / BOOT_FAIL /
+#   PREEMPTED / REVOKED: task is dead and won't progress; rescue would just
+#   restart from the warm-start, which the cap-1 BO loop will retry next iteration.
+_SLURM_TERMINAL_STATES = frozenset({
+    "COMPLETED", "COMPLETING", "CANCELLED", "FAILED", "TIMEOUT",
+    "OUT_OF_MEMORY", "BOOT_FAIL", "NODE_FAIL", "PREEMPTED", "REVOKED",
+    "DEADLINE",
+})
+
+
+def _slurm_state_for_target(job, target):
+    '''
+    Return the slurm state for `target` (a "<jobid>" or "<jobid>_<idx>" string),
+    queried via `sacct -X --format=State`. Returns the uppercased state token,
+    or None if sacct produced no useful output (e.g. site without sacct, jobid
+    too old to be in the accounting window). The caller treats None as "no
+    signal -- continue with the existing decision tree" rather than as a
+    terminal verdict.
+    '''
+    cmd = f'sacct -j {target} -X --format=State -n -P'
+    try:
+        out, _err = job.execute(cmd, printYN=False)
+    except Exception as e:
+        print(f"\t    * sacct query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
+        return None
+    if isinstance(out, bytes):
+        out = out.decode(errors='replace')
+    out = (out or "").strip()
+    if not out:
+        return None
+    # Multiple lines possible (sacct emits one row per step). The first non-empty
+    # line is the parent task state — what we actually care about.
+    first = out.splitlines()[0].strip()
+    if not first:
+        return None
+    # State strings can carry trailing markers like "CANCELLED+" or
+    # "CANCELLED by 12345"; canonicalize to the leading word.
+    return first.split()[0].rstrip("+").upper()
+
+
 def _cgyro_handle_stalled_tasks(sim, rows):
     '''
     Stall-rescue orchestrator for CGYRO array submissions. Consumes the rows
@@ -358,6 +403,30 @@ def _cgyro_handle_stalled_tasks(sim, rows):
             else:
                 print(f"\t    * cannot resolve scancel target (jobid={job.jobid}, array_idx={array_idx}); skipping {folder}", typeMsg='w')
                 continue
+
+            # Guard against false-positive STALLED classifications. CGYRO does
+            # not always write out.cgyro.tag on a clean MAX_TIME exit, so a
+            # finished run can still match the "no out.cgyro.timing update for
+            # >threshold s" heuristic. Slurm knows the truth: query sacct for
+            # the per-task state and skip the rescue if the task is already in
+            # a terminal state (COMPLETED, FAILED, ...). For child rescues,
+            # the same guard handles "rescue child finished naturally before
+            # the next poll" cases. None means sacct gave no signal — fall
+            # through to the existing rescue path rather than block on an
+            # unsupported sacct setup.
+            slurm_state = _slurm_state_for_target(job, scancel_target)
+            if slurm_state in _SLURM_TERMINAL_STATES:
+                ledger["status"] = f"TERMINAL_NO_RESCUE:{slurm_state}"
+                metadata_dirty = True
+                print(
+                    f"\t    * slurm reports {scancel_target} is already in terminal state "
+                    f"{slurm_state} (likely finished cleanly without writing out.cgyro.tag); "
+                    f"skipping rescue for {folder} -- detector classification was a false positive",
+                    typeMsg='i',
+                )
+                continue
+            elif slurm_state is not None:
+                print(f"\t    * slurm reports {scancel_target} is {slurm_state}; proceeding with rescue", typeMsg='i')
 
             try:
                 _, err = job.execute(f"scancel {scancel_target}", printYN=True)

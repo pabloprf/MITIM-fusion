@@ -48,6 +48,10 @@ class FakeJob:
         self.resubmit_should_raise = False
         self.last_resubmit_args = None
         self.connect_should_raise = False
+        # Canned per-target slurm state for sacct queries. None means "no
+        # signal" (sacct returned empty). Set to "RUNNING" to behave like
+        # a healthy stalled task that should be rescued.
+        self.sacct_state_for_target = "RUNNING"
 
     def connect(self):
         self.executed.append(("connect",))
@@ -63,6 +67,10 @@ class FakeJob:
             if self.scancel_should_raise:
                 raise RuntimeError("scancel boom")
             return b"", b""
+        if cmd.startswith("sacct"):
+            if self.sacct_state_for_target is None:
+                return b"", b""
+            return self.sacct_state_for_target.encode(), b""
         return b"", b""
 
     def resubmit_single_task(self, code_call_str, label, exclude_node=None):
@@ -241,6 +249,73 @@ def test_no_node_in_squeue_falls_back_to_no_exclude():
     print("PASS: NODELIST '(null)' -> no --exclude on resubmit")
 
 
+def test_sacct_completed_skips_rescue_marks_terminal():
+    """CGYRO can hit MAX_TIME and exit cleanly without writing out.cgyro.tag.
+    The detector then false-classifies as STALLED. The orchestrator must
+    consult sacct first and skip the rescue when slurm reports the task
+    already completed."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_state_for_target = "COMPLETED"
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 5000)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    cmds = [e for e in sim.simulation_job.executed if e[0] == "execute"]
+    # Saw the sacct query
+    assert any("sacct -j 12345_2" in e[1] for e in cmds), cmds
+    # Did NOT scancel, did NOT cleanup, did NOT resubmit
+    assert not any("scancel" in e[1] for e in cmds), cmds
+    assert not any("rm -f out.cgyro.timing" in e[1] for e in cmds), cmds
+    assert sim.simulation_job.last_resubmit_args is None
+    # Ledger marked as terminal-no-rescue and metadata written so the next
+    # poll won't re-run the same sacct dance for the same row.
+    ledger = sim._resubmit_ledger["base_cgyro/rho_0.6712"]
+    assert ledger["status"].startswith("TERMINAL_NO_RESCUE"), ledger
+    assert "COMPLETED" in ledger["status"], ledger
+    assert ledger["n_attempts"] == 0, ledger
+    assert sim.metadata_write_calls == ["base_cgyro"], sim.metadata_write_calls
+    print("PASS: sacct COMPLETED -> rescue skipped, ledger flagged TERMINAL_NO_RESCUE")
+
+
+def test_sacct_failed_also_skips_rescue():
+    """Symmetric to COMPLETED — a hard failure (NODE_FAIL/FAILED/etc.) is also
+    a 'do not rescue' signal: the work is dead, retry is the BO loop's job."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_state_for_target = "NODE_FAIL"
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 5000)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    assert sim.simulation_job.last_resubmit_args is None
+    ledger = sim._resubmit_ledger["base_cgyro/rho_0.6712"]
+    assert "NODE_FAIL" in ledger["status"], ledger
+    print("PASS: sacct NODE_FAIL -> rescue skipped, ledger flagged TERMINAL_NO_RESCUE")
+
+
+def test_sacct_no_signal_falls_through_to_rescue():
+    """If sacct returns no info (empty output, or unsupported on the cluster),
+    the orchestrator should NOT block on it — fall through to the existing
+    rescue path."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_state_for_target = None  # empty sacct output
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 5000)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    # Rescue went through
+    assert sim.simulation_job.last_resubmit_args is not None
+    ledger = sim._resubmit_ledger["base_cgyro/rho_0.6712"]
+    assert ledger["n_attempts"] == 1, ledger
+    print("PASS: sacct empty signal -> rescue proceeds (no false block)")
+
+
+def test_sacct_running_state_proceeds_with_rescue():
+    """Healthy 'task is hung in RUNNING' case — sacct says RUNNING, orchestrator
+    proceeds with the rescue."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_state_for_target = "RUNNING"
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 5000)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    cmds = [e for e in sim.simulation_job.executed if e[0] == "execute"]
+    assert any("scancel 12345_2" in e[1] for e in cmds), cmds
+    assert sim.simulation_job.last_resubmit_args is not None
+    print("PASS: sacct RUNNING -> rescue proceeds normally")
+
+
 def test_metadata_payload_keys_round_trip():
     """The new fields persist+restore through JSON without surprises."""
     payload = {
@@ -280,5 +355,9 @@ if __name__ == "__main__":
     test_separate_init_running_thresholds()
     test_no_array_metadata_means_noop()
     test_no_node_in_squeue_falls_back_to_no_exclude()
+    test_sacct_completed_skips_rescue_marks_terminal()
+    test_sacct_failed_also_skips_rescue()
+    test_sacct_no_signal_falls_through_to_rescue()
+    test_sacct_running_state_proceeds_with_rescue()
     test_metadata_payload_keys_round_trip()
     print("\nALL TESTS PASSED")
