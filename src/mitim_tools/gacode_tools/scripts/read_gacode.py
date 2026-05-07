@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.GUItools import FigureNotebook
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.gacode_tools import PROFILEStools
@@ -16,8 +17,8 @@ def main():
     parser.add_argument("files", type=str, nargs="*")
     parser.add_argument("--rho", type=float, required=False, default=0.89)  # Last rho for gradients plot
     parser.add_argument("--print", required=False, default=False, action="store_true")  # Last rho for gradients plot
-    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
-                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
+    parser.add_argument("--save", type=str, nargs="?", const=IOtools.SAVE_FOLDER_AUTO_SENTINEL, required=False, default=None,
+                        help=f"Folder to save the figures. If flag given without a value, defaults to '<dir of first file>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
@@ -28,10 +29,13 @@ def main():
     if args.save is not None:
         args.noshow = True
 
+    if args.save == IOtools.SAVE_FOLDER_AUTO_SENTINEL and not args.files:
+        parser.error("--save without a value needs at least one positional input.gacode file")
+
     files = args.files
     rho = args.rho
     print_only = args.print
-    folder_save = Path(args.save) if args.save is not None else None
+    folder_save = IOtools.resolve_save_folder(args.save, Path(files[0]).parent if files else None)
     noshow = args.noshow
     dpi_fig = args.dpi
 

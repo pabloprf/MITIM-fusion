@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 from IPython import embed
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.transp_tools import CDFtools
 
 def main():
@@ -13,8 +14,8 @@ def main():
     parser.add_argument(
         "--read", "-r", required=False, default=False, action="store_true"  # Only read
     )
-    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
-                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
+    parser.add_argument("--save", type=str, nargs="?", const=IOtools.SAVE_FOLDER_AUTO_SENTINEL, required=False, default=None,
+                        help=f"Folder to save the figures. If flag given without a value, defaults to '<dir of first file>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
@@ -25,10 +26,13 @@ def main():
     if args.save is not None:
         args.noshow = True
 
+    if args.save == IOtools.SAVE_FOLDER_AUTO_SENTINEL and not args.files:
+        parser.error("--save without a value needs at least one positional file")
+
     expl = args.files
     plotYN = not args.read
     fullYN = args.full
-    folder_save = Path(args.save) if args.save is not None else None
+    folder_save = IOtools.resolve_save_folder(args.save, Path(expl[0]).parent if expl else None)
     noshow = args.noshow
     dpi_fig = args.dpi
 

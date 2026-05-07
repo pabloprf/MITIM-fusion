@@ -49,8 +49,8 @@ def main():
                         help="If provided, it will only plot the specified beats (e.g., transp)")
     parser.add_argument("--full", required=False, default=False, action="store_true",
                         help="If set, it will plot the full beat information.")
-    parser.add_argument("--save", type=str, nargs="?", const="figs", required=False, default=None,
-                        help="Folder to save the figures. If flag given without a value, defaults to 'figs'. Implies --noshow.")
+    parser.add_argument("--save", type=str, nargs="?", const=IOtools.SAVE_FOLDER_AUTO_SENTINEL, required=False, default=None,
+                        help=f"Folder to save the figures. If flag given without a value, defaults to '<first folder>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
     parser.add_argument("--dpi", type=int, required=False, default=120,
                         help="DPI to save the figures.")
     parser.add_argument("--noshow", required=False, default=False, action="store_true",
@@ -73,6 +73,9 @@ def main():
     # --save implies --noshow (headless save; no point re-rendering on screen).
     if args.save is not None:
         args.noshow = True
+
+    if args.save == IOtools.SAVE_FOLDER_AUTO_SENTINEL and not args.folders and not (args.remote_folder_parent or args.remote_folders):
+        parser.error("--save without a value needs at least one positional folder argument")
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote
@@ -106,8 +109,8 @@ def main():
     folders = [IOtools.expandPath(folder) for folder in folders]
     
     dpi_fig = args.dpi
-    folder_save = Path(args.save) if args.save is not None else None
-    noshow = args.noshow    
+    folder_save = IOtools.resolve_save_folder(args.save, folders[0] if folders else None)
+    noshow = args.noshow
     
     fn = GUItools.FigureNotebook("MAESTRO", show=not noshow)
 

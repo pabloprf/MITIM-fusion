@@ -394,6 +394,36 @@ def hook_method(before=None, after=None):
         return wrapper
     return decorator
 
+SAVE_FOLDER_AUTO_SENTINEL = "@auto"
+SAVE_FOLDER_DEFAULT_SUBDIR = "figures_plotting_save"
+
+
+def resolve_save_folder(save_arg, primary_path, default_subdir=SAVE_FOLDER_DEFAULT_SUBDIR, sentinel=SAVE_FOLDER_AUTO_SENTINEL):
+    '''
+    Resolve the --save CLI argument shared by mitim_plot_* scripts:
+      - None              -> None (no save requested)
+      - <sentinel>        -> primary_path / default_subdir   (auto-anchored)
+      - any other string  -> Path(save_arg)                  (user-supplied literal)
+
+    `primary_path` is the directory the figures should land inside. For
+    folder-based scripts this is the run's folder; for file-based scripts
+    the caller should pass `Path(file).parent` so the figures land next to
+    the file, not inside it. Caller is also expected to parser.error when
+    the user typed `--save` with no value but provided no positional, so
+    the failure mode is "useful CLI error" rather than a confusing path.
+    '''
+    if save_arg is None:
+        return None
+    if save_arg == sentinel:
+        if primary_path is None:
+            raise ValueError(
+                f"--save defaulted to '{sentinel}' but no anchor path was provided. "
+                f"Pass an explicit anchor or use --save <path>."
+            )
+        return Path(primary_path) / default_subdir
+    return Path(save_arg)
+
+
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
         txt = f"{txt}"
