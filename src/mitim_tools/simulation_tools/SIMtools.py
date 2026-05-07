@@ -848,7 +848,11 @@ class mitim_simulation:
 
         self.simulation_job.run()
 
-    def _organize_results(self, code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=None):
+    def _organize_results(self, code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=None, **_unused_kwargs_organize):
+        # **_unused_kwargs_organize tolerates any forward-compatible keys the
+        # submit path adds to kwargs_organize for the rescue path (e.g.
+        # array_index_by_folder, per_folder_commands). fetch() always splats
+        # the full dict; this method only consumes the four fields it needs.
 
         # ---------------------------------------------
         # Organize
