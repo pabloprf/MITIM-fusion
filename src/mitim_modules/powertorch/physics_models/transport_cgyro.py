@@ -808,17 +808,44 @@ class gyrokinetic_model:
         # current_turb_target_GB = target_GB - current_neoc_GB per active channel
         # so the helper can score prior fluxes_turb.json files against it; the
         # neoclassical comes from the preceding evaluate_neoclassical() this iter.
-        resolved_additional = _resolve_cgyro_restart_chain(
-            simulation_options["run"],
-            getattr(self, "evaluation_number", 0),
-            self.folder,
-            rho_locations,
-            run_kwargs.get("additional_files_to_send"),
-            base_subfolder=subfolder_name,
-            current_turb_target_GB=_build_current_turb_target_GB(self),
-        )
-        if resolved_additional is not None:
-            run_kwargs["additional_files_to_send"] = resolved_additional
+        #
+        # On re-attach (cgyro_submission.json already on disk for this iter),
+        # SKIP the resolver: re-running it would re-pick parents against the
+        # *current* BO state and could produce a restart_sources.json that
+        # misrepresents what was actually staged at the original submit. The
+        # original pick is embedded in cgyro_submission.json by
+        # _write_submission_metadata and restored to disk by
+        # load_submission_state, so the plotter sees the correct warm-start
+        # chain even if restart_sources.json was wiped between submit and
+        # re-attach.
+        _metadata_path_check = self.folder / subfolder_name / "cgyro_submission.json"
+        restart_sources_payload = None
+        if check_existing_runs and _metadata_path_check.is_file():
+            print(f"\t- [CGYRO restart] Re-attach detected ({_metadata_path_check.name} present); preserving original parent-pick (skipping resolver)", typeMsg='i')
+        else:
+            resolved_additional = _resolve_cgyro_restart_chain(
+                simulation_options["run"],
+                getattr(self, "evaluation_number", 0),
+                self.folder,
+                rho_locations,
+                run_kwargs.get("additional_files_to_send"),
+                base_subfolder=subfolder_name,
+                current_turb_target_GB=_build_current_turb_target_GB(self),
+            )
+            if resolved_additional is not None:
+                run_kwargs["additional_files_to_send"] = resolved_additional
+
+            # Capture the payload that the resolver just wrote, so it can be
+            # embedded in cgyro_submission.json by _write_submission_metadata.
+            # On a future re-attach load_submission_state restores this JSON
+            # to disk if the local copy was wiped between submit and re-attach.
+            _restart_json_path = self.folder / subfolder_name / "restart_sources.json"
+            if _restart_json_path.is_file():
+                try:
+                    with open(_restart_json_path, "r") as _f:
+                        restart_sources_payload = json.load(_f)
+                except (OSError, ValueError) as _e:
+                    print(f"\t- [CGYRO restart] Could not re-read {_restart_json_path.name} for metadata embed ({_e}); JSON-restore-on-reattach disabled for this iter", typeMsg='w')
 
         # Per-iteration extraOptions overrides (extraOptions_special), e.g.
         # RESTART_STEP/MAX_TIME tuning for the seed iteration vs. the rest.
@@ -882,6 +909,11 @@ class gyrokinetic_model:
         # simulation_job may already exist on the loaded gk_object.
         gk_object.connection_retry_settings = connection_retry_settings
         gk_object.auto_resubmit_settings = auto_resubmit_settings
+        # Restart-sources payload captured from the just-written
+        # restart_sources.json (or None on re-attach / no-restart paths).
+        # _write_submission_metadata embeds it; load_submission_state
+        # restores restart_sources.json on disk on the next re-attach.
+        gk_object._restart_sources_payload = restart_sources_payload
         if getattr(gk_object, "simulation_job", None) is not None:
             gk_object.simulation_job.connection_retry_settings = connection_retry_settings
 
@@ -1302,18 +1334,35 @@ class cgyro_model(gyrokinetic_model):
             # right ancestor directory on disk. For "best", the turbulent
             # target is built from plasma 0 to match this same plasma-0
             # reference convention.
-            resolved_additional = _resolve_cgyro_restart_chain(
-                simulation_options["run"],
-                getattr(self, "evaluation_number", 0),
-                self.folder,
-                rho_locations,
-                run_kwargs.get("additional_files_to_send"),
-                plasma_subfolder=f"{base_subfolder_name}_plasma0",
-                base_subfolder=base_subfolder_name,
-                current_turb_target_GB=_build_current_turb_target_GB(self, plasma_index=0),
-            )
-            if resolved_additional is not None:
-                run_kwargs["additional_files_to_send"] = resolved_additional
+            #
+            # Re-attach: skip the resolver and rely on load_submission_state
+            # to restore restart_sources.json from the embedded copy in
+            # cgyro_submission.json. See the single-plasma path for rationale.
+            restart_sources_payload = None
+            if check_existing_runs and metadata_path.is_file():
+                print(f"\t- [CGYRO restart] Re-attach detected ({metadata_path.name} present); preserving original parent-pick (skipping resolver)", typeMsg='i')
+            else:
+                resolved_additional = _resolve_cgyro_restart_chain(
+                    simulation_options["run"],
+                    getattr(self, "evaluation_number", 0),
+                    self.folder,
+                    rho_locations,
+                    run_kwargs.get("additional_files_to_send"),
+                    plasma_subfolder=f"{base_subfolder_name}_plasma0",
+                    base_subfolder=base_subfolder_name,
+                    current_turb_target_GB=_build_current_turb_target_GB(self, plasma_index=0),
+                )
+                if resolved_additional is not None:
+                    run_kwargs["additional_files_to_send"] = resolved_additional
+
+                _restart_json_path = self.folder / base_subfolder_name / "restart_sources.json"
+                if _restart_json_path.is_file():
+                    try:
+                        with open(_restart_json_path, "r") as _f:
+                            restart_sources_payload = json.load(_f)
+                    except (OSError, ValueError) as _e:
+                        print(f"\t- [CGYRO restart] Could not re-read {_restart_json_path.name} for metadata embed ({_e}); JSON-restore-on-reattach disabled for this iter", typeMsg='w')
+            cgyro._restart_sources_payload = restart_sources_payload
 
             # Per-iteration extraOptions overrides (extraOptions_special). All
             # plasmas in a batched call share the iteration index and therefore

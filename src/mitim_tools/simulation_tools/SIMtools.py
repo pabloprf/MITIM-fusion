@@ -970,6 +970,13 @@ class mitim_simulation:
             # iteration; persisted here so a re-attach picks up child jobids
             # spawned before the prior process was killed.
             "resubmit_ledger": dict(getattr(self, "_resubmit_ledger", {})),
+            # Restart-sources payload (CGYRO-specific) embedded so the
+            # plotter's per-(rho,iter) parent map survives a kill+reattach
+            # even if the local restart_sources.json gets wiped between
+            # submit and the next process pass. None for codes/runs that
+            # didn't apply a restart chain. load_submission_state restores
+            # restart_sources.json on disk from this copy.
+            "restart_sources": getattr(self, "_restart_sources_payload", None),
             "results_per_plasma": results_per_plasma_serial,
             "job": {
                 "folder_local": str(job.folder_local),
@@ -1050,6 +1057,30 @@ class mitim_simulation:
         # process.
         self._resubmit_ledger = dict(data.get("resubmit_ledger", {}))
         self._base_subfolder = data.get("base_subfolder")
+
+        # Restore restart_sources.json (CGYRO-specific, harmless for other
+        # codes — payload is None when not applicable). The local copy may
+        # have been wiped between submit and re-attach (manual cleanup,
+        # askNewFolder, accidental rm); embedding it in the submission
+        # metadata makes restart_sources.json re-derivable from a single
+        # authoritative source. Future _write_submission_metadata calls in
+        # this re-attached process (e.g. after a stall-rescue resubmit)
+        # also need self._restart_sources_payload populated so the field
+        # is preserved rather than blanked out.
+        restart_sources = data.get("restart_sources")
+        self._restart_sources_payload = restart_sources
+        if restart_sources and isinstance(restart_sources, dict):
+            local_json = path.parent / "restart_sources.json"
+            try:
+                local_json.parent.mkdir(parents=True, exist_ok=True)
+                # Always overwrite from metadata: the embedded copy reflects
+                # what was actually staged at the original submit, which
+                # the plotter must show.
+                with open(local_json, "w") as f:
+                    json.dump(restart_sources, f, indent=2)
+                print(f"\t- Restored restart_sources.json from submission metadata at {local_json}", typeMsg='i')
+            except OSError as e:
+                print(f"\t- Could not restore restart_sources.json at {local_json}: {e}", typeMsg='w')
 
         # Note: results_per_plasma is rebuilt in memory by the caller via
         # `_prepare_plasmas_state`, which also restores `profiles` /
