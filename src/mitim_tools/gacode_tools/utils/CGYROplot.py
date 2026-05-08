@@ -501,9 +501,12 @@ def plot_time_traces_per_radius(
     restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     for r_idx, rho in enumerate(rhos):
+        # Per-radius tabs all share one color so they read as a visual
+        # group in the notebook (per-channel pivot uses a different single
+        # color via the companion plot_time_traces_per_channel).
         fig = fn.add_figure(
             label=f"CGYRO traces (rho={float(rho):.3f})",
-            tab_color=fn_color_start + r_idx,
+            tab_color=fn_color_start,
         )
         axs = fig.subplots(nrows=len(_CHANNELS), ncols=n_cols, squeeze=False, sharex=True, sharey='row')
         fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), 7.8)
@@ -592,9 +595,12 @@ def plot_time_traces_per_channel(
     n_rows = len(rho_list)
 
     for v_idx, (var, ylabel) in enumerate(_CHANNELS):
+        # Per-channel tabs all share one color, mirroring the per-radius
+        # grouping (see plot_time_traces_per_radius). Caller picks a
+        # distinct fn_color_start so the two groups stay distinguishable.
         fig = fn.add_figure(
             label=f"CGYRO traces ({var})",
-            tab_color=fn_color_start + v_idx,
+            tab_color=fn_color_start,
         )
         axs = fig.subplots(nrows=n_rows, ncols=n_cols, squeeze=False, sharex=True, sharey='row')
         fig.set_size_inches(max(6.5, 3.8 * n_cols + 1.8), max(3.0, 2.4 * n_rows + 1.2))

@@ -1793,10 +1793,19 @@ def PORTALSanalyzer_plotExpected(
 def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
+    # `self.iextra` is initialized as int|None by the analyzer but
+    # PORTALSanalyzer_plotMetrics overwrites it with a list (see
+    # PORTALSplot.py:37 and define_extra_iterators). Whichever runs first
+    # wins. plotSummary only uses one extra index in its third slot, so
+    # normalize: list -> first element (or None if empty), scalar -> as-is.
+    _iextra = self.iextra
+    if isinstance(_iextra, (list, tuple)):
+        _iextra = _iextra[0] if _iextra else None
+
     indecesPlot = [
         self.ibest,
         self.i0,
-        self.iextra,
+        _iextra,
     ]
 
     # -------------------------------------------------------
@@ -2357,11 +2366,12 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         base_iter=0,
     )
     # Same data, pivoted: one figure per channel with rhos as rows.
-    # Colour-start offset by the per-rho tab count so tab colours stay
-    # distinct in the notebook.
+    # Per-radius and per-channel tab groups now each use a single color
+    # internally, so the channel group only needs +1 offset to land on a
+    # different color from the radius group.
     CGYROplot.plot_time_traces_per_channel(
         fn,
-        fn_color_start + len(self.rhos),
+        fn_color_start + 1,
         self.rhos,
         self._cgyro_traces_cache,
         sources_per_iter=self._cgyro_sources_cache,

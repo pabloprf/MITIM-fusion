@@ -535,46 +535,61 @@ class PORTALSanalyzer:
 
             self.fn = FigureNotebook("PORTALS Summary", geometry="1700x1000", show=not noshow)
 
-        # Always attempt to render the SR initialization tabs — the simple-
-        # relax trajectory that seeded the BO loop is useful context even
-        # (especially) after the run has progressed past initialization.
-        # Hand our FigureNotebook to the initializer via sr_init.fn so its
-        # full tab set (PowerState, PowerStateSTDS, Sequence) lands inline
-        # with the rest of the PORTALS summary instead of the
-        # single-summary-figure branch that `fig=` used to trigger.
+        # Tab color palette (indexes into GRAPHICStools.convert_to_hex_soft):
+        #   0  PORTALS Metrics
+        #   1  PORTALS Expected
+        #   2  SR Initialization + SR Initialization STDs (shared)
+        #   3  PROFILES Ranges
+        #   4  PROFILES - * + PROFILES Comparison + Powerstate (shared, via plotSummary)
+        #   5  PORTALS Debugger
+        #   6  Transport models start — plotTransportModels offsets internally
+        #      (for CGYRO this resolves to slot 7 for the per-radius group and
+        #       slot 8 for the per-channel group; each group is single-colored).
+        # `tabs_colors_common` overrides this scheme with a single color for every
+        # tab — used by callers that embed PORTALS plots inside a larger notebook
+        # and want tabs to be visually grouped.
+        def _c(i):
+            return tab_color_istart + i if tabs_colors_common is None else tabs_colors_common
+
+        # PORTALS Metrics + PORTALS Expected first — these are the views the
+        # user opens the notebook for; everything else is supporting context.
+        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=_c(0))
+        self.plotMetrics(fig=fig)
+
+        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=_c(1))
+        self.plotExpected(fig=fig)
+
+        # SR initialization. Both SR tabs share one color. Always attempt
+        # to render — the simple-relax trajectory that seeded the BO loop
+        # is useful context even after the run has progressed.
         try:
             sr_init = PORTALSinitializer(self.opt_fun.folder)
             if len(sr_init.powerstates) > 0:
                 sr_init.fn = self.fn
-                # Only the power-state tabs, not the Sequence / transport-
-                # models ones. The analyzer already owns its own PROFILES,
-                # Metrics, Expected, Debugger tabs; we don't want the
-                # initializer to duplicate transport-model content.
                 sr_init.plotMetrics(
                     label_main="SR Initialization",
                     label_stds="SR Initialization STDs",
                     label_sequence=False,
                     show_transport_models=False,
+                    tab_color=_c(2),
                 )
         except Exception:
             pass
 
-        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=tab_color_istart if tabs_colors_common is None else tabs_colors_common)
+        # PROFILES + Powerstate
+        fig = self.fn.add_figure(label="PROFILES Ranges", tab_color=_c(3))
         self.plotRanges(fig=fig)
 
-        self.plotSummary(fn=self.fn, fn_color=tab_color_istart + 1 if tabs_colors_common is None else tabs_colors_common)
+        self.plotSummary(fn=self.fn, fn_color=_c(4))
 
-        fig = self.fn.add_figure(label="PORTALS Metrics", tab_color=tab_color_istart + 2 if tabs_colors_common is None else tabs_colors_common)
-        self.plotMetrics(fig=fig)
-
-        fig = self.fn.add_figure(label="PORTALS Expected", tab_color=tab_color_istart + 3 if tabs_colors_common is None else tabs_colors_common)
-        self.plotExpected(fig=fig)
-
-        fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
+        fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=_c(5))
         self.plotDebug(fig=fig)
-        
+
+        # Transport models: CGYRO traces use _c(6) (per-radius, all same)
+        # and _c(7) (per-channel, all same). Other backends (TGLF/NEO)
+        # offset internally from fn_color.
         if plot_transport_models and len(self.transport_model_objects) > 0:
-            self.plotTransportModels(fn=self.fn, fn_color=tab_color_istart + 5 if tabs_colors_common is None else tabs_colors_common+1)
+            self.plotTransportModels(fn=self.fn, fn_color=_c(6))
         
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
@@ -1338,6 +1353,7 @@ class PORTALSinitializer:
         label_stds=None,
         label_sequence=None,
         show_transport_models=True,
+        tab_color=None,
         **kwargs,
     ):
         '''
@@ -1379,15 +1395,18 @@ class PORTALSinitializer:
             if self.fn is None:
                 from mitim_tools.misc_tools.GUItools import FigureNotebook
                 self.fn = FigureNotebook("PowerState", geometry="1800x900")
-            figMain = self.fn.add_figure(label=lbl_main)
+            # `tab_color` is shared across all tabs added by this method so
+            # the PowerState / PowerStateSTDS / Sequence triplet visually
+            # groups together. None preserves legacy uncolored behavior.
+            figMain = self.fn.add_figure(label=lbl_main, tab_color=tab_color)
             # Same layout as PowerState, but the flux panels carry errorbars
             # drawn from each evaluation's per-channel std (quadrature sum of
             # the turbulent and neoclassical _stds). Gives a per-iteration
             # view of how confident the transport evaluator was, on top of
             # the mean trace already shown on the PowerState tab.
-            figMainStds = self.fn.add_figure(label=lbl_stds)
+            figMainStds = self.fn.add_figure(label=lbl_stds, tab_color=tab_color)
             if lbl_seq is not None:
-                figG = self.fn.add_figure(label=lbl_seq)
+                figG = self.fn.add_figure(label=lbl_seq, tab_color=tab_color)
         # -----------------------------------------------------------------
 
         num_kp = np.max([3, len(self.powerstates[-1].predicted_channels)])
