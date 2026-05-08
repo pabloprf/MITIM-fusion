@@ -34,7 +34,8 @@ class tglf_model:
         percent_error = simulation_options["percent_error"]
         in_process = self.powerstate.transport_options.get("in_process", False)
 
-        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
+        # Side-aware (turbulence): see evaluate_turbulence() comment.
+        ion_OI_position_in_ion_list = self._impurity_position_transport_for("turb")
 
         reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
 
@@ -198,18 +199,20 @@ class tglf_model:
 
         # Grab impurity from powerstate ( because it may have been modified in produce_profiles() )
         # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
-        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
-        
+        # Side-aware: under per-model postproc the turbulence side may have a
+        # different species list (and impurity position) than the neoclassical side.
+        ion_OI_position_in_ion_list = self._impurity_position_transport_for("turb")
+
         # ------------------------------------------------------------------------------------------------------------------------
         # Prepare TGLF object
         # ------------------------------------------------------------------------------------------------------------------------
-        
+
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         tglf = TGLFtools.TGLF(rhos=rho_locations, in_process=in_process)
 
         _ = tglf.prep(
-            self.powerstate.profiles_transport,
+            self._profiles_transport_for("turb"),
             self.folder,
             cold_start = cold_start,
             )

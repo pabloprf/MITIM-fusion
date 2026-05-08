@@ -896,8 +896,11 @@ class gyrokinetic_model:
         if not gk_object_unpickled:
             gk_object = gk_object(rhos=rho_locations)
 
+            # Side-aware: CGYRO is a turbulence backend, so under per-model
+            # postproc it consumes the turb-side post-processed profiles.
+            # Falls back to the canonical profiles_transport on the fast path.
             _ = gk_object.prep(
-                self.powerstate.profiles_transport,
+                self._profiles_transport_for("turb"),
                 self.folder,
                 )
 
@@ -1115,7 +1118,7 @@ class gyrokinetic_model:
             
             # Wait until the user has placed the json file in the right folder
             
-            self.powerstate.profiles_transport.write_state(self.folder / subfolder_name / "input.gacode")
+            self._profiles_transport_for("turb").write_state(self.folder / subfolder_name / "input.gacode")
             
             pre_checks(self)
 

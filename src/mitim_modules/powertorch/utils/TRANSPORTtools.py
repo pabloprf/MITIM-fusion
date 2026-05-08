@@ -238,10 +238,26 @@ class power_transport:
 
         N = int(self.powerstate.batch_size)
 
-        # (1) Materialise N per-plasma input.gacodes + gacode_state profile objects.
-        profiles_postprocessing_fun = self.powerstate.transport_options.get("profiles_postprocessing_fun")
-        list_of_states = []
+        # (1) Resolve per-side postproc fns once. Same logic as _modify_profiles:
+        # per-model override beats the namelist global; no-neo collapses to fast path.
+        turb_name = self._resolve_instance_name(self.turbulence_model)
+        fn_turb = self._resolve_postproc_fun(turb_name)
+        if self.neoclassical_model is not None:
+            neo_name = self._resolve_instance_name(self.neoclassical_model)
+            fn_neo = self._resolve_postproc_fun(neo_name)
+        else:
+            neo_name = None
+            fn_neo = fn_turb
+        split_path = fn_turb is not fn_neo
+
+        # (2) Materialise N per-plasma input.gacodes + gacode_state profile objects.
+        # On the split path we also materialise per-plasma input.gacode.turb / .neo
+        # files and build two parallel lists. Per-side impurity-position resolution
+        # is done once on plasma 0 (all plasmas share the same species structure).
+        list_of_states_turb = []
+        list_of_states_neo = []
         per_plasma_folders = []
+        baseline_species = None
         for b in range(N):
             sub_folder = self.folder / f"plasma_{b}"
             sub_folder.mkdir(parents=True, exist_ok=True)
@@ -258,31 +274,60 @@ class power_transport:
                 insert_highres_powers=True,
             )
 
-            # Apply profiles postprocessing (e.g. impurity lumping), mirroring _modify_profiles()
-            if profiles_postprocessing_fun is not None:
-                # Save unmodified species list to detect impurity position changes
-                p_old = PROFILEStools.gacode_state(gacode_file)
-                species_before = list(p_old.Species)
+            if b == 0:
+                baseline_species = list(PROFILEStools.gacode_state(gacode_file).Species)
+            baseline_pos = self.powerstate.impurityPosition
 
-                sub_profile = profiles_postprocessing_fun(gacode_file)
+            if not split_path:
+                # Fast path — single postproc applied to gacode_file in place.
+                if fn_turb is not None:
+                    sub_profile, new_pos = self._apply_postproc_and_resolve_impurity(
+                        gacode_file, fn_turb,
+                        baseline_species=baseline_species, baseline_pos=baseline_pos,
+                    )
+                    if b == 0 and new_pos != baseline_pos:
+                        print(f"\t- Impurity position has changed from {baseline_pos} to {new_pos}", typeMsg="i")
+                        self.powerstate.impurityPosition_transport = new_pos
+                list_of_states_turb.append(sub_profile)
+                list_of_states_neo.append(sub_profile)  # alias — same object
+            else:
+                # Split path — write per-side files and apply each fn to its own copy.
+                file_turb = sub_folder / "input.gacode.turb"
+                file_neo = sub_folder / "input.gacode.neo"
+                shutil.copy2(gacode_file, file_turb)
+                shutil.copy2(gacode_file, file_neo)
 
-                # Update impurityPosition_transport if lumping changed the species list
-                # (only need to do this once — all plasmas share the same species structure)
+                state_turb, pos_turb = self._apply_postproc_and_resolve_impurity(
+                    file_turb, fn_turb,
+                    baseline_species=baseline_species, baseline_pos=baseline_pos,
+                    side_label="turb",
+                )
+                state_neo, pos_neo = self._apply_postproc_and_resolve_impurity(
+                    file_neo, fn_neo,
+                    baseline_species=baseline_species, baseline_pos=baseline_pos,
+                    side_label="neo",
+                )
+                # Canonical input.gacode mirrors the turb side so downstream
+                # consumers (per-plasma JSON, plotting) see one consistent file.
+                shutil.copy2(file_turb, gacode_file)
+                list_of_states_turb.append(state_turb)
+                list_of_states_neo.append(state_neo)
+
                 if b == 0:
-                    p_new = PROFILEStools.gacode_state(gacode_file)
-                    impurity_of_interest = species_before[self.powerstate.impurityPosition]
-                    try:
-                        impurityPosition_new = p_new.Species.index(impurity_of_interest)
-                    except ValueError:
-                        print(f"\t- Impurity {impurity_of_interest} not found in post-processed profiles, keeping position {self.powerstate.impurityPosition}", typeMsg="w")
-                        impurityPosition_new = self.powerstate.impurityPosition
-                    if impurityPosition_new != self.powerstate.impurityPosition:
-                        print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}", typeMsg="i")
-                        self.powerstate.impurityPosition_transport = impurityPosition_new
+                    print(f"\t- [batched] Per-model profiles postprocessing detected:", typeMsg="i")
+                    print(f"\t    turb ({turb_name!r}): {fn_turb}", typeMsg="i")
+                    print(f"\t    neo  ({neo_name!r}):  {fn_neo}", typeMsg="i")
+                    self.powerstate.profiles_transport_turb = state_turb
+                    self.powerstate.profiles_transport_neo = state_neo
+                    self.powerstate.impurityPosition_transport_turb = pos_turb
+                    self.powerstate.impurityPosition_transport_neo = pos_neo
+                    self.powerstate.impurityPosition_transport = pos_turb
+                    if pos_turb != baseline_pos:
+                        print(f"\t- [turb] Impurity position has changed from {baseline_pos} to {pos_turb}", typeMsg="i")
+                    if pos_neo != pos_turb:
+                        print(f"\t- [neo] Impurity position differs from turb: turb={pos_turb}, neo={pos_neo}", typeMsg="i")
 
-            list_of_states.append(sub_profile)
-
-        # (2) Suppress the bundled-folder write_json decorators — each per-plasma JSON pair
+        # (3) Suppress the bundled-folder write_json decorators — each per-plasma JSON pair
         # is written explicitly below so the top-level self.folder does not carry a 2D
         # fluxes_*.json that would confuse single-plasma readers (including the cache-hit
         # gate at BO time). The flag must be set *before* the decorator fires, which means
@@ -290,9 +335,12 @@ class power_transport:
         self._write_json_from_variables_turb = False
         self._write_json_from_variables_neoc = False
 
-        # (3) Run both backends once across all N plasmas via run_over_plasmas.
-        self.evaluate_neoclassical_batched(list_of_states)
-        self.evaluate_turbulence_batched(list_of_states)
+        # (4) Run both backends once across all N plasmas via run_over_plasmas.
+        # Each side gets its own list of post-processed gacode_states; on the
+        # fast path the two lists alias the same objects so behavior is identical
+        # to the legacy single-list dispatch.
+        self.evaluate_neoclassical_batched(list_of_states_neo)
+        self.evaluate_turbulence_batched(list_of_states_turb)
 
         # (4) Emit one single-plasma JSON pair per batch element for downstream reuse.
         rho_arr   = self.powerstate.plasma["rho"][0, 1:].cpu().numpy().tolist()
@@ -452,35 +500,103 @@ class power_transport:
 
     def _modify_profiles(self):
         '''
-        Modify the profiles (e.g. lumping) before running the transport model 
+        Modify the profiles (e.g. lumping) before running the transport model.
+
+        Two paths:
+          - **Fast path**: turbulence and neoclassical resolve to the same
+            postprocessing callable (today's default for any namelist that
+            hasn't added per-model overrides). Apply once and leave the
+            canonical profiles_transport / impurityPosition_transport as
+            the single source of truth — output is byte-identical to the
+            prior single-postproc behavior.
+          - **Split path**: the two sides resolve to different callables.
+            Materialise input.gacode.turb and input.gacode.neo, apply each
+            function to its own copy, and set per-side aliases on the
+            powerstate (profiles_transport_turb/_neo,
+            impurityPosition_transport_turb/_neo). The canonical
+            profiles_transport / impurityPosition_transport still point at
+            the turb side so downstream consumers (VGEN, finalize_evaluation,
+            plotting) keep seeing one profile.
+
+        The per-side resolution uses `_resolve_postproc_fun(instance_name)`
+        which prefers `transport.options.<name>.profiles_postprocessing_fun`
+        and falls back to the namelist-global `transport.profiles_postprocessing_fun`.
         '''
 
         # After producing the profiles, copy for future modifications
         self.file_profs_unmod = self.file_profs.parent / f"{self.file_profs.name}_unmodified"
         shutil.copy2(self.file_profs, self.file_profs_unmod)
 
-        profiles_postprocessing_fun = self.powerstate.transport_options["profiles_postprocessing_fun"]
+        # Resolve active model names + their per-side postproc fns.
+        # `_resolve_instance_name` requires fidelity_level to be set, which
+        # STATEtools.calculateTransport guarantees before produce_profiles.
+        turb_name = self._resolve_instance_name(self.turbulence_model)
+        fn_turb = self._resolve_postproc_fun(turb_name)
+        if self.neoclassical_model is not None:
+            neo_name = self._resolve_instance_name(self.neoclassical_model)
+            fn_neo = self._resolve_postproc_fun(neo_name)
+        else:
+            neo_name = None
+            # No neo evaluator -> force fast path (the neo side is never read)
+            fn_neo = fn_turb
 
-        if profiles_postprocessing_fun is not None:
-            print(f"\t- Modifying input.gacode to run transport calculations based on {profiles_postprocessing_fun}",typeMsg="i")
-            self.powerstate.profiles_transport = profiles_postprocessing_fun(self.file_profs)
+        baseline_state = PROFILEStools.gacode_state(self.file_profs_unmod)
+        baseline_species = list(baseline_state.Species)
+        baseline_pos = self.powerstate.impurityPosition
 
-        # Position of impurity ion may have changed
-        p_old = PROFILEStools.gacode_state(self.file_profs_unmod)
-        p_new = PROFILEStools.gacode_state(self.file_profs)
+        if fn_turb is fn_neo:
+            # Fast path — single postproc applied once, canonical attributes
+            # only. Byte-identical to the prior implementation.
+            if fn_turb is not None:
+                print(f"\t- Modifying input.gacode to run transport calculations based on {fn_turb}", typeMsg="i")
+                self.powerstate.profiles_transport = fn_turb(self.file_profs)
+            p_new = PROFILEStools.gacode_state(self.file_profs)
+            impurity_of_interest = baseline_species[baseline_pos]
+            try:
+                impurityPosition_new = p_new.Species.index(impurity_of_interest)
+            except ValueError:
+                print(f"\t- Impurity {impurity_of_interest} not found in new profiles, keeping position {baseline_pos}", typeMsg="w")
+                impurityPosition_new = baseline_pos
+            if impurityPosition_new != baseline_pos:
+                print(f"\t- Impurity position has changed from {baseline_pos} to {impurityPosition_new}", typeMsg="i")
+                self.powerstate.impurityPosition_transport = impurityPosition_new
+        else:
+            # Split path — turbulence and neoclassical use different postprocs.
+            print(f"\t- Per-model profiles postprocessing detected:", typeMsg="i")
+            print(f"\t    turb ({turb_name!r}): {fn_turb}", typeMsg="i")
+            print(f"\t    neo  ({neo_name!r}):  {fn_neo}", typeMsg="i")
 
-        impurity_of_interest = p_old.Species[self.powerstate.impurityPosition]
+            file_turb = self.file_profs.parent / f"{self.file_profs.name}.turb"
+            file_neo = self.file_profs.parent / f"{self.file_profs.name}.neo"
+            shutil.copy2(self.file_profs, file_turb)
+            shutil.copy2(self.file_profs, file_neo)
 
-        try:
-            impurityPosition_new = p_new.Species.index(impurity_of_interest)
+            # Turb side (canonical). After applying, copy turb file back to
+            # self.file_profs so downstream (VGEN, finalize_evaluation, plotting)
+            # sees the canonical post-processed file at the expected path.
+            state_turb, pos_turb = self._apply_postproc_and_resolve_impurity(
+                file_turb, fn_turb,
+                baseline_species=baseline_species, baseline_pos=baseline_pos,
+                side_label="turb",
+            )
+            shutil.copy2(file_turb, self.file_profs)
+            self.powerstate.profiles_transport = state_turb
+            self.powerstate.profiles_transport_turb = state_turb
+            self.powerstate.impurityPosition_transport = pos_turb
+            self.powerstate.impurityPosition_transport_turb = pos_turb
+            if pos_turb != baseline_pos:
+                print(f"\t- [turb] Impurity position has changed from {baseline_pos} to {pos_turb}", typeMsg="i")
 
-        except ValueError:
-            print(f"\t- Impurity {impurity_of_interest} not found in new profiles, keeping position {self.powerstate.impurityPosition}",typeMsg="w")
-            impurityPosition_new = self.powerstate.impurityPosition
-
-        if impurityPosition_new != self.powerstate.impurityPosition:
-            print(f"\t- Impurity position has changed from {self.powerstate.impurityPosition} to {impurityPosition_new}",typeMsg="i")
-            self.powerstate.impurityPosition_transport = p_new.Species.index(impurity_of_interest)
+            # Neo side
+            state_neo, pos_neo = self._apply_postproc_and_resolve_impurity(
+                file_neo, fn_neo,
+                baseline_species=baseline_species, baseline_pos=baseline_pos,
+                side_label="neo",
+            )
+            self.powerstate.profiles_transport_neo = state_neo
+            self.powerstate.impurityPosition_transport_neo = pos_neo
+            if pos_neo != pos_turb:
+                print(f"\t- [neo] Impurity position differs from turb: turb={pos_turb}, neo={pos_neo}", typeMsg="i")
 
         # --- Optional: compute neoclassical E×B shear from NEO VGEN (zero toroidal rotation assumed)
         vgen_exb_options = self.powerstate.transport_options.get("options", {}).get("neo", {}).get("vgen_exb_shear", None)
@@ -531,6 +647,14 @@ class power_transport:
             # Propagate to powerstate.profiles so the stored iteration profiles also carry the NEO w0
             self.powerstate.profiles.profiles['w0(rad/s)'] = w0
             self.powerstate.profiles.write_state(file=self.file_profs)
+
+            # Under the split-postproc path, mirror VGEN w0 into the neo-side
+            # profile so NEO evaluators see the same VGEN result as the turb
+            # side (canonical). No-op on the fast path because the neo alias
+            # then points at the same `profiles_transport` object.
+            neo_state = getattr(self.powerstate, "profiles_transport_neo", None)
+            if neo_state is not None and neo_state is not self.powerstate.profiles_transport:
+                neo_state.profiles['w0(rad/s)'] = w0
 
     def _profiles_to_store(self):
 
@@ -709,6 +833,86 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
                 )
             return spec[key]
         return spec
+
+    def _resolve_postproc_fun(self, instance_name):
+        '''Per-model `profiles_postprocessing_fun` lookup with fallback.
+
+        Resolution order (per evaluator side):
+          1. transport.options.<instance_name>.profiles_postprocessing_fun
+          2. transport.profiles_postprocessing_fun (the namelist global default)
+          3. None
+        Per-model overrides global. Used by `_modify_profiles` and
+        `_evaluate_batched` to decide whether turbulence and neoclassical
+        sides need separate post-processed input.gacode copies.
+        '''
+        if instance_name is None:
+            return self.powerstate.transport_options.get("profiles_postprocessing_fun")
+        per_model = (
+            self.powerstate.transport_options.get("options", {})
+            .get(instance_name, {})
+            .get("profiles_postprocessing_fun")
+        )
+        if per_model is not None:
+            return per_model
+        return self.powerstate.transport_options.get("profiles_postprocessing_fun")
+
+    def _profiles_transport_for(self, side):
+        '''Side-aware accessor for the post-processed gacode_state. Returns
+        powerstate.profiles_transport_<side> when set (split path active);
+        otherwise falls back to the canonical powerstate.profiles_transport
+        — preserving byte-identical behavior on the fast path where turb
+        and neo share one postproc fn. side ∈ {"turb","neo"}.
+        '''
+        if side == "turb":
+            return getattr(self.powerstate, "profiles_transport_turb",
+                           self.powerstate.profiles_transport)
+        if side == "neo":
+            return getattr(self.powerstate, "profiles_transport_neo",
+                           self.powerstate.profiles_transport)
+        raise ValueError(f"Unknown side {side!r}; expected 'turb' or 'neo'")
+
+    def _impurity_position_transport_for(self, side):
+        '''Side-aware accessor for impurityPosition_transport. Mirrors
+        `_profiles_transport_for`: per-side attribute when split, canonical
+        fallback otherwise. side ∈ {"turb","neo"}.
+        '''
+        if side == "turb":
+            return getattr(self.powerstate, "impurityPosition_transport_turb",
+                           self.powerstate.impurityPosition_transport)
+        if side == "neo":
+            return getattr(self.powerstate, "impurityPosition_transport_neo",
+                           self.powerstate.impurityPosition_transport)
+        raise ValueError(f"Unknown side {side!r}; expected 'turb' or 'neo'")
+
+    def _apply_postproc_and_resolve_impurity(self, gacode_path, fn, *,
+                                              baseline_species, baseline_pos,
+                                              side_label=""):
+        '''Apply `fn` (or no-op) to `gacode_path` (modifies in place; returns
+        gacode_state), then re-read the file and resolve the new impurity
+        position by name-matching baseline_species[baseline_pos] against
+        the post-processed species list. Returns (new_state, new_impurity_pos).
+
+        `side_label` (e.g. "turb", "neo") is just used in the warning
+        message when the impurity name no longer exists in the post-processed
+        species list — informational only.
+        '''
+        if fn is not None:
+            new_state = fn(gacode_path)
+        else:
+            new_state = PROFILEStools.gacode_state(gacode_path)
+
+        # Re-read for the species check — the postproc may have rewritten
+        # the file but not refreshed the in-memory species list.
+        p_new = PROFILEStools.gacode_state(gacode_path)
+        impurity_of_interest = baseline_species[baseline_pos]
+        try:
+            new_pos = p_new.Species.index(impurity_of_interest)
+        except ValueError:
+            tag = f"[{side_label}] " if side_label else ""
+            print(f"\t- {tag}Impurity {impurity_of_interest} not found in post-processed profiles "
+                  f"({gacode_path.name}); keeping position {baseline_pos}", typeMsg="w")
+            new_pos = baseline_pos
+        return new_state, new_pos
 
     def _resolve_code(self, instance_name):
         '''Resolve the backend code (tglf / cgyro / gx / neo) from an instance name by

@@ -146,7 +146,25 @@ transport:
     # Neoclassical transport model
     neoclassical_model: "neo"
 
-  # Function to post-process input.gacode only *before* passing to transport codes (i.e. not for targets)
+  # Function to post-process input.gacode only *before* passing to transport codes (i.e. not for targets).
+  #
+  # The value is a *callable* (typically a `functools.partial(...)`) with signature
+  #     fn(file_profs: Path) -> gacode_state
+  # that may modify the file in place.
+  #
+  # Per-model override: each `transport.options.<name>` block below can carry its own
+  # `profiles_postprocessing_fun:` field. When set, it OVERRIDES (does not compose with)
+  # this top-level default for that model only. Resolution per evaluator side
+  # (turbulence / neoclassical) at evaluation time:
+  #     transport.options.<active_name>.profiles_postprocessing_fun
+  #     -> falls back to transport.profiles_postprocessing_fun (this field)
+  #     -> falls back to None (no postproc)
+  #
+  # When the turbulence and neoclassical sides resolve to *different* callables, the
+  # transport layer materialises two parallel input.gacode copies (`input.gacode.turb`
+  # and `input.gacode.neo`) and tracks per-side `impurityPosition_transport_{turb,neo}`.
+  # Same callable on both sides (the back-compat default) keeps the legacy single-copy
+  # fast path with byte-identical behavior.
   profiles_postprocessing_fun: null
 
   # Flatten the gradient at fine-grid neighbors of each coarse control point, creating a small

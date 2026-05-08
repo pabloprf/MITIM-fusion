@@ -21,7 +21,9 @@ class neo_model:
 
         percent_error = simulation_options["percent_error"]
         in_process = self.powerstate.transport_options.get("in_process", False)
-        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
+        # Side-aware (neoclassical): under per-model postproc, NEO may see a
+        # different species list (and impurity position) than the turbulence side.
+        ion_OI_position_in_ion_list = self._impurity_position_transport_for("neo")
 
         rho_locations = [
             self.powerstate.plasma["rho"][0, 1:][i].item()
@@ -30,6 +32,9 @@ class neo_model:
 
         neo = NEOtools.NEO(rhos=rho_locations, in_process=in_process)
 
+        # list_of_states is the neo-side per-plasma states under split-postproc
+        # (passed in from _evaluate_batched). Aliased to the canonical states
+        # under the fast path.
         _ = neo.prep(
             list_of_states[0],
             self.folder,
@@ -91,18 +96,19 @@ class neo_model:
         # subprocess fork, no folder / file I/O.  See namelist.portals.yaml.
         in_process = self.powerstate.transport_options.get("in_process", False)
         # [ion1,ion2,ion3,...], so if I want ion3, I need to do ion_OI_position_in_ion_list = 2
-        ion_OI_position_in_ion_list = self.powerstate.impurityPosition_transport
-                
-        # ------------------------------------------------------------------------------------------------------------------------        
+        # Side-aware (neoclassical): see _evaluate_neo_batched() comment.
+        ion_OI_position_in_ion_list = self._impurity_position_transport_for("neo")
+
+        # ------------------------------------------------------------------------------------------------------------------------
         # Run
         # ------------------------------------------------------------------------------------------------------------------------
-        
+
         rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
 
         neo = NEOtools.NEO(rhos=rho_locations, in_process=in_process)
 
         _ = neo.prep(
-            self.powerstate.profiles_transport,
+            self._profiles_transport_for("neo"),
             self.folder,
             cold_start = cold_start,
             )
