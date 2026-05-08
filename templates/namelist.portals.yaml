@@ -195,6 +195,11 @@ transport:
       # If omitted, the dispatcher falls back to the block key itself.
       code: tglf
 
+      # Per-model override for `transport.profiles_postprocessing_fun`. If non-null,
+      # this callable replaces the global one for TGLF only (see the top-level field
+      # for signature and resolution rules).
+      profiles_postprocessing_fun: null
+
       # Kwargs to be passed to the run command
       run:
         code_settings: "SAT3"
@@ -232,6 +237,10 @@ transport:
       # Backend code (see note on the tglf block above).
       code: neo
 
+      # Per-model override for `transport.profiles_postprocessing_fun` (NEO only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
+
       run:
         code_settings: "Sonic"
 
@@ -259,6 +268,10 @@ transport:
 
       # Backend code (see note on the tglf block above).
       code: cgyro
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (CGYRO only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
 
       run:
         code_settings: "Nonlinear"
@@ -472,6 +485,10 @@ transport:
 
       # Backend code (see note on the tglf block above).
       code: gx
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (GX only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
 
       run:
 
