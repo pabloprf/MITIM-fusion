@@ -1044,46 +1044,72 @@ class mitim_job:
                 # Add entire folder
                 tar_items.append(folder)
 
-        self.execute(
-            "tar -czf "
-            + f'{self.folderExecution}/mitim_receive.tar.gz'
-            + " -C "
-            + f'{self.folderExecution}'
-            + " "
-            + " ".join(tar_items)
-        )
-
-        # Download the tarball
-        print("\t\t- Downloading (remote -> local)")
-        if self.ssh is not None:
-            # Wrap the get in the shared transient-failure retry — same
-            # policy connect_ssh uses, namelist-tunable via PORTALS-CGYRO.
-            # The remote tarball at folderExecution/mitim_receive.tar.gz
-            # was created above and persists across reconnects.
-            with TqdmUpTo(
-                unit="B",
-                unit_scale=True,
-                miniters=1,
-                desc="mitim_receive.tar.gz",
-                bar_format=" " * 20
-                + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
-            ) as t:
-                self._sftp_transfer_with_retry(
-                    'get',
-                    f"{self.folderExecution}/mitim_receive.tar.gz",
-                    self.folder_local / "mitim_receive.tar.gz",
-                    callback=lambda sent, total_size: t.update_to(sent, total_size),
+        # Tar + download + extract, wrapped in a typeMsg='q' retry prompt:
+        # the most common failure mode here (observed in production) is the
+        # remote scratch pool filling up — tar produces no output and the
+        # next sftp.get() crashes with a confusing FileNotFoundError 5
+        # frames deep in paramiko. Surfacing a best-guess message and
+        # blocking on 'y' lets the user free disk space (or fix whatever
+        # transient remote issue) and resume the same retrieval without
+        # losing the BO process. Answering 'n' re-raises the original
+        # exception so the caller sees the real failure.
+        while True:
+            try:
+                self.execute(
+                    "tar -czf "
+                    + f'{self.folderExecution}/mitim_receive.tar.gz'
+                    + " -C "
+                    + f'{self.folderExecution}'
+                    + " "
+                    + " ".join(tar_items)
                 )
-        else:
-            shutil.copy2(
-                f"{self.folderExecution}/mitim_receive.tar.gz",
-                self.folder_local / "mitim_receive.tar.gz"
-            )
 
-        # Extract the tarball locally
-        print("\t\t- Extracting tarball (local side)")
-        with tarfile.open(self.folder_local / "mitim_receive.tar.gz", "r:gz") as tar:
-            tar.extractall(path=self.folder_local)
+                # Download the tarball
+                print("\t\t- Downloading (remote -> local)")
+                if self.ssh is not None:
+                    # Wrap the get in the shared transient-failure retry — same
+                    # policy connect_ssh uses, namelist-tunable via PORTALS-CGYRO.
+                    # The remote tarball at folderExecution/mitim_receive.tar.gz
+                    # was created above and persists across reconnects.
+                    with TqdmUpTo(
+                        unit="B",
+                        unit_scale=True,
+                        miniters=1,
+                        desc="mitim_receive.tar.gz",
+                        bar_format=" " * 20
+                        + "{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{rate_fmt}{postfix}]",
+                    ) as t:
+                        self._sftp_transfer_with_retry(
+                            'get',
+                            f"{self.folderExecution}/mitim_receive.tar.gz",
+                            self.folder_local / "mitim_receive.tar.gz",
+                            callback=lambda sent, total_size: t.update_to(sent, total_size),
+                        )
+                else:
+                    shutil.copy2(
+                        f"{self.folderExecution}/mitim_receive.tar.gz",
+                        self.folder_local / "mitim_receive.tar.gz"
+                    )
+
+                # Extract the tarball locally
+                print("\t\t- Extracting tarball (local side)")
+                with tarfile.open(self.folder_local / "mitim_receive.tar.gz", "r:gz") as tar:
+                    tar.extractall(path=self.folder_local)
+                break
+            except (FileNotFoundError, IOError, tarfile.ReadError, EOFError) as _retrieve_exc:
+                msg = (
+                    f"Remote tar/download/extract failed "
+                    f"({type(_retrieve_exc).__name__}: {_retrieve_exc}). "
+                    f"Most likely cause: remote scratch is out of disk space. "
+                    f"Remote folder: {self.folderExecution}. "
+                    f"Free space on the cluster (delete old runs / clear scratch), "
+                    f"then answer 'y' to retry; 'n' aborts and propagates the error."
+                )
+                if not print(msg, typeMsg='q'):
+                    raise
+                # Drop any partial local tarball before retrying so the next
+                # attempt starts clean.
+                (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
 
         # Remove tarballs
         print("\t\t- Removing tarball (local side)")
