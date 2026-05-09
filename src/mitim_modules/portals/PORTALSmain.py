@@ -90,6 +90,15 @@ class portals(STRATEGYtools.opt_evaluator):
         # string (single fidelity, as today) or an int-keyed dict (multi-fidelity). When
         # multi-fidelity, an extra `fidelity_level` design variable gets appended at the
         # end of the DV vector so the acquisition optimizer can pick a fidelity to evaluate.
+        #
+        # `fidelity_level` is a RESERVED DV name. Optimizers that can't handle the extra
+        # DV (sr, root — they iterate index-paired Δx_i ∝ residual_i and need
+        # len(DVs)==len(residuals)) are auto-wrapped at the dispatch boundary in
+        # mitim_tools/opt_tools/OPTtools.py: the wrapper strips fidelity_level, runs the
+        # solver in reduced-DV space against a residual_function that pads
+        # fidelity_level=N-1 (highest fidelity) before delegating, and re-pads the
+        # returned x_opt. Fidelity-aware optimizers (botorch, ga) are no-ops.
+        # See OPTtools._METHODS_HANDLE_FIDELITY_LEVEL for the registry.
         def _n_fidelities(spec):
             return len(spec) if isinstance(spec, dict) else 1
 

@@ -9,6 +9,145 @@ from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
+# ---------------------------------------------------------------------------
+# Reserved DV name handling: `fidelity_level`
+#
+# Multi-fidelity PORTALS appends `fidelity_level` as an extra DV bounded
+# [0, N-1] (PORTALSinit.py:244, conditional on a dict-form turbulence_model
+# / neoclassical_model spec). PORTALS' classical solvers in
+# mitim_tools/opt_tools/optimizers/multivariate.py iterate index-paired
+# Δx_i ∝ residual_i steps and require len(DVs) == len(residuals). With
+# fidelity_level added, that invariant breaks and the optimizer crashes.
+#
+# `_METHODS_HANDLE_FIDELITY_LEVEL` declares which optimizer methods can
+# handle the extra DV natively. For methods that can't, the wrapper below
+# strip-and-pads transparently: the optimizer sees a reduced-DV problem,
+# `residual_function` invocations inside it are padded with fidelity_level
+# pinned to N-1 (highest fidelity, since post-BO refinement should converge
+# against the most accurate model), and the returned x_opt is re-padded to
+# the full DV shape before the BO loop sees it.
+#
+# Conservative default for unknown method names: True (treat as
+# fidelity-aware). Better to surface a real shape error than silently strip
+# a DV the user expected the optimizer to see.
+# ---------------------------------------------------------------------------
+FIDELITY_LEVEL_DV_NAME = "fidelity_level"
+_METHODS_HANDLE_FIDELITY_LEVEL = {
+    # Keys mirror the optimizer strings used in `acquire_next_points`
+    # (`acquisition_options.optimizers` namelist list, e.g. ["botorch","sr","root"]).
+    "botorch": True,   # GP acquisition; dimension-agnostic
+    "ga":      True,   # genetic algorithm; dimension-agnostic
+    "root":    False,  # scipy.optimize.root (LM); requires len(DVs)==len(residuals)
+    "sr":      False,  # multivariate_tools.simple_relaxation; ditto
+}
+
+
+def _drop_col(t, idx):
+    '''Return a tensor with column `idx` removed along the last axis. Works
+    for shapes (..., D) — used here on (2, D) bounds tensors and (n, D)
+    guess tensors.'''
+    if t is None:
+        return None
+    if idx == 0:
+        return t[..., 1:].clone()
+    if idx == t.shape[-1] - 1:
+        return t[..., :-1].clone()
+    return torch.cat([t[..., :idx], t[..., idx + 1:]], dim=-1)
+
+
+def _insert_col(t, idx, value):
+    '''Insert a column of constant `value` at column index `idx` along the
+    last axis. Inverse of `_drop_col` (modulo dtype/device coercion of
+    `value`).'''
+    if t is None:
+        return None
+    leading = t.shape[:-1]
+    fill = torch.full(leading + (1,), float(value), dtype=t.dtype, device=t.device)
+    if idx == 0:
+        return torch.cat([fill, t], dim=-1)
+    if idx == t.shape[-1]:
+        return torch.cat([t, fill], dim=-1)
+    return torch.cat([t[..., :idx], fill, t[..., idx:]], dim=-1)
+
+
+def _wrap_optimizer_for_fidelity_level(fun, optimize_function, method_name):
+    '''
+    If `fidelity_level` is in the DV list AND `method_name` is registered
+    as not handling it, return a wrapped `optimize_function` that:
+      1. Snapshots `fun.{dimDVs, bounds, bounds_mod, xGuesses}` and
+         `fun.evaluators["residual_function"]` (the full-DV state).
+      2. Replaces them with reduced views (fidelity_level column removed).
+         The wrapped residual_function pads fidelity_level=N-1 before
+         delegating to the original — so the optimizer's residual calls
+         remain valid against the GP's full-DV input expectation.
+      3. Calls `optimize_function(fun, *args, **kwargs)`. The optimizer sees
+         a clean reduced-DV problem.
+      4. Re-pads the returned x_opt with fidelity_level=N-1 at the correct
+         column position so `fun.optimize`'s downstream `select_points` and
+         the BO loop see the full DV signature.
+      5. Restores `fun` to its full-DV state on the way out (try/finally).
+
+    Otherwise returns `optimize_function` unchanged. Single-fidelity runs
+    and fidelity-aware methods (botorch / ga) are no-ops.
+    '''
+    dv_names = list(fun.evaluators["GP"].bounds.keys())
+    if FIDELITY_LEVEL_DV_NAME not in dv_names:
+        return optimize_function
+    if _METHODS_HANDLE_FIDELITY_LEVEL.get(method_name, True):
+        return optimize_function
+
+    fid_idx = dv_names.index(FIDELITY_LEVEL_DV_NAME)
+    fid_max = float(fun.evaluators["GP"].bounds[FIDELITY_LEVEL_DV_NAME][1])
+
+    print(
+        f"\t- [{FIDELITY_LEVEL_DV_NAME}] optimizer '{method_name}' is not fidelity-aware; "
+        f"pinning {FIDELITY_LEVEL_DV_NAME}={int(round(fid_max))} for this stage and stripping "
+        "it from the DV view passed to the optimizer.",
+        typeMsg="i",
+    )
+
+    def wrapped(fun_arg, *args, **kwargs):
+        # Snapshot post-prep state. We restore exactly this in the finally
+        # block; if the optimizer raises, the caller still sees `fun` intact.
+        snap_dimDVs     = fun_arg.dimDVs
+        snap_bounds     = fun_arg.bounds.clone()
+        snap_bounds_mod = fun_arg.bounds_mod.clone()
+        snap_xGuesses   = None if fun_arg.xGuesses is None else fun_arg.xGuesses.clone()
+        snap_residual   = fun_arg.evaluators["residual_function"]
+
+        # Present a reduced view to the optimizer
+        fun_arg.dimDVs     = snap_dimDVs - 1
+        fun_arg.bounds     = _drop_col(snap_bounds, fid_idx)
+        fun_arg.bounds_mod = _drop_col(snap_bounds_mod, fid_idx)
+        if snap_xGuesses is not None:
+            fun_arg.xGuesses = _drop_col(snap_xGuesses, fid_idx)
+
+        # Pad fidelity_level back into X before each residual evaluation so
+        # the GP / scalarized_objective machinery (which trained on full-DV
+        # inputs) keeps working. fid_max is broadcast across the batch.
+        def padded_residual(x, *r_args, **r_kwargs):
+            x_full = _insert_col(x, fid_idx, fid_max)
+            return snap_residual(x_full, *r_args, **r_kwargs)
+        fun_arg.evaluators["residual_function"] = padded_residual
+
+        try:
+            x_opt_red, y_opt, z_opt, acq_eval = optimize_function(fun_arg, *args, **kwargs)
+        finally:
+            # Restore on every path (success or exception) so the caller's
+            # next iteration / next optimizer in the chain sees pristine state.
+            fun_arg.dimDVs     = snap_dimDVs
+            fun_arg.bounds     = snap_bounds
+            fun_arg.bounds_mod = snap_bounds_mod
+            fun_arg.xGuesses   = snap_xGuesses
+            fun_arg.evaluators["residual_function"] = snap_residual
+
+        # Pad fidelity_level=N-1 into x_opt so downstream `select_points`
+        # and the BO loop see the full DV signature.
+        x_opt_full = _insert_col(x_opt_red, fid_idx, fid_max)
+        return x_opt_full, y_opt, z_opt, acq_eval
+
+    return wrapped
+
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, strategy_options):
         self.stepSettings = stepSettings
@@ -221,20 +360,31 @@ def acquire_next_points(
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizer == "ga":           
+        if optimizer == "ga":
             from mitim_tools.opt_tools.optimizers.evolutionary import optimize_function
-        elif optimizer == "botorch":    
+        elif optimizer == "botorch":
             from mitim_tools.opt_tools.optimizers.botorch_tools import optimize_function
-        elif optimizer == "root" or optimizer == "sr":      
+        elif optimizer == "root" or optimizer == "sr":
             from mitim_tools.opt_tools.optimizers.multivariate import optimize_function
             if optimizer == "root":
                 optimize_function = partial(optimize_function, method="scipy_root")
-            elif optimizer == "sr" : 
+            elif optimizer == "sr" :
                 optimize_function = partial(optimize_function, method="sr")
         else:
             raise ValueError(f"[MITIM] Unknown optimizer {optimizer}")
 
         fun.prep(xGuesses=x_opt,seed=it_number + seed)
+
+        # Reserved DV `fidelity_level`: when the model spec is multi-fidelity
+        # (turbulence_model / neoclassical_model is an int-keyed dict),
+        # PORTALS appends a fidelity_level DV bounded [0, N-1] and the
+        # optimizer chosen here may not handle the extra DV (sr, root).
+        # The wrapper transparently strips fidelity_level for non-aware
+        # optimizers and pins it to N-1; no-op for fidelity-aware methods
+        # (botorch, ga) and for single-fidelity runs.
+        optimize_function = _wrap_optimizer_for_fidelity_level(
+            fun, optimize_function, method_name=optimizer,
+        )
 
         # *********** Optimize
         x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(

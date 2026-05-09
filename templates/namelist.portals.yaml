@@ -130,6 +130,13 @@ transport:
   #       0: 'tglf'
   #       1: 'cgyro'
   #     neoclassical_model: "neo"
+  # `fidelity_level` is a RESERVED DV name. If `acquisition_options.optimizers` includes
+  # a method that doesn't natively handle multi-fidelity (currently `sr`, `root` — they
+  # iterate index-paired Δx_i ∝ residual_i and need len(DVs)==len(residuals)), the
+  # framework auto-pins fidelity_level to its max value (N-1, highest fidelity) for that
+  # optimizer's stage and strips it from the DV view the optimizer sees. `botorch` and
+  # `ga` handle fidelity_level natively as continuous/integer DVs — no auto-pin. See
+  # `OPTtools._METHODS_HANDLE_FIDELITY_LEVEL` for the registry.
   #
   # Named instances (e.g. two different TGLF configs). In this case the `code:` field in
   # each options block is required, since the block key (e.g. `tglf1`) is not itself a
