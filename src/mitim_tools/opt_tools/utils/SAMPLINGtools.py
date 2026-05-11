@@ -1,5 +1,8 @@
 import torch
-import pyDOE
+try:
+    import pyDOE
+except:
+    import pydoe as pyDOE
 import numpy as np
 import pandas as pd
 from IPython import embed
