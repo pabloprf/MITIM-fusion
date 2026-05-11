@@ -504,6 +504,7 @@ def profiles_postprocessing_fun(file_profs, lumpImpurities = True, enforce_same_
         p.lumpImpurities()
     if enforce_same_density_gradients:
         p.enforce_same_density_gradients()
+    p.enforceQuasineutrality()
     p.write_state(file=file_profs)
     return p
 
