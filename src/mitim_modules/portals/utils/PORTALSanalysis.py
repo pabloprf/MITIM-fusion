@@ -200,6 +200,7 @@ class PORTALSanalyzer:
         self.evaluations, self.resM = [], []
         self.FusionGain, self.tauE, self.FusionPower = [], [], []
         self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = [], [], [], [], []
+        self._resL1_objective = []
         if calculateRicci is not None:
             self.qR_Ricci, self.chiR_Ricci, self.points_Ricci = [], [], []
         else:
@@ -230,6 +231,20 @@ class PORTALSanalyzer:
                 power,
                 self.portals_parameters,
             )
+
+            # In edge mode, compute the scalar objective on rhoCP (same path as optimizer)
+            # so that best-index selection and OF traces are fully consistent.
+            if hasattr(power, "_slice_plasma_to_rhoCP"):
+                proxy_powerstate = copy.copy(power)
+                proxy_powerstate.plasma = power._slice_plasma_to_rhoCP(pad_zero=True)
+                _, _, source_obj, res_obj = PORTALStools.calculate_residuals(
+                    proxy_powerstate,
+                    self.portals_parameters,
+                )
+                res = res_obj
+                self._resL1_objective.append(source_obj.abs().mean().item())
+            else:
+                self._resL1_objective.append(source.abs().mean().item())
 
             # Make sense of tensor "source" which are defining the entire predictive set in
             Qe_resR = np.zeros(self.rhos.shape[0])
@@ -306,6 +321,7 @@ class PORTALSanalyzer:
         self.FusionPower = np.array(self.FusionPower)
         self.tauE = np.array(self.tauE)
         self.resM = np.array(self.resM)
+        self._resL1_objective = np.array(self._resL1_objective)
         self.evaluations = np.array(self.evaluations)
         self.resTe, self.resTi, self.resne, self.resnZ, self.resw0 = (
             np.array(self.resTe),
@@ -314,6 +330,15 @@ class PORTALSanalyzer:
             np.array(self.resnZ),
             np.array(self.resw0),
         )
+
+        # Derive best index from the same scalar objective used for plotting.
+        # This avoids mismatches with serialized optimizer indices in edge runs.
+        if self.resM.size > 0:
+            try:
+                self.ibest = int(np.nanargmin(self.resM))
+                self.iextra = None if self.ilast == self.ibest else self.ilast
+            except ValueError:
+                pass
 
         if calculateRicci is not None:
             self.chiR_Ricci = np.array(self.chiR_Ricci)
@@ -327,9 +352,8 @@ class PORTALSanalyzer:
         self.resnZM = np.abs(self.resnZ).mean(axis=1)
         self.resw0M = np.abs(self.resw0).mean(axis=1)
 
-        self.resCheck = (
-            self.resTeM + self.resTiM + self.resneM + self.resnZM + self.resw0M
-        ) / len(self.portals_parameters["solution"]["predicted_channels"])
+        # Legacy-compatible normalized L1 objective (same flattening used by calculate_residuals).
+        self.resCheck = self._resL1_objective
 
         # ---------------------------------------------------------------------------------------------------------------------
         # Jacobian
@@ -380,7 +404,20 @@ class PORTALSanalyzer:
         _, _ = self.plotModelComparison(fig=fig)
 
     def plotMetrics(self, **kwargs):
-        PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
+        force_legacy_edge = kwargs.pop("force_legacy_edge", False)
+        p0 = self.powerstates[0] if len(self.powerstates) > 0 else None
+        is_edge_state = (
+            p0 is not None
+            and (
+                p0.__class__.__name__ == "powerstate_edge"
+                or "STATEedge" in p0.__class__.__module__
+            )
+        )
+
+        if is_edge_state and (not force_legacy_edge):
+            PORTALSplot.PORTALSanalyzer_plotMetrics_edge_modern(self, **kwargs)
+        else:
+            PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
 
     def plotExpected(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotExpected(self, **kwargs)

@@ -35,6 +35,10 @@ solution:
   # Channels to be predicted (Options: ["te", "ti", "ne", "nZ", "w0"])
   predicted_channels: ["te", "ti", "ne"]
 
+  # Profile parameterizer used to map between gradient control points and the full profile
+  # Options: "piecewise_linear" | "akima"
+  parameterizer: "piecewise_linear"
+
   # Run turbulent exchange as surrogate
   turbulent_exchange_as_surrogate: false
 
@@ -162,6 +166,17 @@ transport:
       percent_error: 10.0
 
     # *********************************************************************************************************
+    # NEO (edge) — use with portals_edge when ROTATION_MODEL=1 is required.
+    # Per-rho DPHI0DR is injected automatically from powerstate_edge.plasma["E_rad"]
+    # when code_settings: "edge" is selected here.
+    # *********************************************************************************************************
+    # neo:
+    #   run:
+    #     code_settings: "edge"
+    #   read: {}
+    #   percent_error: 10.0
+
+    # *********************************************************************************************************
     # CGYRO
     # *********************************************************************************************************
     cgyro:
@@ -238,6 +253,76 @@ target:
 
     # (%) Error (std, in percent) of model evaluation
     percent_error: 1
+
+# -----------------------------------------------------------------
+# Edge physics parameters
+# -----------------------------------------------------------------
+# Set to null to disable. When provided, this block is read by
+# portals_edge / powerstate_edge through portals_parameters["edge_options"].
+# The profile parameterizer itself still lives under solution.parameterizer,
+# and solution.defined_on is used as the fallback for MtanhSpline unless
+# overridden here explicitly.
+# -----------------------------------------------------------------
+
+edge: null
+
+# Annotated example showing the current defaults (uncomment and adjust):
+#
+# edge_options:
+#
+#   # Restrict the edge domain. domain_roa takes precedence over domain_rho.
+#   domain_roa: null
+#   domain_rho: null
+#
+#   # Optional initial LCFS anchors in powerstate units. Leave empty to use
+#   # the values coming from the input profile / boundary model.
+#   lcfs_bc: {}
+#   # Example:
+#   # lcfs_bc:
+#   #   te: 0.080
+#   #   ti: 0.080
+#   #   ne: 0.30
+#   #   aLte: 0.0
+#   #   aLti: 0.0
+#   #   aLne: 0.0
+#
+#   # LCFS boundary-condition model.
+#   # Aliases currently supported include "Fixed" and "FixedInitial"
+#   # for frozen initial BCs, plus the two-fluid models below.
+#   bc_model: "FixedInitial"
+#   bc_model_options: {}
+#   # Other supported values:
+#   # bc_model: "TwoFluid_PeretSSF"
+#   # bc_model: "TwoFluid_EichManz"
+#
+#   # Main-ion neutral model
+#   neutral_model: "Null"
+#   neutral_model_options: {}
+#
+#   # Impurity charge-state model
+#   charge_state_model: "Null"
+#   charge_state_model_options: {}
+#
+#   # ELM stability / penalty model
+#   elm_model: "Null"
+#   elm_model_options: {}
+#
+#   # Target multipliers applied inside powerstate_edge.calculateTargets()
+#   target_multipliers: {}
+#   # Example:
+#   # target_multipliers:
+#   #   Qe: 1.0
+#   #   Qi: 1.0
+#   #   Ge: 1.0
+#   #   Mt: 1.0
+#
+#   # If true, replace the standard analytical target model with
+#   # analytical_model_edge. This is the current default.
+#   use_edge_targets: true
+#
+#   # Optional override for MtanhSpline control semantics.
+#   # If omitted, solution.defined_on is used.
+#   defined_on: "y"
 
 # -----------------------------------------------------------------
 # Optimization options namelist

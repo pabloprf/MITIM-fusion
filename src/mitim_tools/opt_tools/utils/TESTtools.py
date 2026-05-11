@@ -40,7 +40,12 @@ def checkSolutionIsWithinBounds(x, bounds, maxExtrapolation=[0.0, 0.0], clipper 
     return insideBounds
 
 
-def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
+def testBatchCapabilities(
+    GPs,
+    combinations=[2, 100, 1000],
+    thresholdTrigger=0.5,
+    absoluteTrigger=1e-3,
+):
     """
     This assesses the relative error in cases where y_Normalized> thrImportance
     It stops running if the error gets larger than thrPercent in those cases
@@ -56,11 +61,20 @@ def testBatchCapabilities(GPs, combinations=[2, 100, 1000]):
         y2 = y2.detach().cpu().numpy()
 
         maxPercent, trouble, indeces = checkSame(
-            y1, y2, labels=[f"{i} SAMPLES", "1 SAMPLE"]
+            y1,
+            y2,
+            thresholdTrigger=thresholdTrigger,
+            absoluteTrigger=absoluteTrigger,
+            labels=[f"{i} SAMPLES", "1 SAMPLE"],
         )
 
 
-def testCombinationCapabilities(GPs, GP):
+def testCombinationCapabilities(
+    GPs,
+    GP,
+    max_error_percent=1e-5,
+    stop_on_failure=True,
+):
     x = GP.train_X
 
     # Combined
@@ -76,11 +90,17 @@ def testCombinationCapabilities(GPs, GP):
     y, ys = y.detach(), ys.detach()
     err = ((y - ys).abs() / ys * 100).cpu().numpy()
 
-    if np.nanmax(err) > 1e-5:
+    max_err = np.nanmax(err)
+
+    if max_err > max_error_percent:
         print(
-            f"\t Max error of combination (check!): {np.nanmax(err):.2f}%", typeMsg="w"
+            f"\t Max error of combination (check!): {max_err:.2f}% (threshold: {max_error_percent:.2e}%)",
+            typeMsg="w",
         )
-        embed()
+        if stop_on_failure:
+            embed()
+
+    return max_err
 
 
 def isOutlier(y0, y, stds_outside=5, stds_outside_checker=1):

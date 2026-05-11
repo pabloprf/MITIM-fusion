@@ -298,11 +298,31 @@ class OPTstep:
 		"""
 
         # Test (if test could not be launched is likely because a singular matrix for Choleski decomposition)
+        batch_eval_max_error_percent = self.surrogate_options.get(
+            "test_batch_max_error_percent", 0.5
+        )
+        batch_eval_min_absolute = self.surrogate_options.get(
+            "test_batch_min_absolute", 1e-3
+        )
+        combination_max_error_percent = self.surrogate_options.get(
+            "test_combination_max_error_percent", 1e-5
+        )
+        combination_stop_on_failure = self.surrogate_options.get(
+            "test_combination_stop_on_failure", True
+        )
+
         print("--> Launching tests to assure batch evaluation accuracy")
-        TESTtools.testBatchCapabilities(self.GP["combined_model"])
+        TESTtools.testBatchCapabilities(
+            self.GP["combined_model"],
+            thresholdTrigger=batch_eval_max_error_percent,
+            absoluteTrigger=batch_eval_min_absolute,
+        )
         print("--> Launching tests to assure model combination accuracy")
         TESTtools.testCombinationCapabilities(
-            self.GP["individual_models"], self.GP["combined_model"]
+            self.GP["individual_models"],
+            self.GP["combined_model"],
+            max_error_percent=combination_max_error_percent,
+            stop_on_failure=combination_stop_on_failure,
         )
         print("--> Launching tests evaluate accuracy on training set (absolute units)")
         self.GP["combined_model"].testTraining()

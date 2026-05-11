@@ -23,6 +23,9 @@ class tglf_model:
         
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
         use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
+        # Guard: boolean True means "enable with default delta"; avoid 1-True=0 which zeros TAUS_2 and crashes TGLF
+        if use_tglf_scan_trick is True:
+            use_tglf_scan_trick = 0.05
         reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]

@@ -1,3 +1,10 @@
 "Sonic":
   controls:
     ROTATION_MODEL: 2
+
+# Edge / pedestal configuration
+# ROTATION_MODEL=1 : linearized (sub-sonic) rotation model (Hirshman-Sigmar);
+#                    requires DPHI0DR per radius, injected from powerstate_edge.plasma["E_rad"]
+"edge":
+  controls:
+    ROTATION_MODEL: 1

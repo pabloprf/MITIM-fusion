@@ -447,6 +447,11 @@ def _check_oscillation(signal_raw, relax_dyn_num):
         
         # Only consider a number of last iterations
         y_vals = signal[-iterations_to_consider:, i].cpu().numpy()
+
+        # Non-finite trajectories are numerically unstable; treat as oscillatory.
+        if not np.isfinite(y_vals).all():
+            oscillating_dims[i] = True
+            continue
         
         # If the signal is not constant
         if y_vals.std() > 0.0:
@@ -455,22 +460,30 @@ def _check_oscillation(signal_raw, relax_dyn_num):
             y_detrended = y_vals - np.mean(y_vals)
             fft_vals = np.fft.fft(y_detrended)
             power_spectrum = np.abs(fft_vals[1:len(fft_vals)//2+1])  # Exclude DC and negative frequencies
-            
+
             # Check if there's a dominant frequency
             excl = 2
             p_around = 1
-            argmax_power = np.argmax(power_spectrum[excl:])  # Exclude lowest frequencies
-            max_power = np.sum(power_spectrum[(argmax_power+excl) - p_around:(argmax_power+excl) + p_around])
-            total_power = np.sum(power_spectrum)
+            if power_spectrum.size > excl:
+                argmax_power = np.argmax(power_spectrum[excl:])  # Exclude lowest frequencies
+                max_power = np.sum(power_spectrum[(argmax_power+excl) - p_around:(argmax_power+excl) + p_around])
+                total_power = np.sum(power_spectrum)
 
-            # If a single frequency dominates (30%), it might be oscillating (even if low frequency)
-            single_frequency_power = max_power / total_power
-            single_frequency_dominance = bool(single_frequency_power > 0.3)
-            
-            # If more than 50% of the power comes from high frequencies (>1/3), consider it oscillating
-            index_high_freq = len(power_spectrum) // 3
-            high_frequency_power = np.sum(power_spectrum[index_high_freq:]) / total_power
-            high_frequency_dominance = bool(high_frequency_power > 0.5)
+                if np.isfinite(total_power) and total_power > np.finfo(float).eps:
+                    # If a single frequency dominates (30%), it might be oscillating (even if low frequency)
+                    single_frequency_power = max_power / total_power
+                    single_frequency_dominance = bool(single_frequency_power > 0.3)
+
+                    # If more than 50% of the power comes from high frequencies (>1/3), consider it oscillating
+                    index_high_freq = len(power_spectrum) // 3
+                    high_frequency_power = np.sum(power_spectrum[index_high_freq:]) / total_power
+                    high_frequency_dominance = bool(high_frequency_power > 0.5)
+                else:
+                    single_frequency_dominance = False
+                    high_frequency_dominance = False
+            else:
+                single_frequency_dominance = False
+                high_frequency_dominance = False
 
             # if signal completely flat, it's an indication that has hit the bounds, also consider it oscillating
             signal_flat = bool(y_vals.std() < 1e-6)

@@ -3,6 +3,8 @@ import torch
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from mitim_tools.misc_tools import GRAPHICStools
 from mitim_modules.portals import PORTALStools
 from mitim_modules.powertorch import STATEtools
@@ -128,9 +130,6 @@ def PORTALSanalyzer_plotMetrics(
             p = power.profiles
             rho = power.plasma['rho'][0].cpu().numpy()
 
-            ix = np.argmin(
-                np.abs(p.profiles["rho(-)"] - rho[-1].item())
-            )
             if axTe is not None:
                 axTe.plot(
                     p.profiles["rho(-)"],
@@ -141,8 +140,8 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
                 axTe_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLTe"][:ix],
+                    p.profiles["rho(-)"],
+                    p.derived["aLTe"],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -157,8 +156,8 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
                 axTi_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLTi"][:ix, 0],
+                    p.profiles["rho(-)"],
+                    p.derived["aLTi"][:, 0],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -173,8 +172,8 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
                 axne_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLne"][:ix],
+                    p.profiles["rho(-)"],
+                    p.derived["aLne"],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -190,8 +189,8 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
                 axnZ_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLni"][:ix, self.runWithImpurity],
+                    p.profiles["rho(-)"],
+                    p.derived["aLni"][:, self.runWithImpurity],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -207,8 +206,8 @@ def PORTALSanalyzer_plotMetrics(
                     alpha=alph,
                 )
                 axw0_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["dw0dr"][:ix] * factor_dw0dr,
+                    p.profiles["rho(-)"],
+                    p.derived["dw0dr"] * factor_dw0dr,
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -288,16 +287,14 @@ def PORTALSanalyzer_plotMetrics(
 
         power = self.powerstates[indexUse]
         p = power.profiles
-        
-        ix = np.argmin(np.abs(p.profiles["rho(-)"] - rho[-1]))
 
         if axTe_g is not None:
             axTe.plot(
                 p.profiles["rho(-)"], p.profiles["te(keV)"], lw=2, color=col, label=lab
             )
             axTe_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTe"][:ix],
+                p.profiles["rho(-)"],
+                p.derived["aLTe"],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -312,8 +309,8 @@ def PORTALSanalyzer_plotMetrics(
                 label=lab,
             )
             axTi_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTi"][:ix, 0],
+                p.profiles["rho(-)"],
+                p.derived["aLTi"][:, 0],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -328,8 +325,8 @@ def PORTALSanalyzer_plotMetrics(
                 label=lab,
             )
             axne_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLne"][:ix],
+                p.profiles["rho(-)"],
+                p.derived["aLne"],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -345,8 +342,8 @@ def PORTALSanalyzer_plotMetrics(
                 label=lab,
             )
             axnZ_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLni"][:ix, self.runWithImpurity],
+                p.profiles["rho(-)"],
+                p.derived["aLni"][:, self.runWithImpurity],
                 markersize=msFlux,
                 lw=2,
                 color=col,
@@ -361,8 +358,8 @@ def PORTALSanalyzer_plotMetrics(
                 label=lab,
             )
             axw0_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["dw0dr"][:ix] * factor_dw0dr,
+                p.profiles["rho(-)"],
+                p.derived["dw0dr"] * factor_dw0dr,
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -388,7 +385,7 @@ def PORTALSanalyzer_plotMetrics(
             plotFlows=plotFlows and (self.ibest == indexUse),
             addFlowLegend=cont == len(indeces_plot) - 1,
         )
-    
+
     if axTe is not None:
         ax = axTe
         GRAPHICStools.addDenseAxis(ax)
@@ -1024,6 +1021,457 @@ def PORTALSanalyzer_plotMetrics(
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
 
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Edge-specific plotMetrics helpers and override
+# ---------------------------------------------------------------------------------------------------------------------
+
+def _compute_domain_xlim_for_edge(self):
+    """
+    Return [rho_min, rho_max] for the user's edge domain, in ρ coordinates.
+    Reads from powerstate._domain_roa/_domain_rho (set by powerstate_edge._bind_edge_attrs),
+    then falls back to portals_parameters["edge_options"] for older pickles.
+    Returns [0.0, 1.0] when no domain restriction is set.
+    """
+    _domain_roa = getattr(self.powerstate, "_domain_roa", None)
+    _domain_rho = getattr(self.powerstate, "_domain_rho", None)
+    if _domain_roa is None and _domain_rho is None:
+        _edge_opts = ((self.portals_parameters or {}).get("edge_options") or {})
+        _domain_roa = _edge_opts.get("domain_roa")
+        _domain_rho = _edge_opts.get("domain_rho")
+
+    if _domain_roa is not None:
+        _d = list(_domain_roa) if hasattr(_domain_roa, "__len__") else [_domain_roa, 1.0]
+        try:
+            _p = self.powerstates[self.ibest].profiles
+            _roa_fine = _p.profiles["rmin(m)"] / _p.profiles["rmin(m)"][-1]
+            _rho_fine = _p.profiles["rho(-)"]
+            return [float(np.interp(_d[0], _roa_fine, _rho_fine)), 1.0]
+        except Exception:
+            _roa_ext = np.concatenate([[0.0], self.roa, [1.0]])
+            _rho_ext = np.concatenate([[0.0], self.rhos, [1.0]])
+            return [float(np.interp(_d[0], _roa_ext, _rho_ext)), 1.0]
+
+    if _domain_rho is not None:
+        _d = list(_domain_rho) if hasattr(_domain_rho, "__len__") else [_domain_rho, 1.0]
+        return [float(_d[0]), 1.0]
+
+    return [0.0, 1.0]
+
+
+def _autoscale_y_for_domain(ax, xlim):
+    """
+    Recompute the y-axis limits of *ax* to fit only data within *xlim*.
+    Adds 10% padding; bottom is clipped to 0 if the axis was already non-negative.
+    """
+    was_nonneg = ax.get_ylim()[0] >= -1e-12   # respect bottom=0 intent
+
+    ylo, yhi = np.inf, -np.inf
+    for line in ax.get_lines():
+        xd = np.asarray(line.get_xdata(), dtype=float)
+        yd = np.asarray(line.get_ydata(), dtype=float)
+        n = min(len(xd), len(yd))
+        xd, yd = xd[:n], yd[:n]
+        mask = (xd >= xlim[0]) & (xd <= xlim[1])
+        if mask.any():
+            vals = yd[mask]
+            vals = vals[np.isfinite(vals)]
+            if len(vals):
+                ylo = min(ylo, vals.min())
+                yhi = max(yhi, vals.max())
+    for coll in ax.collections:
+        try:
+            for path in coll.get_paths():
+                v = path.vertices
+                mask = (v[:, 0] >= xlim[0]) & (v[:, 0] <= xlim[1])
+                if mask.any():
+                    vals = v[mask, 1]
+                    vals = vals[np.isfinite(vals)]
+                    if len(vals):
+                        ylo = min(ylo, vals.min())
+                        yhi = max(yhi, vals.max())
+        except Exception:
+            pass
+
+    if not (np.isfinite(ylo) and np.isfinite(yhi) and yhi > ylo):
+        return
+    pad = 0.1 * (yhi - ylo)
+    new_lo = max(0.0, ylo - pad) if was_nonneg else ylo - pad
+    ax.set_ylim(new_lo, yhi + pad)
+
+
+def PORTALSanalyzer_plotMetrics_edge(
+    self,
+    fig=None,
+    **kwargs,
+):
+    """
+    Edge-specific drop-in for PORTALSanalyzer_plotMetrics.
+
+    Calls the base function unchanged, then:
+    - Restricts all profile/gradient/flux axes to the user's domain xlim.
+    - Rescales y to the visible data in the domain.
+    The base function sets xlim=[0,1] on those axes, which is used as the selector.
+    Convergence metric axes (which never get xlim=[0,1]) are untouched.
+    """
+    PORTALSanalyzer_plotMetrics(self, fig=fig, **kwargs)
+
+    xlim = _compute_domain_xlim_for_edge(self)
+    if xlim == [0.0, 1.0]:
+        return
+
+    target_fig = fig if fig is not None else plt.gcf()
+
+    for ax in target_fig.get_axes():
+        lx = ax.get_xlim()
+        if abs(lx[0]) < 1e-9 and abs(lx[1] - 1.0) < 1e-9:
+            # Flux axes contain sparse transport-grid lines whose x-data starts at
+            # rho ~ 0.88 (i.e. x[0] > 0.5).  Profile and gradient axes always have
+            # lines that start at rho ~ 0, so x[0] < 0.1.  Skip flux axes.
+            is_flux = any(
+                len(np.asarray(l.get_xdata())) > 0
+                and float(np.asarray(l.get_xdata())[0]) > 0.01
+                for l in ax.get_lines()
+            )
+            if is_flux:
+                continue
+            ax.set_xlim(xlim)
+            _autoscale_y_for_domain(ax, xlim)
+
+
+def _edge_to_numpy(value):
+    if value is None:
+        return None
+    if isinstance(value, np.ndarray):
+        return value
+    if torch.is_tensor(value):
+        return value.detach().cpu().numpy()
+    return np.asarray(value)
+
+
+def _edge_extract_profile_1d(power, key, species_index=None):
+    if key not in power.plasma:
+        return None
+    arr = _edge_to_numpy(power.plasma[key])
+    if arr is None:
+        return None
+    if arr.ndim == 1:
+        return arr
+    if arr.ndim == 2:
+        return arr[0, :]
+    if arr.ndim == 3:
+        idx = 0 if species_index is None else int(species_index)
+        idx = max(0, min(idx, arr.shape[2] - 1))
+        return arr[0, :, idx]
+    return None
+
+
+def _edge_get_rho_1d(power):
+    rho = _edge_extract_profile_1d(power, "rho")
+    if rho is None:
+        return None
+    return np.asarray(rho, dtype=float)
+
+
+def _edge_plot_state_markers(ax, x, y, x_cp, color, marker="o"):
+    if x is None or y is None or x_cp is None:
+        return
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    x_cp = np.asarray(x_cp, dtype=float)
+    if len(x) < 2 or len(y) < 2 or len(x_cp) == 0:
+        return
+    y_cp = np.interp(x_cp, x, y)
+    ax.plot(x_cp, y_cp, marker, color=color, ms=3, lw=0)
+
+
+def PORTALSanalyzer_plotMetrics_edge_modern(
+    self,
+    fig=None,
+    indexToMaximize=None,
+    indeces_extra=None,
+    stds=2,
+    fontsize_leg=6,
+    file_save=None,
+    **kwargs,
+):
+    """
+    Modern edge-aware PORTALS metrics plotter with fixed 5x3 layout.
+
+    Col 0-2 (channel columns): Te, Ti, ne  — rows: profile / gradient / transport+target
+    Col 3 (density column):    row 0: w0   / row 1: n0   / row 2: nZ
+    Col 4 (metrics column):    row 0: channel residuals / row 1: OF residuals / row 2: tau_E or Q
+    """
+    print("- Plotting PORTALS Edge Metrics (modern)")
+
+    self.iextra = indeces_extra if indeces_extra is not None else []
+
+    if fig is None:
+        plt.ion()
+        fig = plt.figure(figsize=(20, 10))
+
+    if indexToMaximize is None:
+        indexToMaximize = self.ibest
+    if indexToMaximize < 0:
+        indexToMaximize = self.ilast + 1 + indexToMaximize
+
+    xlim = _compute_domain_xlim_for_edge(self)
+
+    channel_specs = [
+        {
+            "name": "te",
+            "title": "Electron Temperature",
+            "y": "te",
+            "aLy": "aLte",
+            "tr": "QeMWm2_tr",
+            "tr_stds": "QeMWm2_tr_stds",
+            "tr_turb_stds": "QeMWm2_tr_turb_stds",
+            "tr_neoc_stds": "QeMWm2_tr_neoc_stds",
+            "tar": "QeMWm2",
+            "ylab": "$T_e$ (keV)",
+            "ylab_aLy": "$a/L_{Te}$",
+            "ylab_flux": "$Q_e$ ($MW/m^2$)",
+            "mul_y": 1.0,
+        },
+        {
+            "name": "ti",
+            "title": "Ion Temperature",
+            "y": "ti",
+            "aLy": "aLti",
+            "tr": "QiMWm2_tr",
+            "tr_stds": "QiMWm2_tr_stds",
+            "tr_turb_stds": "QiMWm2_tr_turb_stds",
+            "tr_neoc_stds": "QiMWm2_tr_neoc_stds",
+            "tar": "QiMWm2",
+            "ylab": "$T_i$ (keV)",
+            "ylab_aLy": "$a/L_{Ti}$",
+            "ylab_flux": "$Q_i$ ($MW/m^2$)",
+            "mul_y": 1.0,
+        },
+        {
+            "name": "ne",
+            "title": "Electron Density",
+            "y": "ne",
+            "aLy": "aLne",
+            "tr": "Ge1E20m2_tr",
+            "tr_stds": "Ge1E20m2_tr_stds",
+            "tr_turb_stds": "Ge1E20m2_tr_turb_stds",
+            "tr_neoc_stds": "Ge1E20m2_tr_neoc_stds",
+            "tar": "Ge1E20m2",
+            "ylab": "$n_e$ ($10^{20}m^{-3}$)",
+            "ylab_aLy": "$a/L_{ne}$",
+            "ylab_flux": "$\\Gamma_e$ ($10^{20}/s/m^2$)",
+            "mul_y": 1e-1,
+        },
+    ]
+
+    grid = plt.GridSpec(
+        nrows=3,
+        ncols=5,
+        width_ratios=[1.0, 1.0, 1.0, 1.0, 1.25],
+        hspace=0.28,
+        wspace=0.32,
+    )
+
+    # Cols 0-2: channel triple-rows (profile / gradient / flux)
+    axes_prof = [fig.add_subplot(grid[0, j]) for j in range(3)]
+    axes_grad = [fig.add_subplot(grid[1, j]) for j in range(3)]
+    axes_flux = [fig.add_subplot(grid[2, j]) for j in range(3)]
+
+    # Col 3: w0 (row 0), n0 (row 1), nZ (row 2)
+    ax_w0  = fig.add_subplot(grid[0, 3])
+    ax_n0  = fig.add_subplot(grid[1, 3])
+    ax_nZ  = fig.add_subplot(grid[2, 3])
+
+    # Col 4: metrics
+    ax_metric1 = fig.add_subplot(grid[0, 4])
+    ax_metric2 = fig.add_subplot(grid[1, 4])
+    ax_metric3 = fig.add_subplot(grid[2, 4])
+
+    indeces_plot, colors_plot, labels_plot, _ = define_extra_iterators(self)
+
+    for idx, col, lab in zip(indeces_plot, colors_plot, labels_plot):
+        if idx is None or idx >= len(self.powerstates):
+            continue
+
+        power = self.powerstates[idx]
+        x = _edge_get_rho_1d(power)
+        if x is None:
+            continue
+
+        x_cp = _edge_to_numpy(getattr(power, "rhoCP", None))
+
+        # --- Channel columns 0-2 ---
+        for j, spec in enumerate(channel_specs):
+            species_idx    = self.runWithImpurity if spec["name"] == "nZ" else None
+            species_idx_tr = self.runWithImpurity_transport if spec["name"] == "nZ" else None
+
+            y = _edge_extract_profile_1d(power, spec["y"], species_index=species_idx)
+            if y is not None:
+                axes_prof[j].plot(x, y * spec["mul_y"], lw=2, color=col, label=lab)
+
+            aLy = _edge_extract_profile_1d(power, spec["aLy"], species_index=species_idx)
+            if aLy is not None:
+                axes_grad[j].plot(x, aLy, lw=1.8, color=col)
+
+            tr  = _edge_extract_profile_1d(power, spec["tr"],  species_index=species_idx_tr)
+            tar = _edge_extract_profile_1d(power, spec["tar"], species_index=species_idx_tr)
+
+            if tr is not None:
+                axes_flux[j].plot(x, tr, "-", lw=2, color=col,
+                                  label="Transport" if idx == self.ibest else None)
+                _edge_plot_state_markers(axes_flux[j], x, tr, x_cp, col, marker="s")
+
+                tr_std = _edge_extract_profile_1d(power, spec["tr_stds"],
+                                                  species_index=species_idx_tr)
+                if tr_std is None:
+                    tr_turb_std = _edge_extract_profile_1d(power, spec["tr_turb_stds"],
+                                                           species_index=species_idx_tr)
+                    tr_neoc_std = _edge_extract_profile_1d(power, spec["tr_neoc_stds"],
+                                                           species_index=species_idx_tr)
+                    if tr_turb_std is not None and tr_neoc_std is not None:
+                        tr_std = tr_turb_std + tr_neoc_std
+
+                if tr_std is not None and idx == indexToMaximize:
+                    axes_flux[j].fill_between(x, tr - stds * tr_std, tr + stds * tr_std,
+                                              color=col, alpha=0.18)
+
+            if tar is not None:
+                axes_flux[j].plot(x, tar, "--", lw=1.7, color=col,
+                                  label="Target" if idx == self.ibest else None)
+
+        # --- Col 3: w0 profile ---
+        w0 = _edge_extract_profile_1d(power, "w0")
+        if w0 is not None:
+            ax_w0.plot(x, w0 * 1e-3, lw=2, color=col, label=lab)
+            _edge_plot_state_markers(ax_w0, x, w0 * 1e-3, x_cp, col)
+
+        # --- Col 3: n0/ne (row 1) ---
+        n0 = _edge_extract_profile_1d(power, "n0")
+        ne_local = _edge_extract_profile_1d(power, "ne")
+        if n0 is not None and ne_local is not None:
+            ax_n0.plot(x, np.where(ne_local > 0, n0 / ne_local, np.nan),
+                       lw=2, color=col, label=lab)
+
+        # --- Col 3: nZ/ne per charge state (row 2) ---
+        nz_all = _edge_to_numpy(power.plasma.get("nz_all", None))
+        if nz_all is not None and nz_all.ndim == 3 and nz_all.shape[2] > 0 and ne_local is not None:
+            nz = nz_all[0, :, :]
+            n_stages = nz.shape[1]
+            _nz_colors = GRAPHICStools.listColors()
+            for s in range(n_stages):
+                lbl = f"z={s}" if idx == self.ibest else None
+                ax_nZ.plot(
+                    x,
+                    np.where(ne_local > 0, nz[:, s] / ne_local, np.nan),
+                    lw=1.5 if s < n_stages - 1 else 2.0,
+                    ls="--" if s < n_stages - 1 else "-",
+                    alpha=0.6 if s < n_stages - 1 else 1.0,
+                    color=col,
+                    label=lbl,
+                )
+        elif ne_local is not None:
+            nZ_raw = _edge_extract_profile_1d(
+                power, "nZ",
+                species_index=self.runWithImpurity if hasattr(self, "runWithImpurity") else None,
+            )
+            if nZ_raw is not None:
+                ax_nZ.plot(x, np.where(ne_local > 0, nZ_raw / ne_local, np.nan),
+                           lw=2, color=col, label=lab)
+
+    # --- Channel column decorations ---
+    for j, spec in enumerate(channel_specs):
+        axes_prof[j].set_title(spec["title"])
+        axes_prof[j].set_ylabel(spec["ylab"])
+        axes_grad[j].set_ylabel(spec["ylab_aLy"])
+        axes_flux[j].set_ylabel(spec["ylab_flux"])
+        for ax in (axes_prof[j], axes_grad[j], axes_flux[j]):
+            GRAPHICStools.addDenseAxis(ax)
+            ax.set_xlim(xlim)
+            _autoscale_y_for_domain(ax, xlim)
+        axes_prof[j].set_xticklabels([])
+        axes_grad[j].set_xticklabels([])
+        axes_flux[j].set_xlabel("$\\rho_N$")
+        if j == 0:
+            axes_prof[j].legend(prop={"size": fontsize_leg * 1.2}, loc="best")
+            axes_flux[j].legend(prop={"size": fontsize_leg * 1.1}, loc="best")
+
+    # --- Col 3 decorations ---
+    ax_w0.set_title("Rotation")
+    ax_w0.set_ylabel("$w_0$ (krad/s)")
+    ax_w0.set_xticklabels([])
+    ax_w0.legend(prop={"size": fontsize_leg * 1.1}, loc="best")
+
+    ax_n0.set_title("Neutral Fraction")
+    ax_n0.set_ylabel("$n_0/n_e$")
+    ax_n0.set_xticklabels([])
+
+    ax_nZ.set_title("Impurity Fraction (per charge state)")
+    ax_nZ.set_ylabel("$n_{Z,z}/n_e$")
+    ax_nZ.set_xlabel("$\\rho_N$")
+    ax_nZ.legend(prop={"size": fontsize_leg}, loc="best")
+
+    for ax in (ax_w0, ax_n0, ax_nZ):
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlim(xlim)
+        _autoscale_y_for_domain(ax, xlim)
+
+    # --- Col 4: channel residuals ---
+    if "te" in self.predicted_channels:
+        ax_metric1.plot(self.evaluations, self.resTeM, "-o", lw=1.0, ms=2, label=self.labelsFluxes["te"])
+    if "ti" in self.predicted_channels:
+        ax_metric1.plot(self.evaluations, self.resTiM, "-s", lw=1.0, ms=2, label=self.labelsFluxes["ti"])
+    if "ne" in self.predicted_channels:
+        ax_metric1.plot(self.evaluations, self.resneM, "-*", lw=1.0, ms=2, label=self.labelsFluxes["ne"])
+    if "nZ" in self.predicted_channels:
+        ax_metric1.plot(self.evaluations, self.resnZM, "-v", lw=1.0, ms=2, label=self.labelsFluxes["nZ"])
+    if "w0" in self.predicted_channels and hasattr(self, "resw0M"):
+        ax_metric1.plot(self.evaluations, self.resw0M, "-^", lw=1.0, ms=2,
+                        label=self.labelsFluxes.get("w0", "w0"))
+    ax_metric1.set_ylabel("Channel residual")
+    ax_metric1.set_xticklabels([])
+    GRAPHICStools.addDenseAxis(ax_metric1, n=5)
+    try:
+        ax_metric1.set_yscale("log")
+    except Exception:
+        pass
+    ax_metric1.legend(prop={"size": fontsize_leg * 1.1}, loc="best")
+
+    # --- Col 4: OF + L1 residuals ---
+    ax_metric2.plot(self.evaluations, self.resM, "-o", lw=1.0, c="olive", ms=2,
+                    label="OF: $\\frac{1}{N}L_2$")
+    ax_metric2.plot(self.evaluations, self.resCheck, "-o", lw=1.0, c="rebeccapurple", ms=2,
+                    label="$\\frac{1}{N}L_1$")
+    ax_metric2.set_ylabel("Residual")
+    ax_metric2.set_xticklabels([])
+    GRAPHICStools.addDenseAxis(ax_metric2, n=5)
+    try:
+        ax_metric2.set_yscale("log")
+    except Exception:
+        pass
+    ax_metric2.legend(prop={"size": fontsize_leg * 1.2}, loc="best")
+
+    # --- Col 4: Ptot (MPa) at rho_min vs iteration ---
+    ptot_at_rhomin = []
+    for ps in self.powerstates:
+        try:
+            _rho_prof = np.asarray(ps.profiles.profiles["rho(-)"], dtype=float)
+            _ptot_prof = np.asarray(ps.profiles.derived["ptot_manual"], dtype=float)
+            ptot_at_rhomin.append(float(np.interp(xlim[0], _rho_prof, _ptot_prof)))
+        except Exception:
+            ptot_at_rhomin.append(np.nan)
+    ax_metric3.plot(self.evaluations, ptot_at_rhomin, "-o", lw=1.0, c="olive", ms=2,
+                    label=f"$P_{{tot}}(\\rho={xlim[0]:.2f})$")
+    ax_metric3.set_ylabel("$P_{tot}$ (MPa)")
+    ax_metric3.set_xlabel("Iterations")
+    ax_metric3.set_xlim(left=0)
+    GRAPHICStools.addDenseAxis(ax_metric3, n=5)
+    ax_metric3.legend(prop={"size": fontsize_leg * 1.2}, loc="best")
+
+    if file_save is not None:
+        plt.savefig(file_save, transparent=True, dpi=300)
+
+
 def define_extra_iterators(self):
 
     # Always plot initial and best
@@ -1036,24 +1484,16 @@ def define_extra_iterators(self):
         colors_plot = ["g"]
         labels_plot = [f"Best (#{self.ibest})"]
 
-    if (len(self.iextra) == 0) and (self.ibest != self.evaluations[-1]):
-        self.iextra = [-1]
-        if self.ibest != self.evaluations[-2]:
-            self.iextra = self.iextra + [self.evaluations[-2]]
+    iextra = [] if self.iextra is None else list(self.iextra)
 
-    # Add extra points
+    # Add only explicitly requested extra points.
     colors = GRAPHICStools.listColors()
     colors = [color for color in colors if color not in ["r", "b"]]
-    indeces_plot = indeces_plot + self.iextra
-    colors_plot = colors_plot + colors[: len(self.iextra)]
+    indeces_plot = indeces_plot + iextra
+    colors_plot = colors_plot + colors[: len(iextra)]
 
-    for i in range(len(self.iextra)):
-
-        if self.iextra[i] == -1 or self.iextra[i] == self.evaluations[-1]:
-            ll = "Last"
-        else:
-            ll = "Extra"
-        labels_plot = labels_plot + [f"{ll} (#{self.evaluations[self.iextra[i]]})"]
+    for extra_index in iextra:
+        labels_plot = labels_plot + [f"Selected (#{self.evaluations[extra_index]})"]
 
     markers_plot = GRAPHICStools.listmarkers()[: len(indeces_plot)]
 
@@ -3129,48 +3569,19 @@ def plotFluxComparison(
 
     # -- for legend
     if axTe_f is not None:
-        (l1,) = axTe_f.plot(
-            r[0][ixF:],
-            power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:],
-            "-",
-            c="k",
-            lw=2,
-            markersize=0,
-            label="Transport",
-        )
-        (l2,) = axTe_f.plot(
-            r[0][ixF:], power.plasma['QeMWm2'].cpu().numpy()[0][ixF:], "--*", c="k", lw=2, markersize=0, label="Target"
-        )
-        l3 = axTe_f.fill_between(
-            r[0][ixF:],
-            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds,
-            (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) + stds,
-            facecolor="k",
-            alpha=0.3,
-        )
+        l1 = Line2D([0], [0], color="k", lw=2, linestyle="-")
+        l2 = Line2D([0], [0], color="k", lw=2, linestyle="--")
+        l3 = Patch(facecolor="k", edgecolor="none", alpha=0.3)
 
         setl = [l1, l3, l2]
         setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
 
         if addFlowLegend:
-            (l4,) = axTe_f.plot(
-                tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
-                tBest.derived["qe_MWm2"],
-                ":",
-                c="k",
-                lw=1.0,
-                markersize=0,
-            )
+            l4 = Line2D([0], [0], color="k", lw=1.0, linestyle=":")
             setl.append(l4)
             setlab.append("Target high-res")
-        else:
-            l4 = l3
 
         axTe_f.legend(setl, setlab, loc=locLeg, prop={"size": fontsize_leg})
-        l1.set_visible(False)
-        l2.set_visible(False)
-        l3.set_visible(False)
-        l4.set_visible(False)
         # ---------------
 
     if decor:

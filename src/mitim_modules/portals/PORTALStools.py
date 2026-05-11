@@ -124,12 +124,26 @@ def input_transform_portals(Xorig, output, surrogate_parameters, surrogate_trans
 				initialize it with a larger batch
 	"""
 
-    num = output.split("_")[-1]
-    index = powerstate.indexes_simulation[int(num)]  # num=1 -> pos=1, so that it takes the second value in vectors
+    num = int(output.split("_")[-1])
+
+    is_edge_state = hasattr(powerstate, "rhoCP") and hasattr(
+        powerstate, "_interp_tensor_from_rho_to_rhoCP"
+    )
+    if is_edge_state:
+        # Edge outputs are indexed on rhoCP, not on indexes_simulation.
+        index = num-1
+    else:
+        index = powerstate.indexes_simulation[num]  # num=1 -> pos=1, so that it takes the second value in vectors
 
     xFit = torch.Tensor().to(X)
     for ikey in surrogate_transformation_variables[output]:
-        xx = powerstate.plasma[ikey][: X.shape[0], index]
+        if is_edge_state:
+            xx_interp = powerstate._interp_tensor_from_rho_to_rhoCP(
+                powerstate.plasma[ikey][: X.shape[0]]
+            )
+            xx = xx_interp[:, index]
+        else:
+            xx = powerstate.plasma[ikey][: X.shape[0], index]
         xFit = torch.cat((xFit, xx.unsqueeze(-1)), dim=-1).to(X)
 
     parameters_combined = {"powerstate": powerstate}
@@ -286,17 +300,21 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
             if powerstate.batch_size != X.shape[0]:
                 powerstate._repeat_tensors(batch_size=X.shape[0])
             # --------------------------------------------------------------------------------------------------------------
-            
-            num_x = powerstate.plasma["rho"].shape[-1] - 1
 
-            # Obtain modified profiles
-            CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
-            for iprof, var in enumerate(powerstate.predicted_channels):
-                # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
-                CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
+            # Edge states expose X_to_dict() and consume full control vectors in modify(X).
+            if hasattr(powerstate, "X_to_dict"):
+                powerstate.modify(X)
+            else:
+                num_x = powerstate.plasma["rho"].shape[-1] - 1
 
-                # Update profile in powerstate
-                _ = powerstate.update_var(var, CPs)
+                # Obtain modified profiles
+                CPs = torch.zeros((X.shape[0], num_x + 1)).to(X)
+                for iprof, var in enumerate(powerstate.predicted_channels):
+                    # Specific part of the input vector that deals with this profile and introduce to CP vector (that starts with 0,0)
+                    CPs[:, 1:] = X[:, (iprof * num_x) : (iprof * num_x) + num_x]
+
+                    # Update profile in powerstate
+                    _ = powerstate.update_var(var, CPs)
 
             # Update normalizations and targets
             powerstate.calculateProfileFunctions()

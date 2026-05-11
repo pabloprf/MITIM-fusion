@@ -14,6 +14,55 @@ from mitim_tools import __mitimroot__
 from IPython import embed
 
 
+def _dv_name_for_parameterizer(channel, position, parameterizer_name=None, param_name=None):
+    """Build DV names from active parameterizer metadata when available.
+
+    Parameters
+    ----------
+    channel : str
+        Predicted profile name (e.g., "ne").
+    position : int
+        1-based parameter position within the active control subset.
+    parameterizer_name : str, optional
+        Used only for legacy fallback naming.
+    param_name : str, optional
+        Active parameter name (preferred path).
+    """
+    if param_name is not None:
+        return f"{channel}_{param_name}"
+
+    if parameterizer_name is not None:
+        return f"aL{channel}_{position}"
+
+    return f"{channel}_{position}"
+
+
+def _infer_control_indices(control_vector, param_names):
+    """Infer active control indices from vector length and parameter names.
+
+    If the control vector has one extra leading element (legacy axis insertion),
+    we align the trailing entries with param_names.
+    """
+    nvec = len(control_vector)
+    npar = len(param_names)
+
+    if npar > 0 and nvec >= npar:
+        start_idx = nvec - npar
+    else:
+        # Legacy fallback when parameter metadata is unavailable.
+        start_idx = 1 if nvec > 1 else 0
+
+    return list(range(start_idx, nvec))
+
+
+def _pick_value(seq, idx):
+    if np.isscalar(seq):
+        return float(seq)
+    if len(seq) == 0:
+        return 0.0
+    return float(seq[min(idx, len(seq) - 1)])
+
+
 def initializeProblem(
     portals_fun,
     folderWork,
@@ -137,7 +186,8 @@ def initializeProblem(
             "ProfilePredicted": portals_fun.portals_parameters["solution"]["predicted_channels"],
             "rhoPredicted": xCPs,
             "impurityPosition": position_of_impurity,
-            "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"]
+            "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"],
+            "parameterizer": portals_fun.portals_parameters["solution"].get("parameterizer", "spline"),
         },
         transport_options=transport_options,
         target_options=target_options,
@@ -157,7 +207,12 @@ def initializeProblem(
 
     # Maybe it was provided from earlier run
     if start_from_folder is not None:
-        dictCPs_base = grabPrevious(start_from_folder, dictCPs_base)
+        dictCPs_base = grabPrevious(
+            start_from_folder,
+            dictCPs_base,
+            portals_fun.powerstate.parameterizer,
+            portals_fun.portals_parameters["solution"].get("parameterizer", "spline"),
+        )
         for name in portals_fun.portals_parameters["solution"]["predicted_channels"]:
             _ = portals_fun.powerstate.update_var(
                 name, var=dictCPs_base[name].unsqueeze(0)
@@ -184,7 +239,8 @@ def initializeProblem(
                 "ProfilePredicted": portals_fun.portals_parameters["solution"]["predicted_channels"],
                 "rhoPredicted": xCPs,
                 "impurityPosition": position_of_impurity,
-                "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"]
+                "fImp_orig": portals_fun.portals_parameters["solution"]["fImp_orig"],
+                "parameterizer": portals_fun.portals_parameters["solution"].get("parameterizer", "spline"),
             },
             target_options=portals_fun.portals_parameters["target"],
             tensor_options = tensor_options
@@ -198,33 +254,49 @@ def initializeProblem(
 
     thr = 1E-5
 
+    parameterizer_name = portals_fun.portals_parameters["solution"].get("parameterizer", "spline")
+    parameterizer = getattr(portals_fun.powerstate, "parameterizer", None)
+    param_names = list(getattr(parameterizer, "param_names", []))
+
     dictDVs = OrderedDict()
     for var in dictCPs_base:
-        for conti, i in enumerate(np.arange(1, len(dictCPs_base[var]))):
+        active_indices = _infer_control_indices(dictCPs_base[var], param_names)
+        for conti, i in enumerate(active_indices):
+            base_val = dictCPs_base[var][i]
+
             if limits_are_relative:
-                y1 = dictCPs_base[var][i] - abs(dictCPs_base[var][i])*RelVar_y_min[var][conti]
-                y2 = dictCPs_base[var][i] + abs(dictCPs_base[var][i])*RelVar_y_max[var][conti]
+                rmin = _pick_value(RelVar_y_min[var], conti)
+                rmax = _pick_value(RelVar_y_max[var], conti)
+                scale = max(abs(float(base_val.item())), 1e-3)
+                y1 = base_val - scale * rmin
+                y2 = base_val + scale * rmax
             else:
-                y1 = torch.tensor(RelVar_y_min[var][conti]).to(dfT)
-                y2 = torch.tensor(RelVar_y_max[var][conti]).to(dfT)
+                y1 = torch.tensor(_pick_value(RelVar_y_min[var], conti)).to(dfT)
+                y2 = torch.tensor(_pick_value(RelVar_y_max[var], conti)).to(dfT)
 
             if yminymax_atleast is not None:
                 if yminymax_atleast[0] is not None:
-                    y1 = torch.tensor(np.min([y1, yminymax_atleast[0]]))
+                    y1 = torch.tensor(np.min([y1, yminymax_atleast[0]])).to(dfT)
                 if yminymax_atleast[1] is not None:
-                    y2 = torch.tensor(np.max([y2, yminymax_atleast[1]]))
+                    y2 = torch.tensor(np.max([y2, yminymax_atleast[1]])).to(dfT)
 
-            # Check that makes sense
+            param_name = param_names[conti] if conti < len(param_names) else None
+            pname = param_name if param_name is not None else f"p{conti+1}"
             if y2-y1 < thr:
-                print(f"{var} @ pos={i} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
+                print(f"{var}::{pname} has a range of {y2-y1:.1e} which is less than {thr:.1e}",typeMsg="q")
 
             if (seedInitial is None) or (seedInitial == 0):
-                base_gradient = dictCPs_base[var][i]
+                base_gradient = base_val
             else:
                 # Special case where I want to randomize the initial starting case with a half bounds
-                base_gradient = torch.rand(1)[0] * (y2 - y1) / 4 + (3 * y1 + y2) / 4
+                base_gradient = torch.rand(1)[0].to(dfT) * (y2 - y1) / 4 + (3 * y1 + y2) / 4
 
-            name = f"aL{var}_{i}"
+            name = _dv_name_for_parameterizer(
+                var,
+                conti + 1,
+                parameterizer_name=parameterizer_name,
+                param_name=param_name,
+            )
             if fixed_gradients is None:
                 dictDVs[name] = [y1, base_gradient, y2]
             else:
@@ -413,7 +485,7 @@ def prepportals_transformation_variables(portals_fun, ikey, doNotFitOnFixedValue
     return Variables
 
 
-def grabPrevious(foldermitim, dictCPs_base):
+def grabPrevious(foldermitim, dictCPs_base, parameterizer=None, parameterizer_name="spline"):
     from mitim_tools.opt_tools.STRATEGYtools import opt_evaluator
 
     opt_fun = opt_evaluator(foldermitim)
@@ -429,13 +501,39 @@ def grabPrevious(foldermitim, dictCPs_base):
         typeMsg="i",
     )
 
+    previous_parameterizer_name = opt_fun.mitim_model.portals_parameters["solution"].get(
+        "parameterizer", "spline"
+    )
+    if parameterizer_name is None:
+        parameterizer_name = previous_parameterizer_name
+
+    param_names = []
+    if parameterizer is not None:
+        param_names = list(getattr(parameterizer, "param_names", []))
+
     for ikey in dictCPs_base:
-        for ir in range(len(dictCPs_base[ikey]) - 1):
-            ikey_mod = f"aL{ikey}_{ir+1}"
-            try:
-                dictCPs_base[ikey][ir + 1] = dvs_dict[ikey_mod]
-            except:
-                pass
+        active_indices = _infer_control_indices(dictCPs_base[ikey], param_names)
+        for conti, i in enumerate(active_indices):
+            param_name = param_names[conti] if conti < len(param_names) else None
+            key_new = _dv_name_for_parameterizer(
+                ikey,
+                conti + 1,
+                parameterizer_name=parameterizer_name,
+                param_name=param_name,
+            )
+            key_old = _dv_name_for_parameterizer(
+                ikey,
+                conti + 1,
+                parameterizer_name=previous_parameterizer_name,
+                param_name=None,
+            )
+
+            if key_new in dvs_dict:
+                dictCPs_base[ikey][i] = dvs_dict[key_new]
+                print(f"\t- Previous DV recovered: {key_new}={dvs_dict[key_new]:.4e}", typeMsg="i")
+            elif key_old in dvs_dict:
+                dictCPs_base[ikey][i] = dvs_dict[key_old]
+                print(f"\t- Previous DV recovered: {key_old}={dvs_dict[key_old]:.4e}", typeMsg="i")
 
     return dictCPs_base
 

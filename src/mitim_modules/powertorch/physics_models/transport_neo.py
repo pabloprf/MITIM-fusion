@@ -30,7 +30,30 @@ class neo_model:
             self.folder,
             cold_start = cold_start,
             )
-        
+
+        # ---- Edge extension: inject per-rho DPHI0DR from powerstate_edge.plasma["E_rad"]
+        # Used when ROTATION_MODEL=1 ("edge" NEO model) so that each local NEO run
+        # receives the radial electric field derived from the current ExB rotation state.
+        # plasma["E_rad"] is computed in powerstate_edge.calculateProfileFunctions():
+        #   E_rad = roa * omega_ExB[rad/s] * R_major[m] / v_thi[m/s]   (DPHI0DR normalization)
+        try:
+            from mitim_modules.powertorch.STATEedge import powerstate_edge as _powerstate_edge
+            _is_edge = isinstance(self.powerstate, _powerstate_edge)
+        except ImportError:
+            _is_edge = False
+
+        if _is_edge and "E_rad" in self.powerstate.plasma:
+            E_rad_profile = self.powerstate.plasma["E_rad"][0, 1:]   # (n_rho,) skip rho=0
+            for i, rho_val in enumerate(rho_locations):
+                dphi0dr = float(E_rad_profile[i].item())
+                neo.inputs_files[rho_val].controls["DPHI0DR"] = dphi0dr
+            print(
+                f"\t[edge NEO] Per-rho DPHI0DR injected from E_rad "
+                f"({len(rho_locations)} radii, range "
+                f"[{float(E_rad_profile.min()):.3f}, {float(E_rad_profile.max()):.3f}])",
+                typeMsg="i",
+            )
+
         neo.run(
             'base_neo',
             cold_start=cold_start,

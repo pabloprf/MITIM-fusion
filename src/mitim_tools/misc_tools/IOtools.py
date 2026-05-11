@@ -599,14 +599,21 @@ def calculate_size_pickle(file):
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
 def check_flags_mitim_namelist(d, d_check, avoid = [], askQuestions=True):
+    # Validate only dictionary branches that exist in the template map.
+    # Some namelist entries are intentionally polymorphic (e.g. ymin/ymax can
+    # be scalar or dict), so type mismatches should not trigger recursion errors.
+    if not isinstance(d, dict):
+        return
+
     for key in d.keys():
         if key in avoid:
             continue
-        elif key not in d_check:
+
+        if not isinstance(d_check, dict) or key not in d_check:
             print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q" if askQuestions else "w")
-        elif not isinstance(d[key], dict):
             continue
-        else:
+
+        if isinstance(d[key], dict) and isinstance(d_check[key], dict):
             check_flags_mitim_namelist(d[key], d_check[key], avoid=avoid, askQuestions=askQuestions)
 
 def getpythonversion():

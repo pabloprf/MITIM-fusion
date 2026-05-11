@@ -67,3 +67,21 @@
     XNU_MODEL: 3
     WDIA_TRAPPED: 1.0
     USE_BPER: true
+
+# Edge / pedestal configuration
+# KYGRID_MODEL=4 : extended ky grid with ETG scales included
+# XNU_MODEL=4    : pitch-angle-scattering collision model (better for steep-gradient pedestal)
+# ALPHA_P=0      : disable parallel velocity shear (rotation shear not reliable near separatrix)
+# ALPHA_MACH=0   : disable Mach-number correction (ExB handled separately via NEO DPHI0DR)
+"edge":
+  controls:
+    KYGRID_MODEL: 4
+    XNU_MODEL: 4
+    ALPHA_E: 1
+    ALPHA_ZF: -1
+    ALPHA_P: 0
+    ALPHA_MACH: 0
+    SAT_RULE: 3
+    UNITS: CGYRO
+    USE_BPER: True
+    USE_BPAR: True

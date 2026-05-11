@@ -33,6 +33,12 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
    
     q = optimization_params.get("keep_best",1)
     sequential_q = optimization_params.get("sequential_q",True) # Not really relevant for q=1, but recommendation from BoTorch team for q>1
+    nonlinear_ineq_builder = optimization_params.get("nonlinear_inequality_constraints_builder", None)
+    nonlinear_ineq_constraints = optimization_params.get("nonlinear_inequality_constraints", None)
+
+    if callable(nonlinear_ineq_builder):
+        # Recompute constraints at runtime so evolving BCs are reflected each iteration.
+        nonlinear_ineq_constraints = nonlinear_ineq_builder(fun)
     
     options = {
         "sample_around_best": True,
@@ -67,17 +73,40 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False):
 
     seq_message = f'({"sequential" if sequential_q else "joint"}) ' if q>1 else ''
     print(f"\t\t- Optimizing using optimize_acqf: {q = } {seq_message}, {num_restarts = }, {raw_samples = }")
+    if nonlinear_ineq_constraints is not None:
+        print(
+            f"\t\t- Applying {len(nonlinear_ineq_constraints)} nonlinear inequality constraints",
+            typeMsg="i",
+        )
+
+    optimize_kwargs = {
+        "acq_function": fun_opt,
+        "bounds": fun.bounds_mod,
+        "raw_samples": raw_samples,
+        "q": q,
+        "sequential": sequential_q,
+        "num_restarts": num_restarts,
+        "options": options,
+    }
+
+    if nonlinear_ineq_constraints is not None:
+        optimize_kwargs["nonlinear_inequality_constraints"] = nonlinear_ineq_constraints
 
     with IOtools.timer(name = "\n\t- Optimization"):
-        x_opt, _ = botorch.optim.optimize_acqf(
-            acq_function=fun_opt,
-            bounds=fun.bounds_mod,
-            raw_samples=raw_samples,
-            q=q,
-            sequential=sequential_q,
-            num_restarts=num_restarts,
-            options=options,
-        )
+        try:
+            x_opt, _ = botorch.optim.optimize_acqf(**optimize_kwargs)
+        except TypeError as exc:
+            if ("nonlinear_inequality_constraints" in optimize_kwargs) and (
+                "nonlinear_inequality_constraints" in str(exc)
+            ):
+                print(
+                    "\t\t- This BoTorch version does not support nonlinear_inequality_constraints; retrying without them",
+                    typeMsg="w",
+                )
+                optimize_kwargs.pop("nonlinear_inequality_constraints", None)
+                x_opt, _ = botorch.optim.optimize_acqf(**optimize_kwargs)
+            else:
+                raise
 
     acq_evaluated = torch.Tensor(acq_evaluated)
 

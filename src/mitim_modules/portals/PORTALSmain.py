@@ -385,13 +385,12 @@ def runModelEvaluator(
     # Prepare evaluating vector X
     # ---------------------------------------------------------------------------------------------------
 
-    X = torch.zeros(len(powerstate.predicted_channels) * (powerstate.plasma["rho"].shape[1] - 1)).to(powerstate.dfT)
-    cont = 0
-    for ikey in powerstate.predicted_channels:
-        for ix in range(powerstate.plasma["rho"].shape[1] - 1):
-            X[cont] = dictDVs[f"aL{ikey}_{ix+1}"]["value"]
-            cont += 1
-    X = X.unsqueeze(0)
+    dv_names = self.optimization_options["problem_options"]["dvs"]
+    X = torch.as_tensor(
+        [dictDVs[name]["value"] for name in dv_names],
+        dtype=powerstate.dfT.dtype,
+        device=powerstate.dfT.device,
+    ).unsqueeze(0)
 
     # Ensure that the powerstate has the right dimensions
     powerstate._repeat_tensors(batch_size=X.shape[0])
