@@ -1042,8 +1042,11 @@ class freegs_millerized:
         self.profile_RB = self.eq.fpol(psinorm = psi_profiles)
 
         # Grab quantities
-        self.profile_q95 = self.eq.q(psinorm = 0.95)
-        self.profile_q0 = self.eq.q(psinorm = 0.0)
+        # freegs.Equilibrium.q hits `float(result)` on a (1,) array for scalar psinorm,
+        # which fails under numpy>=2. Pass size-2 arrays to skip that branch; revisit
+        # once freegs-plasma/freegs ships a numpy-2-safe `.item()` cast.
+        self.profile_q95 = float(self.eq.q(psinorm=np.array([0.95, 0.95]))[0])
+        self.profile_q0  = float(self.eq.q(psinorm=np.array([0.0,  0.0]))[0])
         self.profile_betaN = self.eq.betaN()
         self.profile_Li2 = self.eq.internalInductance2()
         self.profile_pave = self.eq.pressure_ave()
