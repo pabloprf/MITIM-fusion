@@ -1,10 +1,13 @@
 from pathlib import Path
 import argparse
 import concurrent.futures
+import json
 import os
 import re
 import subprocess
 from datetime import datetime
+
+from mitim_tools.misc_tools.IOtools import createTimeTXT
 
 # Compiled once, reused for every folder
 _RE_BEAT       = re.compile(r'Beat_(\d+)')
@@ -12,6 +15,10 @@ _RE_EVAL       = re.compile(r'Evaluation\.(\d+)')
 _RE_SBATCH_JOB = re.compile(r'Submitted batch job (\S+)')
 _RE_SLURM_JOB  = re.compile(r'SLURM job (\S+)')
 _RE_TOOK       = re.compile(r'\* MAESTRO took(.+)')
+# Strip trailing "(... ms)" milisec suffix that createTimeTXT always appends.
+# The closing paren is optional because createTimeTXT itself has a `txt[:-1]`
+# at the end that lops off the trailing ')' when no fractional unit was added.
+_RE_MILISEC    = re.compile(r'\s*\([^)]*ms\)?\s*$')
 
 # Tail chunk size for reading log files (bytes) — "MAESTRO took" is always near the end
 _LOG_TAIL_BYTES = 4096
@@ -74,6 +81,11 @@ def _read_tail(path, nbytes=_LOG_TAIL_BYTES):
         return ''
 
 
+def _strip_milisec(txt):
+    """Drop the noisy '(NNN ms)' suffix createTimeTXT always appends."""
+    return _RE_MILISEC.sub('', txt).strip()
+
+
 def _extract_took(*candidate_paths):
     """Scan a few candidate log files for the 'MAESTRO took ...' line. First hit wins."""
     for p in candidate_paths:
@@ -82,8 +94,50 @@ def _extract_took(*candidate_paths):
             continue
         m = _RE_TOOK.search(tail)
         if m:
-            return m.group(1).strip()
+            return _strip_milisec(m.group(1))
     return ''
+
+
+def _elapsed_from_timing_jsonl(timing_path):
+    """Sum duration_s across all records in a mitim_timer JSONL ledger.
+
+    Returns the formatted duration string, or '' if missing/unreadable.
+    Note: accumulates across resumed runs."""
+    try:
+        total = 0.0
+        with open(timing_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                dur = rec.get('duration_s')
+                if isinstance(dur, (int, float)):
+                    total += dur
+    except OSError:
+        return ''
+    if total <= 0:
+        return ''
+    return _strip_milisec(createTimeTXT(total))
+
+
+def _elapsed_text(folder_str):
+    """Best-effort elapsed time for a finished MAESTRO run, or ''.
+
+    Prefers the '* MAESTRO took' log line (the last invocation's wall time);
+    falls back to a sum of Outputs/Performance/timing.jsonl (cumulative across
+    resumed runs, so it's an upper bound when checkpoints were used)."""
+    txt = _extract_took(
+        folder_str + '/Outputs/maestro.log',
+        folder_str + '/slurm_output.dat',
+        folder_str + '/Outputs/beat_final',
+    )
+    if txt:
+        return txt
+    return _elapsed_from_timing_jsonl(folder_str + '/Outputs/Performance/timing.jsonl')
 
 
 def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
@@ -187,12 +241,9 @@ def _classify_folder(folder, squeue_by_jobid, chars_folder_clip, show_full_path)
     final_gacode_stat = _stat_or_none(final_gacode_path)
     if final_gacode_stat is not None:
         mod_time = datetime.fromtimestamp(final_gacode_stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-        took = _extract_took(
-            folder_str + '/Outputs/maestro.log',
-            folder_str + '/slurm_output.dat',
-            folder_str + '/Outputs/beat_final',
-        )
-        return 'finished', (folder_display, "FINISHED", last_beat_name, took, f"completed on {mod_time}")
+        took = _elapsed_text(folder_str)
+        details = f"took {took}" if took else ''
+        return 'finished', (folder_display, "FINISHED", last_beat_name, details, f"completed on {mod_time}")
 
     # ---- Determine beat type via scandir results (already in memory)
     txt  = ''
