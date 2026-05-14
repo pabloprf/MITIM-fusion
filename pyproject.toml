@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,22 +8,20 @@ version = "4.0.0"
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest botorch, 3.13 has issues with tensorflow
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
 ]
 classifiers = [
   "Programming Language :: Python :: 3.12",
-  "License :: OSI Approved :: MIT License",
   "Topic :: Scientific/Engineering",
   "Operating System :: OS Independent",
 ]
 
 dependencies = [
-  "pip",
   "numpy",
   "matplotlib",
-  "argparse",
   "h5py",
   "netCDF4",
   "xarray",
