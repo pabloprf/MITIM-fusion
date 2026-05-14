@@ -13,6 +13,16 @@ from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
 
+# Aliases for the `zero_source_blocks` option of `correct()`. Names mirror the
+# PORTALS `target.options.targets_evolve` shorthand in TRANSFORMtools.py so a
+# block zeroed here can be kept zero in the PORTALS output by excluding the
+# same alias from `targets_evolve`.
+_SOURCE_BLOCK_ALIASES = {
+    'qrad':  ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)'],
+    'qfus':  ['qfuse(MW/m^3)', 'qfusi(MW/m^3)'],
+    'qohme': ['qohme(MW/m^3)'],
+}
+
 def ensure_variables_existence(self):
     # ---------------------------------------------------------------------------
     # Determine minimal set of variables that should be present in the profiles
@@ -1725,6 +1735,7 @@ class mitim_state:
         ensure_positive_Gamma = options.get("ensure_positive_Gamma", False)
         force_mach = options.get("force_mach", None)
         thermalize_fast = options.get("thermalize_fast", False)
+        zero_source_blocks = options.get("zero_source_blocks", [])
 
         print("\t- Custom correction of input.gacode file has been requested")
 
@@ -1778,6 +1789,21 @@ class mitim_state:
             self.enforce_quasineutrality()
 
         print(f"\t\t\t* Quasineutrality error = {self.derived['QN_Error']:.1e}")
+
+        # Zero seed source blocks (e.g. drop TRANSP-supplied radiation/alpha/
+        # ohmic so PORTALS sees an "all-auxiliary" sources picture). Run before
+        # `recalculate_ptot` so the re-derived volume integrals reflect the zeros.
+        for alias in zero_source_blocks:
+            if alias not in _SOURCE_BLOCK_ALIASES:
+                print(f"\t\t- Unknown zero_source_blocks alias '{alias}', skipping", typeMsg="w")
+                continue
+            keys_zeroed = []
+            for key in _SOURCE_BLOCK_ALIASES[alias]:
+                if key in self.profiles:
+                    self.profiles[key] = self.profiles[key] * 0.0
+                    keys_zeroed.append(key)
+            if keys_zeroed:
+                print(f"\t\t- Zeroed seed source block '{alias}' ({', '.join(keys_zeroed)})", typeMsg="i")
 
         # Recompute ptot
         if recalculate_ptot:

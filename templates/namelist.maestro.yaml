@@ -193,7 +193,7 @@ maestro:
       # (if full EPED) EPED override parameters: dictionary of EPED configuration parameters to override default values in config
       eped_params_override: {}
 
-      # Location of EPED-NN files and transformation function of this specific NN
+      # Location of EPED-NN files and transformation function of this specific NN (only used if use_full_EPED is false)
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
       transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
@@ -329,6 +329,20 @@ maestro:
       initialization_parameters:
         thermalize_fast: true
         quasineutrality: true
+        # zero_source_blocks: list of source-term aliases to zero in the seed
+        # input.gacode handed to PORTALS. Useful when the upstream beat (e.g.
+        # TRANSP) populated radiation/alpha/ohmic and you want PORTALS to see
+        # an "all-auxiliary" sources picture (the only heating left is what's
+        # in qrfe/qrfi/qbeame/qbeami/qione).
+        # Recognized aliases:
+        #   'qrad'  -> qbrem(MW/m^3), qsync(MW/m^3), qline(MW/m^3)
+        #   'qfus'  -> qfuse(MW/m^3), qfusi(MW/m^3)
+        #   'qohme' -> qohme(MW/m^3)
+        # IMPORTANT: zeroing here only persists in the PORTALS output if PORTALS
+        # is configured NOT to evolve the corresponding channel — exclude the
+        # same alias from `target.options.targets_evolve` in the portals_parameters
+        # overlay above. Otherwise PORTALS overwrites the zeros on iter 1.
+        # zero_source_blocks: ['qrad', 'qfus', 'qohme']
 
       # If the width of the pedestal has changed, modify the BC (last in predicted_rX) for PORTALS accordingly
       change_last_radial_call: true
