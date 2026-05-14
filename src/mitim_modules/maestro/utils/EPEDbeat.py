@@ -589,8 +589,10 @@ class eped_beat(beat):
 
         eped.read(subfolder='case1')
 
-        ptop_kPa = float(eped.results['case1']['run1']['ptop'])
-        wtop_psipol = float(eped.results['case1']['run1']['wptop'])
+        # .item() instead of float(...) so this works under numpy>=2, where
+        # float(xarray_da) -> float(da.values) fails on non-0-d single-element arrays.
+        ptop_kPa = eped.results['case1']['run1']['ptop'].item()
+        wtop_psipol = eped.results['case1']['run1']['wptop'].item()
 
         return ptop_kPa, wtop_psipol
         
