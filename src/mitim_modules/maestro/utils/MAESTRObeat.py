@@ -534,7 +534,7 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         z0 = z0*np.ones_like(rmin)
         kappa = np.linspace(1, kappa_sep, resol)
         delta = np.linspace(0, delta_sep, resol)
-        zeta = np.linspace(0, zeta_sep, resol)
+        zeta = np.linspace(0, zeta_sep if zeta_sep is not None else 0, resol)
         
         coeffs_MXH = 7
         sn = np.zeros((resol, coeffs_MXH))
