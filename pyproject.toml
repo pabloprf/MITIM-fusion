@@ -38,7 +38,7 @@ dependencies = [
   "paramiko",
   "tqdm",
   "shapely",
-  "freegs",
+  "freegs @ git+https://github.com/freegs-plasma/freegs.git@9fbec2056b4322ea253bb5614896d549365163f3",  # PyPI 0.8.2 has a bug in critical.find_critical that fails under numpy>=2; pin to upstream master until a fixed release is cut
   "botorch",
   "psutil",
   "tensorflow", 
