@@ -1,5 +1,7 @@
 # MITIM-fusion — Orientation for Claude Code
 
+> This is the repo-level briefing. Pablo's global preferences (`~/.claude/CLAUDE.md`) and the dev-pixi workspace file (`dev-pixi/CLAUDE.md`, if present) still apply — this file adds repo-specific context on top.
+
 MITIM (MIT Integrated Modeling) is a Python toolbox for plasma physics / fusion-energy
 modeling and optimization, developed at the MIT Plasma Science and Fusion Center
 by Pablo Rodriguez-Fernandez (pablorf@mit.edu) and the MFE-IM group. It wraps
