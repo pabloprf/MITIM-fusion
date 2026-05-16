@@ -163,7 +163,17 @@ maestro:
   # Sequence of beats
   beats: ["transp", "eped", "portals", "eped", "portals"]
 
-  # Remove intermediate files to avoid heavy MAESTRO simulation folders
+  # If false, wipe each beat's `run_<name>/` contents after the beat completes.
+  # `beat_results/` is preserved — it carries the canonical state for the next beat
+  # AND for cross-invocation restart (see beat-specific `_inform_save` for what's
+  # persisted: input.gacode + a small sidecar per beat). Plot tabs that depend on
+  # run-folder artifacts degrade gracefully (caught by MAESTROmain._plot_beats's
+  # try/except FileNotFoundError, never fatal):
+  #   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
+  #   - TRANSP CDF detail tab is skipped: the multi-GB CDF is no longer copied to
+  #     beat_results/; only `transp_results.npy` (sawtooth_times + impurity_order)
+  #     travels forward. Sufficient for chain inheritance, not for full CDF plotting.
+  # PORTALS plot tabs are unaffected (their inputs are persisted in beat_results/Outputs/).
   keep_all_files: true
 
   # ---------------------------------------------------------------------------

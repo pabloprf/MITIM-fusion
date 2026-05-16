@@ -164,7 +164,7 @@ class portals_beat(beat):
                 elif item.is_dir():
                     IOtools.shutil_rmtree(item)
 
-            shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
+            self._persist(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
         # --------------------------------------------------------------------------------------------
         # Prepare final beat's input.gacode

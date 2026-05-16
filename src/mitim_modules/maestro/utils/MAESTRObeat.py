@@ -71,8 +71,23 @@ class beat:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 
             if self.folder_output.exists():
-                shutil.rmtree(self.folder_output, ignore_errors=True)   
+                shutil.rmtree(self.folder_output, ignore_errors=True)
                 self.folder_output.mkdir(parents=True, exist_ok=True)
+
+    def _persist(self, src, dst):
+        '''
+        Copy src to dst, or move when `maestro.keep_all_files: false` and the cleanup
+        loop is about to wipe src anyway. shutil.move reduces to os.rename on the same
+        filesystem (folder and folder_output share parent folder_beat), so the move
+        path is essentially free regardless of file size.
+        '''
+        if self.maestro_instance.keep_all_files:
+            if src.is_dir():
+                shutil.copytree(src, dst)
+            else:
+                shutil.copy2(src, dst)
+        else:
+            shutil.move(str(src), str(dst))
 
     def prepare(self, *args, **kwargs):
         pass

@@ -610,12 +610,11 @@ class eped_beat(beat):
                 elif item.is_dir():
                     IOtools.shutil_rmtree(item)
 
-            # Copy eped run to outputs
+            # Persist EPED outputs to folder_output (copy under keep_all_files: true; move otherwise)
             if (self.folder / 'case1' / 'output_run1.nc').exists():
-                shutil.copy2(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
+                self._persist(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
 
-            # Copy results to output folder
-            shutil.copy2(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
+            self._persist(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
 
             # Write profiles to output folder
             self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')

@@ -281,59 +281,23 @@ class transp_beat(beat):
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
-        # Copy TRANSP outputs into folder_output. Three cases handled:
-        #   (1) Standard: matching {shot}{runid} files exist in self.folder, copy them.
-        #   (2) Different prefix in self.folder (e.g. extending a prior run with different IDs): copy with renaming.
-        #   (3) self.folder wiped by `maestro.keep_all_files: false`: folder_output already
-        #       holds the files from the prior run, so skip the copy entirely.
-        if (self.folder / f"{self.shot}{self.runid}.CDF").exists():
-            shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
-            shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
-            shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
-        else:
-            files = [f for f in self.folder.iterdir() if f.is_file()] if self.folder.exists() else []
-            cdf_prefix = next(
-                (file.stem
-                for file in files
-                if file.suffix.lower() == ".cdf"    # keep only .cdf files …
-                    and not file.name.lower().endswith("ph.cdf")),  # … but skip *.ph.cdf
-                None
-            )
+        # The multi-GB CDF is NOT copied to beat_results/. Instead, we extract the
+        # small subset downstream beats need (sawtooth_times, impurity ordering)
+        # into `transp_results.npy`; the CDF and AC subfolders stay in self.folder
+        # and are kept or wiped according to `maestro.keep_all_files`. On a
+        # re-invocation after a prior keep_all_files: false cleanup, _locate_cdf
+        # returns None and folder_output already holds input.gacode and
+        # transp_results.npy from the prior run.
+        cdf_file = self._locate_cdf()
+        if cdf_file is None:
+            self.profiles_output = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
+            return
 
-            if cdf_prefix is not None:
-                print(f'\t\t- TRANSP files in self.folder use prefix {cdf_prefix}; copying with current shot/runid prefix', typeMsg='w')
-                shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
-                shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
-                shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
-            else:
-                print('\t\t- No TRANSP files in self.folder; assuming folder_output already has them (keep_all_files: false case)', typeMsg='w')
-
-        # AC files ----------------------------------------------------------------------------------
-        if (self.folder / "NUBEAM_folder").exists():
-            shutil.copytree(self.folder / "NUBEAM_folder", self.folder_output / "NUBEAM_folder")
-        if (self.folder / "TORIC_folder").exists():
-            shutil.copytree(self.folder / "TORIC_folder", self.folder_output / "TORIC_folder")
-        if (self.folder / "FI_folder").exists():
-            shutil.copytree(self.folder / "FI_folder", self.folder_output / "FI_folder")
-        # --------------------------------------------------------------------------------------------
-
-        # Remove any existing files in the output folder (to avoid multiple CDFs)
-        for cdf_file in self.folder_output.glob("*.CDF"):
-            if cdf_file.name != f"{self.shot}{self.runid}.CDF":
-                os.remove(cdf_file)
-        for trlog_file in self.folder_output.glob("*tr.log"):
-            if trlog_file.name != f"{self.shot}{self.runid}tr.log":
-                os.remove(trlog_file)
-        for trdat_file in self.folder_output.glob("*TR.DAT"):
-            if trdat_file.name != f"{self.shot}{self.runid}TR.DAT":
-                os.remove(trdat_file)
-
-        # Extract output
-        cdf_results = CDFtools.transp_output(self.folder_output / f"{self.shot}{self.runid}.CDF")
+        cdf_results = CDFtools.transp_output(cdf_file)
 
         # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        it_extract = cdf_results.ind_saw -1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make I'm not extracting with profiles sawtoothing
-        time_extraction = cdf_results.t[it_extract] 
+        it_extract = cdf_results.ind_saw - 1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make sure I'm not extracting with profiles sawtoothing
+        time_extraction = cdf_results.t[it_extract]
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
@@ -341,6 +305,37 @@ class transp_beat(beat):
 
         # Write profiles
         self.profiles_output.write_state(file=self.folder_output / "input.gacode")
+
+        # Sidecar with the CDF-derived state that downstream beats need.
+        profiles_species = [sp['N'] for sp in self.profiles_output.Species]
+        impurity_order = OrderedDict()
+        for z in cdf_results.nZs.keys():
+            for i, spec in enumerate(profiles_species):
+                if spec == z:
+                    impurity_order[spec] = i
+                    break
+        np.save(self.folder_output / 'transp_results.npy', {
+            'impurity_order': impurity_order,
+            'sawtooth_times': np.array(cdf_results.tlastsawU),
+        })
+
+    def _locate_cdf(self):
+        '''
+        Locate the TRANSP CDF for finalize. Returns Path or None
+        (None means `maestro.keep_all_files: false` cleanup ran in a prior
+        invocation and folder_output already holds the summary artifacts).
+        '''
+        if not self.folder.exists():
+            return None
+        expected = self.folder / f"{self.shot}{self.runid}.CDF"
+        if expected.exists():
+            return expected
+        # Rare: extending a prior run with different shot/runid — accept any CDF in self.folder
+        for f in self.folder.iterdir():
+            if f.is_file() and f.suffix.lower() == ".cdf" and not f.name.lower().endswith("ph.cdf"):
+                print(f'\t\t- Using TRANSP CDF with non-matching prefix: {f.name}', typeMsg='w')
+                return f
+        return None
 
     def _add_heating_profiles(self, force_auxiliary_heating_at_output = None):
         '''
@@ -424,8 +419,16 @@ class transp_beat(beat):
         isitfinished = self.maestro_instance.check(beat_check=self)
 
         if isitfinished:
-            c = CDFtools.transp_output(self.folder_output, readFBM=read_ac, readTORIC=read_ac)
-            profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
+            # CDF lives in self.folder when `keep_all_files: true`; wiped under false.
+            # Pre-change MAESTRO folders may still have it in folder_output. Try both;
+            # return c=None if neither has it (TRANSPbeat.plot already guards on that).
+            if (self.folder / f"{self.shot}{self.runid}.CDF").exists():
+                c = CDFtools.transp_output(self.folder, readFBM=read_ac, readTORIC=read_ac)
+            elif (self.folder_output / f"{self.shot}{self.runid}.CDF").exists():
+                c = CDFtools.transp_output(self.folder_output, readFBM=read_ac, readTORIC=read_ac)
+            else:
+                c = None
+            profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode') if (self.folder_output / 'input.gacode').exists() else None
         else:
             # Trying to see if there's an intermediate CDF in folder
             print('\t\t- Searching for intermediate CDF in folder')
@@ -498,29 +501,30 @@ class transp_beat(beat):
     # MAESTRO interface
     # -----------------------------------------------------------------------------------------------------------------------
     def _inform_save(self, *args, **kwargs):
-        
-        c, _ = self.grab_output()
-        
-        # Grab the oder of user-specified impuritites in the TRANSP ions list
-        
-        transp_impurities = c.nZs.keys()
-        profiles_species = [i['N'] for i in self.profiles_output.Species]
-        
-        impurity_order_transp = OrderedDict()
-        for z in transp_impurities:
-            for i,spec in enumerate(profiles_species):
-                if spec == z:
-                    impurity_order_transp[spec] = i
-                    break
-        
-        self.maestro_instance.parameters_trans_beat['impurity_order_transp'] = impurity_order_transp
 
+        summary_file = self.folder_output / 'transp_results.npy'
+
+        if summary_file.exists():
+            transp_results = np.load(summary_file, allow_pickle=True).item()
+            impurity_order = transp_results['impurity_order']
+            sawtooth_times = transp_results['sawtooth_times']
+        else:
+            # Backwards-compat: MAESTRO folders that pre-date the sidecar still have
+            # the CDF in folder_output (legacy copy) or in self.folder (keep_all_files: true).
+            c, _ = self.grab_output()
+            profiles_species = [sp['N'] for sp in self.profiles_output.Species]
+            impurity_order = OrderedDict()
+            for z in c.nZs.keys():
+                for i, spec in enumerate(profiles_species):
+                    if spec == z:
+                        impurity_order[spec] = i
+                        break
+            sawtooth_times = np.array(c.tlastsawU)
+
+        self.maestro_instance.parameters_trans_beat['impurity_order_transp'] = impurity_order
         # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
-        
-        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None 
-        
-        # Grab sawtooths if available
-        self.maestro_instance.parameters_trans_beat['sawtooth_times'] = np.array(c.tlastsawU) 
+        self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
+        self.maestro_instance.parameters_trans_beat['sawtooth_times'] = sawtooth_times
         
     def _inform(self, ensure_sawtooths=None):
         
