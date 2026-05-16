@@ -597,24 +597,33 @@ class eped_beat(beat):
         return ptop_kPa, wtop_psipol
         
     def finalize(self, **kwargs):
-        
-        # Remove output folders
-        for item in self.folder_output.glob('*'):
-            if item.is_file():
-                item.unlink(missing_ok=True)
-            elif item.is_dir():
-                IOtools.shutil_rmtree(item)
 
-        # Copy eped run to outputs
-        if (self.folder / 'case1' / 'output_run1.nc').exists():
-            shutil.copy2(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
-        
-        # Copy results to output folder
-        shutil.copy2(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
-        
-        # Write profiles to output folder
-        self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
-        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+        # Refresh folder_output from self.folder only if the source still exists.
+        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder,
+        # folder_output already has the authoritative content from the prior run.
+        if (self.folder / 'input.gacode.eped').exists():
+
+            # Remove output folders
+            for item in self.folder_output.glob('*'):
+                if item.is_file():
+                    item.unlink(missing_ok=True)
+                elif item.is_dir():
+                    IOtools.shutil_rmtree(item)
+
+            # Copy eped run to outputs
+            if (self.folder / 'case1' / 'output_run1.nc').exists():
+                shutil.copy2(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
+
+            # Copy results to output folder
+            shutil.copy2(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
+
+            # Write profiles to output folder
+            self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
+            self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+
+        else:
+            # Cleanup case: load profiles from the existing folder_output snapshot
+            self.profiles_output = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine

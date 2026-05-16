@@ -154,15 +154,17 @@ class portals_beat(beat):
 
     def finalize(self, **kwargs):
 
-        # Remove output folders
-        for item in self.folder_output.glob('*'):
-            if item.is_file():
-                item.unlink(missing_ok=True)
-            elif item.is_dir():
-                IOtools.shutil_rmtree(item)
+        # Refresh folder_output from self.folder only if the source still exists.
+        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder,
+        # folder_output already has the authoritative content from the prior run.
+        if (self.folder / 'Outputs').exists():
+            for item in self.folder_output.glob('*'):
+                if item.is_file():
+                    item.unlink(missing_ok=True)
+                elif item.is_dir():
+                    IOtools.shutil_rmtree(item)
 
-        # Copy to outputs
-        shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
+            shutil.copytree(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
         # --------------------------------------------------------------------------------------------
         # Prepare final beat's input.gacode
@@ -453,9 +455,9 @@ class portals_beat(beat):
         -------------------------------------------------------------------------------------------
         '''
         
-        fileTraining = self.folder / 'Outputs/' / 'surrogate_data.csv'
-        
-        self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder
+        fileTraining = self.folder_output / 'Outputs' / 'surrogate_data.csv'
+
+        self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder_output
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = fileTraining
         print(f'\t\t* Surrogate data saved for future beats: {IOtools.clipstr(fileTraining)}')
 

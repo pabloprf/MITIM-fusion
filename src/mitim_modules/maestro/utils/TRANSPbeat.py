@@ -281,28 +281,32 @@ class transp_beat(beat):
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
-        # Copy to outputs
-        try:            
+        # Copy TRANSP outputs into folder_output. Three cases handled:
+        #   (1) Standard: matching {shot}{runid} files exist in self.folder, copy them.
+        #   (2) Different prefix in self.folder (e.g. extending a prior run with different IDs): copy with renaming.
+        #   (3) self.folder wiped by `maestro.keep_all_files: false`: folder_output already
+        #       holds the files from the prior run, so skip the copy entirely.
+        if (self.folder / f"{self.shot}{self.runid}.CDF").exists():
             shutil.copy2(self.folder / f"{self.shot}{self.runid}TR.DAT", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}.CDF", self.folder_output)
             shutil.copy2(self.folder / f"{self.shot}{self.runid}tr.log", self.folder_output)
-
-        except FileNotFoundError:
-            print('\t\t- No TRANSP files in beat folder, assuming they may exist in the output folder (MAESTRO restart case)', typeMsg='w')
-            
-            # Find CDF name
-            files = [f for f in self.folder.iterdir() if f.is_file()]
+        else:
+            files = [f for f in self.folder.iterdir() if f.is_file()] if self.folder.exists() else []
             cdf_prefix = next(
-                (file.stem                           
+                (file.stem
                 for file in files
                 if file.suffix.lower() == ".cdf"    # keep only .cdf files …
                     and not file.name.lower().endswith("ph.cdf")),  # … but skip *.ph.cdf
                 None
             )
 
-            shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
-            shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
-            shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+            if cdf_prefix is not None:
+                print(f'\t\t- TRANSP files in self.folder use prefix {cdf_prefix}; copying with current shot/runid prefix', typeMsg='w')
+                shutil.copy2(self.folder / f"{cdf_prefix}TR.DAT", self.folder_output / f"{self.shot}{self.runid}TR.DAT")
+                shutil.copy2(self.folder / f"{cdf_prefix}.CDF", self.folder_output / f"{self.shot}{self.runid}.CDF")
+                shutil.copy2(self.folder / f"{cdf_prefix}tr.log", self.folder_output / f"{self.shot}{self.runid}tr.log")
+            else:
+                print('\t\t- No TRANSP files in self.folder; assuming folder_output already has them (keep_all_files: false case)', typeMsg='w')
 
         # AC files ----------------------------------------------------------------------------------
         if (self.folder / "NUBEAM_folder").exists():
