@@ -252,7 +252,17 @@ class portals_beat(beat):
                 self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
         if 'qfus' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
             for key in ['qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
-                self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]       
+                self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
+
+        # Re-apply zero_source_blocks: the merge above rebased profiles_output on
+        # p_frozen (the pre-PORTALS engineering snapshot), which still carries the
+        # original source columns from the upstream beat. Channels in targets_evolve
+        # were just pulled back from PORTALS (zero) above; channels NOT in
+        # targets_evolve must be re-zeroed here so the zeros survive into
+        # input.gacode_final and the next beat's seed.
+        zero_blocks = self.initialization_parameters.get('zero_source_blocks', [])
+        if zero_blocks:
+            self.profiles_output.correct(options={'zero_source_blocks': zero_blocks, 'recalculate_ptot': False})
         # --------------------------------------------------------------------------------------------
 
         # Write to final input.gacode
