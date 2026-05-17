@@ -161,7 +161,7 @@ def launch_scan(
 def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G, nu_ne=None):
     """Mutate a maestro namelist dict in-place for one engineering point."""
     if nu_ne is not None:
-        nm['plasma']['initialization']['parameters']['nu_ne'] = nu_ne
+        nm['plasma']['profiles_initialization']['parameters']['nu_ne'] = nu_ne
 
     params = nm['plasma']['parameters']
     sep = params['separatrix']
