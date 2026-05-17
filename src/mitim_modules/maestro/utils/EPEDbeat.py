@@ -696,9 +696,9 @@ class eped_beat(beat):
                 except (TypeError, ValueError):
                     pass
 
-        # The real stability plot (gamma/omega_A vs Te_ped for each toroidal mode n)
-        # is produced by EPEDtools.EPED.plot_g_stability, which needs the full-EPED
-        # netcdf output_run1.nc. Only available when this beat used full EPED.
+        # The real stability plot (gamma/omega_A vs Te_ped per toroidal mode n)
+        # is what EPEDtools.plot_g_stability already produces (and what
+        # mitim_plot_maestro uses). Reuse it directly here — same code path.
         stability_md = None
         nc_file = self.folder_output / 'output_run1.nc'
         if nc_file.exists():
@@ -717,7 +717,7 @@ class eped_beat(beat):
                 )
                 fig.savefig(png_path, dpi=120, bbox_inches='tight')
                 plt.close(fig)
-                stability_md = f'\n![EPED stability — gamma/omega_A vs Te_ped]({png_name})\n'
+                stability_md = f'\n![EPED stability]({png_name})\n'
             except Exception as e:
                 print(f'\t\t- Could not regenerate EPED stability figure ({e})', typeMsg='w')
                 stability_md = f'\n*(stability figure generation failed: {e})*\n'

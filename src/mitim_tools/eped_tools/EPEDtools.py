@@ -13,6 +13,19 @@ from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
+
+def _to_scalar(x):
+    '''
+    Safely extract a Python float from a value that may be a Python scalar,
+    a numpy scalar, a 0-d array, or a 1-element xarray DataArray / ndarray.
+    In numpy>=2, float(da) on a 1-element DataArray raises; this avoids that.
+    '''
+    try:
+        return float(np.asarray(x).ravel()[-1])
+    except (IndexError, TypeError, ValueError):
+        return float('nan')
+
+
 class EPED:
     def __init__(
             self,
@@ -451,11 +464,11 @@ class EPED:
             for sublabel in sublabels:
                                 
                 # Grab scanning parameter
-                x.append(float(data[sublabel][scan_params[i]]))
-                
+                x.append(_to_scalar(data[sublabel][scan_params[i]]))
+
                 # Grab outputs
-                ptop.append(float(data[sublabel]['ptop']))
-                wtop.append(float(data[sublabel]['wptop']))
+                ptop.append(_to_scalar(data[sublabel]['ptop']))
+                wtop.append(_to_scalar(data[sublabel]['wptop']))
             
             # --------------------
             # Plot results of the scan
@@ -576,18 +589,18 @@ class EPED:
                 ax.legend(loc='upper right', fontsize=8)
             
             # Plot prediction
-            xbase = float(data[variable[2]]) * variable[4]
+            xbase = _to_scalar(data[variable[2]]) * variable[4]
             ax.plot([xbase], [g_base], '-s', c=color, ms=12)
-            
+
             # Plot criterion
             ax.axhline(g_base, color='k', ls='--', lw=1.0)
-            
+
             # Plot starting point
             ax.axvline(h[0], color='k', ls='--', lw=0.5)
-            
+
             ax.set_xlabel(variable[1])
             ax.set_ylabel('$\\gamma/\\omega_A$')
-            ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
+            ax.set_title(f'{scan_param} = {_to_scalar(data[scan_param])}', fontsize=10)
             ax.set_ylim([0,g_base*2.0])
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
@@ -620,8 +633,8 @@ class EPED:
             p = np.array(data[variable[0]])
             
             teped = np.array(data['teped_list'])* 1E-3
-            teped_base = float(data['tped']) 
-            
+            teped_base = _to_scalar(data['tped'])
+
             minwidth = 1-data['wptop']
             
             for iheight in range(p.shape[0]):
@@ -638,7 +651,7 @@ class EPED:
             
             ax.set_xlabel("$\\psi_N$")
             ax.set_ylabel(variable[1])
-            ax.set_title(f'{scan_param} = {float(data[scan_param])}', fontsize=10)
+            ax.set_title(f'{scan_param} = {_to_scalar(data[scan_param])}', fontsize=10)
             ax.set_xlim([minwidth-0.03,1.0])
             GRAPHICStools.addDenseAxis(ax)
             

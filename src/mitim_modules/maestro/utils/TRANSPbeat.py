@@ -483,66 +483,47 @@ class transp_beat(beat):
 
         profiles = PROFILEStools.gacode_state(gacode_file)
         profiles.derive_quantities()
+        derived = profiles.derived
 
         rho = profiles.profiles['rho(-)']
         q = profiles.profiles['q(-)']
-        q0 = float(q[0])
+
+        # q-scalars: prefer derived (q0, q95 computed against psi_pol, the canonical
+        # MITIM convention). qmin isn't in derived, so compute it locally.
+        q0 = float(derived['q0'])
+        q95 = float(derived['q95'])
         qmin = float(np.min(q))
-        q95 = float(np.interp(0.95, rho, q))
 
-        # Power balance: prefer CDF (time series + cleaner accounting), fallback to gacode integrals
-        power_source = 'input.gacode (volume integrals)'
-        P_fus = P_aux = P_OH = P_rad = None
-        cdf_file = self._locate_cdf()
-        if cdf_file is not None:
+        # Power balance from derived quantities (volume integrals at extraction time)
+        def _last_or_nan(key):
+            arr = derived.get(key)
+            if arr is None:
+                return float('nan')
             try:
-                cdf_results = CDFtools.transp_output(cdf_file)
-                it = cdf_results.ind_saw - 1 if not self.extract_last_instead_of_sawtooth else -1
-                # CDF arrays: some scalars are time-resolved; pick the extraction index.
-                def _at(attr):
-                    val = getattr(cdf_results, attr, None)
-                    if val is None:
-                        return None
-                    try:
-                        return float(val[it])
-                    except (TypeError, IndexError):
-                        try:
-                            return float(val)
-                        except Exception:
-                            return None
-                P_fus = _at('Pfus')
-                P_aux = _at('PichT_eff')  # ICRF
-                if P_aux is None:
-                    P_aux = _at('Pnbi')
-                P_OH = _at('PohT')
-                P_rad = _at('PradT')
-                power_source = f'CDF @ t={cdf_results.t[it]:.4f} s'
-            except Exception as e:
-                print(f'\t\t- Could not read CDF for TRANSP summary ({e}); falling back to input.gacode integrals', typeMsg='w')
+                return float(np.asarray(arr).flat[-1])
+            except (IndexError, TypeError, ValueError):
+                try:
+                    return float(arr)
+                except (TypeError, ValueError):
+                    return float('nan')
 
-        if P_fus is None:
-            # gacode integrals: q*_MW arrays are cumulative-volume integrated up to rho; [-1] = total
+        def _scalar_or_nan(key):
+            val = derived.get(key)
+            if val is None:
+                return float('nan')
             try:
-                P_fus = float(profiles.derived.get('qFus_MW', [np.nan])[-1])
-            except Exception:
-                P_fus = None
-            try:
-                P_aux = float(profiles.derived.get('qRF_MW', [np.nan])[-1])
-                P_beam = float(profiles.derived.get('qBEAM_MW', [0.0])[-1])
-                if P_aux is None or np.isnan(P_aux):
-                    P_aux = P_beam
-                else:
-                    P_aux = P_aux + (P_beam if not np.isnan(P_beam) else 0.0)
-            except Exception:
-                P_aux = None
-            try:
-                P_OH = float(profiles.derived.get('qOhm_MW', [np.nan])[-1])
-            except Exception:
-                P_OH = None
-            try:
-                P_rad = float(profiles.derived.get('qRad_MW', [np.nan])[-1])
-            except Exception:
-                P_rad = None
+                return float(val)
+            except (TypeError, ValueError):
+                return float('nan')
+
+        P_fus = _scalar_or_nan('Pfus')
+        P_RF  = _last_or_nan('qRF_MW')
+        P_NBI = _last_or_nan('qBEAM_MW')
+        P_aux = (0.0 if np.isnan(P_RF) else P_RF) + (0.0 if np.isnan(P_NBI) else P_NBI)
+        if np.isnan(P_RF) and np.isnan(P_NBI):
+            P_aux = float('nan')
+        P_OH  = _last_or_nan('qOhm_MW')
+        P_rad = _scalar_or_nan('Prad')
 
         # Sawtooth count from sidecar
         sawtooth_count = None
@@ -556,74 +537,75 @@ class transp_beat(beat):
             except Exception:
                 pass
 
-        # Profile snapshot figure: one combined panel (kinetic profiles + power
-        # sources, with twin y-axes for unit groups) and a separate q panel.
+        # Profile snapshot figure: three panels side by side —
+        #   (1) kinetic profiles Te+Ti+ne (twin y-axis for ne)
+        #   (2) power sources (all on a single MW/m^3 axis)
+        #   (3) q-profile alone
         png_name = 'transp_profiles.png'
         png_path = output_dir / png_name
         try:
-            fig, (ax_main, ax_q) = plt.subplots(
-                nrows=1, ncols=2, figsize=(14, 5),
-                gridspec_kw={'width_ratios': [2.4, 1.0]},
-            )
+            fig, (ax_kin, ax_pow, ax_q) = plt.subplots(nrows=1, ncols=3, figsize=(16, 5))
 
-            # ---- Left panel: kinetic profiles + power sources (multiple y-axes)
+            # ---- Panel 1: kinetic profiles (Te + Ti on keV axis, ne on twin)
             te = profiles.profiles['te(keV)']
             ti = profiles.profiles['ti(keV)'][:, 0]
             ne20 = profiles.profiles['ne(10^19/m^3)'] * 0.1
 
-            # Left axis: Te, Ti (keV)
-            l1, = ax_main.plot(rho, te, color='tab:red', lw=2, label=r'$T_e$ [keV]')
-            l2, = ax_main.plot(rho, ti, color='tab:orange', lw=2, ls='--', label=r'$T_i$ [keV]')
-            ax_main.set_xlabel(r'$\rho$')
-            ax_main.set_ylabel(r'$T$ [keV]', color='tab:red')
-            ax_main.tick_params(axis='y', colors='tab:red')
+            l1, = ax_kin.plot(rho, te, color='tab:red',    lw=2,         label=r'$T_e$ [keV]')
+            l2, = ax_kin.plot(rho, ti, color='tab:orange', lw=2, ls='--', label=r'$T_i$ [keV]')
+            ax_kin.set_xlabel(r'$\rho$')
+            ax_kin.set_ylabel(r'$T$ [keV]', color='tab:red')
+            ax_kin.tick_params(axis='y', colors='tab:red')
 
-            # Second axis: ne (10^20 m^-3)
-            ax_ne = ax_main.twinx()
+            ax_ne = ax_kin.twinx()
             l3, = ax_ne.plot(rho, ne20, color='tab:green', lw=2, label=r'$n_e$ [$10^{20}\,m^{-3}$]')
             ax_ne.set_ylabel(r'$n_e$ [$10^{20}\,m^{-3}$]', color='tab:green')
             ax_ne.tick_params(axis='y', colors='tab:green')
 
-            # Third axis (offset): power density sources (MW/m^3)
-            ax_p = ax_main.twinx()
-            ax_p.spines['right'].set_position(('axes', 1.12))
-            ax_p.set_ylabel(r'Power density [MW/$m^3$]', color='tab:blue')
-            ax_p.tick_params(axis='y', colors='tab:blue')
+            ax_kin.legend(handles=[l1, l2, l3], loc='upper right', fontsize=9, framealpha=0.9)
+            ax_kin.set_xlim(0, 1)
+            ax_kin.grid(True, alpha=0.3)
+            ax_kin.set_title('Kinetic profiles')
 
-            power_handles = []
+            # ---- Panel 2: power densities (all on the same MW/m^3 axis)
             POWER_CHANNELS = [
-                ('qrfe(MW/m^3)',   r'$q_{RF,e}$',   'tab:blue',   '-'),
-                ('qrfi(MW/m^3)',   r'$q_{RF,i}$',   'tab:cyan',   '--'),
-                ('qbeame(MW/m^3)', r'$q_{NBI,e}$',  'tab:purple', '-'),
-                ('qbeami(MW/m^3)', r'$q_{NBI,i}$',  'tab:pink',   '--'),
-                ('qfuse(MW/m^3)',  r'$q_{\alpha,e}$', 'tab:olive', '-'),
-                ('qfusi(MW/m^3)',  r'$q_{\alpha,i}$', 'tab:brown', '--'),
-                ('qohme(MW/m^3)',  r'$q_{Ohm}$',    'gray',       ':'),
+                ('qrfe(MW/m^3)',   r'$q_{RF,e}$',     'tab:blue',   '-'),
+                ('qrfi(MW/m^3)',   r'$q_{RF,i}$',     'tab:cyan',   '--'),
+                ('qbeame(MW/m^3)', r'$q_{NBI,e}$',    'tab:purple', '-'),
+                ('qbeami(MW/m^3)', r'$q_{NBI,i}$',    'tab:pink',   '--'),
+                ('qfuse(MW/m^3)',  r'$q_{\alpha,e}$', 'tab:olive',  '-'),
+                ('qfusi(MW/m^3)',  r'$q_{\alpha,i}$', 'tab:brown',  '--'),
+                ('qohme(MW/m^3)',  r'$q_{Ohm}$',      'gray',       ':'),
             ]
+            any_power = False
             for key, label, color, ls in POWER_CHANNELS:
                 if key not in profiles.profiles:
                     continue
                 arr = np.asarray(profiles.profiles[key])
                 if not np.any(np.abs(arr) > 1e-6):
                     continue
-                line, = ax_p.plot(rho, arr, color=color, lw=1.5, ls=ls, label=label)
-                power_handles.append(line)
+                ax_pow.plot(rho, arr, color=color, lw=1.5, ls=ls, label=label)
+                any_power = True
+            ax_pow.set_xlabel(r'$\rho$')
+            ax_pow.set_ylabel(r'Power density [MW/$m^3$]')
+            ax_pow.set_xlim(0, 1)
+            ax_pow.grid(True, alpha=0.3)
+            ax_pow.set_title('Source profiles')
+            if any_power:
+                ax_pow.legend(loc='best', fontsize=9, framealpha=0.9, ncol=2)
+            else:
+                ax_pow.text(0.5, 0.5, '(no non-zero power channels)',
+                            transform=ax_pow.transAxes, ha='center', va='center', color='gray')
 
-            # Combined legend
-            handles = [l1, l2, l3] + power_handles
-            labels = [h.get_label() for h in handles]
-            ax_main.legend(handles, labels, loc='upper right', fontsize=8, framealpha=0.9, ncol=2)
-            ax_main.set_xlim(0, 1)
-            ax_main.grid(True, alpha=0.3)
-
-            # ---- Right panel: q-profile alone
+            # ---- Panel 3: q-profile alone
             ax_q.plot(rho, q, color='k', lw=2)
             ax_q.axhline(1.0, color='gray', ls='--', lw=0.8, label=r'$q=1$')
             ax_q.set_xlabel(r'$\rho$')
             ax_q.set_ylabel(r'$q$')
             ax_q.set_xlim(0, 1)
             ax_q.grid(True, alpha=0.3)
-            ax_q.legend(loc='best', fontsize=8)
+            ax_q.set_title(r'$q$-profile')
+            ax_q.legend(loc='best', fontsize=9)
 
             fig.tight_layout()
             fig.savefig(png_path, dpi=120, bbox_inches='tight')
@@ -643,7 +625,7 @@ class transp_beat(beat):
         lines.append(f'| qmin | {qmin:.3f} |')
         lines.append(f'| q95 | {q95:.3f} |')
         lines.append('')
-        lines.append(f'### Power balance ({power_source})')
+        lines.append('### Power balance (input.gacode volume integrals at extraction time)')
         lines.append('')
         lines.append('| Quantity | Value [MW] |')
         lines.append('|---|---|')
