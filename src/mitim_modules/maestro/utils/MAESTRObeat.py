@@ -118,6 +118,34 @@ class beat:
     def plot(self, *args, **kwargs):
         return ''
 
+    def summary(self, output_dir, counter = None, wall_time_s = None):
+        '''
+        Best-effort generation of a markdown section describing this beat's
+        final state. Writes any figures into `output_dir` and returns a
+        markdown string (or None if nothing meaningful can be reported).
+        Subclasses override; base returns None.
+
+        Args:
+            output_dir: Path where figures should be written (relative links
+                in the returned markdown will resolve against this).
+            counter: Integer beat counter (1-based) as registered in maestro.beats.
+            wall_time_s: Wall-clock seconds for this beat's run+finalize, as
+                read from Outputs/Performance/timing.jsonl by the orchestrator.
+        '''
+        return None
+
+
+def _format_seconds(seconds):
+    '''Format a duration in seconds as h:mm:ss (or m:ss if under an hour).'''
+    if seconds is None:
+        return None
+    s = int(round(float(seconds)))
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h > 0:
+        return f'{h}:{m:02d}:{sec:02d}'
+    return f'{m}:{sec:02d}'
+
 # --------------------------------------------------------------------------------------------
 # [Generic] Initializer from profiles: just load profiles and write them to the initialization folder
 # --------------------------------------------------------------------------------------------

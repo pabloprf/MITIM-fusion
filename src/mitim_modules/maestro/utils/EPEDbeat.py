@@ -12,7 +12,7 @@ from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
@@ -644,6 +644,135 @@ class eped_beat(beat):
             profiles = None
 
         return loaded_results, profiles
+
+    def summary(self, output_dir, counter = None, wall_time_s = None):
+        '''
+        Markdown section for the last EPED beat: inputs + outputs + stability figure.
+        '''
+
+        results_file = self.folder_output / 'eped_results.npy'
+        if not results_file.exists():
+            header_extra = f' (Beat {counter})' if counter is not None else ''
+            return f'## EPED{header_extra}\n*(eped_results.npy missing; no summary available)*\n'
+
+        try:
+            d = np.load(results_file, allow_pickle=True).item()
+        except Exception as e:
+            return f'## EPED\n*(could not load eped_results.npy: {e})*\n'
+
+        # Inputs (from current_evaluation if cached, otherwise extract from profiles)
+        inputs = {}
+        if hasattr(self, 'current_evaluation') and isinstance(self.current_evaluation, dict):
+            inputs = dict(self.current_evaluation)
+        else:
+            # Best-effort: reload from input.gacode in folder_output
+            gacode_file = self.folder_output / 'input.gacode'
+            if gacode_file.exists():
+                try:
+                    p = PROFILEStools.gacode_state(gacode_file)
+                    p.derive_quantities()
+                    inputs['Ip']       = abs(float(p.profiles['current(MA)'][0]))
+                    inputs['Bt']       = abs(float(p.profiles['bcentr(T)'][0]))
+                    inputs['R']        = abs(float(p.profiles['rcentr(m)'][0]))
+                    inputs['a']        = abs(float(p.derived['a']))
+                    inputs['kappa995'] = float(p.derived.get('kappa995', float('nan')))
+                    inputs['delta995'] = float(p.derived.get('delta995', float('nan')))
+                    inputs['BetaN']    = float(p.derived.get('BetaN_engineering', float('nan')))
+                    inputs['zeff']     = float(p.derived.get('Zeff_vol', float('nan')))
+                except Exception:
+                    pass
+
+        # Use neped from results if available (more authoritative than profiles)
+        if 'neped_20' in d:
+            inputs['neped_20'] = float(d['neped_20'])
+
+        # Outputs
+        outputs = {}
+        for key in ('ptop_kPa', 'wtop_psipol', 'rhotop', 'netop_20', 'nesep_20',
+                    'Tetop_keV', 'Ttop_keV', 'Titop_keV', 'Tesep_keV'):
+            if key in d and d[key] is not None:
+                try:
+                    outputs[key] = float(d[key])
+                except (TypeError, ValueError):
+                    pass
+
+        # Generate an EPED-NN scan figure if scan_results are present in the sidecar.
+        # This is the closest scannable stability diagnostic that survives keep_all_files=False.
+        stability_md_parts = []
+        scan_results = d.get('scan_results')
+        if scan_results is not None and 'inputs_to_eped' in d:
+            for ikey in ('ptop_kPa', 'wtop_psipol'):
+                png_name = f'eped_scan_{ikey}.png'
+                png_path = output_dir / png_name
+                try:
+                    fig = plt.figure(figsize=(12, 8))
+                    axs = fig.subplot_mosaic(
+                        """
+                        ABCD
+                        EFGH
+                        IJKL
+                        """,
+                    )
+                    axs = [ax for ax in axs.values()]
+                    self._plot_scan(ikey, loaded_results=d, axs=axs)
+                    fig.tight_layout()
+                    fig.savefig(png_path, dpi=120, bbox_inches='tight')
+                    plt.close(fig)
+                    stability_md_parts.append(f'![EPED scan — {ikey}]({png_name})')
+                except Exception as e:
+                    print(f'\t\t- Could not generate EPED scan figure for {ikey} ({e})', typeMsg='w')
+
+        nc_file = self.folder_output / 'output_run1.nc'
+        if nc_file.exists():
+            stability_md_parts.append(
+                f'*Full-EPED stability data available at* `{nc_file.relative_to(self.maestro_instance.folder)}` '
+                f'(use `mitim_plot_eped` for the j vs alpha diagram).'
+            )
+
+        if not stability_md_parts:
+            stability_md = '\n*(stability diagnostic not retrievable from saved EPED artifacts)*\n'
+        else:
+            stability_md = '\n' + '\n\n'.join(stability_md_parts) + '\n'
+
+        # Compose markdown
+        header_extra = f' (Beat {counter})' if counter is not None else ''
+        lines = [f'## EPED{header_extra}', '']
+        lines.append('### Inputs')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        input_units = {
+            'Ip': 'MA', 'Bt': 'T', 'R': 'm', 'a': 'm',
+            'kappa995': '-', 'delta995': '-', 'zeta': '-',
+            'neped_20': r'10^20 m^-3', 'BetaN': '-', 'zeff': '-',
+            'Tesep_keV': 'keV', 'nesep_ratio': '-',
+        }
+        for key, unit in input_units.items():
+            if key in inputs:
+                try:
+                    lines.append(f'| {key} | {float(inputs[key]):.4g} {unit} |')
+                except (TypeError, ValueError):
+                    pass
+        lines.append('')
+        lines.append('### Outputs')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        output_units = {
+            'ptop_kPa': 'kPa', 'wtop_psipol': r'\psi_{pol}', 'rhotop': r'\rho',
+            'netop_20': r'10^20 m^-3', 'nesep_20': r'10^20 m^-3',
+            'Tetop_keV': 'keV', 'Ttop_keV': 'keV', 'Titop_keV': 'keV', 'Tesep_keV': 'keV',
+        }
+        for key, unit in output_units.items():
+            if key in outputs:
+                lines.append(f'| {key} | {outputs[key]:.4g} {unit} |')
+        if wall_time_s is not None:
+            lines.append('')
+            lines.append(f'**Beat wall-time:** {_format_seconds(wall_time_s)}')
+        lines.append('')
+        lines.append('### Stability')
+        lines.append(stability_md)
+        return '\n'.join(lines)
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 

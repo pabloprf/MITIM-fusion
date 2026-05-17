@@ -9,7 +9,7 @@ from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from IPython import embed
 from mitim_tools import __mitimroot__
 
@@ -280,6 +280,95 @@ class portals_beat(beat):
         profiles = PROFILEStools.gacode_state(self.folder_output / 'input.gacode') if isitfinished else None
         
         return opt_fun, profiles
+
+    def summary(self, output_dir, counter = None, wall_time_s = None):
+        '''
+        Markdown section for the last PORTALS beat: convergence scalars + Metrics figure.
+        '''
+        import matplotlib.pyplot as plt
+
+        analyzer = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+
+        # Iteration count and best-iteration index
+        try:
+            n_iters = len(analyzer.powerstates)
+        except Exception:
+            n_iters = None
+        ibest = getattr(analyzer, 'ibest', None)
+
+        # Residual at iter 0 and at best iter
+        residual0 = residual_best = None
+        try:
+            residual_arr = analyzer.step.BOmetrics["overall"]["Residual"]
+            residual0 = -residual_arr[0].item()
+            if ibest is not None and ibest < len(residual_arr):
+                residual_best = -residual_arr[ibest].item()
+        except Exception:
+            pass
+
+        # Time per iteration from this beat's timing.jsonl (Eval @ N entries)
+        time_per_iter_s = None
+        timing_file = self.folder_output / 'Outputs' / 'timing.jsonl'
+        if timing_file.exists():
+            import json, re
+            iter_pat = re.compile(r'@\s*\d+\s*$')
+            times = []
+            with open(timing_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except Exception:
+                        continue
+                    if 'duration_s' not in d:
+                        continue
+                    script = d.get('script', '')
+                    if not iter_pat.search(script):
+                        continue
+                    try:
+                        times.append(float(d['duration_s']))
+                    except (TypeError, ValueError):
+                        pass
+            if times:
+                time_per_iter_s = sum(times) / len(times)
+
+        # Generate Metrics figure
+        png_name = 'portals_metrics.png'
+        png_path = output_dir / png_name
+        try:
+            if n_iters is not None and n_iters > 0:
+                fig = plt.figure(figsize=(12, 7))
+                analyzer.plotMetrics(fig=fig)
+                fig.savefig(png_path, dpi=120, bbox_inches='tight')
+                plt.close(fig)
+                fig_md = f'\n![PORTALS metrics]({png_name})\n'
+            else:
+                fig_md = '\n*(PORTALS has not run enough iterations to plot metrics)*\n'
+        except Exception as e:
+            fig_md = f'\n*(PORTALS metrics figure unavailable: {e})*\n'
+
+        # Compose markdown
+        header_extra = f' (Beat {counter})' if counter is not None else ''
+        lines = [f'## PORTALS{header_extra}', '']
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        lines.append(f'| Iterations | {n_iters if n_iters is not None else "n/a"} |')
+        lines.append(f'| Best iteration | {ibest if ibest is not None else "n/a"} |')
+        if residual0 is not None:
+            lines.append(f'| Residual at iter 0 | {residual0:.4g} |')
+        if residual_best is not None:
+            lines.append(f'| Residual at best iter | {residual_best:.4g} |')
+        if residual0 is not None and residual_best is not None and residual_best != 0:
+            lines.append(f'| Residual reduction | {residual0 / residual_best:.2f}x |')
+        if time_per_iter_s is not None:
+            lines.append(f'| Mean time per iteration | {time_per_iter_s:.1f} s |')
+        if wall_time_s is not None:
+            lines.append(f'| Beat wall-time | {_format_seconds(wall_time_s)} |')
+        lines.append('')
+        lines.append(fig_md)
+        return '\n'.join(lines)
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 

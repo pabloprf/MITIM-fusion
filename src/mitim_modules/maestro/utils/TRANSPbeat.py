@@ -9,7 +9,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from IPython import embed
 
 class transp_beat(beat):
@@ -460,13 +460,155 @@ class transp_beat(beat):
     def plot(self,  fn = None, counter = 0, **kwargs):
 
         c, _ = self.grab_output(read_ac=True)
-        
+
         if c is None:
             return '\t\t- Cannot plot because the TRANSP beat has not finished yet'
-        
-        c.plot(fn = fn, tab_color = counter) 
+
+        c.plot(fn = fn, tab_color = counter)
 
         return '\t\t- Plotting of TRANSP beat done'
+
+    def summary(self, output_dir, counter = None, wall_time_s = None):
+        '''
+        Markdown section for the last TRANSP beat: q-profile + power balance
+        + sawtooth count + wall-time + a small profile snapshot figure.
+        Power balance prefers the CDF if still on disk; otherwise falls back
+        to input.gacode integrals.
+        '''
+        import matplotlib.pyplot as plt
+
+        gacode_file = self.folder_output / 'input.gacode'
+        if not gacode_file.exists():
+            return f'## TRANSP\n*(input.gacode missing in {gacode_file.parent}; no summary available)*\n'
+
+        profiles = PROFILEStools.gacode_state(gacode_file)
+        profiles.derive_quantities()
+
+        rho = profiles.profiles['rho(-)']
+        q = profiles.profiles['q(-)']
+        q0 = float(q[0])
+        qmin = float(np.min(q))
+        q95 = float(np.interp(0.95, rho, q))
+
+        # Power balance: prefer CDF (time series + cleaner accounting), fallback to gacode integrals
+        power_source = 'input.gacode (volume integrals)'
+        P_fus = P_aux = P_OH = P_rad = None
+        cdf_file = self._locate_cdf()
+        if cdf_file is not None:
+            try:
+                cdf_results = CDFtools.transp_output(cdf_file)
+                it = cdf_results.ind_saw - 1 if not self.extract_last_instead_of_sawtooth else -1
+                # CDF arrays: some scalars are time-resolved; pick the extraction index.
+                def _at(attr):
+                    val = getattr(cdf_results, attr, None)
+                    if val is None:
+                        return None
+                    try:
+                        return float(val[it])
+                    except (TypeError, IndexError):
+                        try:
+                            return float(val)
+                        except Exception:
+                            return None
+                P_fus = _at('Pfus')
+                P_aux = _at('PichT_eff')  # ICRF
+                if P_aux is None:
+                    P_aux = _at('Pnbi')
+                P_OH = _at('PohT')
+                P_rad = _at('PradT')
+                power_source = f'CDF @ t={cdf_results.t[it]:.4f} s'
+            except Exception as e:
+                print(f'\t\t- Could not read CDF for TRANSP summary ({e}); falling back to input.gacode integrals', typeMsg='w')
+
+        if P_fus is None:
+            # gacode integrals: q*_MW arrays are cumulative-volume integrated up to rho; [-1] = total
+            try:
+                P_fus = float(profiles.derived.get('qFus_MW', [np.nan])[-1])
+            except Exception:
+                P_fus = None
+            try:
+                P_aux = float(profiles.derived.get('qRF_MW', [np.nan])[-1])
+                P_beam = float(profiles.derived.get('qBEAM_MW', [0.0])[-1])
+                if P_aux is None or np.isnan(P_aux):
+                    P_aux = P_beam
+                else:
+                    P_aux = P_aux + (P_beam if not np.isnan(P_beam) else 0.0)
+            except Exception:
+                P_aux = None
+            try:
+                P_OH = float(profiles.derived.get('qOhm_MW', [np.nan])[-1])
+            except Exception:
+                P_OH = None
+            try:
+                P_rad = float(profiles.derived.get('qRad_MW', [np.nan])[-1])
+            except Exception:
+                P_rad = None
+
+        # Sawtooth count from sidecar
+        sawtooth_count = None
+        sidecar = self.folder_output / 'transp_results.npy'
+        if sidecar.exists():
+            try:
+                d = np.load(sidecar, allow_pickle=True).item()
+                st = d.get('sawtooth_times')
+                if st is not None:
+                    sawtooth_count = int(np.size(st))
+            except Exception:
+                pass
+
+        # Profile snapshot figure (Te, Ti, ne, q vs rho)
+        png_name = 'transp_profiles.png'
+        png_path = output_dir / png_name
+        try:
+            fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
+            axs[0, 0].plot(rho, profiles.profiles['te(keV)'], color='r')
+            axs[0, 0].set_xlabel(r'$\rho$'); axs[0, 0].set_ylabel(r'$T_e$ [keV]')
+            axs[0, 1].plot(rho, profiles.profiles['ti(keV)'][:, 0], color='b')
+            axs[0, 1].set_xlabel(r'$\rho$'); axs[0, 1].set_ylabel(r'$T_i$ [keV]')
+            axs[1, 0].plot(rho, profiles.profiles['ne(10^19/m^3)'] * 0.1, color='g')
+            axs[1, 0].set_xlabel(r'$\rho$'); axs[1, 0].set_ylabel(r'$n_e$ [$10^{20}$ m$^{-3}$]')
+            axs[1, 1].plot(rho, q, color='k')
+            axs[1, 1].axhline(1.0, color='gray', ls='--', lw=0.8)
+            axs[1, 1].set_xlabel(r'$\rho$'); axs[1, 1].set_ylabel(r'$q$')
+            for ax in axs.flat:
+                ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, bbox_inches='tight')
+            plt.close(fig)
+            fig_md = f'\n![TRANSP profiles]({png_name})\n'
+        except Exception as e:
+            fig_md = f'\n*(profile snapshot unavailable: {e})*\n'
+
+        # Compose markdown
+        header_extra = f' (Beat {counter})' if counter is not None else ''
+        lines = [f'## TRANSP{header_extra}', '']
+        lines.append('### q-profile')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        lines.append(f'| q0 | {q0:.3f} |')
+        lines.append(f'| qmin | {qmin:.3f} |')
+        lines.append(f'| q95 | {q95:.3f} |')
+        lines.append('')
+        lines.append(f'### Power balance ({power_source})')
+        lines.append('')
+        lines.append('| Quantity | Value [MW] |')
+        lines.append('|---|---|')
+        for label, val in [('P_fus', P_fus), ('P_aux', P_aux), ('P_OH', P_OH), ('P_rad', P_rad)]:
+            if val is None or (isinstance(val, float) and np.isnan(val)):
+                lines.append(f'| {label} | n/a |')
+            else:
+                lines.append(f'| {label} | {val:.3f} |')
+        lines.append('')
+        lines.append('### Sawteeth & timing')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        lines.append(f'| Sawtooth count | {sawtooth_count if sawtooth_count is not None else "n/a"} |')
+        lines.append(f'| Run wall-time | {_format_seconds(wall_time_s) if wall_time_s is not None else "n/a"} |')
+        lines.append('')
+        lines.append(fig_md)
+        return '\n'.join(lines)
 
     # --------------------------------------------------------------------------------------------
     # Additional TRANSP utilities

@@ -405,7 +405,7 @@ class maestro:
     def finalize(self):
 
         print(f'- MAESTRO finalizing ******************************* {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-        
+
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
@@ -414,6 +414,100 @@ class maestro:
             self.beat.profiles_output.write_state(file= final_file)
 
             print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
+
+            # End-of-run human-readable summary report
+            try:
+                self.generate_summary()
+            except Exception as e:
+                print(f'\t\t- Could not generate maestro_summary.md: {e}', typeMsg='w')
+
+    # --------------------------------------------------------------------------------------------
+    # Summary report
+    # --------------------------------------------------------------------------------------------
+
+    def generate_summary(self):
+        '''
+        Build Outputs/maestro_summary.md at end of run.
+        - Mermaid flowchart of all beats (with type + wall-time).
+        - One detailed section per beat type {portals, transp, eped},
+          using only the last beat of each type.
+        - Exceptions inside any beat.summary() are caught and recorded;
+          summary generation itself never raises.
+        '''
+        from mitim_modules.maestro.utils.MAESTRObeat import _format_seconds
+
+        print('\t- Generating MAESTRO summary report...')
+
+        # Wall-times per beat counter, parsed from timing.jsonl
+        beat_wall_times = _parse_beat_wall_times(self.folder_performance / 'timing.jsonl')
+
+        # Find the last beat of each tracked type (insertion order in self.beats)
+        TRACKED_TYPES = ['transp', 'portals', 'eped']
+        last_by_type = {}
+        for counter, beat_obj in self.beats.items():
+            if beat_obj.name in TRACKED_TYPES:
+                last_by_type[beat_obj.name] = (counter, beat_obj)
+
+        # Mermaid flowchart
+        mermaid_lines = ['```mermaid', 'flowchart LR']
+        prev_node = None
+        for counter, beat_obj in self.beats.items():
+            wt = beat_wall_times.get(counter)
+            wt_label = f'<br/>({_format_seconds(wt)})' if wt is not None else ''
+            node_id = f'B{counter}'
+            mermaid_lines.append(f'  {node_id}["Beat {counter}<br/>{beat_obj.name.upper()}{wt_label}"]')
+            if prev_node is not None:
+                mermaid_lines.append(f'  {prev_node} --> {node_id}')
+            prev_node = node_id
+        mermaid_lines.append('```')
+
+        # Compose final markdown
+        total_wall_time = sum(v for v in beat_wall_times.values() if v is not None) if beat_wall_times else None
+
+        md = []
+        md.append('# MAESTRO summary')
+        md.append('')
+        md.append(f'- **Root:** `{self.folder}`')
+        md.append(f'- **Beats run:** {len(self.beats)}')
+        if total_wall_time is not None:
+            md.append(f'- **Total wall-time (sum of beat timings):** {_format_seconds(total_wall_time)}')
+        md.append(f'- **Generated:** {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        md.append('')
+        md.append('## Beat flow')
+        md.append('')
+        md.extend(mermaid_lines)
+        md.append('')
+
+        # Warnings: link rather than embed (file can be long)
+        if self.warnings_log_file.exists():
+            try:
+                size = self.warnings_log_file.stat().st_size
+                if size > 0:
+                    md.append('## Warnings')
+                    md.append('')
+                    md.append(f'See [`warnings.log`](warnings.log) ({size} bytes).')
+                    md.append('')
+            except Exception:
+                pass
+
+        # Detailed sections per tracked type (last beat only)
+        for beat_type in TRACKED_TYPES:
+            if beat_type not in last_by_type:
+                continue
+            counter, beat_obj = last_by_type[beat_type]
+            wt = beat_wall_times.get(counter)
+            try:
+                section = beat_obj.summary(self.folder_output, counter=counter, wall_time_s=wt)
+            except Exception as e:
+                section = f'## {beat_type.upper()} (Beat {counter})\n*(summary generation failed: {e})*\n'
+            if section is not None:
+                md.append(section)
+                md.append('')
+
+        summary_path = self.folder_output / 'maestro_summary.md'
+        with open(summary_path, 'w') as f:
+            f.write('\n'.join(md))
+        print(f'\t\t- Summary written to {IOtools.clipstr(summary_path)}')
 
     # --------------------------------------------------------------------------------------------
     # Plotting operations
@@ -466,13 +560,54 @@ class maestro:
 
 
 def read_warning(file, d, label):
-            
+
     # Read contents
     with open(file, 'r') as f:
         log_lines = f.readlines()
-        
+
     for i in range(len(log_lines)):
         if '*WARNING*' in log_lines[i]:
             d[f'{label}_${i}']= log_lines[i].replace('\t','').replace('\n','').replace('[*WARNING*]','')
 
     return d
+
+
+def _parse_beat_wall_times(timing_file):
+    '''
+    Parse Outputs/Performance/timing.jsonl produced by `mitim_timer` and return
+    {beat_counter: total_seconds} aggregating all phases (Initializer, Preparation,
+    Run + Finalization, Finalizing) per beat. The mitim_timer log labels carry the
+    beat number — match it via regex. Returns {} on any parse failure.
+    '''
+    import json
+
+    if not timing_file.exists():
+        return {}
+
+    pattern = re.compile(r'Beat\s*#\s*(\d+)')
+    totals = {}
+    try:
+        with open(timing_file, 'r') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                label = d.get('script', '')
+                if 'duration_s' not in d:
+                    continue
+                try:
+                    seconds = float(d['duration_s'])
+                except (TypeError, ValueError):
+                    continue
+                m = pattern.search(label)
+                if not m:
+                    continue
+                counter = int(m.group(1))
+                totals[counter] = totals.get(counter, 0.0) + seconds
+    except Exception:
+        return {}
+    return totals
