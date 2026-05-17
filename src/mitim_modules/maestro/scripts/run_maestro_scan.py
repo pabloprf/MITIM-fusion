@@ -62,6 +62,7 @@ def launch_scan(
     slurm,
     apply_overrides=None,
     ped_vol_G=0.9,
+    nu_ne=None,
     save=True,
     label_fmt=None,
 ):
@@ -104,27 +105,51 @@ def launch_scan(
         ``apply_overrides(nm)`` called per point, after engineering math.
     ped_vol_G : float
         Coupling fGped = fG * ped_vol_G  (default 0.9).
+    nu_ne : float | list[float] | None
+        EPED-initializer density peaking factor
+        (nm['plasma']['initialization']['parameters']['nu_ne']). If None
+        (default), the value already in the base namelist is left untouched.
+        Scalar overrides every point to the same value with no folder-name
+        change. List makes nu_ne a scan axis and adds ``_nune{value:.3f}``
+        to each per-point folder name.
     save : bool
         Pass --save to mitim_run_maestro (figures auto-saved).
     label_fmt : str | None
         Format string for per-point folder names; default
-        ``"case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"``.
+        ``"case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"``,
+        with ``_nune{nu_ne:.3f}`` appended when ``nu_ne`` is a list.
     """
     base_namelist = Path(base_namelist).expanduser().resolve()
     main_folder = Path(main_folder).expanduser().resolve()
     main_folder.mkdir(parents=True, exist_ok=True)
 
-    fmt = label_fmt or "case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"
+    # Normalize nu_ne: None / scalar -> singleton, no folder suffix;
+    # list -> scan axis, folder suffix added.
+    nu_ne_is_scan = (nu_ne is not None) and (not isinstance(nu_ne, (int, float)))
+    if nu_ne is None:
+        nu_ne_list = [None]
+    elif isinstance(nu_ne, (int, float)):
+        nu_ne_list = [float(nu_ne)]
+    else:
+        nu_ne_list = [float(n) for n in nu_ne]
+
+    default_fmt = "case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"
+    if nu_ne_is_scan:
+        default_fmt += "_nune{nu_ne:.3f}"
+    fmt = label_fmt or default_fmt
 
     folders = []
-    for R_i, eps_i, Bt_i, fLH_i, fG_i in itertools.product(R, eps, Bt, fLH, fG):
-        label = fmt.format(R=R_i, eps=eps_i, Bt=Bt_i, fLH=fLH_i, fG=fG_i)
+    for R_i, eps_i, Bt_i, fLH_i, fG_i, nu_i in itertools.product(
+            R, eps, Bt, fLH, fG, nu_ne_list):
+        label = fmt.format(R=R_i, eps=eps_i, Bt=Bt_i,
+                           fLH=fLH_i, fG=fG_i, nu_ne=nu_i)
         folder = main_folder / label
         folder.mkdir(parents=True, exist_ok=True)
 
         nm = IOtools.read_mitim_yaml(base_namelist)
         _apply_engineering_point(nm, R=R_i, eps=eps_i, Bt=Bt_i,
-                                 fG=fG_i, fLH=fLH_i, ped_vol_G=ped_vol_G)
+                                 fG=fG_i, fLH=fLH_i, ped_vol_G=ped_vol_G,
+                                 nu_ne=nu_i)
         if apply_overrides is not None:
             apply_overrides(nm)
         IOtools.write_mitim_yaml(nm, folder / "namelist.yaml")
@@ -133,8 +158,11 @@ def launch_scan(
     _submit_array(folders, main_folder, slurm=slurm, save=save)
 
 
-def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G):
+def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G, nu_ne=None):
     """Mutate a maestro namelist dict in-place for one engineering point."""
+    if nu_ne is not None:
+        nm['plasma']['initialization']['parameters']['nu_ne'] = nu_ne
+
     params = nm['plasma']['parameters']
     sep = params['separatrix']
 
