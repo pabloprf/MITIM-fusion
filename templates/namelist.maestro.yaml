@@ -131,7 +131,15 @@ plasma:
       # Minority species [Z,A]
       minority: [2, 3]
 
-      # Minority fraction to be added to the mix
+      # Minority fraction to be added to the mix.
+      #     Also honored when type = gaussian_sources: if fmini > 0, TRANSPbeat
+      #     forces Pich on and runs TORIC at the full P_icrh specified above,
+      #     so TRANSP evolves the H-minority density and pressure
+      #     self-consistently. At TRANSP output the auxiliary heating is
+      #     replaced with the gaussian_sources Pe/Pi (downstream beats see
+      #     only the gaussian heating, plus the now-thermalized minority
+      #     density/pressure profiles). Dilution / Zeff via estimateLowZ
+      #     therefore matches what's actually in the plasma.
       fmini: 0.05
 
       # Antenna frequency (MHz)

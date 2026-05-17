@@ -156,7 +156,24 @@ class transp_beat(beat):
         if transp_namelist.get('Pich', False):
 
             Paux_MW    = self.profiles_current.derived['qRF_MW'][-1]
-            
+
+            # gaussian_sources + fmini > 0: Pich was forced on so the H minority
+            # is carried as a TRANSP species AND TORIC runs at the full P_icrh
+            # specified in the maestro namelist, which lets TRANSP evolve the
+            # minority density and pressure self-consistently. The auxiliary
+            # heating is replaced with the gaussian Pe/Pi at TRANSP output
+            # (see preprocess_run_transp / force_auxiliary_heating_at_output),
+            # so only the minority's profiles persist into downstream beats.
+            heating_block = self.maestro_instance.maestro_namelist['plasma']['heating']
+            if heating_block['type'] == 'gaussian_sources' \
+               and heating_block['parameters'].get('fmini', 0.0) > 0.0:
+                P_icrh_nml = heating_block['parameters'].get('P_icrh', 0.0)
+                print(f'\t- gaussian_sources + fmini>0: running TORIC at P_icrh={P_icrh_nml:.3f} MW '
+                      f'from namelist (qRF_MW in profiles was {Paux_MW:.3e}); '
+                      f'aux heating reinserted as gaussian Pe/Pi at TRANSP output.',
+                      typeMsg='i')
+                Paux_MW = P_icrh_nml
+
             # Antennas
             nicha = self._number_of_antennas(tokamak_structures)
             
@@ -584,10 +601,17 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
     Amini = maestro_namelist["plasma"]["heating"]["parameters"]["minority"][1]
     fmini = maestro_namelist["plasma"]["heating"]["parameters"]["fmini"]
 
-    # Only correct Pich from the maestro namelist if it's not already False    
+    # Only correct Pich from the maestro namelist if it's not already False
+    # ICRH is on when heating.type == 'ICRH' AND P_icrh > 0. As a special case,
+    # heating.type == 'gaussian_sources' with fmini > 0 also forces Pich on so
+    # the H minority is added as a TRANSP species for correct dilution accounting;
+    # the run-time ICRF power is floored to a negligible value in that branch.
+    heating_type = maestro_namelist["plasma"]['heating']['type']
+    icrh_active = heating_type == 'ICRH' and \
+                  maestro_namelist["plasma"]['heating']['parameters']['P_icrh'] > 0.0
+    minority_only = heating_type == 'gaussian_sources' and fmini > 0.0
     if transp_namelist.get('Pich', False):
-        transp_namelist['Pich'] =   maestro_namelist["plasma"]['heating']['type'] == 'ICRH' and \
-                                    maestro_namelist["plasma"]['heating']['parameters']['P_icrh'] > 0.0
+        transp_namelist['Pich'] = icrh_active or minority_only
     
     if transp_namelist.get('Pnbi', False):
         transp_namelist['Pnbi'] =   maestro_namelist["plasma"]['heating']['type'] == 'NBI' and \
