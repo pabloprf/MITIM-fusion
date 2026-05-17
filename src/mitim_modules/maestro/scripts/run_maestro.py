@@ -12,16 +12,21 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 @mitim_timer('MAESTRO')
-def run_maestro_local(    
+def run_maestro_local(
         file_path,
         folder              = None,
         terminal_outputs    = False,
         force_cold_start    = False,
         cpus                = 8,
-        keep_all_files      = True,
+        keep_all_files      = None,   # None -> read from YAML (`maestro.keep_all_files`); else explicit override
         ):
-    
+
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
+
+    # If the caller didn't explicitly set keep_all_files, take it from the YAML
+    # (templates/namelist.maestro.yaml documents `maestro.keep_all_files`).
+    if keep_all_files is None:
+        keep_all_files = maestro_namelist.get("maestro", {}).get("keep_all_files", True)
     
     # In case a beat requests this information (e.g. EPED initializer)
     maestro_namelist['maestro']['master_cpus'] = cpus
@@ -306,19 +311,23 @@ def main():
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     parser.add_argument('--save', required=False, default=False, action='store_true')
     parser.add_argument('--coldstart',action='store_true', help='force cold start')
-    
+    parser.add_argument('--no-keep-all-files', dest='no_keep_all_files', action='store_true',
+                        help='Wipe per-beat run_<name>/ folders after each beat (overrides YAML maestro.keep_all_files).')
+
     # Slurm option must be or None or a list wiht [partition, enviroment, hours, memory]
     parser.add_argument('--slurm', nargs=4, metavar=('PARTITION', 'ENVIRONMENT', 'HOURS', 'MEMORY'), help='Submit to SLURM with given parameters')
-    
+
     args = parser.parse_args()
-    
+
     folder = IOtools.expandPath(args.folder)
     maestro_namelist = args.namelist
     cpus = args.cpus
     terminal_outputs = args.terminal
     save_figs = args.save
     force_cold_start = args.coldstart
-    
+    # None -> let run_maestro_local fall back to the YAML; False -> CLI override.
+    keep_all_files = False if args.no_keep_all_files else None
+
     slurm = args.slurm
 
     if slurm is not None:
@@ -326,21 +335,25 @@ def main():
         optional_flags = "--save" if save_figs else ""
         optional_flags += " --coldstart" if force_cold_start else ""
         optional_flags += " --terminal" if terminal_outputs else ""
-        
+        optional_flags += " --no-keep-all-files" if args.no_keep_all_files else ""
+
         partition, environment, hours, memory = slurm
-        
+
         run_slurm(f'mitim_run_maestro {folder} --namelist {maestro_namelist} --cpus {cpus} {optional_flags}',
                     folder,partition,environment,hours=int(hours),n=cpus,mem=memory,exclusive=False,are_n_threads=False, ntasks_per_node=cpus)
-        
+
     else:
-        
+
 
         maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
         if not folder.exists():
             folder.mkdir(parents=True, exist_ok=True)
-        
-        run_maestro_local(maestro_namelist,folder=folder,cpus = cpus, terminal_outputs = terminal_outputs, force_cold_start=force_cold_start)
+
+        run_maestro_local(maestro_namelist, folder=folder, cpus=cpus,
+                          terminal_outputs=terminal_outputs,
+                          force_cold_start=force_cold_start,
+                          keep_all_files=keep_all_files)
 
         if save_figs:
             
