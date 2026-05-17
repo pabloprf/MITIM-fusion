@@ -696,43 +696,38 @@ class eped_beat(beat):
                 except (TypeError, ValueError):
                     pass
 
-        # Generate an EPED-NN scan figure if scan_results are present in the sidecar.
-        # This is the closest scannable stability diagnostic that survives keep_all_files=False.
-        stability_md_parts = []
-        scan_results = d.get('scan_results')
-        if scan_results is not None and 'inputs_to_eped' in d:
-            for ikey in ('ptop_kPa', 'wtop_psipol'):
-                png_name = f'eped_scan_{ikey}.png'
-                png_path = output_dir / png_name
-                try:
-                    fig = plt.figure(figsize=(12, 8))
-                    axs = fig.subplot_mosaic(
-                        """
-                        ABCD
-                        EFGH
-                        IJKL
-                        """,
-                    )
-                    axs = [ax for ax in axs.values()]
-                    self._plot_scan(ikey, loaded_results=d, axs=axs)
-                    fig.tight_layout()
-                    fig.savefig(png_path, dpi=120, bbox_inches='tight')
-                    plt.close(fig)
-                    stability_md_parts.append(f'![EPED scan — {ikey}]({png_name})')
-                except Exception as e:
-                    print(f'\t\t- Could not generate EPED scan figure for {ikey} ({e})', typeMsg='w')
-
+        # The real stability plot (gamma/omega_A vs Te_ped for each toroidal mode n)
+        # is produced by EPEDtools.EPED.plot_g_stability, which needs the full-EPED
+        # netcdf output_run1.nc. Only available when this beat used full EPED.
+        stability_md = None
         nc_file = self.folder_output / 'output_run1.nc'
         if nc_file.exists():
-            stability_md_parts.append(
-                f'*Full-EPED stability data available at* `{nc_file.relative_to(self.maestro_instance.folder)}` '
-                f'(use `mitim_plot_eped` for the j vs alpha diagram).'
-            )
+            png_name = 'eped_stability.png'
+            png_path = output_dir / png_name
+            try:
+                eped = EPEDtools.EPED(folder=self.folder_output)
+                eped.read(subfolder='.', label='run1')
+                fig = plt.figure(figsize=(10, 7))
+                eped.plot_g_stability(
+                    label='run1',
+                    fig=fig,
+                    scan_param='neped',
+                    color='b',
+                    variable=['teped_list', r'$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
+                )
+                fig.savefig(png_path, dpi=120, bbox_inches='tight')
+                plt.close(fig)
+                stability_md = f'\n![EPED stability — gamma/omega_A vs Te_ped]({png_name})\n'
+            except Exception as e:
+                print(f'\t\t- Could not regenerate EPED stability figure ({e})', typeMsg='w')
+                stability_md = f'\n*(stability figure generation failed: {e})*\n'
 
-        if not stability_md_parts:
-            stability_md = '\n*(stability diagnostic not retrievable from saved EPED artifacts)*\n'
-        else:
-            stability_md = '\n' + '\n\n'.join(stability_md_parts) + '\n'
+        if stability_md is None:
+            stability_md = (
+                '\n*(stability figure only available for full-EPED runs; '
+                'this beat used the EPED-NN surrogate, which does not produce '
+                'ballooning-mode growth rates.)*\n'
+            )
 
         # Compose markdown
         header_extra = f' (Beat {counter})' if counter is not None else ''

@@ -428,7 +428,8 @@ class maestro:
     def generate_summary(self):
         '''
         Build Outputs/maestro_summary.md at end of run.
-        - Mermaid flowchart of all beats (with type + wall-time).
+        - Rendered (PNG) flowchart of all beats with type + wall-time labels.
+        - printInfo() dump of the final plasma state (input.gacode_final).
         - One detailed section per beat type {portals, transp, eped},
           using only the last beat of each type.
         - Exceptions inside any beat.summary() are caught and recorded;
@@ -448,19 +449,6 @@ class maestro:
             if beat_obj.name in TRACKED_TYPES:
                 last_by_type[beat_obj.name] = (counter, beat_obj)
 
-        # Mermaid flowchart
-        mermaid_lines = ['```mermaid', 'flowchart LR']
-        prev_node = None
-        for counter, beat_obj in self.beats.items():
-            wt = beat_wall_times.get(counter)
-            wt_label = f'<br/>({_format_seconds(wt)})' if wt is not None else ''
-            node_id = f'B{counter}'
-            mermaid_lines.append(f'  {node_id}["Beat {counter}<br/>{beat_obj.name.upper()}{wt_label}"]')
-            if prev_node is not None:
-                mermaid_lines.append(f'  {prev_node} --> {node_id}')
-            prev_node = node_id
-        mermaid_lines.append('```')
-
         # Compose final markdown
         total_wall_time = sum(v for v in beat_wall_times.values() if v is not None) if beat_wall_times else None
 
@@ -473,10 +461,34 @@ class maestro:
             md.append(f'- **Total wall-time (sum of beat timings):** {_format_seconds(total_wall_time)}')
         md.append(f'- **Generated:** {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
         md.append('')
+
+        # Rendered flowchart PNG (matplotlib boxes + arrows)
         md.append('## Beat flow')
         md.append('')
-        md.extend(mermaid_lines)
+        try:
+            flow_png = _render_beat_flow_png(self.beats, beat_wall_times,
+                                             self.folder_output / 'beat_flow.png')
+            md.append(f'![Beat flow]({flow_png.name})')
+        except Exception as e:
+            md.append(f'*(beat-flow diagram unavailable: {e})*')
         md.append('')
+
+        # Final plasma state: printInfo() output for input.gacode_final
+        final_file = self.folder_output / 'input.gacode_final'
+        if final_file.exists():
+            md.append('## Final plasma state (`input.gacode_final`)')
+            md.append('')
+            try:
+                info_text = _capture_print_info(final_file)
+                if info_text.strip():
+                    md.append('```text')
+                    md.append(info_text)
+                    md.append('```')
+                else:
+                    md.append('*(printInfo produced no output — verbose level may be 0)*')
+            except Exception as e:
+                md.append(f'*(could not capture printInfo: {e})*')
+            md.append('')
 
         # Warnings: link rather than embed (file can be long)
         if self.warnings_log_file.exists():
@@ -570,6 +582,143 @@ def read_warning(file, d, label):
             d[f'{label}_${i}']= log_lines[i].replace('\t','').replace('\n','').replace('[*WARNING*]','')
 
     return d
+
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mGKHFJ]')
+
+
+def _capture_print_info(gacode_file):
+    '''
+    Run gacode_state.printInfo() and return its stdout with ANSI color codes
+    stripped. Temporarily forces verbose level >= 3 so printMsg actually emits.
+    '''
+    import io
+    import contextlib
+    from mitim_tools.gacode_tools import PROFILEStools
+    from mitim_tools.misc_tools import CONFIGread
+
+    p = PROFILEStools.gacode_state(gacode_file)
+    p.derive_quantities()
+
+    buf = io.StringIO()
+    original = CONFIGread.read_verbose_level
+    CONFIGread.read_verbose_level = lambda: 5
+    try:
+        with contextlib.redirect_stdout(buf):
+            p.printInfo(label='input.gacode_final')
+    finally:
+        CONFIGread.read_verbose_level = original
+
+    return _ANSI_RE.sub('', buf.getvalue())
+
+
+def _render_beat_flow_png(beats, wall_times, out_path):
+    '''
+    Render the beat-flow diagram as a PNG (boxes + arrows). Wraps to multiple
+    rows when the chain is long. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+    from mitim_modules.maestro.utils.MAESTRObeat import _format_seconds
+
+    COLORS = {
+        'transp':    '#f4a896',  # salmon
+        'portals':   '#9ec5fe',  # sky-blue
+        'eped':      '#b7e4c7',  # light green
+        'lengyel':   '#fff3b0',  # pale yellow
+        'sharpness': '#e0c3fc',  # lavender
+    }
+    DEFAULT_COLOR = '#d0d0d0'
+
+    items = list(beats.items())  # [(counter, beat_obj), ...] insertion order
+    n = len(items)
+    if n == 0:
+        # Empty diagram — still emit something
+        fig, ax = plt.subplots(figsize=(4, 1))
+        ax.text(0.5, 0.5, '(no beats)', ha='center', va='center')
+        ax.set_axis_off()
+        fig.savefig(out_path, dpi=120, bbox_inches='tight')
+        plt.close(fig)
+        return out_path
+
+    # Wrap layout: up to PER_ROW per row
+    PER_ROW = 6
+    rows = [items[i:i + PER_ROW] for i in range(0, n, PER_ROW)]
+    nrows = len(rows)
+    ncols = max(len(r) for r in rows)
+
+    # Box geometry (in axis data units)
+    box_w, box_h = 2.0, 1.4
+    gap_x, gap_y = 0.7, 1.0
+
+    fig_w = ncols * (box_w + gap_x) + 1.0
+    fig_h = nrows * (box_h + gap_y) + 0.5
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+    # Positions: row 0 at top, row index increases downward
+    positions = {}  # counter -> (x_center, y_center)
+    for r, row in enumerate(rows):
+        y = (nrows - 1 - r) * (box_h + gap_y) + box_h / 2
+        # Even rows L->R, odd rows R->L (serpentine flow, looks more natural)
+        order = row if r % 2 == 0 else list(reversed(row))
+        for c, (counter, beat_obj) in enumerate(order):
+            x = c * (box_w + gap_x) + box_w / 2
+            positions[counter] = (x, y, r, c)
+
+    # Draw boxes
+    for counter, beat_obj in items:
+        x, y, r, c = positions[counter]
+        color = COLORS.get(beat_obj.name, DEFAULT_COLOR)
+        box = FancyBboxPatch(
+            (x - box_w / 2, y - box_h / 2), box_w, box_h,
+            boxstyle='round,pad=0.05,rounding_size=0.15',
+            facecolor=color, edgecolor='black', linewidth=1.5,
+        )
+        ax.add_patch(box)
+        wt = wall_times.get(counter)
+        wt_str = _format_seconds(wt) if wt is not None else '–'
+        ax.text(x, y + 0.25, f'Beat {counter}',
+                ha='center', va='center', fontsize=10, color='black')
+        ax.text(x, y - 0.05, beat_obj.name.upper(),
+                ha='center', va='center', fontsize=13, color='black', fontweight='bold')
+        ax.text(x, y - 0.4, wt_str,
+                ha='center', va='center', fontsize=9, color='#333333', style='italic')
+
+    # Draw arrows between consecutive beats
+    ordered = [it[0] for it in items]
+    for prev_counter, next_counter in zip(ordered, ordered[1:]):
+        x0, y0, r0, c0 = positions[prev_counter]
+        x1, y1, r1, c1 = positions[next_counter]
+        if r0 == r1:
+            # Same row: horizontal arrow from edge to edge
+            start = (x0 + box_w / 2, y0)
+            end = (x1 - box_w / 2, y1) if c1 > c0 else (x1 + box_w / 2, y1)
+            if c1 < c0:  # serpentine reversed row
+                start = (x0 - box_w / 2, y0)
+            arrow = FancyArrowPatch(
+                start, end, arrowstyle='-|>', mutation_scale=18,
+                color='#333', linewidth=1.5, shrinkA=0, shrinkB=0,
+            )
+        else:
+            # Row wrap: drop straight down from the last box of previous row
+            start = (x0, y0 - box_h / 2)
+            end = (x1, y1 + box_h / 2)
+            arrow = FancyArrowPatch(
+                start, end, arrowstyle='-|>', mutation_scale=18,
+                color='#333', linewidth=1.5,
+                connectionstyle='arc3,rad=0.0',
+                shrinkA=0, shrinkB=0,
+            )
+        ax.add_patch(arrow)
+
+    ax.set_xlim(-0.3, ncols * (box_w + gap_x) + 0.3)
+    ax.set_ylim(-0.3, nrows * (box_h + gap_y) + 0.3)
+    ax.set_aspect('equal')
+    ax.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
 
 
 def _parse_beat_wall_times(timing_file):

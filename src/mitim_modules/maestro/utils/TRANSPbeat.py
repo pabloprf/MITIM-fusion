@@ -556,22 +556,75 @@ class transp_beat(beat):
             except Exception:
                 pass
 
-        # Profile snapshot figure (Te, Ti, ne, q vs rho)
+        # Profile snapshot figure: one combined panel (kinetic profiles + power
+        # sources, with twin y-axes for unit groups) and a separate q panel.
         png_name = 'transp_profiles.png'
         png_path = output_dir / png_name
         try:
-            fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(10, 7))
-            axs[0, 0].plot(rho, profiles.profiles['te(keV)'], color='r')
-            axs[0, 0].set_xlabel(r'$\rho$'); axs[0, 0].set_ylabel(r'$T_e$ [keV]')
-            axs[0, 1].plot(rho, profiles.profiles['ti(keV)'][:, 0], color='b')
-            axs[0, 1].set_xlabel(r'$\rho$'); axs[0, 1].set_ylabel(r'$T_i$ [keV]')
-            axs[1, 0].plot(rho, profiles.profiles['ne(10^19/m^3)'] * 0.1, color='g')
-            axs[1, 0].set_xlabel(r'$\rho$'); axs[1, 0].set_ylabel(r'$n_e$ [$10^{20}$ m$^{-3}$]')
-            axs[1, 1].plot(rho, q, color='k')
-            axs[1, 1].axhline(1.0, color='gray', ls='--', lw=0.8)
-            axs[1, 1].set_xlabel(r'$\rho$'); axs[1, 1].set_ylabel(r'$q$')
-            for ax in axs.flat:
-                ax.grid(True, alpha=0.3)
+            fig, (ax_main, ax_q) = plt.subplots(
+                nrows=1, ncols=2, figsize=(14, 5),
+                gridspec_kw={'width_ratios': [2.4, 1.0]},
+            )
+
+            # ---- Left panel: kinetic profiles + power sources (multiple y-axes)
+            te = profiles.profiles['te(keV)']
+            ti = profiles.profiles['ti(keV)'][:, 0]
+            ne20 = profiles.profiles['ne(10^19/m^3)'] * 0.1
+
+            # Left axis: Te, Ti (keV)
+            l1, = ax_main.plot(rho, te, color='tab:red', lw=2, label=r'$T_e$ [keV]')
+            l2, = ax_main.plot(rho, ti, color='tab:orange', lw=2, ls='--', label=r'$T_i$ [keV]')
+            ax_main.set_xlabel(r'$\rho$')
+            ax_main.set_ylabel(r'$T$ [keV]', color='tab:red')
+            ax_main.tick_params(axis='y', colors='tab:red')
+
+            # Second axis: ne (10^20 m^-3)
+            ax_ne = ax_main.twinx()
+            l3, = ax_ne.plot(rho, ne20, color='tab:green', lw=2, label=r'$n_e$ [$10^{20}\,m^{-3}$]')
+            ax_ne.set_ylabel(r'$n_e$ [$10^{20}\,m^{-3}$]', color='tab:green')
+            ax_ne.tick_params(axis='y', colors='tab:green')
+
+            # Third axis (offset): power density sources (MW/m^3)
+            ax_p = ax_main.twinx()
+            ax_p.spines['right'].set_position(('axes', 1.12))
+            ax_p.set_ylabel(r'Power density [MW/$m^3$]', color='tab:blue')
+            ax_p.tick_params(axis='y', colors='tab:blue')
+
+            power_handles = []
+            POWER_CHANNELS = [
+                ('qrfe(MW/m^3)',   r'$q_{RF,e}$',   'tab:blue',   '-'),
+                ('qrfi(MW/m^3)',   r'$q_{RF,i}$',   'tab:cyan',   '--'),
+                ('qbeame(MW/m^3)', r'$q_{NBI,e}$',  'tab:purple', '-'),
+                ('qbeami(MW/m^3)', r'$q_{NBI,i}$',  'tab:pink',   '--'),
+                ('qfuse(MW/m^3)',  r'$q_{\alpha,e}$', 'tab:olive', '-'),
+                ('qfusi(MW/m^3)',  r'$q_{\alpha,i}$', 'tab:brown', '--'),
+                ('qohme(MW/m^3)',  r'$q_{Ohm}$',    'gray',       ':'),
+            ]
+            for key, label, color, ls in POWER_CHANNELS:
+                if key not in profiles.profiles:
+                    continue
+                arr = np.asarray(profiles.profiles[key])
+                if not np.any(np.abs(arr) > 1e-6):
+                    continue
+                line, = ax_p.plot(rho, arr, color=color, lw=1.5, ls=ls, label=label)
+                power_handles.append(line)
+
+            # Combined legend
+            handles = [l1, l2, l3] + power_handles
+            labels = [h.get_label() for h in handles]
+            ax_main.legend(handles, labels, loc='upper right', fontsize=8, framealpha=0.9, ncol=2)
+            ax_main.set_xlim(0, 1)
+            ax_main.grid(True, alpha=0.3)
+
+            # ---- Right panel: q-profile alone
+            ax_q.plot(rho, q, color='k', lw=2)
+            ax_q.axhline(1.0, color='gray', ls='--', lw=0.8, label=r'$q=1$')
+            ax_q.set_xlabel(r'$\rho$')
+            ax_q.set_ylabel(r'$q$')
+            ax_q.set_xlim(0, 1)
+            ax_q.grid(True, alpha=0.3)
+            ax_q.legend(loc='best', fontsize=8)
+
             fig.tight_layout()
             fig.savefig(png_path, dpi=120, bbox_inches='tight')
             plt.close(fig)
