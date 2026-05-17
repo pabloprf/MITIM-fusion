@@ -47,6 +47,7 @@ That submits one sbatch array of 3*3*3*2*2 = 108 tasks, each running
 """
 
 import itertools
+import re
 from pathlib import Path
 
 from mitim_tools.misc_tools import IOtools, PLASMAtools
@@ -184,3 +185,27 @@ def _submit_array(folders, main_folder, *, slurm, save):
               hours=slurm['hours'], n=cpus, mem=slurm['memory'],
               exclusive=False, are_n_threads=False, ntasks_per_node=cpus,
               job_array=job_array)
+
+    _write_per_case_sbatch_stubs(main_folder, folders)
+
+
+def _write_per_case_sbatch_stubs(main_folder, folders):
+    """Mirror the main-folder sbatch log into each case folder as composite IDs.
+
+    mitim_check_maestro discovers each case's SLURM job by reading
+    <case>/sbatch_submission.log. With a job-array submission only the main
+    folder gets that file from run_slurm; this writes a one-line stub per case
+    of the form "Submitted batch job <arrayjob>_<task_id>", which squeue/check
+    treats as the array task's composite ID.
+    """
+    main_log = main_folder / 'sbatch_submission.log'
+    if not main_log.exists():
+        return
+    m = re.search(r'Submitted batch job (\S+)', main_log.read_text())
+    if not m:
+        return
+    array_jobid = m.group(1)
+    for task_id, folder in enumerate(folders):
+        (folder / 'sbatch_submission.log').write_text(
+            f'Submitted batch job {array_jobid}_{task_id}\n'
+        )
