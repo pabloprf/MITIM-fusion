@@ -149,7 +149,7 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
 
     try:
         squeue_out = subprocess.run(
-            ["squeue", "-u", user, "-o", "%i|%T|%V|%C|%P", "-h"],
+            ["squeue", "-u", user, "-o", "%i|%T|%V|%S|%C|%P", "-h"],
             capture_output=True,
             text=True,
             check=False,
@@ -163,13 +163,14 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
     jobs: dict[str, dict[str, str]] = {}
     for raw_line in squeue_out.stdout.splitlines():
         parts = raw_line.strip().split("|")
-        if len(parts) != 5:
+        if len(parts) != 6:
             continue
-        job_id, state, submit_time, cores, partition = (p.strip() for p in parts)
+        job_id, state, submit_time, start_time, cores, partition = (p.strip() for p in parts)
         if job_id:
             jobs[job_id] = {
                 "state": state,
                 "submit_time": submit_time,
+                "start_time": start_time,
                 "cores": cores,
                 "partition": partition,
             }
@@ -200,12 +201,18 @@ def _job_status_from_squeue(folder_str, squeue_by_jobid):
 
     state = job_info["state"]
     submit_time = job_info["submit_time"]
+    start_time = job_info["start_time"]
     cores = job_info["cores"]
     partition = job_info["partition"]
 
+    # For RUNNING jobs, measure elapsed from StartTime; otherwise from SubmitTime
+    # (so pending jobs still show queue wait). Slurm uses "N/A"/"Unknown" pre-start.
+    use_start = state.upper() == "RUNNING" and start_time not in ("", "N/A", "Unknown")
+    ref_time = start_time if use_start else submit_time
+
     try:
-        submit_dt = datetime.strptime(submit_time, '%Y-%m-%dT%H:%M:%S')
-        delta = datetime.now() - submit_dt
+        ref_dt = datetime.strptime(ref_time, '%Y-%m-%dT%H:%M:%S')
+        delta = datetime.now() - ref_dt
         hours = delta.days * 24 + delta.seconds // 3600
         minutes = (delta.seconds % 3600) // 60
         return f"{state} for {hours}h {minutes}m ({cores} cores, {partition})", state
