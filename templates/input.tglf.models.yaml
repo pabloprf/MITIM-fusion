@@ -46,6 +46,18 @@
     XNU_MODEL: 3
     WDIA_TRAPPED: 1.0
 
+# Matches the TurbulentTransport.jl InputTGLF(:sat3, em=true) settings used
+# to generate the TGLF-NN / GKNN training data (sat3_em_d3d_azf-1_withnegD).
+"SAT3em":
+  base: "SAT3"
+  controls:
+    USE_BPER: true
+    USE_BPAR: true
+    KYGRID_MODEL: 4
+    NBASIS_MAX: 6
+    USE_AVE_ION_GRID: true
+    ALPHA_ZF: -1.0
+
 # Experimentation
 "SAT3em basis":
   deprecated_descriptor: "101"

@@ -519,7 +519,40 @@ transport:
       #     none: all runs will only keep minimal files
       #     all: retrieve all files from all runs
       #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
-      keep_files: "pickle" 
+      keep_files: "pickle"
+
+    # *********************************************************************************************************
+    # GKNN (TGLF-GKNN-JAX neural network surrogate for TGLF SAT3 + GKNN corrections)
+    # Predicts 4 fluxes: Qe, Qi, Ge, Pi (momentum). Does NOT predict GZ (impurity) or Se (entropy).
+    # Exclude "nZ" from predicted_channels when using this model.
+    # Requires: pip install tglf_gknn_jax[onnx]
+    # *********************************************************************************************************
+    gknn:
+
+      # Backend code
+      code: gknn
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (GKNN only).
+      # The GKNN network only sees 2 ion species (main ion + lumped impurity).
+      # For multi-species plasmas (D-T, impurities), set this to
+      # `transport_gknn.gknn_profiles_postprocessing_fun` which lumps D+T -> DT
+      # and all impurities -> single effective impurity before passing to the NN.
+      profiles_postprocessing_fun: null
+
+      # (%) Ad-hoc uncertainty: std = |flux| * percent_error / 100
+      percent_error: 5.0
+
+      # Path to GKNN model weights directory. If null, uses the bundled defaults
+      # from the tglf_gknn_jax package.
+      models_dir: null
+
+      # Whether to apply the GKNN correction factors on top of the base TGLF-NN.
+      # Set to false to run with raw TGLF-NN predictions only (no GKNN corrections).
+      apply_gknn: true
+
+      # Kept for interface consistency (not used by GKNN)
+      run: {}
+      read: {}
 
 # -----------------------------------------------------------------
 # Target model parameters
