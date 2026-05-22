@@ -34,11 +34,11 @@ def cleanup_directory(root_path, aggressive_clean_flag = False):
 
             if not aggressive_clean_flag:
                 keep_keywords = ['input.gacode', 'namelist', '.CDF', '.yaml', 'eped.input', 'output_run', '.nc', '.npy', 
-                                'params.in.', 'results.out.', 'optimization_data.csv', '.json', 'figure', 'eped.config']
+                                'params.in.', 'results.out.', 'optimization_data.csv', '.json', 'figure', 'eped.config', 'input.separatrix.gacode']
 
             else:
                 keep_keywords = ['input.gacode', 'namelist', '.yaml', 'eped.input', 'output_run', '.nc', '.npy', 
-                                'params.in.', 'results.out.', 'optimization_data.csv', '.json', 'figure', 'eped.config']
+                                'params.in.', 'results.out.', 'optimization_data.csv', '.json', 'figure', 'eped.config', 'input.separatrix.gacode']
 
             if any(keyword in filename for keyword in keep_keywords):
                 file_path = current_path / filename
