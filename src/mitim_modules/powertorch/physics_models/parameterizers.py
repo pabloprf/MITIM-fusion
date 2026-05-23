@@ -900,21 +900,19 @@ class Mtanh(ParameterBase):
         dy/dx = -A * sech^2(u) / (Delta_0 * (1 + delta * (x - c))^2) - m
         a/Ly  = -(dy/dx) / y
 
-    Solver-space parameters are unconstrained logs:
-        [log_alpha, log_Delta_0, log_u1, log_Ralpha]
+    Solver-space parameters:
+        [log_A, log_u1, delta, m]
     with:
-        alpha = A / Delta_0 > 0
+        A  > 0       (pedestal amplitude)
         u1 = u(1) > 0
-        R = y(1) * aLy(1) - m > 0
-        log_Ralpha = log(R / alpha)
+        delta        (width skewness, unconstrained)
+        m            (linear slope, unconstrained)
 
     Boundary conditions y(1), aLy(1) are enforced algebraically (no root-find):
-        A = alpha * Delta_0
-        m = y(1) * aLy(1) - R
-        W1_eff = sqrt(A * sech^2(u1) / R)
-        s = u1 * W1_eff
-        c = 1 - s
-        delta = (W1_eff / Delta_0 - 1) / s
+        R = y(1) * aLy(1) - m
+        target = A * sech^2(u1) * u1 / R
+        c solved from: delta*(1-c)^2 + (1-c) = target
+        Delta_0 = (1-c) / (u1 * (1 + delta*(1-c)))
         b = y(1) - A * (1 - tanh(u1))
     """
 
@@ -926,10 +924,10 @@ class Mtanh(ParameterBase):
         self.defined_on = "y"
 
         self.param_names = [
-            'log_alpha',
-            'log_Delta_0',
+            'log_A',
             'log_u1',
-            'log_Ralpha',
+            'delta',
+            'm',
         ]
 
         self.n_params_per_profile = len(self.param_names)
@@ -938,6 +936,26 @@ class Mtanh(ParameterBase):
     # ─────────────────────────────────────────────────────────
     # Internal helpers
     # ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _solve_c(delta: float, target: float) -> Optional[float]:
+        """Solve delta*(1-c)^2 + (1-c) = target for c in (0, 1)."""
+        if abs(delta) < 1e-10:
+            c = 1.0 - target
+        else:
+            discriminant = 1.0 + 4.0 * delta * target
+            if discriminant < 0.0:
+                return None
+            root1 = (-1.0 + np.sqrt(discriminant)) / (2.0 * delta)
+            root2 = (-1.0 - np.sqrt(discriminant)) / (2.0 * delta)
+            valid = [r for r in (root1, root2) if r > 0.0]
+            if not valid:
+                return None
+            one_minus_c = min(valid)
+            c = 1.0 - one_minus_c
+        if not (0.0 < c < 1.0):
+            return None
+        return float(c)
 
     def _to_physical(
         self,
@@ -952,7 +970,7 @@ class Mtanh(ParameterBase):
         p
             Solver-space parameter vector or dict:
 
-                [log_alpha, log_Delta_0, log_u1, log_Ralpha]
+                [log_A, log_u1, delta, m]
 
         y_bc
             Boundary value y(1).
@@ -967,35 +985,28 @@ class Mtanh(ParameterBase):
             boundary conditions exactly.
         """
         if isinstance(p, dict):
-            vec = np.array([p[n] for n in self.param_names], dtype=float)
+            vec = np.array([p['log_A'], p['log_u1'], p['delta'], p['m']], dtype=float)
         else:
             vec = np.asarray(p, dtype=float)
 
-        log_alpha, log_D0, log_u1, log_Ralpha = vec
+        log_A, log_u1, delta, m = [float(v) for v in vec[:4]]
 
-        alpha   = float(np.exp(log_alpha))
-        Delta_0 = float(np.exp(log_D0))
-        u1      = float(np.exp(log_u1))
+        A  = float(np.exp(log_A))
+        u1 = float(np.exp(log_u1))
 
-        R = float(alpha * np.exp(log_Ralpha))
+        R     = float(y_bc * aLy_bc - m)
+        R_eff = max(R, 1e-10)
 
-        A = alpha * Delta_0
-        m = y_bc * aLy_bc - R
+        sech2  = 1.0 - np.tanh(u1) ** 2
+        target = A * sech2 * u1 / R_eff
 
-        th1     = np.tanh(u1)
-        sech2_1 = 1.0 - th1**2
+        c = self._solve_c(delta, target)
+        if c is None:
+            c = 0.95
 
-        W1_eff = np.sqrt(A * sech2_1 / R)
-
-        s = u1 * W1_eff
-        c = 1.0 - s
-
-        if abs(s) < 1e-12:
-            delta = 0.0
-        else:
-            delta = (W1_eff / Delta_0 - 1.0) / s
-
-        b = y_bc - A * (1.0 - th1)
+        f1      = max(1.0 + delta * (1.0 - c), self._WIDTH_FLOOR)
+        Delta_0 = (1.0 - c) / (u1 * f1)
+        b       = float(y_bc - A * (1.0 - np.tanh(u1)))
 
         return A, Delta_0, delta, m, c, b
 
@@ -1006,8 +1017,8 @@ class Mtanh(ParameterBase):
         delta: float,
         m: float,
         c: float,
-        y_bc: float,
-        aLy_bc: float,
+        y_bc: float = None,
+        aLy_bc: float = None,
     ) -> Dict[str, float]:
         """Map physical mtanh parameters to solver space.
 
@@ -1016,27 +1027,20 @@ class Mtanh(ParameterBase):
         A, Delta_0, delta, m, c
             Physical mtanh parameters.
 
-        y_bc
-            Boundary value y(1).
-
-        aLy_bc
-            Boundary value a/Ly(1).
-
         Returns
         -------
         dict
-            Solver-space parameter dictionary.
+            Solver-space parameter dictionary {log_A, log_u1, delta, m}.
         """
-        alpha = A / Delta_0
-        s = 1.0 - c
-        u1 = s / (Delta_0 * (1.0 + delta * s))
-        R = y_bc * aLy_bc - m
+        s  = 1.0 - c
+        f1 = max(1.0 + delta * s, self._WIDTH_FLOOR)
+        u1 = s / (Delta_0 * f1)
 
         return {
-            'log_alpha':   float(np.log(alpha)),
-            'log_Delta_0': float(np.log(Delta_0)),
-            'log_u1':      float(np.log(u1)),
-            'log_Ralpha':  float(np.log(R / alpha)),
+            'log_A':  float(np.log(A)),
+            'log_u1': float(np.log(u1)),
+            'delta':  float(delta),
+            'm':      float(m),
         }
 
     def _resolve_bcs(self, prof: str) -> Tuple[float, float]:
@@ -1085,24 +1089,7 @@ class Mtanh(ParameterBase):
         state: Any,
         bc_dict: Dict[str, Any],
     ) -> Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, float]]]:
-        """Fit the mtanh model to profile data and store solver-space parameters.
-
-        The fitted solver-space parameters are:
-
-            phi = {
-                log_alpha,
-                log_Delta_0,
-                log_u1,
-                log_Ralpha,
-            }
-
-        Boundary conditions y(1) and a/Ly(1) are enforced analytically through
-        reconstruction of the derived physical parameters:
-
-            A, Delta_0, delta, m, c, b
-
-        so the optimizer operates entirely in unconstrained solver space.
-        """
+        """Fit mtanh parameters directly in solver space {log_A, log_u1, delta, m}."""
         self.build_bcs(bc_dict)
 
         params: Dict[str, Dict[str, float]] = {}
@@ -1110,76 +1097,86 @@ class Mtanh(ParameterBase):
 
         x_data = np.asarray(getattr(state, 'roa')).flatten()
 
+        # Keep bounds aligned with SplineMtanh's feasible search box.
+        bounds_lo = np.array([np.log(1e-3), np.log(1e-3), -50.0, 0.0], dtype=float)
+        bounds_hi = np.array([np.log(5.0),  np.log(10.0), 50.0, 10.0], dtype=float)
+        default_p0 = np.array([np.log(0.5), np.log(1.0), 0.0, 1.0], dtype=float)
+
         for prof in self.predicted_profiles:
-
             y_data = np.asarray(getattr(state, prof)).flatten()
-
             y_bc, aLy_bc = self._resolve_bcs(prof)
 
-            def _model(
-                x,
-                log_alpha,
-                log_D0,
-                log_u1,
-                log_Ralpha,
-                _y_bc=y_bc,
-                _aLy_bc=aLy_bc,
-            ):
-                p = np.array([log_alpha, log_D0, log_u1, log_Ralpha])
-                A_, D0_, delta_, m_, c_, b_ = self._to_physical(p, _y_bc, _aLy_bc)
-                R = float(np.exp(log_alpha) * np.exp(log_Ralpha))
-                if m_ <= 0 or R >= _y_bc * _aLy_bc:
-                    return np.full_like(x, fill_value=1e3)  # large penalty for unphysical parameters
-                return self._y_eval(x, A_, D0_, delta_, m_, c_, b_)
+            y_scale = np.maximum(np.abs(y_data), 1e-3)
 
-            # ─────────────────────────────────────────────────────
-            # Heuristic initial guess
-            # ─────────────────────────────────────────────────────
+            def _residuals(p: np.ndarray) -> np.ndarray:
+                log_A, log_u1, delta, m = [float(v) for v in np.asarray(p, dtype=float)[:4]]
 
-            alpha0   = 1.0
-            D00      = 0.05
-            u10      = 2.0
-            Ralpha0  = 1.0
+                # Soft penalties keep optimizer inside physically meaningful region.
+                R = y_bc * aLy_bc - m
+                v_r = max(0.0, 1e-10 - R)
 
-            p0 = np.array([np.log(alpha0),np.log(D00),np.log(u10),np.log(Ralpha0)])
+                A = np.exp(log_A)
+                u1 = np.exp(log_u1)
+                sech2 = 1.0 - np.tanh(u1) ** 2
+                target = A * sech2 * u1 / max(R, 1e-10)
+                c = self._solve_c(delta, target)
+                root_violation = 0.0 if c is not None else 1.0
+                if c is None:
+                    c = 0.95
 
-            # Optional broad bounds for optimizer stability only
-            blo = np.array([-7.0, -5.0, -7.0, -20.0])
-            bhi = np.array([ 7.0, 0.0, 5.0, 20.0])
+                f1 = max(1.0 + delta * (1.0 - c), self._WIDTH_FLOOR)
+                D0 = (1.0 - c) / (u1 * f1)
+                v_d0 = max(0.0, 1e-2 - D0) + max(0.0, D0 - 1.0)
 
-            try:
-
-                popt, _ = curve_fit(
-                    _model,
-                    x_data,
-                    y_data,
-                    p0=p0,
-                    bounds=(blo, bhi),
-                    maxfev=4000,
-                    xtol=1e-10,
-                    ftol=1e-10,
+                A_, D0_, delta_, m_, c_, b_ = self._to_physical(
+                    np.array([log_A, log_u1, delta, m], dtype=float),
+                    y_bc,
+                    aLy_bc,
                 )
+                y_model = self._y_eval(x_data, A_, D0_, delta_, m_, c_, b_)
+                res_data = (y_model - y_data) / y_scale
 
-            except Exception:
+                penalty = np.sqrt(1e3) * np.array([v_r, root_violation, v_d0], dtype=float)
+                return np.concatenate([res_data, penalty])
 
-                popt = p0
+            starts = [
+                default_p0,
+                np.array([np.log(1e-3), np.log(1e-2), 0.0, 1.0], dtype=float),
+                np.array([np.log(1.0), np.log(0.05), 0.0, 1.0], dtype=float),
+            ]
 
-            # Reconstruct physical parameters once to ensure consistency
-            A_fit, D0_fit, delta_fit, m_fit, c_fit, _ = self._to_physical(
-                popt,
-                y_bc,
-                aLy_bc,
-            )
+            best = None
+            best_cost = np.inf
+            for p0 in starts:
+                p0_clip = np.minimum(np.maximum(p0, bounds_lo), bounds_hi)
+                try:
+                    fit = least_squares(
+                        _residuals,
+                        p0_clip,
+                        method='trf',
+                        bounds=(bounds_lo, bounds_hi),
+                        ftol=1e-3,
+                        gtol=1e-12,
+                        xtol=1e-3,
+                        diff_step=5e-2,
+                        x_scale='jac',
+                        max_nfev=100,
+                    )
+                except Exception:
+                    continue
 
-            params[prof] = self._physical_to_solver(
-                A_fit,
-                D0_fit,
-                delta_fit,
-                m_fit,
-                c_fit,
-                y_bc,
-                aLy_bc,
-            )
+                if fit.cost < best_cost:
+                    best = np.asarray(fit.x, dtype=float)
+                    best_cost = float(fit.cost)
+
+            popt = best if best is not None else default_p0
+
+            params[prof] = {
+                'log_A': float(popt[0]),
+                'log_u1': float(popt[1]),
+                'delta': float(popt[2]),
+                'm': float(popt[3]),
+            }
 
             params_std[prof] = {
                 k: abs(v) * self.sigma
@@ -1205,9 +1202,9 @@ class Mtanh(ParameterBase):
         for prof, p in params.items():
             A, Delta_0, delta, m, c, b = self._physical_for_profile(prof, p)
             y_bc, aLy_bc = self._resolve_bcs(prof)
-            R = float(np.exp(p[0]) * np.exp(p[3]))
-            
-            if m <= 0 or R >= y_bc * aLy_bc:
+            R = y_bc * aLy_bc - m
+
+            if m <= 0 or R <= 0:
                 out[prof] = np.full_like(x_eval, fill_value=1e3)  # large penalty for unphysical parameters
             else:
                 out[prof] = np.clip(
@@ -1232,9 +1229,9 @@ class Mtanh(ParameterBase):
         for prof, p in params.items():
             A, Delta_0, delta, m, c, b = self._physical_for_profile(prof, p)
             y_bc, aLy_bc = self._resolve_bcs(prof)
-            R = float(np.exp(p[0]) * np.exp(p[3]))
+            R = y_bc * aLy_bc - m
 
-            if m <= 0 or R >= y_bc * aLy_bc:
+            if m <= 0 or R <= 0:
                 out[prof] = np.full_like(x_eval, fill_value=1e3)  # large penalty for unphysical parameters
             else:
                 y = self._y_eval(x_eval, A, Delta_0, delta, m, c, b)
@@ -1272,9 +1269,9 @@ class Mtanh(ParameterBase):
         for prof, p in params.items():
             A, Delta_0, delta, m, c, _ = self._physical_for_profile(prof, p)
             y_bc, aLy_bc = self._resolve_bcs(prof)
-            R = float(np.exp(p[0]) * np.exp(p[3]))
+            R = y_bc * aLy_bc - m
 
-            if m <= 0 or R >= y_bc * aLy_bc:
+            if m <= 0 or R <= 0:
                 out[prof] = np.full_like(x_eval, fill_value=1e3)  # large penalty for unphysical parameters
             else:
                 f = np.maximum(1.0 + delta * (x_eval - c), self._WIDTH_FLOOR)
@@ -1339,7 +1336,7 @@ class SplineMtanh(ParameterBase):
         self.fit_trf_xtol = float(options.get('fit_trf_xtol', 1e-3))
         self.fit_trf_diff_step = float(options.get('fit_trf_diff_step', 5e-2))
         # Single pointwise acceptance criterion: max relative error across all knot points.
-        self.fit_max_rel_error = float(options.get('fit_max_rel_error', 2.5e-2))
+        self.fit_max_rel_error = float(options.get('fit_max_rel_error', 2e-2))
         # Resolve cache: skip re-fitting when params+BCs are within tolerance of a prior call.
         self.fit_cache_enabled = bool(options.get('fit_cache_enabled', True))
         self.fit_cache_tol = float(options.get('fit_cache_tol', 1e-1))
@@ -1348,6 +1345,11 @@ class SplineMtanh(ParameterBase):
         # happens in solver space and BCs can be reprojected correctly for each query.
         self._resolve_cache: Dict[str, List[Tuple[np.ndarray, np.ndarray, Tuple[float, ...]]]] = {}
         self._last_theta_guess: Dict[str, np.ndarray] = {}
+        # Multiplicative Akima residual: y_final = y_mtanh * exp(r(x)), r(1)=0.
+        # For defined_on='dy'  : r fitted in log-y space at knots, r'(1)=0 enforced via CubicSpline BC.
+        # For defined_on='aLy' : additive aLy correction delta_aLy(x) fitted at knots,
+        #                        then r(x)=int_x^1 delta_aLy dt so r'=-delta_aLy and r(1)=0.
+        self.residual_mode = bool(options.get('residual_mode', False))
 
         prefix = 'dy' if self.defined_on == 'dy' else 'aLy'
         self.param_names = [f'{prefix}{i}' for i in range(len(self.knots))]
@@ -1482,17 +1484,26 @@ class SplineMtanh(ParameterBase):
         aLy_bc: float,
         p0: Optional[np.ndarray] = None,
         accept_fn: Optional[Callable[[np.ndarray], bool]] = None,
+        num_multistarts: int = 5,  # New parameter to control the number of multistart points
     ) -> np.ndarray:
-        """Fit with 2 fixed multistart points and optional warm-start seed."""
+        """Fit with configurable multistart points and optional warm-start seed."""
         bounds = self._global_bounds()
         bounds_lo = np.array([b[0] for b in bounds], dtype=float)
         bounds_hi = np.array([b[1] for b in bounds], dtype=float)
 
         # Two fixed starting points.
         fixed_starts = [
-            np.array([np.log(0.001), np.log(1e-2), 0.0, 1.0], dtype=float),
-            np.array([np.log(1.0), np.log(0.05), 0.0, 1.0], dtype=float),
+            np.array([np.log(0.001), np.log(1e-2), 0.0, 0.2], dtype=float),
+            np.array([np.log(1.0), np.log(0.05), 0.0, 2.0], dtype=float),
         ]
+
+        # Generate additional multistart points by interpolating between fixed_starts
+        if num_multistarts > 2:
+            interpolated_starts = [
+                fixed_starts[0] + (fixed_starts[1] - fixed_starts[0]) * i / (num_multistarts - 1)
+                for i in range(1, num_multistarts - 1)
+            ]
+            fixed_starts.extend(interpolated_starts)
 
         # Optional warm-start from cached/interpolated theta.
         candidates = []
@@ -1797,6 +1808,117 @@ class SplineMtanh(ParameterBase):
         self.params_std = params_std
         return params, params_std
 
+    def _apply_residual_correction(
+        self,
+        prof: str,
+        pv: Any,
+        phys: Tuple[float, float, float, float, float, float],
+        x_1d: np.ndarray,
+        y_m: np.ndarray,
+        aLy_m: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute y_final = y_mtanh * exp(r(x)) residual correction.
+
+        For defined_on='dy':
+            r(x) is a CubicSpline fitted in log-y space at the knots, anchored
+            r(1)=0 (data point) and r'(1)=0 (right boundary condition), so the
+            LCFS value and its logarithmic gradient are both preserved exactly.
+            aLy_final = aLy_mtanh - r'(x).
+
+        For defined_on='aLy':
+            An additive correction delta_aLy(x) is fitted at the knots via Akima,
+            anchored delta_aLy(1)=0.  The implied log-residual is
+            r(x) = integral_{x}^{1} delta_aLy(t) dt  (so r'=-delta_aLy, r(1)=0).
+            aLy_final = aLy_mtanh + delta_aLy(x).
+            y_final   = y_mtanh * exp(r(x)).
+        """
+        A, D0, delta, m, c, b = phys
+        n = len(self.knots)
+        if n == 0:
+            return y_m, aLy_m, np.gradient(np.gradient(y_m, x_1d), x_1d)
+
+        x_1d = np.asarray(x_1d, dtype=float)
+        x_min = float(np.min(self.knots))
+        x_max = 1.0
+
+        vec = (
+            np.array([float(pv[name]) for name in self.param_names], dtype=float)
+            if isinstance(pv, dict)
+            else np.asarray(pv, dtype=float).reshape(-1)[:n]
+        )
+
+        bc_y_entry = self.get_nearest_bc(prof, 1.0)
+        y_bc_val = float(bc_y_entry['val']) if bc_y_entry is not None else (float(y_m[-1]) if len(y_m) else 1.0)
+
+        if self.defined_on == 'dy':
+            # Reconstruct y values at knots from cumulative dy sums.
+            y_target_k = np.array(
+                [y_bc_val + float(np.sum(vec[i:])) for i in range(n)], dtype=float
+            )
+            y_m_k = self._y_mtanh(self.knots, A, D0, delta, m, c, b)
+            r_k = np.log(
+                np.maximum(np.abs(y_target_k), self._Y_FLOOR)
+                / np.maximum(np.abs(y_m_k), self._Y_FLOOR)
+            )
+            # Append LCFS anchor: r(1)=0.
+            x_fit = np.append(self.knots, 1.0)
+            r_fit = np.append(r_k, 0.0)
+            _, idx = np.unique(x_fit, return_index=True)
+            x_fit, r_fit = x_fit[idx], r_fit[idx]
+            if x_fit.size < 2:
+                return y_m, aLy_m, np.gradient(np.gradient(y_m, x_1d), x_1d)
+            try:
+                # CubicSpline with r'(1)=0 and natural left BC (zero second derivative).
+                r_spl = CubicSpline(x_fit, r_fit, bc_type=((2, 0.0), (1, 0.0)))
+            except Exception:
+                try:
+                    r_spl = akima(x_fit, r_fit, extrapolate=True)
+                except Exception:
+                    return y_m, aLy_m, np.gradient(np.gradient(y_m, x_1d), x_1d)
+            r_vals  = np.asarray(r_spl(x_1d), dtype=float)
+            r_prime = np.asarray(r_spl.derivative()(x_1d), dtype=float)
+            outside = (x_1d < x_min) | (x_1d > x_max)
+            if np.any(outside):
+                r_vals = np.where(outside, 0.0, r_vals)
+                r_prime = np.where(outside, 0.0, r_prime)
+            y_corr   = np.clip(y_m * np.exp(r_vals), 0.0, None)
+            aLy_corr = np.clip(aLy_m - r_prime, 0.0, None)
+            return y_corr, aLy_corr, np.gradient(np.gradient(y_corr, x_1d), x_1d)
+
+        else:  # defined_on == 'aLy'
+            # Additive aLy correction: delta_aLy(x) fitted at knots, anchored at 0 on LCFS.
+            aLy_target_k = vec[:n]
+            y_m_k    = self._y_mtanh(self.knots, A, D0, delta, m, c, b)
+            dydx_m_k = self._dydx_mtanh(self.knots, A, D0, delta, m, c)
+            y_safe_k = np.where(np.abs(y_m_k) < self._Y_FLOOR, self._Y_FLOOR, y_m_k)
+            aLy_m_k  = np.clip(-dydx_m_k / y_safe_k, 0.0, None)
+            delta_k  = aLy_target_k - aLy_m_k
+            x_fit = np.append(self.knots, 1.0)
+            d_fit = np.append(delta_k, 0.0)
+            _, idx = np.unique(x_fit, return_index=True)
+            x_fit, d_fit = x_fit[idx], d_fit[idx]
+            if x_fit.size < 2:
+                return y_m, aLy_m, np.gradient(np.gradient(y_m, x_1d), x_1d)
+            try:
+                d_spl = akima(x_fit, d_fit, extrapolate=True)
+            except Exception:
+                try:
+                    d_spl = CubicSpline(x_fit, d_fit)
+                except Exception:
+                    return y_m, aLy_m, np.gradient(np.gradient(y_m, x_1d), x_1d)
+            delta_aLy = np.asarray(d_spl(x_1d), dtype=float)
+            outside = (x_1d < x_min) | (x_1d > x_max)
+            if np.any(outside):
+                delta_aLy = np.where(outside, 0.0, delta_aLy)
+            aLy_corr  = np.clip(aLy_m + delta_aLy, 0.0, None)
+            # r(x) = integral from x to 1 of delta_aLy(t) dt  =>  r'=-delta_aLy, r(1)=0.
+            raw_cum = cumulative_trapezoid(delta_aLy, x_1d, initial=0.0)
+            r_vals  = raw_cum[-1] - raw_cum
+            if np.any(outside):
+                r_vals = np.where(outside, 0.0, r_vals)
+            y_corr  = np.clip(y_m * np.exp(r_vals), 0.0, None)
+            return y_corr, aLy_corr, np.gradient(np.gradient(y_corr, x_1d), x_1d)
+
     def _evaluate_once(
         self, batch_params: Dict[str, Any], x_1d: np.ndarray
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, Any]]:
@@ -1845,9 +1967,18 @@ class SplineMtanh(ParameterBase):
             dydx = self._dydx_mtanh(x_1d, A, D0, delta, m, c)
             y_safe = np.where(np.abs(y) < self._Y_FLOOR, self._Y_FLOOR, y)
 
-            y_out[prof] = y
-            aLy_out[prof] = np.clip(-dydx / y_safe, 0.0, None)
-            curv_out[prof] = self._d2ydx2_mtanh(x_1d, A, D0, delta, c)
+            y_base    = y
+            aLy_base  = np.clip(-dydx / y_safe, 0.0, None)
+            curv_base = self._d2ydx2_mtanh(x_1d, A, D0, delta, c)
+
+            if self.residual_mode and len(self.knots) > 0:
+                y_base, aLy_base, curv_base = self._apply_residual_correction(
+                    prof, pv, phys, x_1d, y_base, aLy_base
+                )
+
+            y_out[prof]    = y_base
+            aLy_out[prof]  = aLy_base
+            curv_out[prof] = curv_base
 
         return y_out, aLy_out, curv_out, batch_params
 
@@ -1978,12 +2109,12 @@ class SplineMtanh(ParameterBase):
         x_eval = np.asarray(x_eval)
         out: Dict[str, np.ndarray] = {}
         for prof, pv in params.items():
-            phys = self._resolve(prof, pv)
-            if phys is None:
-                out[prof] = self._penalty_vec(x_eval.size)
-                continue
-            A, D0, delta, m, c, b = phys
-            out[prof] = self._d2ydx2_mtanh(x_eval, A, D0, delta, c)
+            # phys = self._resolve(prof, pv)
+            # if phys is None:
+            #     out[prof] = self._penalty_vec(x_eval.size)
+            #     continue
+            # A, D0, delta, m, c, b = phys
+            out[prof] = np.zeros_like(x_eval) #self._d2ydx2_mtanh(x_eval, A, D0, delta, c)
         self.curv = out
         return out
 

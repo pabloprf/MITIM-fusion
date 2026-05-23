@@ -1,0 +1,16 @@
+"default":
+  controls: {}
+
+"sat1":
+  controls:
+    SAT_RULE: 1
+
+"sat3":
+  controls:
+    SAT_RULE: 3
+
+"metric_px0":
+  controls:
+    SAT_RULE: -1
+    N_PX0: 4
+    PX0GRID_MODEL: 1

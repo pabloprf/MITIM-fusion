@@ -34,6 +34,13 @@ def main():
     parser.add_argument("--all", required=False, default=False, action="store_true")  # Plot all fluxes?
     parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
     parser.add_argument("--complete", "-c", required=False, default=False, action="store_true")
+    parser.add_argument(
+        "--only-best",
+        required=False,
+        default=False,
+        action="store_true",
+        help="Plot only the best iteration (omit the initial iteration).",
+    )
 
     # Edge/domain behavior
     parser.add_argument(
@@ -156,6 +163,7 @@ def main():
                 else PORTALSplot.PORTALSanalyzer_plotMetrics_edge_modern
             )
             portals.plotMetrics = types.MethodType(plotter, portals)
+            portals.plot_best_only = args.only_best
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Actual PORTALS plotting

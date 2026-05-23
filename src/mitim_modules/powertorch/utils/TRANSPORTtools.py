@@ -399,9 +399,10 @@ class power_transport:
 from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
 from mitim_modules.powertorch.physics_models.transport_neo import neo_model
 from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model
+from mitim_modules.powertorch.physics_models.transport_qlgyro import qlgyro_model
 from mitim_modules.powertorch.physics_models.transport_gx import gx_model
 
-class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model):
+class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, qlgyro_model, gx_model):
 
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
@@ -420,6 +421,8 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return tglf_model.evaluate_turbulence(self)
         elif self.turbulence_model == 'cgyro':
             return cgyro_model.evaluate_turbulence(self)
+        elif self.turbulence_model == 'qlgyro':
+            return qlgyro_model.evaluate_turbulence(self)
         elif self.turbulence_model == 'gx':
             return gx_model.evaluate_turbulence(self)
         else:

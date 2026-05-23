@@ -34,6 +34,13 @@ Add an ``edge_options`` block alongside the standard ``solution`` block:
 
       # Swap the targets evaluator for analytical_model_edge
       use_edge_targets : true
+
+    # Optional: edge-UQ uncertainty inflation (applied inside powerstate_edge)
+    edge_uq_enable              : true
+    edge_uq_calib_dir           : ./results_offline_edge_uq
+    edge_uq_calib_label         : baseline
+    edge_uq_scale_factor        : 1.0
+    # edge_uq_channel_mapping: {bc_ne: ne, bc_te: te}  # optional
 """
 
 import copy
@@ -55,7 +62,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 def _dv_name_for_parameterizer(parameterizer_name, channel, index, defined_on=None):
     if parameterizer_name.lower() == "mtanh":
-        param_names = ["log_A", "log_Delta_0", "delta", "m"]
+        param_names = ["log_A", "log_u1", "delta", "m"]
         if 1 <= index <= len(param_names):
             return f"{channel}_{param_names[index - 1]}"
     if parameterizer_name in {"SplineMtanh", "spline_mtanh", "mtanh_spline", "MtanhSpline"}:
@@ -903,3 +910,143 @@ class portals_edge(portals):
         of, cal, _, res = PORTALStools.calculate_residuals(proxy_powerstate, self.portals_parameters,specific_vars=var_dict)
 
         return of, cal, res
+
+
+
+def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
+    """
+    Notes
+    -----
+        - Works with tensors
+        - It should be independent on how many dimensions it has, except that the last dimension is the multi-ofs
+    """
+
+    # Case where I have already constructed the dictionary (i.e. in scalarized objective)
+    if specific_vars is not None:
+        var_dict = specific_vars
+    # Prepare dictionary from powerstate (for use in Analysis)
+    else:
+        var_dict = {}
+
+        mapper = {
+            "Qe_tr_turb": "QeMWm2_tr_turb",
+            "Qi_tr_turb": "QiMWm2_tr_turb",
+            "Ge_tr_turb": "Ge_tr_turb",
+            "GZ_tr_turb": "GZ_tr_turb",
+            "Mt_tr_turb": "MtJm2_tr_turb",
+            "Qe_tr_neoc": "QeMWm2_tr_neoc",
+            "Qi_tr_neoc": "QiMWm2_tr_neoc",
+            "Ge_tr_neoc": "Ge_tr_neoc",
+            "GZ_tr_neoc": "GZ_tr_neoc",
+            "Mt_tr_neoc": "MtJm2_tr_neoc",
+            "Qe_tar": "QeMWm2",
+            "Qi_tar": "QiMWm2",
+            "Ge_tar": "Ge",
+            "GZ_tar": "GZ",
+            "Mt_tar": "MtJm2",
+            "Qie_tr_turb": "QieMWm3_tr_turb"
+        }
+
+        for ikey in mapper:
+            var_dict[ikey] = powerstate.plasma[mapper[ikey]][..., 1:]
+            if mapper[ikey] + "_stds" in powerstate.plasma:
+                var_dict[ikey + "_stds"] = powerstate.plasma[mapper[ikey] + "_stds"][..., 1:]
+            else:
+                var_dict[ikey + "_stds"] = None
+
+    dfT = list(var_dict.values())[0]  # as a reference for sizes
+
+    # -------------------------------------------------------------------------
+    # Volume integrate energy exchange from MW/m^3 to a flux MW/m^2 to be added
+    # -------------------------------------------------------------------------
+
+    if portals_parameters["solution"]["turbulent_exchange_as_surrogate"]:
+        QieMWm2_tr_turb = PORTALStools.computeTurbExchangeIndividual(var_dict["Qie_tr_turb"], powerstate)
+    else:
+        QieMWm2_tr_turb = torch.zeros(dfT.shape).to(dfT)
+
+    # ------------------------------------------------------------------------
+    # Go through each profile that needs to be predicted, calculate components
+    # ------------------------------------------------------------------------
+
+    of, cal, res = (
+        torch.Tensor().to(dfT),
+        torch.Tensor().to(dfT),
+        torch.Tensor().to(dfT),
+    )
+    for prof in powerstate.predicted_channels:
+        if prof == "te":
+            var = "Qe"
+        elif prof == "ti":
+            var = "Qi"
+        elif prof == "ne":
+            var = "Ge"
+        elif prof == "nZ":
+            var = "GZ"
+        elif prof == "w0":
+            var = "Mt"
+
+        """
+		-----------------------------------------------------------------------------------
+		Transport (_tr_turb+_tr_neoc)
+		-----------------------------------------------------------------------------------
+		"""
+        of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neoc"]
+
+        """
+		-----------------------------------------------------------------------------------
+		Target (Sum here the turbulent exchange power)
+		-----------------------------------------------------------------------------------
+		"""
+        if var == "Qe":
+            cal0 = var_dict[f"{var}_tar"] + QieMWm2_tr_turb
+        elif var == "Qi":
+            cal0 = var_dict[f"{var}_tar"] - QieMWm2_tr_turb
+        else:
+            cal0 = var_dict[f"{var}_tar"]
+
+        """
+		-----------------------------------------------------------------------------------
+		Ad-hoc modifications for different weighting
+		-----------------------------------------------------------------------------------
+		"""
+
+        if var == "Qe":
+            of0, cal0 = (
+                of0 * portals_parameters["solution"]["scalar_multipliers"][0],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][0],
+            )
+        elif var == "Qi":
+            of0, cal0 = (
+                of0 * portals_parameters["solution"]["scalar_multipliers"][1],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][1],
+            )
+        elif var == "Ge":
+            of0, cal0 = (
+                of0 * portals_parameters["solution"]["scalar_multipliers"][2],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][2],
+            )
+        elif var == "GZ":
+            of0, cal0 = (
+                of0 * portals_parameters["solution"]["scalar_multipliers"][3],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][3],
+            )
+        elif var == "MtJm2":
+            of0, cal0 = (
+                of0 * portals_parameters["solution"]["scalar_multipliers"][4],
+                cal0 * portals_parameters["solution"]["scalar_multipliers"][4],
+            )
+
+        of, cal = torch.cat((of, of0), dim=-1), torch.cat((cal, cal0), dim=-1)
+
+    # -----------
+    # Composition
+    # -----------
+
+    # Source term is (TARGET - TRANSPORT)
+    source = (cal - of)/cal
+
+    # Residual is defined as the negative (bc it's maximization) normalized (1/N) norm of radial & channel residuals -> L2
+    res = -1 / source.shape[-1] * torch.norm(source, p=2, dim=-1)
+
+    return of, cal, source, res

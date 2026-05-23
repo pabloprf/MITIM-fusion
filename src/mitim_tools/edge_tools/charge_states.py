@@ -145,10 +145,11 @@ class AuroraChargeStates(ChargeStateModel):
             applied.
         ``cxr_flag`` : bool, default False
             Whether to enable charge-exchange recombination.
-        ``max_dilution_fraction`` : float, default 0.05
+        ``max_dilution_fraction`` : float, default 1.0
             Maximum allowed peak impurity charge fraction
             ``max_r[ sum_z z*nz_z(r) / ne(r) ]`` before source_rate is
-            reduced.
+            reduced. Set to 1.0 (100%) to allow realistic impurity transport
+            up to the quasi-neutrality limit.
             The solver rescales ``source_rate`` exactly (one step is sufficient
             due to linearity of the steady-state solve) and re-runs Aurora to
             verify. Up to ``max_source_rate_iters`` iterations are performed.
@@ -176,7 +177,7 @@ class AuroraChargeStates(ChargeStateModel):
         self.V0              = options.get("V_z_m_s",       -0.5)
         self.source_rate     = options.get("source_rate",     1e21)
         self.cxr_flag        = options.get("cxr_flag",        False)
-        self.max_dilution_fraction  = options.get("max_dilution_fraction",   0.1)
+        self.max_dilution_fraction  = options.get("max_dilution_fraction",   1.0)
         self.max_source_rate_iters  = options.get("max_source_rate_iters",   5)
         self.update_ni              = options.get("update_ni_charge_balance", True)
         self.main_ion_species_index = options.get("main_ion_species_index",   0)
@@ -339,7 +340,7 @@ class AuroraChargeStates(ChargeStateModel):
                 )
                 return None
 
-            # Dilution check (user-facing): max_r [ sum_z z*nz_z(r) / ne(r) ]
+            # User-facing dilution check: max_r [ sum_z z*nz_z(r) / ne(r) ]
             # Map ne onto Aurora's rhop_grid using the same roa proxy.
             rhop_aurora = asim.rvol_grid / max(asim.rvol_lcfs, 1e-10)
             ne_aurora   = np.interp(rhop_aurora, roa_1d, ne_cm3).clip(1e8)
@@ -349,9 +350,17 @@ class AuroraChargeStates(ChargeStateModel):
             nz_use = nz_steady[:, :n_common]
             ne_use = ne_aurora[:n_common]
 
+            nz_positive = np.maximum(nz_use, 0.0)  # shape (nZ+1, nr)
             Z_vec = np.arange(nz_use.shape[0], dtype=nz_use.dtype)
-            imp_charge_dens = np.maximum(nz_use, 0.0) * Z_vec[:, None]
-            peak_dilution = (imp_charge_dens.sum(axis=0) / ne_use).max()
+            peak_dilution = ((nz_positive * Z_vec[:, None]).sum(axis=0) / ne_use).max()
+
+            if peak_dilution > 1.0 + 1e-6:
+                print(
+                    f"[AuroraChargeStates] Peak impurity charge fraction {peak_dilution:.4f} exceeds 1.0 "
+                    f"for batch {b} (iter {iteration}). Charge balance will drive the main-ion density negative; "
+                    "inspect source_rate / transport coefficients.",
+                    typeMsg="w",
+                )
 
             # Avoid noisy repeated "rescale by 1.0" passes from tiny FP overages.
             if peak_dilution <= self.max_dilution_fraction * (1.0 + 1e-6):

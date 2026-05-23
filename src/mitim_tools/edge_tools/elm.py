@@ -85,6 +85,7 @@ Available models
 ----------------
 "Null"        — no-op; all penalty factors = 1.0 (default)
 "AnalyticPB"  — inline s-alpha peeling-ballooning stability criterion above
+"EPED"        — EPED binary workflow or EPEDNN.jl surrogate (configurable)
 
 Model options (AnalyticPB)
 --------------------------
@@ -111,6 +112,7 @@ import hashlib
 import json
 import os
 import shutil
+from typing import Any
 import torch
 import numpy as np
 from pathlib import Path
@@ -291,9 +293,9 @@ def _pressure_kPa(plasma: dict, b: int) -> torch.Tensor:
 
     Returns a 1-D tensor of shape (rho,) in **kPa**.
 
-    Units: ne × Te [1e19 m⁻³ × keV] → kPa via factor 1.602e-3.
+    Units: ne × Te [1e19 m⁻³ × keV] → kPa via factor 1.602.
     """
-    _c = 1.602e-3   # (e_J × 1e19 × 1e3 × 1e-3) kPa per (1e19/m³ × keV)
+    _c = 1.602      # (e_J × 1e19 × 1e3 × 1e-3) kPa per (1e19/m³ × keV)
     ne = plasma["ne"][b, :]       # (rho,)       1e19 m⁻³
     te = plasma["te"][b, :]       # (rho,)       keV
     ni = plasma["ni"][b, :, :]    # (rho, ions)  1e19 m⁻³
@@ -303,16 +305,16 @@ def _pressure_kPa(plasma: dict, b: int) -> torch.Tensor:
 
 class EpedElm(ElmStability):
     """
-    ELM stability model that calls EPED.run() / EPED.read() to obtain a
-    physics-based peeling-ballooning stability limit, then translates the
-    degree of pedestal overshoot into a stiff-transport penalty on the
+    ELM stability model that uses either the EPED workflow or the EPEDNN.jl
+    surrogate to obtain a peeling-ballooning stability limit, then translates
+    the degree of pedestal overshoot into a stiff-transport penalty on the
     turbulent fluxes.
 
     Stability criterion
     -------------------
-    EPED predicts the maximum stable pedestal-top pressure ``p_top_crit`` [kPa].
+    The backend predicts the maximum stable pedestal-top pressure ``p_top_crit``.
     The current pedestal-top pressure ``p_top_current`` is sampled from the
-    plasma profiles at the pedestal-top reference surface.  The global overshoot
+    plasma profiles at the pedestal-top reference surface. The global overshoot
 
         overshoot = max(0, p_top_current / p_top_crit - 1)
 
@@ -323,40 +325,15 @@ class EpedElm(ElmStability):
                             * ramp(roa)
                             * overshoot ^ stiffness_power
 
-        ramp(roa) = clamp((roa - roa_min) / (1 - roa_min),  0, 1)
+        ramp(roa) = clamp((roa - roa_min) / (1 - roa_min), 0, 1)
 
-    EPED run folder management
-    --------------------------
-    Each call to ``solve()`` for batch element *b* stores its EPED run in::
+    Backend selection
+    -----------------
+    The ``backend`` option controls which pedestal model is used:
 
-        eped_folder / f"b{b}_{hash8}"
-
-    where ``hash8`` is an 8-character MD5 hash of the EPED input parameters
-    rounded to 3 decimal places.  Identical inputs therefore reuse the cached
-    EPED output without re-running, saving cluster time during iterative
-    transport solves.  Pass ``cold_start=True`` to force fresh runs.
-
-    Auto-extracted global parameters
-    ---------------------------------
-    The following EPED inputs are extracted automatically from the powerstate
-    object; all can be overridden via ``elm_model_options``:
-
-    ============  ================  ======================================
-    Key           Units             Source
-    ============  ================  ======================================
-    ip            MA                profiles["current(MA)"][0]
-    bt            T                 profiles["bcentr(T)"][0]
-    r             m                 profiles["rcentr(m)"][0]  (R₀)
-    a             m                 plasma["a"]
-    kappa         –                 plasma["kappa"][:, -1]  (LCFS)
-    delta         –                 plasma["delta"][:, -1]  (LCFS)
-    neped         1e19 m⁻³          plasma["ne"][:, ix_pt]  (roa ≈ 0.95)
-    nesep         1e19 m⁻³          lcfs_bc["ne"]  or  0.25 × neped
-    tesep         eV                lcfs_bc["te"]×1e3  or  plasma["te"][:,-1]×1e3
-    zeffped       –                 plasma["Zeff"][:, -1]   (fallback 1.5)
-    betan         –                 computed from volume-average pressure + ip
-    zeta          –                 0.0  (squareness, rarely available)
-    ============  ================  ======================================
+    - ``"eped"``: use EPED runtime only.
+    - ``"epednn"``: use EPEDNN.jl via PyJulia only.
+    - ``"auto"`` (default): try EPED first, then EPEDNN fallback.
 
     Required options
     ----------------
@@ -371,11 +348,15 @@ class EpedElm(ElmStability):
     stiffness_power   : float, default 1.0
     roa_min           : float, default 0.8
     pedestal_top_roa  : float or None, default None
-        roa at which ``p_top_current`` is sampled.  If None, estimated as
-        ``max(roa_min, 1 - wrped)`` using EPED's ``wrped`` output.
+        roa at which ``p_top_current`` is sampled. If None, estimated as
+        ``max(roa_min, 1 - wrped)``.
     cold_start        : bool, default False
     nproc_per_run     : int, default 64
     minutes_slurm     : int, default 30
+    backend           : str, default "auto"
+    epednn_model_filename : str, default "EPED1NNmodel.bson"
+    epednn_mass_amu   : float, default 2.0
+    epednn_warn_train_bounds : bool, default True
     verbose           : bool, default False
     """
 
@@ -386,13 +367,23 @@ class EpedElm(ElmStability):
 
     def __init__(self, options: dict):
         super().__init__(options)
-        self.stiffness        = float(options.get("stiffness",       10.0))
-        self.stiffness_power  = float(options.get("stiffness_power",  1.0))
-        self.roa_min          = float(options.get("roa_min",          0.8))
-        self.pedestal_top_roa = options.get("pedestal_top_roa",       None)
-        self.cold_start       = bool(options.get("cold_start",        False))
-        self.nproc_per_run    = int(options.get("nproc_per_run",      64))
-        self.minutes_slurm    = int(options.get("minutes_slurm",      30))
+        self.stiffness = float(options.get("stiffness", 10.0))
+        self.stiffness_power = float(options.get("stiffness_power", 1.0))
+        self.roa_min = float(options.get("roa_min", 0.8))
+        self.pedestal_top_roa = options.get("pedestal_top_roa", 0.9)
+        self.cold_start = bool(options.get("cold_start", False))
+        self.nproc_per_run = int(options.get("nproc_per_run", 64))
+        self.minutes_slurm = int(options.get("minutes_slurm", 30))
+
+        self.backend = str(options.get("backend", "auto")).lower()
+        self.epednn_model_filename = str(
+            options.get("epednn_model_filename", "EPED1NNmodel.bson")
+        )
+        self.epednn_mass_amu = float(options.get("epednn_mass_amu", 2.0))
+        self.epednn_warn_train_bounds = bool(
+            options.get("epednn_warn_train_bounds", True)
+        )
+        self._julia_main: Any | None = None
 
         eped_folder = options.get("eped_folder", None)
         if eped_folder is None:
@@ -401,24 +392,24 @@ class EpedElm(ElmStability):
             )
         self.eped_folder = Path(eped_folder)
         self.eped_folder.mkdir(parents=True, exist_ok=True)
+
         self._warned_missing_eped_runtime = False
-        # If EPED runtime is missing, fallback is always safe; logging is optional.
-        # Default to verbose-only to avoid noisy warnings in production runs.
+        self._warned_missing_epednn_runtime = False
         self.warn_runtime_unavailable = bool(
             options.get("warn_runtime_unavailable", self.verbose)
         )
 
-        # User-supplied overrides for EPED inputs (None = auto-extract)
+        if self.backend not in {"auto", "eped", "epednn"}:
+            raise ValueError(
+                f"[EpedElm] Unknown backend '{self.backend}'. "
+                "Expected one of: ['auto', 'eped', 'epednn']."
+            )
+
         self._overrides = {k: options.get(k, None) for k in self._EPED_PARAM_KEYS}
 
     def _eped_runtime_available(self) -> tuple[bool, str]:
         """
         Check whether EPED external runtime dependencies are available.
-
-        Required:
-          - EPED_SOURCE_PATH environment variable pointing to a valid EPED tree
-          - EPED template directory under EPED_SOURCE_PATH
-          - ips.py available on PATH
         """
         eped_src = os.environ.get("EPED_SOURCE_PATH", "").strip()
         if not eped_src:
@@ -433,39 +424,67 @@ class EpedElm(ElmStability):
 
         return True, ""
 
-    # ------------------------------------------------------------------
-    # EPED input extraction
-    # ------------------------------------------------------------------
+    def _epednn_runtime_available(self) -> tuple[bool, str]:
+        """Check whether Julia + EPEDNN.jl runtime dependencies are available.
+        
+        Uses subprocess to call Julia directly, avoiding PyJulia libpython compatibility
+        issues with statically-linked Python (e.g., in pixi/conda environments).
+        """
+        if shutil.which("julia") is None:
+            return False, "julia executable is not available on PATH"
+
+        try:
+            import subprocess
+            # Quick sanity check: can Julia load EPEDNN?
+            julia_cmd = 'using EPEDNN; println("OK")'
+            result = subprocess.run(
+                ["julia", "-e", julia_cmd],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                return False, f"Julia failed to load EPEDNN: {result.stderr}"
+            return True, ""
+        except subprocess.TimeoutExpired:
+            return False, "Julia took too long to start (timeout)"
+        except FileNotFoundError:
+            return False, "julia executable not found"
+        except Exception as exc:
+            return False, f"Julia check failed: {exc}"
+
+    def _init_epednn_runtime(self) -> None:
+        """Pre-check that Julia + EPEDNN.jl can be loaded (no persistent state).
+        
+        Since we use subprocess for actual execution, we just verify the setup works.
+        """
+        pass  # Validation already done in _epednn_runtime_available()
 
     def _extract_eped_inputs(self, powerstate, b: int) -> dict:
         """
         Build the EPED input parameter dict for batch element *b*.
         Auto-extracted values are used for any key absent from ``_overrides``.
         """
-        p   = powerstate.plasma
-        prf = powerstate.profiles   # gacode_state
+        p = powerstate.plasma
+        prf = powerstate.profiles
 
         def _ov(key, fallback):
             v = self._overrides.get(key)
             return v if v is not None else fallback()
 
-        # ── Machine / geometry ────────────────────────────────────────
-        ip = _ov("ip",  lambda: float(prf.profiles["current(MA)"][0]))
-        bt = _ov("bt",  lambda: float(prf.profiles["bcentr(T)"][0]))
-        r  = _ov("r",   lambda: float(prf.profiles["rcentr(m)"][0]))
-        a  = _ov("a",   lambda: float(p["a"].item()))
+        ip = _ov("ip", lambda: float(prf.profiles["current(MA)"][0]))
+        bt = _ov("bt", lambda: float(prf.profiles["bcentr(T)"][0]))
+        r = _ov("r", lambda: float(prf.profiles["rcentr(m)"][0]))
+        a = _ov("a", lambda: float(p["a"].item()))
 
-        # ── Pedestal-top surface index (roa ≈ 0.95) ──────────────────
         roa_np = p["roa"][b, :].detach().cpu().numpy()
-        ix_pt  = int(np.searchsorted(roa_np, 0.95))
-        ix_pt  = min(ix_pt, len(roa_np) - 1)
+        ix_pt = int(np.searchsorted(roa_np, 0.95))
+        ix_pt = min(ix_pt, len(roa_np) - 1)
 
-        # ── Shape at LCFS ─────────────────────────────────────────────
         kappa = _ov("kappa", lambda: float(p["kappa"][b, -1].item()))
         delta = _ov("delta", lambda: float(p["delta"][b, -1].item()))
-        zeta  = _ov("zeta",  lambda: 0.0)
+        zeta = _ov("zeta", lambda: 0.0)
 
-        # ── Density / temperatures ────────────────────────────────────
         neped = _ov("neped", lambda: float(p["ne"][b, ix_pt].item()))
 
         def _nesep_default():
@@ -475,16 +494,15 @@ class EpedElm(ElmStability):
         def _tesep_default():
             lcfs_bc = getattr(powerstate, "_lcfs_bc", {})
             if "te" in lcfs_bc:
-                return float(lcfs_bc["te"]) * 1e3   # keV → eV
-            return float(p["te"][b, -1].item()) * 1e3
+                return float(lcfs_bc["te"])  # in keV
+            return float(p["te"][b, -1].item())  # in keV
 
-        nesep   = _ov("nesep",   _nesep_default)
-        tesep   = _ov("tesep",   _tesep_default)
+        nesep = _ov("nesep", _nesep_default)
+        tesep = _ov("tesep", _tesep_default)
         zeffped = _ov("zeffped", lambda: float(
             p["Zeff"][b, ix_pt].item() if "Zeff" in p else 1.5
         ))
 
-        # ── Normalised beta ───────────────────────────────────────────
         betan = _ov("betan", lambda: self._compute_betan(powerstate, b, bt, ip))
 
         params = dict(
@@ -502,6 +520,25 @@ class EpedElm(ElmStability):
             )
         return params
 
+    def _extract_epednn_inputs(self, eped_params: dict) -> dict:
+        """
+        Translate EPED-style inputs into the EPEDNN.jl input vector.
+
+        EPEDNN expects: a, betan, bt, delta, ip, kappa, m, neped, r, zeffped.
+        """
+        return dict(
+            a=float(eped_params["a"]),
+            betan=float(eped_params["betan"]),
+            bt=float(eped_params["bt"]),
+            delta=float(eped_params["delta"]),
+            ip=float(eped_params["ip"]),
+            kappa=float(eped_params["kappa"]),
+            m=float(self.epednn_mass_amu),
+            neped=float(eped_params["neped"]),
+            r=float(eped_params["r"]),
+            zeffped=float(eped_params["zeffped"]),
+        )
+
     @staticmethod
     def _compute_betan(powerstate, b: int, bt_T: float, ip_MA: float) -> float:
         """
@@ -517,14 +554,14 @@ class EpedElm(ElmStability):
         from scipy.constants import mu_0 as mu0
 
         p_obj = powerstate.plasma
-        a_m   = float(p_obj["a"].item())
-        p_kPa = _pressure_kPa(p_obj, b)   # (rho,) in kPa
+        a_m = float(p_obj["a"].item())
+        p_kPa = _pressure_kPa(p_obj, b)
 
         try:
-            rmin  = p_obj["rmin"][b, :].detach().cpu().double()
-            volp  = p_obj["volp"][b, :].detach().cpu().double()
+            rmin = p_obj["rmin"][b, :].detach().cpu().double()
+            volp = p_obj["volp"][b, :].detach().cpu().double()
             drmin = torch.diff(rmin, prepend=rmin[:1])
-            dV    = (volp * drmin).clamp(min=0.0)
+            dV = (volp * drmin).clamp(min=0.0)
             p_avg_Pa = float(
                 (p_kPa.cpu().double() * dV).sum() / dV.sum().clamp(min=1e-30)
             ) * 1e3
@@ -532,149 +569,257 @@ class EpedElm(ElmStability):
             n = p_kPa.shape[0]
             p_avg_Pa = float(p_kPa[n // 2:].mean()) * 1e3
 
-        beta  = 2.0 * mu0 * p_avg_Pa / max(bt_T ** 2, 1e-6)
-        return round(100.0 * beta * a_m * bt_T / max(ip_MA, 1e-6), 4)
-
-    # ------------------------------------------------------------------
-    # Pedestal-top pressure
-    # ------------------------------------------------------------------
+        beta = 2.0 * mu0 * p_avg_Pa / max(bt_T ** 2, 1e-6)
+        return round(100.0 * beta * a_m * bt_T / max(abs(ip_MA), 1e-6), 4)
 
     def _pedestal_top_pressure_kPa(
         self, powerstate, b: int, roa_pt: float
     ) -> float:
         """Interpolate total thermal pressure [kPa] at roa = roa_pt."""
-        p      = powerstate.plasma
+        p = powerstate.plasma
         roa_np = p["roa"][b, :].detach().cpu().numpy()
-        p_np   = _pressure_kPa(p, b).cpu().numpy()
+        p_np = _pressure_kPa(p, b).cpu().numpy()
         return float(np.interp(roa_pt, roa_np, p_np))
 
-    # ------------------------------------------------------------------
-    # Main entry point
-    # ------------------------------------------------------------------
+    def _run_eped_backend(self, params: dict, b: int, subfolder: str) -> tuple[float, float]:
+        """Run the EPED backend and return ``(ptop_crit, wrped)``."""
+        from mitim_tools.eped_tools.EPEDtools import EPED
+
+        ptop_crit = np.inf
+        wrped = 0.05
+
+        eped = EPED(self.eped_folder)
+        eped.run(
+            subfolder=subfolder,
+            input_params=params,
+            cold_start=self.cold_start,
+            nproc_per_run=self.nproc_per_run,
+            minutes_slurm=self.minutes_slurm,
+        )
+        eped.read(subfolder=subfolder, print_results=self.verbose, label="elm")
+
+        data = eped.results.get("elm", {}).get("1", None)
+        if data is not None and "ptop" in data.data_vars:
+            ptop_crit = float(data["ptop"].values[0])
+            if "wrped" in data.data_vars:
+                wrped = float(data["wrped"].values[0])
+            if self.verbose:
+                print(
+                    f"\t[EpedElm] batch={b}: EPED ptop_crit = "
+                    f"{ptop_crit:.2f} kPa  (wrped = {wrped:.3f} ρ)",
+                    typeMsg="i",
+                )
+        elif self.verbose:
+            print(
+                f"\t[EpedElm] batch={b}: EPED found no stability crossing — "
+                f"assuming stable.",
+                typeMsg="i",
+            )
+
+        return ptop_crit, wrped
+
+    def _run_epednn_backend(self, params: dict, b: int) -> tuple[float, float | None]:
+        """
+        Run EPEDNN.jl via subprocess and return ``(ptop_crit, wrped)``.
+
+        Uses Julia subprocess to avoid PyJulia libpython compatibility issues.
+        Calls the model directly: ``m(a, betan, ..., zeffped)``.
+        """
+        import subprocess
+        
+        nn = self._extract_epednn_inputs(params)
+
+        # Build Julia code to call the model and return plain-text output
+        # (avoid dependency on the JSON.jl package in user environments).
+        julia_code = f"""
+        using EPEDNN
+        model = EPEDNN.loadmodelonce("{self.epednn_model_filename}")
+        sol = model(
+            {nn['a']}, {nn['betan']}, {nn['bt']}, {nn['delta']}, {nn['ip']},
+            {nn['kappa']}, {nn['m']}, {nn['neped']}, {nn['r']}, {nn['zeffped']};
+            warn_nn_train_bounds={str(self.epednn_warn_train_bounds).lower()}
+        )
+        ptop_crit = Float64(sol.pressure.GH.H)
+        wrped = try
+            Float64(sol.width.GH.H)
+        catch
+            NaN
+        end
+        println("EPEDNN_RESULT|", ptop_crit, "|", wrped)
+        """
+
+        result = subprocess.run(
+            ["julia", "-e", julia_code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Julia EPEDNN execution failed: {result.stderr}"
+            )
+
+        # Debug: show raw output if verbose
+        if self.verbose:
+            print(
+                f"\t[EpedElm] batch={b}: EPEDNN subprocess stdout:\n{result.stdout}",
+                typeMsg="i",
+            )
+
+        # Parse tagged plain-text output
+        lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+        tagged = [ln for ln in lines if ln.startswith("EPEDNN_RESULT|")]
+        if not tagged:
+            raise RuntimeError(
+                f"Failed to parse EPEDNN output (missing tag): {result.stdout}"
+            )
+
+        output = tagged[-1]
+        try:
+            _, ptop_crit_raw, wrped_raw = output.split("|", 2)
+            ptop_crit_val = float(ptop_crit_raw)
+            wrped_val = float(wrped_raw)
+            # EPEDNN outputs ptop_crit in MPa; convert to kPa for consistency
+            ptop_crit = ptop_crit_val * 1e3
+            wrped = None if np.isnan(wrped_val) else wrped_val
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"Failed to parse EPEDNN output: {result.stdout} ({exc})"
+            )
+
+        if self.verbose:
+            print(
+                f"\t[EpedElm] batch={b}: EPEDNN ptop_crit = {ptop_crit:.2f} "
+                f"(surrogate units), wrped = "
+                f"{('None' if wrped is None else f'{wrped:.3f} ρ')}",
+                typeMsg="i",
+            )
+
+        return ptop_crit, wrped
 
     def solve(self, powerstate, batch_idx: int = 0) -> None:
         """
-        Run (or reuse) EPED for batch element *batch_idx*, compare the current
-        pedestal pressure to the EPED stability limit, and compute the spatial
-        ELM penalty factor.
+        Run the configured pedestal backend for batch element *batch_idx*,
+        compare the current pedestal pressure to the predicted stability
+        limit, and compute the spatial ELM penalty factor.
         """
-        from mitim_tools.eped_tools.EPEDtools import EPED
-
-        b      = batch_idx
-        p      = powerstate.plasma
-        n_rho  = p["roa"].shape[-1]
+        b = batch_idx
+        p = powerstate.plasma
+        n_rho = p["roa"].shape[-1]
         device = p["roa"].device
-        dtype  = p["roa"].dtype
+        dtype = p["roa"].dtype
 
-        # If EPED runtime is unavailable, gracefully fall back to stable.
-        runtime_ok, runtime_msg = self._eped_runtime_available()
-        if not runtime_ok:
-            if self.warn_runtime_unavailable and (not self._warned_missing_eped_runtime):
-                print(
-                    f"\t[EpedElm] EPED runtime unavailable ({runtime_msg}). "
-                    f"Skipping EPED and assuming stable (elm_factor = 1).",
-                    typeMsg="i",
-                )
-            self._warned_missing_eped_runtime = True
-
-            self.elm_factor    = torch.ones(n_rho, device=device, dtype=dtype)
-            self.in_elm_region = torch.zeros(n_rho, device=device, dtype=torch.bool)
-            self.alpha_MHD     = torch.zeros(n_rho, device=device, dtype=dtype)
-            self.alpha_crit    = torch.ones(n_rho, device=device, dtype=dtype)
-            return
-
-        # ── 1. Build EPED inputs ──────────────────────────────────────
         params = self._extract_eped_inputs(powerstate, b)
 
-        # ── 2. Hash-based subfolder for caching ───────────────────────
-        rounded   = {k: round(float(v), 3) for k, v in params.items()}
-        h8        = hashlib.md5(
+        rounded = {k: round(float(v), 3) for k, v in params.items()}
+        h8 = hashlib.md5(
             json.dumps(rounded, sort_keys=True).encode()
         ).hexdigest()[:8]
         subfolder = f"b{b}_{h8}"
 
-        # ── 3. Run EPED (or reuse cached result) ──────────────────────
-        ptop_crit_kPa = np.inf   # assume stable unless EPED says otherwise
-        wrped         = 0.05     # fallback pedestal width in rho
+        ptop_crit = np.inf
+        wrped: float | None = 0.05
+        backend_used = None
 
-        try:
-            eped = EPED(self.eped_folder)
-            eped.run(
-                subfolder=subfolder,
-                input_params=params,
-                cold_start=self.cold_start,
-                nproc_per_run=self.nproc_per_run,
-                minutes_slurm=self.minutes_slurm,
-            )
-            eped.read(subfolder=subfolder, print_results=self.verbose, label="elm")
+        if self.backend in {"auto", "eped"}:
+            runtime_ok, runtime_msg = self._eped_runtime_available()
+            if runtime_ok:
+                try:
+                    ptop_crit, wrped = self._run_eped_backend(params, b, subfolder)
+                    backend_used = "eped"
+                except Exception as exc:
+                    if self.verbose:
+                        print(
+                            f"\t[EpedElm] batch={b}: EPED backend failed ({exc}).",
+                            typeMsg="w",
+                        )
+            elif self.warn_runtime_unavailable and (not self._warned_missing_eped_runtime):
+                print(
+                    f"\t[EpedElm] EPED runtime unavailable ({runtime_msg}).",
+                    typeMsg="i",
+                )
+                self._warned_missing_eped_runtime = True
 
-            data = eped.results.get("elm", {}).get("1", None)
-            if data is not None and "ptop" in data.data_vars:
-                ptop_crit_kPa = float(data["ptop"].values[0])
-                if "wrped" in data.data_vars:
-                    wrped = float(data["wrped"].values[0])
-                if self.verbose:
-                    print(
-                        f"\t[EpedElm] batch={b}: EPED ptop_crit = "
-                        f"{ptop_crit_kPa:.2f} kPa  (wrped = {wrped:.3f} ρ)",
-                        typeMsg="i",
-                    )
-            else:
-                if self.verbose:
-                    print(
-                        f"\t[EpedElm] batch={b}: EPED found no stability "
-                        f"crossing — assuming stable.",
-                        typeMsg="i",
-                    )
+        if backend_used is None and self.backend in {"auto", "epednn"}:
+            runtime_ok, runtime_msg = self._epednn_runtime_available()
+            if runtime_ok:
+                try:
+                    ptop_crit, wrped = self._run_epednn_backend(params, b)
+                    backend_used = "epednn"
+                    if wrped is None and self.pedestal_top_roa is None:
+                        self.pedestal_top_roa = 0.9
+                        if self.verbose:
+                            print(
+                                f"\t[EpedElm] batch={b}: EPEDNN returned wrped=None; "
+                                "setting pedestal_top_roa=0.9.",
+                                typeMsg="i",
+                            )
+                except Exception as exc:
+                    if self.verbose:
+                        print(
+                            f"\t[EpedElm] batch={b}: EPEDNN backend failed ({exc}).",
+                            typeMsg="w",
+                        )
+            elif self.warn_runtime_unavailable and (not self._warned_missing_epednn_runtime):
+                print(
+                    f"\t[EpedElm] EPEDNN runtime unavailable ({runtime_msg}).",
+                    typeMsg="i",
+                )
+                self._warned_missing_epednn_runtime = True
 
-        except Exception as exc:
+        if backend_used is None:
             print(
-                f"\t[EpedElm] batch={b}: EPED call failed ({exc}). "
-                f"Assuming stable (elm_factor = 1).",
+                f"\t[EpedElm] batch={b}: no pedestal backend available "
+                f"(backend='{self.backend}'). Assuming stable (elm_factor = 1).",
                 typeMsg="w",
             )
 
-        # ── 4. Pedestal-top reference location ────────────────────────
         roa_pt = (
             self.pedestal_top_roa
             if self.pedestal_top_roa is not None
-            else max(self.roa_min, 1.0 - wrped)
+            else max(self.roa_min, 1.0 - float(wrped))
         )
 
-        # ── 5. Current pedestal-top pressure ─────────────────────────
-        ptop_current_kPa = self._pedestal_top_pressure_kPa(powerstate, b, roa_pt)
+        ptop_current = self._pedestal_top_pressure_kPa(powerstate, b, roa_pt)
 
         if self.verbose:
-            ratio_str = f"{ptop_current_kPa / max(ptop_crit_kPa, 1e-3):.3f}"
+            ratio_str = f"{ptop_current / max(ptop_crit, 1e-3):.3f}"
             print(
-                f"\t[EpedElm] batch={b}: p_top_current = {ptop_current_kPa:.2f} kPa  "
-                f"p_top_crit = {ptop_crit_kPa:.2f} kPa  (ratio = {ratio_str})",
+                f"\t[EpedElm] batch={b}: p_top_current = {ptop_current:.2f} kPa  "
+                f"p_top_crit = {ptop_crit:.2f}  "
+                f"(ratio = {ratio_str}, backend={backend_used or 'none'})",
                 typeMsg="i",
             )
 
-        # ── 6. Spatial penalty factor ─────────────────────────────────
-        roa_1d    = p["roa"][b, :].detach().cpu()
-        overshoot = max(0.0, ptop_current_kPa / max(ptop_crit_kPa, 1e-3) - 1.0)
+        roa_1d = p["roa"][b, :].detach().cpu()
+        overshoot = max(0.0, ptop_current / max(ptop_crit, 1e-3) - 1.0)
 
-        # Linear ramp in roa: 0 at roa_min, 1 at LCFS
         ramp = (
             (roa_1d - self.roa_min) / max(1.0 - self.roa_min, 1e-6)
         ).clamp(0.0, 1.0)
 
-        elm_factor    = (
+        elm_factor = (
             1.0 + self.stiffness * ramp * (overshoot ** self.stiffness_power)
         ).to(dtype).to(device)
         in_elm_region = (
             (roa_1d >= self.roa_min) & (overshoot > 0.0)
         ).to(device)
 
-        # Use pressure ratio as the "alpha" diagnostic (alpha_crit = 1.0)
-        ratio = ptop_current_kPa / max(ptop_crit_kPa, 1e-3)
-        self.elm_factor    = elm_factor
+        ratio = ptop_current / max(ptop_crit, 1e-3)
+        self.elm_factor = elm_factor
         self.in_elm_region = in_elm_region
-        self.alpha_MHD     = torch.full((n_rho,), ratio,  dtype=dtype, device=device)
-        self.alpha_crit    = torch.ones(  n_rho,           dtype=dtype, device=device)
+        self.alpha_MHD = torch.full((n_rho,), ratio, dtype=dtype, device=device)
+        self.alpha_crit = torch.ones(n_rho, dtype=dtype, device=device)
 
+        # Log if triggered
+        if self.verbose and in_elm_region.any():
+            print(
+                f"\t[EpedElm] batch={b}: ELM triggered! "
+                f"p_top_current / p_top_crit = {ratio:.3f}  "
+                f"ELM penalty factor max = {elm_factor.max():.2f}",
+                typeMsg="w",
+            )
 
 # ---------------------------------------------------------------------------
 # Factory

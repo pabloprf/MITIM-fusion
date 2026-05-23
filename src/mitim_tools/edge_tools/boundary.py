@@ -142,7 +142,7 @@ class BoundaryConditions:
         eps_lcfs = float(d["eps"])         # a / R0           (scalar)
         self.aspect_ratio = 1/eps_lcfs
         # R0 via the minor-radius profile at the LCFS (last gacode point = a = rmin[-1])
-        self.R0  = (self.a / eps_lcfs) + self.r
+        self.R0  = d['R_LF'][-1]
 
         self.BT    = abs(_derived_lcfs(d["B_ref"]))
         self.q = _derived_lcfs(powerstate.profiles.profiles["q(-)"])
@@ -221,40 +221,25 @@ class BoundaryConditions:
 
 class Fixed(BoundaryConditions):
     """
-    Freeze the LCFS values at their initial (gacode) values for the lifetime of
-    the run.
+    Freeze the LCFS values for the lifetime of the run.
 
-    Values are read once from ``powerstate.profiles.derived`` and
-    ``powerstate.profiles.profiles`` (evaluated at roa = 1) and stored
-    permanently.  Reading from the immutable gacode-derived arrays guarantees
-    that ``bc_dict`` — and therefore the LCFS anchor passed to every profile
-    constructor — does not drift as the solver modifies ``plasma[*]`` tensors
-    across iterations.
+    Values are taken from ``bc_model_options`` when provided, with fallback to
+    the current powerstate for any keys that are omitted. The resulting values
+    are stored permanently so ``bc_dict`` stays fixed across iterations.
     """
 
     def __init__(self, options: dict):
         super().__init__(options)
+        self._bc_model_options = dict(options)
         self._fixed_values: dict | None = None
 
-    @staticmethod
-    def _read_from_profiles(powerstate) -> dict:
+    def _read_fixed_values(self, powerstate) -> dict:
         """
-        Extract LCFS scalars from the gacode-derived profile arrays.
+        Extract fixed LCFS scalars from ``bc_model_options`` with fallback.
 
-        ``profiles.derived`` keys used
-        -------------------------------
-        aLne  : (n_rho,)          a / L_ne  at gacode resolution
-        aLTe  : (n_rho,)          a / L_Te  (capital T in derived)
-        aLTi  : (n_rho, n_sp)     a / L_Ti  per species
-        aLni  : (n_rho, n_sp)     a / L_ni  per species
-        roa   : (n_rho,)          r/a grid  (ends at 1.0 by gacode convention)
-
-        ``profiles.profiles`` keys used
-        --------------------------------
-        ne(10^19/m^3)  : (n_rho,)
-        te(keV)        : (n_rho,)
-        ti(keV)        : (n_rho, n_sp)
-        ni(10^19/m^3)  : (n_rho, n_sp)
+        Any key supplied in ``bc_model_options`` overrides the value read from
+        the plasma state. Keys not supplied fall back to the current LCFS value
+        from the powerstate so existing workflows remain usable.
         """
         d = powerstate.profiles.derived
         p = powerstate.profiles.profiles
@@ -266,20 +251,25 @@ class Fixed(BoundaryConditions):
                 a = a[:, 0 if species_idx is None else int(species_idx)]
             return float(np.interp(1.0, roa, a))
 
+        def _from_options_or_profiles(key: str, default_value):
+            if key in self._bc_model_options:
+                return float(self._bc_model_options[key])
+            return float(default_value)
+
         return {
-            "ne":   _at_lcfs(p["ne(10^19/m^3)"]),
-            "te":   _at_lcfs(p["te(keV)"]),
-            "ti":   _at_lcfs(p["ti(keV)"],          species_idx=0),
-            "ni":   _at_lcfs(p["ni(10^19/m^3)"],    species_idx=0),
-            "aLne": _at_lcfs(d["aLne"]),
-            "aLte": _at_lcfs(d["aLTe"]),
-            "aLti": _at_lcfs(d["aLTi"],             species_idx=0),
-            "aLni": _at_lcfs(d["aLni"],             species_idx=0),
+            "ne":   _from_options_or_profiles("ne",   _at_lcfs(p["ne(10^19/m^3)"])),
+            "te":   _from_options_or_profiles("te",   _at_lcfs(p["te(keV)"])),
+            "ti":   _from_options_or_profiles("ti",   _at_lcfs(p["ti(keV)"],          species_idx=0)),
+            "ni":   _from_options_or_profiles("ni",   _at_lcfs(p["ni(10^19/m^3)"],    species_idx=0)),
+            "aLne": _from_options_or_profiles("aLne", _at_lcfs(d["aLne"])),
+            "aLte": _from_options_or_profiles("aLte", _at_lcfs(d["aLTe"])),
+            "aLti": _from_options_or_profiles("aLti", _at_lcfs(d["aLTi"],             species_idx=0)),
+            "aLni": _from_options_or_profiles("aLni", _at_lcfs(d["aLni"],             species_idx=0)),
         }
 
     def get_boundary_conditions(self, powerstate, batch_idx: int = 0) -> None:
         if self._fixed_values is None:
-            self._fixed_values = self._read_from_profiles(powerstate)
+            self._fixed_values = self._read_fixed_values(powerstate)
         self.bc_dict = {k: [v, 1.0] for k, v in self._fixed_values.items()}
 
 
@@ -306,9 +296,12 @@ class TwoFluidTwoPoint_PeretSSF(BoundaryConditions):
         self._eq = None
         self._eq_n_points = int(options.get("eq_n_points", 512))
         self._eq_eddy_width_m = float(options.get("eq_eddy_width_m", 0.005))
-        self.ne_target = options.get("ne_target", 4.0)
+        self.ne_target = options.get("ne_target", 3.0)
         self.Te_target = options.get("Te_target", 0.005)
         self.Ti_target = options.get("Ti_target", None)
+        self.fq_e = options.get("fq_e", 0.2)
+        self.fq_i = options.get("fq_i", 0.2)
+        self.fmom = options.get("fmom", 0.8)
 
     def get_boundary_conditions(self, powerstate, batch_idx: int = 0) -> None:
         super().get_boundary_conditions(powerstate, batch_idx)
@@ -429,8 +422,8 @@ class TwoFluidTwoPoint_PeretSSF(BoundaryConditions):
         qpar_e = self.Pe * 1e6 / Apar_sol
         qpar_i = self.Pi * 1e6 / Apar_sol
 
-        Te_u = max(Te_t, (Te_t ** 3.5 + 3.5 * self.fmom * qpar_e * self.Lpar / kappa_0e) ** (2.0 / 7.0))
-        Ti_u = max(Te_u, (Ti_t ** 3.5 + 3.5 * self.fmom * qpar_i * self.Lpar / kappa_0i) ** (2.0 / 7.0))
+        Te_u = max(Te_t, (Te_t ** 3.5 + 3.5 * self.fq_e * qpar_e * self.Lpar / kappa_0e) ** (2.0 / 7.0))
+        Ti_u = max(Te_u, (Ti_t ** 3.5 + 3.5 * self.fq_i * qpar_i * self.Lpar / kappa_0i) ** (2.0 / 7.0))
         ne_u = (2.0 * ne_t * (Te_t + Ti_t)) / (self.fmom * (Te_u + Ti_u / self.Zeff))
 
         return ne_u, Te_u, Ti_u, qpar_e, qpar_i

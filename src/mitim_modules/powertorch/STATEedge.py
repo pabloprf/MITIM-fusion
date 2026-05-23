@@ -64,6 +64,7 @@ from mitim_tools.misc_tools import PLASMAtools, IOtools
 from IPython import embed
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 import scipy as sp
+from scipy.interpolate import interp1d
 
 class powerstate_edge(powerstate):
 
@@ -82,9 +83,21 @@ class powerstate_edge(powerstate):
         ("neutral_model_options",       {}),
         ("elm_model",                   "Null"),
         ("elm_model_options",           {}),
+        ("edge_uq_enable",              False),
+        ("edge_uq_calib_dir",           None),
+        ("edge_uq_calib_label",         "baseline"),
+        ("edge_uq_scale_factor",        1.0),
+        ("edge_uq_channel_mapping",     None),
         ("defined_on",                  "y"),
         ("use_edge_targets",            True),
     ]
+
+    @staticmethod
+    def _as_numpy_cpu(x):
+        """Return ``x`` as a NumPy array, moving Torch tensors to host first."""
+        if isinstance(x, torch.Tensor):
+            return x.detach().cpu().numpy()
+        return np.asarray(x)
 
     def __init__(
         self,
@@ -160,9 +173,14 @@ class powerstate_edge(powerstate):
         self.scaleIonDensities = evolution_options.get("scaleIonDensities", True)
         self.fImp_orig = evolution_options.get("fImp_orig", 1.0)
         rho_vec = evolution_options.get("rhoPredicted", [0.2, 0.4, 0.6, 0.8])
-        roa_vec = np.interp(rho_vec, profiles_object.profiles["rho(-)"], profiles_object.derived["roa"])
+        rho_vec_np = self._as_numpy_cpu(rho_vec)
+        roa_vec = np.interp(
+            rho_vec_np,
+            self._as_numpy_cpu(profiles_object.profiles["rho(-)"]),
+            self._as_numpy_cpu(profiles_object.derived["roa"]),
+        )
 
-        if rho_vec[0] == 0:
+        if rho_vec_np[0] == 0:
             raise ValueError("[MITIM] The radial grid must not contain the initial zero")
         
         if _edge_opts.get("use_edge_targets", True):
@@ -228,7 +246,7 @@ class powerstate_edge(powerstate):
 
         # Store control points
 
-        self.rhoCP = rho_vec.to(self.dfT) if isinstance(rho_vec, torch.Tensor) else torch.from_numpy(rho_vec).to(self.dfT)
+        self.rhoCP = torch.as_tensor(rho_vec_np, dtype=self.dfT.dtype, device=self.dfT.device)
 
         # -------------------------------------------------------------------------------------
         # Populate plasma with radial grid
@@ -302,6 +320,14 @@ class powerstate_edge(powerstate):
         self._neu_model_options    = opts.get("neutral_model_options", {})
         self._elm_model_name       = opts.get("elm_model", "Null")
         self._elm_model_options    = opts.get("elm_model_options", {})
+        self._edge_uq_enable       = bool(opts.get("edge_uq_enable", False))
+        self._edge_uq_calib_dir    = opts.get("edge_uq_calib_dir", None)
+        self._edge_uq_calib_label  = str(opts.get("edge_uq_calib_label", "baseline"))
+        self._edge_uq_scale_factor = float(opts.get("edge_uq_scale_factor", 1.0))
+        self._edge_uq_channel_mapping = opts.get("edge_uq_channel_mapping", None)
+        self._edge_uq_calib        = None
+        self._edge_uq_disabled     = False
+        self._edge_uq_warned       = False
         self._targets_scaled       = False
         self._bc_model_instance    = None
         self._cs_model_instance    = None
@@ -774,7 +800,6 @@ class powerstate_edge(powerstate):
         (``ROTATION_MODEL=1``) is active.
         """
         from scipy.constants import e as _q_e
-        from scipy.interpolate import CubicSpline
 
         # First pass: everything except rotation-normalised quantities
         super().calculateProfileFunctions(calculateRotationQuantities=False, **kwargs)
@@ -841,28 +866,22 @@ class powerstate_edge(powerstate):
         p['tau_norm'] = a / p['c_s']  # [m] / [m/s] = [s]
         w0_dia = -dpidr_SI / (Z_main * _q_e * n_main_m3 * R * Bp)
 
+        p["w0"]     = w0_dia
         Er = -R * Bp * p['w0']  # (batch, rho)  V/m
         p["E_rad"] = -Er * a / (p["te"] * 1e3)
         p['vexb'] = p["E_rad"] / p["B_T"]  # ExB velocity [m/s]
 
-        p["w0"]     = w0_dia
         p["w0_n"]   = w0_dia / p["c_s"]
         p["aLw0_n"] = p["aLw0"] * w0_dia / p["c_s"]
 
-        # GAMMA_E = r * d/dr(v_exb/r) [1/s], computed per batch element
+        # GAMMA_E = r * d/dr(v_exb/r) [1/s], computed directly on the fine grid.
         rmin_np    = p['rmin'].detach().cpu().numpy()   # (batch, rho)
         vexb_np    = p['vexb'].detach().cpu().numpy()   # (batch, rho)
         gamma_exb_np = np.zeros_like(rmin_np)
         for b in range(batch):
-            r_b    = rmin_np[b, :]
-            vexb_b = vexb_np[b, :]
-            # Avoid division by zero at r=0; start spline from first positive radius
-            i_start = 1 if r_b[0] == 0.0 else 0
-            r_nz    = r_b[i_start:]
-            spl     = CubicSpline(r_nz, vexb_b[i_start:] / r_nz, extrapolate=True)
-            gamma_exb_np[b, i_start:] = r_nz * spl.derivative()(r_nz)
-            if i_start > 0:
-                gamma_exb_np[b, 0] = 0.0
+            r_b = rmin_np[b, :]
+            vexb_over_r = vexb_np[b, :] / r_b
+            gamma_exb_np[b, :] = r_b * np.gradient(vexb_over_r, r_b, edge_order=2)
         p["gamma_exb"] = torch.from_numpy(gamma_exb_np).to(self.dfT)  # [1/s]
         p['vexb_shear'] = p["gamma_exb"] * p['tau_norm']  # [-]
 
@@ -1081,6 +1100,63 @@ class powerstate_edge(powerstate):
         if str(self._cs_model_name).lower() not in ("null", "none"):
             self._refresh_density_scale_lengths()
 
+    def _apply_edge_uq_inflation(self):
+        """
+        Inflate plasma uncertainties with edge-UQ calibration when enabled.
+
+        This remains localized to edge runs and is intentionally non-fatal:
+        if calibration cannot be loaded, the run continues with native stds.
+        """
+        if not self._edge_uq_enable or self._edge_uq_disabled:
+            return
+
+        if self._edge_uq_calib is None:
+            try:
+                if self._edge_uq_calib_dir is None:
+                    raise ValueError("edge_uq_calib_dir is not set")
+
+                from pathlib import Path
+                from mitim_tools.edge_tools.edge_uq import EdgeUQCalibration
+
+                calib_dir = Path(IOtools.expandPath(self._edge_uq_calib_dir))
+                self._edge_uq_calib = EdgeUQCalibration(output_dir=calib_dir)
+                self._edge_uq_calib.load_calibration(label=self._edge_uq_calib_label)
+
+                print(
+                    f"[powerstate_edge] Loaded edge-UQ calibration from {IOtools.clipstr(calib_dir)} "
+                    f"(label={self._edge_uq_calib_label})",
+                    typeMsg="i",
+                )
+            except Exception as exc:
+                if not self._edge_uq_warned:
+                    print(
+                        f"[powerstate_edge] edge_uq_enable=True but calibration could not be loaded: {exc}. "
+                        "Continuing without edge-UQ inflation.",
+                        typeMsg="w",
+                    )
+                    self._edge_uq_warned = True
+                self._edge_uq_disabled = True
+                return
+
+        try:
+            from mitim_tools.edge_tools.edge_uq import inflate_powerstate_stds_with_edge_uq
+
+            inflate_powerstate_stds_with_edge_uq(
+                self,
+                self._edge_uq_calib,
+                channel_mapping=self._edge_uq_channel_mapping,
+                scale_factor=self._edge_uq_scale_factor,
+            )
+        except Exception as exc:
+            if not self._edge_uq_warned:
+                print(
+                    f"[powerstate_edge] edge-UQ inflation failed: {exc}. "
+                    "Continuing without edge-UQ inflation.",
+                    typeMsg="w",
+                )
+                self._edge_uq_warned = True
+            self._edge_uq_disabled = True
+
     def calculateElm(self):
         """
         Evaluate the peeling-ballooning (ELM) stability criterion and, if the
@@ -1297,11 +1373,11 @@ class powerstate_edge(powerstate):
                 has_prepended_zero = val.shape[1] == (n_cp + 1)
                 lifted = np.stack(
                     [
-                        np.interp(
-                            rho_fine,
+                        interp1d(
                             rho_cp,
                             v_np[b, 1:] if has_prepended_zero else v_np[b, :],
-                        )
+                            fill_value="extrapolate",
+                        )(rho_fine)
                         # interpolation_function(
                         #     rho_fine,
                         #     rho_cp,
@@ -1320,7 +1396,7 @@ class powerstate_edge(powerstate):
                 lifted = np.stack(
                     [
                         np.stack(
-                            [np.interp(rho_fine, rho_cp, vals[b, :, i]) for i in range(d)],
+                            [interp1d(rho_cp, vals[b, :, i], fill_value="extrapolate")(rho_fine) for i in range(d)],
                             axis=-1,
                         )
                         for b in range(batch)
@@ -1350,14 +1426,14 @@ class powerstate_edge(powerstate):
         if tensor.dim() == 2:
             batch = tensor.shape[0]
             arr = tensor.detach().cpu().numpy()
-            interp = np.stack([np.interp(rho_cp, rho_fine, arr[b]) for b in range(batch)])
+            interp = np.stack([interp1d(rho_fine, arr[b], fill_value="extrapolate")(rho_cp) for b in range(batch)])
             return torch.from_numpy(interp).to(tensor)
 
         if tensor.dim() == 3:
             batch, _, n_extra = tensor.shape
             arr = tensor.detach().cpu().numpy()
             interp = np.stack([
-                np.stack([np.interp(rho_cp, rho_fine, arr[b, :, i]) for i in range(n_extra)], axis=-1)
+                np.stack([interp1d(rho_fine, arr[b, :, i], fill_value="extrapolate")(rho_cp) for i in range(n_extra)], axis=-1)
                 for b in range(batch)
             ])
             return torch.from_numpy(interp).to(tensor)
@@ -1625,6 +1701,7 @@ class powerstate_edge(powerstate):
         3.  self.calculateProfileFunctions()         ← includes diamagnetic w0
         >>> 3b. self.calculateNeutrals()             ← D⁰ density → writes plasma['n0']
         >>> 3c. self.calculateImpurities()           ← Aurora CS (uses plasma['n0'] for CXR)
+        >>> 3d. self._apply_edge_uq_inflation()      ← optional std inflation from edge-UQ calib
         4.  self.calculateTargets(...)               ← uses analytical_model_edge
         5.  self.calculateTransport(...)
         >>> 6.  self.calculateElm()                  ← peeling-ballooning ELM penalty
@@ -1648,6 +1725,9 @@ class powerstate_edge(powerstate):
 
         # 3c. Impurity charge-state distribution and radiation (uses plasma['n0'] for CXR)
         self.calculateImpurities()
+
+        # 3d. Optional edge-UQ uncertainty inflation (if configured in edge_options)
+        self._apply_edge_uq_inflation()
 
         # 4. Sources and sinks
         relative_error_assumed = self.target_options["options"]["percent_error"]

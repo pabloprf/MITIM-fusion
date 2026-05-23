@@ -66,6 +66,13 @@ def addCGYROcontrol(code_settings, rmin=None, **kwargs):
     
     return options
 
+def addQLGYROcontrol(code_settings, *args, **kwargs):
+
+    options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.qlgyro.controls", caseInsensitive=False)
+    options = add_code_settings(options, code_settings, models_file="input.qlgyro.models.yaml")
+
+    return options
+
 def add_code_settings(options,code_settings, models_file = "input.tglf.models.yaml"):
 
     settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)

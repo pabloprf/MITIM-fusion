@@ -1204,6 +1204,9 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
     """
     print("- Plotting PORTALS Edge Metrics (modern)")
 
+    ylabel_fontsize = kwargs.get("ylabel_fontsize", 11)
+    ylabel_pad = kwargs.get("ylabel_pad", 8)
+
     self.iextra = indeces_extra if indeces_extra is not None else []
 
     if fig is None:
@@ -1270,8 +1273,9 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
         ncols=5,
         width_ratios=[1.0, 1.0, 1.0, 1.0, 1.25],
         hspace=0.28,
-        wspace=0.32,
+        wspace=0.42,
     )
+    fig.subplots_adjust(left=0.06, right=0.97)
 
     # Cols 0-2: channel triple-rows (profile / gradient / flux)
     axes_prof = [fig.add_subplot(grid[0, j]) for j in range(3)]
@@ -1382,9 +1386,9 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
     # --- Channel column decorations ---
     for j, spec in enumerate(channel_specs):
         axes_prof[j].set_title(spec["title"])
-        axes_prof[j].set_ylabel(spec["ylab"])
-        axes_grad[j].set_ylabel(spec["ylab_aLy"])
-        axes_flux[j].set_ylabel(spec["ylab_flux"])
+        axes_prof[j].set_ylabel(spec["ylab"], fontsize=ylabel_fontsize, labelpad=ylabel_pad)
+        axes_grad[j].set_ylabel(spec["ylab_aLy"], fontsize=ylabel_fontsize, labelpad=ylabel_pad)
+        axes_flux[j].set_ylabel(spec["ylab_flux"], fontsize=ylabel_fontsize, labelpad=ylabel_pad)
         for ax in (axes_prof[j], axes_grad[j], axes_flux[j]):
             GRAPHICStools.addDenseAxis(ax)
             ax.set_xlim(xlim)
@@ -1398,16 +1402,16 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
 
     # --- Col 3 decorations ---
     ax_w0.set_title("Rotation")
-    ax_w0.set_ylabel("$w_0$ (krad/s)")
+    ax_w0.set_ylabel("$w_0$ (krad/s)", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_w0.set_xticklabels([])
     ax_w0.legend(prop={"size": fontsize_leg * 1.1}, loc="best")
 
-    ax_n0.set_title("Neutral Fraction")
-    ax_n0.set_ylabel("$n_0/n_e$")
+    ax_n0.set_title("")
+    ax_n0.set_ylabel("$n_0/n_e$", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_n0.set_xticklabels([])
 
-    ax_nZ.set_title("Impurity Fraction (per charge state)")
-    ax_nZ.set_ylabel("$n_{Z,z}/n_e$")
+    ax_nZ.set_title("")
+    ax_nZ.set_ylabel("$n_{Z,z}/n_e$", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_nZ.set_xlabel("$\\rho_N$")
     ax_nZ.legend(prop={"size": fontsize_leg}, loc="best")
 
@@ -1428,7 +1432,7 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
     if "w0" in self.predicted_channels and hasattr(self, "resw0M"):
         ax_metric1.plot(self.evaluations, self.resw0M, "-^", lw=1.0, ms=2,
                         label=self.labelsFluxes.get("w0", "w0"))
-    ax_metric1.set_ylabel("Channel residual")
+    ax_metric1.set_ylabel("Channel residual", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_metric1.set_xticklabels([])
     GRAPHICStools.addDenseAxis(ax_metric1, n=5)
     try:
@@ -1442,7 +1446,7 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
                     label="OF: $\\frac{1}{N}L_2$")
     ax_metric2.plot(self.evaluations, self.resCheck, "-o", lw=1.0, c="rebeccapurple", ms=2,
                     label="$\\frac{1}{N}L_1$")
-    ax_metric2.set_ylabel("Residual")
+    ax_metric2.set_ylabel("Residual", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_metric2.set_xticklabels([])
     GRAPHICStools.addDenseAxis(ax_metric2, n=5)
     try:
@@ -1451,18 +1455,27 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
         pass
     ax_metric2.legend(prop={"size": fontsize_leg * 1.2}, loc="best")
 
-    # --- Col 4: Ptot (MPa) at rho_min vs iteration ---
-    ptot_at_rhomin = []
+    # --- Col 4: Zeff at rho_min vs iteration ---
+    zeff_at_rhomin = []
     for ps in self.powerstates:
         try:
-            _rho_prof = np.asarray(ps.profiles.profiles["rho(-)"], dtype=float)
-            _ptot_prof = np.asarray(ps.profiles.derived["ptot_manual"], dtype=float)
-            ptot_at_rhomin.append(float(np.interp(xlim[0], _rho_prof, _ptot_prof)))
+            # plasma["Zeff"] is updated each iteration; profiles.derived["Zeff"] is static
+            if "Zeff" in ps.plasma and ps.plasma["Zeff"] is not None:
+                import torch
+                _zeff_t = ps.plasma["Zeff"]
+                _rho_t  = ps.plasma["rho"]
+                _zeff_np = _zeff_t[0].detach().cpu().numpy() if torch.is_tensor(_zeff_t) else np.asarray(_zeff_t[0])
+                _rho_np  = _rho_t[0].detach().cpu().numpy()  if torch.is_tensor(_rho_t)  else np.asarray(_rho_t[0])
+                zeff_at_rhomin.append(float(np.interp(xlim[0], _rho_np, _zeff_np)))
+            else:
+                _rho_prof = np.asarray(ps.profiles.profiles["rho(-)"], dtype=float)
+                _zeff_prof = np.asarray(ps.profiles.derived["Zeff"], dtype=float)
+                zeff_at_rhomin.append(float(np.interp(xlim[0], _rho_prof, _zeff_prof)))
         except Exception:
-            ptot_at_rhomin.append(np.nan)
-    ax_metric3.plot(self.evaluations, ptot_at_rhomin, "-o", lw=1.0, c="olive", ms=2,
-                    label=f"$P_{{tot}}(\\rho={xlim[0]:.2f})$")
-    ax_metric3.set_ylabel("$P_{tot}$ (MPa)")
+            zeff_at_rhomin.append(np.nan)
+    ax_metric3.plot(self.evaluations, zeff_at_rhomin, "-o", lw=1.0, c="olive", ms=2,
+                    label=f"$Z_{{eff}}(\\rho={xlim[0]:.2f})$")
+    ax_metric3.set_ylabel("$Z_{eff}$", fontsize=ylabel_fontsize, labelpad=ylabel_pad)
     ax_metric3.set_xlabel("Iterations")
     ax_metric3.set_xlim(left=0)
     GRAPHICStools.addDenseAxis(ax_metric3, n=5)
@@ -1474,15 +1487,20 @@ def PORTALSanalyzer_plotMetrics_edge_modern(
 
 def define_extra_iterators(self):
 
-    # Always plot initial and best
-    if self.ibest != self.i0:
-        indeces_plot = [self.i0, self.ibest]
-        colors_plot = ["r", "g"]
-        labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
-    else:
+    if getattr(self, "plot_best_only", False):
         indeces_plot = [self.ibest]
         colors_plot = ["g"]
         labels_plot = [f"Best (#{self.ibest})"]
+    else:
+        # Default behavior: plot initial and best
+        if self.ibest != self.i0:
+            indeces_plot = [self.i0, self.ibest]
+            colors_plot = ["r", "g"]
+            labels_plot = [f"Initial (#{self.i0})", f"Best (#{self.ibest})"]
+        else:
+            indeces_plot = [self.ibest]
+            colors_plot = ["g"]
+            labels_plot = [f"Best (#{self.ibest})"]
 
     iextra = [] if self.iextra is None else list(self.iextra)
 

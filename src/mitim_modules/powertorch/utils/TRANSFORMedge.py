@@ -327,6 +327,14 @@ def powerstate_to_gacode(
             )
             profiles.profiles["w0(rad/s)"] = w0_gacode
 
+        # Update Zeff from the dynamically computed plasma["Zeff"] (not the static profiles.derived)
+        if "Zeff" in self.plasma and self.plasma["Zeff"] is not None:
+            import torch
+            zeff_ps = self.plasma["Zeff"][position_in_powerstate_batch, :].cpu().numpy() if torch.is_tensor(self.plasma["Zeff"]) else np.asarray(self.plasma["Zeff"][position_in_powerstate_batch, :])
+            zeff_gacode = _interp_ps_to_gacode(zeff_ps)
+            profiles.profiles["z_eff(-)"] = zeff_gacode
+            profiles.derived["Zeff"] = zeff_gacode
+
     for key in quantities:
         if key[0] in self.predicted_channels:
             print(f"\t- Inserting {key[0]} into input.gacode profiles")

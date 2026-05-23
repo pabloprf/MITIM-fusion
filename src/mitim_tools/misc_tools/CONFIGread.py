@@ -94,7 +94,11 @@ def machineSettings(
 
     # Determine where to run this code, depending on config file
     s = load_settings()
-    machine = s["preferences"][code] if forceMachine is None else forceMachine
+    code_preference = code
+    if forceMachine is None and code_preference not in s["preferences"] and code_preference == "qlgyro" and "cgyro" in s["preferences"]:
+        code_preference = "cgyro"
+
+    machine = s["preferences"][code_preference] if forceMachine is None else forceMachine
 
     # Paths in scratch should have a one-to-one (and only one) correspondence with local, to avoid overlapping
     nameScratch_full = IOtools.path_overlapping(nameScratch, append_folder_local) if append_folder_local is not None else nameScratch
