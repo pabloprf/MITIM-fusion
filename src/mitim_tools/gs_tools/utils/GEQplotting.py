@@ -788,7 +788,8 @@ def plotParameterization(self, axs=None):
         0.0,
         toppos-distance*cont,
         f'$\\kappa_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["kappa"]:.3f}, '
-        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["delta"]:.3f}',
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["delta"]:.3f} '
+        f'$\\zeta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["zeta"]:.3f}',
         color="k",
         fontsize=fontsize,
         fontweight="bold",
