@@ -568,7 +568,8 @@ class mitim_simulation:
 
                 max_parallel_execution = max(1, resolved.concurrency)
 
-                print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {resources_per_call}). MITIM will launch {total_simulation_executions // max_parallel_execution+1} sequential executions",typeMsg="i")
+                n_sequential = -(-total_simulation_executions // max_parallel_execution)  # ceil division
+                print(f"\t- {code.upper()} will be executed as bash script (total cores: {total_cores_required},  cores per simulation: {resources_per_call}). MITIM will launch {n_sequential} sequential execution(s)",typeMsg="i")
 
                 # Build the bash script with job control enabled and a loop to limit parallel jobs
                 GACODEcommand = "#!/usr/bin/env bash\n"

@@ -85,6 +85,7 @@ def resolve(
     job_name="mitim_job",
     array_list=None,
     exclusive=None,
+    verbose=True,
 ):
     """
     Resolve user `allocation` + machine config + code hints → ResolvedAllocation.
@@ -175,6 +176,20 @@ def resolve(
             local_capacity = resources_per_call  # last resort: one at a time
         concurrency = max(1, local_capacity // max(1, resources_per_call))
 
+        # Warn if a single radial call already exceeds the machine: each call will
+        # oversubscribe (resources_per_call is the fixed per-call MPI layout, not a
+        # knob MITIM shrinks), and concurrency is forced to 1.
+        if verbose and cores_per_node > 0 and resources_per_call > local_capacity:
+            unit = "GPU" if (hints["uses_gpu"] and gpus_per_node > 0) else "core"
+            from mitim_tools.misc_tools.LOGtools import printMsg as _print
+            _print(
+                f"\t- {code} (local bash): each radial call requests resources_per_call={resources_per_call}, "
+                f"but this machine has {local_capacity} {unit}(s) → each call oversubscribes "
+                f"(~{resources_per_call / local_capacity:.1f}x) and calls run one at a time. resources_per_call is the "
+                f"fixed per-call MPI layout, so MITIM won't shrink it — lower it to <= {local_capacity} for an efficient local run",
+                typeMsg="w",
+            )
+
     # --- Build sbatch dict (LITERAL sbatch flag names) ---------------------
     sbatch = {}
     if submission_type != "bash":
@@ -214,7 +229,8 @@ def resolve(
             sbatch["exclusive"] = False
 
     # --- One log line documenting the abstract → native mapping ------------
-    _log_mapping(code, hints, resources_per_call, submission_type, sbatch)
+    if verbose:
+        _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node)
 
     return ResolvedAllocation(
         use_slurm=use_slurm,
@@ -303,14 +319,16 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
         sbatch["cpus-per-task"] = resources_per_call
 
 
-def _log_mapping(code, hints, resources_per_call, submission_type, sbatch):
+def _log_mapping(code, hints, resources_per_call, submission_type, sbatch, gpus_per_node=0):
     """One-line explainer at resolve time — makes the CPU-vs-GPU unit obvious."""
     try:
         from mitim_tools.misc_tools.LOGtools import printMsg as _print
     except Exception:
         return
     if submission_type == "bash":
-        unit = "GPU" if hints.get("uses_gpu") else "CPU core"
+        # Only call it a GPU unit when the machine actually has GPUs; a local
+        # bash run on a CPU-only box uses cores even for GPU-capable codes.
+        unit = "GPU" if (hints.get("uses_gpu") and gpus_per_node > 0) else "CPU core"
         _print(f"\t- {code}: resources_per_call={resources_per_call} → {resources_per_call} {unit}(s) per radial call (bash)", typeMsg="i")
         return
     if hints.get("uses_gpu") and hints.get("full_node_mpi"):

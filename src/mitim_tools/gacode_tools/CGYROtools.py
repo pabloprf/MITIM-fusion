@@ -533,7 +533,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # knobs (full-node MPI on GPU machines, MPS sharing) live in one
             # place instead of being duplicated here and in code_slurm_settings.
             from mitim_tools.misc_tools import SLURMtools
-            resolved = SLURMtools.resolve(code='cgyro', allocation={'resources_per_call': int(n)})
+            resolved = SLURMtools.resolve(code='cgyro', allocation={'resources_per_call': int(n)}, verbose=False)
             mpi = resolved.mpi
 
             # Export OMP_NUM_THREADS + OMP_STACKSIZE BEFORE the cgyro launch so every
@@ -808,6 +808,22 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         n_tor_src = extraOptions.get('N_TOROIDAL', controls.get('N_TOROIDAL', 1))
         n_tor_list = [int(v) for v in n_tor_src] if isinstance(n_tor_src, (list, np.ndarray)) else [int(n_tor_src)]
+
+        # Single toroidal mode (e.g. linear single-ky runs): the only valid toroidal
+        # split is one mode per process. This is a normal configuration, not a
+        # misconfiguration, so set TOROIDALS_PER_PROC=1 and report it as info — the
+        # remaining ranks parallelize the radial/velocity grid instead.
+        if all(nt == 1 for nt in n_tor_list):
+            if 'TOROIDALS_PER_PROC' in extraOptions:
+                return extraOptions
+            extraOptions = copy.deepcopy(extraOptions)
+            extraOptions['TOROIDALS_PER_PROC'] = [1] * len(n_tor_list) if isinstance(n_tor_src, (list, np.ndarray)) else 1
+            print(
+                f"\t- [preprocess] N_TOROIDAL=1 (single toroidal mode); setting TOROIDALS_PER_PROC=1 "
+                f"(resources_per_call={resources_per_call} rank(s) parallelize the radial/velocity grid)",
+                typeMsg="i",
+            )
+            return extraOptions
 
         if any(nt <= 0 or nt % resources_per_call != 0 for nt in n_tor_list):
             print(
