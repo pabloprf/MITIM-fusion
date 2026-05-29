@@ -21,6 +21,26 @@ _RUN_TYPE_ALIASES = {'run': 'normal'}
 def _normalize_run_type(run_type):
     return _RUN_TYPE_ALIASES.get(run_type, run_type)
 
+def _background_job_block(command, indent="    "):
+    '''
+    Wrap a per-code `code_call` command in a brace group launched in the
+    background ('{ ...; } &') for the bash and slurm_standard builders.
+
+    This is the single place the trailing-newline contract lives, so the
+    per-code `code_call` functions don't have to agree on a convention and the
+    builders don't each rstrip defensively. `code_call` shapes differ: TGLF/NEO/GX
+    return a single line with no trailing newline; CGYRO returns a multi-line
+    block (export prefix + cgyro launch + post-run restart-cleanup if-block)
+    ending in a newline. Two failure modes this avoids:
+      - a bare '<cmd> &' only backgrounds the last line of a multi-line command
+        and leaves a dangling '&' after a trailing 'fi' -> bash syntax error;
+      - gluing '} &' onto a command with no trailing newline keeps '}' on the
+        command's line, so the group never closes -> 'syntax error near done'.
+    Normalizing to exactly one trailing newline, with '} &' on its own line,
+    closes the group correctly for both shapes.
+    '''
+    return f"{indent}{{\n{command.rstrip(chr(10))}\n{indent}}} &\n"
+
 class mitim_simulation:
     '''
     Main class for running GACODE simulations.
@@ -564,7 +584,9 @@ class mitim_simulation:
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
                 folder_str = '"$folder"'  # literal double quotes around $folder
-                GACODEcommand += f'    {code_call(folder=folder_str, n=resources_per_call, p=self.simulation_job.folderExecution)} &\n'
+                # Background each launch in a brace group (see _background_job_block
+                # for why a bare '<cmd> &' breaks for multi-line / no-trailing-newline code_calls).
+                GACODEcommand += _background_job_block(code_call(folder=folder_str, n=resources_per_call, p=self.simulation_job.folderExecution))
                 GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
@@ -577,7 +599,7 @@ class mitim_simulation:
                 # Code launches
                 GACODEcommand = ""
                 for folder in folders_red:
-                    GACODEcommand += f'    {code_call(folder = folder, n = resources_per_call, p = self.simulation_job.folderExecution)}  &\n'
+                    GACODEcommand += _background_job_block(code_call(folder = folder, n = resources_per_call, p = self.simulation_job.folderExecution))
                 GACODEcommand += "\nwait"  # This is needed so that the script doesn't end before each job
 
             # Job array
