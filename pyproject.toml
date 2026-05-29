@@ -2,9 +2,19 @@
 requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
+# Read the version statically from src/mitim_tools/__init__.py so there is a
+# single place to bump it on each release (no literal version duplicated here).
+[tool.setuptools.dynamic]
+version = {attr = "mitim_tools.__version__"}
+
+# Explicit src-layout package discovery (also required for the version `attr`
+# above to locate the mitim_tools package under src/).
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [project]
 name = "MITIM"
-version = "4.0.0"
+dynamic = ["version"]   # single source of truth: src/mitim_tools/__init__.py:__version__
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest botorch, 3.13 has issues with tensorflow

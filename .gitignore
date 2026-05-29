@@ -9,3 +9,4 @@ docs/build/
 *.bat
 _build/
 *.claude/
+build/
