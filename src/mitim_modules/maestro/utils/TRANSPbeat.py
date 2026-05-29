@@ -417,13 +417,21 @@ class transp_beat(beat):
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
         # Power scale
-        print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
-        self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
-        self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+        if self.maestro_instance.counter_current == 1:  # TODO: try to get this to be the first instance of the TRANSP beat and not just the first beat
+            print('\t\t\t* NOT Bringing total power of frozen plasma state to new plasma state (NO rescaling the profile)')
+        else:
+            print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
+            self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
+            self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
 
-        self.profiles_output.profiles['qbeame(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
-        self.profiles_output.profiles['qbeami(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
+            # Preventing NaN's by setting negative and very small values to 0
+            if self.profiles_output.derived['qRF_MW'][-1] < 0 or abs(self.profiles_output.derived['qRF_MW'][-1]) <= 5e-6:
+                    profiles_output.profiles['qrfi(MW/m^3)'] = 0
+                    profiles_output.profiles['qrfe(MW/m^3)'] = 0
 
+
+            self.profiles_output.profiles['qbeame(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
+            self.profiles_output.profiles['qbeami(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
 
         # --------------------------------------------------------------------------------------------
 
