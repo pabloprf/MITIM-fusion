@@ -82,7 +82,7 @@ run_type = 'normal'
 
 cgyro.run(
     'Nonlinear',
-    code_settings="Nonlinear",
+    code_settings="Nonlinear_reduced2",
     extraOptions={
         'MAX_TIME': 10.0, # Short, I just want to test the run. Enough to get the restart file
         'KY': 0.1,
@@ -114,7 +114,7 @@ cgyro.read(label="cgyro2")
 
 cgyro.run(
     'Nonlinear_preprocessed',
-    code_settings="Nonlinear",
+    code_settings="Nonlinear_reduced2",
     extraOptions={
         'MAX_TIME': 10.0,
     },
