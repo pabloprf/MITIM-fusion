@@ -116,7 +116,7 @@ plasma:
     #       ICRH:             Ion Cyclotron Resonance Heating model in TRANSP
     #       NBI:              Neutral Beam Injection model in TRANSP
     #       gaussian_sources: Simple Gaussian heating sources for electrons and ions
-    type: NBI
+    type: ICRH
 
     # Heating model parameters
     parameters:
