@@ -245,12 +245,19 @@ class portals_beat(beat):
 
         # Insert powers
         opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
-        if 'qie' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
+        
+        try:
+            target_options = opt_fun.portals_parameters['target']['options']
+        except AttributeError:
+            # If it's in SR step (PORTALSinitializer instead of PORTALSanalyzer), recover this info from the powerstate
+            target_options = opt_fun.powerstates[-1].target_options
+        
+        if 'qie' in target_options['targets_evolve']:
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
-        if 'qrad' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
+        if 'qrad' in target_options['targets_evolve']:
             for key in ['qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)']:
                 self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
-        if 'qfus' in opt_fun.portals_parameters['target']['options']['targets_evolve']:
+        if 'qfus' in target_options['targets_evolve']:
             for key in ['qfuse(MW/m^3)', 'qfusi(MW/m^3)']:
                 self.profiles_output.profiles[key] = profiles_portals_out.profiles[key]
 
