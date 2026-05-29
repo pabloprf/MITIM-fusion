@@ -121,7 +121,7 @@ As a result, a TGLF notebook with different tabs will be opened with all relevan
 Run TGLF from TRANSP results file
 ---------------------------------
 
-.. deprecated::
+.. deprecated:: 5.0
 
    The ``prep_using_tgyro()`` method used in this workflow is deprecated and will be removed in a future release.
    Consider preparing an ``input.gacode`` file separately and using the standard ``prep()`` workflow described in the previous section.

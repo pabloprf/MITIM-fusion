@@ -6,10 +6,8 @@ sphinx-togglebutton
 sphinx-panels
 sphinxcontrib-images
 importlib-metadata
-pip
 numpy
 matplotlib
-argparse
 h5py
 netCDF4
 xarray
@@ -29,7 +27,7 @@ psutil
 tensorflow
 f90nml
 pyyaml
-megpy>=2.0
+megpy>=2.0.5
 fibe>=0.3
 scikit-image  
 IPython

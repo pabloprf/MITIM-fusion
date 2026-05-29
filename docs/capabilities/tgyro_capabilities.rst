@@ -71,7 +71,7 @@ Now it is time to set the TGYRO settings, such as the radial range (``vectorRang
     physics_options = { 'TypeTarget':2 }   # 2: Only evolve exchange, 3: Reactor
     PredictionSet   = [1,1,0]              # Profiles to predict: [Te, Ti, ne]
     iterations      = 5                    # Number of TGYRO iterations
-    TGLFsettings    = 5                    # TGLF pre-sets
+    TGLFsettings    = 'SAT2em'             # TGLF pre-set (see templates/input.tglf.models.yaml)
 
 Now TGYRO can be run:
 

@@ -37,6 +37,14 @@ Use ``pip`` to install all the required MITIM requirements:
    If running in a computing cluster, remove that flag.
    The ``pyqt`` package is used to create condensed figures into a single notebook when interpreting and plotting simulation results.
 
+.. note::
+
+   An additional optional extra, ``[vmec]``, installs the ``vmecpp`` package required for VMEC equilibrium support. It is opt-in because it is not needed for most workflows; add it (alone or alongside ``[pyqt]``) only if you need VMEC:
+
+   .. code-block:: console
+
+      pip3 install -e MITIM-fusion[vmec]
+
 If you were unsuccessful in the installation, check out our :ref:`Frequently Asked Questions` section.
 
 
@@ -71,7 +79,7 @@ Apart from machine configurations, ``preferences`` in ``config_user.json`` also 
 
 ``preferences`` also allows a ``dpi_notebook`` value (in percent from standard), which should be adjusted for each user's screen configuration if the MITIM notebook figures are too small or too large.
 
-This is an example of a ``config_user.json`` file that specifies that TGLF should be run in the *eofe7.mit.edu* machine and TGYRO in the *perlmutter.nersc.gov* machine.
+This is an example of a ``config_user.json`` file that specifies that TGLF should be run in the *orcd-login001.mit.edu* machine and TGYRO in the *perlmutter.nersc.gov* machine.
 The ``slurm`` options are only required if you are running in a computing cluster that uses the SLURM scheduler, and you can specify the partition, account, nodes to exclude and default memory requirements.
 In this example, the ``identity`` option is only required if you are running in a computing cluster that requires a specific SSH key to access it.
 
@@ -94,9 +102,9 @@ In this example, the ``identity`` option is only required if you are running in 
         "gpus_per_node": 0
     },
       "engaging": {
-         "machine":          "eofe7.mit.edu", 
+         "machine":          "orcd-login001.mit.edu", 
          "username":         "YOUR_USERNAME",
-         "scratch":          "/pool001/YOUR_USERNAME/scratch/",
+         "scratch":          "/orcd/pool/003/YOUR_USERNAME/scratch/",
          "modules":          "",
          "cores_per_node":   64,
          "gpus_per_node":     0,
@@ -132,7 +140,7 @@ MITIM will attempt to create SSH and SFTP connections to that machine, and will 
    Note that MITIM does not maintain or develop the simulation codes that are used within it, such as those from `GACODE <https://gacode.io/>`_ or `TRANSP <https://transp.pppl.gov/index.html>`_. It assumes that proper permissions have been obtained and that working versions of those codes exist in the machine configured to run them.
 
 Please note that MITIM will try to run the codes with standard commands that the shell must understand.
-For example, to run the TGLF code, MITIM will want to execute the command ``tglf`` in the *eofe7.mit.edu* machine as specified in the example above.
+For example, to run the TGLF code, MITIM will want to execute the command ``tglf`` in the *orcd-login001.mit.edu* machine as specified in the example above.
 There are several ways to make sure that the shell understands the command:
 
 .. dropdown:: 1. Send specific commands per code (recommended)
