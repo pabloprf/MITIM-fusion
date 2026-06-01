@@ -426,8 +426,8 @@ class transp_beat(beat):
 
             # Preventing NaN's by setting negative and very small values to 0
             if self.profiles_output.derived['qRF_MW'][-1] < 0 or abs(self.profiles_output.derived['qRF_MW'][-1]) <= 5e-6:
-                    profiles_output.profiles['qrfi(MW/m^3)'] = 0
-                    profiles_output.profiles['qrfe(MW/m^3)'] = 0
+                    self.profiles_output.profiles['qrfi(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qrfi(MW/m^3)'])
+                    self.profiles_output.profiles['qrfe(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qrfe(MW/m^3)'])
 
 
             self.profiles_output.profiles['qbeame(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
@@ -435,8 +435,8 @@ class transp_beat(beat):
 
             # Preventing NaN's by setting negative and very small values to 0
             if self.profiles_output.derived['qBEAM_MW'][-1] < 0 or abs(self.profiles_output.derived['qBEAM_MW'][-1]) <= 5e-6:
-                    profiles_output.profiles['qbeami(MW/m^3)'] = 0
-                    profiles_output.profiles['qbeame(MW/m^3)'] = 0
+                    self.profiles_output.profiles['qbeami(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qbeami(MW/m^3)'])
+                    self.profiles_output.profiles['qbeame(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qbeame(MW/m^3)'])
 
         # --------------------------------------------------------------------------------------------
 
