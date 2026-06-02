@@ -20,6 +20,7 @@ class portals_beat(beat):
 
     def __init__(self, maestro_instance):
         super().__init__(maestro_instance, beat_name = 'portals')
+        self.initialization_parameters = {}
 
     def prepare(self,
             use_previous_residual = True,
@@ -267,7 +268,7 @@ class portals_beat(beat):
         # were just pulled back from PORTALS (zero) above; channels NOT in
         # targets_evolve must be re-zeroed here so the zeros survive into
         # input.gacode_final and the next beat's seed.
-        zero_blocks = self.initialization_parameters.get('zero_source_blocks', [])
+        zero_blocks = getattr(self, 'initialization_parameters', {}).get('zero_source_blocks', [])
         if zero_blocks:
             self.profiles_output.correct(options={'zero_source_blocks': zero_blocks, 'recalculate_ptot': False})
         # --------------------------------------------------------------------------------------------
