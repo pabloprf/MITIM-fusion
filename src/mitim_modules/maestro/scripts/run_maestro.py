@@ -3,6 +3,7 @@ import copy
 import json
 import numpy as np
 from pathlib import Path
+from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools, GUItools, PLASMAtools
 from mitim_modules.maestro.MAESTROmain import maestro
 from mitim_modules.maestro.utils import MAESTROplot
@@ -10,6 +11,60 @@ from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools.scripts.slurm import run_slurm
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+
+def check_unrecognized_namelist_keys(maestro_namelist):
+    '''
+    Warn about keys in the user MAESTRO namelist that the code will silently ignore.
+
+    Motivation: parameters are read from specific namelist sections (e.g. the profile
+    creator only sees `plasma.profiles_initialization.parameters`, and the engineering
+    block is hand-picked into a fixed key set in this script). A knob placed in the wrong
+    section or misspelled is dropped with no error -- e.g. `aLTe_to_aLTi_ratio` under
+    `plasma.parameters` instead of `plasma.profiles_initialization.parameters` never
+    reaches the creator, which then defaults to 1.0 (aLTe = aLTi).
+
+    The check diffs the user namelist against templates/namelist.maestro.yaml (the schema
+    source of truth). Only the fixed-schema `plasma` subtree and the top-level keys are
+    validated; the `maestro` beats subtree is skipped on purpose -- beat names are
+    user-defined and `parameters_prepare.portals_parameters` is a free-form overlay on the
+    PORTALS namelist, so a template diff there would be all false positives. The template
+    is read raw (yaml.safe_load) since only the key structure is needed.
+
+    Warns only (never raises); returns the list of unrecognized dotted key paths.
+    '''
+    import yaml
+    template_path = __mitimroot__ / "templates" / "namelist.maestro.yaml"
+    if not template_path.exists():
+        return []  # diagnostic utility: degrade to a no-op rather than break a run
+    with open(template_path, "r") as f:
+        template = yaml.safe_load(f)
+
+    unknown = []
+
+    def _collect(user_node, template_node, path):
+        # Recurse only where both sides are dicts; scalars/lists are leaves (values not checked)
+        if not (isinstance(user_node, dict) and isinstance(template_node, dict)):
+            return
+        for key, sub in user_node.items():
+            if key not in template_node:
+                unknown.append(".".join(path + [str(key)]))
+            else:
+                _collect(sub, template_node[key], path + [str(key)])
+
+    # Top-level keys (seed, plasma, maestro) and the full, fixed-schema plasma subtree
+    for key in maestro_namelist:
+        if key not in template:
+            unknown.append(str(key))
+    _collect(maestro_namelist.get("plasma", {}), template.get("plasma", {}), ["plasma"])
+
+    if unknown:
+        print("[MAESTRO] Unrecognized namelist key(s) found -- these are SILENTLY IGNORED. "
+              "Check spelling/placement against templates/namelist.maestro.yaml:", typeMsg='w')
+        for k in unknown:
+            print(f"\t- {k}", typeMsg='w')
+
+    return unknown
+
 
 @mitim_timer('MAESTRO')
 def run_maestro_local(
@@ -22,6 +77,9 @@ def run_maestro_local(
         ):
 
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
+
+    # Warn about misplaced/misspelled keys that would otherwise be silently ignored
+    check_unrecognized_namelist_keys(maestro_namelist)
 
     # If the caller didn't explicitly set keep_all_files, take it from the YAML
     # (templates/namelist.maestro.yaml documents `maestro.keep_all_files`).
