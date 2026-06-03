@@ -23,9 +23,13 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, **kwargs):
+    def prepare(self, *args, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, **kwargs):
 
         self.rhotop = rhotop
+
+        # User overrides for the Lengyel namelist `input` block (keys as in input.lengyel.controls.yaml),
+        # applied at run() time on top of the defaults and input.gacode-derived values
+        self.override_namelist_params = override_namelist_params if override_namelist_params is not None else {}
 
         if radas_dir is not None:
             radas_dir_env = radas_dir
@@ -88,11 +92,14 @@ class lengyel_beat(beat):
 
     def run(self, *args, **kwargs):
         
+        # Merge user-provided namelist overrides on top of the impurity args (overrides win on key collision)
+        lengyel_inputs = {**self.lengyel_args, **self.override_namelist_params}
+
         # Run Lengyel standalone
         self.l.run(
             self.folder,
             cold_start=True, # It is so cheap that, if I have come to the run() command, I'll just repeat
-            **self.lengyel_args
+            **lengyel_inputs
             )
         
         # Grab important parameters from the inputs
