@@ -250,8 +250,11 @@ class portals_beat(beat):
         try:
             target_options = opt_fun.portals_parameters['target']['options']
         except AttributeError:
-            # If it's in SR step (PORTALSinitializer instead of PORTALSanalyzer), recover this info from the powerstate
-            target_options = opt_fun.powerstates[-1].target_options
+            # If it's in SR step (PORTALSinitializer instead of PORTALSanalyzer), recover this info from the powerstate.
+            # Note the extra ['options']: portals_parameters['target']['options'] is already the inner dict, but the
+            # powerstate stores target_options as the outer {'evaluator':..., 'options': {...}}, so dive one more level
+            # to keep target_options['targets_evolve'] valid below.
+            target_options = opt_fun.powerstates[-1].target_options['options']
         
         if 'qie' in target_options['targets_evolve']:
             self.profiles_output.profiles['qei(MW/m^3)'] = profiles_portals_out.profiles['qei(MW/m^3)']
