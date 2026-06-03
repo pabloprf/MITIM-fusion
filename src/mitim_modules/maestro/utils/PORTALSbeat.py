@@ -155,10 +155,17 @@ class portals_beat(beat):
 
     def finalize(self, **kwargs):
 
-        # Refresh folder_output from self.folder only if the source still exists.
-        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder,
-        # folder_output already has the authoritative content from the prior run.
-        if (self.folder / 'Outputs').exists():
+        # Refresh folder_output from self.folder only when the PORTALS run in self.folder actually
+        # COMPLETED, signalled by Outputs/optimization_object.pkl (MITIM_BO.save() runs unconditionally
+        # at the end of run(), after the step loop, for both full-BO and converged-in-training cases).
+        # Keying off mere existence of Outputs/ is unsafe: a run killed mid-loop leaves an empty/incomplete
+        # Outputs/, and the wipe-then-persist below would then destroy a good folder_output and replace it
+        # with an unreadable one (which subsequently crashes from_folder / merge_parameters).
+        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder, optimization_object.pkl
+        # is gone too, so we skip and read the authoritative content already in folder_output.
+        portals_completed = (self.folder / 'Outputs' / 'optimization_object.pkl').exists()
+
+        if portals_completed:
             for item in self.folder_output.glob('*'):
                 if item.is_file():
                     item.unlink(missing_ok=True)
@@ -166,6 +173,16 @@ class portals_beat(beat):
                     IOtools.shutil_rmtree(item)
 
             self._persist(self.folder / 'Outputs', self.folder_output / 'Outputs')
+
+        elif not (self.folder_output / 'Outputs' / 'optimization_object.pkl').exists():
+            # Neither a freshly-completed run (self.folder) nor a prior persisted result (folder_output)
+            # exists: the beat genuinely did not finish. Fail loudly and actionably instead of crashing
+            # cryptically in from_folder below (or silently producing an empty beat_results).
+            raise RuntimeError(
+                f"[MAESTRO][PORTALSbeat] PORTALS run in '{IOtools.clipstr(self.folder)}' did not complete "
+                f"(no Outputs/optimization_object.pkl) and no prior finalized result exists in "
+                f"'{IOtools.clipstr(self.folder_output)}'. Re-run this beat (cold-start it) before finalizing."
+            )
 
         # --------------------------------------------------------------------------------------------
         # Prepare final beat's input.gacode
