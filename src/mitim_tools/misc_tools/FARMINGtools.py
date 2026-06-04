@@ -1507,6 +1507,13 @@ def create_slurm_execution_files(
         slurm_settings = {}
 
     # ---- Native sbatch keys (the only schema we support) -----------------
+    # Back-compat: migrate the legacy 'minutes' key to the native 'time' key. mitim_job-direct
+    # callers (e.g. TRANSPsingularity) still pass 'minutes' instead of going through
+    # SLURMtools.resolve(); without this they'd silently fall back to the "10:00" default below.
+    if "time" not in slurm_settings and "minutes" in slurm_settings:
+        _m = int(slurm_settings["minutes"])
+        slurm_settings["time"] = f"{_m//60:02d}:{_m%60:02d}:00" if _m >= 60 else f"{_m:02d}:00"
+
     nameJob         = slurm_settings.setdefault("job-name", "mitim_job")
     time_com        = slurm_settings.setdefault("time", "10:00")
     memory_req_by_job = slurm_settings.setdefault("mem", None)
