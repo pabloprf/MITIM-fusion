@@ -372,6 +372,26 @@ class transp_beat(beat):
             else:
                 print(f'\t\t- Keeping auxiliary power from TRANSP output')
 
+    def _rescale_aux_to_frozen(self, p_frozen, ekey, ikey, totkey, zero_if_small=False):
+        '''
+        Scale the (electron, ion) auxiliary-power channels so their integral matches the
+        frozen engineering total (totkey), which MAESTRO treats as a fixed engineering input
+        to be preserved beat-to-beat.
+
+        zero_if_small (gaussian_sources only): when the TRANSP output has ~no power in this
+        channel, zero it instead of leaving the divide-by-~0 result (avoids NaNs). For ICRH/NBI
+        this is left False on purpose: a soft TRANSP beat (Pich/Pnbi off) leaves only a tiny
+        nonzero residual, and rescaling lifts it back to the frozen engineering value rather
+        than zeroing it (otherwise the zero gets re-frozen and every later beat runs unheated).
+        '''
+        ratio = p_frozen.derived[totkey][-1] / self.profiles_output.derived[totkey][-1]
+        self.profiles_output.profiles[ekey] *= ratio
+        self.profiles_output.profiles[ikey] *= ratio
+
+        if zero_if_small and (self.profiles_output.derived[totkey][-1] < 0 or abs(self.profiles_output.derived[totkey][-1]) <= 5e-6):
+            self.profiles_output.profiles[ekey] = np.zeros_like(self.profiles_output.profiles[ekey])
+            self.profiles_output.profiles[ikey] = np.zeros_like(self.profiles_output.profiles[ikey])
+
     def merge_parameters(self):
         '''
         The goal of the TRANSP beat is to produce:
@@ -416,27 +436,28 @@ class transp_beat(beat):
         for key in ['current(MA)', 'bcentr(T)']:
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
-        # Power scale
-        if self.maestro_instance.counter_current == 1:  # TODO: try to get this to be the first instance of the TRANSP beat and not just the first beat
-            print('\t\t\t* NOT Bringing total power of frozen plasma state to new plasma state (NO rescaling the profile)')
+        # Power scale: bring the auxiliary power back to the frozen engineering total (Pin),
+        # treated as a fixed engineering parameter that must survive each TRANSP beat.
+        heating_type = self.maestro_instance.maestro_namelist['plasma']['heating']['type']
+
+        if heating_type == 'gaussian_sources':
+            # gaussian_sources keeps the special handling from 5b02314b: the Pe/Pi gaussians are
+            # written straight into qrfe/qrfi at TRANSP output by _add_heating_profiles, so on the
+            # very first beat there is nothing to rescale to yet, and the 0/0 case is guarded.
+            if self.maestro_instance.counter_current == 1:  # TODO: first instance of the TRANSP beat, not just the first beat
+                print('\t\t\t* gaussian_sources, first beat: NOT rescaling auxiliary power to frozen')
+            else:
+                print('\t\t\t* gaussian_sources: rescaling auxiliary power to frozen')
+                self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW',   zero_if_small=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW', zero_if_small=True)
         else:
+            # ICRH / NBI: pre-5b02314b behavior, restored. Rescale the aux power to the frozen
+            # engineering value on EVERY beat (including the first and any soft beat). A soft
+            # TRANSP beat runs with Pich/Pnbi off and leaves qRF/qBEAM ~ 0; without this rescale
+            # that ~0 gets re-frozen and every downstream TRANSP beat runs with no ICRF/NBI power.
             print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
-            self.profiles_output.profiles['qrfe(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
-            self.profiles_output.profiles['qrfi(MW/m^3)'] *= p_frozen.derived['qRF_MW'][-1] / self.profiles_output.derived['qRF_MW'][-1]
-
-            # Preventing NaN's by setting negative and very small values to 0
-            if self.profiles_output.derived['qRF_MW'][-1] < 0 or abs(self.profiles_output.derived['qRF_MW'][-1]) <= 5e-6:
-                    self.profiles_output.profiles['qrfi(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qrfi(MW/m^3)'])
-                    self.profiles_output.profiles['qrfe(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qrfe(MW/m^3)'])
-
-
-            self.profiles_output.profiles['qbeame(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
-            self.profiles_output.profiles['qbeami(MW/m^3)'] *= p_frozen.derived['qBEAM_MW'][-1] / self.profiles_output.derived['qBEAM_MW'][-1]
-
-            # Preventing NaN's by setting negative and very small values to 0
-            if self.profiles_output.derived['qBEAM_MW'][-1] < 0 or abs(self.profiles_output.derived['qBEAM_MW'][-1]) <= 5e-6:
-                    self.profiles_output.profiles['qbeami(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qbeami(MW/m^3)'])
-                    self.profiles_output.profiles['qbeame(MW/m^3)'] = np.zeros_like(self.profiles_output.profiles['qbeame(MW/m^3)'])
+            self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW')
 
         # --------------------------------------------------------------------------------------------
 
