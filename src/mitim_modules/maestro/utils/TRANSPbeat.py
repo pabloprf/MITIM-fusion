@@ -372,25 +372,56 @@ class transp_beat(beat):
             else:
                 print(f'\t\t- Keeping auxiliary power from TRANSP output')
 
-    def _rescale_aux_to_frozen(self, p_frozen, ekey, ikey, totkey, zero_if_small=False):
+    def _rescale_aux_to_frozen(self, p_frozen, ekey, ikey, totkey, prescribed_at_output=False):
         '''
-        Scale the (electron, ion) auxiliary-power channels so their integral matches the
-        frozen engineering total (totkey), which MAESTRO treats as a fixed engineering input
-        to be preserved beat-to-beat.
+        Renormalize an auxiliary-power channel pair (electron ekey + ion ikey) so its volume
+        integral equals the frozen engineering total (totkey). This preserves the SHAPE that
+        TRANSP/TORIC produced while pinning the MAGNITUDE to the engineering spec (Pin), which
+        MAESTRO treats as a fixed input carried unchanged from beat to beat. See the block comment
+        in merge_parameters for the ICRH/NBI vs gaussian_sources rationale.
 
-        zero_if_small (gaussian_sources only): when the TRANSP output has ~no power in this
-        channel, zero it instead of leaving the divide-by-~0 result (avoids NaNs). For ICRH/NBI
-        this is left False on purpose: a soft TRANSP beat (Pich/Pnbi off) leaves only a tiny
-        nonzero residual, and rescaling lifts it back to the frozen engineering value rather
-        than zeroing it (otherwise the zero gets re-frozen and every later beat runs unheated).
+        When the TRANSP output has essentially no power in this channel (|total| <= 5e-6, or
+        negative) we CANNOT rescale: dividing by ~0 gives 0/0 or 0*inf = NaN. Two behaviors:
+
+          - ICRH/NBI (prescribed_at_output=False, default): the frozen engineering power must
+            survive, but a soft TRANSP beat (Pich/Pnbi off) -- or a restart that reloaded a
+            previously-zeroed input.gacode (qrfe == 0 exactly) -- leaves nothing to scale up. So
+            insert the frozen deposition profile directly. (self.profiles_output was already
+            re-gridded to p_frozen's resolution earlier in merge_parameters, so shapes match.)
+
+          - gaussian_sources (prescribed_at_output=True): the Pe/Pi gaussians are written straight
+            into qrfe/qrfi at TRANSP output, so ~0 genuinely means "no power here" -> zero it
+            (Kaitlyn's 5b02314b guard).
+
+        Note: the totals are read once on entry; `derived` is not recomputed mid-call, so both
+        channels scale by the same factor (the new integral is recomputed later by the caller's
+        derive/write path).
         '''
-        ratio = p_frozen.derived[totkey][-1] / self.profiles_output.derived[totkey][-1]
+        out_total = self.profiles_output.derived[totkey][-1]
+
+        if out_total < 0 or abs(out_total) <= 5e-6:
+            if prescribed_at_output:
+                # gaussian_sources: ~0 genuinely means no prescribed power in this channel -> zero it.
+                self.profiles_output.profiles[ekey] = np.zeros_like(self.profiles_output.profiles[ekey])
+                self.profiles_output.profiles[ikey] = np.zeros_like(self.profiles_output.profiles[ikey])
+            else:
+                # ICRH/NBI: a zero output cannot be scaled up, but the frozen engineering power must
+                # survive. Insert the frozen deposition shape, then renormalize it to the frozen total
+                # over THIS beat's geometry, so the engineering power is preserved exactly and does not
+                # drift across repeated soft beats. The frozen shape is nonzero, so this divide is safe.
+                self.profiles_output.profiles[ekey] = p_frozen.profiles[ekey].copy()
+                self.profiles_output.profiles[ikey] = p_frozen.profiles[ikey].copy()
+                self.profiles_output.derive_quantities()
+                inserted_total = self.profiles_output.derived[totkey][-1]
+                if abs(inserted_total) > 5e-6:
+                    r = p_frozen.derived[totkey][-1] / inserted_total
+                    self.profiles_output.profiles[ekey] *= r
+                    self.profiles_output.profiles[ikey] *= r
+            return
+
+        ratio = p_frozen.derived[totkey][-1] / out_total
         self.profiles_output.profiles[ekey] *= ratio
         self.profiles_output.profiles[ikey] *= ratio
-
-        if zero_if_small and (self.profiles_output.derived[totkey][-1] < 0 or abs(self.profiles_output.derived[totkey][-1]) <= 5e-6):
-            self.profiles_output.profiles[ekey] = np.zeros_like(self.profiles_output.profiles[ekey])
-            self.profiles_output.profiles[ikey] = np.zeros_like(self.profiles_output.profiles[ikey])
 
     def merge_parameters(self):
         '''
@@ -436,25 +467,48 @@ class transp_beat(beat):
         for key in ['current(MA)', 'bcentr(T)']:
             self.profiles_output.profiles[key] = p_frozen.profiles[key]
 
-        # Power scale: bring the auxiliary power back to the frozen engineering total (Pin),
-        # treated as a fixed engineering parameter that must survive each TRANSP beat.
+        # ------------------------------------------------------------------------------------------------
+        # Power scale
+        # ------------------------------------------------------------------------------------------------
+        # The TOTAL auxiliary power is treated as a frozen *engineering* input (Pin), on the same footing
+        # as R, a, Bt, Ip. TRANSP/TORIC produces a deposition whose integral can drift from the requested
+        # value (numerics, grid resolution, or a "soft" beat that ran no heating at all), but MAESTRO wants
+        # the power that flows into the next beat to be EXACTLY the engineering spec. So we keep the SHAPE
+        # TRANSP produced and renormalize its INTEGRAL to the frozen total (see _rescale_aux_to_frozen).
+        #
+        # This matters beyond the current beat: right after this merge, MAESTROmain._freeze_parameters
+        # re-snapshots the whole profile, so whatever total survives here becomes the frozen reference the
+        # NEXT beat reads (a TRANSP beat sets its antenna/beam power from the incoming qRF/qBEAM, line ~158).
+        # A wrong total therefore propagates forward, not just into this beat.
+        #
+        # ICRH/NBI and gaussian_sources need OPPOSITE handling on the first beat, which is why we branch:
+        #
+        #   ICRH/NBI: the creator deposits Paux=P_icrh into qrfe/qrfi (or qbeam*) at INITIALIZATION
+        #       (aux_channels set), so frozen.qRF/qBEAM already holds the engineering value before any beat.
+        #       => rescale to frozen on EVERY beat. A soft beat (Pich/Pnbi off) leaves only a tiny nonzero
+        #       residual; rescaling lifts that residual's integral back to the engineering value. The shape
+        #       is then meaningless, but the only thing the next beat consumes is the scalar total, and the
+        #       next real TRANSP beat re-runs TORIC to recover a physical shape. Skipping the rescale here is
+        #       what caused "no ICRF in later transp beats": the ~0 got re-frozen and never recovered.
+        #
+        #   gaussian_sources: the creator uses aux_channels=None, so frozen.qRF STARTS AT 0; the prescribed
+        #       Pe/Pi gaussians are injected only at TRANSP OUTPUT (_add_heating_profiles overwrites qrfe/qrfi
+        #       with a parabola normalized to Pe/Pi). On the first beat, rescaling output(Pe+Pi) to frozen(0)
+        #       would WIPE the gaussian -> so we must NOT rescale the first beat; it becomes the frozen
+        #       reference (Pe+Pi) for subsequent beats, where the rescale ratio is ~1. zero_if_small guards
+        #       the genuine 0/0 case. (This is Kaitlyn's 5b02314b fix, now scoped to gaussian_sources only.)
+        # ------------------------------------------------------------------------------------------------
         heating_type = self.maestro_instance.maestro_namelist['plasma']['heating']['type']
 
         if heating_type == 'gaussian_sources':
-            # gaussian_sources keeps the special handling from 5b02314b: the Pe/Pi gaussians are
-            # written straight into qrfe/qrfi at TRANSP output by _add_heating_profiles, so on the
-            # very first beat there is nothing to rescale to yet, and the 0/0 case is guarded.
-            if self.maestro_instance.counter_current == 1:  # TODO: first instance of the TRANSP beat, not just the first beat
-                print('\t\t\t* gaussian_sources, first beat: NOT rescaling auxiliary power to frozen')
+            if self.maestro_instance.counter_current == 1:  # TODO: key on the first TRANSP beat that actually heated, not just the first beat
+                print('\t\t\t* gaussian_sources, first beat: NOT rescaling auxiliary power to frozen (it defines the reference)')
             else:
                 print('\t\t\t* gaussian_sources: rescaling auxiliary power to frozen')
-                self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW',   zero_if_small=True)
-                self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW', zero_if_small=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
         else:
-            # ICRH / NBI: pre-5b02314b behavior, restored. Rescale the aux power to the frozen
-            # engineering value on EVERY beat (including the first and any soft beat). A soft
-            # TRANSP beat runs with Pich/Pnbi off and leaves qRF/qBEAM ~ 0; without this rescale
-            # that ~0 gets re-frozen and every downstream TRANSP beat runs with no ICRF/NBI power.
+            # ICRH / NBI
             print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
             self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW')
             self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW')
