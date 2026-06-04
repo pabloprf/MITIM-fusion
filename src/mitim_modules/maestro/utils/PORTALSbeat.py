@@ -262,15 +262,28 @@ class portals_beat(beat):
         self.profiles_output.selfconsistentPTOT()
 
         # Insert powers
-        opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
-        
+        # Read from folder_output, NOT self.folder: merge_parameters runs after finalize(), which has
+        # already persisted the completed PORTALS run into folder_output (moved out of self.folder under
+        # keep_all_files: false, copied otherwise). So folder_output holds the full Outputs and from_folder
+        # returns a PORTALSanalyzer with portals_parameters. Reading self.folder would instead hit the now-
+        # emptied run folder and fall back to a PORTALSinitializer whose powerstates can be empty (e.g. a
+        # try_flux_match_only_for_first_point beat never writes initialization_simple_relax/), which used to
+        # blow up at powerstates[-1] with IndexError.
+        opt_fun = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+
         try:
             target_options = opt_fun.portals_parameters['target']['options']
         except AttributeError:
-            # If it's in SR step (PORTALSinitializer instead of PORTALSanalyzer), recover this info from the powerstate.
-            # Note the extra ['options']: portals_parameters['target']['options'] is already the inner dict, but the
-            # powerstate stores target_options as the outer {'evaluator':..., 'options': {...}}, so dive one more level
-            # to keep target_options['targets_evolve'] valid below.
+            # Fallback for an SR-step/initializer read (no portals_parameters): recover from the last powerstate.
+            # Note the extra ['options']: portals_parameters['target']['options'] is already the inner dict, but
+            # the powerstate stores target_options as the outer {'evaluator':..., 'options': {...}}, so dive one
+            # more level to keep target_options['targets_evolve'] valid below.
+            if not opt_fun.powerstates:
+                raise RuntimeError(
+                    f"[MAESTRO][PORTALSbeat] Could not read PORTALS target options from "
+                    f"'{IOtools.clipstr(self.folder_output)}': no portals_parameters and no powerstates. The "
+                    f"PORTALS beat likely did not produce a complete result; re-run it (cold-start) before merging."
+                )
             target_options = opt_fun.powerstates[-1].target_options['options']
         
         if 'qie' in target_options['targets_evolve']:
