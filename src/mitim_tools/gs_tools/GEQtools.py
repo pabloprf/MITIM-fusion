@@ -405,6 +405,32 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
+    def _geometric_R0(self):
+        """Boundary geometric major radius R0 = (R_out + R_in)/2 at the
+        magnetic-axis elevation.
+
+        Using the global (max,min) of R over the whole separatrix biases R0
+        inward for diverted equilibria: the separatrix dips through the x-point
+        at large |Z| / small R, so min(R) is the x-point, not the inboard
+        midplane. That shrinks R0 and inflates the inferred vacuum field
+        B0 = (R*Bt)/R0 (e.g. 1.587 -> 2.118 T instead of 1.68 -> 2.0 T). Taking
+        the boundary crossings at Z = Zaxis avoids the x-point, which sits
+        off-midplane. For a limited/circular boundary this reduces to the old
+        (max+min)/2.
+        """
+        Rb = np.asarray(self.Rb); Zb = np.asarray(self.Yb)
+        Zaxis = self.g.derived.get('zmaxis', 0.5 * (Zb.max() + Zb.min()))
+        Rc = []
+        for i in range(len(Rb)):
+            j = (i + 1) % len(Rb)
+            z1, z2 = Zb[i], Zb[j]
+            if (z1 - Zaxis) * (z2 - Zaxis) <= 0 and z1 != z2:
+                t = (Zaxis - z1) / (z2 - z1)
+                Rc.append(Rb[i] + t * (Rb[j] - Rb[i]))
+        if len(Rc) >= 2:
+            return 0.5 * (max(Rc) + min(Rc))
+        return 0.5 * (Rb.max() + Rb.min())  # fallback: no clean midplane crossing
+
     def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, Paux = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False, aux_channels = None):
 
         # -------------------------------------------------------------------------------------------------------
@@ -418,8 +444,7 @@ class MITIMgeqdsk:
         pressure = self.g.derived['pres']       # Pa
         Ip = self.g.derived['current']*1E-6     # MA
 
-        RZ = np.array([self.Rb,self.Yb]).T
-        R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
+        R0 = self._geometric_R0()
         B0 = self.g.derived['rcentr']*self.g.derived['bcentr'] / R0
 
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
