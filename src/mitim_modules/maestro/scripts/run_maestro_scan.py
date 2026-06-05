@@ -65,6 +65,7 @@ def launch_scan(
     nu_ne=None,
     save=True,
     label_fmt=None,
+    per_case_logs=True,
 ):
     """Submit a job array over the cartesian product of engineering scan lists.
 
@@ -118,6 +119,14 @@ def launch_scan(
         Format string for per-point folder names; default
         ``"case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"``,
         with ``_nune{nu_ne:.3f}`` appended when ``nu_ne`` is a list.
+    per_case_logs : bool
+        If True (default), redirect each array task's stdout/stderr into its
+        own case folder as ``slurm.out`` / ``slurm.err``, so a failing case's
+        traceback lives next to its inputs. The array-level SLURM files in
+        ``main_folder`` (``slurm_*_%A_%a.dat``) can't target the case folder
+        -- the folder name is only resolved from scan_folders.txt at run time
+        -- so they stay put and still capture sbatch-level (timeout/OOM/node)
+        messages. Set False to keep only the array-level files.
     """
     base_namelist = Path(base_namelist).expanduser().resolve()
     main_folder = Path(main_folder).expanduser().resolve()
@@ -155,7 +164,8 @@ def launch_scan(
         IOtools.write_mitim_yaml(nm, folder / "namelist.yaml")
         folders.append(folder)
 
-    _submit_array(folders, main_folder, slurm=slurm, save=save)
+    _submit_array(folders, main_folder, slurm=slurm, save=save,
+                  per_case_logs=per_case_logs)
 
 
 def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G, nu_ne=None):
@@ -193,8 +203,15 @@ def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G, nu_ne=None):
     heat['parameters']['Pi'] = Ptot * 0.5
 
 
-def _submit_array(folders, main_folder, *, slurm, save):
-    """Write scan_folders.txt and submit one sbatch array of len(folders) tasks."""
+def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
+    """Write scan_folders.txt and submit one sbatch array of len(folders) tasks.
+
+    When ``per_case_logs`` is True, the per-task command's stdout/stderr are
+    redirected into the case folder ($F) as slurm.out/slurm.err. This is done
+    inside the script (not via #SBATCH --output) because the case folder name
+    is only known at run time, after sed-reading scan_folders.txt; SLURM
+    resolves --output at submit time and can only key it by %A_%a.
+    """
     listing = main_folder / 'scan_folders.txt'
     listing.write_text('\n'.join(str(f) for f in folders) + '\n')
 
@@ -204,9 +221,11 @@ def _submit_array(folders, main_folder, *, slurm, save):
 
     cpus = slurm['cpus']
     save_flag = '--save' if save else ''
+    redirect = ' > "$F/slurm.out" 2> "$F/slurm.err"' if per_case_logs else ''
     script = (
         f'F=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" {listing}) && '
         f'mitim_run_maestro $F --namelist $F/namelist.yaml --cpus {cpus} {save_flag}'
+        f'{redirect}'
     ).rstrip()
 
     run_slurm(script, main_folder, slurm['partition'], slurm['environment'],
