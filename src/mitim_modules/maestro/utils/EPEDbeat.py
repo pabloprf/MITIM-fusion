@@ -614,6 +614,11 @@ class eped_beat(beat):
             if (self.folder / 'case1' / 'output_run1.nc').exists():
                 self._persist(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
 
+            # Persist the EPED input namelist (full-EPED runs only; written locally as eped.input.1,
+            # renamed to eped.input on the execution side). Otherwise lost under keep_all_files: false.
+            if (self.folder / 'case1' / 'run1' / 'eped.input.1').exists():
+                self._persist(self.folder / 'case1' / 'run1' / 'eped.input.1', self.folder_output / 'eped.input')
+
             self._persist(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
 
             # Write profiles to output folder
