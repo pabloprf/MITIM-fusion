@@ -127,6 +127,12 @@ def query_yes_no(question, extra=""):
     if not sys.stdin.isatty():
         raise InteractiveTerminalError("Interactive terminal response required - something is wrong with this run")
 
+    # If stdout is currently redirected to a log file (e.g. per-beat MAESTRO logs), the question
+    # would land in the log while stdin blocks forever on a prompt the user cannot see. Crash instead.
+    # Note this does not trip under the Logger tee (--terminal mode), where prompts remain visible.
+    if log_to_file._context_count > 0:
+        raise InteractiveTerminalError("Interactive question asked while stdout is redirected to a log file - crashing instead of hanging on an invisible prompt")
+
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
 
