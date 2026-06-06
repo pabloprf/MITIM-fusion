@@ -530,6 +530,21 @@ class initializer_from_separatrix(beat_initializer):
 
         print('\t\t- 0.995 flux surface kappa, delta, and zeta saved for future beats -> ', kappa995, delta995, zeta995)
 
+def _scale_profile_to_sep(prof, target_sep):
+    '''
+    Scale the file's internal profile shape so its separatrix value matches the
+    requested one. A ~zero edge value (e.g. zmag of an up-down-symmetric file —
+    the separatrix initializer's own default output — or delta/zeta of a
+    circular one) makes the ratio target/edge a NaN/inf that silently poisons
+    the whole profile; shift instead, which preserves the internal structure
+    and still hits the target at the edge.
+    '''
+    edge = prof[-1]
+    if abs(edge) < 1e-10:
+        return prof + target_sep
+    return prof * (target_sep / edge)
+
+
 def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=None, internal_flux_file=None):
 
     if ( (separatrix_parameters is None) and (boundary_parameters is None) or (separatrix_parameters is not None and boundary_parameters is not None) ):
@@ -606,15 +621,15 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         p = PROFILEStools.gacode_state(internal_flux_file)
         
         rho = p.profiles['rho(-)']
-        
+
         rmin = p.profiles['rmin(m)'] * ( a/p.profiles['rmin(m)'][-1] )
         rmaj = p.profiles['rmaj(m)'] * ( R0/p.profiles['rcentr(m)'][0] ) # Scale from center, assuming then same Shafranov shift (relative) # This is equivalent to ( R0/p.profiles['rmaj(m)'][-1] )
-        
-        z0 = p.profiles['zmag(m)'] * z0/p.profiles['zmag(m)'][-1]
+
+        z0 = _scale_profile_to_sep(p.profiles['zmag(m)'], z0)
         kappa = p.profiles['kappa(-)'] * kappa_sep/p.profiles['kappa(-)'][-1]
-        delta = p.profiles['delta(-)'] * delta_sep/p.profiles['delta(-)'][-1]
+        delta = _scale_profile_to_sep(p.profiles['delta(-)'], delta_sep)
         if zeta_sep is not None:
-            zeta = p.profiles['zeta(-)'] * zeta_sep/p.profiles['zeta(-)'][-1]  
+            zeta = _scale_profile_to_sep(p.profiles['zeta(-)'], zeta_sep)
         else:
             zeta = p.profiles['zeta(-)']
         
