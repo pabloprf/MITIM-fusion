@@ -109,6 +109,9 @@ def addCGYROcontrol(code_settings, rmin=None, **kwargs):
 def _resolve_model_entry(settings, code_settings):
     """Resolve a model entry in a *.models.yaml file by label or deprecated_descriptor.
 
+    Labels are matched exactly first, then case-insensitively (so e.g. 'sat2em'
+    resolves to 'SAT2em'), and deprecated descriptors likewise.
+
     Returns the (label, model_dict) pair if found, else (None, None). The label
     is the canonical key in `settings` so callers can use it for cycle tracking
     when following `base:` chains.
@@ -116,9 +119,13 @@ def _resolve_model_entry(settings, code_settings):
     code_settings = str(code_settings)
     if code_settings in settings:
         return code_settings, settings[code_settings]
+    code_settings_lower = code_settings.lower()
     for ikey in settings:
         entry = settings[ikey]
-        if isinstance(entry, dict) and entry.get("deprecated_descriptor") == code_settings:
+        if str(ikey).lower() == code_settings_lower:
+            return ikey, entry
+        descriptor = entry.get("deprecated_descriptor") if isinstance(entry, dict) else None
+        if descriptor is not None and str(descriptor).lower() == code_settings_lower:
             return ikey, entry
     return None, None
 
