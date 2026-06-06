@@ -378,7 +378,10 @@ def main():
     args = parser.parse_args()
 
     folder = IOtools.expandPath(args.folder)
-    maestro_namelist = args.namelist
+    # Default namelist applies to BOTH branches: without this, the --slurm branch
+    # interpolated None into the remote command ('--namelist None') and the
+    # submitted job died reading a file literally named "None".
+    maestro_namelist = Path(args.namelist) if args.namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
     cpus = args.cpus
     terminal_outputs = args.terminal
     save_figs = args.save
@@ -401,9 +404,6 @@ def main():
                     folder,partition,environment,hours=int(hours),n=cpus,mem=memory,exclusive=False,are_n_threads=False, ntasks_per_node=cpus)
 
     else:
-
-
-        maestro_namelist = Path(maestro_namelist) if  maestro_namelist is not None else IOtools.expandPath('.') / "namelist.maestro.yaml"
 
         if not folder.exists():
             folder.mkdir(parents=True, exist_ok=True)
