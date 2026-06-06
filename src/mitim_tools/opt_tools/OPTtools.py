@@ -668,9 +668,12 @@ def pointsOperation_random(
     if x_opt.nelement() == 0:
         print(f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none")
         draw_bounds = fun.bounds
-        x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed)
-        y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach()
-        z_opt = torch.ones(x_opt.shape[0]) * 2
+        # Keep everything on dfT's device/dtype (as the RandomRangeBounds branch
+        # below does): a bare torch.ones here is CPU float32 and crashes GPU runs
+        # when later indexed with CUDA indices in pointsOperation_order.
+        x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed).to(stepSettings["dfT"])
+        y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach().to(stepSettings["dfT"])
+        z_opt = torch.ones(x_opt.shape[0]).to(stepSettings["dfT"]) * 2
 
     elif RandomRangeBounds > 0:
         x_optRandom, y_optRandom, z_optRandom = (

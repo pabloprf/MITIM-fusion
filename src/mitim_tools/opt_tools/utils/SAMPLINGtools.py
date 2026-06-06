@@ -17,7 +17,10 @@ def LHS(samples, bounds, seed=0):
     if seed is not None:
         np.random.seed(seed)
 
-    lhs = torch.from_numpy(pyDOE.lhs(bounds.shape[-1], samples=samples))
+    # Adopt the dtype AND device of `bounds`: the scaling loop below assigns
+    # bounds-derived values into lhs slices, which fails for a CPU lhs when
+    # bounds live on GPU (and downstream acquisition calls need the model device).
+    lhs = torch.from_numpy(pyDOE.lhs(bounds.shape[-1], samples=samples)).to(bounds)
 
     for iDV in range(bounds.shape[-1]):
         lhs[:, iDV] = lhs[:, iDV] * (bounds[1, iDV] - bounds[0, iDV]) + bounds[0, iDV]
