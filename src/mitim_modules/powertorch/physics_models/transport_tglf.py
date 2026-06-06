@@ -254,9 +254,9 @@ class tglf_model:
         S = np.array([tglf.results['base']['output'][i].Se for i in range(len(rho_locations))])
 
         if Qi_includes_fast:
-            
-            Qifast = [tglf.results['base']['output'][i].Qifast for i in range(len(rho_locations))]
-            
+
+            Qifast = np.array([tglf.results['base']['output'][i].Qifast for i in range(len(rho_locations))])
+
             if Qifast.sum() != 0.0:
                 print(f"\t- Qi includes fast ions, adding their contribution")
                 Qi += Qifast
