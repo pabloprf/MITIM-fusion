@@ -746,69 +746,44 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
                 self.profiles = PROFILEStools.gacode_state(file_smoothed, derive_quantities=True)
             self.profiles_smoothed = None
 
-        # ---- Er component decomposition (out.vgen.ercomp) ----
-        # Columns (all in V/m):
-        #   0  rho
-        #   1  Er_total         total Er (force balance)
-        #   2  Er_db            diamagnetic (pressure-gradient) term
-        #   3  Er_vtor          toroidal rotation term  (0 in weak-rotation limit)
-        #   4  Er_vpol_total    total poloidal-flow term
-        #   5  Er_vpol_neo      NEO poloidal-flow term
-        #   6  Er_vpol_vtor     toroidal-rotation contribution to poloidal flow
-        #   7  Er_dia_total     total diamagnetic correction
-        #   8  Er_dia_neo       NEO diamagnetic correction
-        #   9  Er_dia_vtor      toroidal contribution to diamagnetic correction
-        #  10  Er_offset        constant offset
-        #  11  Er_check         consistency check
-        #  12  Er_dia2          secondary diamagnetic term
-        #  13  Er_total2        secondary total Er
+        # ---- Rotation-component decomposition (out.vgen.ercomp) ----
+        # vgen.f90 writes 2 + 3*n_ions columns per radius — rho, w0, then for
+        # each ion j the three force-balance contributions to that ion's
+        # implied toroidal angular frequency (all in rad/s):
+        #   omega_gradp_{j} : pressure-gradient (diamagnetic) term
+        #   omega_vtor_{j}  : toroidal-velocity term, vtor/(rmaj+rmin)
+        #   omega_vpol_{j}  : poloidal-velocity term, -vpol*bt0/bp0/(rmaj+rmin)
         ercomp_file = folder / "out.vgen.ercomp"
         if ercomp_file.exists():
-            data = np.loadtxt(ercomp_file)
-            col_names = [
-                "rho", "Er_total", "Er_db", "Er_vtor",
-                "Er_vpol_total", "Er_vpol_neo", "Er_vpol_vtor",
-                "Er_dia_total", "Er_dia_neo", "Er_dia_vtor",
-                "Er_offset", "Er_check", "Er_dia2", "Er_total2",
-            ]
-            self.vgen_ercomp = {name: data[:, i] for i, name in enumerate(col_names)}
+            data = np.atleast_2d(np.loadtxt(ercomp_file))
+            n_ions = (data.shape[1] - 2) // 3
+            self.vgen_ercomp = {"rho": data[:, 0], "w0": data[:, 1]}
+            for j in range(n_ions):
+                self.vgen_ercomp[f"omega_gradp_{j+1}"] = data[:, 2 + 3 * j]
+                self.vgen_ercomp[f"omega_vtor_{j+1}"]  = data[:, 3 + 3 * j]
+                self.vgen_ercomp[f"omega_vpol_{j+1}"]  = data[:, 4 + 3 * j]
         else:
             self.vgen_ercomp = {}
 
-        # ---- Velocity components (out.vgen.vel) ----
-        # Columns (V/m for Er, m/s for velocities):
-        #   0  rho
-        #   1  Mach_neo
-        #   2  Er_total
-        #   3  Er_tot_alt
-        #   4  vpol_neo
-        #   5  zero (placeholder)
-        #   6  Er_dia
-        #   7  Er_dia_alt
-        #   8  vpol_total
-        #   9  vpol_dia
-        #  10  vpol_neo2
-        #  11  vpol_dia2
-        #  12  vpol_diff
-        #  13  vpol_vtor_corr
-        #  14  vpol_alt
-        #  15  vpol_alt2
-        #  16  vpol_ion
-        #  17  vpol_ion2
-        #  18  vpol_ion3
-        #  19  Er_ion
+        # ---- Velocities (out.vgen.vel) ----
+        # vgen.f90 writes 4 + 4*n_ions columns per radius — rho, er_exp (the
+        # experimental/derived Er input, V/m), w0 (rad/s), w0p, then for each
+        # ion j:
+        #   vpol_{j}          : poloidal velocity (m/s)
+        #   vtor_{j}          : toroidal velocity (m/s)
+        #   vpol_over_bp0_{j} : vpol/Bp0
+        #   omega_{j}         : (vtor - vpol*bt0/bp0)/(rmaj+rmin)  (rad/s)
         vel_file = folder / "out.vgen.vel"
         if vel_file.exists():
-            data = np.loadtxt(vel_file)
-            vel_col_names = [
-                "rho", "Mach_neo", "Er_total", "Er_tot_alt",
-                "vpol_neo", "zero", "Er_dia", "Er_dia_alt",
-                "vpol_total", "vpol_dia", "vpol_neo2", "vpol_dia2",
-                "vpol_diff", "vpol_vtor_corr", "vpol_alt", "vpol_alt2",
-                "vpol_ion", "vpol_ion2", "vpol_ion3", "Er_ion",
-            ]
-            ncols = min(data.shape[1], len(vel_col_names))
-            self.vgen_vel = {vel_col_names[i]: data[:, i] for i in range(ncols)}
+            data = np.atleast_2d(np.loadtxt(vel_file))
+            n_ions = (data.shape[1] - 4) // 4
+            self.vgen_vel = {"rho": data[:, 0], "er_exp": data[:, 1],
+                             "w0": data[:, 2], "w0p": data[:, 3]}
+            for j in range(n_ions):
+                self.vgen_vel[f"vpol_{j+1}"]          = data[:, 4 + 4 * j]
+                self.vgen_vel[f"vtor_{j+1}"]          = data[:, 5 + 4 * j]
+                self.vgen_vel[f"vpol_over_bp0_{j+1}"] = data[:, 6 + 4 * j]
+                self.vgen_vel[f"omega_{j+1}"]         = data[:, 7 + 4 * j]
         else:
             self.vgen_vel = {}
 
@@ -898,36 +873,49 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         if self.vgen_ercomp:
             rho  = self.vgen_ercomp["rho"]
             mask = rho >= rho_min
+            ions = sorted(int(k.rsplit("_", 1)[1]) for k in self.vgen_ercomp if k.startswith("omega_gradp_"))
 
-            ax_Er.plot(rho[mask],   self.vgen_ercomp["Er_total"][mask],       color=colors[0], lw=1.8, label="$E_r$ total")
-            ax_Er.plot(rho[mask],   self.vgen_ercomp.get("Er_total2", rho*0)[mask], color=colors[1], lw=1.2, ls="--", label="$E_r$ total (alt)")
-            ax_db.plot(rho[mask],   self.vgen_ercomp["Er_db"][mask],          color=colors[2], lw=1.8, label="diamagnetic")
-            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_total"][mask],  color=colors[3], lw=1.8, label="pol. flow (total)")
-            ax_vpol.plot(rho[mask], self.vgen_ercomp["Er_vpol_neo"][mask],    color=colors[4], lw=1.2, ls="--", label="pol. flow (NEO)")
-            ax_vtor.plot(rho[mask], self.vgen_ercomp["Er_vtor"][mask],        color=colors[5], lw=1.8, label="toroidal rot.")
-            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_total"][mask],   color=colors[6], lw=1.8, label="dia. total")
-            ax_dia.plot(rho[mask],  self.vgen_ercomp["Er_dia_neo"][mask],     color=colors[7], lw=1.2, ls="--", label="dia. NEO")
+            ax_Er.plot(rho[mask], self.vgen_ercomp["w0"][mask], color=colors[0], lw=1.8, label="$\\omega_0$ (VGEN)")
+            for c, j in enumerate(ions):
+                total_j = (self.vgen_ercomp[f"omega_gradp_{j}"]
+                           + self.vgen_ercomp[f"omega_vtor_{j}"]
+                           + self.vgen_ercomp[f"omega_vpol_{j}"])
+                ax_Er.plot(rho[mask], total_j[mask], color=colors[c + 1], lw=1.2, ls="--", label=f"sum ion {j}")
+                ax_db.plot(rho[mask],   self.vgen_ercomp[f"omega_gradp_{j}"][mask], color=colors[c], lw=1.5, label=f"ion {j}")
+                ax_vpol.plot(rho[mask], self.vgen_ercomp[f"omega_vpol_{j}"][mask],  color=colors[c], lw=1.5, label=f"ion {j}")
+                ax_vtor.plot(rho[mask], self.vgen_ercomp[f"omega_vtor_{j}"][mask],  color=colors[c], lw=1.5, label=f"ion {j}")
+
+            j0 = ions[0]
             for key, lbl, c in [
-                ("Er_total",      "$E_r$ total",  colors[0]),
-                ("Er_db",         "diamagnetic",   colors[2]),
-                ("Er_vpol_total", "pol. flow",     colors[3]),
-                ("Er_dia_total",  "dia. total",    colors[6]),
+                (f"omega_gradp_{j0}", "$\\nabla p$ term",  colors[2]),
+                (f"omega_vtor_{j0}",  "$v_{tor}$ term",    colors[5]),
+                (f"omega_vpol_{j0}",  "$v_{pol}$ term",    colors[3]),
             ]:
-                if key in self.vgen_ercomp:
-                    ax_all.plot(rho[mask], self.vgen_ercomp[key][mask], color=c, lw=1.5, label=lbl)
+                ax_all.plot(rho[mask], self.vgen_ercomp[key][mask], color=c, lw=1.5, label=lbl)
+            ax_all.plot(rho[mask], self.vgen_ercomp["w0"][mask], color=colors[0], lw=1.8, label="$\\omega_0$")
 
-        for ax in [ax_Er, ax_db, ax_vpol, ax_vtor, ax_dia, ax_all]:
+        if self.vgen_vel and "er_exp" in self.vgen_vel:
+            rho_v = self.vgen_vel["rho"]
+            mv = rho_v >= rho_min
+            ax_dia.plot(rho_v[mv], self.vgen_vel["er_exp"][mv], color=colors[6], lw=1.8, label="$E_r$ (input)")
+
+        for ax in [ax_Er, ax_db, ax_vpol, ax_vtor, ax_all]:
             ax.set_xlabel(r"$\rho_{tor}$")
-            ax.set_ylabel("$E_r$ (V/m)")
+            ax.set_ylabel("$\\omega$ (rad/s)")
             ax.set_xlim(left=rho_min)
             ax.axhline(0, color="k", lw=0.7, ls="--")
             ax.legend(loc="best", fontsize=7)
-        ax_Er.set_title("$E_r$ total")
-        ax_db.set_title("Diamagnetic term")
+        ax_dia.set_xlabel(r"$\rho_{tor}$")
+        ax_dia.set_ylabel("$E_r$ (V/m)")
+        ax_dia.set_xlim(left=rho_min)
+        ax_dia.axhline(0, color="k", lw=0.7, ls="--")
+        ax_dia.legend(loc="best", fontsize=7)
+        ax_Er.set_title("$\\omega_0$ and per-ion force-balance sum")
+        ax_db.set_title("$\\nabla p$ (diamagnetic) term")
         ax_vpol.set_title("Poloidal-flow term")
-        ax_vtor.set_title("Toroidal-rot. term (≈0)")
-        ax_dia.set_title("Diamagnetic correction")
-        ax_all.set_title("All components")
+        ax_vtor.set_title("Toroidal-flow term (≈0 weak rot.)")
+        ax_dia.set_title("Experimental $E_r$ (input)")
+        ax_all.set_title("Components (first ion)")
 
         # ------------------------------------------------------------------
         # Tab 2: w0 and VEXB_SHEAR before/after VGEN
@@ -960,10 +948,13 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
                 m = rho_new >= rho_min
                 ax_vexb.plot(rho_new[m], vexb_new[m], color=colors[0], lw=1.8, label="after VGEN (NEO)")
 
-        if self.vgen_vel and "rho" in self.vgen_vel and "Mach_neo" in self.vgen_vel:
+        if self.vgen_vel and "rho" in self.vgen_vel:
             rho_v = self.vgen_vel["rho"]
             m = rho_v >= rho_min
-            ax_mach.plot(rho_v[m], self.vgen_vel["Mach_neo"][m], color=colors[3], lw=1.8, label="NEO Mach")
+            ions_v = sorted(int(k.rsplit("_", 1)[1]) for k in self.vgen_vel
+                            if k.startswith("vpol_") and not k.startswith("vpol_over_bp0_"))
+            for c, j in enumerate(ions_v):
+                ax_mach.plot(rho_v[m], self.vgen_vel[f"vpol_{j}"][m], color=colors[3 + c], lw=1.8, label=f"ion {j}")
 
         for ax in [ax_w0, ax_vexb, ax_mach]:
             ax.set_xlabel(r"$\rho_{tor}$")
@@ -972,7 +963,7 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             ax.legend(loc="best", fontsize=7)
         ax_w0.set_ylabel("$\\omega_0$ (rad/s)");      ax_w0.set_title("Toroidal rotation $\\omega_0$")
         ax_vexb.set_ylabel("$\\gamma_{E}$ (norm.)");  ax_vexb.set_title("E×B shearing rate (VEXB_SHEAR)")
-        ax_mach.set_ylabel("Mach number");             ax_mach.set_title("NEO Mach number")
+        ax_mach.set_ylabel("$v_{pol}$ (m/s)");        ax_mach.set_title("NEO poloidal velocities")
 
         # ------------------------------------------------------------------
         # Tab 3: Raw vs. smoothed profiles comparison (only when smoothing was used)
