@@ -23,7 +23,7 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, **kwargs):
+    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, **kwargs):
 
         self.rhotop = rhotop
 
@@ -38,8 +38,9 @@ class lengyel_beat(beat):
         
         print('\t- Using provided RADAS_DIR for Lengyel beat preparation:', radas_dir_env)
         
-        # Initialize Lengyel object
-        self.l = Lengyel()
+        # Initialize Lengyel object (documented lengyel_namelist_location honored;
+        # template default otherwise — the key used to be silently swallowed by **kwargs)
+        self.l = Lengyel(namelist_location = lengyel_namelist_location)
 
         # Use seed impurity species from maestro namelist        
         seed_impurity_symbol = seed_impurity_species["name"]

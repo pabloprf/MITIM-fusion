@@ -9,10 +9,11 @@ from IPython import embed
 
 class Lengyel():
     def __init__(
-        self
+        self,
+        namelist_location = None,  # Custom controls yaml; if None, use the default template namelist
         ):
-        
-        self.nml_default = Path(__mitimroot__ / 'templates' / 'input.lengyel.controls.yaml')
+
+        self.nml_default = Path(namelist_location) if namelist_location is not None else Path(__mitimroot__ / 'templates' / 'input.lengyel.controls.yaml')
   
     # Optional preparation step
     def prep(
