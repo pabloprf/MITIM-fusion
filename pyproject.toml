@@ -52,7 +52,7 @@ dependencies = [
   "tensorflow", 
   "f90nml",
   "pyyaml",
-  "megpy>=2.0.7",
+  "megpy>=2.0.8",
   "fibe>=0.3",
   "periodictable",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
