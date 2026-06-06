@@ -126,6 +126,13 @@ class mitim_job:
 
         self.slurm_settings = slurm_settings if slurm_settings is not None else {}
 
+        # Back-compat: migrate the legacy 'name' key to the native sbatch
+        # 'job-name' key. mitim_job-direct callers (e.g. TRANSPsingularity, vgen)
+        # still pass 'name'; without this they'd submit as the "mitim_job"
+        # default while the squeue/scancel by-name fallbacks search the legacy name.
+        if "job-name" not in self.slurm_settings and "name" in self.slurm_settings:
+            self.slurm_settings["job-name"] = self.slurm_settings["name"]
+
         # In case there's no job name, ensure one (native sbatch key)
         self.slurm_settings.setdefault("job-name", "mitim_job")
 
@@ -1160,6 +1167,12 @@ class mitim_job:
 
     # --------------------------------------------------------------------
 
+    def _squeue_job_name(self):
+        # Job name as submitted: native 'job-name' (set/migrated at define time),
+        # with the legacy 'name' key as fallback for objects built without
+        # going through define_machine_quick.
+        return self.slurm_settings.get("job-name", self.slurm_settings.get("name", "mitim_job"))
+
     def check(self, file_output = "slurm_output.dat"):
         """
         Check job status slurm
@@ -1174,7 +1187,7 @@ class mitim_job:
         if self.jobid is not None:
             txt_look = f"-j {self.jobid}"
         else:
-            txt_look = f"-n {self.slurm_settings['name']}"
+            txt_look = f"-n {self._squeue_job_name()}"
 
         command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
 
@@ -1266,7 +1279,7 @@ class mitim_job:
 
         txt = "\t* Job was checked"
         if (self.jobid is None) and (self.jobid_found is not None):
-            txt += f' (jobid {self.jobid_found}, found from name "{self.slurm_settings["name"]}")'
+            txt += f' (jobid {self.jobid_found}, found from name "{self._squeue_job_name()}")'
         elif self.jobid is not None:
             txt += f" (jobid {self.jobid})"
         txt += f', is {self.infoSLURM["STATE"]} (job.infoSLURM)'

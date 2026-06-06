@@ -865,7 +865,7 @@ class mitim_simulation:
         self.simulation_job.launchSlurm = False
 
         self.simulation_job.prep(
-            f"scancel -n {self.simulation_job.slurm_settings['name']}",
+            f"scancel -n {self.simulation_job._squeue_job_name()}",
             label_log_files="_finish",
         )
 
