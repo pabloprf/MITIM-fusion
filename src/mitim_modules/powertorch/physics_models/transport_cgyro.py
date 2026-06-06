@@ -586,6 +586,44 @@ def _resolve_cgyro_restart_chain_best(
 _resolve_cgyro_restart_from_first = _resolve_cgyro_restart_chain
 
 
+def _rerun_restart_resolver_for_fresh_fallback(
+    power_obj, gk_object, run_kwargs, simulation_options, rho_locations,
+    base_subfolder, plasma_subfolder=None, plasma_index=0,
+):
+    '''
+    Re-attach deliberately skips the restart-chain resolver to preserve the
+    original parent pick. When the re-attach FALLS BACK to a fresh submission
+    (prior job dead and results unrecoverable), the resolver must run after
+    all: otherwise the job cold-starts silently while MAX_TIME (sized as
+    warm-start-additional time) and the restored restart_sources.json still
+    claim a warm start. Mutates run_kwargs["additional_files_to_send"] and
+    refreshes gk_object._restart_sources_payload from the freshly-written
+    restart_sources.json.
+    '''
+    resolved = _resolve_cgyro_restart_chain(
+        simulation_options["run"],
+        getattr(power_obj, "evaluation_number", 0),
+        power_obj.folder,
+        rho_locations,
+        run_kwargs.get("additional_files_to_send"),
+        plasma_subfolder=plasma_subfolder,
+        base_subfolder=base_subfolder,
+        current_turb_target_GB=_build_current_turb_target_GB(power_obj, plasma_index=plasma_index),
+    )
+    if resolved is not None:
+        run_kwargs["additional_files_to_send"] = resolved
+
+    payload = None
+    json_path = power_obj.folder / base_subfolder / "restart_sources.json"
+    if json_path.is_file():
+        try:
+            with open(json_path, "r") as f:
+                payload = json.load(f)
+        except (OSError, ValueError):
+            payload = None
+    gk_object._restart_sources_payload = payload
+
+
 def _iteration_matches_spec_key(key, iteration):
     '''
     Test whether a PORTALS iteration index matches a *_special spec key:
@@ -998,6 +1036,13 @@ class gyrokinetic_model:
                                 print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
                                 metadata_path.unlink(missing_ok=True)
                                 reattached = False
+                                # Re-attach skipped the restart-chain resolver; a fresh
+                                # submission needs it (otherwise: silent cold start with
+                                # warm-start-sized MAX_TIME + stale restart_sources.json)
+                                _rerun_restart_resolver_for_fresh_fallback(
+                                    self, gk_object, run_kwargs, simulation_options,
+                                    rho_locations, subfolder_name,
+                                )
                     else:
                         live_summary = f"jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}"
                         if any_child_alive:
@@ -1478,6 +1523,15 @@ class cgyro_model(gyrokinetic_model):
                                 print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
                                 metadata_path.unlink(missing_ok=True)
                                 reattached = False
+                                # Re-attach skipped the restart-chain resolver; a fresh
+                                # submission needs it (otherwise: silent cold start with
+                                # warm-start-sized MAX_TIME + stale restart_sources.json)
+                                _rerun_restart_resolver_for_fresh_fallback(
+                                    self, cgyro, run_kwargs, simulation_options,
+                                    rho_locations, base_subfolder_name,
+                                    plasma_subfolder=f"{base_subfolder_name}_plasma0",
+                                    plasma_index=0,
+                                )
                     else:
                         live_summary = f"jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}"
                         if any_child_alive:
