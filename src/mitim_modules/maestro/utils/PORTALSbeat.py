@@ -450,14 +450,24 @@ class portals_beat(beat):
         '''
         Prepare next PORTALS runs accounting for what previous PORTALS runs have done
         '''
-        
+
+        # The user's portals_parameters is a PARTIAL overlay over the PORTALS template
+        # ("only specify the keys you want to override"), so resolve the knobs read
+        # below against the template defaults instead of KeyError-ing on a lean
+        # namelist (which would only bite at the SECOND portals beat, hours in).
+        _portals_template = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.portals.yaml")
+        _stopping = {
+            **_portals_template['optimization_options']['convergence_options']['stopping_criteria_parameters'],
+            **self.portals_parameters.get('optimization_options', {}).get('convergence_options', {}).get('stopping_criteria_parameters', {}),
+        }
+
         # ----------------------------------------------------------------------------------------------
         # Use previous residual goal if available from previous PORTALS beat (added in _inform_save)
         # ----------------------------------------------------------------------------------------------
-        
+
         if use_previous_residual and \
             ('original_residual' in self.maestro_instance.parameters_trans_beat) and \
-            (self.portals_parameters['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel']):
+            (_stopping['maximum_value_is_rel']):
             
             if 'convergence_options' not in self.optimization_options_additional:
                 self.optimization_options_additional['convergence_options'] = {}
@@ -465,7 +475,7 @@ class portals_beat(beat):
                 self.optimization_options_additional['convergence_options']['stopping_criteria_parameters'] = {}
 
             original_residual = self.maestro_instance.parameters_trans_beat['original_residual']
-            rel_val = self.portals_parameters['optimization_options']['convergence_options']['stopping_criteria_parameters']['maximum_value']
+            rel_val = _stopping['maximum_value']
 
             # Make it absolute from now on
             self.optimization_options_additional['convergence_options']['stopping_criteria_parameters']['maximum_value_is_rel'] = False
@@ -502,7 +512,9 @@ class portals_beat(beat):
         last_radial_location_moved = False
         if change_last_radial_call and ('rhotop' in self.maestro_instance.parameters_trans_beat):
 
-            if 'predicted_roa' in self.portals_parameters['solution']:
+            solution_overlay = self.portals_parameters.setdefault('solution', {})
+
+            if 'predicted_roa' in solution_overlay:
 
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in r/a)')
 
@@ -524,6 +536,10 @@ class portals_beat(beat):
             else:
 
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in rho)')
+
+                if 'predicted_rho' not in solution_overlay:
+                    # Lean overlay: seed from the template default before moving its last point
+                    solution_overlay['predicted_rho'] = copy.deepcopy(_portals_template['solution']['predicted_rho'])
 
                 # set the last value of the radial locations to the interpolated value
                 rhotop_old = copy.deepcopy(self.portals_parameters['solution']['predicted_rho'][-1])
@@ -662,7 +678,7 @@ def preprocess_prepare_portals(beat_namelist,maestro_namelist, preprocess_prepar
     lumpImpurities = preprocess_prepare_parameters["lumpImpurities"]
     enforce_same_density_gradients = preprocess_prepare_parameters["enforce_same_density_gradients"]
 
-    # add postprocessing function
-    beat_namelist['portals_parameters']['transport']['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
+    # add postprocessing function (tolerate a lean overlay without these sections)
+    beat_namelist.setdefault('portals_parameters', {}).setdefault('transport', {})['profiles_postprocessing_fun'] = partial(profiles_postprocessing_fun, lumpImpurities=lumpImpurities, enforce_same_density_gradients=enforce_same_density_gradients)
 
     return beat_namelist
