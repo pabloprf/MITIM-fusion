@@ -35,6 +35,9 @@ plasma:
       BetaN: 1.0    # Normalized global beta
       nu_ne: 1.3    # Density peaking
       aLTe_to_aLTi_ratio: 1.0  # Keep this ratio during the BetaN optimization
+      aLT: null     # [Optional] Use this a/LTi directly (aLTe = aLTe_to_aLTi_ratio * aLTi), skipping the BetaN optimization
+      aLn: null     # [Optional] Use this a/Lne directly, skipping the nu_ne optimization
+      nresol: 501   # Radial resolution (number of points) of the created profiles
 
       # If creator_type = fixed_bc: User-specified boundary condition values at x_bc
       #   - x_bc + bc_coordinate, Te_bc, Ti_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
