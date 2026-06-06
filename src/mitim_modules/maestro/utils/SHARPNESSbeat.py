@@ -270,6 +270,18 @@ class sharpness_beat(beat):
 
     def finalize(self, **kwargs):
 
+        # On a re-invocation after a prior keep_all_files: false cleanup wiped
+        # self.folder, the run artifacts are gone and folder_output already holds
+        # sharpness_results.npy + input.gacode from the prior run — do not wipe it
+        # (the wipe-first flow would destroy the persisted results and then crash
+        # on the missing copy source). Same guard as the TRANSP/EPED/PORTALS beats.
+        if not (
+            (self.folder / "sharpness_results.npy").exists()
+            and (self.folder / "input.gacode.sharpness").exists()
+        ):
+            self.profiles_output = PROFILEStools.gacode_state(self.folder_output / "input.gacode")
+            return
+
         # Clear old output
         for item in self.folder_output.glob("*"):
             if item.is_file():

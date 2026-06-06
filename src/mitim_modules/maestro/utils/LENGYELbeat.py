@@ -158,7 +158,15 @@ class lengyel_beat(beat):
         self.impurity_lengyel = [impurity_Z, impurity_A, fZ_top]
 
     def finalize(self, *args, **kwargs):
-        
+
+        # On a re-invocation after a prior keep_all_files: false cleanup wiped
+        # self.folder, input.gacode.lengyel is gone and folder_output already holds
+        # the finalized input.gacode from the prior run. Same guard as the
+        # TRANSP/EPED/PORTALS beats.
+        if not (self.folder / 'input.gacode.lengyel').exists():
+            self.profiles_output = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
+            return
+
         self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.lengyel')
 
         self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
