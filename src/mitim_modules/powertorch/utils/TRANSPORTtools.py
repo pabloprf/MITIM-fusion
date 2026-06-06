@@ -646,7 +646,12 @@ class power_transport:
 
             # Propagate to powerstate.profiles so the stored iteration profiles also carry the NEO w0
             self.powerstate.profiles.profiles['w0(rad/s)'] = w0
-            self.powerstate.profiles.write_state(file=self.file_profs)
+            # Refresh the on-disk file from the POST-PROCESSED state (+ VGEN w0):
+            # file_profs holds the post-processed content at this point, and the
+            # per-iteration snapshots (Outputs/portals_profiles, Evaluation folders)
+            # must reflect what the transport codes actually ran — writing the
+            # un-post-processed powerstate.profiles here would revert it.
+            self.powerstate.profiles_transport.write_state(file=self.file_profs)
 
             # Under the split-postproc path, mirror VGEN w0 into the neo-side
             # profile so NEO evaluators see the same VGEN result as the turb
