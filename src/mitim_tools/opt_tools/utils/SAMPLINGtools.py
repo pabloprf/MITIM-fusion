@@ -15,12 +15,21 @@ def LHS(samples, bounds, seed=0):
     """
 
     if seed is not None:
+        # Honored by older pyDOE versions, which draw from the global np.random state
         np.random.seed(seed)
+
+    # Newer pyDOE (e.g. 0.9.x) draws from numpy's default_rng and IGNORES the
+    # global seed, so pass random_state explicitly to keep the `seed` contract;
+    # older versions lack the kwarg (TypeError) and honor np.random.seed above.
+    try:
+        samples_np = pyDOE.lhs(bounds.shape[-1], samples=samples, random_state=seed)
+    except TypeError:
+        samples_np = pyDOE.lhs(bounds.shape[-1], samples=samples)
 
     # Adopt the dtype AND device of `bounds`: the scaling loop below assigns
     # bounds-derived values into lhs slices, which fails for a CPU lhs when
     # bounds live on GPU (and downstream acquisition calls need the model device).
-    lhs = torch.from_numpy(pyDOE.lhs(bounds.shape[-1], samples=samples)).to(bounds)
+    lhs = torch.from_numpy(samples_np).to(bounds)
 
     for iDV in range(bounds.shape[-1]):
         lhs[:, iDV] = lhs[:, iDV] * (bounds[1, iDV] - bounds[0, iDV]) + bounds[0, iDV]
