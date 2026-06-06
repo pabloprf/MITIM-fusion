@@ -252,7 +252,8 @@ def _resolve_cgyro_restart_chain(
 
     Source folder for "first"/"all" iteration N is derived as:
       <root>/Execution/Evaluation.{source_iter}/transport_simulation_folder/base_cgyro
-        (+ /base_cgyro_plasma0 in batched mode)
+        (base_cgyro_plasma0 instead in batched mode — the per-plasma folder is
+        a SIBLING of base_cgyro in the SIMtools layout, not nested under it)
     or, during the simple-relax initializer:
       <root>/Initialization/initialization_simple_relax/portals_sr_ev_{source_iter}/
         transport_simulation_folder/base_cgyro
@@ -378,14 +379,16 @@ def _resolve_cgyro_restart_chain(
     source_sibling = (f"portals_sr_ev_{source_iter}" if in_simple_relax
                       else f"Evaluation.{source_iter}")
 
-    source_folder = folder.parent.parent / source_sibling / folder.name / base_subfolder
-    if plasma_subfolder:
-        source_folder = source_folder / plasma_subfolder
+    # In batched mode the per-plasma simulation folder (<base>_plasma{p}) is a
+    # SIBLING of base_subfolder in the SIMtools layout, so it replaces
+    # base_subfolder as the source rather than nesting under it.
+    source_subfolder = plasma_subfolder if plasma_subfolder else base_subfolder
+    source_folder = folder.parent.parent / source_sibling / folder.name / source_subfolder
 
     if not source_folder.is_dir():
         raise FileNotFoundError(
             f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
-            f"{context_label}.{evaluation_number}, but the source {base_subfolder} "
+            f"{context_label}.{evaluation_number}, but the source {source_subfolder} "
             f"folder does not exist:\n\t{source_folder}\n"
             f"Clear restart_from_cases in the namelist to run without restart."
         )
@@ -477,6 +480,11 @@ def _resolve_cgyro_restart_chain_best(
                                else f"Evaluation.{i}")
         candidate_eval_root = folder.parent.parent / candidate_subfolder / folder.name
         json_path = candidate_eval_root / "fluxes_turb.json"
+        if plasma_subfolder and not json_path.is_file():
+            # Batched evaluations write per-plasma JSON pairs (plasma_{b}/ fan-out)
+            # instead of a single top-level file; use plasma 0, matching the
+            # plasma-0 reference convention of the batched restart chain.
+            json_path = candidate_eval_root / "plasma_0" / "fluxes_turb.json"
         if not json_path.is_file():
             continue
         try:
@@ -519,9 +527,8 @@ def _resolve_cgyro_restart_chain_best(
         # Per-rho candidate filter: only iters that have the binary for THIS rho.
         per_rho = []
         for i, candidate_eval_root, flux_mean in candidates:
-            bin_dir = candidate_eval_root / base_subfolder
-            if plasma_subfolder:
-                bin_dir = bin_dir / plasma_subfolder
+            # Sibling, not nested, in batched mode (see _resolve_cgyro_restart_chain).
+            bin_dir = candidate_eval_root / (plasma_subfolder if plasma_subfolder else base_subfolder)
             bin_file = bin_dir / f"bin.cgyro.restart_{rho:.4f}"
             if not bin_file.is_file():
                 continue
