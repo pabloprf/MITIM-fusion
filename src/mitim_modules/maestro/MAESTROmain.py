@@ -272,6 +272,11 @@ class maestro:
                 self.beat.prepare(*args, **kwargs)
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
+            # Still hand the beat the namelist parameters that merge_parameters() needs
+            # (finalize+merge re-run even for completed beats): e.g. without
+            # zero_source_blocks a re-invocation would silently un-zero sources
+            # in beat_results/input.gacode and input.gacode_final.
+            self.beat.prepare_minimal(*args, **kwargs)
 
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
         log_file = lambda self: self.folder_performance / "timing.jsonl")

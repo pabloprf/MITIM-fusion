@@ -22,6 +22,13 @@ class portals_beat(beat):
         super().__init__(maestro_instance, beat_name = 'portals')
         self.initialization_parameters = {}
 
+    def prepare_minimal(self, *args, initialization_parameters = None, **kwargs):
+        # Skip-path stash: merge_parameters() re-applies zero_source_blocks from
+        # initialization_parameters on every invocation, but prepare() (which sets it)
+        # is skipped for a completed beat — leaving {} and silently un-zeroing the
+        # sources in the re-merged outputs.
+        self.initialization_parameters = initialization_parameters if initialization_parameters is not None else {}
+
     def prepare(self,
             use_previous_residual = True,
             use_previous_surrogate_data = False,

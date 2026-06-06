@@ -92,6 +92,15 @@ class beat:
     def prepare(self, *args, **kwargs):
         pass
 
+    def prepare_minimal(self, *args, **kwargs):
+        '''
+        Skip-path counterpart of prepare(): called by MAESTROmain.prepare() with the
+        same namelist kwargs when the beat is already complete and prepare() is skipped.
+        Beats override this to stash the parameters that finalize()/merge_parameters()
+        still need on a re-invocation (those always run, even for completed beats).
+        '''
+        pass
+
     def run(self, *args, **kwargs):
         pass
 
