@@ -600,7 +600,7 @@ class power_transport:
 
         # --- Optional: compute neoclassical E×B shear from NEO VGEN (zero toroidal rotation assumed)
         vgen_exb_options = self.powerstate.transport_options.get("options", {}).get("neo", {}).get("vgen_exb_shear", None)
-        if vgen_exb_options is not None:
+        if vgen_exb_options not in (None, False):
             print("\t- Computing neoclassical ExB shear via NEO VGEN (zero toroidal rotation)", typeMsg="i")
             vgenOptions = {} if vgen_exb_options is True else dict(vgen_exb_options)
 
