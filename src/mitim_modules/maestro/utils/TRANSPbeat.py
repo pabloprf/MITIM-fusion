@@ -834,7 +834,13 @@ class transp_beat(beat):
         # ---------------------------------------------------------------------------------------
             
         sawtooth_times = self.maestro_instance.parameters_trans_beat['sawtooth_times']
-        
+
+        # No sawteeth in the previous run (e.g. q0 > 1): there is no period to
+        # estimate from, so impose no minimum (the caller keeps its time_end)
+        if len(sawtooth_times) == 0:
+            print('\t- Previous TRANSP run had no sawtooth crashes; cannot estimate a minimum time from the sawtooth period', typeMsg='w')
+            return 0.0
+
         # If simulation already has enough sawtooths, ensure it has at least that duration
         if len(sawtooth_times) >= ensure_sawtooths:
             time_end_minimum = sawtooth_times[-1]
