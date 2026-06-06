@@ -1276,7 +1276,11 @@ class PORTALSinitializer:
         # present on disk isn't mistaken for the latest.
         its_map = {it: f for it, f in its_and_folders}
         its_to_read = [0] if 0 in its_map else []
-        latest_completed = len(self.powerstates) - 1 if self.powerstates else -1
+        # For multi-trajectory SR, powerstates are unrolled (step x trajectory)
+        # points, while its_map keys are on-disk STEP indices — convert counts
+        # to completed steps or only the ev-0 tabs would ever render.
+        n_traj = max(getattr(self, 'n_trajectories', 1), 1)
+        latest_completed = (len(self.powerstates) // n_traj) - 1 if self.powerstates else -1
         if latest_completed > 0 and latest_completed in its_map:
             its_to_read.append(latest_completed)
         if not its_to_read:
