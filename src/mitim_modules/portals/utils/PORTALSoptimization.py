@@ -1,4 +1,5 @@
 import copy
+import os
 from mitim_modules.powertorch.physics_models import transport_analytic
 import torch
 import shutil
@@ -302,6 +303,23 @@ def initialization_simple_relax(self):
                 IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
             shutil.copytree(source, ff / "transport_simulation_folder")
+
+            # For n_traj > 1 the copy above carries only the per-plasma JSON fan-out;
+            # restart binaries (bin.cgyro.restart_<rho>) live in the per-plasma SIMtools
+            # folders (<base>_plasma{t}), which the BO-phase restart chain resolver never
+            # sees. Symlink them (relative, so the run tree stays relocatable) into the
+            # instance-named base folder where the resolver looks
+            # (transport_simulation_folder/<base>/), without duplicating the multi-GB
+            # binaries per (step, trajectory).
+            if n_traj > 1:
+                for sim_dir in step_folder.glob(f"base_*_plasma{t}"):
+                    bin_files = sorted(sim_dir.glob("bin.cgyro.restart_*"))
+                    if not bin_files:
+                        continue
+                    dest_dir = ff / "transport_simulation_folder" / sim_dir.name.rsplit("_plasma", 1)[0]
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    for bin_file in bin_files:
+                        (dest_dir / bin_file.name).symlink_to(os.path.relpath(bin_file, start=dest_dir))
 
     # Flatten the (steps_per_traj, n_traj, dvs) Xopt tensor into step-major (N, dvs) training
     # rows that line up with the Evaluation.{i} layout above (i = s * n_traj + t).
