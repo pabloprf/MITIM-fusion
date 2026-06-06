@@ -1167,7 +1167,7 @@ class gyrokinetic_model:
                 QiMWm2_target_b = self.powerstate.plasma['QiMWm2'][b, 1:].cpu().numpy()
                 for i in range(nrho):
                     if QiMWm2[b, i] < Qi_stable_criterion:
-                        print(f"\n\t- Qi considered stable at plasma #{b}, radius #{i}: {QiMWm2[b, i]:.2e} MW/m^2 in CGYRO simulation < {Qi_stable_criterion:.2e} MW/m^2 criterion (see namelist)", typeMsg='q')
+                        print(f"\n\t- Qi considered stable at plasma #{b}, radius #{i}: {QiMWm2[b, i]:.2e} MW/m^2 in CGYRO simulation < {Qi_stable_criterion:.2e} MW/m^2 criterion (see namelist)", typeMsg='i')
                         Qi_std = QiMWm2_target_b[i] * Qi_stable_percent_error / 100
                         print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target value as standard deviation: sigma = {Qi_std:.2e} MW/m^2 instead of {QiMWm2_stds[b, i]:.2e} MW/m^2", typeMsg='i')
                         QiMWm2_stds[b, i] = Qi_std
@@ -1175,7 +1175,7 @@ class gyrokinetic_model:
             QiMWm2_target = self.powerstate.plasma['QiMWm2'][0, 1:].cpu().numpy()
             for i in range(len(QiMWm2)):
                 if QiMWm2[i] < Qi_stable_criterion:
-                    print(f"\n\t- Qi considered stable at radius #{i}: {QiMWm2[i]:.2e} MW/m^2 in CGYRO simulation < {Qi_stable_criterion:.2e} MW/m^2 criterion (see namelist)", typeMsg='q')
+                    print(f"\n\t- Qi considered stable at radius #{i}: {QiMWm2[i]:.2e} MW/m^2 in CGYRO simulation < {Qi_stable_criterion:.2e} MW/m^2 criterion (see namelist)", typeMsg='i')
                     Qi_std = QiMWm2_target[i] * Qi_stable_percent_error / 100
                     print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target value as standard deviation: sigma = {Qi_std:.2e} MW/m^2 instead of {QiMWm2_stds[i]:.2e} MW/m^2", typeMsg='i')
                     QiMWm2_stds[i] = Qi_std
