@@ -823,8 +823,8 @@ class eped_beat(beat):
             eped.read(subfolder='.', label='full_eped')
             eped.plot(fn=fn, labels=['full_eped'], tab_color=counter)
 
-        # Scan results?
-        if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
+        # Scan results? (loaded_results is None for an unfinished beat)
+        if loaded_results is not None and 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
             for ikey in ['ptop_kPa', 'wtop_psipol']:
                 fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
 
