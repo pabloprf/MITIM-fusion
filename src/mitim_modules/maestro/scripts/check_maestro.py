@@ -149,7 +149,10 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
 
     try:
         squeue_out = subprocess.run(
-            ["squeue", "-u", user, "-o", "%i|%T|%V|%S|%C|%P", "-h"],
+            # -r: one row per job-array element, so PENDING elements report their
+            # full <job>_<task> id instead of the aggregated <job>_[lo-hi%N] row,
+            # which never matches the per-case stub ids from run_maestro_scan.
+            ["squeue", "-u", user, "-o", "%i|%T|%V|%S|%C|%P", "-h", "-r"],
             capture_output=True,
             text=True,
             check=False,
