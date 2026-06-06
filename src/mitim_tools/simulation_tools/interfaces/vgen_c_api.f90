@@ -112,6 +112,23 @@ contains
     epar_flag      = 0       ! conductivity calculation off
     nn_flag        = 0       ! NEO neural-net path off
 
+    ! ---- Validate supported methods up-front, before any allocation ----
+    ! Only the PORTALS use case is implemented: er_method=2 (Er from the NEO
+    ! weak-rotation limit) and vel_method=1 (weak-rotation NEO flows).
+    ! vgen.f90's other branches (force balance, strong-rotation second pass)
+    ! are not ported; failing loudly here beats silently returning
+    ! weak-rotation results for a strong-rotation request.  Returning before
+    ! the allocations also keeps a failed call re-entrant (no allocated
+    ! arrays left behind to crash the next call in the same process).
+    if (er_method /= 2) then
+       print '(a,i0)', 'ERROR: (VGEN c_api) only er_method=2 is supported, got ', er_method
+       return
+    endif
+    if (vel_method /= 1) then
+       print '(a,i0)', 'ERROR: (VGEN c_api) only vel_method=1 (weak rotation) is supported, got ', vel_method
+       return
+    endif
+
     ! ---- Serial init: pretend we're rank 0 of a 1-rank communicator ----
     i_proc          = 0
     n_proc          = 1
@@ -214,17 +231,12 @@ contains
 
     ! ====================================================================
     ! Sequential per-surface loop (replaces the MPI-distributed loop in
-    ! vgen.f90).  Only er_method == 2 is supported here — that is what
-    ! PORTALS uses for the neoclassical ExB shear (zero toroidal rotation,
-    ! NEO weak rotation limit).  Other er_methods would require additional
-    ! logic; add it here if needed.
+    ! vgen.f90).  Only er_method=2 / vel_method=1 are supported here
+    ! (validated up-front, before any allocation) — that is what PORTALS
+    ! uses for the neoclassical ExB shear (zero toroidal rotation, NEO
+    ! weak rotation limit).  Other methods would require additional logic;
+    ! add it here if needed.
     ! ====================================================================
-    if (er_method /= 2) then
-       print '(a,i0)', 'ERROR: (VGEN c_api) only er_method=2 is supported, got ', er_method
-       deallocate(er_exp)
-       return
-    endif
-
     do i = 2, EXPRO_n_exp - 1
        rotation_model = 1            ! weak rotation
        er0            = 0.0
@@ -281,6 +293,27 @@ contains
        EXPRO_vtor(j, 1)           = ya
        EXPRO_vtor(j, EXPRO_n_exp) = yb
     end do
+
+    ! ====================================================================
+    ! Boundary-extrapolate and assign the bootstrap current, toroidal
+    ! current and parallel conductivity computed by vgen_compute_neo,
+    ! mirroring vgen.f90 (neo_sim_model_in = 2 here, so the NEO arrays are
+    ! the live branch).  Without this the output file silently keeps the
+    ! INPUT file's jbs/jbstor/sigmapar columns.
+    ! ====================================================================
+    call bound_extrap(ya, yb, jbs_neo,    EXPRO_rmin, EXPRO_n_exp)
+    jbs_neo(1)              = ya
+    jbs_neo(EXPRO_n_exp)    = yb
+    call bound_extrap(ya, yb, jtor_neo,   EXPRO_rmin, EXPRO_n_exp)
+    jtor_neo(1)             = ya
+    jtor_neo(EXPRO_n_exp)   = yb
+    call bound_extrap(ya, yb, jsigma_neo, EXPRO_rmin, EXPRO_n_exp)
+    jsigma_neo(1)           = ya
+    jsigma_neo(EXPRO_n_exp) = yb
+
+    EXPRO_jbs(:)      = jbs_neo(:)
+    EXPRO_jbstor(:)   = jtor_neo(:)
+    EXPRO_sigmapar(:) = jsigma_neo(:)
 
     ! ====================================================================
     ! Write the new input.gacode (vgen/input.gacode), the same way the

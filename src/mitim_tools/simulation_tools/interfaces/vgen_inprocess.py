@@ -143,7 +143,9 @@ class VGENInProcess:
             How vgen computes Er.  Currently only ``2`` (NEO weak rotation
             limit) is wired through; this is the option PORTALS uses.
         vel_method:
-            Velocity method (1 = NEO weak rotation, 2 = NEO strong rotation).
+            Velocity method.  Currently only ``1`` (NEO weak rotation) is
+            wired through, matching er_method=2; ``2`` (strong rotation)
+            is not implemented in-process.
         erspecies_indx:
             1-based index of the ion species to match for Er computation.
         nth_min, nth_max:
@@ -158,6 +160,15 @@ class VGENInProcess:
         folder = Path(folder).resolve()
         if not (folder / "input.gacode").exists():
             raise FileNotFoundError(f"input.gacode not found in {folder}")
+
+        # Guard here as well as in the Fortran wrapper so an already-built
+        # (older) libvgen_serial.so cannot silently return weak-rotation
+        # results for an unsupported request.
+        if int(er_method) != 2 or int(vel_method) != 1:
+            raise NotImplementedError(
+                f"In-process VGEN supports only er_method=2 / vel_method=1 (NEO weak rotation); "
+                f"got er_method={er_method}, vel_method={vel_method}. Use in_process=False for other methods."
+            )
 
         # vgen always writes its output into a `vgen/` subdirectory of the
         # cwd.  Ensure it exists before calling the Fortran routine.
