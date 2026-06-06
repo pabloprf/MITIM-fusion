@@ -2968,12 +2968,22 @@ class transp_output:
                     break
             self.Pnbit_beam = np.array(Pnbit_beam)
             
-            self.Pnbit_e     = self.f["TQBE"][:] * 1e6   # torque to electrons (N·m/m³)
-            self.Pnbit_i     = self.f["TQBI"][:] * 1e6   # torque to ions (N·m/m³)
-            self.Pnbit_coll  = self.f["TQBCO"][:] * 1e6  # total collisional torque (N·m/m³)
-            self.Pnbit_jxb   = self.f["TQJXB"][:] * 1e6  # total JxB torque (N·m/m³)
-            self.Pnbit_therm = self.f["TQBTH"][:] * 1e6  # total thermalization torque (N·m/m³)
-            
+            # Inner try: older TRANSP outputs may lack the TQ* multigraphs, and a bare
+            # read here would fall into the outer except and silently zero EVERY NBI
+            # quantity (powers included) that was already read successfully above.
+            try:
+                self.Pnbit_e     = self.f["TQBE"][:] * 1e6   # torque to electrons (N·m/m³)
+                self.Pnbit_i     = self.f["TQBI"][:] * 1e6   # torque to ions (N·m/m³)
+                self.Pnbit_coll  = self.f["TQBCO"][:] * 1e6  # total collisional torque (N·m/m³)
+                self.Pnbit_jxb   = self.f["TQJXB"][:] * 1e6  # total JxB torque (N·m/m³)
+                self.Pnbit_therm = self.f["TQBTH"][:] * 1e6  # total thermalization torque (N·m/m³)
+            except:
+                self.Pnbit_e     = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+                self.Pnbit_i     = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+                self.Pnbit_coll  = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+                self.Pnbit_jxb   = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+                self.Pnbit_therm = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+
             self.Pnbit_total = self.Pnbit_coll+self.Pnbit_jxb+self.Pnbit_therm #self.f["TQIN"][:] * 1e6 # TQIN is unreliable (often zero)
 
         except:
