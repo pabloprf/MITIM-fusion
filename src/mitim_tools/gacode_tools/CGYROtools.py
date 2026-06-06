@@ -937,10 +937,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         inside cgyro_restart.F90 is `mod(i_time, restart_step*print_step) == 0`,
         with i_time running 1..n_time and n_time = nint(MAX_TIME/DELTA_T). So the
         firing condition requires RESTART_STEP*PRINT_STEP <= n_time, i.e.
-        RESTART_STEP <= n_outputs = MAX_TIME / (DELTA_T*PRINT_STEP).
+        RESTART_STEP <= n_outputs = floor(n_time / PRINT_STEP).
 
-        To guarantee exactly one restart at end-of-run, we set RESTART_STEP equal
-        to n_outputs (this divides itself and fires at i_time == n_time).
+        To guarantee exactly one restart by end-of-run, we set RESTART_STEP equal
+        to n_outputs (this divides itself and fires at i_time = n_outputs*PRINT_STEP,
+        the last output step within n_time).
         If the user's controls-file / yaml value is already <= n_outputs and
         divides it evenly, we keep it; otherwise we coerce to n_outputs.
 
@@ -1000,7 +1001,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             return extraOptions
 
-        n_outputs = [max(1, math.ceil(mt / (dt * ps))) for dt, ps, mt in zip(dt_list, ps_list, mt_list)]
+        # Last firing opportunity within the run: CGYRO's time loop runs
+        # i_time = 1..n_time with n_time = nint(MAX_TIME/DELTA_T) and writes the
+        # restart when mod(i_time, RESTART_STEP*PRINT_STEP) == 0, so the value
+        # must satisfy RESTART_STEP*PRINT_STEP <= n_time. The previous
+        # ceil(MAX_TIME/(DELTA_T*PRINT_STEP)) overshoots n_time whenever the
+        # ratio is non-integer (e.g. DELTA_T=0.006) and the restart never fired.
+        n_outputs = [
+            max(1, int(round(mt / dt)) // int(round(ps)))
+            for dt, ps, mt in zip(dt_list, ps_list, mt_list)
+        ]
 
         rs_src = extraOptions.get('RESTART_STEP', controls.get('RESTART_STEP', 0))
         rs_list = (
@@ -1012,8 +1022,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             rs_list = rs_list + [rs_list[-1]] * (n - len(rs_list)) if len(rs_list) < n else rs_list[:n]
 
         # Keep the user/controls value if it is a valid divisor of n_outputs
-        # (fires at least once by end-of-run); otherwise coerce to n_outputs so
-        # a single restart is written exactly at t = MAX_TIME.
+        # (fires at least once, with the last write aligned to the final output
+        # step); otherwise coerce to n_outputs so a single restart is written
+        # at the last output step within MAX_TIME.
         coerced = [
             rs if (0 < rs <= no and no % rs == 0) else no
             for rs, no in zip(rs_list, n_outputs)
@@ -1029,7 +1040,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         print(
             f"\t- [preprocess] RESTART_STEP set to {extraOptions['RESTART_STEP']} "
-            f"(<= n_outputs = ceil(MAX_TIME/(DELTA_T*PRINT_STEP)) = {n_outputs}; "
+            f"(<= n_outputs = floor(nint(MAX_TIME/DELTA_T)/PRINT_STEP) = {n_outputs}; "
             f"restart fires when mod(i_time, RESTART_STEP*PRINT_STEP) == 0)",
             typeMsg="i",
         )
