@@ -179,11 +179,13 @@ class sharpness_beat(beat):
         print(f"\t- ne_bc = {ne_bc_20:.3f} (10^20 m^-3)")
 
         # ------------------------------------------------------------------
-        # 3. Compute T_bc from sharpness formula (operates in psi_n space)
+        # 3. Compute T_bc from sharpness formula (in the coordinate c selected
+        #    by sharpness_coordinate: rho, roa or psin — all equal 1 at the
+        #    separatrix)
         #
-        #    xi = (T_bc - T_sep) / [(1 - psin_bc) * aLT_bc * T_bc * droa_dpsin_bc]
+        #    xi = (T_bc - T_sep) / [(1 - c_bc) * aLT_bc * T_bc * droa_dcoord_bc]
         #       => T_bc = T_sep / [1 - xi * C]
-        #    where C = (1 - psin_bc) * aLT_bc * droa_dpsin_bc
+        #    where C = (1 - c_bc) * aLT_bc * droa_dcoord_bc
         # ------------------------------------------------------------------
 
         Te_sep = float(Te[-1])
@@ -195,12 +197,19 @@ class sharpness_beat(beat):
         ).numpy()
         aLT_Te_bc = float(np.interp(rho_bc_rho, rho, aLT_Te))
 
-        # d(r/a)/d(psi_n) at rho_bc (geometric factor)
-        droa_dpsin      = np.gradient(roa, psi_pol_n)
-        droa_dpsin_bc   = float(np.interp(rho_bc_rho, rho, droa_dpsin))
+        # Sharpness factor  C = (1 - c_bc) * aLT * d(roa)/dc, where c is the
+        # coordinate selected by sharpness_coordinate (rho, roa and psin are all
+        # 1 at the separatrix, so 1-c_bc is the distance to it in that coordinate)
+        if self.sharpness_coordinate == "psin":
+            coord, c_bc = psi_pol_n, psin_bc
+        elif self.sharpness_coordinate == "rho":
+            coord, c_bc = rho, rho_bc_rho
+        else:  # roa
+            coord, c_bc = roa, float(np.interp(rho_bc_rho, rho, roa))
+        droa_dcoord    = np.gradient(roa, coord)
+        droa_dcoord_bc = float(np.interp(rho_bc_rho, rho, droa_dcoord))
 
-        # Sharpness factor  C = (1-psin_bc) * aLT * d(roa)/d(psin)
-        C = (1.0 - psin_bc) * aLT_Te_bc * droa_dpsin_bc
+        C = (1.0 - c_bc) * aLT_Te_bc * droa_dcoord_bc
 
         if C >= 1.0 / self.sharpness:
             print(
@@ -250,7 +259,7 @@ class sharpness_beat(beat):
             "neped_20":       ne_bc_20,   # keep standard key name for compatibility
             "ne_sep_1e19":    ne_sep_1e19,
             "aLT_Te_bc":      aLT_Te_bc,
-            "droa_dpsin_bc":  droa_dpsin_bc,
+            "droa_dcoord_bc": droa_dcoord_bc,
             "tite":           self.tite,
         }
 
@@ -381,7 +390,7 @@ class sharpness_beat(beat):
         # 2. Fall back to plasma/parameters section of the namelist
         elif self.neped_20 is None:
             try:
-                self.neped_20 = self.maestro_instance.maestro_namelist["maestro"]["parameters"]["neped_20"]
+                self.neped_20 = self.maestro_instance.maestro_namelist["plasma"]["parameters"]["neped_20"]
                 print(f"\t\t- Using neped_20 from namelist plasma/parameters: {self.neped_20:.3f}")
             except (KeyError, TypeError):
                 pass  # will fall back to reading from profiles at rho_bc in _run()
