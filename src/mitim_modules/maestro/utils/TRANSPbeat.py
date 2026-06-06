@@ -71,7 +71,11 @@ class transp_beat(beat):
         is_machine_fixed = tokamak_structures is not None
         
         # Define timings
-        self.transition_window     = transition_window 
+        # Namelist documents "If null, no transition performed" — same effect as 0.0
+        # (the > 0.0 guard below then skips the initialization transition)
+        if transition_window is None:
+            transition_window = 0.0
+        self.transition_window     = transition_window
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ self.transition_window       # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
