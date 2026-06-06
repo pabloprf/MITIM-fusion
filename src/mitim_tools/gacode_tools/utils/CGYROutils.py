@@ -76,6 +76,18 @@ def compute_box_and_nradial(
     as Python ints.
     """
 
+    # Only the magnitude of the magnetic shear sets the box-length scale:
+    # reversed-shear radii (s<0, e.g. inner hybrid/advanced-scenario points)
+    # would otherwise yield negative BOX_SIZE/N_RADIAL silently written into
+    # input.cgyro; exactly zero shear makes the heuristic diverge.
+    shear = abs(shear)
+    if shear == 0.0:
+        raise ValueError(
+            "[MITIM] compute_box_and_nradial: magnetic shear is zero at this radius — "
+            "the box-size heuristic diverges. Set BOX_SIZE/N_RADIAL explicitly via "
+            "extraOptions (or disable preprocess_options) for this case."
+        )
+
     rhostar_int = ky_min / (q / rmin)
     box_fac = (rmin / (q * shear)) / rhostar_int
     box_calc = L_x / box_fac
