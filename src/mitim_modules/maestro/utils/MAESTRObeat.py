@@ -854,6 +854,10 @@ class creator:
             self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)'] = ne*10.0
             self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] = self.initialize_instance.profiles_current.profiles['ni(10^19/m^3)'] * (self.initialize_instance.profiles_current.profiles['ne(10^19/m^3)']/old_density)[:,np.newaxis]
 
+            # Optional rotation (read_fixed_profiles maps 'w0_rads' -> 'w0')
+            if 'w0' in self.profiles_insert:
+                self.initialize_instance.profiles_current.profiles['w0(rad/s)'] = self.profiles_insert['w0']
+
             # Update derived
             self.initialize_instance.profiles_current.derive_quantities()
 
