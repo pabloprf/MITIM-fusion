@@ -697,7 +697,9 @@ def pointsOperation_random(
             new_y = evaluators["acq_function"](new_opt.unsqueeze(1)).detach()
             x_optRandom = torch.cat((x_optRandom, new_opt)).to(stepSettings["dfT"])
             y_optRandom = torch.cat((y_optRandom, new_y)).to(stepSettings["dfT"])
-            new_z = torch.ones(x_optRandom.shape[0]).to(stepSettings["dfT"]) * 2
+            # One z entry per ADDED point (sizing from the already-concatenated
+            # x_optRandom left z_optRandom longer than the candidate set)
+            new_z = torch.ones(new_opt.shape[0]).to(stepSettings["dfT"]) * 2
             z_optRandom = torch.cat((z_optRandom, new_z), axis=0).to(
                 stepSettings["dfT"]
             )
