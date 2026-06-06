@@ -5,6 +5,7 @@ Set of tools to farm out simulations to run in either remote clusters or locally
 from math import log
 from tqdm import tqdm
 import os
+import shlex
 import shutil
 import time
 import sys
@@ -233,8 +234,10 @@ class mitim_job:
         if not waitYN:
             removeScratchFolders_goingOut = False
 
-        # Always start by going to the folder (inside sbatch file)
-        command_str_mod = [f"cd {self.folderExecution}"]
+        # Always start by going to the folder (inside sbatch file). Quoted: with
+        # scratch null (in-place execution) this is the user's own working folder,
+        # which may contain spaces.
+        command_str_mod = [f"cd {shlex.quote(str(self.folderExecution))}"]
 
         for command in self.command:
             command_str_mod += [command]
@@ -396,7 +399,7 @@ class mitim_job:
 
         # `--parsable` makes sbatch print just <jobid>[;<cluster>] on stdout —
         # easy to parse, no log-file scraping like the run() path needs.
-        submit_cmd = f"cd {self.folderExecution} && chmod +x {sbatch_basename} && sbatch --parsable {sbatch_basename}"
+        submit_cmd = f"cd {shlex.quote(str(self.folderExecution))} && chmod +x {sbatch_basename} && sbatch --parsable {sbatch_basename}"
         out, err = self.execute(submit_cmd, printYN=True)
         if isinstance(out, bytes):
             out = out.decode(errors='replace')
@@ -1189,7 +1192,7 @@ class mitim_job:
         else:
             txt_look = f"-n {self._squeue_job_name()}"
 
-        command = f'cd {self.folderExecution} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
+        command = f'cd {shlex.quote(str(self.folderExecution))} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
 
         if "output_files" in self.__dict__:
             output_files_backup = copy.deepcopy(self.output_files)
@@ -1691,7 +1694,7 @@ def create_slurm_execution_files(
 	********************************************************************************************
 	"""
 
-    comm = f"cd {folderExecution} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
+    comm = f"cd {shlex.quote(str(folderExecution))} && chmod +x {fileSBATCH_remote} && chmod +x mitim_shell_executor{label_log_files}.sh && ./mitim_shell_executor{label_log_files}.sh > mitim.out"
 
     return comm, fileSBATCH.resolve(), fileSHELL.resolve()
 
