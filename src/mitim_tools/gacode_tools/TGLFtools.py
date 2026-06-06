@@ -714,7 +714,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
 
                 outputs.append(output)
                 inputclasses.append(output.inputclass)
-                parseds.append({})
+                # Same structure the live read path stores (buildDictFromInput of the
+                # input file): read_scan aggregates the scanned variable from it, so
+                # an empty dict here crashed any (re)aggregation after from_npz —
+                # with the raw folders already deleted by save_and_cleanup.
+                parseds.append(input_dict)
 
             res["output"] = outputs
             res["inputclasses"] = inputclasses
