@@ -459,7 +459,7 @@ class eped_beat(beat):
                 "neped_19": 0.75,
                 "BetaN": 0.5,
                 "zeff": 0.3,
-                "Tesep_eV": 0.75,   # The scanned NN input (and stored 'value') is in eV — key drives the plot xlabel
+                "Tesep_keV": 0.75,
                 "nesep_ratio": 0.75
             }
 
