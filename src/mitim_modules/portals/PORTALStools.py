@@ -483,7 +483,7 @@ def calculate_residuals(powerstate, portals_parameters, specific_vars=None):
                 of0 * portals_parameters["solution"]["scalar_multipliers"][3],
                 cal0 * portals_parameters["solution"]["scalar_multipliers"][3],
             )
-        elif var == "MtJm2":
+        elif var == "Mt":  # The w0 channel's var is "Mt" (the old "MtJm2" label never matched, so scalar_multipliers[4] was dead)
             of0, cal0 = (
                 of0 * portals_parameters["solution"]["scalar_multipliers"][4],
                 cal0 * portals_parameters["solution"]["scalar_multipliers"][4],
