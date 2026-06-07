@@ -31,10 +31,10 @@ class portals_beat(beat):
 
     def prepare(self,
             use_previous_residual = True,
-            use_previous_surrogate_data = False,
+            use_previous_surrogate_data = True,
             use_previous_ranges = True,
             try_flux_match_only_for_first_point = True,
-            change_last_radial_call = False,
+            change_last_radial_call = True,
             portals_namelist_location = None,
             portals_parameters = None,
             initialization_parameters = None,
