@@ -462,8 +462,13 @@ class FigureNotebook:
                             w_px, h_px = self._geometry_px
 
                         if (w_px > 0) and (h_px > 0):
-                            dpi_eff = fig.get_dpi() if dpi is None else dpi
-                            
+                            # Match the on-screen canvas size at the figure's OWN dpi:
+                            # savefig(dpi=dpi) then scales the saved resolution
+                            # (pixels = canvas_px * dpi / fig_dpi). Sizing with the
+                            # requested dpi here cancelled it out — every --dpi value
+                            # produced identical pixel dimensions, only font scale changed.
+                            dpi_eff = fig.get_dpi()
+
                             # Go a bit larger to avoid overlapping of labels, etc
                             w_px = int(w_px * 1.25)
                             h_px = int(h_px * 1.25)
