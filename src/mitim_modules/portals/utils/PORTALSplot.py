@@ -218,23 +218,23 @@ def PORTALSanalyzer_plotMetrics(
             if axTe_f is not None:
                 axTe_f.plot(
                     rho,
-                    power.plasma['QeMWm2_tr_turb'].cpu().numpy() + power.plasma['QeMWm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['QeMWm2_tr_turb'][0].cpu().numpy() + power.plasma['QeMWm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTe_f.plot(rho, power.plasma['QeMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTe_f.plot(rho, power.plasma['QeMWm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
             if axTi_f is not None:
                 axTi_f.plot(
                     rho,
-                    power.plasma['QiMWm2_tr_turb'].cpu().numpy() + power.plasma['QiMWm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['QiMWm2_tr_turb'][0].cpu().numpy() + power.plasma['QiMWm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTi_f.plot(rho, power.plasma['QiMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTi_f.plot(rho, power.plasma['QiMWm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             
             if axne_f is not None:
@@ -242,11 +242,11 @@ def PORTALSanalyzer_plotMetrics(
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ge1E20m2_tr_turb'].cpu().numpy()+power.plasma['Ge1E20m2_tr_neoc'].cpu().numpy(),
+                    power.plasma['Ge1E20m2_tr_turb'][0].cpu().numpy()+power.plasma['Ge1E20m2_tr_neoc'][0].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
-                    power.plasma['Ge1E20m2'].cpu().numpy() * (1 - int(self.force_zero_particle_flux)),
+                    power.plasma['Ge1E20m2'][0].cpu().numpy() * (1 - int(self.force_zero_particle_flux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -255,19 +255,19 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
-                axnZ_f.plot(rho, power.plasma['GZ1E20m2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'][0].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'][0].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
                     rho,
-                    power.plasma['MtJm2_tr_turb'].cpu().numpy() + power.plasma['MtJm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['MtJm2_tr_turb'][0].cpu().numpy() + power.plasma['MtJm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axw0_f.plot(rho, power.plasma['MtJm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axw0_f.plot(rho, power.plasma['MtJm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
     # ---------------------------------------------------------------------------------------------------------
 
