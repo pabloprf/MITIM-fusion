@@ -265,7 +265,7 @@ def powerstate_to_gacode(
 
     # Default options for postprocessing
     
-    Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", True)
+    Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", False)  # Fallback matches the template default (namelist.portals.yaml applyCorrections)
     Ti_thermals = postprocess_input_gacode.get("Ti_thermals", True)
     ni_thermals = postprocess_input_gacode.get("ni_thermals", True)
     recalculate_ptot = postprocess_input_gacode.get("recalculate_ptot", True)
