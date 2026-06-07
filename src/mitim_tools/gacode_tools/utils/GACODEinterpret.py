@@ -40,7 +40,10 @@ def Waveform_read(file, fileOut):
     results2 = np.zeros((nfields * 2, nmodes, len(theta)))
     for imode in range(nmodes):
         for ifield in range(nfields * 2):  # x2 for RE and IM
-            results2[ifield, imode, :] = results[:, 1 + imode + ifield]
+            # Column layout per tglf_inout.f90 write_wavefunction_out: theta, then
+            # MODE-major blocks of 2*nfields columns (noff = 2*nfields*(n-1)).
+            # The old "1 + imode + ifield" only indexed correctly for nmodes = 1.
+            results2[ifield, imode, :] = results[:, 1 + imode * (nfields * 2) + ifield]
 
     # Now understand what fields are those
     # possible: RE(phi)    IM(phi)    RE(Bper)    IM(Bper)    RE(Bpar)    IM(Bpar)
