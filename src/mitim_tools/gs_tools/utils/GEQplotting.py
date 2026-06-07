@@ -615,12 +615,10 @@ def plotParameterization(self, axs=None):
         lwB=0.5,
         label='LCFS'
     )
-    # -- for legend
-    ax.plot(
-        self.geometric_parameters["actual"]["psin995"]["R"],
-        self.geometric_parameters["actual"]["psin995"]["Z"],
-        lw=1.0,ls='-',c='b',label="Contour: $\\psi_N=1$"
-        )
+    # -- for legend (proxy handle only: the psi_N=1 contour itself is drawn by
+    # plotFluxSurfaces above; plotting real data here overlaid the 0.995 surface
+    # under a psi_N=1 label)
+    ax.plot([], [], lw=0.5, ls='-', c='b', label="Contour: $\\psi_N=1$")
     # ----
     ax.plot(
         self.Rb,
