@@ -347,7 +347,7 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     # Ricci metric
     ricci_value = parameters["ricci_value"]
     d0 = parameters.get("ricci_d0", 2.0)
-    la = parameters.get("ricci_lambda", 1.0)
+    la = parameters.get("ricci_lambda", 0.5)  # Fallback matches the template default (namelist.portals.yaml)
 
     print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
 
