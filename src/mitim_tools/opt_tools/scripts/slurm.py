@@ -257,3 +257,59 @@ def run_slurm_array(
                 input_files=[fileSBATCH],
                 job_name = nameJob,
                 )
+
+def main():
+    """
+    CLI entry point (`mitim_slurm`): submit a command/script as a SLURM job.
+
+    The positional `script` is the full command to execute (quote it if it has
+    arguments) and `folder` is where the job runs and writes its slurm files.
+    Restores the `main()` that the SLURM-launcher refactor dropped, leaving the
+    advertised console script pointing at a nonexistent function.
+
+    Examples:
+        mitim_slurm 'python3 run_portals.py run1' run1 --partition sched_mit_psfc --env 'source ~/env/bin/activate'
+        mitim_slurm 'python3 myopt.py' sweep --partition sched_mit_psfc --env 'module load mitim' --seeds 10 --hours 16 --max_hours 8
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Submit a MITIM script as a SLURM job")
+    parser.add_argument("script", type=str, help="Command to execute (quote if it has arguments)")
+    parser.add_argument("folder", type=str, help="Folder to run in")
+    parser.add_argument("--partition", required=True, type=str, help="SLURM partition")
+    parser.add_argument("--env", required=True, type=str, dest="venv",
+                        help="Environment line executed before the script (e.g. 'source venv/bin/activate' or 'module load ...')")
+    parser.add_argument("--machine", type=str, default="local", help="Machine to submit on (config name; default: local)")
+    parser.add_argument("--n", type=int, default=32, help="Cores (threads by default; see --tasks)")
+    parser.add_argument("--tasks", action="store_true", help="Interpret --n as MPI tasks instead of threads")
+    parser.add_argument("--hours", type=float, default=8, help="Total wall-time hours")
+    parser.add_argument("--max_hours", type=float, default=8, help="Max hours per sbatch; hours>max_hours chains dependent jobs")
+    parser.add_argument("--mem", type=str, default=None, help="Memory request (e.g. 64GB)")
+    parser.add_argument("--qos", type=str, default=None)
+    parser.add_argument("--exclude", type=str, default=None, help="Nodes to exclude")
+    parser.add_argument("--exclusive", action="store_true")
+    parser.add_argument("--ntasks_per_node", type=int, default=None)
+    parser.add_argument("--seeds", type=int, default=None, help="Farm N seeded copies (script must accept --seed #)")
+    parser.add_argument("--name", type=str, default=None, help="SLURM job name (default: mitim_<folder>)")
+    parser.add_argument("--wait", action="store_true", help="Wait for completion instead of returning after submission")
+    args = parser.parse_args()
+
+    run_slurm(
+        args.script,
+        args.folder,
+        args.partition,
+        args.venv,
+        machine=args.machine,
+        exclude=args.exclude,
+        mem=args.mem,
+        exclusive=args.exclusive,
+        qos=args.qos,
+        n=args.n,
+        hours=args.hours,
+        max_hours=args.max_hours,
+        are_n_threads=not args.tasks,
+        ntasks_per_node=args.ntasks_per_node,
+        seeds=args.seeds,
+        wait=args.wait,
+        nameJob=args.name,
+    )
