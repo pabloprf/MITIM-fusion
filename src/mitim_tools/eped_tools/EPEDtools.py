@@ -212,14 +212,17 @@ class EPED:
         # Postprocessing
         # -------------------------------------
 
-        # Remove potential output files from previous runs
-        output_files_old = sorted(list(self.folder_run.glob("*.nc")))
-        for output_file in output_files_old:
-            output_file.unlink()
-
-        # Rename output files
-        for i in range(len(output_files)):
-            os.system(f'mv {self.folder_run / output_files[i]} {self.folder_run / f"output_run{i+1}.nc"}')
+        # Rename each freshly-run output to its scan-indexed name (output_run<i>.nc,
+        # matching the skip check above). Only the files for cases actually run this
+        # round are touched: previously-completed cases skipped this round keep their
+        # existing output and are NOT wiped. The run-folder name (e.g. 'run3') carries
+        # the original scan index, so a partial re-run cannot mislabel survivors by
+        # compacting list positions.
+        for rel in output_files:
+            run_name = rel.split('/')[0]  # 'run<i+1>' — the original scan index
+            target = self.folder_run / f'output_{run_name}.nc'
+            target.unlink(missing_ok=True)
+            os.system(f'mv {self.folder_run / rel} {target}')
 
     def _prep_input_files(
             self,
