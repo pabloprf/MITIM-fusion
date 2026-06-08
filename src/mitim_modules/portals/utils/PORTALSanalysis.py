@@ -1526,9 +1526,17 @@ class PORTALSinitializer:
         # GRADIENTS
         if figG is not None:
             if len(self.powerstates) > 0:
-                grid = plt.GridSpec(2, 5, hspace=0.3, wspace=0.3)
+                # Columns follow what plot_gradients will draw: te/ti/ne always,
+                # plus one column each for nZ and w0 only if they are predicted
+                # channels (matching the plotImpurity/plotRotation flags below).
+                num_cols = (
+                    3
+                    + int('nZ' in self.powerstates[-1].predicted_channels)
+                    + int('w0' in self.powerstates[-1].predicted_channels)
+                )
+                grid = plt.GridSpec(2, num_cols, hspace=0.3, wspace=0.3)
                 axsGrads = []
-                for j in range(5):
+                for j in range(num_cols):
                     for ii in range(2):
                         axsGrads.append(figG.add_subplot(grid[ii, j]))
                 for i, p in enumerate(self.powerstates):
