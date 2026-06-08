@@ -1669,7 +1669,17 @@ class transp_output:
 
         # ~~~~~~~~~~~~~~~~~~~~~ Temperatures ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.Tmini, self.Tmini_check, self.Tmini_perp, self.Tmini_par = (
+        # Minority temperatures -- two DISTINCT quantities, do NOT conflate:
+        #   self.Tmini       = 2/3 (W_perp+W_par)/n  -> the PRESSURE-consistent temperature.
+        #                      n*Tmini reproduces the stored fast energy (UMINPP+UMINPA) and
+        #                      TRANSP's nonthermal pressure to the MHD solver (PMHDF_IN), so
+        #                      this is the temperature to use when representing the minority
+        #                      as a single Maxwellian species (e.g. in input.gacode).
+        #   self.Tmini_meanE = 2/3 <E> from the CDF TMINI_ variable -> the mean ENERGY of the
+        #                      RF-driven minority (hundreds of keV). It is NOT the energy per
+        #                      particle averaged over the full density n, so n*Tmini_meanE
+        #                      OVER-counts the stored energy (~50x) and must NOT build a species.
+        self.Tmini, self.Tmini_meanE, self.Tmini_perp, self.Tmini_par = (
             copy.deepcopy(self.Te) * 0.0 + self.eps00,
             copy.deepcopy(self.Te) * 0.0 + self.eps00,
             copy.deepcopy(self.Te) * 0.0 + self.eps00,
@@ -1677,14 +1687,15 @@ class transp_output:
         )
         for i in self.f.keys():
             if "TMINI_" in i:
-                self.Tmini = self.f[i][:] * 1e-3  # keV
-                self.Tmini_avol = volumeAverage(self.f, i) * 1e-3
+                self.Tmini_meanE = self.f[i][:] * 1e-3  # keV  (2/3 <E>, mean energy)
+                self.Tmini_meanE_avol = volumeAverage(self.f, i) * 1e-3
 
                 Emini_perp = (
                     self.Wperpx_mini * 1e6 / (self.nmini * 1e20 * self.e_J * 1e3)
                 )
                 Emini_par = self.Wparx_mini * 1e6 / (self.nmini * 1e20 * self.e_J * 1e3)
-                self.Tmini_check = (Emini_perp + Emini_par) * 2.0 / 3.0
+                self.Tmini = (Emini_perp + Emini_par) * 2.0 / 3.0
+                self.Tmini_avol = volumeAverage_var(self.f, self.Tmini)
 
                 self.Tmini_perp = Emini_perp
                 self.Tmini_par = 2.0 * Emini_par
@@ -11383,14 +11394,15 @@ class transp_output:
         ax = fig.add_subplot(grid[1, 1], sharex=ax)
 
         ax.plot(self.x_lw, self.Tfast[it, :], lw=3, c="r", label="$T_{fast}$")
-        ax.plot(self.x_lw, self.Tmini[it, :], lw=2, c="b", label="$T_{fast,mini}$")
+        ax.plot(self.x_lw, self.Tmini[it, :], lw=2, c="b",
+                label="$T_{fast,mini}=2/3\\cdot (W_{\\perp}+W_{\\parallel})/n_{fast}$")
         ax.plot(
             self.x_lw,
-            self.Tmini_check[it, :],
+            self.Tmini_meanE[it, :],
             lw=1,
             c="y",
             ls="--",
-            label="$T_{fast,mini}=2/3\\cdot (W_{\\perp}+W_{\\parallel})/n_{fast}$",
+            label="$2/3\\langle E\\rangle$ (TMINI; mean energy, not a pressure)",
         )
         ax.plot(
             self.x_lw,
