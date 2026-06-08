@@ -83,10 +83,18 @@ class EPED:
         scan_param_variable = scan_param['variable'] if scan_param is not None else None
         scan_param_values = scan_param['values'] if scan_param is not None else [None]
 
-        # Prepare job array setup
-        job_array = ''
+        # Prepare job array setup. Only include cases that will actually run:
+        # when cold_start=False, an existing output_run<i>.nc is skipped in the
+        # loop below, so it must NOT be submitted as an array task either —
+        # otherwise every re-run resubmits the full scan even though most cases
+        # are already cached. Mirrors the per-case skip check below.
+        job_array_indices = []
         for i in range(len(scan_param_values)):
-            job_array += f'{i+1}' if i == 0 else f',{i+1}'
+            already_done = (self.folder_run / f'output_run{i+1}.nc').exists()
+            if already_done and not cold_start:
+                continue
+            job_array_indices.append(i + 1)
+        job_array = ",".join(str(k) for k in job_array_indices)
 
         # Initialize Job
         self.eped_job = FARMINGtools.mitim_job(self.folder_run)
