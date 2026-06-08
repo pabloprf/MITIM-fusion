@@ -226,6 +226,28 @@ def _write_restart_sources_json(folder, base_subfolder, mode, evaluation_number,
         print(f"\t- [CGYRO restart] Could not write {out_path}: {e}", typeMsg='w')
 
 
+def _restore_restart_sources_json(folder, base_subfolder, payload):
+    '''
+    Re-write restart_sources.json from the payload captured at resolve time.
+    The resolver writes the JSON *before* run(), but run() -> _run_prepare
+    recreates <base_subfolder>/ via askNewFolder, wiping it. Without this
+    restore the happy path (submit -> poll -> fetch -> read in one process)
+    leaves no JSON on disk — cgyro_submission.json, which embeds the payload
+    for the re-attach restore (load_submission_state), is unlinked after
+    read — and the trace plotter reports every completed iteration as
+    restart_mode='none' with no time-axis alignment.
+    '''
+    if not payload:
+        return
+    out_path = folder / base_subfolder / "restart_sources.json"
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump(payload, f, indent=2)
+    except OSError as e:
+        print(f"\t- [CGYRO restart] Could not restore {out_path}: {e}", typeMsg='w')
+
+
 def _resolve_cgyro_restart_chain(
     run_options,
     evaluation_number,
@@ -1068,6 +1090,16 @@ class gyrokinetic_model:
                     job_name_suffix=f"_ev{getattr(self, 'evaluation_number', 0)}",
                     **run_kwargs
                     )
+                # run() -> _run_prepare recreated <subfolder_name>/ via askNewFolder,
+                # wiping the resolver-written restart_sources.json. Put it back so
+                # the warm-start parent map survives on disk for the trace plotter
+                # (also during polling, for mid-run plots). Read from the gk_object
+                # attribute, not the local restart_sources_payload: the re-attach ->
+                # fresh-fallback path refreshes only the attribute.
+                _restore_restart_sources_json(
+                    self.folder, subfolder_name,
+                    getattr(gk_object, "_restart_sources_payload", None),
+                )
 
         if run_type in ['normal', 'submit', 'send']:
 
