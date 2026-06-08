@@ -281,6 +281,11 @@ class eped_beat(beat):
 
         BetaN = self.current_evaluation["BetaN"]
 
+        # Pedestal-limiting-mode classification (peeling vs ballooning). Stays None for
+        # the EPED-NN surrogate and for ptop/wtop overrides, which have no stability
+        # spectrum -- only full EPED (_run_full_eped) populates it.
+        self.limiting_mode_info = None
+
         BetaNs, ptop_kPas, wtop_psipols  = [], [], []
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
@@ -484,6 +489,7 @@ class eped_beat(beat):
         # Store
         # ---------------------------------
 
+        limiting = getattr(self, 'limiting_mode_info', None)
         eped_results = {
             'ptop_kPa': ptop_kPa,
             'wtop_psipol': wtop_psipol,
@@ -494,7 +500,11 @@ class eped_beat(beat):
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
             'inputs_to_eped': inputs_to_eped,
-            'scan_results': scan_results
+            'scan_results': scan_results,
+            # Peeling/ballooning result (None for NN / overrides / pre-metric runs). Only
+            # the label is cached here; the n_limiting / dome_frac it was derived from are
+            # classifier internals, recomputed from output_run1.nc when needed.
+            'limiting_mode': limiting['limiting_mode'] if limiting else None,
         }
 
         for key in eped_results:
@@ -598,6 +608,12 @@ class eped_beat(beat):
         # float(xarray_da) -> float(da.values) fails on non-0-d single-element arrays.
         ptop_kPa = eped.results['case1']['run1']['ptop'].item()
         wtop_psipol = eped.results['case1']['run1']['wptop'].item()
+
+        # Capture the peeling/ballooning flag from the stability spectrum. Returns None
+        # if this EPED dataset predates the metric (older MITIM) -> stored as None, never
+        # fabricated. The raw spectrum lives in output_run1.nc, so it can also be
+        # recomputed later from that retained file.
+        self.limiting_mode_info = EPEDtools.limiting_mode_from_dataset(eped.results['case1']['run1'])
 
         return ptop_kPa, wtop_psipol
         
@@ -706,6 +722,13 @@ class eped_beat(beat):
                 except (TypeError, ValueError):
                     pass
 
+        # Peeling/ballooning result. Only the label is cached in eped_results.npy (.get
+        # keeps it safe for a pre-metric MITIM version). The supporting n_limiting /
+        # dome_frac are classifier internals -- recovered from output_run1.nc below.
+        limiting_mode = d.get('limiting_mode')
+        n_limiting = None
+        dome_frac = None
+
         # The real stability plot (gamma/omega_A vs Te_ped per toroidal mode n)
         # is what EPEDtools.plot_g_stability already produces (and what
         # mitim_plot_maestro uses). Reuse it directly here — same code path.
@@ -717,6 +740,20 @@ class eped_beat(beat):
             try:
                 eped = EPEDtools.EPED(folder=self.folder_output)
                 eped.read(subfolder='.', label='run1')
+
+                # Derive the supporting n_limiting / dome_frac from the authoritative
+                # spectrum for the markdown detail, and recover the label itself for
+                # older full-EPED runs whose eped_results.npy predates the metric (no
+                # migration needed -- the raw spectrum is in the retained .nc).
+                runs = eped.results.get('run1', {})
+                ds_one = next(iter(runs.values()), None)
+                info = EPEDtools.limiting_mode_from_dataset(ds_one) if ds_one is not None else None
+                if info:
+                    if limiting_mode is None:
+                        limiting_mode = info['limiting_mode']
+                    n_limiting = info['n_limiting']
+                    dome_frac = info['dome_frac']
+
                 fig = plt.figure(figsize=(10, 7))
                 eped.plot_g_stability(
                     label='run1',
@@ -771,6 +808,15 @@ class eped_beat(beat):
         for key, unit in output_units.items():
             if key in outputs:
                 lines.append(f'| {key} | {outputs[key]:.4g} {unit} |')
+        if limiting_mode:
+            detail = ''
+            if n_limiting is not None and n_limiting > 0:
+                detail = f' (n = {n_limiting}'
+                if dome_frac is not None:
+                    detail += f', dome width {dome_frac:.0%} of $T_{{e,ped}}$ range'
+                detail += ')'
+            lines.append('')
+            lines.append(f'**Pedestal limited by:** {limiting_mode}{detail}')
         if wall_time_s is not None:
             lines.append('')
             lines.append(f'**Beat wall-time:** {_format_seconds(wall_time_s)}')

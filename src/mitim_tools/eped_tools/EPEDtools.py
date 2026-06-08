@@ -338,6 +338,13 @@ class EPED:
         if 'ptop' in data.data_vars:
             print(f'\t\t\tptop: {data["ptop"].values[0]:.2f} kPa')
             print(f'\t\t\twptop: {data["wptop"].values[0]:.3f} psi_pol')
+            if 'n_limiting' in data.data_vars:
+                n_lim = int(_to_scalar(data['n_limiting']))
+                if n_lim > 0:
+                    dome_f = _to_scalar(data['dome_frac']) if 'dome_frac' in data.data_vars else None
+                    label_pb = classify_pedestal_limit(n_lim, dome_frac=dome_f)
+                    wtxt = f'{dome_f:.0%}' if dome_f is not None else '?'
+                    print(f'\t\t\tlimited by: n = {n_lim}, dome width = {wtxt} of T_ped range -> {label_pb}')
         else:
             print('\t\t\tptop: Not available',typeMsg='w')
 
@@ -442,6 +449,9 @@ class EPED:
             ms = 8,
             colors = None,
             additional_labels = None,
+            dome_min_frac = 0.05,       # min fraction of the T_e,ped range a mode must span to count as a ballooning dome
+            n_peeling_max = 6,          # n<=this is the pure-peeling branch regardless of width (0 -> width-only)
+            annotate_limiting_n = True, # write the limiting mode number + dome width next to each marker
             ):
         
         # --------------------
@@ -465,29 +475,50 @@ class EPED:
             # Graph parameters of this scan
             # --------------------
             
-            x, ptop, wtop = [], [], []
+            x, ptop, wtop, nlim, dfrac = [], [], [], [], []
             sublabels = data.keys()
-            try:  
+            try:
                 sublabels = sorted(sublabels, key=lambda x: int(x.split('run')[1]))
-            except: 
+            except:
                 print('\t> Warning: sublabels could not be sorted numerically.', typeMsg='w')
-            
+
             for sublabel in sublabels:
-                                
+
                 # Grab scanning parameter
                 x.append(_to_scalar(data[sublabel][scan_params[i]]))
 
                 # Grab outputs
                 ptop.append(_to_scalar(data[sublabel]['ptop']))
                 wtop.append(_to_scalar(data[sublabel]['wptop']))
-            
+
+                # Grab the limiting-mode diagnostics (peeling vs ballooning)
+                nlim.append(_to_scalar(data[sublabel].get('n_limiting', -1)))
+                dfrac.append(_to_scalar(data[sublabel].get('dome_frac', None)))
+
             # --------------------
             # Plot results of the scan
             # --------------------
 
-            axs[0].plot(x,ptop,'-s', c = colors[i], ms = ms, label = name + additional_labels[i] if additional_labels is not None else name)
-            axs[1].plot(x,wtop,'-s', c = colors[i], ms = ms)
-        
+            # Connecting line only; the per-point markers below carry a shape that
+            # flags whether each pedestal is peeling- (circle) or ballooning-limited (square)
+            line_label = name + additional_labels[i] if additional_labels is not None else name
+            axs[0].plot(x, ptop, '-', c=colors[i], label=line_label)
+            axs[1].plot(x, wtop, '-', c=colors[i])
+
+            for xj, pj, wj, nj, fj in zip(x, ptop, wtop, nlim, dfrac):
+                if np.isnan(pj):
+                    continue
+                mk = _PB_MARKERS[classify_pedestal_limit(nj, dome_frac=fj, n_peeling_max=n_peeling_max, dome_min_frac=dome_min_frac)]
+                axs[0].plot([xj], [pj], mk, c=colors[i], ms=ms, mfc=colors[i], mec=colors[i])
+                axs[1].plot([xj], [wj], mk, c=colors[i], ms=ms, mfc=colors[i], mec=colors[i])
+                if annotate_limiting_n and np.isfinite(nj) and nj > 0:
+                    # annotate the limiting n AND the dome width (% of T_ped range): this
+                    # is what separates a peeling spike (e.g. "n=20, 1%") from a ballooning
+                    # mountain ("n=30, 29%"), so the marker shape is never read in isolation
+                    wtxt = f', {fj:.0%}' if np.isfinite(fj) else ''
+                    axs[0].annotate(f'n={int(nj)}{wtxt}', (xj, pj), textcoords='offset points',
+                                    xytext=(6, 6), fontsize=7, color=colors[i])
+
             # Plot those with nans as zero with a red cross
             x_nan = [xj for j,xj in enumerate(x) if np.isnan(ptop[j])]
             if len(x_nan) > 0:
@@ -501,7 +532,17 @@ class EPED:
         ax.set_ylabel('$p_{top}$ (kPa)')
         ax.set_ylim(bottom=0)
 
-        ax.legend(loc=legend_location, title =legend_title)
+        # Legend: case lines + a marker-shape key for the pedestal-limiting mode type
+        from matplotlib.lines import Line2D
+        shape_key = [
+            Line2D([0], [0], marker=_PB_MARKERS['peeling'], color='0.4', ls='none', ms=ms,
+                   label='Peeling-limited (low-$n$ or spike)'),
+            Line2D([0], [0], marker=_PB_MARKERS['ballooning'], color='0.4', ls='none', ms=ms,
+                   label='Ballooning-limited (high-$n$ dome)'),
+        ]
+        handles, labels_ = ax.get_legend_handles_labels()
+        ax.legend(handles + shape_key, labels_ + [h.get_label() for h in shape_key],
+                  loc=legend_location, title=legend_title)
 
         GRAPHICStools.addDenseAxis(ax)
 
@@ -798,7 +839,110 @@ def modify_eped_config(config_file, file_to_write, parameters_to_change=None):
     file_to_write.parent.mkdir(parents=True, exist_ok=True)
     file_to_write.write_text(text)
 
-def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
+# Marker shapes used to flag the pedestal-limiting mode on the "Pedestal Top" plot
+_PB_MARKERS = {'peeling': 'o', 'ballooning': 's', 'none': '*'}
+
+
+def _limiting_dome_frac(stability, teped_axis, step, mode_idx, threshold, foot_frac=0.3):
+    '''
+    Fraction of the explored T_e,ped range over which the limiting mode stays above
+    foot_frac*threshold, measured as the contiguous band of pedestal heights containing
+    the crossing `step`.
+
+    This is the "mountain-vs-spike" discriminator, and it is what makes the
+    peeling/ballooning call robust rather than a bare cut on the mode number n. A
+    coherent ballooning mode grows smoothly over a broad span of pedestal temperature
+    -> a wide "mountain" (here ~0.3 of the explored range). An isolated peeling /
+    numerical spike is a violent ~1 grid-cell excursion -> a narrow sliver (<~0.02).
+    The fraction is used instead of a raw bin count on purpose: it is independent of
+    the height-grid resolution (EPED auto-scales the T_e,ped scan, so keV-per-bin
+    differs several-fold across a density scan), so the cut survives a grid change.
+    '''
+    if step < 0:
+        return 0.0
+    foot = foot_frac * threshold
+    col = np.asarray(stability)[:, mode_idx].astype(float)
+    above = np.where(np.isnan(col), False, col > foot)
+    if not above[step]:
+        return 0.0
+    lo = hi = step
+    while lo - 1 >= 0 and above[lo - 1]:
+        lo -= 1
+    while hi + 1 < above.shape[0] and above[hi + 1]:
+        hi += 1
+    T = np.asarray(teped_axis).astype(float).ravel()
+    total = abs(T[-1] - T[0])
+    if total <= 0:
+        return 0.0
+    return abs(T[hi] - T[lo]) / total
+
+
+def classify_pedestal_limit(n_limiting, dome_frac=None, n_peeling_max=6, dome_min_frac=0.05):
+    '''
+    Label the pedestal-limiting MHD mode as 'peeling' or 'ballooning'.
+
+    This is deliberately NOT a bare cut on the toroidal mode number n -- a single n
+    test mislabels isolated high-n spikes (which can sit at the operating point in
+    low-density / low-collisionality cases) as ballooning. The active discriminator is
+    the *width* of the limiting mode's unstable band:
+
+      1. dome_frac   : fraction of the explored T_e,ped range that the limiting mode
+                       spans (see _limiting_dome_frac) -- a coherent ballooning
+                       "mountain" is broad, an isolated spike is a sliver. PRIMARY test.
+      2. n_limiting  : the dominant toroidal mode number at the crossing -- used only as
+                       a light physical floor (the pure-peeling branch is the lowest-n,
+                       current-driven modes), NOT as the main criterion.
+
+    A case is 'ballooning' only if the limiter is a coherent broad dome
+    (dome_frac >= dome_min_frac) AND above the pure-peeling floor (n > n_peeling_max).
+    Everything else -- low-n current-driven crossings, and high-n crossings that are
+    spikes rather than mountains -- is 'peeling'. Returns 'none' if no unstable crossing.
+
+    CONVENTION (calibrated on the EPED test scan, tunable -- not a hard physics law):
+        dome_min_frac = 0.05  -> spikes span ~0.01 of the range, the real dome ~0.29,
+                                 so the cut sits in a wide (>5x either side) gap.
+        n_peeling_max = 6     -> n<=6 is treated as the pure-peeling branch regardless
+                                 of width; set to 0 to make the call purely width-based.
+    The limiting n and width are annotated on the plot so any call can be cross-checked
+    against the Stability tab.
+    '''
+    n = _to_scalar(n_limiting)
+    if not np.isfinite(n) or n < 0:
+        return 'none'
+    # dome_frac=None (e.g. legacy results without the metric) -> treat width as ample.
+    f = _to_scalar(dome_frac) if dome_frac is not None else np.inf
+    is_dome = (not np.isfinite(f)) or (f >= dome_min_frac)
+    if (n > n_peeling_max) and is_dome:
+        return 'ballooning'
+    return 'peeling'
+
+
+def limiting_mode_from_dataset(data, **classify_kwargs):
+    '''
+    Extract the pedestal-limiting-mode classification from a single postprocessed EPED
+    results dataset (one entry of EPED.results[label][sublabel]).
+
+    Returns a dict {'limiting_mode', 'n_limiting', 'dome_frac'}, or None if the dataset
+    predates the metric (older MITIM postprocessing without `n_limiting`). The None is
+    the backward-compat signal -- callers store it as-is instead of inventing a label.
+    '''
+    if 'n_limiting' not in getattr(data, 'data_vars', {}):
+        return None
+    n_lim = int(_to_scalar(data['n_limiting']))
+    if n_lim < 0:
+        return {'limiting_mode': 'none', 'n_limiting': n_lim, 'dome_frac': None}
+    dome_frac = _to_scalar(data['dome_frac']) if 'dome_frac' in data.data_vars else None
+    if dome_frac is not None and not np.isfinite(dome_frac):
+        dome_frac = None
+    label = classify_pedestal_limit(n_lim, dome_frac=dome_frac, **classify_kwargs)
+    return {
+        'limiting_mode': label,
+        'n_limiting': n_lim,
+        'dome_frac': float(dome_frac) if dome_frac is not None else None,
+    }
+
+
+def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot_frac=0.3):
     '''
     Note that this postprocessing uses the diagmanetic stabilization rule to determine stability, may not match EPED
     '''
@@ -834,6 +978,17 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
     data['stability_threshold'] = (dims, np.array([stability_threshold]))
     if step > 0:
         data['stability_index'] = (dims, np.array([step]))
+        # Limiting crossing diagnostics (data-driven; the peeling/ballooning label is
+        # applied later by classify_pedestal_limit). `n_limiting` is the toroidal mode
+        # number with the largest growth rate at the limiting height `step` -- by
+        # construction the mode that first crosses the threshold and caps the pedestal.
+        # `dome_frac` is how broad that mode's unstable band is, as a fraction of the
+        # explored T_e,ped range, distinguishing a coherent ballooning "mountain" (broad)
+        # from an isolated spike (sliver).
+        n_modes_here = np.asarray(data['nmodes']).ravel()
+        mode_idx = int(np.nanargmax(y[step, :]))
+        data['n_limiting'] = (dims, np.array([int(n_modes_here[mode_idx])]))
+        data['dome_frac'] = (dims, np.array([_limiting_dome_frac(y, data['teped_list'].data, step, mode_idx, stability_threshold, dome_foot_frac)]))
         data['pped'] = (dims, np.array([data['eq_pped'].data[step] * 1.0e3]))
         data['ptop'] = (dims, np.array([data['eq_ptop'].data[step] * 1.0e3]))
         data['tped'] = (dims, np.array([data['eq_tped'].data[step]]))
@@ -847,6 +1002,8 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold):
     else:
         print(f'\t> Warning: No stable solution found in EPED postprocessing using the diamagnetic stabilization rule ({diamagnetic_stab_rule} > {stability_threshold}), proceed with caution', typeMsg='w')
         data['stability_index'] = (dims, np.array([-1]))
+        data['n_limiting'] = (dims, np.array([-1]))
+        data['dome_frac'] = (dims, np.array([0.0]))
         data['pped'] = (dims, np.array([np.nan]))
         data['tped'] = (dims, np.array([np.nan]))
         data['ptop'] = (dims, np.array([np.nan]))
