@@ -50,6 +50,16 @@ def main():
     if args.save is not None:
         args.noshow = True
 
+    # Headless save: force the non-interactive Agg backend *before* any figure
+    # is created. GUItools' headless auto-detection keys off DISPLAY being
+    # unset, but clusters often leave a stale/broken DISPLAY exported — Qt is
+    # then selected and the first plt.figure() hard-aborts on the xcb plugin
+    # ("Could not load the Qt platform plugin"). Forcing Agg here sidesteps Qt
+    # entirely on the no-show path. No effect when actually showing figures.
+    if args.noshow:
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+
     # --save with no value (auto-default) needs at least one positional folder
     # so we can resolve the default to <first-folder>/figures_plotting_save.
     # Fail fast with a clear message rather than crashing later in plot land.
@@ -151,7 +161,7 @@ def main():
 
         # Plot more PORTALS
         else:
-            portals_total[i].plotPORTALS(plot_transport_models=True)
+            portals_total[i].plotPORTALS(plot_transport_models=True, noshow=noshow)
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Show figures?
@@ -175,8 +185,13 @@ def main():
             if not folder_save.exists():
                 folder_save.mkdir(parents=True)
             GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig, dpi=dpi_fig)
-        
-    embed()
+
+    # Drop into an interactive shell to poke at portals_total — but only when
+    # showing figures. On a headless `--save` run this would print the IPython
+    # banner and block on input (or dump it in a batch job), contradicting the
+    # "just write to file" intent.
+    if not noshow:
+        embed()
 
 if __name__ == "__main__":
     main()

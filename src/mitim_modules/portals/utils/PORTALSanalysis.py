@@ -467,9 +467,12 @@ class PORTALSanalyzer:
             if turb_code == "tglf":
                 from mitim_tools.gacode_tools import TGLFtools
                 try:
-                    tglf = TGLFtools.TGLF(rhos=self.rhos)
-                    print(f"> Reading TGLF results for evaluation {it} (not printing to avoid cluttering the terminal)")
+                    # Construction + read both hidden: the TGLF/NEO constructors
+                    # print a banner, and these eager constructor-time reads
+                    # should stay silent (e.g. headless `mitim_plot_portals
+                    # --save`). Read-failure warnings below stay visible.
                     with LOGtools.HiddenPrints():
+                        tglf = TGLFtools.TGLF(rhos=self.rhos)
                         tglf.read(folder=folder_execution / f"base_{turb_key}", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
 
                     # Extract turbulence-drives distributions (if any).
@@ -499,7 +502,6 @@ class PORTALSanalyzer:
                 # active instance name so named multi-fidelity CGYROs (e.g.
                 # 'cgyro1') land in the right per-iteration folder.
                 from mitim_tools.gacode_tools.utils import CGYROplot
-                print(f"> Reading CGYRO results for evaluation {it}")
                 try:
                     turb = CGYROplot.load_tool_for_iteration(
                         folder_execution, self.rhos,
@@ -514,9 +516,8 @@ class PORTALSanalyzer:
             if neo_code == "neo":
                 from mitim_tools.gacode_tools import NEOtools
                 try:
-                    neo_obj = NEOtools.NEO(rhos=self.rhos)
-                    print(f"> Reading NEO results for evaluation {it} (not printing to avoid cluttering the terminal)")
                     with LOGtools.HiddenPrints():
+                        neo_obj = NEOtools.NEO(rhos=self.rhos)
                         neo_obj.read(folder=folder_execution / f"base_{neo_key}", label=f"base", input_gacode=folder_execution / "input.gacode_torun")
                     neo = neo_obj
                 except Exception as e:
@@ -1301,9 +1302,8 @@ class PORTALSinitializer:
             if turb_code == "tglf":
                 try:
                     from mitim_tools.gacode_tools import TGLFtools
-                    tglf = TGLFtools.TGLF(rhos=self.rhos)
-                    print(f"> [SR] Reading TGLF results for evaluation {it}")
                     with LOGtools.HiddenPrints():
+                        tglf = TGLFtools.TGLF(rhos=self.rhos)
                         tglf.read(folder=folder_execution / f"base_{turb_key}", label="base",
                                   input_gacode=folder_execution / "input.gacode_torun")
                     # Turbulence-drives distributions (mirrors analyzer block).
@@ -1332,9 +1332,8 @@ class PORTALSinitializer:
             if neo_code == "neo":
                 try:
                     from mitim_tools.gacode_tools import NEOtools
-                    neo_tool = NEOtools.NEO(rhos=self.rhos)
-                    print(f"> [SR] Reading NEO results for evaluation {it}")
                     with LOGtools.HiddenPrints():
+                        neo_tool = NEOtools.NEO(rhos=self.rhos)
                         neo_tool.read(folder=folder_execution / f"base_{neo_key}", label="base",
                                       input_gacode=folder_execution / "input.gacode_torun")
                     neo = neo_tool
