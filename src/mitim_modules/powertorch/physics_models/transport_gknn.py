@@ -2,6 +2,9 @@ import numpy as np
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
+from tglfnn_gknn import TGLFinput
+from tglfnn_gknn import load_withnegd_pipeline, default_models_dir, run_withnegd_gknn
+
 def gknn_profiles_postprocessing_fun(file_profs):
     """Lump a multi-species plasma down to 2 ions for GKNN compatibility.
 
@@ -38,7 +41,6 @@ def _tglf_dict_to_gknn_input(flat_dict):
     Species 3 parameters may be absent when the profiles have only 2 species
     (electrons + 1 ion); defaults to 0.0 in that case.
     """
-    from tglf_gknn_jax import TGLFinput
 
     return TGLFinput(
         AS_2=flat_dict['AS_2'],
@@ -94,16 +96,12 @@ class gknn_model:
     @classmethod
     def _get_pipeline(cls, models_dir=None):
         if cls._gknn_pipeline is None:
-            from tglf_gknn_jax import load_withnegd_pipeline, default_models_dir
             d = models_dir or default_models_dir()
             print(f"\t- Loading GKNN-JAX pipeline from {d}")
             cls._gknn_pipeline = load_withnegd_pipeline(d)
         return cls._gknn_pipeline
 
     def _evaluate_gknn(self, pass_info=True):
-
-        from tglf_gknn_jax import run_withnegd_gknn
-
         options_key = getattr(self, "_active_turb_options_key", None) or "gknn"
         simulation_options = self.transport_evaluator_options[options_key]
         percent_error = simulation_options.get("percent_error", 5.0)
@@ -151,9 +149,6 @@ class gknn_model:
             self.QieGB_turb_stds = Flux_std[5]
 
     def _evaluate_gknn_batched(self, list_of_states, pass_info=True):
-
-        from tglf_gknn_jax import run_withnegd_gknn
-
         options_key = getattr(self, "_active_turb_options_key", None) or "gknn"
         simulation_options = self.transport_evaluator_options[options_key]
         percent_error = simulation_options.get("percent_error", 5.0)
