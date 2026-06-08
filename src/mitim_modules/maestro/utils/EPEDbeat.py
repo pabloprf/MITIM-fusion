@@ -227,7 +227,7 @@ class eped_beat(beat):
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
                 'nesep_ratio': np.abs(nesep_ratio), 
-                'zeta': np.abs(zeta995)
+                'zeta995': np.abs(zeta995)
             }
         elif self.toq_eq_choice == 'mxh':
             self.current_evaluation = {
@@ -242,15 +242,20 @@ class eped_beat(beat):
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
                 'nesep_ratio': np.abs(nesep_ratio), 
-                'zeta': np.abs(zeta995),
+                'zeta995': np.abs(zeta995),
                 's_three': np.abs(s_three995),
                 's_four': np.abs(s_four995)
             }
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
-            if key not in ['ptop_kPa', 'wtop_psipol']:
+            if key not in ['ptop_kPa', 'wtop_psipol', 'zeta']:
                 self.current_evaluation[key] = value
+            elif key == 'zeta': 
+                if 'zeta995' in self.corrections_set:
+                    print('Warning: both zeta and zeta995 provided in corrections_set, zeta value will be used', typeMsg='w') 
+                self.current_evaluation['zeta995'] = value
+
         # ----------------------------------------------
 
         print('\n\t- Running EPED with:')
@@ -265,7 +270,7 @@ class eped_beat(beat):
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
         if (self.toq_eq_choice=='full_turnbull_miller' or self.toq_eq_choice=='mxh'):
-            print(f'\t\t- zeta995: {self.current_evaluation["zeta"]:.3f}')
+            print(f'\t\t- zeta995: {self.current_evaluation["zeta995"]:.3f}')
         if self.toq_eq_choice=='mxh':
             print(f'\t\t- s_three995: {self.current_evaluation["s_three"]:.3f}')
             print(f'\t\t- s_four995: {self.current_evaluation["s_four"]:.3f}')
@@ -309,7 +314,7 @@ class eped_beat(beat):
                     self.current_evaluation["zeff"],
                     self.current_evaluation["Tesep_keV"]* 1E3,
                     self.current_evaluation["nesep_ratio"],
-                    self.current_evaluation["zeta"]
+                    self.current_evaluation["zeta995"]
                     )
             elif self.toq_eq_choice == 'mxh': 
                 inputs_to_eped = (
@@ -324,7 +329,7 @@ class eped_beat(beat):
                     self.current_evaluation["zeff"],
                     self.current_evaluation["Tesep_keV"]* 1E3,
                     self.current_evaluation["nesep_ratio"], 
-                    self.current_evaluation["zeta"],
+                    self.current_evaluation["zeta995"],
                     self.current_evaluation["s_three"],
                     self.current_evaluation["s_four"]
                     )
@@ -509,8 +514,8 @@ class eped_beat(beat):
 
         # Handle further shaping parameters
         if len(args) > 0:
-            zeta = args[0]
-            print('Len of args > 0, using zeta =', zeta)
+            zeta995 = args[0]
+            print('Len of args > 0, using zeta995 =', zeta995)
             if len(args) > 1: 
                 s_three = args[1]
                 print('Len of args > 1. Also using s_three =', s_three)
@@ -524,8 +529,8 @@ class eped_beat(beat):
                 s_three = 0.0
                 print('Len of args <= 1. Setting s_three = 0.0')
         else:
-            zeta = 0.0
-            print('No zeta provided, setting zeta = 0.0')
+            zeta995 = 0.0
+            print('No zeta995 provided, setting zeta995 = 0.0')
 
         eped = EPEDtools.EPED(folder=folder)
 
@@ -557,7 +562,7 @@ class eped_beat(beat):
                 'zeffped': zeff,
                 'nesep': nesep_ratio * neped19,
                 'tesep': Tesep_eV,
-                'zeta': zeta
+                'zeta': zeta995
             }
             print('_run_full_eped with full_turnbull_miller TOQ configuration. Parameters used:', input_params)
         elif self.toq_eq_choice == 'mxh': 
@@ -573,7 +578,7 @@ class eped_beat(beat):
                 'zeffped': zeff,
                 'nesep': nesep_ratio * neped19,
                 'tesep': Tesep_eV, 
-                'zeta': zeta,
+                'zeta': zeta995,
                 's_three': s_three,
                 's_four': s_four
             }
@@ -743,7 +748,7 @@ class eped_beat(beat):
         lines.append('|---|---|')
         input_units = {
             'Ip': 'MA', 'Bt': 'T', 'R': 'm', 'a': 'm',
-            'kappa995': '-', 'delta995': '-', 'zeta': '-',
+            'kappa995': '-', 'delta995': '-', 'zeta995': '-',
             'neped_20': r'10^20 m^-3', 'BetaN': '-', 'zeff': '-',
             'Tesep_keV': 'keV', 'nesep_ratio': '-',
         }
