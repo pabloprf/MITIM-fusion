@@ -36,6 +36,13 @@ _CHANNELS = [
 # chunk so column-local first->last reads as blue->red.
 _CMAP_ITER = LinearSegmentedColormap.from_list("iter_bluered", [(0.0, 0.0, 1.0), (1.0, 0.0, 0.0)])
 
+# Trace channel -> GB flux key used in the targets_per_iter dicts.
+_CHANNEL_TO_GB = {'Qe': 'QeGB', 'Qi': 'QiGB', 'Ge': 'GeGB'}
+
+# Fractional x-axis extension past the last trace so the in-axes legend
+# (upper right) sits over empty space instead of covering data.
+_XLIM_LEGEND_EXTEND = 0.20
+
 
 # ---------------------------------------------------------------------------
 # Loaders
@@ -282,11 +289,17 @@ def _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its):
 
 
 def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
-                     color_for, base_iter):
+                     color_for, base_iter, targets_per_iter=None):
     '''
     Draw one subplot: non-base traces in `chunk` + base iter, for channel
     `var` at `rho`. Returns (trace_count, trace_means) so the outer grid
     owner can run per-row y-clamp based on the 2.5x-of-max-mean rule.
+
+    `targets_per_iter` ({iter: {"QeGB": per-rho array, ...}}, values =
+    target - neoclassical in GB) adds a color-matched star at the end of
+    each iteration's trace marking the turbulence-only target it was
+    trying to flux-match — the distance star <-> mean marker reads as the
+    residual. Iterations / channels absent from the dict draw no star.
 
     Per trace we draw:
       1. The raw time trace.
@@ -304,6 +317,28 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
     '''
     trace_means = []
     trace_count = 0
+    target_vals = []
+    gb_key = _CHANNEL_TO_GB.get(var)
+
+    def _draw_target(it, out, offset_it, color, is_base):
+        '''Star at the end of the trace: the turbulence-only target
+        (target - neoc) this iteration was trying to match.'''
+        if not targets_per_iter or gb_key is None or out is None:
+            return
+        arr = (targets_per_iter.get(it) or {}).get(gb_key)
+        if arr is None or r_idx >= len(arr):
+            return
+        tval = float(arr[r_idx])
+        if not np.isfinite(tval) or not hasattr(out, "t") or len(out.t) == 0:
+            return
+        x_end = float(out.t[-1]) + offset_it
+        ax.plot([x_end], [tval], marker='*', ls='',
+                ms=12 if is_base else 10,
+                color='black' if is_base else color,
+                mec='black', mew=0.4, zorder=8)
+        # Collected separately from trace_means: the row clamp keeps targets
+        # in frame with a modest margin instead of the factor-scaled headroom.
+        target_vals.append(tval)
 
     def _draw_single_trace(out, offset_it, color, is_base):
         nonlocal trace_count
@@ -384,18 +419,22 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
         if out is None:
             continue
         _draw_single_trace(out, offsets[it], color_for(it), is_base=False)
+        _draw_target(it, out, offsets[it], color_for(it), is_base=False)
 
     if base_out is not None:
         _draw_single_trace(base_out, offsets.get(base_iter, 0.0), color=None, is_base=True)
+        _draw_target(base_iter, base_out, offsets.get(base_iter, 0.0), None, is_base=True)
 
-    return trace_count, trace_means
+    return trace_count, trace_means, target_vals
 
 
-def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
+def _column_legend(ax, chunk, color_for, base_iter, base_has_window, has_targets=False):
     '''Compact legend shared by both grid layouts: base + chunk endpoints,
     the x=window x y=2*sigma shading patches, the dashed mean line, and
     the mean +/- 2*sigma errorbar marker. Keeps readers honest about what
-    every visual channel on the plot is encoding.'''
+    every visual channel on the plot is encoding. Anchored at the upper
+    right, where the _XLIM_LEGEND_EXTEND x-axis extension guarantees
+    data-free space.'''
     handles = [Line2D([0], [0], color='black', lw=1.4)]
     labels_ = [f'ev{base_iter} (base)']
     if chunk:
@@ -416,7 +455,11 @@ def _column_legend(ax, chunk, color_for, base_iter, base_has_window):
     handles.append(Line2D([0], [0], marker='s', color='gray', ls='',
                           markersize=4, mec='black', mew=0.3))
     labels_.append(r'$\mu \pm 2\sigma$')
-    ax.legend(handles, labels_, loc='best', prop={'size': 6}, framealpha=0.85)
+    if has_targets:
+        handles.append(Line2D([0], [0], marker='*', color='gray', ls='',
+                              markersize=9, mec='black', mew=0.4))
+        labels_.append(r'target$-$neo')
+    ax.legend(handles, labels_, loc='upper right', prop={'size': 9}, framealpha=0.85)
 
 
 def _column_title_for_chunk(chunk, base_iter):
@@ -426,17 +469,31 @@ def _column_title_for_chunk(chunk, base_iter):
     return f"ev{base_iter} only"
 
 
-def _apply_row_clamp(axs_row_leftmost, trace_means, trace_count, factor=2.5):
+def _apply_row_clamp(axs_row, trace_means, trace_count, factor=2.5, target_vals=None):
     '''Clamp the row's y-axis using factor-scaled mean+/-2sigma bounds so
     transient peaks don't dominate while each trace's uncertainty bar stays
     inside the frame:
 
         ymax = factor * max(mean + 2*std)
-        ymin = min(0, factor * min(mean - 2*std))
+        ymin = min(drawn-data bottom across the row, factor * min(mean - 2*std))
 
-    `trace_means` is a list of (mean, std) tuples from _draw_chunk_cell.
-    `factor` is exposed as a kwarg (default 2.5) so callers can widen /
-    tighten the headroom without editing.
+    The bottom is never pinned to zero: it follows the lowest drawn artist
+    (raw traces included, via each axis' dataLim) so negative excursions
+    (e.g. Gamma_e dipping below 0 in the saturated phase) stay visible.
+    The data-driven bottom is capped at -|ymax| so a deep negative transient
+    can't squash the row — the symmetric mirror of the factor rule cutting
+    positive transients at the top. The stats-based bound still extends
+    below the cap when the windowed mean-2*sigma is genuinely negative.
+
+    `axs_row` is the full row of (sharey) axes; limits are set on the
+    leftmost and propagate. `trace_means` is a list of (mean, std) tuples
+    from _draw_chunk_cell. `factor` is exposed as a kwarg (default 2.5) so
+    callers can widen / tighten the headroom without editing.
+
+    `target_vals` (flat list of turbulence-only target values drawn as
+    stars) only ever *extends* the limits, with a modest 15% margin —
+    enough to keep every star in frame without granting targets the full
+    factor-scaled headroom reserved for the trace statistics.
 
     Only skip when there are literally zero traces or no valid means.'''
     if trace_count < 1 or not trace_means:
@@ -444,9 +501,16 @@ def _apply_row_clamp(axs_row_leftmost, trace_means, trace_count, factor=2.5):
     uppers = [m + 2.0 * s for (m, s) in trace_means]
     lowers = [m - 2.0 * s for (m, s) in trace_means]
     ymax = factor * max(uppers)
-    ymin = min(0.0, factor * min(lowers))
+    data_bottoms = [ax.dataLim.ymin for ax in axs_row if np.isfinite(ax.dataLim.ymin)]
+    data_floor = max(min(data_bottoms), -abs(ymax)) if data_bottoms else 0.0
+    ymin = min(factor * min(lowers), data_floor)
+    finite_targets = [t for t in (target_vals or []) if np.isfinite(t)]
+    if finite_targets:
+        max_t, min_t = max(finite_targets), min(finite_targets)
+        ymax = max(ymax, max_t * (1.15 if max_t > 0 else 0.85))
+        ymin = min(ymin, min_t * (0.85 if min_t > 0 else 1.15))
     if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
-        axs_row_leftmost.set_ylim(ymin, ymax)
+        axs_row[0].set_ylim(ymin, ymax)
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +527,7 @@ def plot_time_traces_per_radius(
     base_iter=0,
     title_prefix="CGYRO time traces",
     factor=2.5,
+    targets_per_iter=None,
 ):
     '''
     Build one FigureNotebook tab per rho. Rows = transport channels
@@ -525,21 +590,25 @@ def plot_time_traces_per_radius(
         # Per-row aggregators — rows are channels here.
         row_trace_means = {row_idx: [] for row_idx in range(len(_CHANNELS))}
         row_trace_counts = {row_idx: 0 for row_idx in range(len(_CHANNELS))}
+        row_target_vals = {row_idx: [] for row_idx in range(len(_CHANNELS))}
 
         for c_idx, chunk in enumerate(chunks):
             col_axes = axs[:, c_idx]
             color_for = _make_column_color_fn(chunk)
 
             for row_idx, (var, ylabel) in enumerate(_CHANNELS):
-                tc, tm = _draw_chunk_cell(
+                tc, tm, tv = _draw_chunk_cell(
                     col_axes[row_idx], var, rho, r_idx, chunk,
                     cache, base_out, offsets, color_for, base_iter,
+                    targets_per_iter=targets_per_iter,
                 )
                 row_trace_counts[row_idx] += tc
                 row_trace_means[row_idx].extend(tm)
+                row_target_vals[row_idx].extend(tv)
 
             col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
-            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window)
+            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window,
+                           has_targets=bool(targets_per_iter))
 
             for row_idx, (var, ylabel) in enumerate(_CHANNELS):
                 ax = col_axes[row_idx]
@@ -550,8 +619,19 @@ def plot_time_traces_per_radius(
                 GRAPHICStools.addDenseAxis(ax)
 
         for row_idx in range(len(_CHANNELS)):
-            _apply_row_clamp(axs[row_idx, 0], row_trace_means[row_idx],
-                             row_trace_counts[row_idx], factor=factor)
+            _apply_row_clamp(axs[row_idx, :], row_trace_means[row_idx],
+                             row_trace_counts[row_idx], factor=factor,
+                             target_vals=row_target_vals[row_idx])
+
+        # Extend the shared x-axis past the last trace so the upper-right
+        # legend sits over empty space instead of covering data.
+        t_max = 0.0
+        for it in sorted_its:
+            out = pick_output_for_rho(cache[it], rho, r_idx)
+            if out is not None and hasattr(out, "t") and len(out.t) > 0:
+                t_max = max(t_max, offsets.get(it, 0.0) + float(out.t[-1]))
+        if t_max > 0.0:
+            axs[0, 0].set_xlim(-0.02 * t_max, t_max * (1.0 + _XLIM_LEGEND_EXTEND))
 
 
 def plot_time_traces_per_channel(
@@ -563,6 +643,7 @@ def plot_time_traces_per_channel(
     base_iter=0,
     title_prefix="CGYRO time traces",
     factor=2.5,
+    targets_per_iter=None,
 ):
     '''
     Companion to `plot_time_traces_per_radius` with the axes pivoted:
@@ -617,6 +698,7 @@ def plot_time_traces_per_channel(
         # output.
         row_trace_means = {row_idx: [] for row_idx in range(n_rows)}
         row_trace_counts = {row_idx: 0 for row_idx in range(n_rows)}
+        row_target_vals = {row_idx: [] for row_idx in range(n_rows)}
 
         # Pre-resolve per-rho offsets and base_out once (shared across columns).
         offsets_per_rho = {
@@ -637,17 +719,20 @@ def plot_time_traces_per_channel(
             color_for = _make_column_color_fn(chunk)
 
             for row_idx in range(n_rows):
-                tc, tm = _draw_chunk_cell(
+                tc, tm, tv = _draw_chunk_cell(
                     col_axes[row_idx], var,
                     rho_list[row_idx], row_idx, chunk,
                     cache, base_out_per_rho[row_idx], offsets_per_rho[row_idx],
                     color_for, base_iter,
+                    targets_per_iter=targets_per_iter,
                 )
                 row_trace_counts[row_idx] += tc
                 row_trace_means[row_idx].extend(tm)
+                row_target_vals[row_idx].extend(tv)
 
             col_axes[0].set_title(_column_title_for_chunk(chunk, base_iter), fontsize=10)
-            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window_any)
+            _column_legend(col_axes[0], chunk, color_for, base_iter, base_has_window_any,
+                           has_targets=bool(targets_per_iter))
 
             for row_idx in range(n_rows):
                 ax = col_axes[row_idx]
@@ -658,5 +743,19 @@ def plot_time_traces_per_channel(
                 GRAPHICStools.addDenseAxis(ax)
 
         for row_idx in range(n_rows):
-            _apply_row_clamp(axs[row_idx, 0], row_trace_means[row_idx],
-                             row_trace_counts[row_idx], factor=factor)
+            _apply_row_clamp(axs[row_idx, :], row_trace_means[row_idx],
+                             row_trace_counts[row_idx], factor=factor,
+                             target_vals=row_target_vals[row_idx])
+
+        # Extend the shared x-axis past the last trace so the upper-right
+        # legend sits over empty space instead of covering data. Max over
+        # all rows since x is shared figure-wide.
+        t_max = 0.0
+        for row_idx in range(n_rows):
+            offs = offsets_per_rho[row_idx]
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho_list[row_idx], row_idx)
+                if out is not None and hasattr(out, "t") and len(out.t) > 0:
+                    t_max = max(t_max, offs.get(it, 0.0) + float(out.t[-1]))
+        if t_max > 0.0:
+            axs[0, 0].set_xlim(-0.02 * t_max, t_max * (1.0 + _XLIM_LEGEND_EXTEND))

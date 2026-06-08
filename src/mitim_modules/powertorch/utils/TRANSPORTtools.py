@@ -61,6 +61,14 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                 # NEO file may not have it
                 pass
 
+            # Targets (GB) as populated by calculateTargets() before the transport
+            # call — consumed by the CGYRO trace plotter to mark the turbulence-only
+            # target (target - neoc) at the end of each time trace.
+            targets_GB = {}
+            for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB']:
+                if var in self.powerstate.plasma:
+                    targets_GB[var] = self.powerstate.plasma[var][0, 1:].cpu().numpy().tolist()
+
             json_dict = {
                 'fluxes_mean': fluxes_mean,
                 'fluxes_stds': fluxes_stds,
@@ -71,6 +79,7 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                     'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
                     'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
                     'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
+                    'targets_GB': targets_GB,
                 }
             }
 

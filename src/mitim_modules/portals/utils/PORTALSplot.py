@@ -2291,6 +2291,64 @@ def _iterate_portals_evaluation_folders(root_folder):
                 yield _extract_trailing_int(d.name), folder
 
 
+def _targets_GB_from_powerstate_pkl(pkl_path):
+    '''Legacy fallback for runs whose fluxes_neoc.json predates the
+    targets_GB block in additional_info: read the targets (GB, as populated
+    by calculateTargets) from the per-evaluation powerstate pickle that sits
+    next to the transport folder.'''
+    if not pkl_path.is_file():
+        return None
+    try:
+        from mitim_modules.powertorch import STATEtools
+        p = STATEtools.read_saved_state(pkl_path)
+        return {var: p.plasma[var][0, 1:].cpu().numpy().tolist()
+                for var in ("QeGB", "QiGB", "GeGB", "GZGB", "MtGB") if var in p.plasma}
+    except Exception as e:
+        print(f"\t- Could not extract targets from {pkl_path} ({e})", typeMsg='w')
+        return None
+
+
+def _load_turb_targets_for_iterations(iter_folders, predicted_channels):
+    '''
+    Build {iteration: {"QeGB": np.ndarray, ...}} of turbulence-only targets
+    (target_GB - neoc_GB, per predicted rho) for the channels PORTALS is
+    flux-matching — consumed by CGYROplot as `targets_per_iter` to mark a
+    star at the end of each turbulent time trace. Per iteration, the
+    neoclassical fluxes come from fluxes_neoc.json (written at run time);
+    the targets come from its additional_info['targets_GB'] block (newer
+    runs) or, as legacy fallback, the evaluation's powerstate.pkl.
+    Iterations missing either piece contribute no entry — the plotter just
+    draws no star for them.
+    '''
+    import json
+    channel_to_gb = {"te": "QeGB", "ti": "QiGB", "ne": "GeGB"}
+    gb_keys = [channel_to_gb[ch] for ch in (predicted_channels or []) if ch in channel_to_gb]
+    out = {}
+    for it, folder in iter_folders:
+        neoc_path = folder / "fluxes_neoc.json"
+        if not neoc_path.is_file():
+            continue
+        try:
+            with open(neoc_path, "r") as f:
+                payload = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"\t- fluxes_neoc.json unreadable at {neoc_path} ({e}); no target marker for iter {it}", typeMsg='w')
+            continue
+        neoc = payload.get("fluxes_mean", {})
+        targets = (payload.get("additional_info", {}) or {}).get("targets_GB")
+        if not targets:
+            targets = _targets_GB_from_powerstate_pkl(folder.parent / "powerstate.pkl")
+        if not targets:
+            continue
+        d = {}
+        for key in gb_keys:
+            if key in targets and key in neoc:
+                d[key] = np.asarray(targets[key], dtype=float) - np.asarray(neoc[key], dtype=float)
+        if d:
+            out[it] = d
+    return out
+
+
 def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     '''
     PORTALS-side shim for the CGYRO per-rho time-trace plot. Resolves the
@@ -2356,6 +2414,11 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             iter_folders,
             base_subfolder=base_subfolder,
         )
+    if getattr(self, "_cgyro_targets_cache", None) is None:
+        self._cgyro_targets_cache = _load_turb_targets_for_iterations(
+            iter_folders,
+            getattr(self.powerstate, "predicted_channels", []) or [],
+        )
 
     CGYROplot.plot_time_traces_per_radius(
         fn,
@@ -2364,6 +2427,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         self._cgyro_traces_cache,
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
     )
     # Same data, pivoted: one figure per channel with rhos as rows.
     # Per-radius and per-channel tab groups now each use a single color
@@ -2376,6 +2440,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         self._cgyro_traces_cache,
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
     )
 
 
