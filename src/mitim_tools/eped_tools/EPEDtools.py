@@ -635,7 +635,7 @@ class EPED:
             teped = np.array(data['teped_list'])* 1E-3
             teped_base = _to_scalar(data['tped'])
 
-            minwidth = 1-data['wptop']
+            minwidth = 1-_to_scalar(data['wptop'])
             
             for iheight in range(p.shape[0]):
                 
