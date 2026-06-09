@@ -230,6 +230,7 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
 
     run_slurm(script, main_folder, slurm['partition'], slurm['environment'],
               hours=slurm['hours'], n=cpus, mem=slurm['memory'],
+              max_hours=slurm.get('max_hours', 8),
               exclusive=False, are_n_threads=False, ntasks_per_node=cpus,
               job_array=job_array)
 
