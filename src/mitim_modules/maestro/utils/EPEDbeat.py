@@ -808,6 +808,7 @@ class eped_beat(beat):
         for key, unit in output_units.items():
             if key in outputs:
                 lines.append(f'| {key} | {outputs[key]:.4g} {unit} |')
+        lines.append('')
         if limiting_mode:
             detail = ''
             if n_limiting is not None and n_limiting > 0:
@@ -815,8 +816,12 @@ class eped_beat(beat):
                 if dome_frac is not None:
                     detail += f', dome width {dome_frac:.0%} of $T_{{e,ped}}$ range'
                 detail += ')'
-            lines.append('')
             lines.append(f'**Pedestal limited by:** {limiting_mode}{detail}')
+        else:
+            # No stability spectrum (EPED-NN surrogate, or ptop/wtop override): the
+            # peeling/ballooning branch cannot be determined. State it explicitly rather
+            # than silently omitting the line, so the status is never ambiguous.
+            lines.append('**Pedestal limited by:** n/a (no stability spectrum — EPED-NN surrogate or override)')
         if wall_time_s is not None:
             lines.append('')
             lines.append(f'**Beat wall-time:** {_format_seconds(wall_time_s)}')

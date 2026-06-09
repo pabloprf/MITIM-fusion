@@ -354,6 +354,19 @@ class portals_beat(beat):
         except Exception:
             pass
 
+        # Number of points each GP surrogate was actually fitted to. This is per-output
+        # because previous-beat data can be appended via file (MAESTRO's
+        # use_previous_surrogate_data), so different channels can carry different counts;
+        # train_X_usedToTrain includes those file-added points. On success this is a list
+        # of (output_name, n_points); on failure the reason is surfaced in the table
+        # rather than silently dropped.
+        surrogate_points = None
+        try:
+            gps = analyzer.step.GP["individual_models"]
+            surrogate_points = [(gp.output, int(gp.gpmodel.train_X_usedToTrain.shape[0])) for gp in gps]
+        except Exception as e:
+            surrogate_points = ('__error__', type(e).__name__)
+
         # Time per iteration from this beat's timing.jsonl (Eval @ N entries)
         time_per_iter_s = None
         timing_file = self.folder_output / 'Outputs' / 'timing.jsonl'
@@ -404,6 +417,15 @@ class portals_beat(beat):
         lines.append('|---|---|')
         lines.append(f'| Iterations | {n_iters if n_iters is not None else "n/a"} |')
         lines.append(f'| Best iteration | {ibest if ibest is not None else "n/a"} |')
+        if isinstance(surrogate_points, list) and surrogate_points:
+            counts = [n for _, n in surrogate_points]
+            m = len(counts)
+            if len(set(counts)) == 1:
+                lines.append(f'| Training points / surrogate | {counts[0]} (× {m} surrogates) |')
+            else:
+                lines.append(f'| Training points / surrogate | {min(counts)}–{max(counts)} (× {m} surrogates) |')
+        elif isinstance(surrogate_points, tuple) and surrogate_points[0] == '__error__':
+            lines.append(f'| Training points / surrogate | n/a ({surrogate_points[1]}) |')
         if residual0 is not None:
             lines.append(f'| Residual at iter 0 | {residual0:.4g} |')
         if residual_best is not None:
@@ -415,6 +437,16 @@ class portals_beat(beat):
         if wall_time_s is not None:
             lines.append(f'| Beat wall-time | {_format_seconds(wall_time_s)} |')
         lines.append('')
+        # Per-surrogate breakdown only when the counts actually differ (otherwise the
+        # single table row above already says it). Keeps the common uniform case clean.
+        if isinstance(surrogate_points, list) and len({n for _, n in surrogate_points}) > 1:
+            lines.append('### Surrogate training points')
+            lines.append('')
+            lines.append('| Surrogate | Points |')
+            lines.append('|---|---|')
+            for name, n in surrogate_points:
+                lines.append(f'| {name} | {n} |')
+            lines.append('')
         lines.append(fig_md)
         return '\n'.join(lines)
 

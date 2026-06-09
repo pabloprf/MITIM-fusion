@@ -850,6 +850,25 @@ class mitim_state:
 
         self.derived['pfast_fraction'] = self.derived['pfast_manual_vol'] / self.derived['ptot_manual_vol']
 
+        # Per-species volume-averaged pressure contribution (fraction of total) and
+        # temperature ratio T_s/Te. pe + sum_s(pi_all[:,s]) == ptot_manual exactly, so
+        # p_frac_e + sum(p_frac_i) == 1. Ti_s/Te uses volume-averaged temperatures
+        # (consistent with tite_vol); for fast species this ratio is the effective
+        # 2/3<E>/Te and can be >> 1.
+        vol = self.derived["volume"]
+        self.derived["pe_vol"] = CALCtools.volume_integration(self.derived["pe"], r, volp)[-1] / vol  # MPa
+        self.derived["pi_vol_all"] = np.array([
+            CALCtools.volume_integration(self.derived["pi_all"][:, sp], r, volp)[-1] / vol
+            for sp in range(self.derived["pi_all"].shape[1])
+        ])  # MPa, one per ion species
+        self.derived["p_frac_e"] = self.derived["pe_vol"] / self.derived["ptot_manual_vol"]
+        self.derived["p_frac_i"] = self.derived["pi_vol_all"] / self.derived["ptot_manual_vol"]
+        self.derived["Ti_vol_all"] = np.array([
+            CALCtools.volume_integration(self.profiles["ti(keV)"][:, sp], r, volp)[-1] / vol
+            for sp in range(self.profiles["ti(keV)"].shape[1])
+        ])  # keV, one per ion species
+        self.derived["tite_vol_all"] = self.derived["Ti_vol_all"] / self.derived["Te_vol"]
+
         #approximate pedestal top density
         self.derived['ptop(Pa)'] = np.interp(0.90, self.profiles['rho(-)'], self.profiles['ptot(Pa)'])
 
@@ -1202,6 +1221,12 @@ class mitim_state:
             print(f"|\tGe    = {self.derived['ge_10E20'][-1]:.1e} 10^20/s")
             print("| Species concentration (volume average):")
             print(f"|\t{ImpurityText}")
+            print("| Pressure contribution and temperature ratio by species (volume average):")
+            print(f"|\t{'e-':<14}: p/ptot = {self.derived['p_frac_e']*100.0:5.1f}%")
+            for i in range(len(self.Species)):
+                sp = self.Species[i]
+                tag = f"{sp['N']}({sp['Z']:.0f},{sp['A']:.0f},{sp['S']})"
+                print(f"|\t{tag:<14}: p/ptot = {self.derived['p_frac_i'][i]*100.0:5.1f}%, T/Te = {self.derived['tite_vol_all'][i]:.2f}")
             print(" ------------------------------------------------------------------------------------------\n")
         except KeyError:
             print("\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",typeMsg="w",)
