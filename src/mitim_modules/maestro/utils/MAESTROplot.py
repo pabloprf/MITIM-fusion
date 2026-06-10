@@ -227,15 +227,16 @@ def plot_results(self, fn):
     
     axs = fig.subplot_mosaic(
         """
-        ABGI
-        ABGI
-        AEGI
-        DEHJ
-        DFHJ
-        DFHJ
-        """
+        ABGIK
+        ABGIK
+        AEGIK
+        DEHJL
+        DFHJL
+        DFHJL
+        """,
+        gridspec_kw={"wspace": 0.55},
     )
-    
+
     plot_special_quantities(ps, ps_lab, axs)
     
     if (self.folder_performance / 'timing.jsonl').exists():
@@ -258,6 +259,7 @@ def plot_results(self, fn):
 def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     
     x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
+    tauE, H98, H89 = [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
         BetaN.append(p.derived['BetaN_engineering'])
@@ -272,6 +274,17 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         q0.append(p.derived['q0'])
         xsaw.append(p.derived['roa_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
+        tauE.append(p.derived['tauE'])
+        H98.append(p.derived['H98'])
+        H89.append(p.derived['H89'])
+
+    # Fusion power/gain below ~1 kW is numerical noise (e.g. non-fusion beats);
+    # blank those out so the Performance axes don't autoscale to a meaningless
+    # ~1e-14 spread. Q is masked wherever Pfus is, since both track "is there fusion".
+    Pfus, Q = np.array(Pfus, dtype=float), np.array(Q, dtype=float)
+    meaningless = Pfus < 1e-3
+    Pfus[meaningless] = np.nan
+    Q[meaningless] = np.nan
 
     def _special(ax,x):
         for xi in x:
@@ -362,8 +375,9 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$\\nu_{ne}$')
     GRAPHICStools.addDenseAxis(ax)
-    ax.set_ylim(bottom = 0)
-    
+    # No bottom=0 floor: peaking sits around ~1, so anchoring at 0 pins the data to
+    # the ceiling. Let it autoscale both ends with margins.
+
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
     
     _special(ax, x)
@@ -391,9 +405,35 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylabel('Inversion radius (roa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
-    
+
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
-    
+
+    _special(ax, x)
+
+    # -----------------------------------------------------------------
+    ax = axs['K']
+    ax.plot(x, tauE, '-s', color=color, markersize=7, lw = 1)
+    ax.set_ylabel('$\\tau_E$ (s)')
+    ax.set_title('Confinement Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    _special(ax, x)
+
+    ax = axs['L']
+    ax.plot(x, H98, '-s', color=color, markersize=7, lw = 1, label='H98y2')
+    ax.plot(x, H89, '-*', color=color, markersize=7, lw = 1, label='H89p')
+    ax.set_ylabel('$H$')
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    if legYN:
+        ax.legend()
+
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+
     _special(ax, x)
 
     # -----------------------------------------------------------------
