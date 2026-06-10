@@ -1180,11 +1180,6 @@ class mitim_state:
         Prad_ratio_sync = self.derived['Prad_sync']/self.derived['Prad'] 
 
         try:
-            ImpurityText = ""
-            for i in range(len(self.Species)):
-                ImpurityText += f"{self.Species[i]['N']}({self.Species[i]['Z']:.0f},{self.Species[i]['A']:.0f}) = {self.derived['fi_vol'][i]:.1e}, "
-            ImpurityText = ImpurityText[:-2]
-    
             print(f"\n{(label + ', summary:') if label != '' else 'Summary:'}")
             print(f" ________________________________________________________________________________________")
             print("| Engineering Parameters:")
@@ -1219,14 +1214,13 @@ class mitim_state:
             print(f"|\tPrf_i = {self.derived['qRFi_MW'][-1]:.1f} MW, Pbeam_i = {self.derived['qBEAMi_MW'][-1]:.1f} MW                  --> Pext_i = {self.derived['qRFi_MW'][-1] + self.derived['qBEAMi_MW'][-1]:.1f} MW")
             print(f"|\tMmom  = {self.derived['mt_J'][-1]:.1f} Nm")
             print(f"|\tGe    = {self.derived['ge_10E20'][-1]:.1e} 10^20/s")
-            print("| Species concentration (volume average):")
-            print(f"|\t{ImpurityText}")
-            print("| Pressure contribution and temperature ratio by species (volume average):")
-            print(f"|\t{'e-':<14}: p/ptot = {self.derived['p_frac_e']*100.0:5.1f}%")
+            print("| Concentration, pressure contribution and temperature ratio by species (volume average):")
+            tags = [f"{sp['N']}({sp['Z']:.0f},{sp['A']:.0f},{sp['S']})" for sp in self.Species]
+            w = max([len("e-")] + [len(t) for t in tags])  # pad to the widest tag so the colon aligns
+            _conc_pad = " " * len("f = 0.0e+00, ")  # align e- p/ptot with the ion rows (electrons carry no impurity concentration)
+            print(f"|\t{'e-':<{w}}: {_conc_pad}p/ptot = {self.derived['p_frac_e']*100.0:5.1f}%")
             for i in range(len(self.Species)):
-                sp = self.Species[i]
-                tag = f"{sp['N']}({sp['Z']:.0f},{sp['A']:.0f},{sp['S']})"
-                print(f"|\t{tag:<14}: p/ptot = {self.derived['p_frac_i'][i]*100.0:5.1f}%, T/Te = {self.derived['tite_vol_all'][i]:.2f}")
+                print(f"|\t{tags[i]:<{w}}: f = {self.derived['fi_vol'][i]:.1e}, p/ptot = {self.derived['p_frac_i'][i]*100.0:5.1f}%, T/Te = {self.derived['tite_vol_all'][i]:.2f}")
             print(" ------------------------------------------------------------------------------------------\n")
         except KeyError:
             print("\t- When printing info, not all keys found, probably because this input.gacode class came from an old MITIM version",typeMsg="w",)
