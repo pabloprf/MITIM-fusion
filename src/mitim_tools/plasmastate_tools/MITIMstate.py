@@ -2724,8 +2724,10 @@ class mitim_state:
 
             plasma = {
                 'N_SPECIES': len(species),
-                'IPCCW': sign_bt,
-                'BTCCW': sign_it,
+                # GACODE COCOS: IPCCW = -sign(Ip) = sign_it, BTCCW = -sign(Bt) = sign_bt
+                # (prgen_map_inputgacode.f90, tgyro_init_profiles.f90). Do not cross these.
+                'IPCCW': sign_it,
+                'BTCCW': sign_bt,
                 'OMEGA_ROT': interpolator(omega_rot),
                 'OMEGA_ROT_DERIV': interpolator(omega_rot_deriv),
                 'NU_1': interpolator(self.derived['xnue'])* factor_nu,
@@ -2878,8 +2880,10 @@ class mitim_state:
 
             plasma = {
                 'N_SPECIES': len(species),
-                'IPCCW': sign_bt,
-                'BTCCW': sign_it,
+                # GACODE COCOS: IPCCW = -sign(Ip) = sign_it, BTCCW = -sign(Bt) = sign_bt
+                # (prgen_map_inputgacode.f90, tgyro_init_profiles.f90). Do not cross these.
+                'IPCCW': sign_it,
+                'BTCCW': sign_bt,
                 'MACH': interpolator(mach),
                 'GAMMA_E': interpolator(gamma_e),
                 'GAMMA_P': interpolator(gamma_p),
