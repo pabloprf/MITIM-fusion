@@ -971,7 +971,7 @@ class mitim_job:
 
         return output, error
 
-    def retrieve(self, check_if_files_received=True, check_files_in_folder={}, optional_files=None):
+    def retrieve(self, check_if_files_received=True, check_files_in_folder={}, optional_files=None, best_effort=False):
         '''
         optional_files: files that we still try to pull from the remote (added
         to the tarball and unlinked locally before retrieval like the mandatory
@@ -1107,6 +1107,16 @@ class mitim_job:
                     tar.extractall(path=self.folder_local)
                 break
             except (FileNotFoundError, IOError, tarfile.ReadError, EOFError) as _retrieve_exc:
+                if best_effort:
+                    # Best-effort (status-poll) retrieval: a failure here is expected and
+                    # transient -- the job is early-PENDING so its remote folder/log are not
+                    # ready yet, or a brief SSH flap. Do NOT raise the interactive disk-full
+                    # prompt: under an unattended run (stdout redirected to a log) that prompt
+                    # hard-crashes the whole run. Abandon this attempt; the caller re-polls.
+                    print(f"\t* Best-effort retrieval failed ({type(_retrieve_exc).__name__}: {_retrieve_exc}); "
+                          f"outputs treated as not-yet-available (caller will re-poll)", typeMsg='w')
+                    (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
+                    return False
                 msg = (
                     f"Remote tar/download/extract failed "
                     f"({type(_retrieve_exc).__name__}: {_retrieve_exc}). "
@@ -1133,6 +1143,9 @@ class mitim_job:
             received = self.check_all_received(check_files_in_folder=check_files_in_folder)
             if received:
                 print("\t\t- All correct", typeMsg="i")
+            elif best_effort:
+                # Status poll: don't block on a 60s in-retrieve retry; the caller re-polls.
+                print("\t* Not all expected files received (best-effort); caller will re-poll", typeMsg="i")
             else:
                 print(f"\t* Not all received, trying retrieval once again after waiting {time_wait} seconds", typeMsg="i")
                 time.sleep(time_wait)
@@ -1212,7 +1225,7 @@ class mitim_job:
 
         self.connect()
         output, error = self.execute(command, printYN=True)
-        received = self.retrieve(optional_files=[file_output])
+        received = self.retrieve(optional_files=[file_output], best_effort=True)
         if not received:
             self._write_debugging_files(output, error, extra_name = '_check')
         self.close()
@@ -1230,6 +1243,21 @@ class mitim_job:
             1: Running
             2: Not found / finished
         """
+
+        # -----------------------------------------------
+        # Guard: squeue output could not be retrieved this poll (best-effort check
+        # against an early-PENDING job whose remote folder is not ready yet, or a
+        # transient SSH flap). Degrade to "pending / keep polling" -- NEVER "finished":
+        # a missing poll must not be read as job-done, or the caller would proceed to
+        # the next beat/step with no output. The polling loop retries next cycle.
+        # -----------------------------------------------
+        if not (self.folder_local / "squeue_output.dat").exists():
+            print("\t* squeue output not retrieved this poll; assuming job still pending (will re-poll)", typeMsg="w")
+            self.infoSLURM = {"STATE": "UNKNOWN", "NAME": self._squeue_job_name(), "JOBID": None}
+            self.jobid_found = None
+            self.status = 0
+            self.log_file = None
+            return
 
         # -----------------------------------------------
         # Read output of squeue command -> self.infoSLURM
