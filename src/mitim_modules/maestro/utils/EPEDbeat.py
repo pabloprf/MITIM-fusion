@@ -215,36 +215,44 @@ class eped_beat(beat):
                 'nesep_ratio': np.abs(nesep_ratio),
             }
         elif self.toq_eq_choice == 'full_turnbull_miller':
+            # Shape descriptors (delta995, zeta995) carry physical sign — negative
+            # triangularity / squareness — and are passed to modified TOQ (ishape=7)
+            # in the same signed GACODE-MXH convention as the standard path. Do NOT
+            # np.abs() them: that silently flips sign for every NT/negative-squareness
+            # plasma. See 9ff6edf9 (the abs was removed as a bug; ef2f82e1 reintroduced
+            # it here). The remaining np.abs() calls are deliberate magnitude conventions.
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
                 'R': np.abs(R),
                 'a': np.abs(a),
                 'kappa995': np.abs(kappa995),
-                'delta995': np.abs(delta995),
+                'delta995': delta995,
                 'neped_20': np.abs(neped_20),
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
-                'nesep_ratio': np.abs(nesep_ratio), 
-                'zeta995': np.abs(zeta995)
+                'nesep_ratio': np.abs(nesep_ratio),
+                'zeta995': zeta995
             }
         elif self.toq_eq_choice == 'mxh':
+            # As above: delta995/zeta995/s_three/s_four are signed MXH coefficients fed
+            # verbatim to modified TOQ (ishape=13, "take MXH coefficients"). Keep their sign.
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
                 'R': np.abs(R),
                 'a': np.abs(a),
                 'kappa995': np.abs(kappa995),
-                'delta995': np.abs(delta995),
+                'delta995': delta995,
                 'neped_20': np.abs(neped_20),
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
-                'nesep_ratio': np.abs(nesep_ratio), 
-                'zeta995': np.abs(zeta995),
-                's_three': np.abs(s_three995),
-                's_four': np.abs(s_four995)
+                'nesep_ratio': np.abs(nesep_ratio),
+                'zeta995': zeta995,
+                's_three': s_three995,
+                's_four': s_four995
             }
 
         # --- Sometimes we may need specific EPED inputs
