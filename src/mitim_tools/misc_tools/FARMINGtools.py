@@ -937,27 +937,79 @@ class mitim_job:
         printYN=False,
         timeoutSecs=None,
         wait_for_all_commands=True,
+        retry_on_transient=False,
         **kwargs,
     ):
         if printYN:
             print("\t* Executing (remote):", typeMsg="i")
             print(f"\t\t{command_str}")
 
+        # Default path preserves historical behavior exactly (socket.timeout is
+        # swallowed with a notice, returning None outputs).
+        if not retry_on_transient:
+            try:
+                return self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands)
+            except socket.timeout:
+                print("\t> Command timed out!", typeMsg="w")
+                return None, None
+
+        # Opt-in retry for IDEMPOTENT remote commands (squeue poll, tar/rm during
+        # retrieve) across transient SSH/VPN flaps, mirroring connect_ssh /
+        # _sftp_transfer_with_retry (same connection_retry_settings; ssh_retry_attempts
+        # null == retry forever). Previously a drop between connect and the squeue/tar
+        # exec_command raised an uncaught SSHException even with retry-forever requested.
+        # NEVER set retry_on_transient for a job submission -- re-running would double-launch.
+        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
+        retry_wait = float(retry_cfg.get("wait_seconds", 5))
+        retry_attempts = retry_cfg.get("attempts", 3)
+        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
+            raise ValueError(
+                f"connection_retry_settings['attempts'] must be a positive int "
+                f"or None (infinite); got {retry_attempts!r}"
+            )
+        transient_exc = (
+            paramiko.ssh_exception.SSHException,
+            TimeoutError,
+            socket.timeout,
+            EOFError,
+            ConnectionError,
+            socket.gaierror,
+        )
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands)
+            except transient_exc as e:
+                if retry_attempts is not None and attempt >= retry_attempts:
+                    raise
+                cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
+                print(
+                    f"\t<> Remote exec attempt {attempt}/{cap_str} failed "
+                    f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
+                    typeMsg="w",
+                )
+                time.sleep(retry_wait)
+                try:
+                    self.connect()
+                except Exception as _conn_e:
+                    print(
+                        f"\t<> reconnect during remote exec failed ({_conn_e}); "
+                        "will retry on next iteration",
+                        typeMsg="w",
+                    )
+
+    def _execute_remote_once(self, command_str, timeoutSecs, wait_for_all_commands):
+        # One exec_command attempt; raises on transient SSH/socket errors so the
+        # caller's retry loop (when enabled) can reconnect. self.ssh is looked up
+        # fresh each call so a reconnect's new client is picked up.
         output = None
         error = None
-
-        try:
-            stdin, stdout, stderr = self.ssh.exec_command(
-                command_str, timeout=timeoutSecs
-            )
-            # Wait for the command to complete and read the output
-            if wait_for_all_commands:
-                stdin.close()
-                output = stdout.read()
-                error = stderr.read()
-        except socket.timeout:
-            print("\t> Command timed out!", typeMsg="w")
-
+        stdin, stdout, stderr = self.ssh.exec_command(command_str, timeout=timeoutSecs)
+        if wait_for_all_commands:
+            stdin.close()
+            output = stdout.read()
+            error = stderr.read()
         return output, error
 
     def execute_local(self, command_str, printYN=False, timeoutSecs=None, **kwargs):
@@ -1071,7 +1123,8 @@ class mitim_job:
                     + " -C "
                     + f'{self.folderExecution}'
                     + " "
-                    + " ".join(tar_items)
+                    + " ".join(tar_items),
+                    retry_on_transient=True,   # idempotent gather: safe to re-run across SSH flaps
                 )
 
                 # Download the tarball
@@ -1223,10 +1276,23 @@ class mitim_job:
         self.output_files = ["squeue_output.dat"]
         self.output_folders = []
 
+        # A status poll must never crash the run on a remote hiccup. The squeue
+        # exec_command is retried across transient SSH/VPN flaps (retry_on_transient),
+        # and the retrieval is best-effort; if a residual transient error still
+        # surfaces (e.g. finite ssh_retry_attempts exhausted), degrade to "not received"
+        # -> interpret_status treats it as pending/keep-polling. connect() keeps its own
+        # retry, so a clean connect here means close() below is safe.
+        output = error = None
         self.connect()
-        output, error = self.execute(command, printYN=True)
-        received = self.retrieve(optional_files=[file_output], best_effort=True)
-        if not received:
+        try:
+            output, error = self.execute(command, printYN=True, retry_on_transient=True)
+            received = self.retrieve(optional_files=[file_output], best_effort=True)
+        except (paramiko.ssh_exception.SSHException, TimeoutError, socket.timeout,
+                EOFError, ConnectionError, socket.gaierror) as _poll_exc:
+            print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
+                  f"assuming job still pending (will re-poll)", typeMsg="w")
+            received = False
+        if not received and output is not None:
             self._write_debugging_files(output, error, extra_name = '_check')
         self.close()
         self.interpret_status(file_output = file_output)
