@@ -1,9 +1,11 @@
 import numpy as np
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-
-from tglfnn_gknn import TGLFinput
-from tglfnn_gknn import load_withnegd_pipeline, default_models_dir, run_withnegd_gknn
+try:
+    from tglfnn_gknn import TGLFinput
+    from tglfnn_gknn import load_withnegd_pipeline, default_models_dir, run_withnegd_gknn
+except ModuleNotFoundError:
+    pass
 
 def gknn_profiles_postprocessing_fun(file_profs):
     """Lump a multi-species plasma down to 2 ions for GKNN compatibility.
