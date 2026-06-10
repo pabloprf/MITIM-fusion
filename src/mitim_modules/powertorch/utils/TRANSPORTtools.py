@@ -819,8 +819,9 @@ from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
 from mitim_modules.powertorch.physics_models.transport_neo import neo_model
 from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model
 from mitim_modules.powertorch.physics_models.transport_gx import gx_model
+from mitim_modules.powertorch.physics_models.transport_gknn import gknn_model
 
-class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model):
+class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model, gknn_model):
 
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
@@ -970,6 +971,8 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return cgyro_model.evaluate_turbulence(self)
         elif code == 'gx':
             return gx_model.evaluate_turbulence(self)
+        elif code == 'gknn':
+            return gknn_model.evaluate_turbulence(self)
         else:
             raise Exception(f"Unknown turbulence code {code!r} (instance {active_name!r})")
 
@@ -986,6 +989,8 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return tglf_model.evaluate_turbulence_batched(self, list_of_states)
         elif code == 'cgyro':
             return cgyro_model.evaluate_turbulence_batched(self, list_of_states)
+        elif code == 'gknn':
+            return gknn_model.evaluate_turbulence_batched(self, list_of_states)
         else:
             raise NotImplementedError(
                 f"Batched turbulence dispatch not yet implemented for code {code!r} "
