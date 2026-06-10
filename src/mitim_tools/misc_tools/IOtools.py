@@ -940,7 +940,9 @@ def createTimeTXT(duration_in_s, until=3):
     else:
         txt += milisec_txt
 
-    return txt[:-1]
+    # Strip only the trailing space left by the component builders; rstrip (not
+    # txt[:-1]) so we don't eat the closing ')' when milisec_txt was appended last.
+    return txt.rstrip()
 
 
 def renameCommand(ini, fin, folder="~/"):
