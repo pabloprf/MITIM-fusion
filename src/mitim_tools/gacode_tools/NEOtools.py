@@ -1515,7 +1515,6 @@ class NEOoutput(SIMtools.GACODEoutput):
             pi_gb = normalization["pi_gb"]
             s_gb  = normalization["s_gb"]
             rho_s = normalization["rho_s"]
-            a     = normalization["rmin"][-1]   # LCFS minor radius [m]
             ne_20 = normalization["ne_20"]       # electron density [1e20/m^3]
             c_s   = normalization["c_s"]         # ion sound speed [m/s]
 
@@ -1534,12 +1533,14 @@ class NEOoutput(SIMtools.GACODEoutput):
             self.Mt_unn     = self.Mt     * s_gb[ir]
 
             # ---- Bootstrap current ----
-            # From NEO source: jpar_phys [kA/m^2] = jpar_GB * e * ne(r) * cs(r) * a * 1e-3
-            # (quantity is <j·B>/B_unit in kA/m^2)
+            # j_phys [kA/m^2] = j_GB * e * ne(r) * cs(r) * 1e-3, quantity is <j·B>/B_unit.
+            # NEO's own factor (neo_transport.f90: e*dens_norm*vth_norm*a_meters) carries an
+            # a_meters ONLY to undo vth_norm being stored as vth/a [1/s]; cs here is already a
+            # physical velocity [m/s] (= NEO's vth_norm*a_meters), so there is no extra a.
             _e   = 1.602e-19                        # elementary charge [C]
             _ne  = ne_20[ir] * 1e20                 # electron density [m^-3]
             _cs  = c_s[ir]                          # sound speed [m/s]
-            _j_factor = _e * _ne * _cs * a * 1e-3   # [kA/m^2] per GB unit
+            _j_factor = _e * _ne * _cs * 1e-3       # [kA/m^2] per GB unit
 
             if hasattr(self, 'jparB'):
                 self.jparB_unn   = self.jparB   * _j_factor   # [kA/m^2]
@@ -1548,8 +1549,8 @@ class NEOoutput(SIMtools.GACODEoutput):
             if hasattr(self, 'SjparB'):
                 self.SjparB_unn  = self.SjparB  * _j_factor
 
-            # ---- Velocities: v_phys [m/s] = v_GB * cs * a ----
-            _v_factor = _cs * a
+            # ---- Velocities: v_phys [m/s] = v_GB * cs (cs is already physical, no extra a) ----
+            _v_factor = _cs
             if hasattr(self, 'uparB0'):
                 self.uparB0_unn   = self.uparB0   * _v_factor
             if hasattr(self, 'vtheta0'):
