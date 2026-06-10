@@ -218,23 +218,23 @@ def PORTALSanalyzer_plotMetrics(
             if axTe_f is not None:
                 axTe_f.plot(
                     rho,
-                    power.plasma['QeMWm2_tr_turb'].cpu().numpy() + power.plasma['QeMWm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['QeMWm2_tr_turb'][0].cpu().numpy() + power.plasma['QeMWm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTe_f.plot(rho, power.plasma['QeMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTe_f.plot(rho, power.plasma['QeMWm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
             if axTi_f is not None:
                 axTi_f.plot(
                     rho,
-                    power.plasma['QiMWm2_tr_turb'].cpu().numpy() + power.plasma['QiMWm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['QiMWm2_tr_turb'][0].cpu().numpy() + power.plasma['QiMWm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axTi_f.plot(rho, power.plasma['QiMWm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axTi_f.plot(rho, power.plasma['QiMWm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             
             if axne_f is not None:
@@ -242,11 +242,11 @@ def PORTALSanalyzer_plotMetrics(
 
                 axne_f.plot(
                     rho, 
-                    power.plasma['Ge1E20m2_tr_turb'].cpu().numpy()+power.plasma['Ge1E20m2_tr_neoc'].cpu().numpy(),
+                    power.plasma['Ge1E20m2_tr_turb'][0].cpu().numpy()+power.plasma['Ge1E20m2_tr_neoc'][0].cpu().numpy(),
                      "-", c=col, lw=lwt, alpha=alph)
                 axne_f.plot(
                     rho,
-                    power.plasma['Ge1E20m2'].cpu().numpy() * (1 - int(self.force_zero_particle_flux)),
+                    power.plasma['Ge1E20m2'][0].cpu().numpy() * (1 - int(self.force_zero_particle_flux)),
                     "--",
                     c=col,
                     lw=lwt,
@@ -255,19 +255,19 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ_f is not None:
 
-                axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
-                axnZ_f.plot(rho, power.plasma['GZ1E20m2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2_tr_turb'][0].cpu().numpy()+power.plasma['GZ1E20m2_tr_neoc'][0].cpu().numpy(), "-", c=col, lw=lwt, alpha=alph)
+                axnZ_f.plot(rho, power.plasma['GZ1E20m2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
             if axw0_f is not None:
                 axw0_f.plot(
                     rho,
-                    power.plasma['MtJm2_tr_turb'].cpu().numpy() + power.plasma['MtJm2_tr_neoc'].cpu().numpy(),
+                    power.plasma['MtJm2_tr_turb'][0].cpu().numpy() + power.plasma['MtJm2_tr_neoc'][0].cpu().numpy(),
                     "-",
                     c=col,
                     lw=lwt,
                     alpha=alph,
                 )
-                axw0_f.plot(rho, power.plasma['MtJm2'].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
+                axw0_f.plot(rho, power.plasma['MtJm2'][0].cpu().numpy(), "--", c=col, lw=lwt, alpha=alph)
 
     # ---------------------------------------------------------------------------------------------------------
 
@@ -859,7 +859,7 @@ def PORTALSanalyzer_plotMetrics(
 
     ax = axQ
 
-    isThereFusion = np.nanmax(self.FusionGain) > 1E-2
+    isThereFusion = (np.nanmax(self.FusionGain) > 1E-2) and (np.nanmax(self.FusionGain) != np.inf)
 
     if isThereFusion:
         v = self.FusionGain
@@ -883,9 +883,7 @@ def PORTALSanalyzer_plotMetrics(
     ):
         if (indexUse is None) or (indexUse >= len(self.powerstates)):
             continue
-        ax.plot(
-            [self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4
-        )
+        ax.plot([self.evaluations[indexUse]], [v[indexUse]], "o", color=col, markersize=4)
 
     vmin, vmax = np.max([0, np.nanmin(v)]), np.nanmax(v)
     ext = 0.8
@@ -1011,15 +1009,6 @@ def PORTALSanalyzer_plotMetrics(
     for ax in [axQ, axA, axR, axC]:
         ax.set_xlim([0, len(self.FusionGain) + 2])
 
-    # for ax in [axA,axR,axC]:
-    # 	ax.yaxis.tick_right()
-    # 	ax.yaxis.set_label_position("right")
-
-    # print(
-    #     "\t* Reminder: With the exception of the Residual plot, the rest are calculated with the original profiles, not necesarily modified by targets",
-    #     typeMsg="i",
-    # )
-
     # Save plot
     if file_save is not None:
         plt.savefig(file_save, transparent=True, dpi=300)
@@ -1116,12 +1105,19 @@ def PORTALSanalyzer_plotExpected(
     yL_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
     yU_trainreal = torch.from_numpy(self.step.train_Ystd).to(model.train_X)
 
-    y_train = model.predict(x_train)[0]
+    # Only predict the cases I will plot (to speed up)
+    y_train = torch.zeros_like(y_trainreal)
+    for i in plotPoints:
+        print(f"\t\t* Predicting training point #{i} for plotting 'Expected' tab")
+        x_use = x_train[i : i + 1, :]
+        y_pred, _, _, _ = model.predict(x_use)
+        y_train[i : i + 1, :] = y_pred
 
     # ---- Next
     y_next = yU_next = yL_next = None
     if plotNext:
         try:
+            print(f"\t\t* Predicting next point for plotting 'Expected' tab")
             y_next, yU_next, yL_next, _ = model.predict(self.step.x_next)
         except:
             pass
@@ -1797,10 +1793,19 @@ def PORTALSanalyzer_plotExpected(
 def PORTALSanalyzer_plotSummary(self, fn=None, fn_color=None):
     print("- Plotting PORTALS summary of TGYRO and PROFILES classes")
 
+    # `self.iextra` is initialized as int|None by the analyzer but
+    # PORTALSanalyzer_plotMetrics overwrites it with a list (see
+    # PORTALSplot.py:37 and define_extra_iterators). Whichever runs first
+    # wins. plotSummary only uses one extra index in its third slot, so
+    # normalize: list -> first element (or None if empty), scalar -> as-is.
+    _iextra = self.iextra
+    if isinstance(_iextra, (list, tuple)):
+        _iextra = _iextra[0] if _iextra else None
+
     indecesPlot = [
         self.ibest,
         self.i0,
-        self.iextra,
+        _iextra,
     ]
 
     # -------------------------------------------------------
@@ -1925,9 +1930,8 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
         plt.ion()
         fig = plt.figure()
 
-    pps = np.max(
-        [3, len(self.predicted_channels)]
-    )  # Because plotGradients require at least Te, Ti, ne
+    #pps = np.max([3, len(self.predicted_channels)])  # Because plotGradients require at least Te, Ti, ne
+    pps = 6
     grid = plt.GridSpec(2, pps, hspace=0.3, wspace=0.3)
     axsR = []
     for i in range(pps):
@@ -1997,6 +2001,448 @@ def PORTALSanalyzer_plotRanges(self, fig=None):
     )
 
     axsR[0].legend(loc="best")
+
+def PORTALSanalyzer_plotDebug(self, fig=None):
+    if fig is None:
+        plt.ion()
+        fig = plt.figure()
+        
+    axs = fig.subplot_mosaic(
+        [
+            ["Te_training", "Ti_training", "ne_training",           "Te_opt", "Ti_opt", "ne_opt"],
+            ["aLTe_training", "aLTi_training", "aLne_training",     "aLTe_opt", "aLTi_opt", "aLne_opt"],
+            ["Qe_training", "Qi_training", "Ge_training",           "Qe_opt", "Qi_opt", "Ge_opt"],
+        ]
+    )
+
+    # Plot the evolution of profiles and their gradients during the initial training
+    num_training = self.opt_fun.mitim_model.optimization_options['initialization_options']['initial_training']
+    num_total = len(self.powerstates)
+    roa_pred = self.powerstates[0].plasma['roa'][0,1:].cpu().numpy()
+    
+    lw = 1
+    mm = '-s'
+    mm2 = '--o'
+
+    def _plot_evaluations(axs, evals, mm='', mm2='--o', lw=1, roa_pred=None, lab = 'Training'):
+
+        colors, _ = GRAPHICStools.colorTableFade(len(evals), startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
+
+        min_grads = [0,0,0]
+        max_grads = [0,0,0]
+        for j,i in enumerate(evals):
+        
+            power = self.powerstates[i]
+            p = power.profiles
+            
+            axs['Te'].plot(p.derived['roa'], p.profiles["te(keV)"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['Te'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['te'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['Ti'].plot(p.derived['roa'], p.profiles["ti(keV)"][:,0], c=colors[j], lw=lw)
+            axs['Ti'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['ne'].plot(p.derived['roa'], p.profiles["ne(10^19/m^3)"] * 1e-1, c=colors[j], lw=lw)
+            axs['ne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ne'][0,1:].cpu().numpy() * 1e-1, mm, c=colors[j], markersize=3)
+            
+            axs['aLTe'].plot(p.derived['roa'], p.derived["aLTe"], c=colors[j], lw=lw)
+            axs['aLTe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLte'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['aLTi'].plot(p.derived['roa'], p.derived["aLTi"][:,0], c=colors[j], lw=lw)
+            axs['aLTi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['aLne'].plot(p.derived['roa'], p.derived["aLne"], c=colors[j], lw=lw)
+            axs['aLne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLne'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            axs['Qe'].plot(p.derived['roa'], p.derived["qe_MWm2"], c=colors[j], lw=lw/2, label=f"HR target")
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3, label=f"target")
+            axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3, label=f"transport")
+            
+            axs['Qi'].plot(p.derived['roa'], p.derived["qi_MWm2"], c=colors[j], lw=lw/2)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+
+            axs['Ge'].plot(p.derived['roa'], p.derived["ge_10E20m2"], c=colors[j], lw=lw/2)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
+            axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
+            
+            max_grads[0] = max(max_grads[0], power.plasma['aLte'][0,1:].cpu().numpy().max())
+            max_grads[1] = max(max_grads[1], power.plasma['aLti'][0,1:].cpu().numpy().max())
+            max_grads[2] = max(max_grads[2], power.plasma['aLne'][0,1:].cpu().numpy().max())
+            
+            min_grads[0] = min(min_grads[0], power.plasma['aLte'][0,1:].cpu().numpy().min())
+            min_grads[1] = min(min_grads[1], power.plasma['aLti'][0,1:].cpu().numpy().min())
+            min_grads[2] = min(min_grads[2], power.plasma['aLne'][0,1:].cpu().numpy().min())
+            
+        for ax in axs.values():
+            ax.set_xlabel("$r/a$"); ax.set_xlim([0, 1])
+            GRAPHICStools.addDenseAxis(ax)
+        
+        axs['Te'].legend(loc="best")
+        axs['Te'].set_ylabel("Te (keV)"); axs['Te'].set_ylim(bottom=0); axs['Te'].set_title(f'{lab}: Te')
+        axs['Ti'].set_ylabel("Ti (keV)"); axs['Ti'].set_ylim(bottom=0); axs['Ti'].set_title(f'{lab}: Ti')
+        axs['ne'].set_ylabel("ne ($10^{20}m^{-3}$)"); axs['ne'].set_ylim(bottom=0); axs['ne'].set_title(f'{lab}: ne')
+        axs['aLTe'].set_ylabel("$a/L_{Te}$"); axs['aLTe'].set_ylim([min_grads[0], max_grads[0]*1.1])
+        axs['aLTi'].set_ylabel("$a/L_{Ti}$"); axs['aLTi'].set_ylim([min_grads[1], max_grads[1]*1.1])
+        axs['aLne'].set_ylabel("$a/L_{ne}$"); axs['aLne'].set_ylim([min_grads[2], max_grads[2]*1.1])
+        axs['Qe'].set_ylabel("Qe (MW/m$^2$)"); #axs['Qe'].set_ylim(bottom=0)
+        axs['Qi'].set_ylabel("Qi (MW/m$^2$)"); #axs['Qi'].set_ylim(bottom=0)
+        axs['Ge'].set_ylabel("$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)"); #axs['Ge'].set_ylim(bottom=0)
+        
+        axs['Qe'].legend(loc="best")
+            
+    # Plot training evaluations     
+    evals = np.arange(0,num_training,1)
+    _plot_evaluations(
+        axs = {
+            'Te': axs['Te_training'],
+            'Ti': axs['Ti_training'],
+            'ne': axs['ne_training'],
+            'aLTe': axs['aLTe_training'],
+            'aLTi': axs['aLTi_training'],
+            'aLne': axs['aLne_training'],
+            'Qe': axs['Qe_training'],
+            'Qi': axs['Qi_training'],
+            'Ge': axs['Ge_training'],
+        },
+        evals = evals,
+        mm = mm,
+        mm2 = mm2,
+        lw = lw,
+        roa_pred = roa_pred,
+        lab = 'Training',
+    )
+    
+    # Plot a maximum of 5 evaluations during optimization (from the last one, equidistant going back until the last training one
+    evals = np.unique(
+        np.concatenate(
+            [
+                np.arange(num_training, num_total, max(1, (num_total - num_training) // 5)),
+                [num_total - 1],
+            ]
+        )
+    )
+    _plot_evaluations(
+        axs = {
+            'Te': axs['Te_opt'],
+            'Ti': axs['Ti_opt'],
+            'ne': axs['ne_opt'],
+            'aLTe': axs['aLTe_opt'],
+            'aLTi': axs['aLTi_opt'],
+            'aLne': axs['aLne_opt'],
+            'Qe': axs['Qe_opt'],
+            'Qi': axs['Qi_opt'],
+            'Ge': axs['Ge_opt'],
+        },
+        evals = evals,
+        mm = mm,
+        mm2 = mm2,
+        lw = lw,
+        roa_pred = roa_pred,
+        lab = 'Optimization',
+    )
+    
+def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
+    
+    print("- Plotting PORTALS Simulations - Transport models")
+    
+    colors = GRAPHICStools.listColors()
+    
+    # Lazy import — avoid dragging CGYROtools into every caller of this module
+    # when the transport-models tab isn't being rendered.
+    from mitim_tools.gacode_tools import CGYROtools
+
+    k = 0
+    for it in self.transport_model_objects:
+        turb = self.transport_model_objects[it].get('turbulence')
+        neo  = self.transport_model_objects[it].get('neoclassical')
+        # Skip iterations with missing halves (e.g. SR CGYRO-only populates
+        # this dict with turb=None, or a partial read where one leg failed).
+        if turb is None or neo is None:
+            continue
+        # Skip iterations where turbulence is CGYRO — the transport-models
+        # tab renders TGLF-style plots (fn_color / extratitle kwargs) that
+        # CGYROtools.CGYRO.plot does not accept, and CGYRO has its own
+        # dedicated per-rho / per-channel time-trace tabs below.
+        if isinstance(turb, CGYROtools.CGYRO):
+            continue
+        turb.plot(fn=fn, fn_color=fn_color+k, labels = ['base'], extratitle=f"Turb (#{it}) - ")
+
+        if "distributions" in turb.__dict__:
+            distributions = turb.distributions
+            k += 1
+            fig = fn.add_figure(label=f"Turb (#{it}) - Distributions", tab_color=fn_color+k)
+            axs = fig.subplots(ncols=3)
+            
+            varss = [('Qe', '$Q_e$ (MW/m$^2$)'), ('Qi', '$Q_i$ (MW/m$^2$)'), ('Ge', '$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)')]
+            for i, (var, label) in enumerate(varss):
+                ax = axs[i]
+                y = np.array(distributions['y'][var])
+                # Plot each distribution case as a light profile
+                for jj in range(y.shape[0]):
+                    ax.plot(
+                        turb.rhos,
+                        y[jj, :],
+                        marker='o',
+                        ms=3,
+                        lw=0.8,
+                        alpha=0.4,
+                        color=colors[jj % len(colors)],
+                        label=distributions['x'][jj],
+                        zorder=2,
+                    )
+
+                # Overlay mean ± 2std with a clear point+errorbar style
+                y_mean = y.mean(axis=0)
+                y_std = y.std(axis=0)
+                ax.errorbar(
+                    turb.rhos,
+                    y_mean,
+                    yerr=2*y_std,
+                    fmt='o-',
+                    color='k',
+                    ms=6,
+                    lw=2.0,
+                    elinewidth=1.5,
+                    capsize=5,
+                    capthick=1.5,
+                    markerfacecolor='white',
+                    markeredgewidth=1.1,
+                    label='mean ± 2std',
+                    zorder=5,
+                )
+                        
+                ax.set_xlabel("$\\rho_N$")
+                ax.set_ylabel(label)
+                ax.legend(loc="best",prop={'size': 6})
+                GRAPHICStools.addDenseAxis(ax)
+                if var in ["Qe", "Qi"]:
+                    ax.set_ylim(bottom=0)
+        
+        neo.plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
+        k += 2
+
+    # CGYRO-specific per-rho time traces: one tab per radius with
+    # Qe/Qi/Ge(t) overlaid across every PORTALS iteration, ev0 drawn on
+    # top as the baseline. Loaded lazily here (not in
+    # read_transport_models) so the TGLF/NEO path doesn't pay the cost,
+    # and so missing/failed iterations are skipped cleanly rather than
+    # aborting the plot. Actual loading and drawing live in the CGYRO
+    # tools layer so PORTALS stays model-agnostic — this block is just
+    # the PORTALS-side discovery + namelist lookup glue.
+    try:
+        from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity
+        turbulence_model = _model_highest_fidelity(
+            self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        )
+    except Exception:
+        turbulence_model = None
+    # Dispatch on the backend code (namelist entry may be a named instance like 'cgyro1'
+    # whose options block sets `code: cgyro`). Fall back to the raw string if the
+    # options block is missing (e.g. during a pre-evaluate dry run).
+    code_for_dispatch = None
+    if turbulence_model is not None:
+        try:
+            opts = self.powerstate.transport_options.get('options', {}).get(turbulence_model, {}) or {}
+            code_for_dispatch = str(opts.get('code', turbulence_model)).lower()
+        except Exception:
+            code_for_dispatch = str(turbulence_model).lower()
+    if code_for_dispatch == "cgyro":
+        _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start=fn_color + k + 1)
+
+
+def _iterate_portals_evaluation_folders(root_folder):
+    '''
+    Yield (iteration_index, transport_simulation_folder_path) pairs for every
+    PORTALS evaluation visible on disk, preferring the BO layout
+    (Execution/Evaluation.{N}) and falling back to the simple-relax layout
+    (Initialization/initialization_simple_relax/portals_sr_ev_{N}) when BO
+    hasn't started yet.
+
+    Numeric-suffix sorting uses PORTALSanalysis._extract_trailing_int so
+    partial runs (0, 1, 3 with 2 missing) don't truncate at the gap.
+    '''
+    from pathlib import Path
+    from mitim_modules.portals.utils.PORTALSanalysis import _extract_trailing_int
+
+    root = Path(root_folder)
+
+    bo_root = root / "Execution"
+    if bo_root.is_dir():
+        bo_evs = sorted(
+            (d for d in bo_root.glob("Evaluation.*") if d.is_dir() and _extract_trailing_int(d.name) is not None),
+            key=lambda d: _extract_trailing_int(d.name),
+        )
+        if bo_evs:
+            for d in bo_evs:
+                folder = d / "transport_simulation_folder"
+                if folder.is_dir():
+                    yield _extract_trailing_int(d.name), folder
+            return
+
+    sr_root = root / "Initialization" / "initialization_simple_relax"
+    if sr_root.is_dir():
+        sr_evs = sorted(
+            (d for d in sr_root.glob("portals_sr_ev_*") if d.is_dir() and _extract_trailing_int(d.name) is not None),
+            key=lambda d: _extract_trailing_int(d.name),
+        )
+        for d in sr_evs:
+            folder = d / "transport_simulation_folder"
+            if folder.is_dir():
+                yield _extract_trailing_int(d.name), folder
+
+
+def _targets_GB_from_powerstate_pkl(pkl_path):
+    '''Legacy fallback for runs whose fluxes_neoc.json predates the
+    targets_GB block in additional_info: read the targets (GB, as populated
+    by calculateTargets) from the per-evaluation powerstate pickle that sits
+    next to the transport folder.'''
+    if not pkl_path.is_file():
+        return None
+    try:
+        from mitim_modules.powertorch import STATEtools
+        p = STATEtools.read_saved_state(pkl_path)
+        return {var: p.plasma[var][0, 1:].cpu().numpy().tolist()
+                for var in ("QeGB", "QiGB", "GeGB", "GZGB", "MtGB") if var in p.plasma}
+    except Exception as e:
+        print(f"\t- Could not extract targets from {pkl_path} ({e})", typeMsg='w')
+        return None
+
+
+def _load_turb_targets_for_iterations(iter_folders, predicted_channels):
+    '''
+    Build {iteration: {"QeGB": np.ndarray, ...}} of turbulence-only targets
+    (target_GB - neoc_GB, per predicted rho) for the channels PORTALS is
+    flux-matching — consumed by CGYROplot as `targets_per_iter` to mark a
+    star at the end of each turbulent time trace. Per iteration, the
+    neoclassical fluxes come from fluxes_neoc.json (written at run time);
+    the targets come from its additional_info['targets_GB'] block (newer
+    runs) or, as legacy fallback, the evaluation's powerstate.pkl.
+    Iterations missing either piece contribute no entry — the plotter just
+    draws no star for them.
+    '''
+    import json
+    channel_to_gb = {"te": "QeGB", "ti": "QiGB", "ne": "GeGB"}
+    gb_keys = [channel_to_gb[ch] for ch in (predicted_channels or []) if ch in channel_to_gb]
+    out = {}
+    for it, folder in iter_folders:
+        neoc_path = folder / "fluxes_neoc.json"
+        if not neoc_path.is_file():
+            continue
+        try:
+            with open(neoc_path, "r") as f:
+                payload = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"\t- fluxes_neoc.json unreadable at {neoc_path} ({e}); no target marker for iter {it}", typeMsg='w')
+            continue
+        neoc = payload.get("fluxes_mean", {})
+        targets = (payload.get("additional_info", {}) or {}).get("targets_GB")
+        if not targets:
+            targets = _targets_GB_from_powerstate_pkl(folder.parent / "powerstate.pkl")
+        if not targets:
+            continue
+        d = {}
+        for key in gb_keys:
+            if key in targets and key in neoc:
+                d[key] = np.asarray(targets[key], dtype=float) - np.asarray(neoc[key], dtype=float)
+        if d:
+            out[it] = d
+    return out
+
+
+def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
+    '''
+    PORTALS-side shim for the CGYRO per-rho time-trace plot. Resolves the
+    root folder, discovers iteration folders (BO or SR layout), reads each
+    iteration's restart_sources.json (the persisted per-(rho, iter) parent
+    map), then delegates both the iteration loading and the drawing to
+    CGYROplot so PORTALS stays transport-model-agnostic. Restart-mode
+    handling is fully driven by what's on disk: when no restart_sources.json
+    is present (older runs, or restart_from_cases=null), the plotter
+    renders without time-axis alignment. Both the tool cache and the
+    sources cache are memoised on `self` so interactive re-invocations
+    don't re-read pickles or JSONs.
+    '''
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    print("\t- Adding per-rho CGYRO time-trace tabs (Qe, Qi, Ge)")
+
+    # Resolve the PORTALS root folder in an attribute-agnostic way:
+    # analyzer uses self.opt_fun.folder, initializer just has self.folder.
+    opt_fun = getattr(self, "opt_fun", None)
+    root_folder = opt_fun.folder if (opt_fun is not None and getattr(opt_fun, "folder", None) is not None) else getattr(self, "folder", None)
+    if root_folder is None:
+        print("\t- Cannot resolve PORTALS root folder for CGYRO trace plot; skipping", typeMsg='w')
+        return
+
+    # Resolve the active CGYRO instance name — defaults to 'cgyro' for single-fidelity,
+    # could be 'cgyro1'/'cgyro2'/... under named multi-fidelity. This drives:
+    #  (a) which options sub-block we read tmin from, and
+    #  (b) the on-disk base_<name> folder the loaders look inside.
+    try:
+        from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity
+        turb_spec = self.powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        cgyro_key = _model_highest_fidelity(turb_spec) or "cgyro"
+    except Exception:
+        cgyro_key = "cgyro"
+
+    # Read-time config from the namelist — so the raw-fallback re-read
+    # inside CGYROplot.load_tool_for_iteration uses exactly the window
+    # PORTALS used at simulation time (pickles already carry this baked
+    # in).
+    try:
+        _cgyro_read_cfg = self.powerstate.transport_options['options'][cgyro_key]['read']
+        _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
+                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
+    except Exception:
+        _read_kwargs = {}
+
+    base_subfolder = f"base_{cgyro_key}"
+
+    # Materialize the iter-folder list once so both loaders consume it.
+    iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
+
+    # Lazy caches on self so re-invocations don't re-read pickles / JSONs.
+    if getattr(self, "_cgyro_traces_cache", None) is None:
+        self._cgyro_traces_cache = CGYROplot.load_tools_for_iterations(
+            iter_folders,
+            self.rhos,
+            read_kwargs=_read_kwargs,
+            base_subfolder=base_subfolder,
+        )
+    if getattr(self, "_cgyro_sources_cache", None) is None:
+        self._cgyro_sources_cache = CGYROplot.load_restart_sources_for_iterations(
+            iter_folders,
+            base_subfolder=base_subfolder,
+        )
+    if getattr(self, "_cgyro_targets_cache", None) is None:
+        self._cgyro_targets_cache = _load_turb_targets_for_iterations(
+            iter_folders,
+            getattr(self.powerstate, "predicted_channels", []) or [],
+        )
+
+    CGYROplot.plot_time_traces_per_radius(
+        fn,
+        fn_color_start,
+        self.rhos,
+        self._cgyro_traces_cache,
+        sources_per_iter=self._cgyro_sources_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+    # Same data, pivoted: one figure per channel with rhos as rows.
+    # Per-radius and per-channel tab groups now each use a single color
+    # internally, so the channel group only needs +1 offset to land on a
+    # different color from the radius group.
+    CGYROplot.plot_time_traces_per_channel(
+        fn,
+        fn_color_start + 1,
+        self.rhos,
+        self._cgyro_traces_cache,
+        sources_per_iter=self._cgyro_sources_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+
 
 def PORTALSanalyzer_plotModelComparison(
     self,
@@ -3277,18 +3723,22 @@ def produceInfoRanges(
 
     X = torch.zeros(((len(rhos) - 1) * len(self_complete.portals_parameters["solution"]["predicted_channels"]), 2))
     l = len(rhos) - 1
-    X[0:l, :] = torch.from_numpy(aLTe[1:, :])
-    X[l : 2 * l, :] = torch.from_numpy(aLTi[1:, :])
-
-    cont = 0
+    
+    cont = 0 
+    if "te" in self_complete.portals_parameters["solution"]["predicted_channels"]:
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLTe[1:, :])
+        cont += 1
+    if "ti" in self_complete.portals_parameters["solution"]["predicted_channels"]:
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLTi[1:, :])
+        cont += 1
     if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLne[1:, :])
         cont += 1
     if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
-        cont += 1
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLnZ[1:, :])
+        cont += 1  
     if "w0" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        X[(2 + cont) * l : (3 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
+        X[(0 + cont) * l : (1 + cont) * l, :] = torch.from_numpy(aLw0[1:, :])
         cont += 1
 
     X = X.transpose(0, 1)
@@ -3338,28 +3788,27 @@ def produceInfoRanges(
     )
 
     cont = 0
-    if "ne" in self_complete.portals_parameters["solution"]["predicted_channels"]:
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 1],
-            powerstate.plasma["rho"][0],
-            powerstate.plasma["ne"][0] * 0.1,
-            y_up=powerstate.plasma["ne"][1] * 0.1,
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        GRAPHICStools.fillGraph(
-            axsR[3 + cont + 2],
-            rhos,
-            aLne[:, 0],
-            y_up=aLne[:, 1],
-            alpha=alpha,
-            color=color,
-            label=label,
-            lw=lw,
-        )
-        cont += 2
+    GRAPHICStools.fillGraph(
+        axsR[3 + cont + 1],
+        powerstate.plasma["rho"][0],
+        powerstate.plasma["ne"][0] * 0.1,
+        y_up=powerstate.plasma["ne"][1] * 0.1,
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    GRAPHICStools.fillGraph(
+        axsR[3 + cont + 2],
+        rhos,
+        aLne[:, 0],
+        y_up=aLne[:, 1],
+        alpha=alpha,
+        color=color,
+        label=label,
+        lw=lw,
+    )
+    cont += 2
 
     if "nZ" in self_complete.portals_parameters["solution"]["predicted_channels"]:
         GRAPHICStools.fillGraph(
@@ -3395,6 +3844,7 @@ def produceInfoRanges(
             label=label,
             lw=lw,
         )
+
         GRAPHICStools.fillGraph(
             axsR[3 + cont + 2],
             rhos,

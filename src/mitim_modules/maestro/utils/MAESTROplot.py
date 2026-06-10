@@ -1,3 +1,4 @@
+import re
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.gacode_tools import PROFILEStools
@@ -6,13 +7,13 @@ from mitim_tools.misc_tools import LOGtools, GRAPHICStools, IOtools
 from mitim_tools.gs_tools import GEQtools
 from pathlib import Path
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-import json, re
 from pathlib import Path
-import matplotlib.pyplot as plt
-from IPython import embed
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
+from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
+from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
+from IPython import embed
 
 MARKERSIZE = 1
 LW = 1.0
@@ -21,7 +22,10 @@ def grabMAESTRO(folder):
 
     # Find beat results from folders
     folder_beats = Path(folder) / 'Beats'
-    beats = sorted([item.name for item in folder_beats.glob('*') if not item.name.startswith(".")], key=lambda x: int(x.split('_')[1]))
+    beats = sorted(
+        [item.name for item in folder_beats.glob('*') if re.match(r"^Beat_\d+$", item.name)],
+        key=lambda x: int(x.split('_')[1]),
+    )
 
     beat_types = [] 
     for beat in range(len(beats)):
@@ -31,6 +35,13 @@ def grabMAESTRO(folder):
             beat_types.append('portals')
         elif (folder_beats / f'{beats[beat]}' / 'run_eped').exists():
             beat_types.append('eped')
+        elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
+            beat_types.append('lengyel')
+        elif (folder_beats / f'{beats[beat]}' / 'run_sharpness').exists():
+            beat_types.append('sharpness')
+
+    if len(beats) == 0:
+        raise ValueError(f"No beats found in {folder_beats}")
 
     # First initializer
     beat_initializer = None
@@ -46,6 +57,13 @@ def grabMAESTRO(folder):
     m = maestro(folder, terminal_outputs = True, overall_log_file = False)
     for i,beat in enumerate(beat_types):
         m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
+
+    # Add final if exists
+    folder_output = Path(folder) / 'Outputs'
+    if (folder_output / 'input.gacode_final').exists():
+        m.final_state = PROFILEStools.gacode_state(folder_output / 'input.gacode_final')
+    else:
+        m.final_state = None
 
     return m
 
@@ -90,7 +108,13 @@ def plot_results(self, fn):
             key = f'PORTALS b#{i+1}'
         elif isinstance(beat, eped_beat):
             key = f'EPED b#{i+1}'
-        
+        elif isinstance(beat, lengyel_beat):
+            key = f'Lengyel b#{i+1}'
+        elif isinstance(beat, sharpness_beat):
+            key = f'Sharpness b#{i+1}'
+        else:
+            key = f'Beat b#{i+1}'
+
         objs[key] = profs
 
     # ********************************************************************************************************
@@ -116,15 +140,19 @@ def plot_results(self, fn):
     keys = list(objs.keys())
     lw, ms = 1, 0
 
+    # Plot geqdsk?
+    if ini['geqdsk'] is not None:
+        ini['geqdsk'].plot(fn=fn, extraLabel='GEQDSK - ', tab_color=2)
+
     # ********************************************************************************************************
     # Plot initialization (geqdsk to input.gacode)
     # ********************************************************************************************************
 
-    fig = fn.add_figure(label='MAESTRO init', tab_color=2)
+    fig = fn.add_figure(label='MAESTRO init', tab_color=3)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHK
+        AEFGIJ
         """
     )
     axs = [ ax for ax in axs.values() ]
@@ -133,7 +161,7 @@ def plot_results(self, fn):
         plot_g_quantities(ini['geqdsk'], axs, color = 'b', lw = lw, ms = ms)
 
     if objs[keys[0]] is not None:
-        objs[keys[0]].plotRelevant(axs = axs, color = 'r', label =keys[0], lw = lw, ms = ms)
+        objs[keys[0]].plotRelevant(axs = axs, color = 'r', label =keys[0], lw = lw, ms = ms, include995=True)
 
     GRAPHICStools.adjust_figure_layout(fig)
 
@@ -150,11 +178,11 @@ def plot_results(self, fn):
         if obj1 is None or obj2 is None:
             continue
 
-        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=2)
+        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=3)
         axs = fig.subplot_mosaic(
             """
-            ABCDH
-            AEFGI
+            ABCDHJ
+            AEFGIK
             """
         )
         axs = [ ax for ax in axs.values() ]
@@ -168,11 +196,11 @@ def plot_results(self, fn):
     # Plot transition 0 -> last
     # ********************************************************************************************************
 
-    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=2)
+    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=3)
     axs = fig.subplot_mosaic(
         """
-        ABCDH
-        AEFGI
+        ABCDHJ
+        AEFGIK
         """
     )
     axs = [ ax for ax in axs.values() ]
@@ -180,17 +208,17 @@ def plot_results(self, fn):
     if ini['geqdsk'] is not None:
         plot_g_quantities(ini['geqdsk'], axs, color = 'm', lw = lw, ms = ms)
     if objs[keys[0]] is not None:
-        objs[keys[0]].plotRelevant(axs = axs, color = 'b', label =keys[0], lw = lw, ms = ms)
+        objs[keys[0]].plotRelevant(axs = axs, color = 'b', label =keys[0], lw = lw, ms = ms, include995=True)
     
     if objs[keys[-1]] is not None:
-        objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms)
+        objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms, include995=True)
 
     GRAPHICStools.adjust_figure_layout(fig)
 
     # ********************************************************************************************************
     # Plot special info
     # ********************************************************************************************************
-    fig = fn.add_figure(label='MAESTRO special', tab_color=3)
+    fig = fn.add_figure(label='MAESTRO special', tab_color=4)
     
     axs = fig.subplot_mosaic(
         """
@@ -209,12 +237,16 @@ def plot_results(self, fn):
         # ********************************************************************************************************
         # Timings
         # ********************************************************************************************************
-        fig = fn.add_figure(label='MAESTRO timings', tab_color=3)
-        axs = fig.subplot_mosaic("""
-                                 A
-                                 B
-                                 """,sharex=True)
-        IOtools.plot_timings(self.folder_performance / 'timing.jsonl', axs = axs, log=True)
+        fig = fn.add_figure(label='MAESTRO timings', tab_color=4)
+        gs  = fig.add_gridspec(2, 2, width_ratios=[2, 1], hspace=0.35, wspace=0.35)
+        ax_A = fig.add_subplot(gs[0, 0])
+        ax_B = fig.add_subplot(gs[1, 0], sharex=ax_A)
+        ax_C = fig.add_subplot(gs[0, 1])
+        ax_D = fig.add_subplot(gs[1, 1])
+        IOtools.plot_timings(self.folder_performance / 'timing.jsonl',
+                             axs=[ax_A, ax_B], ax_summary=ax_C, ax_total=ax_D, log=False)
+        ax_C.set_title("Time per Beat", fontsize=9)
+        ax_D.set_title("Total by type", fontsize=9)
     
     return ps, ps_lab
 
@@ -233,7 +265,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         nu_ne.append(p.derived['ne_peaking0.2'])
         q95.append(p.derived['q95'])
         q0.append(p.derived['q0'])
-        xsaw.append(p.derived['rho_saw'])
+        xsaw.append(p.derived['roa_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
 
     def _special(ax,x):
@@ -343,7 +375,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
     if legYN:
         ax.legend()
-    ax.set_ylim(bottom = 0)
+    #ax.set_ylim(bottom = 0)
 
     ax.set_xticklabels([])
     
@@ -351,7 +383,7 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
 
     ax = axs['J']
     ax.plot(x, xsaw, '-s', color=color, markersize=7, lw = 1)
-    ax.set_ylabel('Inversion radius (rho)')
+    ax.set_ylabel('Inversion radius (roa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
     
@@ -364,8 +396,17 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
 
 def plot_g_quantities(g, axs, color = 'b', lw = 1, ms = 0):
 
-    g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
-    axs[3].plot(g.g.derived['rho_tor'], g.g.raw['pres']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
-    axs[4].plot(g.g.derived['rho_tor'], g.g.raw['qpsi'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+    # Flux surfaces in rho_tor
+    g.plotFluxSurfaces(ax=axs[0], fluxes=np.linspace(0, 1, 21), rhoPol=False, sqrt=True, color=color,plot1=False, lw = lw,label='Initial geqdsk')
+    
+    # LCFS
+    g.plotFluxSurfaces(ax=axs[0], fluxes=[], color=color,lwB=lw*3, lw = lw,label='Initial geqdsk')
+    
+    # 99.5% flux surface
+    g.plotFluxSurfaces(ax=axs[0], fluxes=[0.995], rhoPol=True, sqrt=False, color=color,plot1=False, lw = lw,label='995')
+    
+    
+    axs[1].plot(g.g.derived['rho_tor'], g.g.derived['pres']*1E-6, '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
+    axs[6].plot(g.g.derived['rho_tor'], g.g.derived['qpsi'], '-o', markersize=ms, lw = lw, label='Initial geqdsk', color=color)
 
 

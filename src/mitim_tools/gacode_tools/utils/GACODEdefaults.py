@@ -1,3 +1,4 @@
+import copy
 import json
 import numpy as np
 from mitim_tools.misc_tools import IOtools
@@ -7,7 +8,7 @@ from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 
-def addTGLFcontrol(code_settings, NS=2, minimal=False):
+def addTGLFcontrol(code_settings, NS=2, minimal=False, **kwargs):
     """
     ********************************************************************************
     Define dictionary to start with
@@ -52,10 +53,49 @@ def addNEOcontrol(code_settings,*args, **kwargs):
     
     return options
 
-def addGXcontrol(code_settings,*args, **kwargs):
+def addGXcontrol(code_settings, *args, **kwargs):
 
     options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / "input.gx.controls", caseInsensitive=False)
     options = add_code_settings(options, code_settings, models_file="input.gx.models.yaml")
+
+    '''
+    Check right number of GPUs, as per GX documentation: https://gx.readthedocs.io/en/latest/MultiGPU.html
+    '''
+
+    if "allocation" in kwargs and kwargs["allocation"] is not None:
+        Ngpu = kwargs["allocation"].get("resources_per_call", 1)
+        
+        Nsp = kwargs["NS"]
+        
+        Nm = options['nhermite']
+        
+        if 'extraOptions' in kwargs and kwargs['extraOptions'] is not None:
+            if 'nhermite' in kwargs['extraOptions']:
+                Nm = kwargs['extraOptions']['nhermite']
+                
+        problematic = False
+        
+        if Ngpu <= Nsp:
+            # Is Nsp an integer multiple of Ngpu?
+            Nsp_multiple_Ngpu = Nsp % Ngpu == 0
+            if not Nsp_multiple_Ngpu:
+                print(f"\t- Number of species ({Nsp}) is not an integer multiple of number of GPUs ({Ngpu})", typeMsg="w")
+                problematic = True
+        else:
+            # Is Ngpu an integer multiple of Nsp?
+            Ngpu_multiple_Nsp = Ngpu % Nsp == 0
+            # Is Nm an integer multiple of (Ngpu/Nsp)?
+            Nm_multiple_Ngpu_per_Nsp = Nm % (Ngpu // Nsp) == 0
+            
+            if not Ngpu_multiple_Nsp:
+                print(f"\t- Number of GPUs ({Ngpu}) is not an integer multiple of number of species ({Nsp})", typeMsg="w")
+                problematic = True
+            if not Nm_multiple_Ngpu_per_Nsp:
+                print(f"\t- Number of Hermite polynomials ({Nm}) is not an integer multiple of (Ngpu/Nsp) ({Ngpu//Nsp})", typeMsg="w")
+                problematic = True
+
+        if problematic:
+            print(f"\t- This will likely lead to problems in GX runs", typeMsg="q")
 
     return options
 
@@ -66,35 +106,129 @@ def addCGYROcontrol(code_settings, rmin=None, **kwargs):
     
     return options
 
+def _resolve_model_entry(settings, code_settings):
+    """Resolve a model entry in a *.models.yaml file by label or deprecated_descriptor.
+
+    Labels are matched exactly first, then case-insensitively (so e.g. 'sat2em'
+    resolves to 'SAT2em'), and deprecated descriptors likewise.
+
+    Returns the (label, model_dict) pair if found, else (None, None). The label
+    is the canonical key in `settings` so callers can use it for cycle tracking
+    when following `base:` chains.
+    """
+    code_settings = str(code_settings)
+    if code_settings in settings:
+        return code_settings, settings[code_settings]
+    code_settings_lower = code_settings.lower()
+    for ikey in settings:
+        entry = settings[ikey]
+        if str(ikey).lower() == code_settings_lower:
+            return ikey, entry
+        descriptor = entry.get("deprecated_descriptor") if isinstance(entry, dict) else None
+        if descriptor is not None and str(descriptor).lower() == code_settings_lower:
+            return ikey, entry
+    return None, None
+
+def _merge_inherited(base, override):
+    """Layer `override` on top of `base` for one resolved model entry.
+
+    Only dict-valued sections (controls, preprocess_options, ...) participate
+    in inheritance — they merge per-key with the override winning. Scalar
+    metadata (deprecated_descriptor, base, ...) is entry-local lookup info
+    and is NEVER propagated from base to child; the override's own scalars
+    are kept as-is so the caller can still see them if needed.
+
+    `base` itself is consumed by the resolver and dropped from the result so
+    downstream code never sees the inheritance pointer.
+    """
+    override = override or {}
+    if not base:
+        merged = copy.deepcopy(override)
+    else:
+        merged = {k: copy.deepcopy(v) for k, v in base.items() if isinstance(v, dict)}
+        for key, val in override.items():
+            if isinstance(val, dict) and isinstance(merged.get(key), dict):
+                merged[key] = {**merged[key], **val}
+            else:
+                merged[key] = copy.deepcopy(val)
+    merged.pop("base", None)
+    return merged
+
+def _resolve_with_inheritance(settings, code_settings, _seen=None):
+    """Resolve a model entry, deep-merging any `base: "<label>"` chain.
+
+    Inheritance rules — see `_merge_inherited` for the per-section semantics.
+    Cycles are detected via the canonical label (`_resolve_model_entry`'s
+    first return) so a chain that bounces between an alias and its label
+    still terminates.
+    """
+    if code_settings is None:
+        return None
+    label, entry = _resolve_model_entry(settings, code_settings)
+    if entry is None:
+        return None
+    _seen = set() if _seen is None else _seen
+    if label in _seen:
+        chain = " -> ".join(list(_seen) + [label])
+        raise ValueError(f"models.yaml inheritance cycle detected: {chain}")
+    _seen = _seen | {label}
+
+    base_label = entry.get("base") if isinstance(entry, dict) else None
+    if base_label is None:
+        return _merge_inherited(None, entry)
+
+    base_resolved = _resolve_with_inheritance(settings, base_label, _seen=_seen)
+    if base_resolved is None:
+        print(
+            f"\t- models.yaml: {label!r} declares base={base_label!r} but no such entry exists; using {label!r} alone",
+            typeMsg="w",
+        )
+        return _merge_inherited(None, entry)
+    return _merge_inherited(base_resolved, entry)
+
+def resolve_preset(code_settings, controls_file="input.tglf.controls"):
+    """Return the resolved (inheritance-merged) preset entry for `code_settings`
+    in the *.models.yaml paired with `controls_file`, or {} if the preset is
+    missing. `controls_file` may be a path or bare filename — the matching
+    presets file is derived by replacing the trailing '.controls' with
+    '.models.yaml' (e.g. 'input.cgyro.controls' -> 'input.cgyro.models.yaml').
+    """
+    if code_settings is None:
+        return {}
+    name = str(controls_file).rsplit("/", 1)[-1]
+    if name.endswith(".controls"):
+        models_file = name[: -len(".controls")] + ".models.yaml"
+    else:
+        models_file = name + ".models.yaml"
+    settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)
+    return _resolve_with_inheritance(settings, code_settings) or {}
+
+
 def add_code_settings(options,code_settings, models_file = "input.tglf.models.yaml"):
 
     settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / models_file)
 
-    code_settings = str(code_settings)
-
-    found = False
-    
-    # Search by label first
-    if str(code_settings) in settings:
-        sett = settings[str(code_settings)]
+    sett = _resolve_with_inheritance(settings, code_settings)
+    if sett is not None and "controls" in sett:
         for ikey in sett["controls"]:
             options[ikey] = sett["controls"][ikey]
-        found = True
     else:
-        # Search by deprecated descriptor (if available)
-        for ikey in settings:
-            if "deprecated_descriptor" in settings[ikey]:
-                if settings[ikey]["deprecated_descriptor"] == code_settings:
-                    sett = settings[ikey]
-                    for jkey in sett["controls"]:
-                        options[jkey] = sett["controls"][jkey]
-                    found = True
-                break
-            
-    if not found:
         print(f"\t- {code_settings = } not found in {models_file}, using defaults",typeMsg="w")
 
     return options
+
+def getCGYROpreprocessDefaults(code_settings):
+    """Return the preprocess_options dict defined for the given CGYRO model in
+    input.cgyro.models.yaml (or {} if the model / block is absent). Honors
+    `base:` inheritance, with the child's keys overriding the base's.
+    """
+    if code_settings is None:
+        return {}
+    settings = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "input.cgyro.models.yaml")
+    sett = _resolve_with_inheritance(settings, code_settings)
+    if sett is None:
+        return {}
+    return dict(sett.get("preprocess_options", {}) or {})
 
 
 def TGLFinTRANSP(code_settings, NS=3):

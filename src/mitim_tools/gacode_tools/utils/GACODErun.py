@@ -36,15 +36,16 @@ def runTGYRO(
 
     tgyro_job = FARMINGtools.mitim_job(folderWork)
 
+    from mitim_tools.misc_tools import SLURMtools
     tgyro_job.define_machine(
         "tgyro",
         f"mitim_{nameRunid}",
         launchSlurm=launchSlurm,
         slurm_settings={
-            "minutes": minutes,
+            "time": SLURMtools.format_time(minutes),
             "ntasks": 1,
-            "name": nameJob,
-            "cpuspertask": nparallel,
+            "job-name": nameJob,
+            "cpus-per-task": nparallel,
         },
     )
 
@@ -235,7 +236,7 @@ def runTRXPL(
             trxpl_path:  enter "1" for if Btoroidal is ccw:
     """
 
-    commandTRXPL = f"P\n10000\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n10001\nQ\nQ\nQ"
+    commandTRXPL = f"P\n{nameFiles}\nA\n{timeRun}\n{avTime}\n{grids[0]}\n{grids[1]}\n{grids[2]}\n{BtDir}\n{IpDir}\nY\nX\nH\nW\n{nameOutputs}\nQ\nQ\nQ"
     with open(FolderTRXPL / "trxpl.in", "w") as f:
         f.write(commandTRXPL)
 
@@ -254,7 +255,7 @@ def runTRXPL(
     if grids[0] > 301:
         raise Exception("~~~~ Max grid for TRXPL is 301")
 
-    print(f"\t\t- testProceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
+    print(f"\t\t- Proceeding to run TRXPL with: {' '.join(commandTRXPL.splitlines())}", typeMsg="i")
 
 
     trxpl_job = FARMINGtools.mitim_job(FolderTRXPL)
@@ -377,18 +378,14 @@ def runVGEN(
         },
     )
 
-    print(
-        f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file"
-    )
+    print(f"\t- Running NEO (with {vgenOptions['numspecies']} species) to populate w0(rad/s) in input.gacode file")
     print(f"\t\t> Matching ion {vgenOptions['matched_ion']} Vtor")
 
     options = f"-er {vgenOptions['er']} -vel {vgenOptions['vel']} -in {vgenOptions['numspecies']} -ix {vgenOptions['matched_ion']} -nth {vgenOptions['nth']}"
 
     # ***********************************
 
-    print(
-        f"\t\t- Proceeding to generate Er from NEO run using profiles_gen -vgen ({options})"
-    )
+    print(f"\t\t- Proceeding to generate Er from NEO run using profiles_gen -vgen ({options})")
 
     inputgacode_file = workingFolder / f"input.gacode"
 
@@ -405,7 +402,7 @@ def runVGEN(
     vgen_job.prep(
         command,
         input_files=[inputgacode_file, workingFolder / f"profiles_vgen.sh"],
-        output_files=["slurm_output.dat", "slurm_error.dat"],
+        output_folders=["vgen"],
     )
 
     vgen_job.run()
@@ -475,7 +472,8 @@ def obtainNTphase(
     else:
         gaussW = np.ones(len(x))
 
-    neTe = np.sum(y * gaussW) / np.sum(gaussW)
+    sumW = np.sum(gaussW)
+    neTe = np.sum(y * gaussW) / sumW if sumW != 0.0 else np.nan
 
     return neTe
 

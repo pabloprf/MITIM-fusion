@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
-from mitim_tools.opt_tools import BOTORCHtools
+from mitim_tools.opt_tools import BOTORCHtools,STEPtools
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -43,7 +43,8 @@ class surrogate_model:
         surrogate_options={},
         FixedValue=False,
         fileTraining=None,
-        seed = 0
+        seed = 0,
+        force_variables = None,
     ):
         """
         Noise is variance here (square of standard deviation).
@@ -67,7 +68,14 @@ class surrogate_model:
         self.losses = None
 
         if self.dfT is None:
-            self.dfT = torch.randn((2, 2),dtype=torch.double,device=torch.device("cpu"))
+            self.dfT = torch.randn((2, 2), dtype=torch.double, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+        # Surrogate parameters must contain at least:
+        if 'transformationInputs' not in self.surrogate_parameters:
+            self.surrogate_parameters['transformationInputs'] = STEPtools.identity
+        if 'transformationOutputs' not in self.surrogate_parameters:
+            self.surrogate_parameters['transformationOutputs'] = STEPtools.identityOutputs
+        # -----
 
         self.train_X = torch.from_numpy(Xor).to(self.dfT)
         self.train_Y = torch.from_numpy(Yor).to(self.dfT)
@@ -240,23 +248,24 @@ class surrogate_model:
             tf1=outcome_transform_physics, tf2=output_transformed_standardization
         ).to(self.dfT)
 
-        self.variables = (
-            self.surrogate_transformation_variables[self.output]
-            if (
-                (self.output is not None)
-                and ("surrogate_transformation_variables" in self.__dict__)
-                and (self.surrogate_transformation_variables is not None)
+        if force_variables is not None:
+            self.variables = force_variables
+        else:
+            self.variables = (
+                self.surrogate_transformation_variables[self.output]
+                if (
+                    (self.output is not None)
+                    and ("surrogate_transformation_variables" in self.__dict__)
+                    and (self.surrogate_transformation_variables is not None)
+                )
+                else None
             )
-            else None
-        )
 
         # *************************************************************************************
         # Model
         # *************************************************************************************
 
-        print(
-            f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',
-        )
+        print(f'\t- Initializing model{" for "+self.output_transformed if (self.output_transformed is not None) else ""}',)
 
         """
         self.train_X contains the untransformed of this specific run:   (batch1, dimX)
@@ -337,7 +346,7 @@ class surrogate_model:
         outcome_transform_normalization.training = False
         outcome_transform_normalization._is_trained = torch.tensor(True)
 
-    def fit(self):
+    def fit(self, store_params_evolution=False):
         print(f"\t- Fitting model to {self.train_X.shape[0]+self.train_X_added.shape[0]} points")
 
         # ---------------------------------------------------------------------------------------------------
@@ -366,12 +375,12 @@ class surrogate_model:
 
         # Train always in physics-transformed space, to enable mitim re-use training from file
         with fundamental_model_context(self):
-            track_fval = self.perform_model_fit(mll)
+            track_fval, track_params = self.perform_model_fit(mll, store_params_evolution=store_params_evolution)
 
         # ---------------------------------------------------------------------------------------------------
         # Asses optimization
         # ---------------------------------------------------------------------------------------------------
-        self.assess_optimization(track_fval)
+        self.assess_optimization(track_fval, track_params)
 
         # ---------------------------------------------------------------------------------------------------
         # Go back to definining the right normalizations, because the optimizer has to work on training mode...
@@ -384,7 +393,7 @@ class surrogate_model:
             self.gpmodel.outcome_transform["tf2"],
         )
 
-    def perform_model_fit(self, mll):
+    def perform_model_fit(self, mll, store_params_evolution=False):
         self.gpmodel.train()
         self.gpmodel.likelihood.train()
         mll.train()
@@ -403,7 +412,10 @@ class surrogate_model:
         # Store first MLL value
         track_fval = [-mll.forward(mll.model(*mll.model.train_inputs), mll.model.train_targets).detach().item()]
 
+        track_params = [BOgraphics.param_state(mll)]
         def callback(x, y, mll=mll):
+            if store_params_evolution: 
+                track_params.append( BOgraphics.param_state(mll) )
             track_fval.append(y.fval)
 
         mll = botorch.fit.fit_gpytorch_mll(
@@ -422,11 +434,10 @@ class surrogate_model:
         self.gpmodel.likelihood.eval()
         mll.eval()
 
-        print(
-            f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}"
-        )
+        print(f"\n\t- Marginal log likelihood went from {track_fval[0]:.3f} to {track_fval[-1]:.3f}")
 
-        return track_fval
+        return track_fval, track_params
+
 
     def predict(self, X, produceFundamental=False, nSamples=None):
         """
@@ -441,25 +452,13 @@ class surrogate_model:
                 - Samples if nSamples not None
         """
 
-        
-        # Accurate
-        # with 	gpytorch.settings.fast_computations(log_prob=False, solves=False, covar_root_decomposition=False), \
-        # 		gpytorch.settings.eval_cg_tolerance(1E-6), gpytorch.settings.fast_pred_samples(state=False), gpytorch.settings.num_trace_samples(0):
-
-        # # Fast
-        # with gpytorch.settings.fast_computations(), \
-        #     gpytorch.settings.fast_pred_samples(), \
-        #     gpytorch.settings.fast_pred_var(), \
-        #     gpytorch.settings.lazily_evaluate_kernels(True), \
-        #     (fundamental_model_context(self) if produceFundamental else contextlib.nullcontext(self)) as surrogate_model:
-        #     posterior = surrogate_model.gpmodel.posterior(X)
-
-        with (
-            fundamental_model_context(self)
-            if produceFundamental
-            else contextlib.nullcontext(self)
-        ) as surrogate_model:
-            posterior = surrogate_model.gpmodel.posterior(X)
+        with gpytorch.settings.fast_pred_var(), gpytorch.settings.lazily_evaluate_kernels(True):
+            with (
+                fundamental_model_context(self)
+                if produceFundamental
+                else contextlib.nullcontext(self)
+            ) as surrogate_model:
+                posterior = surrogate_model.gpmodel.posterior(X)
 
         mean = posterior.mean
         lower, upper = posterior.mvn.confidence_region()
@@ -622,17 +621,9 @@ class surrogate_model:
             yU_next = yU_next.detach().cpu().numpy()
 
         # --- Print stuff ---
-        maxError = np.zeros(y.shape[1])
-        for j in range(y.shape[1]):
-            for i in range(y.shape[0]):
-                err = (
-                    np.abs((y[i, j] - yPredicted[i, j]) / y[i, j]) * 100.0
-                    if y[i, j] != 0.0
-                    else 0.0
-                )
-                # if printYN and err>5.0:
-                # 	print(f'\t* Trained point #{i}, y({j})={y[i,j]:.3f}, y_pred({j})={yPredicted[i,j]:.3f} ({err:.2f}% off)',typeMsg='w')
-                maxError[j] = np.max([err, maxError[j]])
+        nonzero = y != 0.0
+        err = np.where(nonzero, np.abs((y - yPredicted) / np.where(nonzero, y, 1.0)) * 100.0, 0.0)
+        maxError = err.max(axis=0)
 
         # --- Plot stuff ---
         if plotYN:
@@ -816,11 +807,12 @@ class surrogate_model:
 
                 self.train_Yvar_added = std**2
 
-    def assess_optimization(self, track_fval):
+    def assess_optimization(self, track_fval, track_params=None):
         self.losses = {
             "losses": track_fval,
             "loss_ini": track_fval[0],
             "loss_final": track_fval[-1],
+            'params': track_params
         }
 
         print("\t- Fitting summary:")

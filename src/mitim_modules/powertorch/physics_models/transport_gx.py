@@ -5,4 +5,5 @@ from IPython import embed
 
 class gx_model(gyrokinetic_model):
     def evaluate_turbulence(self):
-        self._evaluate_gyrokinetic_model(code = 'gx', gk_object = GXtools.GX)
+        gx_key = getattr(self, "_active_turb_options_key", None) or "gx"
+        self._evaluate_gyrokinetic_model(code=gx_key, gk_object=GXtools.GX)

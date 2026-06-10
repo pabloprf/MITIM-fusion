@@ -9,14 +9,11 @@ from mitim_tools.opt_tools.utils import TESTtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
-
 def identity(X, *args):
     return X, {}
 
-
 def identityOutputs(X, *args):
     return torch.ones(X.shape[:-1]).unsqueeze(-1)
-
 
 class OPTstep:
     def __init__(
@@ -141,9 +138,7 @@ class OPTstep:
             with open(self.fileOutputs, "a") as f:
                 f.write("\n\n-----------------------------------------------------")
                 f.write("\n * Fitting GP models to training data...")
-        print(
-            f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n"
-        )
+        print(f"\n~~~~~~~ Performing fitting with {len(self.train_X)-len(self.avoidPoints)} training points ({len(self.avoidPoints)} avoided from {len(self.train_X)} total) ~~~~~~~~~~\n")
 
         """
 		*********************************************************************************************************************
@@ -157,139 +152,139 @@ class OPTstep:
         if fileTraining.exists():
             fileTraining.replace(fileBackup)
 
-        print("--> Fitting multiple single-output models and creating composite model")
-        time1 = datetime.datetime.now()
 
-        for i in range(self.y.shape[-1]):
-            outi = self.outputs[i] if (self.outputs is not None) else None
+        with IOtools.timer(f"Fitting of {self.y.shape[-1]} surrogate models for each output"):
 
-            # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
-            specialTreatment = (
-                (outi is not None)
-                and (fitWithTrainingDataIfContains is not None)
-                and (fitWithTrainingDataIfContains not in outi)
-            )
-            # -----------------------------------------------------------------------------------------------------------------------------------
-
-            outi_transformed = (
-                self.stepSettings["name_transformed_ofs"][i]
-                if (self.stepSettings["name_transformed_ofs"] is not None)
-                else outi
-            )
-
-            # ---------------------------------------------------------------------------------------------------
-            # Define model-specific functions for this output
-            # ---------------------------------------------------------------------------------------------------
-
-            surrogate_options = copy.deepcopy(self.surrogate_options)
-
-            # Then, depending on application (e.g. targets in mitim are fitted differently)
-            if "surrogate_selection" in surrogate_options and surrogate_options["surrogate_selection"] is not None:
-                surrogate_options = surrogate_options["surrogate_selection"](outi, surrogate_options)
-
-            # ---------------------------------------------------------------------------------------------------
-            # To avoid problems with fixed values (e.g. calibration terms that are fixed)
-            # ---------------------------------------------------------------------------------------------------
-
-            threshold_to_consider_fixed = 1e-6
-            MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(
-                self.y.mean()
-            )
-
-            if (
-                np.isnan(MaxRelativeDifference)
-                or (
-                    (self.y.shape[0] > 1)
-                    and ((MaxRelativeDifference < threshold_to_consider_fixed).all())
-                )
-            ) and (not specialTreatment):
-                print(
-                    f"\t- Identified that outputs did not change, utilizing constant kernel for {outi}",
-                    typeMsg="w",
-                )
-                FixedValue = True
-                surrogate_options["TypeMean"] = 0
-                surrogate_options["TypeKernel"] = 6  # Constant kernel
-
-            else:
-                FixedValue = False
-
-            # ---------------------------------------------------------------------------------------------------
-            # Fit individual output
-            # ---------------------------------------------------------------------------------------------------
-
-            # Data to train the surrogate
-            x = self.x
-            y = np.expand_dims(self.y[:, i], axis=1)
-            yvar = np.expand_dims(self.yvar[:, i], axis=1)
-
-            if specialTreatment:
-                x, y, yvar = (
-                    np.empty((0, x.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                    np.empty((0, y.shape[-1])),
-                )
-
-            # Surrogate
-
-            print(f"~ Model for output: {outi}")
-
-            GP = SURROGATEtools.surrogate_model(
-                x,
-                y,
-                yvar,
-                self.surrogate_parameters,
-                bounds=self.bounds,
-                output=outi,
-                output_transformed=outi_transformed,
-                avoidPoints=self.avoidPoints,
-                dfT=self.dfT,
-                surrogate_options=surrogate_options,
-                FixedValue=FixedValue,
-                fileTraining=fileTraining,
-            )
-
-            # Fitting
-            GP.fit()
-
-            self.GP["individual_models"][i] = GP
-
-        fileBackup.unlink(missing_ok=True)
-
-        # ------------------------------------------------------------------------------------------------------
-        # Combine them in a ModelListGP (create one single with MV but do not fit)
-        # ------------------------------------------------------------------------------------------------------
-
-        print("~ MV model to initialize combination")
-
-        self.GP["combined_model"] = SURROGATEtools.surrogate_model(
-            self.x,
-            self.y,
-            self.yvar,
-            self.surrogate_parameters,
-            avoidPoints=self.avoidPoints,
-            bounds=self.bounds,
-            dfT=self.dfT,
-            surrogate_options=self.surrogate_options,
-        )
-
-        models = ()
-        for GP in self.GP["individual_models"]:
-            models += (GP.gpmodel,)
-        self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
-
-        # ------------------------------------------------------------------------------------------------------
-        # Make sure each model has the right surrogate_transformation_variables inside the combined model
-        # ------------------------------------------------------------------------------------------------------
-        if self.GP["combined_model"].surrogate_transformation_variables is not None:
             for i in range(self.y.shape[-1]):
-
                 outi = self.outputs[i] if (self.outputs is not None) else None
 
-                if outi is not None:
-                    self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
+                # ----------------- specialTreatment is applied when I only want to use training data from a file, not from train_X
+                specialTreatment = (
+                    (outi is not None)
+                    and (fitWithTrainingDataIfContains is not None)
+                    and (fitWithTrainingDataIfContains not in outi)
+                )
+                # -----------------------------------------------------------------------------------------------------------------------------------
 
-        print(f"--> Fitting of all models took {IOtools.getTimeDifference(time1)}")
+                outi_transformed = (
+                    self.stepSettings["name_transformed_ofs"][i]
+                    if (self.stepSettings["name_transformed_ofs"] is not None)
+                    else outi
+                )
+
+                # ---------------------------------------------------------------------------------------------------
+                # Define model-specific functions for this output
+                # ---------------------------------------------------------------------------------------------------
+
+                surrogate_options = copy.deepcopy(self.surrogate_options)
+
+                # Then, depending on application (e.g. targets in mitim are fitted differently)
+                if "surrogate_selection" in surrogate_options and surrogate_options["surrogate_selection"] is not None:
+                    surrogate_options = surrogate_options["surrogate_selection"](outi, surrogate_options)
+
+                # ---------------------------------------------------------------------------------------------------
+                # To avoid problems with fixed values (e.g. calibration terms that are fixed)
+                # ---------------------------------------------------------------------------------------------------
+
+                threshold_to_consider_fixed = 1e-6
+                MaxRelativeDifference = np.abs(self.y.max() - self.y.min()) / np.abs(
+                    self.y.mean()
+                )
+
+                if (
+                    np.isnan(MaxRelativeDifference)
+                    or (
+                        (self.y.shape[0] > 1)
+                        and ((MaxRelativeDifference < threshold_to_consider_fixed).all())
+                    )
+                ) and (not specialTreatment):
+                    print(
+                        f"\t- Identified that outputs did not change, utilizing constant kernel for {outi}",
+                        typeMsg="w",
+                    )
+                    FixedValue = True
+                    surrogate_options["TypeMean"] = 0
+                    surrogate_options["TypeKernel"] = 6  # Constant kernel
+
+                else:
+                    FixedValue = False
+
+                # ---------------------------------------------------------------------------------------------------
+                # Fit individual output
+                # ---------------------------------------------------------------------------------------------------
+
+                # Data to train the surrogate
+                x = self.x
+                y = np.expand_dims(self.y[:, i], axis=1)
+                yvar = np.expand_dims(self.yvar[:, i], axis=1)
+
+                if specialTreatment:
+                    x, y, yvar = (
+                        np.empty((0, x.shape[-1])),
+                        np.empty((0, y.shape[-1])),
+                        np.empty((0, y.shape[-1])),
+                    )
+
+                # Surrogate
+
+                print(f"* Model for output: {outi}")
+
+                GP = SURROGATEtools.surrogate_model(
+                    x,
+                    y,
+                    yvar,
+                    self.surrogate_parameters,
+                    bounds=self.bounds,
+                    output=outi,
+                    output_transformed=outi_transformed,
+                    avoidPoints=self.avoidPoints,
+                    dfT=self.dfT,
+                    surrogate_options=surrogate_options,
+                    FixedValue=FixedValue,
+                    fileTraining=fileTraining,
+                )
+
+                # Fitting
+                GP.fit()
+
+                self.GP["individual_models"][i] = GP
+
+            fileBackup.unlink(missing_ok=True)
+
+            # ------------------------------------------------------------------------------------------------------
+            # Combine them in a ModelListGP (create one single with MV but do not fit)
+            # ------------------------------------------------------------------------------------------------------
+
+            print("* Constructing combined model with all outputs together")
+
+            self.GP["combined_model"] = SURROGATEtools.surrogate_model(
+                self.x,
+                self.y,
+                self.yvar,
+                self.surrogate_parameters,
+                avoidPoints=self.avoidPoints,
+                bounds=self.bounds,
+                dfT=self.dfT,
+                surrogate_options=self.surrogate_options,
+            )
+
+            models = ()
+            for GP in self.GP["individual_models"]:
+                models += (GP.gpmodel,)
+            self.GP["combined_model"].gpmodel = BOTORCHtools.ModifiedModelListGP(*models)
+            
+            self.GP["combined_model"].gpmodel.setup_batched_inference()
+
+            # ------------------------------------------------------------------------------------------------------
+            # Make sure each model has the right surrogate_transformation_variables inside the combined model
+            # ------------------------------------------------------------------------------------------------------
+            if self.GP["combined_model"].surrogate_transformation_variables is not None:
+                for i in range(self.y.shape[-1]):
+
+                    outi = self.outputs[i] if (self.outputs is not None) else None
+
+                    if outi is not None:
+                        self.GP["combined_model"].surrogate_transformation_variables[outi] = self.GP["individual_models"][i].surrogate_transformation_variables[outi]
 
         """
 		*********************************************************************************************************************
@@ -297,25 +292,10 @@ class OPTstep:
 		*********************************************************************************************************************
 		"""
 
-        # Test (if test could not be launched is likely because a singular matrix for Choleski decomposition)
-        print("--> Launching tests to assure batch evaluation accuracy")
-        TESTtools.testBatchCapabilities(self.GP["combined_model"])
-        print("--> Launching tests to assure model combination accuracy")
-        TESTtools.testCombinationCapabilities(
-            self.GP["individual_models"], self.GP["combined_model"]
-        )
-        print("--> Launching tests evaluate accuracy on training set (absolute units)")
-        self.GP["combined_model"].testTraining()
+        TESTtools.testBatchAccuracy(self.GP["combined_model"], self.GP["individual_models"])
+        TESTtools.testInferenceTime(self.GP["combined_model"], n_points_list = [1000, 5])
 
-        txt_time = IOtools.getTimeDifference(time1)
-
-        print(
-            "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n"
-        )
-
-        if self.fileOutputs is not None:
-            with open(self.fileOutputs, "a") as f:
-                f.write(f" (took total of {txt_time})")
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n")
 
     def defineFunctions(self, scalarized_objective):
         """
@@ -348,6 +328,11 @@ class OPTstep:
 
         # **************************************************************************************************
         # Acquisition functions (following BoTorch assumption of maximization)
+        #
+        # NOTE: the acquisition function is only used by the "botorch" optimizer.
+        #       "sr" (simple relaxation) and "root" (scipy root-finding) optimizers
+        #       use evaluators["residual_function"] directly and ignore this entirely.
+        #       The acquisition type setting has no effect when optimizers=["sr","root"].
         # **************************************************************************************************
 
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -355,6 +340,11 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         if self.acquisition_type == "posterior_mean":
+            # Computes h(E[Y]): applies the objective to the GP posterior mean directly.
+            # Fast (no MC samples), but only exact when the objective h is linear in Y.
+            # For nonlinear objectives, this is an approximation via Jensen's inequality:
+            #   h(E[Y]) != E[h(Y)]  in general.
+            # Only relevant when "botorch" is in the optimizers list.
             print('\t* Chosen analytic posterior_mean acquisition, objective nonlinearity not considered', typeMsg="i")
             self.evaluators["acq_function"] = BOTORCHtools.PosteriorMean(
                 self.evaluators["GP"].gpmodel,
@@ -362,6 +352,9 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "logei":
+            # Analytic log-Expected Improvement. Does not apply the custom objective;
+            # best_f is computed directly from train_Y. Use only for simple scalar problems
+            # where the objective is identity (or close to it).
             print("\t* Chosen analytic logei acquisition, igoring objective", typeMsg="w")
             self.evaluators["acq_function"] = (
                 botorch.acquisition.analytic.LogExpectedImprovement(
@@ -373,10 +366,16 @@ class OPTstep:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Monte Carlo acquisition functions
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        
+
         sampler = botorch.sampling.normal.SobolQMCNormalSampler(torch.Size([self.acquisition_params["mc_samples"]]))
 
         if self.acquisition_type == "simple_regret_mc": # Former posterior_mean_mc
+            # Computes E_Y[h(Y)] via MC: draws posterior samples, applies the objective
+            # to each, and averages. This is the correct analog of the posterior mean
+            # when the objective h is nonlinear — unlike "posterior_mean", it respects
+            # Jensen's inequality and accounts for posterior uncertainty.
+            # For q=1 (single candidate), this equals the expected objective value E[h(Y)].
+            # Only relevant when "botorch" is in the optimizers list.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qSimpleRegret(
                     self.evaluators["GP"].gpmodel,
@@ -386,6 +385,10 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "ei_mc":
+            # MC Expected Improvement: E[max(h(Y) - best_f, 0)].
+            # Balances exploration and exploitation; best_f is the current best
+            # observed objective value. Use when actively searching for improvement
+            # over a known best point.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.monte_carlo.qExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -396,6 +399,9 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "logei_mc":
+            # MC log-Expected Improvement: numerically more stable version of ei_mc,
+            # using log-space to avoid underflow in low-improvement regions.
+            # Preferred over ei_mc in most exploration-exploitation settings.
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
@@ -406,12 +412,17 @@ class OPTstep:
             )
 
         elif self.acquisition_type == "noisy_logei_mc":
+            # MC log-Expected Improvement robust to observation noise: treats training
+            # points as noisy and re-evaluates best_f internally from X_baseline.
+            # More accurate than logei_mc when the GP likelihood includes noise,
+            # at the cost of higher computational overhead (especially with many training points).
             self.evaluators["acq_function"] = (
                 botorch.acquisition.logei.qLogNoisyExpectedImprovement(
                     self.evaluators["GP"].gpmodel,
                     objective=self.evaluators["objective"],
                     X_baseline=self.evaluators["GP"].train_X,
-                    sampler=sampler
+                    sampler=sampler,
+                    cache_root=True,
                 )
             )
 
@@ -486,30 +497,22 @@ class OPTstep:
 
         # Info
         if len(self.outliers) > 0:
-            print(f"\t* OUTLIERS in positions: {self.outliers}. Adding to avoid points")
+            print(f"\t- Points {self.outliers} are considered outliers, so they are added to the list of points to avoid")
 
         try:
             self.avoidPoints.extend(self.outliers)
         except:
-            self.avoidPoints = [
-                int(i) for i in np.append(self.avoidPoints, self.outliers)
-            ]
-
-        if len(self.avoidPoints) > 0:
-            print(f"\t ~~ Avoiding {len(self.avoidPoints)} points: ", self.avoidPoints)
-
+            self.avoidPoints = [int(i) for i in np.append(self.avoidPoints, self.outliers)]
 
 def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[]):
     """
     This routine finds outliers to be removed
     """
 
+    avoidPoints = []
     if stds_outside is not None:
-        print(
-            f"\t Checking outliers by +-{stds_outside}sigma from the rest (min number of {stds_outside_checker})"
-        )
+        print(f"\t- Checking outliers (outside +-{stds_outside}sigma) from the rest (if at least {stds_outside_checker} points)")
 
-        avoidPoints = []
         for i in range(y.shape[0]):
             outlier = False
             for j in range(y.shape[1]):
@@ -522,13 +525,10 @@ def removeOutliers(y, stds_outside=5, stds_outside_checker=1, alreadyAvoided=[])
                 outlier = outlier or outlier_this
 
                 if outlier_this:
-                    print(f"\t Point #{i} is an outlier in position {j}: {y[i,j]:.5f}")
+                    print(f"\t\t* Point #{i} is an outlier in outputs position {j}: {y[i,j]:.5f}")
 
             if outlier and i not in alreadyAvoided:
                 avoidPoints.append(i)
-
-    else:
-        avoidPoints = []
 
     return avoidPoints
 

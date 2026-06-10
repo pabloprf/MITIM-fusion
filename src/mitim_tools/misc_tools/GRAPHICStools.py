@@ -339,10 +339,10 @@ def addDenseAxis(ax, grid=True, n=10, axTwinx=None, ensure_floats=False):
 
     addMinor(ax, n=n)
     ax.tick_params(
-        which="major", length=5, bottom=True, top=True, left=True, right=True
+        which="major", length=5, width=0.8, color="k", bottom=True, top=True, left=True, right=True
     )
     ax.tick_params(
-        which="minor", length=3, bottom=True, top=True, left=True, right=True
+        which="minor", length=3, width=0.4, color="k", bottom=True, top=True, left=True, right=True
     )
 
     if grid:
@@ -381,24 +381,9 @@ def output_figure_papers(name, fig=None, dpi=445):
 
 
 
-def prep_figure_papers(size=15, slower_but_latex=False, darkMode=False):
-    plt.rc("font", family="serif", serif="Times", size=size)
-    plt.rc("xtick.minor", size=size)
-    plt.rc("legend", fontsize=size)  # *0.8)
-    if slower_but_latex:
-        plt.rc("text", usetex=True)
-    
-    if darkMode:
-        plt.style.use('dark_background')
-
-    # Had to a
-    # plt.rcParams['axes.linewidth'] = 0.2
-    # plt.rcParams['font.size'] = 4
-    # plt.rcParams['legend.fontsize'] = 5
-    # plt.rcParams['xtick.major.size'] = 2
-    # plt.rcParams['xtick.major.width'] = 0.2
-    # plt.rcParams['ytick.major.size'] = 2
-    # plt.rcParams['ytick.major.width'] = 0.2
+def prep_figure_papers(size=15, slower_but_latex=False, darkMode=False, lw=1.0):
+    from mitim_tools.misc_tools.style_tools.themes import apply_theme
+    apply_theme("dark" if darkMode else "paper", latex=slower_but_latex)
 
 
 def makePlotInvisible(ax):
@@ -735,42 +720,24 @@ def listColors():
         "dimgrey",
         "indianred",
     ]
-    for i in range(10):
-        col.extend(col)
+    col = col * 10
 
     return col
 
 
 def listLS():
     ls = ["-", "--", "-.", ":", "-", "--", "-.", ":", "-", "--", "-.", ":"]
+    ls = ls * 10
 
     return ls
 
 
 def listmarkers():
-    return [
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-        "o",
-        "s",
-        "^",
-        "v",
-        "+",
-        "<",
-        ">",
-    ]
+    
+    ms = ["o", "s", "^", "v", "+", "<", ">"]
+    ms = ms * 10
+    
+    return ms
 
 
 def listmarkersLS():

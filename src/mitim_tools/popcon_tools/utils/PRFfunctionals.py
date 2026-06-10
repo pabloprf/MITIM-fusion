@@ -53,7 +53,7 @@ import numpy as np
 from scipy import interpolate
 
 
-def nTprofiles(T_avol, n_avol, nu_T, nu_n, aLT=2.0, width_ped=0.05, rho=None):
+def nTprofiles(T_avol, n_avol, nu_T, nu_n, aLT=2.0, width_ped=0.05, rho=None, plotYN = False):
     # ---- Find parameters consistent with peaking
     x_a = find_xa_from_nu(aLT, nu_T, width_ped=width_ped)
     aLn = find_aLT_from_nu(x_a, nu_n, width_ped=width_ped)
@@ -65,6 +65,29 @@ def nTprofiles(T_avol, n_avol, nu_T, nu_n, aLT=2.0, width_ped=0.05, rho=None):
     x, n, _ = EvaluateProfile(
         n_avol, width_ped=width_ped, aLT_core=aLn, width_axis=x_a, rho=rho
     )
+    
+    # Plot
+    if plotYN:
+        import matplotlib.pyplot as plt
+
+        fig, ax1 = plt.subplots()
+
+        color = 'tab:red'
+        ax1.set_xlabel('rho')
+        ax1.set_ylabel('T (keV)', color=color)
+        ax1.plot(x, T, color=color)
+        ax1.tick_params(axis='y', labelcolor=color)
+
+        ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+        color = 'tab:blue'
+        ax2.set_ylabel('n (10^19 m^-3)', color=color)  # we already handled the x-label with ax1
+        ax2.plot(x, n, color=color)
+        ax2.tick_params(axis='y', labelcolor=color)
+
+        fig.tight_layout()  # otherwise the right y-label is slightly clipped
+        plt.title(f'T and n profiles (aLT={aLT:.2f}, aLn={aLn:.2f}, x_a={x_a:.2f})')
+        plt.show()
 
     return x, T, n
 
@@ -301,8 +324,11 @@ def find_xa_from_nu(aLT_core, peaking, width_ped=0.05):
         ],
     ]
 
-    func = interpolate.interp2d(aLTs, peakings, widths, kind="cubic")
-    result = func(aLT_core, peaking)[0]
+    # interp2d is deprecated/removed in recent SciPy; use RectBivariateSpline (bicubic)
+    # Keep original call order (x=aLTs, y=peakings) by transposing Z
+    widths_arr = np.asarray(widths, dtype=float)
+    func = interpolate.RectBivariateSpline(aLTs, peakings, widths_arr.T, kx=3, ky=3)
+    result = float(func.ev(aLT_core, peaking))
 
     return result
 
@@ -455,7 +481,10 @@ def find_aLT_from_nu(width_axis, peaking, width_ped=0.05):
         ],
     ]
 
-    func = interpolate.interp2d(widths, peakings, aLTs, kind="cubic")
-    result = func(width_axis, peaking)[0]
+    # interp2d is deprecated/removed in recent SciPy; use RectBivariateSpline (bicubic)
+    # Keep original call order (x=widths, y=peakings) by transposing Z
+    aLTs_arr = np.asarray(aLTs, dtype=float)
+    func = interpolate.RectBivariateSpline(widths, peakings, aLTs_arr.T, kx=3, ky=3)
+    result = float(func.ev(width_axis, peaking))
 
     return result

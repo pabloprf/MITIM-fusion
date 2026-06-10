@@ -1,16 +1,18 @@
 import shutil
 import copy
 import torch
+import warnings
+from scipy.optimize import OptimizeWarning
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.eped_tools import EPEDtools
-from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
@@ -24,33 +26,51 @@ class eped_beat(beat):
 
     def prepare(
             self,
+            use_full_EPED = False,
             nn_location = None, 
             norm_location = None,
-            neped_20 = None,        # Force this pedestal density (e.g. at creator stage), otherwise from the profiles_current
-            BetaN = None,           # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
-            Tesep_keV = None,       # Force this Te at the separatrix, otherwise from the profiles_current
-            nesep_20 = None,        # Force this ne at the separatrix, otherwise from the profiles_current
-            corrections_set = {},   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
-            ptop_multiplier = 1.0,  # Multiplier for the ptop, useful for sensitivity studies
-            TioverTe = 1.0,        # Ratio of Ti/Te at the top of the pedestal
+            transform_inputs_fun = NNtools.standard_arguments_eped,
+            neped_20 = None,          # Force this pedestal density (e.g. at creator stage), otherwise from the profiles_current
+            BetaN = None,             # Force this BetaN (e.g. at creator stage), otherwise from the profiles_current
+            Tesep_keV = None,         # Force this Te at the separatrix, otherwise from the profiles_current
+            nesep_20 = None,          # Force this ne at the separatrix, otherwise from the profiles_current
+            corrections_set = None,   # Force these inputs to the NN (e.g. exact delta, Rmajor, etc)
+            ptop_multiplier = 1.0,    # Multiplier for the ptop, useful for sensitivity studies
+            TioverTe = 1.0,           # Ratio of Ti/Te at the top of the pedestal
+            eped_params_override = None,
             **kwargs
             ):
+        self.use_full_EPED = use_full_EPED
+        if corrections_set is None:
+            corrections_set = {}
 
-        if nn_location is not None:
-
-            print(f'\t- Choice of EPED: NN from {IOtools.clipstr(nn_location)}', typeMsg='i')
-
-            self.nn = NNtools.eped_nn(type='tf')
-            nn_location = IOtools.expandPath(nn_location)
-            norm_location = IOtools.expandPath(norm_location)
-
-            self.nn.load(nn_location, norm=norm_location)
+        if not self.use_full_EPED:
             
-        else:
+            # If running with NN, NN location must be specified
+            if nn_location is None or norm_location is None: 
+                raise ValueError('nn_location and norm_location must be provided if not using full EPED')
             
+            else:
+                print(f'\t- Choice of EPED: NN from {IOtools.clipstr(nn_location)}', typeMsg='i')
+
+                self.nn = NNtools.eped_nn(type='tf')
+                nn_location = IOtools.expandPath(nn_location)
+                norm_location = IOtools.expandPath(norm_location)
+
+                self.nn.load(nn_location, norm=norm_location, transform_inputs_fun=transform_inputs_fun)
+        else: 
             print('\t- Choice of EPED: full', typeMsg='i')
+
+            if nn_location is None or norm_location is None:
+                self.nn = None
+                print('\t- No NN and/or norm location provided', typeMsg='i')
+            else: 
+                print('\t- NN location provided only for scans, full EPED will determine the final result', typeMsg='w')
+                self.nn = NNtools.eped_nn(type='tf')
+                nn_location = IOtools.expandPath(nn_location)
+                norm_location = IOtools.expandPath(norm_location)
+                self.nn.load(nn_location, norm=norm_location, transform_inputs_fun=transform_inputs_fun)
             
-            self.nn = None
 
         # Parameters to run EPED with instead of those from the profiles
         self.neped_20 = neped_20
@@ -59,17 +79,34 @@ class eped_beat(beat):
         self.nesep_20 = nesep_20 
 
         self.corrections_set = corrections_set
+        
+        self.eped_params_override = eped_params_override
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
 
-        # Whether EPED is going to be run with Zeta
-        if 'zeta_flag' in kwargs:
-            self.zeta_flag = kwargs['zeta_flag']
-            print('zeta_flag set to True')
+        # Which equilibrium model is used by TOQ 
+        if 'toq_eq_choice' in kwargs:
+            print('Using the toq_eq_choice provided:', kwargs['toq_eq_choice'])
+            if kwargs['toq_eq_choice'] == 'standard':  # ishape = 4 (Bondeson Dee formula)
+                self.toq_eq_choice = 'standard'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['analytic', "analytic_interpolation", 'miller']:
+                    print('Warning: freeze_995_from is not set to Miller geometry but EPED will be run with MILLER geometry', typeMsg='warning')
+            elif kwargs['toq_eq_choice'] == 'full_turnbull_miller': # ishape = 7 (Turnbull-Miller full formula, same as 4 but adding squareness)
+                self.toq_eq_choice = 'full_turnbull_miller'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['analytic', "analytic_interpolation", 'turnbull_miller']:
+                    print('Warning: freeze_995_from is not set to Turnbull-Miller geometry but EPED will be run with Turnbull-Miller geometry', typeMsg='warning')
+                print('Warning: you must have modified EPED and have TOQ set to ishape = 7 to be consistent with this choice', typeMsg='warning')
+            elif kwargs['toq_eq_choice'] == 'mxh':  # ishape = 13 (MXH-based formula)
+                self.toq_eq_choice = 'mxh'
+                if 'freeze_995_from' in kwargs and kwargs['freeze_995_from'] not in ['mxh']:
+                    print('Warning: freeze_995_from is not set to MXH geometry but EPED will be run with MXH geometry', typeMsg='warning')
+                print('Warning: you must have modified EPED and have TOQ set to ishape = 13 to be consistent with this choice', typeMsg='warning')
+            else:
+                raise ValueError(f'Unknown toq_eq_choice: {kwargs["toq_eq_choice"]}')
         else: 
-            self.zeta_flag = False
-
+            self.toq_eq_choice = 'standard'
+            print('No toq_eq_choice provided, using standard EPED default (ishape = 4)')
         self._inform()
 
     def run(self, **kwargs):
@@ -78,7 +115,7 @@ class eped_beat(beat):
         shutil.copy2(self.initialize.folder / "input.gacode", self.folder / "input.gacode")
 
         # -------------------------------------------------------
-        # Run the NN
+        # Run EPED
         # -------------------------------------------------------
 
         eped_results = self._run(loopBetaN = 1, store_scan=True, nproc_per_run=kwargs.get('cpus', 16), cold_start=kwargs.get('cold_start', False))
@@ -87,7 +124,7 @@ class eped_beat(beat):
         # Save stuff
         # -------------------------------------------------------
 
-        np.save(self.folder_output / 'eped_results.npy', eped_results)
+        np.save(self.folder / 'eped_results.npy', eped_results)
 
         self.rhotop = eped_results['rhotop']
 
@@ -97,10 +134,9 @@ class eped_beat(beat):
         '''
 
         # Check to make sure using full EPED if running with squareness
-        if self.zeta_flag and self.nn is not None:
-            print('Warning: zeta_flag is not implemented for NN-based EPED, ignoring it', typeMsg='warning')
-            self.zeta_flag = False 
-
+        if self.toq_eq_choice != 'standard' and not self.use_full_EPED:
+            print('Warning: NN-based EPED was trained using ishape = 4, ignoring requested toq_eq_choice', typeMsg='warning')
+            self.toq_eq_choice = 'standard'
 
         # -------------------------------------------------------
         # Grab inputs from profiles_current
@@ -111,6 +147,7 @@ class eped_beat(beat):
         R = self.profiles_current.profiles['rcentr(m)'][0]
         a = self.profiles_current.derived['a']
         zeff = self.profiles_current.derived['Zeff_vol'] #TODO: Use pedestal Zeff
+        print("[MITIM] Grabbing Zeff from volume average, consider using pedestal Zeff for more accuracy in the future", typeMsg='w')
 
         '''
         -----------------------------------------------------------
@@ -130,57 +167,103 @@ class eped_beat(beat):
 
         neped_20 = self.neped_20
 
+
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
-        zeta995 = self.profiles_current.derived['zeta995'] if self.zeta_flag else None
+        if (self.toq_eq_choice == 'full_turnbull_miller' or self.toq_eq_choice == 'mxh'): 
+            zeta995 = self.profiles_current.derived['zeta995']
+        else:
+            zeta995 = None
+        if self.toq_eq_choice == 'mxh':
+            s_three995 = self.profiles_current.derived['s_three995']
+            s_four995 = self.profiles_current.derived['s_four995']
+        else: 
+            s_three995 = None
+            s_four995 = None
+
         BetaN = self.profiles_current.derived['BetaN_engineering']
         Tesep_keV = self.profiles_current.profiles['te(keV)'][-1]
         nesep_20 = self.profiles_current.profiles['ne(10^19/m^3)'][-1]*0.1
         
+        # Don't overwrite the shaping coefficients if they already were input to the simulation
         if 'kappa995' in self.__dict__ and self.kappa995 is not None:               kappa995 = self.kappa995
-        if 'delta995' in self.__dict__ and self.delta995 is not None:               delta995 = self.delta995
-        if self.zeta_flag and 'zeta995' in self.__dict__ and self.zeta995 is not None:   zeta995 = self.zeta995  
+        if 'delta995' in self.__dict__ and self.delta995 is not None:               delta995 = self.delta995 
         if "BetaN" in self.__dict__ and self.BetaN is not None:                     BetaN = self.BetaN
         if "Tesep_keV" in self.__dict__ and self.Tesep_keV is not None:             Tesep_keV = self.Tesep_keV
         if "nesep_20" in self.__dict__ and self.nesep_20 is not None:               nesep_20 = self.nesep_20
+        if self.toq_eq_choice != 'standard':
+            if "zeta995" in self.__dict__ and self.zeta995 is not None:                zeta995 = self.zeta995
+        if self.toq_eq_choice == 'mxh':
+            if "s_three995" in self.__dict__ and self.s_three995 is not None:          s_three995 = self.s_three995
+            if "s_four995" in self.__dict__ and self.s_four995 is not None:            s_four995 = self.s_four995
 
         nesep_ratio = nesep_20 / neped_20
 
         # Store evaluation
-        if self.zeta_flag: 
+        if self.toq_eq_choice == 'standard': 
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
                 'R': np.abs(R),
                 'a': np.abs(a),
                 'kappa995': np.abs(kappa995),
-                'delta995': np.abs(delta995),
+                'delta995': delta995,
                 'neped_20': np.abs(neped_20),
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
                 'nesep_ratio': np.abs(nesep_ratio),
-                'zeta': np.abs(zeta995)
             }
-        else: 
+        elif self.toq_eq_choice == 'full_turnbull_miller':
+            # Shape descriptors (delta995, zeta995) carry physical sign — negative
+            # triangularity / squareness — and are passed to modified TOQ (ishape=7)
+            # in the same signed GACODE-MXH convention as the standard path. Do NOT
+            # np.abs() them: that silently flips sign for every NT/negative-squareness
+            # plasma. See 9ff6edf9 (the abs was removed as a bug; ef2f82e1 reintroduced
+            # it here). The remaining np.abs() calls are deliberate magnitude conventions.
             self.current_evaluation = {
                 'Ip': np.abs(Ip),
                 'Bt': np.abs(Bt),
                 'R': np.abs(R),
                 'a': np.abs(a),
                 'kappa995': np.abs(kappa995),
-                'delta995': np.abs(delta995),
+                'delta995': delta995,
                 'neped_20': np.abs(neped_20),
                 'BetaN': np.abs(BetaN),
                 'zeff': np.abs(zeff),
                 'Tesep_keV': np.abs(Tesep_keV),
-                'nesep_ratio': np.abs(nesep_ratio)
+                'nesep_ratio': np.abs(nesep_ratio),
+                'zeta995': zeta995
+            }
+        elif self.toq_eq_choice == 'mxh':
+            # As above: delta995/zeta995/s_three/s_four are signed MXH coefficients fed
+            # verbatim to modified TOQ (ishape=13, "take MXH coefficients"). Keep their sign.
+            self.current_evaluation = {
+                'Ip': np.abs(Ip),
+                'Bt': np.abs(Bt),
+                'R': np.abs(R),
+                'a': np.abs(a),
+                'kappa995': np.abs(kappa995),
+                'delta995': delta995,
+                'neped_20': np.abs(neped_20),
+                'BetaN': np.abs(BetaN),
+                'zeff': np.abs(zeff),
+                'Tesep_keV': np.abs(Tesep_keV),
+                'nesep_ratio': np.abs(nesep_ratio),
+                'zeta995': zeta995,
+                's_three': s_three995,
+                's_four': s_four995
             }
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
-            if key not in ['ptop_kPa', 'wtop_psipol']:
+            if key not in ['ptop_kPa', 'wtop_psipol', 'zeta']:
                 self.current_evaluation[key] = value
+            elif key == 'zeta': 
+                if 'zeta995' in self.corrections_set:
+                    print('Warning: both zeta and zeta995 provided in corrections_set, zeta value will be used', typeMsg='w') 
+                self.current_evaluation['zeta995'] = value
+
         # ----------------------------------------------
 
         print('\n\t- Running EPED with:')
@@ -194,7 +277,11 @@ class eped_beat(beat):
         print(f'\t\t- zeff: {self.current_evaluation["zeff"]:.2f}')
         print(f'\t\t- tesep: {self.current_evaluation["Tesep_keV"]:.3f} keV')
         print(f'\t\t- nesep_ratio: {self.current_evaluation["nesep_ratio"]:.2f}')
-        if self.zeta_flag: print(f'\t\t- zeta: {self.current_evaluation["zeta"]:.3f}')
+        if (self.toq_eq_choice=='full_turnbull_miller' or self.toq_eq_choice=='mxh'):
+            print(f'\t\t- zeta995: {self.current_evaluation["zeta995"]:.3f}')
+        if self.toq_eq_choice=='mxh':
+            print(f'\t\t- s_three995: {self.current_evaluation["s_three"]:.3f}')
+            print(f'\t\t- s_four995: {self.current_evaluation["s_four"]:.3f}')
 
         # -------------------------------------------------------
         # Run NN
@@ -202,28 +289,16 @@ class eped_beat(beat):
 
         BetaN = self.current_evaluation["BetaN"]
 
+        # Pedestal-limiting-mode classification (peeling vs ballooning). Stays None for
+        # the EPED-NN surrogate and for ptop/wtop overrides, which have no stability
+        # spectrum -- only full EPED (_run_full_eped) populates it.
+        self.limiting_mode_info = None
+
         BetaNs, ptop_kPas, wtop_psipols  = [], [], []
         for i in range(loopBetaN):
             print(f'\t\t- BetaN: {BetaN:.2f}')
 
-            if self.zeta_flag: 
-                inputs_to_eped = (
-                    self.current_evaluation["Ip"],
-                    self.current_evaluation["Bt"],
-                    self.current_evaluation["R"],
-                    self.current_evaluation["a"],
-                    self.current_evaluation["kappa995"],
-                    self.current_evaluation["delta995"],
-                    self.current_evaluation["neped_20"]*10,
-                    BetaN,
-                    self.current_evaluation["zeff"],
-                    self.current_evaluation["Tesep_keV"]* 1E3,
-                    self.current_evaluation["nesep_ratio"],
-                    self.current_evaluation["zeta"]
-                    )
-
-            else: 
-                inputs_to_eped = (
+            inputs_to_eped_NN = (
                     self.current_evaluation["Ip"],
                     self.current_evaluation["Bt"],
                     self.current_evaluation["R"],
@@ -236,6 +311,45 @@ class eped_beat(beat):
                     self.current_evaluation["Tesep_keV"]* 1E3,
                     self.current_evaluation["nesep_ratio"]
                     )
+            if self.toq_eq_choice == 'standard':
+                inputs_to_eped = inputs_to_eped_NN
+                
+            if self.toq_eq_choice == 'full_turnbull_miller': 
+                inputs_to_eped = (
+                    self.current_evaluation["Ip"],
+                    self.current_evaluation["Bt"],
+                    self.current_evaluation["R"],
+                    self.current_evaluation["a"],
+                    self.current_evaluation["kappa995"],
+                    self.current_evaluation["delta995"],
+                    self.current_evaluation["neped_20"]*10,
+                    BetaN,
+                    self.current_evaluation["zeff"],
+                    self.current_evaluation["Tesep_keV"]* 1E3,
+                    self.current_evaluation["nesep_ratio"],
+                    self.current_evaluation["zeta995"]
+                    )
+            elif self.toq_eq_choice == 'mxh': 
+                inputs_to_eped = (
+                    self.current_evaluation["Ip"],
+                    self.current_evaluation["Bt"],
+                    self.current_evaluation["R"],
+                    self.current_evaluation["a"],
+                    self.current_evaluation["kappa995"],
+                    self.current_evaluation["delta995"],
+                    self.current_evaluation["neped_20"]*10,
+                    BetaN,
+                    self.current_evaluation["zeff"],
+                    self.current_evaluation["Tesep_keV"]* 1E3,
+                    self.current_evaluation["nesep_ratio"], 
+                    self.current_evaluation["zeta995"],
+                    self.current_evaluation["s_three"],
+                    self.current_evaluation["s_four"]
+                    )
+
+            # Some checks before launching EPED
+            if BetaN > 10.0:
+                print(f'\t- Warning: BetaN is very high {BetaN =}, EPED may not converge nor come back with valid files', typeMsg='w')
 
             # -------------------------------------------------------
             # Give the option to override the ptop_kPa and wtop_psipol
@@ -254,18 +368,45 @@ class eped_beat(beat):
             
             if ptop_kPa is None or wtop_psipol is None:
                 
-                if self.nn is not None:
+                if not self.use_full_EPED:
                     ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
                 else:
-                    ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, nproc_per_run=nproc_per_run, cold_start=cold_start)
-                    
-                    if store_scan:
+                    try:
+                        ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=self.eped_params_override, nproc_per_run=nproc_per_run, cold_start=cold_start)
+                    except LOGtools.InteractiveTerminalError:
+                        # Possibility that EPED could not find any stable solution
+                        if (self.folder / 'case1' / 'mitim.out').exists():
+                            error_line = "all stable or fail to find solution"
+                            # Read file to find line
+                            with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
+                                lines = f.readlines()
+                                for line in lines:
+                                    if error_line in line:
+                                        raise Exception('[MITIM] EPED failed to find any stable solution, cannot continue this simulation')
+                        raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
+                        
+                    if store_scan and self.nn==None:
                         store_scan = False
-                        print('\t- Warning: store_scan is not available for full EPED runs yet, only for NN-based EPED')
+                        print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
+            
+            # Note: NaNs compare unequal to everything (including themselves), so do not use `== np.nan`.
+            # Treat NaN/inf as invalid results.
+            if (
+                (ptop_kPa is None)
+                or (wtop_psipol is None)
+                or (not np.isfinite(ptop_kPa))
+                or (not np.isfinite(wtop_psipol))
+                or (ptop_kPa < 0)
+                or (wtop_psipol < 0)
+            ):
+                raise ValueError('[MITIM] EPED failed to return valid results, cannot continue this simulation')
             
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
+
+            if (not np.isfinite(ptop_kPa)) or (not np.isfinite(wtop_psipol)):
+                raise ValueError('[MITIM] EPED returned NaN/inf results, cannot continue this simulation')
 
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
@@ -301,7 +442,8 @@ class eped_beat(beat):
                 print('\t\t- Using rhotop = 0.9 as an approximation for the stretching')
                 xp_old = 0.9
 
-            self.profiles_output = eped_profiler(self.profiles_current, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
+            profiles_pass = copy.deepcopy(self.profiles_current)
+            self.profiles_output = eped_profiler(profiles_pass, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=minimum_relative_change_in_x)
 
             BetaN = self.profiles_output.derived['BetaN_engineering']
 
@@ -327,7 +469,7 @@ class eped_beat(beat):
                 "a": 0.05,
                 "kappa995": 0.05,
                 "delta995": 0.05,
-                "neped_20": 0.75,
+                "neped_19": 0.75,
                 "BetaN": 0.5,
                 "zeff": 0.3,
                 "Tesep_keV": 0.75,
@@ -336,10 +478,10 @@ class eped_beat(beat):
 
             scan_results = {}
             for k,key in enumerate(scan_relative):
-                inputs_scan = list(copy.deepcopy(inputs_to_eped))
+                inputs_scan = list(copy.deepcopy(inputs_to_eped_NN))
                 scan_results[key] = {'ptop_kPa': [], 'wtop_psipol': [], 'value': []}
                 for m in np.linspace(1-scan_relative[key],1+scan_relative[key],15):
-                    inputs_scan[k] = inputs_to_eped[k]*m
+                    inputs_scan[k] = inputs_to_eped_NN[k]*m
                     ptop_kPa0, wtop_psipol0 = self.nn(*inputs_scan)
                     scan_results[key]['ptop_kPa'].append(ptop_kPa0)
                     scan_results[key]['wtop_psipol'].append(wtop_psipol0)
@@ -348,12 +490,14 @@ class eped_beat(beat):
                 scan_results[key]['wtop_psipol'] = np.array(scan_results[key]['wtop_psipol'])
                 scan_results[key]['value'] = np.array(scan_results[key]['value'])
 
-                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped)
+                self.nn.force_within_range = None # Do not throw warnings during the scan
+                scan_results[key]['ptop_kPa_nominal'], scan_results[key]['wtop_psipol_nominal'] = self.nn(*inputs_to_eped_NN)
 
         # ---------------------------------
         # Store
         # ---------------------------------
 
+        limiting = getattr(self, 'limiting_mode_info', None)
         eped_results = {
             'ptop_kPa': ptop_kPa,
             'wtop_psipol': wtop_psipol,
@@ -364,7 +508,11 @@ class eped_beat(beat):
             'rhotop': rhotop,
             'Tesep_keV': Tesep_keV,
             'inputs_to_eped': inputs_to_eped,
-            'scan_results': scan_results
+            'scan_results': scan_results,
+            # Peeling/ballooning result (None for NN / overrides / pre-metric runs). Only
+            # the label is cached here; the n_limiting / dome_frac it was derived from are
+            # classifier internals, recomputed from output_run1.nc when needed.
+            'limiting_mode': limiting['limiting_mode'] if limiting else None,
         }
 
         for key in eped_results:
@@ -374,40 +522,37 @@ class eped_beat(beat):
 
         return eped_results
 
-    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, nproc_per_run=64, cold_start=True):
+    def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, eped_params_override=None, nproc_per_run=64, cold_start=True):
         '''
             Run the full EPED code with the given inputs.
             Returns ptop_kPa and wtop_psipol.
-            If zeta is provided as an extra argument, use it; otherwise set zeta to zero.
+            If further shaping parameters are provided as extra arguments, use them; otherwise set them to zero.
+            Note this is not the parallel to the _run method, the run method uses this where it would otherwise call the EPED NN
         '''
 
-        # Handle optional zeta parameter
+        # Handle further shaping parameters
         if len(args) > 0:
-            zeta = args[0]
-            print('Let of args > 0, using zeta =', zeta)
+            zeta995 = args[0]
+            print('Len of args > 0, using zeta995 =', zeta995)
+            if len(args) > 1: 
+                s_three = args[1]
+                print('Len of args > 1. Also using s_three =', s_three)
+                if len(args) > 2:
+                    s_four = args[2]
+                    print('Len of args > 2. Also using s_four =', s_four)
+                else: 
+                    s_four = 0.0
+                    print('Len of args <= 2. Setting s_four = 0.0')
+            else: 
+                s_three = 0.0
+                print('Len of args <= 1. Setting s_three = 0.0')
         else:
-            zeta = 0.0
-            print('No zeta provided, setting zeta = 0.0')
+            zeta995 = 0.0
+            print('No zeta995 provided, setting zeta995 = 0.0')
 
         eped = EPEDtools.EPED(folder=folder)
 
-        if len(args) > 0:
-            input_params = {
-                'ip': Ip,
-                'bt': Bt,
-                'r': R,
-                'a': a,
-                'kappa': kappa995,
-                'delta': delta995,
-                'neped': neped19,
-                'betan': BetaN,
-                'zeffped': zeff,
-                'nesep': nesep_ratio * neped19,
-                'tesep': Tesep_eV,
-                'zeta': zeta
-            }
-            print('_run_full_eped input_params with zeta:', input_params)
-        else: 
+        if self.toq_eq_choice == 'standard': 
             input_params = {
                 'ip': Ip,
                 'bt': Bt,
@@ -421,33 +566,103 @@ class eped_beat(beat):
                 'nesep': nesep_ratio * neped19,
                 'tesep': Tesep_eV
             }
-            print('_run_full_eped input_params without zeta:', input_params)
+            print('_run_full_eped with standard TOQ configuration. Parameters used:', input_params)
+        elif self.toq_eq_choice == 'full_turnbull_miller':
+            input_params = {
+                'ip': Ip,
+                'bt': Bt,
+                'r': R,
+                'a': a,
+                'kappa': kappa995,
+                'delta': delta995,
+                'neped': neped19,
+                'betan': BetaN,
+                'zeffped': zeff,
+                'nesep': nesep_ratio * neped19,
+                'tesep': Tesep_eV,
+                'zeta': zeta995
+            }
+            print('_run_full_eped with full_turnbull_miller TOQ configuration. Parameters used:', input_params)
+        elif self.toq_eq_choice == 'mxh': 
+            input_params = {
+                'ip': Ip,
+                'bt': Bt,
+                'r': R,
+                'a': a,
+                'kappa': kappa995,
+                'delta': delta995,
+                'neped': neped19,
+                'betan': BetaN,
+                'zeffped': zeff,
+                'nesep': nesep_ratio * neped19,
+                'tesep': Tesep_eV, 
+                'zeta': zeta995,
+                's_three': s_three,
+                's_four': s_four
+            }
+            print('_run_full_eped with mxh TOQ configuration. Parameters used:', input_params)
 
         eped.run(
             subfolder = 'case1',
             input_params = input_params,
             nproc_per_run = nproc_per_run,
             cold_start = cold_start,
+            eped_params_override = eped_params_override,
         )
 
         eped.read(subfolder='case1')
 
-        ptop_kPa = float(eped.results['case1']['run1']['ptop'])
-        wtop_psipol = float(eped.results['case1']['run1']['wptop'])
+        # .item() instead of float(...) so this works under numpy>=2, where
+        # float(xarray_da) -> float(da.values) fails on non-0-d single-element arrays.
+        ptop_kPa = eped.results['case1']['run1']['ptop'].item()
+        wtop_psipol = eped.results['case1']['run1']['wptop'].item()
+
+        # Capture the peeling/ballooning flag from the stability spectrum. Returns None
+        # if this EPED dataset predates the metric (older MITIM) -> stored as None, never
+        # fabricated. The raw spectrum lives in output_run1.nc, so it can also be
+        # recomputed later from that retained file.
+        self.limiting_mode_info = EPEDtools.limiting_mode_from_dataset(eped.results['case1']['run1'])
 
         return ptop_kPa, wtop_psipol
         
     def finalize(self, **kwargs):
-        
-        self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
 
-        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+        # Refresh folder_output from self.folder only if the source still exists.
+        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder,
+        # folder_output already has the authoritative content from the prior run.
+        if (self.folder / 'input.gacode.eped').exists():
+
+            # Remove output folders
+            for item in self.folder_output.glob('*'):
+                if item.is_file():
+                    item.unlink(missing_ok=True)
+                elif item.is_dir():
+                    IOtools.shutil_rmtree(item)
+
+            # Persist EPED outputs to folder_output (copy under keep_all_files: true; move otherwise)
+            if (self.folder / 'case1' / 'output_run1.nc').exists():
+                self._persist(self.folder / 'case1' / 'output_run1.nc', self.folder_output / 'output_run1.nc')
+
+            # Persist the EPED input namelist (full-EPED runs only; written locally as eped.input.1,
+            # renamed to eped.input on the execution side). Otherwise lost under keep_all_files: false.
+            if (self.folder / 'case1' / 'run1' / 'eped.input.1').exists():
+                self._persist(self.folder / 'case1' / 'run1' / 'eped.input.1', self.folder_output / 'eped.input')
+
+            self._persist(self.folder / 'eped_results.npy', self.folder_output / 'eped_results.npy')
+
+            # Write profiles to output folder
+            self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode.eped')
+            self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+
+        else:
+            # Cleanup case: load profiles from the existing folder_output snapshot
+            self.profiles_output = PROFILEStools.gacode_state(self.folder_output / 'input.gacode')
 
     def merge_parameters(self):
         # EPED beat does not modify the profiles grid or anything, so I can keep it fine
         pass
 
-    def grab_output(self):
+    def grab_output(self, **kwargs):
 
         isitfinished = self.maestro_instance.check(beat_check=self)
 
@@ -464,6 +679,165 @@ class eped_beat(beat):
 
         return loaded_results, profiles
 
+    def summary(self, output_dir, counter = None, wall_time_s = None):
+        '''
+        Markdown section for the last EPED beat: inputs + outputs + stability figure.
+        '''
+
+        results_file = self.folder_output / 'eped_results.npy'
+        if not results_file.exists():
+            header_extra = f' (Beat {counter})' if counter is not None else ''
+            return f'## EPED{header_extra}\n*(eped_results.npy missing; no summary available)*\n'
+
+        try:
+            d = np.load(results_file, allow_pickle=True).item()
+        except Exception as e:
+            return f'## EPED\n*(could not load eped_results.npy: {e})*\n'
+
+        # Inputs (from current_evaluation if cached, otherwise extract from profiles)
+        inputs = {}
+        if hasattr(self, 'current_evaluation') and isinstance(self.current_evaluation, dict):
+            inputs = dict(self.current_evaluation)
+        else:
+            # Best-effort: reload from input.gacode in folder_output
+            gacode_file = self.folder_output / 'input.gacode'
+            if gacode_file.exists():
+                try:
+                    p = PROFILEStools.gacode_state(gacode_file)
+                    p.derive_quantities()
+                    inputs['Ip']       = abs(float(p.profiles['current(MA)'][0]))
+                    inputs['Bt']       = abs(float(p.profiles['bcentr(T)'][0]))
+                    inputs['R']        = abs(float(p.profiles['rcentr(m)'][0]))
+                    inputs['a']        = abs(float(p.derived['a']))
+                    inputs['kappa995'] = float(p.derived.get('kappa995', float('nan')))
+                    inputs['delta995'] = float(p.derived.get('delta995', float('nan')))
+                    inputs['BetaN']    = float(p.derived.get('BetaN_engineering', float('nan')))
+                    inputs['zeff']     = float(p.derived.get('Zeff_vol', float('nan')))
+                except Exception:
+                    pass
+
+        # Use neped from results if available (more authoritative than profiles)
+        if 'neped_20' in d:
+            inputs['neped_20'] = float(d['neped_20'])
+
+        # Outputs
+        outputs = {}
+        for key in ('ptop_kPa', 'wtop_psipol', 'rhotop', 'netop_20', 'nesep_20',
+                    'Tetop_keV', 'Ttop_keV', 'Titop_keV', 'Tesep_keV'):
+            if key in d and d[key] is not None:
+                try:
+                    outputs[key] = float(d[key])
+                except (TypeError, ValueError):
+                    pass
+
+        # Peeling/ballooning result. Only the label is cached in eped_results.npy (.get
+        # keeps it safe for a pre-metric MITIM version). The supporting n_limiting /
+        # dome_frac are classifier internals -- recovered from output_run1.nc below.
+        limiting_mode = d.get('limiting_mode')
+        n_limiting = None
+        dome_frac = None
+
+        # The real stability plot (gamma/omega_A vs Te_ped per toroidal mode n)
+        # is what EPEDtools.plot_g_stability already produces (and what
+        # mitim_plot_maestro uses). Reuse it directly here — same code path.
+        stability_md = None
+        nc_file = self.folder_output / 'output_run1.nc'
+        if nc_file.exists():
+            png_name = 'eped_stability.png'
+            png_path = output_dir / png_name
+            try:
+                eped = EPEDtools.EPED(folder=self.folder_output)
+                eped.read(subfolder='.', label='run1')
+
+                # Derive the supporting n_limiting / dome_frac from the authoritative
+                # spectrum for the markdown detail, and recover the label itself for
+                # older full-EPED runs whose eped_results.npy predates the metric (no
+                # migration needed -- the raw spectrum is in the retained .nc).
+                runs = eped.results.get('run1', {})
+                ds_one = next(iter(runs.values()), None)
+                info = EPEDtools.limiting_mode_from_dataset(ds_one) if ds_one is not None else None
+                if info:
+                    if limiting_mode is None:
+                        limiting_mode = info['limiting_mode']
+                    n_limiting = info['n_limiting']
+                    dome_frac = info['dome_frac']
+
+                fig = plt.figure(figsize=(10, 7))
+                eped.plot_g_stability(
+                    label='run1',
+                    fig=fig,
+                    scan_param='neped',
+                    color='b',
+                    variable=['teped_list', r'$T_{e,ped}$ (keV)', 'tped', 1E-3, 1.0],
+                )
+                fig.savefig(png_path, dpi=120, bbox_inches='tight')
+                plt.close(fig)
+                stability_md = f'\n![EPED stability]({png_name})\n'
+            except Exception as e:
+                print(f'\t\t- Could not regenerate EPED stability figure ({e})', typeMsg='w')
+                stability_md = f'\n*(stability figure generation failed: {e})*\n'
+
+        if stability_md is None:
+            stability_md = (
+                '\n*(stability figure only available for full-EPED runs; '
+                'this beat used the EPED-NN surrogate, which does not produce '
+                'ballooning-mode growth rates.)*\n'
+            )
+
+        # Compose markdown
+        header_extra = f' (Beat {counter})' if counter is not None else ''
+        lines = [f'## EPED{header_extra}', '']
+        lines.append('### Inputs')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        input_units = {
+            'Ip': 'MA', 'Bt': 'T', 'R': 'm', 'a': 'm',
+            'kappa995': '-', 'delta995': '-', 'zeta995': '-',
+            'neped_20': r'10^20 m^-3', 'BetaN': '-', 'zeff': '-',
+            'Tesep_keV': 'keV', 'nesep_ratio': '-',
+        }
+        for key, unit in input_units.items():
+            if key in inputs:
+                try:
+                    lines.append(f'| {key} | {float(inputs[key]):.4g} {unit} |')
+                except (TypeError, ValueError):
+                    pass
+        lines.append('')
+        lines.append('### Outputs')
+        lines.append('')
+        lines.append('| Quantity | Value |')
+        lines.append('|---|---|')
+        output_units = {
+            'ptop_kPa': 'kPa', 'wtop_psipol': r'\psi_{pol}', 'rhotop': r'\rho',
+            'netop_20': r'10^20 m^-3', 'nesep_20': r'10^20 m^-3',
+            'Tetop_keV': 'keV', 'Ttop_keV': 'keV', 'Titop_keV': 'keV', 'Tesep_keV': 'keV',
+        }
+        for key, unit in output_units.items():
+            if key in outputs:
+                lines.append(f'| {key} | {outputs[key]:.4g} {unit} |')
+        lines.append('')
+        if limiting_mode:
+            detail = ''
+            if n_limiting is not None and n_limiting > 0:
+                detail = f' (n = {n_limiting}'
+                if dome_frac is not None:
+                    detail += f', dome width {dome_frac:.0%} of $T_{{e,ped}}$ range'
+                detail += ')'
+            lines.append(f'**Pedestal limited by:** {limiting_mode}{detail}')
+        else:
+            # No stability spectrum (EPED-NN surrogate, or ptop/wtop override): the
+            # peeling/ballooning branch cannot be determined. State it explicitly rather
+            # than silently omitting the line, so the status is never ambiguous.
+            lines.append('**Pedestal limited by:** n/a (no stability spectrum — EPED-NN surrogate or override)')
+        if wall_time_s is not None:
+            lines.append('')
+            lines.append(f'**Beat wall-time:** {_format_seconds(wall_time_s)}')
+        lines.append('')
+        lines.append('### Stability')
+        lines.append(stability_md)
+        return '\n'.join(lines)
+
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
         if fn is None:
@@ -472,8 +846,8 @@ class eped_beat(beat):
         fig = fn.add_figure(label='EPED', tab_color=counter)
         axs = fig.subplot_mosaic(
             """
-            ABCDH
-            AEFGI
+            ABCDHJ
+            AEFGIK
             """
         )
         axs = [ ax for ax in axs.values() ]
@@ -487,22 +861,29 @@ class eped_beat(beat):
         if loaded_results is not None:
             profiles.plotRelevant(axs = axs, color = 'r', label = 'EPED')
 
-            axs[1].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
+            axs[2].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
             try:
-                axs[1].axhline(loaded_results['Tetop_keV'], color='k', ls='--',lw=2)
+                axs[2].axhline(loaded_results['Tetop_keV'], color='k', ls='--',lw=2)
             except:
-                axs[1].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
+                axs[2].axhline(loaded_results['Ttop_keV'], color='k', ls='--',lw=2)
                 
 
-            axs[2].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
-            axs[2].axhline(loaded_results['netop_20'], color='k', ls='--',lw=2)
-
             axs[3].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
-            axs[3].axhline(loaded_results['ptop_kPa']*1E-3, color='k', ls='--',lw=2)
+            axs[3].axhline(loaded_results['netop_20'], color='k', ls='--',lw=2)
+
+            axs[6].axvline(loaded_results['rhotop'], color='k', ls='--',lw=2)
+            axs[6].axhline(loaded_results['ptop_kPa']*1E-3, color='k', ls='--',lw=2)
 
         GRAPHICStools.adjust_figure_layout(fig)
 
-        if 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
+        # Full EPED?
+        if (self.folder_output / 'output_run1.nc').exists():
+            eped = EPEDtools.EPED(folder=self.folder_output)
+            eped.read(subfolder='.', label='full_eped')
+            eped.plot(fn=fn, labels=['full_eped'], tab_color=counter)
+
+        # Scan results? (loaded_results is None for an unfinished beat)
+        if loaded_results is not None and 'scan_results' in loaded_results and loaded_results['scan_results'] is not None:
             for ikey in ['ptop_kPa', 'wtop_psipol']:
                 fig = fn.add_figure(label=f'EPED Scan ({ikey})', tab_color=counter)
 
@@ -515,7 +896,10 @@ class eped_beat(beat):
                 )
                 axs = [ ax for ax in axs.values() ]
 
-                self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+                try:
+                    self._plot_scan(ikey, loaded_results=loaded_results, axs=axs)
+                except:
+                    print(f'\t- Could not plot scan for {ikey}', typeMsg='w')
 
                 GRAPHICStools.adjust_figure_layout(fig)
 
@@ -523,7 +907,7 @@ class eped_beat(beat):
 
         return msg
             
-    def _plot_scan(self, ikey, loaded_results = None, axs = None, color = 'b'):
+    def _plot_scan(self, ikey, loaded_results = None, axs = None):
 
         if loaded_results is None:
             loaded_results, _ = self.grab_output()
@@ -541,23 +925,26 @@ class eped_beat(beat):
             axs = [ ax for ax in axs.values() ]
 
         max_val = 0
+        min_val = 1E12
         for i,key in enumerate(loaded_results['scan_results']):
 
-            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color=color, markersize=3)
+            axs[i].plot(loaded_results['scan_results'][key]['value'], loaded_results['scan_results'][key][ikey], 's-', color='b', markersize=3, label=f'NN scan')
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color='m', label='NN nominal')
+            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color='m', ls='-.')
 
-            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results[ikey]], '^', color=color)
-            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results['scan_results'][key][f'{ikey}_nominal']], 'o', color=color)
+            axs[i].plot([loaded_results['inputs_to_eped'][i]], [loaded_results[ikey]], '^', color='r', label='EPED beat', markersize=8)
 
-            axs[i].axvline(loaded_results['inputs_to_eped'][i], color=color, ls='--')
-            axs[i].axhline(loaded_results['scan_results'][key][f'{ikey}_nominal'], color=color, ls='-.')
-
+            axs[i].axvline(loaded_results['inputs_to_eped'][i], color='k', ls='--', label='Nominal input')
+    
             max_val = np.max([max_val,np.max(loaded_results['scan_results'][key][ikey])])
+            min_val = np.min([min_val,np.min(loaded_results['scan_results'][key][ikey])])
         
         for i,key in enumerate(loaded_results['scan_results']):
-            axs[i].set_ylim([0,1.2*max_val])
+            axs[i].set_ylim([min_val*0.9,1.1*max_val])
             axs[i].set_xlabel(key)
             axs[i].set_ylabel(ikey)
             GRAPHICStools.addDenseAxis(axs[i])
+        axs[0].legend(prop={'size': 6},loc='best')
 
     # --------------------------------------------------------------------------------------------
     # Additional EPED utilities
@@ -579,10 +966,16 @@ class eped_beat(beat):
             self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
             print(f"\t\t- Using previous delta995: {self.delta995}")
 
+        # From a geqdsk initialization
+        if 'zeta995' in self.maestro_instance.parameters_trans_beat:
+            self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
+            print(f"\t\t- Using previous zeta995: {self.zeta995}")
+
         # From a previous EPED beat, grab the rhotop
         if 'rhotop' in self.maestro_instance.parameters_trans_beat:
             self.rhotop = self.maestro_instance.parameters_trans_beat['rhotop']
             print(f"\t\t- Using previous rhotop: {self.rhotop}")
+
             
     def _inform_save(self, eped_output = None):
 
@@ -595,21 +988,21 @@ class eped_beat(beat):
 
         print('\t\t- neped_20 and rhotop saved for future beats')
 
-def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', keep_aLx=True, roa = None):
+def scale_profile_by_stretching( x, y, xp, yp, xp_old, label='', keep_aLx=True, roa = None, print_msgs = True, plotYN=False):
     '''
     This code keeps the separatrix fixed, moves the top of the pedestal, fits pedestal and stretches the core
         xp: top of the pedestal
         roa: needed if I want to keep the aLT profile in the core-predicted region
     '''
 
-    print(f'\t\t- Scaling profile {label} by stretching')
+    if print_msgs: print(f'\t\t- Scaling profile {label} by stretching')
 
     # Find old core
-    ibc = np.argmin(np.abs(x-xp_old))
-    xcore_old = x[:ibc+1]
-    ycore_old = y[:ibc+1]
+    ibc_old = np.argmin(np.abs(x-xp_old))
+    xcore_old = x[:ibc_old+1]
+    ycore_old = y[:ibc_old+1]
 
-    print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
+    if print_msgs: print(f'\t\t\t* Stretching core: [{xp_old:.3f}, {ycore_old[-1]:.3f}] -> [{xp:.3f}, {yp:.3f}]')
 
     # Fit new pedestal
     _, yped = FunctionalForms.pedestal_tanh(yp, y[-1], 1-xp, x=x)
@@ -633,17 +1026,30 @@ def scale_profile_by_stretching( x, y, xp, yp, xp_old, plotYN=False, label='', k
 
     # Keep old aLT
     if keep_aLx:
-        print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
+        if print_msgs:
+            print('\t\t\t* Keeping old aLT profile in the core-predicted region, using r/a for it')
 
-        # Calculate gradient in entire region
-        aLy = CALCtools.derivation_into_Lx( torch.from_numpy(roa), torch.from_numpy(y) )
+        # Calculate gradient in entire region for old profile
+        aLy = CALCtools.derivation_into_Lx(
+            torch.from_numpy(roa),
+            torch.from_numpy(y)
+            )
 
         # I'm only interested in core region, plus one ghost point with the same gradient
         aLy = torch.cat( (aLy[:ibc+1], aLy[ibc].unsqueeze(0)) )
+        
+        # If the new position is farther out, the region between old and new top needs to be of equal gradient as the last point of old core.
+        # Otherwise, huge gradients appear due to the pedestal of the old profile
+        for i in range(ibc_old+1, ibc+2):
+            aLy[i] = aLy[ibc_old]
 
-        y_mod = CALCtools.integration_Lx( torch.from_numpy(roa[:ibc+2]).unsqueeze(0), aLy.unsqueeze(0), torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0) ).squeeze().numpy()
+        y_mod = CALCtools.integration_Lx(
+            torch.from_numpy(roa[:ibc+2]).unsqueeze(0),
+            aLy.unsqueeze(0),
+            torch.from_numpy(np.array(ynew[ibc+1])).unsqueeze(0)
+        ).squeeze().numpy()
+        
         ynew[:ibc+2] = y_mod
-
 
     if plotYN:
         fig, axs = plt.subplots(nrows=2, figsize=(6,10))
@@ -693,7 +1099,10 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
     # this technically doesn't need to be done after the first time EPED is run, but I'm doing it now for completeness
     pedestal_profile = lambda x, Y: FunctionalForms.pedestal_tanh(Y, nesep_20, 1-rhotop, x=x)[1]
 
-    n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=OptimizeWarning) # Avoid annoying warning from curve_fit
+        n0, _ = curve_fit(pedestal_profile, [rhoped], [neped_20])
+        
     netop_20 = n0[0]
 
     # Find factor to account that it's not a pure plasma
@@ -709,15 +1118,16 @@ def eped_postprocessing(neped_20, nesep_20, ptop_kPa, TioverTe, wtop_psipol,prof
     Tetop_keV = ptop_kPa * 1E3 / ( ( 1 + fi * TioverTe ) * netop_20 * 1e20) / e_J * 1E-3
     Titop_keV = Tetop_keV * TioverTe
     print(f'\t\t\t* Tetop_keV: {Tetop_keV:.3f}  Titop_keV: {Titop_keV:.3f}')
-
-
+    print(f'\t\t\t* netop_20: {netop_20:.3f}')
+    print(f'\t\t\t* width (psipol): {wtop_psipol:.5f}  rhotop: {rhotop:.3f}  rhoped: {rhoped:.3f}')
 
     return rhotop, netop_20, Tetop_keV, Titop_keV, rhoped
 
-def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005):
+def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, minimum_relative_change_in_x=0.005,print_msgs=True):
 
-    profiles_output = copy.deepcopy(profiles)
-
+    profiles_output = profiles
+    
+    # Determine coodinates
     x = profiles.profiles['rho(-)']
     xroa = profiles.derived['roa']
 
@@ -725,28 +1135,52 @@ def eped_profiler(profiles, xp_old, rhotop, Tetop_keV, Titop_keV, netop_20, mini
         print(f'\t\t\t* Keeping old core position ({xp_old}) because width variation is {abs(rhotop-xp_old)/xp_old*100:.1f}% < {minimum_relative_change_in_x*100:.1f}% ({xp_old:.3f} -> {rhotop:.3f})')
         rhotop = xp_old
 
-    n = profiles.derived['ni_All']/profiles.profiles['ne(10^19/m^3)']
-    fi = interpolation_function(rhotop, profiles.profiles['rho(-)'], n)
+    # Grab quantities useful for scaling
+    TiTimain_orig = profiles_output.profiles['ti(keV)'] / profiles_output.profiles['ti(keV)'][:, [0]]
+    nine_orig = profiles_output.profiles['ni(10^19/m^3)'] / profiles.profiles['ne(10^19/m^3)'][:, None]
 
-    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa)
+    # -------------------------------------------------------------
+    # Modify profiles
+    # -------------------------------------------------------------
 
-    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa)
-    profiles_output.makeAllThermalIonsHaveSameTemp()
+    # Modify Te
+    profiles_output.profiles['te(keV)'] = scale_profile_by_stretching(x,profiles_output.profiles['te(keV)'],rhotop,Tetop_keV,xp_old, label = 'Te', roa = xroa, print_msgs = print_msgs)
 
-    pos = np.argmin(np.abs(x-xp_old))
-    factor_keep = profiles_output.profiles['ni(10^19/m^3)'][pos,:]/profiles.profiles['ne(10^19/m^3)'][pos]
-
-    profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa)
+    # Modify Ti
+    profiles_output.profiles['ti(keV)'][:,0] = scale_profile_by_stretching(x,profiles_output.profiles['ti(keV)'][:,0],rhotop,Titop_keV,xp_old, label = 'Ti', roa = xroa, print_msgs = print_msgs)
+    
+    # Modify ne
+    profiles_output.profiles['ne(10^19/m^3)'] = scale_profile_by_stretching(x,profiles_output.profiles['ne(10^19/m^3)'],rhotop,netop_20*1E1,xp_old, label = 'ne', roa = xroa, print_msgs = print_msgs)
+    
+    # -------------------------------------------------------------
+    # Postprocessing
+    # -------------------------------------------------------------
     
     # Kepp the same ion concentration as before at the top
     for i in range(profiles_output.profiles['ni(10^19/m^3)'].shape[-1]):
-        nitop_20 = netop_20*factor_keep[i]
-        profiles_output.profiles['ni(10^19/m^3)'][:,i] = scale_profile_by_stretching(x,profiles_output.profiles['ni(10^19/m^3)'][:,i],rhotop,nitop_20*1E1,xp_old, label = f'ni{i}', roa = xroa)
+        profiles_output.profiles['ni(10^19/m^3)'][:,i] = profiles_output.profiles['ne(10^19/m^3)'] * nine_orig[:,i]
+    
+    # Make all thermal ions have the same temperature profile
+    profiles_output.makeAllThermalIonsHaveSameTemp()
+    
+    # Keep the same fast ion temperature profile, relative to the thermal ions:
+    for sp in range(len(profiles_output.Species)):
+        if profiles_output.Species[sp]["S"] == "fast":
+            profiles_output.profiles["ti(keV)"][:, sp] = profiles_output.profiles["ti(keV)"][:, 0] * TiTimain_orig[:, sp]
 
-    # ---------------------------------
+    # -------------------------------------------------------------
     # Re-derive
-    # ---------------------------------
+    # -------------------------------------------------------------
 
     profiles_output.derive_quantities(rederiveGeometry=False)
 
     return profiles_output
+
+def preprocess_run_eped(run_namelist, maestro_namelist, cpus, cold_start):
+    
+    cpus_eped = maestro_namelist["maestro"]["eped"]["preprocess_prepare_parameters"]["cpus"]
+
+    run_namelist['cold_start'] = cold_start
+    run_namelist['cpus'] = cpus_eped if cpus_eped is not None else cpus
+    
+    return run_namelist

@@ -4,6 +4,7 @@ import numpy as np
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.opt_tools.optimizers import multivariate_tools
 from mitim_tools.opt_tools.utils import TESTtools
+from mitim_tools.misc_tools import IOtools
 from IPython import embed
 
 def optimize_function(fun, optimization_params = {}, writeTrajectory=False, method = 'scipy_root'):
@@ -14,7 +15,7 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     # Solver options
     # --------------------------------------------------------------------------------------------------------
 
-    num_restarts = optimization_params.get("num_restarts",1)
+    num_restarts = optimization_params.get("num_restarts", 1)
     bounds = fun.bounds_mod
 
     if method == 'scipy_root':
@@ -71,30 +72,64 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
 
     print("\t- Preparing starting points")
 
-    xGuesses = copy.deepcopy(fun.xGuesses)
+    # Guesses coming from the training set
+    xGuesses_train = copy.deepcopy(fun.xGuesses)
 
-    num_random = int(np.ceil(num_restarts/2)) # Half of the restarts will be random, the other half will be the best guesses
+    # If num_restarts is None, just use the available guesses (no restarts policy)
+    if num_restarts is None:
+        xGuesses = xGuesses_train
+        print(f"\t\t- Running for {len(xGuesses)} starting points")
+    else:
+        num_restarts = max(int(num_restarts), 0)
 
-    # Take the best num_restarts-num_random points
-    xGuesses = xGuesses[:num_restarts-num_random, :] if xGuesses.shape[0] > num_restarts-num_random else xGuesses
-    
-    # Add random points (to avoid local minima and getting stuck as much as possible) 
-    cases_to_choose_from = fun.xGuesses.shape[0]-xGuesses.shape[0]
-    random_choice = xGuesses.shape[0]+np.random.choice(cases_to_choose_from, np.min([cases_to_choose_from,num_random]), replace=False)
-    xGuesses = torch.cat((xGuesses, fun.xGuesses[random_choice, :]), axis=0) 
+        # Split restarts between best guesses and random picks from the remaining training set
+        num_random_target = int(np.ceil(num_restarts / 2))
+        num_best_target = int(num_restarts - num_random_target)
 
-    print(f"\t\t- From training set, taking the best {num_restarts-num_random} points and adding {num_random} random points (ordered positions {random_choice})")
+        num_train = int(xGuesses_train.shape[0])
+        num_best = min(num_train, num_best_target)
+        xGuesses_best = xGuesses_train[:num_best, :] if num_best > 0 else xGuesses_train[:0, :]
 
-    print(f'\t\t- Running for {len(xGuesses)} starting points , as a an augmented optimization problem')
+        # Add random points (to avoid local minima and getting stuck as much as possible)
+        available_random = max(0, num_train - num_best)
+        num_random = min(num_random_target, available_random)
+
+        if num_random > 0:
+            choice_local = np.random.choice(available_random, size=num_random, replace=False)
+            random_choice = num_best + choice_local
+            xGuesses = torch.cat((xGuesses_best, xGuesses_train[random_choice, :]), axis=0)
+            print(
+                f"\t\t- From training set, taking the best {num_best} points and adding {num_random} random points (ordered positions {random_choice})"
+            )
+        else:
+            xGuesses = xGuesses_best
+            print(f"\t\t- From training set, taking the best {num_best} points and adding 0 random points")
+
+        # If we didn't have enough points to guess from (either best or random), add random points around the best point
+        xGuesses = _add_random_points_if_missing(xGuesses, num_restarts, bounds)
+
+        print(f"\t\t- Running for {len(xGuesses)} starting points , as a an augmented optimization problem")
 
     # --------------------------------------------------------------------------------------------------------
     # Solver
     # --------------------------------------------------------------------------------------------------------
 
+    # Test speed right here too
+    ms_inference = TESTtools.testInferenceTime(fun.evaluators['GP'],
+                                n_points_list = [len(xGuesses)],
+                                additional_calls={
+                                    'Residual evaluator used for optimization':flux_residual_evaluator
+                                    })
     print("************************************************************************************************")
-    x_res, y_history, x_history, acq_evaluated = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
+    with IOtools.timer() as t:
+        x_res, y_history, x_history, acq_evaluated, *_ = solver_fun(flux_residual_evaluator,xGuesses,solver_options=solver_options,bounds=bounds)
     print("************************************************************************************************")
 
+    print('\n[MITIM: Optimization performance]')
+    print(f'\t- Optimization required {y_history.shape[0]} evaluations of the residual function ({y_history.shape[1]} parallel points)')
+    seconds_estimate = y_history.shape[0] * ms_inference / 1000
+    print(f'\t- Expected time based on inference time ({ms_inference} ms) of residual evaluator: {seconds_estimate:.2f} seconds')
+    print(f'\t- Hence, addtional overhead (steps updates, analysis, printing): {t.dt-seconds_estimate:.2f} seconds ({(t.dt-seconds_estimate)/seconds_estimate*100:.1f}%)\n')
     # --------------------------------------------------------------------------------------------------------
     # Post-process
     # --------------------------------------------------------------------------------------------------------
@@ -127,3 +162,42 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
     z_opt = torch.ones(x_opt.shape[0]).to(fun.stepSettings["dfT"]) * numZ
 
     return x_opt, y_opt_residual, z_opt, acq_evaluated
+
+def _add_random_points_if_missing(xGuesses, num_restarts, bounds):
+    """
+    Top-up starting points with random samples around the best point.
+    Only acts when len(xGuesses) < num_restarts.
+    """
+
+    if num_restarts is None:
+        return xGuesses
+    num_restarts = int(num_restarts)
+    if xGuesses.shape[0] >= num_restarts:
+        return xGuesses
+
+    missing = int(num_restarts - xGuesses.shape[0])
+    if missing <= 0:
+        return xGuesses
+
+    variation = 0.5
+    
+    # Choose center point
+    if xGuesses.nelement() > 0:
+        center = xGuesses[0, :]
+    else:
+        center = 0.5 * (bounds[0, :] + bounds[1, :])
+
+    # Draw box around center and clamp to bounds
+    half_width = 0.5 * variation * (bounds[1, :] - bounds[0, :])
+    low = torch.max(bounds[0, :], center - half_width)
+    high = torch.min(bounds[1, :], center + half_width)
+
+    # Use numpy RNG since optimize_function seeds numpy
+    low_np = low.cpu().numpy()
+    high_np = high.cpu().numpy()
+    span_np = np.maximum(high_np - low_np, 0.0)
+    u = np.random.rand(missing, bounds.shape[-1])
+    extra_np = low_np[None, :] + u * span_np[None, :]
+    extra = torch.from_numpy(extra_np).to(device=xGuesses.device, dtype=xGuesses.dtype)
+
+    return torch.cat((xGuesses, extra), axis=0)

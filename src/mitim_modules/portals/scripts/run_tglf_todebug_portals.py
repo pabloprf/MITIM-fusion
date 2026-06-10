@@ -11,7 +11,7 @@ to use as base case, and scan parameters to see how TGLF behaves (understand if 
 
 Notes:
 	- wf runs scan with waveform too (slightly more expensive, as it will require 1 extra sim per run, but cheaper)
-    - drives will simply run the drives analysis, ignoring the params option
+    - "--drives" will simply run the drives analysis, ignoring the params option
 """
 
 # --- Inputs
@@ -60,7 +60,7 @@ if not drives:
             runWaveForms=wf,
         )
 
-        tglf.readScan(label=f"scan_{param}", variable=param, positionIon = ion)
+        tglf.readScan(label=f"scan_{param}", variable=param, ion_OI_position_in_total_padded_list=ion)
         labels.append(f"scan_{param}")
 
     # --- Extra TGLF plotting
@@ -80,3 +80,5 @@ else:
     )
 
     tglf.plotScanTurbulenceDrives(label="turb")
+
+tglf.fn.show()

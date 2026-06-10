@@ -1,3 +1,4 @@
+from tkinter import font
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
@@ -22,8 +23,11 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     # -----------------------------------------------------------------------------
     if plotAll:
         for i, g in enumerate(geqdsks):
-            _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - ")
+            _ = g.plot(fn=fn, extraLabel=f"{labelsGs[i]} - " if len(labelsGs) > i else "")
 
+    if len(geqdsks) < 2:
+        return None, fn
+    
     # -----------------------------------------------------------------------------
     # Compare in same plot - Surfaces
     # -----------------------------------------------------------------------------
@@ -61,7 +65,6 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
     # fig.add_subplot(grid[1,3])]
 
     cols = GRAPHICStools.listColors()
-
     for i, g in enumerate(geqdsks):
         g.plotFS(axs=[ax1, ax2, ax3, ax4], color=cols[i], label=f"{labelsGs[i]} ")
         g.plotPlasma(
@@ -77,7 +80,7 @@ def compareGeqdsk(geqdsks, fn=None, extraLabel="", plotAll=True, labelsGs=None):
 # Plot of GEQ class
 # -----------------------------------------------------------------------------
 
-def plot(self, fn=None, extraLabel=""):
+def plot(self, fn=None, extraLabel="", tab_color=None):
     if fn is None:
         wasProvided = False
 
@@ -94,9 +97,43 @@ def plot(self, fn=None, extraLabel=""):
     # self.g.plot()
 
     # -----------------------------------------------------------------------------
+    # Parameterization
+    # -----------------------------------------------------------------------------
+    fig = self.fn.add_figure(label=extraLabel + "Shape", tab_color=tab_color)
+    grid = plt.GridSpec(nrows=4, ncols=3, hspace=0.5, wspace=0.3)
+    ax1 = fig.add_subplot(grid[:3, 0])
+    ax5 = fig.add_subplot(grid[:3, 1])
+    ax6 = fig.add_subplot(grid[:3, 2])
+    
+    
+    ax2 = fig.add_subplot(grid[3, 0])
+    ax3 = fig.add_subplot(grid[3, 1])
+    ax4 = fig.add_subplot(grid[3, 2])
+
+    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5 , ax6])
+
+    # -----------------------------------------------------------------------------
+    # Plasma
+    # -----------------------------------------------------------------------------
+    fig = self.fn.add_figure(label=extraLabel + "Plasma", tab_color=tab_color)
+    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
+
+    ax_plasma = [
+        fig.add_subplot(grid[0, 0]),
+        fig.add_subplot(grid[1, 0]),
+        fig.add_subplot(grid[0, 1]),
+        fig.add_subplot(grid[1, 1]),
+        fig.add_subplot(grid[0, 2]),
+        fig.add_subplot(grid[1, 2]),
+        fig.add_subplot(grid[0, 3]),
+        fig.add_subplot(grid[1, 3]),
+    ]
+    ax_plasma = self.plotPlasma(axs=ax_plasma) #, legendYN=not wasProvided)
+
+    # -----------------------------------------------------------------------------
     # Flux
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Surfaces")
+    fig = self.fn.add_figure(label=extraLabel + "Surfaces", tab_color=tab_color)
     grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[:, 0])
     ax2 = fig.add_subplot(grid[:, 1])
@@ -108,7 +145,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Currents
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Currents")
+    fig = self.fn.add_figure(label=extraLabel + "Currents", tab_color=tab_color)
     grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[2, 0])
     ax2 = fig.add_subplot(grid[:2, 0])
@@ -128,7 +165,7 @@ def plot(self, fn=None, extraLabel=""):
     # -----------------------------------------------------------------------------
     # Fields
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Fields")
+    fig = self.fn.add_figure(label=extraLabel + "Fields", tab_color=tab_color)
     grid = plt.GridSpec(3, 5, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[2, 0])
     ax2 = fig.add_subplot(grid[:2, 0])
@@ -141,14 +178,12 @@ def plot(self, fn=None, extraLabel=""):
     ax9 = fig.add_subplot(grid[2, 4])
     ax10 = fig.add_subplot(grid[:2, 4])
 
-    plotFields(self,
-        axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1]
-    )
+    plotFields(self,axs=[ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10], zlims_thr=[-1, 1])
 
     # -----------------------------------------------------------------------------
     # Checks
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "GS Quality")
+    fig = self.fn.add_figure(label=extraLabel + "GS Quality", tab_color=tab_color)
     grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[0, 0])
     ax1E = ax1.twinx()
@@ -160,40 +195,9 @@ def plot(self, fn=None, extraLabel=""):
     plotChecks(self,axs=[ax1, ax1E, ax2, ax3, ax4, ax5])
 
     # -----------------------------------------------------------------------------
-    # Parameterization
-    # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Parameteriz.")
-    grid = plt.GridSpec(3, 4, hspace=0.3, wspace=0.3)
-    ax1 = fig.add_subplot(grid[:, 0])
-    ax2 = fig.add_subplot(grid[0, 1])
-    ax3 = fig.add_subplot(grid[1, 1])
-    ax4 = fig.add_subplot(grid[2, 1])
-    ax5 = fig.add_subplot(grid[:, 2])
-
-    plotParameterization(self,axs=[ax1, ax2, ax3, ax4, ax5])
-
-    # -----------------------------------------------------------------------------
-    # Plasma
-    # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Plasma")
-    grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
-
-    ax_plasma = [
-        fig.add_subplot(grid[0, 0]),
-        fig.add_subplot(grid[1, 0]),
-        fig.add_subplot(grid[0, 1]),
-        fig.add_subplot(grid[1, 1]),
-        fig.add_subplot(grid[0, 2]),
-        fig.add_subplot(grid[1, 2]),
-        fig.add_subplot(grid[0, 3]),
-        fig.add_subplot(grid[1, 3]),
-    ]
-    ax_plasma = self.plotPlasma(axs=ax_plasma, legendYN=not wasProvided)
-
-    # -----------------------------------------------------------------------------
     # Geometry
     # -----------------------------------------------------------------------------
-    fig = self.fn.add_figure(label=extraLabel + "Geometry")
+    fig = self.fn.add_figure(label=extraLabel + "Geometry", tab_color=tab_color)
     grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
     ax1 = fig.add_subplot(grid[0, 0])
     ax2 = fig.add_subplot(grid[0, 1])
@@ -232,7 +236,7 @@ def plotFS(self, axs=None, color="b", label=""):
     ax = axs[2]
     x = self.psi_pol_norm
     y = self.rho_tor
-    ax.plot(x, y, lw=2, ls="-", c=color, label=label)
+    ax.plot(x, y, lw=2, c=color, label=label)
     ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
 
     ax.set_xlabel("$\\Psi_n$ (PSI_NORM)")
@@ -243,7 +247,7 @@ def plotFS(self, axs=None, color="b", label=""):
     ax = axs[3]
     x = self.rho_tor
     y = self.rho_pol
-    ax.plot(x, y, lw=2, ls="-", c=color)
+    ax.plot(x, y, lw=2, c=color)
     ax.plot([0, 1], [0, 1], ls="--", c="k", lw=0.5)
 
     ax.set_ylabel("$\\sqrt{\\Psi_n}$ (RHOp)")
@@ -259,7 +263,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[0]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_ylabel("FSA $\\langle J\\rangle$ ($MA/m^2$)")
     ax.set_xlim([0, 1])
@@ -276,7 +280,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[2]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -291,7 +295,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[4]
     x = self.psi_pol_norm
     y = self.Jt
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -306,7 +310,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[6]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -321,7 +325,7 @@ def plotCurrents(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[8]
     x = self.psi_pol_norm
     y = np.zeros(x.shape)
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -341,7 +345,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[0]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Br")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_ylabel("FSA $\\langle B\\rangle$ ($T$)")
     ax.set_xlim([0, 1])
@@ -358,7 +362,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[2]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bz")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -373,7 +377,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[4]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bt")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [y.min(), y.max()]
@@ -389,7 +393,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[6]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g.surfAvg("Bp")
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     zlims = [np.min([zlims_thr[0], y.min()]), np.max([zlims_thr[1], y.max()])]
@@ -404,7 +408,7 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     ax = axs[8]
     x = self.psi_pol_norm
     y = np.zeros(x.shape) # self.g["fluxSurfaces"]["avg"]["Bp**2"]
-    ax.plot(x, y, lw=2, ls="-", c="r")
+    ax.plot(x, y, lw=2, c="r")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("$\\langle B_{\\theta}^2\\rangle$")
@@ -412,15 +416,15 @@ def plotFields(self, axs=None, zlims_thr=[-1, 1]):
     #ax = axs[9]
     #x = self.g["fluxSurfaces"]["midplane"]["R"]
     #y = self.g["fluxSurfaces"]["midplane"]["Bt"]
-    #ax.plot(x, y, lw=2, ls="-", c="r", label="$B_{t}$")
+    #ax.plot(x, y, lw=2, c="r", label="$B_{t}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Bp"]
-    #ax.plot(x, y, lw=2, ls="-", c="b", label="$B_{p}$")
+    #ax.plot(x, y, lw=2, c="b", label="$B_{p}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Bz"]
-    #ax.plot(x, y, lw=2, ls="-", c="g", label="$B_{z}$")
+    #ax.plot(x, y, lw=2, c="g", label="$B_{z}$")
     #y = self.g["fluxSurfaces"]["midplane"]["Br"]
-    #ax.plot(x, y, lw=2, ls="-", c="m", label="$B_{r}$")
-    #y = self.g["fluxSurfaces"]["geo"]["bunit"]
-    #ax.plot(x, y, lw=2, ls="-", c="c", label="$B_{unit}$")
+    #ax.plot(x, y, lw=2, c="m", label="$B_{r}$")
+    #y = self.g["fluxSurfaces"]["analytic"]["bunit"]
+    #ax.plot(x, y, lw=2, c="c", label="$B_{unit}$")
     #ax.set_xlabel("$R$ LF midplane")
     #ax.set_ylabel("$B$ (T)")
     #ax.legend()
@@ -433,11 +437,11 @@ def plotChecks(self, axs=None):
     ax = axs[0]
     x = self.psi_pol_norm
     y1 = self.Jt
-    ax.plot(x, np.abs(y1), lw=2, ls="-", c="b", label="$\\langle Jt\\rangle$")
+    ax.plot(x, np.abs(y1), lw=2, c="b", label="$\\langle Jt\\rangle$")
     zmax = y1.max()
     zmin = y1.min()
     y2 = self.Jt_fb
-    ax.plot(x, np.abs(y2), lw=2, ls="-", c="g", label="$\\langle Jt_{FB}\\rangle$")
+    ax.plot(x, np.abs(y2), lw=2, c="g", label="$\\langle Jt_{FB}\\rangle$")
 
     y3 = self.Jerror
     ax.plot(
@@ -465,9 +469,9 @@ def plotChecks(self, axs=None):
 
     ax = axs[2]
     x = self.psi_pol_norm
-    y1 = self.g.raw["ffprim"]
+    y1 = self.g.derived["ffprim"]
     ax.plot(x, y1, lw=2, ls="-", c="r", label="$FF'$")
-    y2 = self.g.raw["pprime"] * (4 * np.pi * 1e-7)
+    y2 = self.g.derived["pprime"] * (4 * np.pi * 1e-7)
     ax.plot(x, y2, lw=2, ls="-", c="b", label="$p'*\\mu_0$")
 
     ax.set_ylabel("")
@@ -513,7 +517,7 @@ def plotChecks(self, axs=None):
 def plotParameterization(self, axs=None):
     if axs is None:
         plt.ion()
-        fig, axs = plt.subplots(ncols=5)
+        fig, axs = plt.subplots(ncols=6)
 
     ax = axs[0]
     cs, csA = self.plotFluxSurfaces(
@@ -521,16 +525,16 @@ def plotParameterization(self, axs=None):
     )
     # Boundary, axis and limiter
     ax.plot(self.Rb, self.Yb, lw=1, c="r")
-    ax.plot(self.g.raw["rmaxis"], self.g.raw["zmaxis"], "+", markersize=10, c="r")
+    ax.plot(self.g.derived["rmaxis"], self.g.derived["zmaxis"], "+", markersize=10, c="r")
     ax.plot([self.Rmag], [self.Zmag], "o", markersize=5, c="m")
     ax.plot([self.Rmajor], [self.Zmag], "+", markersize=10, c="k")
-    if 'rlim' in self.g.raw and 'zlim' in self.g.raw:
-        ax.plot(self.g.raw["rlim"], self.g.raw["zlim"], lw=1, c="k")
+    if 'rlim' in self.g.derived and 'zlim' in self.g.derived:
+        ax.plot(self.g.derived["rlim"], self.g.derived["zlim"], lw=1, c="k")
 
         import matplotlib
 
         path = matplotlib.path.Path(
-            np.transpose(np.array([self.g.raw["rlim"], self.g.raw["zlim"]]))
+            np.transpose(np.array([self.g.derived["rlim"], self.g.derived["zlim"]]))
         )
         patch = matplotlib.patches.PathPatch(path, facecolor="none")
         ax.add_patch(patch)
@@ -545,162 +549,336 @@ def plotParameterization(self, axs=None):
     ax.set_title("Poloidal Flux")
     ax.set_xlabel("R (m)")
     ax.set_ylabel("Z (m)")
+    GRAPHICStools.addDenseAxis(ax)
+    
+    typemarker = "-o"
+    ms = 2
 
     ax = axs[1]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["kappa"].copy()
-    ax.plot(x, y, label="$\\kappa$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\kappa$")
     y = self.g.derived["miller_geo"]["kappa_l"].copy()
-    ax.plot(x, y, ls="--", label="$\\kappa_L$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\kappa_L$")
     y = self.g.derived["miller_geo"]["kappa_u"].copy()
-    ax.plot(x, y, ls="--", label="$\\kappa_U$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\kappa_U$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Elongation $\\kappa$")
-    ax.legend()
+    ax.legend(loc="best")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
     ax = axs[2]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["delta"].copy()
-    ax.plot(x, y, label="$\\delta$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\delta$")
     y = self.g.derived["miller_geo"]["delta_l"].copy()
-    ax.plot(x, y, ls="--", label="$\\delta_L$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\delta_L$")
     y = self.g.derived["miller_geo"]["delta_u"].copy()
-    ax.plot(x, y, ls="--", label="$\\delta_U$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\delta_U$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Triangularity $\\delta$")
-    ax.legend()
+    ax.legend(loc="best")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
     ax = axs[3]
     x = self.psi_pol_norm
     y = self.g.derived["miller_geo"]["zeta"].copy()
-    ax.plot(x, y, label="$\\zeta$")
+    ax.plot(x, y, typemarker, lw=2.0, markersize=ms,label="$\\zeta$")
     y = self.g.derived["miller_geo"]["zeta_li"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{IL}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{IL}$")
     y = self.g.derived["miller_geo"]["zeta_ui"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{IU}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{IU}$")
     y = self.g.derived["miller_geo"]["zeta_lo"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{OL}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{OL}$")
     y = self.g.derived["miller_geo"]["zeta_uo"].copy()
-    ax.plot(x, y, ls="--", label="$\\zeta_{OU}$")
+    ax.plot(x, y, typemarker, markersize=ms,label="$\\zeta_{OU}$")
     ax.set_xlabel("$\\Psi_n$")
     ax.set_xlim([0, 1])
     ax.set_ylabel("Squareness $\\zeta$")
-    ax.legend()
+    ax.legend(loc="lower left")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.axvline(x=0.995, ls='--', lw=0.5, c='k')
 
-    ax = axs[4]
+    ax = axs[4]    
+    plotFluxSurfaces(
+        self,
+        ax=ax,
+        fluxes=[],
+        plot1=True,
+        rhoPol=True,
+        sqrt=False,
+        color="b",
+        lwB=0.5,
+        label='LCFS'
+    )
+    # -- for legend (proxy handle only: the psi_N=1 contour itself is drawn by
+    # plotFluxSurfaces above; plotting real data here overlaid the 0.995 surface
+    # under a psi_N=1 label)
+    ax.plot([], [], lw=0.5, ls='-', c='b', label="Contour: $\\psi_N=1$")
+    # ----
+    ax.plot(
+        self.Rb,
+        self.Yb,
+        lw=1,ls='-',c='r',label="Boundary"
+        )
+   
+    ax.plot(
+        self.geometric_parameters["actual"]["psin995"]["R"],
+        self.geometric_parameters["actual"]["psin995"]["Z"],
+        lw=2,ls='-',c='g',label="Tracer: $\\psi_N=0.995$"
+        )
+    ax.plot(
+        self.geometric_parameters["mxh"]["psin995"]["R"],
+        self.geometric_parameters["mxh"]["psin995"]["Z"],
+        lw=2,ls='--',c='m',label="MXH: $\\psi_N=0.995$"
+        )
+    ax.plot(
+        self.geometric_parameters["turnbull"]["psin995"]["R"],
+        self.geometric_parameters["turnbull"]["psin995"]["Z"],
+        lw=2,ls='--',c='c',label="T-M: $\\psi_N=0.995$"
+        )
+    ax.plot(
+        self.geometric_parameters["miller"]["psin995"]["R"],
+        self.geometric_parameters["miller"]["psin995"]["Z"],
+        lw=2,ls='--',c='pink',label="Miller: $\\psi_N=0.995$"
+        )
+    ax.plot(
+        self.geometric_parameters["analytic"]["psin995"]["R"],
+        self.geometric_parameters["analytic"]["psin995"]["Z"],
+        lw=2,ls='--',c='y',label="T-M (analytic): $\\psi_N=0.995$"
+        )
+    ax.set_xlabel("R (m)")
+    ax.set_ylabel("Z (m)")
+    ax.legend()
+    ax.set_title("99.5% Flux Surface")
+    ax.set_aspect("equal")
+    GRAPHICStools.addDenseAxis(ax)
+
+    ax = axs[5]
+    
+    fontsize = 10
+    toppos = 12.0
+    distance = 0.75
+    
+    cont = 0
     ax.text(
         0.0,
-        11.0,
-        "Rmajor = {0:.3f}m, Rmag = {1:.3f}m (Zmag = {2:.3f}m)".format(
-            self.Rmajor, self.Rmag, self.Zmag
-        ),
+        toppos-distance*cont,
+        f"$R_{{geo}}$ = {self.Rmajor:.3f} m,  $R_{{mag}}$ = {self.Rmag:.3f} m ($Z_{{mag}}$ = {self.Zmag:.3f} m)",
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        10.0,
-        f"a = {self.a:.3f}m, eps = {self.eps:.3f}",
+        toppos-distance*cont,
+        f"a = {self.a:.3f} m, $a/R$ = {self.eps:.3f} ($R/a$ = {1/self.eps:.3f})",
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1.5
     ax.text(
         0.0,
-        9.0,
-        "kappa = {0:.3f} (kU = {1:.3f}, kL = {2:.3f})".format(
-            self.kappa, self.kappaU, self.kappaL
-        ),
+        toppos-distance*cont,
+        f'---- Analytical Formulas (Turnbull-Miller) ------------\n\n'
+        f'$\\kappa_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["kappa"]:.3f}'
+        f'    (upper = {self.geometric_parameters["analytic"]["separatrix"]["kappaU"]:.3f}, '
+        f'lower = {self.geometric_parameters["analytic"]["separatrix"]["kappaL"]:.3f})',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1 + 1
     ax.text(
         0.0,
-        8.0,
-        f"    kappa95 = {self.kappa95:.3f},  kappa995 = {self.kappa995:.3f}",
+        toppos-distance*cont,
+        f'$\\delta_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["delta"]:.3f} '
+        f'   (upper = {self.geometric_parameters["analytic"]["separatrix"]["deltaU"]:.3f}, '
+        f'lower = {self.geometric_parameters["analytic"]["separatrix"]["deltaL"]:.3f})',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        7.0,
-        f"    kappa_areal = {self.kappa_a:.3f}",
+        toppos-distance*cont,
+        f'$\\zeta_{{sep}}$ = {self.geometric_parameters["analytic"]["separatrix"]["zeta"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        6.0,
-        "delta = {0:.3f} (dU = {1:.3f}, dL = {2:.3f})".format(
-            self.delta, self.deltaU, self.deltaL
-        ),
+        toppos-distance*cont,
+        f'$\\kappa_{{95}}$ = {self.geometric_parameters["analytic"]["psin95"]["kappa"]:.3f},  '
+        f'$\\delta_{{95}}$ = {self.geometric_parameters["analytic"]["psin95"]["delta"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        5.0,
-        f"    delta95 = {self.delta95:.3f},  delta995 = {self.delta995:.3f}",
+        toppos-distance*cont,
+        f'MEGPY tracer:  $\\kappa_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic"]["psin995"]["delta"]:.3f}',
         color="k",
-        fontsize=10,
-        fontweight="normal",
+        fontsize=fontsize,
+        fontweight="bold",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
         rotation=0,
     )
+    cont += 1
     ax.text(
         0.0,
-        4.0,
-        f"zeta = {self.zeta:.3f}",
+        toppos-distance*cont,
+        f'Interpolation:   $\\kappa_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"]:.3f},  '
+       f'$\\delta_{{995}}$ = {self.geometric_parameters["analytic_interpolation"]["psin995"]["delta"]:.3f}',
         color="k",
-        fontsize=10,
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'---- MEGPY best-fit with MXH -------',
+        color="k",
+        fontsize=fontsize,
         fontweight="normal",
         horizontalalignment="left",
-        verticalalignment="bottom",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.0
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["delta"]:.3f} '
+        f'$\\zeta_{{995}}$ = {self.geometric_parameters["mxh"]["psin995"]["zeta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'---- MEGPY best-fit with Turnbull-Miller -------',
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["delta"]:.3f}, '
+        f'$\\zeta_{{995}}$ = {self.geometric_parameters["turnbull"]["psin995"]["zeta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'---- MEGPY best-fit with Miller -------',
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'$\\kappa_{{995}}$ = {self.geometric_parameters["miller"]["psin995"]["kappa"]:.3f}, '
+        f'$\\delta_{{995}}$ = {self.geometric_parameters["miller"]["psin995"]["delta"]:.3f}',
+        color="k",
+        fontsize=fontsize,
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="top",
+        rotation=0,
+    )
+    cont += 1.5
+    ax.text(
+        0.0,
+        toppos-distance*cont,
+        f'---- Others ------------\n\n'
+        f"$\\kappa_{{areal}}$ = {self.kappa_a:.3f}",
+        color="k",
+        fontsize=fontsize,
+        fontweight="normal",
+        horizontalalignment="left",
+        verticalalignment="top",
         rotation=0,
     )
 
     ax.set_ylim([0, 12])
-    ax.set_xlim([-1, 1])
+    ax.set_xlim([0, 1])
 
     ax.set_axis_off()
 
-def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
+def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
     if axs is None:
         plt.ion()
         fig, axs = plt.subplots(ncols=7)
 
     ax_plasma = axs
+    
+    xcoord = self.rho_tor
+    xlabel = "$\\rho_{tor}$"#"$\\sqrt{\\phi_n}$ (RHO)"
 
     ax = ax_plasma[0]
     ax.plot(
         self.rho_tor,
-        self.g.raw["pres"] * 1e-6,
+        self.g.derived["pres"] * 1e-6,
         "-s",
         c=color,
         lw=2,
@@ -708,40 +886,48 @@ def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
         label="geqdsk p",
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
-    ax.set_ylim(bottom=0)
-    ax.set_ylabel("pressure (MPa)")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Pressure (MPa)")
+    ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Plasma Pressure")
 
     ax = ax_plasma[1]
     ax.plot(
         self.rho_tor,
-        -self.g.raw["pprime"] * 1e-6,
+        -self.g.derived["pprime"] * 1e-6,
         c=color,
         lw=2,
-        ls="-",
+        markersize=3,
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("pressure gradient -p' (MPa/[])")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+
 
     ax = ax_plasma[2]
-    ax.plot(self.rho_tor, self.g.raw["fpol"], c=color, lw=2, ls="-")
+    ax.plot(self.rho_tor, self.g.derived["fpol"], c=color, lw=2, ls="-")
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("$F = RB_{\\phi}$ (T*m)")
+    # ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Toroidal Field Function")
 
     ax = ax_plasma[3]
-    ax.plot(self.rho_tor, self.g.raw["ffprim"], c=color, lw=2, ls="-")
+    ax.plot(self.rho_tor, self.g.derived["ffprim"], c=color, lw=2, ls="-")
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("FF' (T*m/[])")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
 
     ax = ax_plasma[4]
     ax.plot(
         self.rho_tor,
-        np.abs(self.g.raw["qpsi"]),
+        np.abs(self.g.derived["qpsi"]),
         "-s",
         c=color,
         lw=2,
@@ -762,24 +948,44 @@ def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
         c=color,
         lw=2,
         markersize=3,
-        label=label + "geqdsk Jt",
+        label=label + "$J_{tor}$",
     )
     ax.plot(
-        self.rho_tor,
+        xcoord,
         np.abs(self.Jt_fb),
         "--o",
         c=color,
-        lw=2,
-        markersize=3,
-        label=label + "geqdsk Jt(fb)",
+        lw=1,
+        markersize=1,
+        label=label + "$J_{tor}$ force-balance",
     )
     ax.set_xlim([0, 1])
-    ax.set_xlabel("$\\sqrt{\\phi_n}$ (RHO)")
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("FSA toroidal current density ($MA/m^2$)")
     ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_title("Toroidal Current Density")
 
     if legendYN:
         ax.legend()
+
+    ax = ax_plasma[5]
+    ax.plot(
+        xcoord,
+        np.abs(self.g.derived["qpsi"]),
+        "-s",
+        c=color,
+        lw=2,
+        markersize=3,
+        label=label + "geqdsk q",
+    )
+    ax.set_xlim([0, 1])
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("safety factor q")
+    ax.axhline(y=0.0, ls="--", lw=0.5, c="k")
+    ax.axhline(y=1.0, ls="--", lw=0.5, c="k")
+    GRAPHICStools.addDenseAxis(ax)
+
 
     #ax = ax_plasma[6]
     #ax.plot(
@@ -833,7 +1039,7 @@ def plotGeometry(self, axs=None, color="r"):
     y = np.zeros(x.shape)
     ax.plot(
         x, # self.rho_tor,
-        y, # self.g["fluxSurfaces"]["geo"]["surfArea"],
+        y, # self.g["fluxSurfaces"]["analytic"]["surfArea"],
         "-",
         c=color,
         lw=2,
@@ -848,7 +1054,7 @@ def plotGeometry(self, axs=None, color="r"):
     y = np.zeros(x.shape)
     ax.plot(
         x, # self.rho_tor,
-        y, # self.g["fluxSurfaces"]["geo"]["vol"],
+        y, # self.g["fluxSurfaces"]["analytic"]["vol"],
         "-",
         c=color,
         lw=2,
@@ -971,14 +1177,10 @@ def plotSurfaces(R, Z, F, fluxes=[1.0], ax=None, color="b", alpha=1.0, lw=1, lwB
     [Rg, Yg] = np.meshgrid(R, Z)
 
     if plot1:
-        csA = ax.contour(
-            Rg, Yg, F, 1000, levels=[1.0], colors=color, alpha=alpha, linewidths=lwB
-        )
+        csA = ax.contour(Rg, Yg, F, 1000, levels=[1.0], colors=color, alpha=alpha, linewidths=lwB)
     else:
         csA = None
-    cs = ax.contour(
-        Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw, label = label
-    )
+    cs = ax.contour(Rg, Yg, F, 1000, levels=fluxes, colors=color, alpha=alpha, linewidths=lw, label = label)
 
     return cs, csA
 

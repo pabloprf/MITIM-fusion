@@ -2,7 +2,6 @@
 
 import os
 import sys
-import sphinx_rtd_theme
 import sphinxcontrib.images
 
 # Add your project directory to the sys.path
@@ -16,7 +15,7 @@ from mitim_tools import __version__
 project = "MITIM"
 copyright = "2018, Pablo RF"
 author = "Pablo Rodriguez-Fernandez"
-release = __version__  # The short X.Y version
+version = __version__  # The short X.Y version
 release = __version__  # The full version, including alpha/beta/rc tags
 html_logo = "mitim_logo.png"
 
@@ -56,11 +55,9 @@ pygments_style = "sphinx"
 
 # -- Options for HTML output
 html_theme = "sphinx_rtd_theme"
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 html_theme_options = {
     "logo_only": False,
-    "display_version": True,
     "prev_next_buttons_location": None,
     "style_external_links": True,
     "vcs_pageview_mode": "",

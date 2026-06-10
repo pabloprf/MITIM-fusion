@@ -1,8 +1,8 @@
 TGLF
 ====
 
-**MITIM** can be used to run the TGLF model, interpret results, plot revelant quantities and perform scans and transport analyses.
-This framework does not provide linceses or support to run TGLF, therefore, please see :ref:`Installation` for information on how to get TGLF working and how to configure your setup.
+**MITIM** can be used to run the TGLF model, interpret results, plot relevant quantities and perform scans and transport analyses.
+This framework does not provide licenses or support to run TGLF, therefore, please see :ref:`Installation` for information on how to get TGLF working and how to configure your setup.
 
 Once setup has been successful, the following regression test should run smoothly:
 
@@ -121,6 +121,11 @@ As a result, a TGLF notebook with different tabs will be opened with all relevan
 Run TGLF from TRANSP results file
 ---------------------------------
 
+.. deprecated:: 5.0
+
+   The ``prep_using_tgyro()`` method used in this workflow is deprecated and will be removed in a future release.
+   Consider preparing an ``input.gacode`` file separately and using the standard ``prep()`` workflow described in the previous section.
+
 If instead of an input.gacode, you have a TRANSP .CDF file (``cdf_file``) and want to run TGLF at a specific time (``time``) with an +- averaging time window (``avTime``), you must initialize the TGLF class as follows:
 
 .. code-block:: python
@@ -144,7 +149,7 @@ Similarly as in the previous section, you need to run the ``prep()`` command, bu
 
 .. note::
 
-    The ``.prep()`` method, when applied to a case that starts from a TRANSP .CDF file, now performs two extra operations:
+    The ``.prep_using_tgyro()`` method performs two extra operations:
 
     - **TRXPL** (https://w3.pppl.gov/~hammett/work/GS2/docs/trxpl.txt) to generate *plasmastate.cdf* and *.geq* files for a specific time-slice from the TRANSP outputs.
 
@@ -210,7 +215,7 @@ Run 1D scans of TGLF input parameter
 
 *Under Development*
 
-*(In the meantime, please checkout* `tutorials/TGLF_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/PORTALS_tutorial.py>`_ *)*
+*(In the meantime, please checkout* `tutorials/TGLF_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/TGLF_tutorial.py>`_ *)*
 
 
 TGLF aliases

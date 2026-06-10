@@ -16,7 +16,7 @@ torch.set_num_threads(8)
 
 folder.mkdir(parents=True, exist_ok=True)
 
-m = run_maestro.run_maestro_local(*run_maestro.parse_maestro_nml(template), 
+m = run_maestro.run_maestro_local(template, 
                                   folder=folder, 
                                   terminal_outputs = True, 
                                   force_cold_start=cold_start,

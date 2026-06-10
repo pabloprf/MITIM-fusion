@@ -20,6 +20,7 @@ from mitim_tools.gacode_tools.utils import (
     GACODEdefaults,
     GACODEplotting,
     GACODErun,
+    GACODEinprocess,
 )
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -29,47 +30,41 @@ from mitim_tools.misc_tools.PLASMAtools import md_u
 
 MAX_TGLF_SPECIES = 6
 
-class TGLF(SIMtools.mitim_simulation):
+class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
+    """
+    TGLF wrapper.  Uses multiple inheritance to combine two engines:
+
+    * ``SIMtools.mitim_simulation`` — the standard subprocess / SLURM engine
+      (the file-based ``prep`` / ``_run_prepare`` / ``_run`` / ``read``).
+    * ``GACODEinprocess.TGLFInProcess`` — the pure in-process (ctypes)
+      mixin providing ``prep_inprocess`` / ``_run_prepare_inprocess`` /
+      ``_run_inprocess`` / ``read_inprocess``.
+
+    The four small dispatch methods below decide between the two engines
+    based on the ``self.in_process`` flag set at construction time.
+    """
     def __init__(
         self,
         rhos=[0.4, 0.6],  # rho locations of interest
+        in_process=False,  # If True, run TGLF in-process via ctypes (no subprocess); requires libtglf_serial.so
         cdf=None,  # Option1: Start from CDF file (TRANSP) - Path to file
         time=100.0,  # 		   Time to extract CDF file
         avTime=0.0,  # 		   Averaging window to extract CDF file
         alreadyRun=None,  # Option2: Do more stuff with a class that has already been created and store
     ):
 
-        super().__init__(rhos=rhos)
+        SIMtools.mitim_simulation.__init__(self, rhos=rhos)
+        self.in_process = in_process
+        # In-process result cache (lazy-init via mixin); harmless when not used.
+        self._init_inprocess()
 
         def code_call(folder, p, n = 1, additional_command="", **kwargs):
             return f"tglf -e {folder} -n {n} -p {p} {additional_command}"
-
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, array_list=None, **kwargs_slurm):
-
-            slurm_settings = {
-                "name": name,
-                "minutes": minutes,
-                'job_array_limit': None,    # Limit to this number at most running jobs at the same time?
-            }
-
-            if type_of_submission == "slurm_standard":
-                
-                slurm_settings['ntasks'] = total_cores_required // cores_per_code_call
-                slurm_settings['cpuspertask'] = cores_per_code_call
-
-            elif type_of_submission == "slurm_array":
-
-                slurm_settings['ntasks'] = 1
-                slurm_settings['cpuspertask'] = cores_per_code_call
-                slurm_settings['job_array'] = ",".join(array_list)
-
-            return slurm_settings
 
         self.run_specifications = {
             'code': 'tglf',
             'input_file': 'input.tglf',
             'code_call': code_call,
-            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addTGLFcontrol,
             'controls_file': 'input.tglf.controls',
             'state_converter': 'to_tglf',
@@ -90,11 +85,11 @@ class TGLF(SIMtools.mitim_simulation):
             print("* Readying previously-run TGLF class", typeMsg="i")
         else:
             
-            self.ResultsFiles_minimal = [
+            self.output_files_simulation["minimal"] = [
                 "out.tglf.gbflux",
             ]
             
-            self.ResultsFiles = self.ResultsFiles_minimal + [
+            self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
                 "out.tglf.run",
                 "out.tglf.eigenvalue_spectrum",
                 "out.tglf.sum_flux_spectrum",
@@ -114,7 +109,7 @@ class TGLF(SIMtools.mitim_simulation):
                 "input.tglf.gen",
             ]
 
-            self.ResultsFiles_WF = [
+            self.output_files_simulation['WF'] = [
                 "out.tglf.run",
                 "out.tglf.wavefunction",
             ]
@@ -135,6 +130,37 @@ class TGLF(SIMtools.mitim_simulation):
                 "SELECTED": None,
             }
 
+    # ------------------------------------------------------------------
+    # In-process / subprocess dispatch.  Each method picks the engine
+    # based on self.in_process and forwards to either:
+    #   * GACODEinprocess.TGLFInProcess.<method>_inprocess  (in-process)
+    #   * SIMtools.mitim_simulation.<method> via super()    (subprocess)
+    # The actual physics/IO logic lives in those two parents — these
+    # dispatchers are intentionally tiny.
+    # ------------------------------------------------------------------
+
+    def prep(self, mitim_state, FolderGACODE=None, **kwargs):
+        if self.in_process:
+            # In-process needs no folder — anything passed for FolderGACODE
+            # is silently ignored, and a synthetic in-memory path is used
+            # internally for cache keys.
+            return self.prep_inprocess(mitim_state)
+        return super().prep(mitim_state, FolderGACODE, **kwargs)
+
+    def _run_prepare(self, subfolder_simulation, **kwargs):
+        if self.in_process:
+            return self._run_prepare_inprocess(subfolder_simulation, **kwargs)
+        return super()._run_prepare(subfolder_simulation, **kwargs)
+
+    def _run(self, code_executor, **kwargs):
+        if self.in_process:
+            return self._run_inprocess(code_executor, **kwargs)
+        return super()._run(code_executor, **kwargs)
+
+    # NOTE: read() is defined further down because it accepts TGLF-specific
+    # kwargs (d_perp_cm, suffix, save_and_cleanup, ...) and dispatches
+    # there.  See its body below.
+
     # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run(
         self,
@@ -143,12 +169,88 @@ class TGLF(SIMtools.mitim_simulation):
         forceClosestUnstableWF=True,    # Look at the growth rate spectrum and run exactly the ky of the closest unstable
         **kwargs_generic_run
     ):
-        
-        code_executor_full = super().run(subfolder, **kwargs_generic_run)
+        if runWaveForms and self.in_process:
+            print("\t- runWaveForms not supported in in-process mode — skipping", typeMsg="w")
+            runWaveForms = None
 
-        kwargs_generic_run['runWaveForms'] = runWaveForms
-        kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
-        self._helper_wf(code_executor_full, **kwargs_generic_run)
+        if not self.in_process:
+            # Standard subprocess / SLURM path
+            code_executor_full = super().run(subfolder, **kwargs_generic_run)
+            kwargs_generic_run['runWaveForms'] = runWaveForms
+            kwargs_generic_run['forceClosestUnstableWF'] = forceClosestUnstableWF
+            self._helper_wf(code_executor_full, **kwargs_generic_run)
+            return
+
+        # ------------------------------------------------------------------
+        # In-process path: route through overridden _run_prepare + _run
+        # (zero file I/O — folder never created, no input.tglf written)
+        # ------------------------------------------------------------------
+        super().run(subfolder, **kwargs_generic_run)
+        # FolderSimLast is now the resolved Path set by _run_prepare()
+
+    def run_inprocess(
+        self,
+        subfolder,
+        code_settings=None,
+        extraOptions={},
+        multipliers={},
+    ):
+        """
+        Run TGLF fully in-memory — zero file I/O for both input preparation
+        and physics execution.
+
+        Inputs are built directly from ``self.profiles`` via
+        ``PROFILES_GACODE.to_tglf()``, with ``code_settings``,
+        ``extraOptions``, and ``multipliers`` applied in memory.
+        The Fortran physics subroutine is called directly via ctypes —
+        no subprocess fork, no ``input.tglf*`` files written.
+
+        Only ``out.tglf.gbflux_{rho:.4f}`` is written per rho (the minimal
+        file needed by ``read()``).
+
+        Prerequisites
+        -------------
+            Build the shared library once before first use::
+
+                cd <MITIM-fusion>/src/mitim_tools/simulation_tools/interfaces
+                bash build_tglf_lib.sh
+
+        Usage
+        -----
+            tglf.prep(...)
+            tglf.run_inprocess("run1/", code_settings="SAT1")
+            tglf.read(label="run1", require_all_files=False)
+        """
+        from mitim_tools.simulation_tools.interfaces import tglf_inprocess as _tip
+        from mitim_tools.misc_tools import IOtools
+
+        # ------------------------------------------------------------------
+        # 1. Build inputs in memory via to_tglf() and run physics
+        # ------------------------------------------------------------------
+        runner = _tip.TGLFInProcess()
+        runner.prepare(
+            self.profiles,
+            rhos=self.rhos,
+            code_settings=code_settings,
+            extraOptions=extraOptions,
+            multipliers=multipliers,
+        )
+        results = runner.run_all()   # {rho: output_dict} — zero file I/O
+
+        # ------------------------------------------------------------------
+        # 2. Create output folder and write the minimal file read() needs
+        # ------------------------------------------------------------------
+        Folder_sim = IOtools.expandPath(self.FolderGACODE / subfolder)
+        Folder_sim.mkdir(parents=True, exist_ok=True)
+
+        for rho, outputs in results.items():
+            _tip.write_gbflux(outputs, Folder_sim / f"out.tglf.gbflux_{rho:.4f}")
+            print(
+                f"\t- [in-process] rho={rho:.4f}  Qe={outputs['elec_eflux']:.4f}"
+                f"  Qi[0]={outputs['ion_eflux'][0]:.4f}"
+            )
+
+        return results
 
     # This is redefined (from parent) because it has the option of producing WaveForms (very TGLF specific)
     def run_scan(
@@ -179,8 +281,8 @@ class TGLF(SIMtools.mitim_simulation):
             del kwargs_TGLFrun["multipliers"]
 
         self.ky_single = kys
-        ResultsFiles = copy.deepcopy(self.ResultsFiles)
-        self.ResultsFiles = copy.deepcopy(self.ResultsFiles_WF)
+        output_files_simulation_backup = copy.deepcopy(self.output_files_simulation["complete"])
+        self.output_files_simulation["complete"] = copy.deepcopy(self.output_files_simulation['WF'])
 
         self.FoldersTGLF_WF = {}
         if self.ky_single is not None:
@@ -258,8 +360,8 @@ class TGLF(SIMtools.mitim_simulation):
             )
 
         # Recover previous stuff
-        self.ResultsFiles_WF = copy.deepcopy(self.ResultsFiles)
-        self.ResultsFiles = ResultsFiles
+        self.output_files_simulation['WF'] = copy.deepcopy(self.output_files_simulation["complete"])
+        self.output_files_simulation["complete"] = output_files_simulation_backup
         # -----------
 
     def prepare_for_save_TGLF(self):
@@ -292,6 +394,381 @@ class TGLF(SIMtools.mitim_simulation):
         with open(file, "wb") as handle:
             pickle.dump(tglf_copy, handle, protocol=4)
 
+    def save_npz(self, file):
+        """
+        Save all TGLF results as a lightweight compressed numpy archive (.npz).
+
+        Only numerical arrays and the minimal metadata required for plotting/analysis
+        are stored.  Heavy Python objects (profiles, TGYRO, matplotlib functions) are
+        intentionally omitted to keep the file small.  Arrays are stored as float32
+        (half the size of float64, sufficient for post-processing).
+
+        The complementary classmethod TGLF.from_npz(file) reconstructs a functional
+        TGLF object from this file.
+        """
+        import json, io, bz2
+
+        file = Path(file)
+        arrays = {}
+        meta = {
+            "rhos": [float(r) for r in self.rhos],
+            "labels": list(self.results.keys()),
+            "mitim_version": mitim_version,
+        }
+
+        # ---- Per-label / per-rho output arrays ----
+        for label in self.results:
+            res = self.results[label]
+            meta[f"{label}__x"] = [float(v) for v in res["x"]]
+            meta[f"{label}__DRMAJDX_LOC"] = res.get("DRMAJDX_LOC", {})
+
+            for irho, output in enumerate(res["output"]):
+                pfx = f"{label}__{irho}__"
+
+                # Scalar metadata
+                meta[f"{pfx}roa"] = float(output.roa)
+                meta[f"{pfx}num_species"] = int(output.num_species)
+                meta[f"{pfx}num_nmodes"] = int(output.num_nmodes)
+                meta[f"{pfx}num_ky"] = int(output.num_ky)
+                meta[f"{pfx}num_fields"] = int(output.num_fields)
+                meta[f"{pfx}fields"] = list(output.fields)
+                meta[f"{pfx}ions_included"] = list(output.ions_included)
+                meta[f"{pfx}fast_included"] = list(output.fast_included)
+                meta[f"{pfx}unnorm_ok"] = bool(output.unnormalization_successful)
+                meta[f"{pfx}inputFile"] = output.inputFile
+                meta[f"{pfx}tglf_version"] = getattr(output, "tglf_version", "")
+                meta[f"{pfx}scalar_sat_params"] = getattr(output, "scalar_sat_params", {})
+
+                # Base spectra only — derived slices are recomputed by _compute_derived()
+                # on load, so they don't need to be stored.
+                _spectrum_attrs = [
+                    "ky", "Eigenvalues",
+                    "AmplitudeSpectrum",
+                    "nTSpectrum",
+                    "FieldSpectrum",
+                    "SumFluxSpectrum",
+                    "QLFluxSpectrum",
+                    "IntensitySpectrum",
+                ]
+                for attr in _spectrum_attrs:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        if isinstance(v, np.ndarray):
+                            arrays[pfx + attr] = v.astype(np.float32)
+                        elif isinstance(v, (int, float)):
+                            arrays[pfx + attr] = np.array([v], dtype=np.float32)
+
+                # tglf_model sub-arrays
+                if hasattr(output, "tglf_model"):
+                    for k, v in output.tglf_model.items():
+                        arrays[f"{pfx}tglf_model__{k}"] = np.asarray(v, dtype=np.float32)
+
+                # Scalar fluxes (from gbflux)
+                for attr in ["Ge", "Qe", "Qi", "Gi", "Qifast", "Me", "Mt", "Se", "Si"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+                for attr in ["GiAll", "QiAll", "MiAll", "SiAll"]:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        arrays[pfx + attr] = np.asarray(v, dtype=np.float32)
+
+                # Unnormalized fluxes (if available)
+                for attr in ["Qe_unn", "Qi_unn", "Qifast_unn", "Ge_unn", "Mt_unn", "Se_unn"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+                for attr in ["QiAll_unn", "GiAll_unn"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.asarray(getattr(output, attr), dtype=np.float32)
+
+                # Fluctuation levels
+                for attr in ["AmplitudeSpectrum_Te_level", "AmplitudeSpectrum_ne_level",
+                             "neTeSpectrum_level"]:
+                    if hasattr(output, attr):
+                        arrays[pfx + attr] = np.array([getattr(output, attr)], dtype=np.float32)
+
+
+        # ---- Wavefunction data ----
+        # Structure: results[label]["wavefunction"][f"ky{val}"][rho] = dict of arrays
+        # Field names contain parens (e.g. "RE(phi)") so we sanitize them for npz keys.
+        _wf_safe = lambda n: n.replace("(", "").replace(")", "")
+        for label in self.results:
+            wf_data = self.results[label].get("wavefunction", {})
+            ky_keys = [k for k in wf_data if wf_data[k]]  # non-empty ky entries
+            meta[f"{label}__wf_ky_keys"] = ky_keys
+            for ky_key in ky_keys:
+                for irho, rho_val in enumerate(self.rhos):
+                    if rho_val not in wf_data[ky_key]:
+                        continue
+                    wf = wf_data[ky_key][rho_val]
+                    pfx_wf = f"wf__{label}__{ky_key}__{irho}__"
+                    for field, arr in wf.items():
+                        arrays[pfx_wf + _wf_safe(field)] = np.asarray(arr, dtype=np.float32)
+
+        # ---- Normalization (SELECTED set only — pure numpy arrays) ----
+        norm = self.NormalizationSets.get("SELECTED")
+        if norm is not None:
+            for k, v in norm.items():
+                try:
+                    arrays[f"norm__{k}"] = np.asarray(v, dtype=np.float32)
+                except (TypeError, ValueError):
+                    pass  # skip non-array entries (e.g. mi_ref scalar handled below)
+                    meta[f"norm_scalar__{k}"] = float(v) if isinstance(v, (int, float, np.floating)) else str(v)
+
+        # EXP normalization (experimental fluxes for comparison plots)
+        exp = self.NormalizationSets.get("EXP")
+        if exp is not None:
+            for k, v in exp.items():
+                try:
+                    arrays[f"exp__{k}"] = np.asarray(v, dtype=np.float32)
+                except (TypeError, ValueError):
+                    pass
+
+        # ---- Scan data (aggregated arrays from read_scan) ----
+        meta["scan_labels"] = list(self.scans.keys())
+        meta["ion_OI_position_in_total_padded_list_scan"] = getattr(
+            self, "ion_OI_position_in_total_padded_list_scan", 3)
+        meta["variablesDrives"] = list(getattr(self, "variablesDrives", []))
+        for scan_label in self.scans:
+            scan = self.scans[scan_label]
+            spfx = f"scan__{scan_label}__"
+            meta[f"{spfx}variable"] = scan.get("variable", "")
+            meta[f"{spfx}positionBase"] = scan.get("positionBase")
+            meta[f"{spfx}unnorm_ok"] = bool(scan.get("unnormalization_successful", True))
+            meta[f"{spfx}results_tags"] = list(scan.get("results_tags", []))
+            for k, v in scan.items():
+                if isinstance(v, np.ndarray):
+                    arrays[spfx + k] = v.astype(np.float32)
+
+        # ---- 2-D scan data (aggregated arrays from read_scan2d) ----
+        scans2d = getattr(self, "scans2d", {})
+        scan2d_configs = getattr(self, "scan2d_configs", {})
+        meta["scan2d_labels"] = list(scans2d.keys())
+        meta["scan2d_configs"] = scan2d_configs
+        for scan_label in scans2d:
+            scan = scans2d[scan_label]
+            spfx = f"scan2d__{scan_label}__"
+            meta[f"{spfx}variable1"] = scan.get("variable1", "")
+            meta[f"{spfx}variable2"] = scan.get("variable2", "")
+            meta[f"{spfx}ky_target"] = float(scan.get("ky_target", 0.3))
+            for k, v in scan.items():
+                if isinstance(v, np.ndarray):
+                    arrays[spfx + k] = v.astype(np.float32)
+
+        # ---- Metadata packed as JSON bytes ----
+        meta_bytes = np.frombuffer(json.dumps(meta).encode("utf-8"), dtype=np.uint8)
+        arrays["__meta__"] = meta_bytes
+
+        # Pack all arrays into one uncompressed zip stream, then bz2-compress the
+        # whole thing.  Cross-array bz2 compression is ~4× smaller than compressing
+        # each array independently as np.savez_compressed does.
+        import io, bz2
+        buf = io.BytesIO()
+        np.savez(buf, **arrays)
+        file.write_bytes(bz2.compress(buf.getvalue(), compresslevel=9))
+
+        size_kb = file.stat().st_size / 1024
+        print(f"> Saved TGLF results to {IOtools.clipstr(file)} ({size_kb:.1f} kB)")
+
+    @classmethod
+    def from_npz(cls, file):
+        """
+        Reconstruct a TGLF object from a file written by save_npz().
+
+        The returned object supports plot() and all analysis methods that operate on
+        the stored results.  Methods that require the raw run folders, TGYRO objects,
+        or profiles (GACODE profile tabs, renormalization) are not available.
+        """
+        import json, io, bz2
+
+        file = Path(file)
+        raw = file.read_bytes()
+        # Auto-detect bz2 (magic b"BZh") vs legacy plain-npz
+        if raw[:3] == b"BZh":
+            raw = bz2.decompress(raw)
+        data = np.load(io.BytesIO(raw), allow_pickle=False)
+        meta = json.loads(data["__meta__"].tobytes().decode("utf-8"))
+
+        from mitim_tools.simulation_tools import SIMtools
+
+        # ---- Bare TGLF shell ----
+        tglf = object.__new__(cls)
+        tglf.rhos = meta["rhos"]
+        tglf.results = {}
+        tglf.NormalizationSets = {
+            k: None for k in ["TRANSP", "PROFILES", "TGYRO", "EXP", "input_gacode", "SELECTED"]
+        }
+        tglf.ky_single = None
+        tglf.tgyro = None
+        tglf.d_perp_dict = None
+        tglf.convolution_fun_fluct = None
+        tglf.factorTot_to_Perp = 1.0
+        tglf.DRMAJDX_LOC = {}
+        tglf.FoldersTGLF_WF = {}
+
+        # ---- Rebuild NormalizationSets["SELECTED"] ----
+        norm_keys = [k[len("norm__"):] for k in data.files if k.startswith("norm__")]
+        if norm_keys:
+            norm = {k: data[f"norm__{k}"].astype(np.float64) for k in norm_keys}
+            # restore scalar entries stored in meta
+            for mk, mv in meta.items():
+                if mk.startswith("norm_scalar__"):
+                    norm[mk[len("norm_scalar__"):]] = mv
+            tglf.NormalizationSets["SELECTED"] = norm
+
+        # ---- Rebuild NormalizationSets["EXP"] ----
+        exp_keys = [k[len("exp__"):] for k in data.files if k.startswith("exp__")]
+        if exp_keys:
+            tglf.NormalizationSets["EXP"] = {
+                k: data[f"exp__{k}"].astype(np.float64) for k in exp_keys
+            }
+
+        # ---- Rebuild results per label ----
+        for label in meta["labels"]:
+            res = {}
+            res["x"] = np.array(meta[f"{label}__x"])
+            res["DRMAJDX_LOC"] = meta.get(f"{label}__DRMAJDX_LOC", {})
+            res["convolution_fun_fluct"] = None
+            res["profiles"] = None
+
+            # Restore wavefunction data
+            _wf_orig = {"REphi": "RE(phi)", "IMphi": "IM(phi)",
+                        "REBper": "RE(Bper)", "IMBper": "IM(Bper)",
+                        "REBpar": "RE(Bpar)", "IMBpar": "IM(Bpar)"}
+            ky_keys = meta.get(f"{label}__wf_ky_keys", [])
+            wf_dict = {}
+            n_rhos_wf = len(meta[f"{label}__x"])
+            for ky_key in ky_keys:
+                wf_dict[ky_key] = {}
+                for irho_wf in range(n_rhos_wf):
+                    rho_val = meta[f"{label}__x"][irho_wf]
+                    pfx_wf = f"wf__{label}__{ky_key}__{irho_wf}__"
+                    wf = {}
+                    for safe, orig in {**_wf_orig,
+                                       "theta": "theta", "ky": "ky",
+                                       "gamma": "gamma", "freq": "freq"}.items():
+                        key = pfx_wf + safe
+                        if key in data:
+                            wf[orig] = data[key].astype(np.float64)
+                    if wf:
+                        wf_dict[ky_key][rho_val] = wf
+            res["wavefunction"] = wf_dict
+
+            outputs, inputclasses, parseds = [], [], []
+
+            n_rhos = len(meta[f"{label}__x"])
+            for irho in range(n_rhos):
+                pfx = f"{label}__{irho}__"
+
+                # Bare TGLFoutput shell
+                output = object.__new__(TGLFoutput)
+                output.FolderGACODE = None
+                output.suffix = ""
+
+                # Metadata
+                output.roa = float(meta[f"{pfx}roa"])
+                output.num_species = int(meta[f"{pfx}num_species"])
+                output.num_nmodes = int(meta[f"{pfx}num_nmodes"])
+                output.num_ky = int(meta[f"{pfx}num_ky"])
+                output.num_fields = int(meta[f"{pfx}num_fields"])
+                output.fields = list(meta[f"{pfx}fields"])
+                output.ions_included = tuple(int(x) for x in meta[f"{pfx}ions_included"])
+                output.fast_included = tuple(int(x) for x in meta[f"{pfx}fast_included"])
+                output.unnormalization_successful = bool(meta[f"{pfx}unnorm_ok"])
+                output.inputFile = meta[f"{pfx}inputFile"]
+                output.tglf_version = meta.get(f"{pfx}tglf_version", "")
+                output.scalar_sat_params = meta.get(f"{pfx}scalar_sat_params", {})
+                output.inputFile_gen = ""
+
+                # Restore all numpy arrays stored under this prefix
+                for key in data.files:
+                    if key.startswith(pfx) and not key.startswith(f"{pfx}tglf_model__"):
+                        attr = key[len(pfx):]
+                        setattr(output, attr, data[key].astype(np.float64))
+
+                # Restore tglf_model dict
+                output.tglf_model = {}
+                for key in data.files:
+                    if key.startswith(f"{pfx}tglf_model__"):
+                        sub = key[len(f"{pfx}tglf_model__"):]
+                        output.tglf_model[sub] = data[key].astype(np.float64)
+
+                # Scalar fluxes stored as 1-element arrays — unwrap to float
+                for attr in ["Ge", "Qe", "Qi", "Gi", "Qifast", "Me", "Mt", "Se", "Si",
+                             "Qe_unn", "Qi_unn", "Qifast_unn", "Ge_unn", "Mt_unn", "Se_unn",
+                             "AmplitudeSpectrum_Te_level", "AmplitudeSpectrum_ne_level",
+                             "neTeSpectrum_level"]:
+                    if hasattr(output, attr):
+                        v = getattr(output, attr)
+                        if isinstance(v, np.ndarray) and v.size == 1:
+                            setattr(output, attr, float(v.flat[0]))
+
+                # Reconstruct TGLFinput from stored inputFile string
+                input_dict = SIMtools.buildDictFromInput(output.inputFile)
+                output.inputclass = TGLFinput.initialize_in_memory(input_dict)
+
+                # Re-derive all slice attributes from base spectra
+                output._compute_derived()
+
+                # Re-derive postprocess metrics (requires SumFlux_* to be set)
+                output.postprocess()
+
+                outputs.append(output)
+                inputclasses.append(output.inputclass)
+                # Same structure the live read path stores (buildDictFromInput of the
+                # input file): read_scan aggregates the scanned variable from it, so
+                # an empty dict here crashed any (re)aggregation after from_npz —
+                # with the raw folders already deleted by save_and_cleanup.
+                parseds.append(input_dict)
+
+            res["output"] = outputs
+            res["inputclasses"] = inputclasses
+            res["parsed"] = parseds
+            tglf.results[label] = res
+
+        # ---- Restore scan data ----
+        tglf.ion_OI_position_in_total_padded_list_scan = int(
+            meta.get("ion_OI_position_in_total_padded_list_scan", 3))
+        tglf.variablesDrives = list(meta.get("variablesDrives", []))
+        tglf.scans = {}
+        for scan_label in meta.get("scan_labels", []):
+            spfx = f"scan__{scan_label}__"
+            scan = {}
+            scan["variable"] = meta.get(f"{spfx}variable", "")
+            scan["positionBase"] = meta.get(f"{spfx}positionBase")
+            scan["unnormalization_successful"] = bool(meta.get(f"{spfx}unnorm_ok", True))
+            scan["results_tags"] = list(meta.get(f"{spfx}results_tags", []))
+            for key in data.files:
+                if key.startswith(spfx):
+                    k = key[len(spfx):]
+                    scan[k] = data[key].astype(np.float64)
+            # x (rho values) must exactly match self.rhos; restore from meta to avoid
+            # float32 round-trip precision drift that breaks == comparisons in plot_scan
+            scan["x"] = np.array(meta["rhos"])
+            tglf.scans[scan_label] = scan
+
+        # ---- Restore 2-D scan data ----
+        tglf.scan2d_configs = meta.get("scan2d_configs", {})
+        # subfolder_scan: the last subfolder used; infer from configs if possible
+        _cfg_keys = list(tglf.scan2d_configs.keys())
+        tglf.subfolder_scan = _cfg_keys[-1] if _cfg_keys else getattr(tglf, "subfolder_scan", None)
+        tglf.scans2d = {}
+        for scan_label in meta.get("scan2d_labels", []):
+            spfx = f"scan2d__{scan_label}__"
+            scan = {}
+            scan["variable1"]  = meta.get(f"{spfx}variable1", "")
+            scan["variable2"]  = meta.get(f"{spfx}variable2", "")
+            scan["ky_target"]  = float(meta.get(f"{spfx}ky_target", 0.3))
+            scan["x"] = np.array(meta["rhos"])
+            for key in data.files:
+                if key.startswith(spfx):
+                    k = key[len(spfx):]
+                    scan[k] = data[key].astype(np.float64)
+            tglf.scans2d[scan_label] = scan
+
+        print(f"> Loaded TGLF results from {IOtools.clipstr(file)} "
+              f"({len(tglf.results)} label(s), {len(tglf.rhos)} rho(s))")
+        return tglf
+
     def prep_using_tgyro(
         self,
         FolderGACODE,  # Main folder where all caculations happen (runs will be in subfolders)
@@ -309,6 +786,7 @@ class TGLF(SIMtools.mitim_simulation):
                 If I don't want to prepare, I can provide inputgacode and specificInputs, but I have to make sure they are consistent with one another!
                 Optionally, I can give tgyro_results for further info in such a case
         """
+        print('[MITIM DEPRECATION NOTICE] The option of initializing TGLF runs using TGYRO on an input.gacode will be removed in a future release', typeMsg="w")
 
         print("> Preparation of TGLF run")
 
@@ -447,11 +925,7 @@ class TGLF(SIMtools.mitim_simulation):
 
         # Main folder where things are
         from mitim_tools.gacode_tools import PROFILEStools
-        self.NormalizationSets, _ = NORMtools.normalizations(
-            PROFILEStools.gacode_state(input_gacode)
-            if input_gacode is not None
-            else None
-        )
+        self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode)if input_gacode is not None else None)
 
         # input_tglf_file
         inputclass = TGLFinput(file=input_tglf_file)
@@ -486,7 +960,16 @@ class TGLF(SIMtools.mitim_simulation):
         d_perp_cm=None,  # It can be a dictionary with rhos. If None provided, use the last one employed
         cold_startWF = True, # If this is a "complete" read, I will assign a None
         require_all_files = True,   # If False, I only need the fluxes
+        input_gacode = None, # Only needed to grab normalizations if they weren't populated already (e.g. this is just a "read" of an already run folder
+        save_and_cleanup = None,  # If a Path/str is given, save npz there then delete the raw run folder
     ):
+        # ------------------------------------------------------------------
+        # In-process path: delegate to GACODEinprocess.TGLFInProcess
+        # mixin, which builds results entirely from the in-process cache.
+        # ------------------------------------------------------------------
+        if self.in_process:
+            return self.read_inprocess(label=label, folder=folder)
+
         print("> Reading TGLF results")
 
         if d_perp_cm is not None:
@@ -518,6 +1001,11 @@ class TGLF(SIMtools.mitim_simulation):
         if folder is None:
             folder = self.FolderSimLast
 
+        # Try get normalizations if they weren't populated (e.g. this is just a "read" of an already run folder)
+        if self.NormalizationSets["SELECTED"] is None and input_gacode is not None:
+            print("\t- Getting normalizations from input.gacode provided in the read function")
+            from mitim_tools.gacode_tools import PROFILEStools
+            self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
 
         # -----------------------------------------
         # ~~~~~~~ Read results
@@ -578,6 +1066,13 @@ class TGLF(SIMtools.mitim_simulation):
         # After read, go back to no waveforms in case I want to read another case without it
         if cold_startWF:
             self.ky_single = None
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            if folder is not None and folder.exists():
+                import shutil
+                shutil.rmtree(folder)
+                print(f"\t- Removed raw run folder: {IOtools.clipstr(folder)}", typeMsg="i")
 
     def plot(
         self,
@@ -661,6 +1156,9 @@ class TGLF(SIMtools.mitim_simulation):
                     if il not in max_fields:
                         max_fields.append(il)
 
+        from mitim_tools.misc_tools.style_tools.themes import apply_theme
+        apply_theme()
+
         if fn is None:
             self.fn = GUItools.FigureNotebook("TGLF MITIM Notebook", geometry="1700x900", vertical=True)
         else:
@@ -686,6 +1184,20 @@ class TGLF(SIMtools.mitim_simulation):
         figO = self.fn.add_figure(
             label=f"{extratitle}Model Details", tab_color=fn_color
         )
+        figFlux2 = self.fn.add_figure(
+            label=f"{extratitle}Ion & Mom. Fluxes", tab_color=fn_color
+        )
+
+        # SAT parameters tab (only if at least one run has them populated)
+        has_sat_params = any(
+            self.results[lbl]["output"][ir].scalar_sat_params
+            for lbl in labels
+            for ir in range(len(self.results[lbl]["output"]))
+        )
+        if has_sat_params:
+            figSAT = self.fn.add_figure(
+                label=f"{extratitle}SAT Parameters", tab_color=fn_color
+            )
 
         figsWF = {}
         for ky_single0 in ky_single_stored_unique:
@@ -845,6 +1357,24 @@ class TGLF(SIMtools.mitim_simulation):
         grid = plt.GridSpec(2, 1, hspace=0.5, wspace=0.5)
         axs7 = [fig7.add_subplot(grid[0]), fig7.add_subplot(grid[1])]
 
+        # Ion & Momentum Fluxes axes
+        grid = plt.GridSpec(3, 4, hspace=0.6, wspace=0.35)
+        axsFlux2 = np.empty((3, 4), dtype=plt.Axes)
+        axsFlux2[0, 0] = figFlux2.add_subplot(grid[0, 0])
+        for r in range(3):
+            for c_ in range(4):
+                if r == 0 and c_ == 0:
+                    continue
+                sharex = axsFlux2[0, 0] if c_ < 2 else None
+                axsFlux2[r, c_] = figFlux2.add_subplot(grid[r, c_], sharex=sharex)
+
+        # SAT parameters axes — one shared figure, one line per label
+        if has_sat_params:
+            grid = plt.GridSpec(1, 2, hspace=0.4, wspace=0.4)
+            axsSAT = np.empty((1, 2), dtype=plt.Axes)
+            axsSAT[0, 0] = figSAT.add_subplot(grid[0, 0])
+            axsSAT[0, 1] = figSAT.add_subplot(grid[0, 1])
+
         if successful_normalization:
             grid = plt.GridSpec(2, 2, hspace=0.4, wspace=0.2)
             axT2 = fig3.add_subplot(grid[0, 0])
@@ -852,13 +1382,15 @@ class TGLF(SIMtools.mitim_simulation):
             axT2_3 = fig3.add_subplot(grid[1, 0], sharex=axT2)
             axT2_4 = fig3.add_subplot(grid[1, 1], sharex=axT2)
 
-            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 4, hspace=0.3, wspace=0.3)
             axS00 = figS.add_subplot(grid[0, 0])
             axS01 = figS.add_subplot(grid[0, 1])
             axS10 = figS.add_subplot(grid[1, 0])
             axS11 = figS.add_subplot(grid[1, 1], sharex=axS01, sharey=axS01)
             axS20 = figS.add_subplot(grid[0, 2])
             axS21 = figS.add_subplot(grid[1, 2], sharex=axS01)
+            axS_Gi = figS.add_subplot(grid[0, 3])
+            axS_Mt = figS.add_subplot(grid[1, 3], sharex=axS01)
 
             grid = plt.GridSpec(3, 3, hspace=0.5, wspace=0.3)
             axFluc00 = figF.add_subplot(grid[0, 0])
@@ -939,6 +1471,23 @@ class TGLF(SIMtools.mitim_simulation):
                 self.results[label]["output"][irho].plotTGLF_Model(
                     axs=axsTGLF3, c=colors[cont], label=full_label
                 )
+
+                self.results[label]["output"][irho].plotTGLF_IonMomFluxes(
+                    axs=axsFlux2,
+                    c=colors[cont],
+                    label=full_label,
+                    fontsizeLeg=fontsizeLeg,
+                    title_legend=title_legend,
+                    cont=cont,
+                )
+
+                if has_sat_params:
+                    self.results[label]["output"][irho].plotTGLF_SAT(
+                        axs=axsSAT,
+                        c=colors[cont],
+                        label=full_label,
+                        cont=cont,
+                    )
 
                 self.results[label]["output"][irho].plotTGLF_Fluctuations(
                     axs=axsTGLF_flucts,
@@ -1028,6 +1577,7 @@ class TGLF(SIMtools.mitim_simulation):
 
             Qe, Qi, Ge = [], [], []
             QeGB, QiGB, GeGB = [], [], []
+            GiGB, MtGB = [], []
             TeF, neTe = [], []
             roas = []
             for irho_cont in range(len(self.rhos)):
@@ -1047,6 +1597,8 @@ class TGLF(SIMtools.mitim_simulation):
                 QeGB.append(self.results[label]["output"][irho].Qe)
                 QiGB.append(self.results[label]["output"][irho].Qi)
                 GeGB.append(self.results[label]["output"][irho].Ge)
+                GiGB.append(self.results[label]["output"][irho].Gi)
+                MtGB.append(self.results[label]["output"][irho].Mt)
 
             if self.results[label]["output"][irho].unnormalization_successful:
                 axT2.plot(self.rhos, Qe, "-o", c=colorLab[0], lw=2, label=full_label)
@@ -1086,6 +1638,9 @@ class TGLF(SIMtools.mitim_simulation):
 
                 axS20.plot(self.rhos, TeF, "-o", c=colorLab[0], lw=2, label=label)
                 axS21.plot(self.rhos, neTe, "-o", c=colorLab[0], lw=2, label=label)
+
+                axS_Gi.plot(roas, GiGB, "-o", c=colorLab[0], lw=2, label=label)
+                axS_Mt.plot(roas, MtGB, "-o", c=colorLab[0], lw=2, label=label)
 
             axsTGLF1[3, 0].plot(roas, QeGB, "-", c=colorLab[0], lw=1)
             axsTGLF1[3, 1].plot(roas, QiGB, "-", c=colorLab[0], lw=1)
@@ -1220,12 +1775,12 @@ class TGLF(SIMtools.mitim_simulation):
 
         if len(self.rhos) > 1 or len(labels) > 1:
             axsTGLF1[1, 0].legend(
-                loc="lower right", fontsize=fontsizeLeg, title=title_legend
+                loc="lower right", title=title_legend
             )
 
         if successful_normalization:
             if len(self.rhos) > 1 or len(labels) > 1:
-                axS10.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+                axS10.legend(loc="best", title=title_legend)
 
             ax = axT2
             ax.set_xlabel("$\\rho_N$")
@@ -1234,7 +1789,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_title("Electron heat flux")
             ax.legend(loc="best")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # Simple
             ax = axS01
@@ -1242,9 +1796,8 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel("$Q_e$ ($MW/m^2$)")
             ax.set_ylim(bottom=0)
             ax.set_title("Electron heat flux")
-            ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+            ax.legend(loc="best", title=title_legend)
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # ---
 
@@ -1254,7 +1807,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # Simple
             ax = axS11
@@ -1263,7 +1815,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
             # ---
 
             # Simple
@@ -1273,7 +1824,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylim(bottom=0)
             ax.set_title("Temperature fluctuations")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
             # ---
 
             # Simple
@@ -1282,14 +1832,28 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel("Angle (degrees)")
             ax.set_title("$n_eT_e$ phase angle")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
+            # ---
+
+            ax = axS_Gi
+            ax.set_xlabel("$r/a$")
+            ax.set_ylabel("$\\Gamma_i$ (GB)")
+            ax.set_title("Ion particle flux (summed thermal ions)")
+            ax.axhline(y=0, ls="--", c="k", lw=1)
+            ax.set_xlim([0, 1])
+            ax.legend(loc="best", title=title_legend)
+
+            ax = axS_Mt
+            ax.set_xlabel("$r/a$")
+            ax.set_ylabel("$\\Pi$ (GB)")
+            ax.set_title("Total momentum flux")
+            ax.axhline(y=0, ls="--", c="k", lw=1)
+            ax.set_xlim([0, 1])
             # ---
 
             ax = axT2_3
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = axT2_4
             ax.set_xlabel("$\\rho_N$")
@@ -1298,7 +1862,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_title("GB Fluxes")
             ax.set_yscale("log")
             ax.set_xlim([0, 1])
-            GRAPHICStools.addDenseAxis(ax)
 
             # FLUCTS
 
@@ -1522,35 +2085,29 @@ class TGLF(SIMtools.mitim_simulation):
             ax = axFluc00
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
             ax = axFluc01
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             # ax.legend(loc='best');
             ax.set_xscale("linear")
             ax.set_xlim([0, 3])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = axFluc10e
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
             ax = axFluc11e
             ax.set_xlabel("$k_{\\perp}$ ($cm^{-1}$)")
             ax.set_ylim(bottom=0)
             ax.set_xscale("linear")
             ax.set_xlim(lims)
-            GRAPHICStools.addDenseAxis(ax)
 
             axFluc00Sym.set_ylabel("Convolution")
-            GRAPHICStools.addDenseAxis(axFluc00Sym)
             axFluc01Sym.set_ylabel("Convolution")
-            GRAPHICStools.addDenseAxis(axFluc01Sym)
             axFluc00Sym.set_ylim([0, 1])
             axFluc01Sym.set_ylim([0, 1])
 
@@ -1581,7 +2138,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.scatter(TL, T, color=C)
             ax.set_ylabel("$\\delta T_e/T_e$ (%)")
             ax.set_ylim(bottom=0)
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -1591,7 +2147,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.scatter(TL, N, color=C)
             ax.set_ylabel("$\\delta n_e/n_e$ (%)")
             ax.set_ylim(bottom=0)
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -1600,7 +2155,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.plot(TL, NT, "-", c="k")
             ax.scatter(TL, NT, color=C)
             ax.set_ylabel("$n_eT_e$ angle (degrees)")
-            GRAPHICStools.addDenseAxis(ax)
 
             for tick in ax.get_xticklabels():
                 tick.set_rotation(20)
@@ -1801,7 +2355,6 @@ class TGLF(SIMtools.mitim_simulation):
                 ax = ax00
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\gamma$ ($c_s/a$)")
-                GRAPHICStools.addDenseAxis(ax)
                 if addLegend:
                     GRAPHICStools.addLegendApart(
                         ax, size=6, ratio=0.6, title=title_legend
@@ -1813,7 +2366,6 @@ class TGLF(SIMtools.mitim_simulation):
                 ax = ax10
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\omega$ ($c_s/a$)")
-                GRAPHICStools.addDenseAxis(ax)
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
@@ -1823,33 +2375,27 @@ class TGLF(SIMtools.mitim_simulation):
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
                 ax.set_ylabel("Electric potential $\\delta\\phi$")
                 ax.set_title("Real component $\\delta\\phi$")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax11
                 ax.set_ylabel("Electric potential $\\delta\\phi$")
                 ax.set_title("Imaginary component $\\delta\\phi$")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax02
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
                 ax.set_title("Real component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax12
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\parallel}$")
                 ax.set_title("Imaginary component $\\delta A_{\\parallel}$ ($\\delta B_{\\perp}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax03
 
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
                 ax.set_title("Real component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
                 ax = ax13
                 ax.set_ylabel("Magnetic potential $\\delta A_{\\perp}$")
                 ax.set_title("Imaginary component $\\delta A_{\\perp}$ ($\\delta B_{\\parallel}$)")
-                GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------
         # Profiles
@@ -1912,8 +2458,11 @@ class TGLF(SIMtools.mitim_simulation):
         label="scan1",
         subfolder=None,
         variable="RLTS_1",
-        positionIon=2
+        ion_OI_position_in_total_padded_list=3,
+        save_and_cleanup=None,  # If a Path/str is given, save npz there then delete the raw scan subfolder
     ):
+        
+        ion_OI_position_in_ion_list = ion_OI_position_in_total_padded_list - 2
         
         output_object = "output"
 
@@ -1922,7 +2471,7 @@ class TGLF(SIMtools.mitim_simulation):
             'Qe_gb': [output_object, 'Qe', None],
             'Qi_gb': [output_object, 'Qi', None],
             'Ge_gb': [output_object, 'Ge', None],
-            'Gi_gb': [output_object, 'GiAll', positionIon - 2],
+            'Gi_gb': [output_object, 'GiAll', ion_OI_position_in_ion_list],
             'Mt_gb': [output_object, 'Mt', None],
             'S_gb': [output_object, 'Se', None],
             'ky': [output_object, 'ky', None],
@@ -1943,7 +2492,7 @@ class TGLF(SIMtools.mitim_simulation):
             'Qe': [output_object, 'Qe_unn', None],
             'Qi': [output_object, 'Qi_unn', None],
             'Ge': [output_object, 'Ge_unn', None],
-            'Gi': [output_object, 'GiAll_unn', positionIon - 2],
+            'Gi': [output_object, 'GiAll_unn', ion_OI_position_in_ion_list],
             'Mt': [output_object, 'Mt_unn', None],
             'S': [output_object, 'Se_unn', None],
             'Qifast': [output_object, 'Qifast_unn', None],
@@ -1953,7 +2502,7 @@ class TGLF(SIMtools.mitim_simulation):
             label=label,
             subfolder=subfolder,
             variable=variable,
-            positionIon=positionIon,
+            ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
             variable_mapping=variable_mapping,
             variable_mapping_unn=variable_mapping_unn
         )
@@ -1964,8 +2513,353 @@ class TGLF(SIMtools.mitim_simulation):
                 axes_swap = [1, 2, 0] # [rho, scan, ky]
             elif len(self.scans[label][var].shape) == 4:
                 axes_swap = [2, 3, 1, 0] # [rho, scan, nmode, ky]
-                
+
             self.scans[label][var] = np.transpose(self.scans[label][var], axes=axes_swap)
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            resolved_subfolder = subfolder if subfolder is not None else self.subfolder_scan
+            if resolved_subfolder is not None:
+                import shutil
+                for d in sorted(self.FolderGACODE.glob(f"{resolved_subfolder}_*")):
+                    if d.is_dir():
+                        shutil.rmtree(d)
+                        print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
+
+    # =========================================================================
+    # 2-D parameter scan
+    # =========================================================================
+
+    def run_scan2d(
+        self,
+        subfolder,
+        variable1,
+        varUpDown1,
+        variable2,
+        varUpDown2,
+        save_and_cleanup=None,
+        **kwargs_run,
+    ):
+        """
+        Run a 2-D grid scan varying two TGLF input parameters simultaneously.
+
+        All (mult1, mult2) combinations are prepared in a single code_executor
+        and submitted together for efficiency.  Folder names follow the pattern:
+          {subfolder}_{variable1}_{mult1}_{variable2}_{mult2}
+
+        kwargs_run is forwarded to _run_prepare / _run (code_settings, extraOptions,
+        cold_start, allocation, …).
+        """
+        self.subfolder_scan = subfolder
+        if not hasattr(self, "scan2d_configs"):
+            self.scan2d_configs = {}
+        varUpDown1 = list(varUpDown1)
+        varUpDown2 = list(varUpDown2)
+        self.scan2d_configs[subfolder] = {
+            "variable1": variable1, "varUpDown1": varUpDown1,
+            "variable2": variable2, "varUpDown2": varUpDown2,
+        }
+
+        code_executor = {}
+        code_executor_full = {}
+        folders = {}
+        first = True
+
+        for mult1 in varUpDown1:
+            m1 = round(float(mult1), 6)
+            for mult2 in varUpDown2:
+                m2 = round(float(mult2), 6)
+                run_name = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                kw = dict(kwargs_run)
+                kw["forceIfcold_start"] = (not first) or kw.get("forceIfcold_start", False)
+                code_executor, code_executor_full = self._run_prepare(
+                    run_name,
+                    code_executor=code_executor,
+                    code_executor_full=code_executor_full,
+                    multipliers={variable1: m1, variable2: m2},
+                    **kw,
+                )
+                folders[(m1, m2)] = copy.deepcopy(self.FolderSimLast)
+                first = False
+
+        self._run(code_executor, code_executor_full=code_executor_full, **kwargs_run)
+
+        for mult1 in varUpDown1:
+            m1 = round(float(mult1), 6)
+            for mult2 in varUpDown2:
+                m2 = round(float(mult2), 6)
+                run_name = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                self.read(
+                    label=run_name,
+                    folder=folders[(m1, m2)],
+                    cold_startWF=False,
+                    require_all_files=not kwargs_run.get("only_minimal_files", False),
+                )
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            import shutil
+            for d in sorted(self.FolderGACODE.glob(f"{subfolder}_*")):
+                if d.is_dir():
+                    shutil.rmtree(d)
+                    print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
+
+    def read_scan2d(
+        self,
+        label,
+        subfolder=None,
+        variable1=None,
+        varUpDown1=None,
+        variable2=None,
+        varUpDown2=None,
+        ion_OI_position_in_total_padded_list=3,
+        ky_target=0.3,
+    ):
+        """
+        Aggregate 2-D scan results into self.scans2d[label].
+
+        Arrays in scans2d[label] have shape (n_rhos, n1, n2).
+        """
+        if subfolder is None:
+            subfolder = getattr(self, "subfolder_scan", None)
+        if not hasattr(self, "scan2d_configs"):
+            self.scan2d_configs = {}
+        cfg = self.scan2d_configs.get(subfolder, {})
+        variable1   = variable1   or cfg.get("variable1")
+        varUpDown1  = list(varUpDown1  if varUpDown1  is not None else cfg.get("varUpDown1",  []))
+        variable2   = variable2   or cfg.get("variable2")
+        varUpDown2  = list(varUpDown2  if varUpDown2  is not None else cfg.get("varUpDown2",  []))
+
+        ion_idx = ion_OI_position_in_total_padded_list - 2
+
+        if not hasattr(self, "scans2d"):
+            self.scans2d = {}
+
+        n1, n2, nr = len(varUpDown1), len(varUpDown2), len(self.rhos)
+
+        arrs = {k: np.full((nr, n1, n2), np.nan)
+                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "g_ky")}
+        v1_abs = np.full((nr, n1, n2), np.nan)
+        v2_abs = np.full((nr, n1, n2), np.nan)
+
+        # Find n_ky from the first available result so we can pre-allocate spectra arrays.
+        n_ky = None
+        for _m1 in varUpDown1:
+            for _m2 in varUpDown2:
+                _rk = f"{subfolder}_{variable1}_{round(float(_m1),6)}_{variable2}_{round(float(_m2),6)}"
+                if _rk in self.results and self.results[_rk]["output"]:
+                    _out0 = self.results[_rk]["output"][0]
+                    if hasattr(_out0, "ky") and _out0.ky is not None:
+                        n_ky = len(_out0.ky)
+                        break
+            if n_ky is not None:
+                break
+
+        if n_ky is not None:
+            ky_arr     = np.full((nr, n_ky), np.nan)
+            g_spectra  = np.full((nr, n1, n2, n_ky), np.nan)   # growth rate spectrum
+            f_spectra  = np.full((nr, n1, n2, n_ky), np.nan)   # real frequency spectrum
+        else:
+            ky_arr = g_spectra = f_spectra = None
+
+        for i1, mult1 in enumerate(varUpDown1):
+            m1 = round(float(mult1), 6)
+            for i2, mult2 in enumerate(varUpDown2):
+                m2    = round(float(mult2), 6)
+                rkey  = f"{subfolder}_{variable1}_{m1}_{variable2}_{m2}"
+                if rkey not in self.results:
+                    print(f"\t- Result not found: {rkey}", typeMsg="w")
+                    continue
+                for irho in range(nr):
+                    out    = self.results[rkey]["output"][irho]
+                    parsed = self.results[rkey]["parsed"][irho]
+                    arrs["Qe_gb"][irho, i1, i2] = out.Qe
+                    arrs["Qi_gb"][irho, i1, i2] = out.Qi
+                    arrs["Ge_gb"][irho, i1, i2] = out.Ge
+                    arrs["Gi_gb"][irho, i1, i2] = float(out.GiAll[ion_idx]) if hasattr(out, "GiAll") and len(out.GiAll) > ion_idx else np.nan
+                    ky_idx = int(np.argmin(np.abs(out.ky - ky_target)))
+                    arrs["g_ky"][irho, i1, i2]  = float(out.g[0, ky_idx])
+                    if parsed:
+                        v1_abs[irho, i1, i2] = float(parsed.get(variable1, np.nan))
+                        v2_abs[irho, i1, i2] = float(parsed.get(variable2, np.nan))
+
+                    # Full spectra (most-unstable mode, index 0)
+                    if n_ky is not None and hasattr(out, "g") and out.g is not None:
+                        if out.g.shape[1] == n_ky:
+                            g_spectra[irho, i1, i2, :] = out.g[0, :]
+                    if n_ky is not None and hasattr(out, "f") and out.f is not None:
+                        if out.f.shape[1] == n_ky:
+                            f_spectra[irho, i1, i2, :] = out.f[0, :]
+                    if n_ky is not None and hasattr(out, "ky") and out.ky is not None:
+                        if len(out.ky) == n_ky:
+                            ky_arr[irho, :] = out.ky
+
+        self.scans2d[label] = {
+            "variable1": variable1, "varUpDown1": np.array(varUpDown1),
+            "variable2": variable2, "varUpDown2": np.array(varUpDown2),
+            "x": np.array(self.rhos),
+            "v1_abs": v1_abs, "v2_abs": v2_abs,
+            "ky_target": ky_target,
+            **arrs,
+            "ky": ky_arr,
+            "g_spectra": g_spectra,
+            "f_spectra": f_spectra,
+        }
+
+    def plot_scan2d(self, label, fn=None):
+        """
+        Filled contour plots of 2-D scan results (one tab per quantity, one
+        column per rho).  Axes are the absolute parameter values from v1_abs /
+        v2_abs (falling back to the multiplier arrays when not available).
+        """
+        scan = self.scans2d[label]
+        rhos       = scan["x"]
+        nr         = len(rhos)
+        variable1  = scan["variable1"]
+        variable2  = scan["variable2"]
+        ky_target  = scan.get("ky_target", 0.3)
+
+        quantities = [
+            ("Qe_gb", "Qe (GB)",              r"$Q_e$ (GB)"),
+            ("Qi_gb", "Qi (GB)",              r"$Q_i$ (GB)"),
+            ("Ge_gb", "Ge (GB)",              r"$\Gamma_e$ (GB)"),
+            ("g_ky",  f"gamma at ky~{ky_target}", rf"$\gamma$ at $k_\theta\rho_s\approx{ky_target}$"),
+        ]
+
+        n1 = len(scan["varUpDown1"])
+        n2 = len(scan["varUpDown2"])
+
+        if fn is None:
+            self.fn = GUItools.FigureNotebook("TGLF 2D Scan", geometry="1500x900", vertical=True)
+            fn = self.fn
+
+        # ---- Scalar contourf tabs (Qe, Qi, Ge, g at ky_target) ----
+        for qkey, tab_label, qtitle in quantities:
+            fig = fn.add_figure(label=tab_label)
+            grid = plt.GridSpec(1, nr, hspace=0.4, wspace=0.4, figure=fig)
+
+            for irho in range(nr):
+                ax = fig.add_subplot(grid[0, irho])
+
+                Z = scan[qkey][irho]           # (n1, n2)
+                # Use absolute values where available, else multipliers
+                x1 = scan["v1_abs"][irho, :, 0]
+                x2 = scan["v2_abs"][irho, 0, :]
+                if np.any(np.isnan(x1)):
+                    x1 = scan["varUpDown1"]
+                if np.any(np.isnan(x2)):
+                    x2 = scan["varUpDown2"]
+
+                X1, X2 = np.meshgrid(x1, x2, indexing="ij")
+
+                finite = Z[np.isfinite(Z)]
+                if finite.size < 3:
+                    ax.set_title(f"{qtitle}\nr/a={rhos[irho]:.3f}")
+                    ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center")
+                    continue
+
+                vmin, vmax = finite.min(), finite.max()
+                levels = np.linspace(vmin, vmax, 21)
+
+                cf = ax.contourf(X1, X2, Z, levels=levels, cmap="inferno")
+                ax.contour(X1, X2, Z, levels=levels[::4], colors="white",
+                           linewidths=0.4, alpha=0.5)
+                plt.colorbar(cf, ax=ax, pad=0.02)
+
+                ax.set_xlabel(variable1, fontsize=8)
+                ax.set_ylabel(variable2, fontsize=8)
+                ax.set_title(f"r/a = {rhos[irho]:.3f}", fontsize=9)
+
+            fig.suptitle(qtitle, fontsize=10)
+
+        # ---- Spectral tabs: one tab per rho, rows = γ / ω, columns = variable2 values ----
+        #
+        # Each panel is a pcolormesh:
+        #   x-axis → variable1 values  (how the spectrum shifts with scan variable 1)
+        #   y-axis → k_θρ_s            (wavenumber axis)
+        #   colour → γ (inferno, clipped ≥0) or ω (RdBu_r diverging)
+        # Colourbar range is per-panel (not shared).
+
+        g_spectra = scan.get("g_spectra")   # (nr, n1, n2, n_ky) or None
+        f_spectra = scan.get("f_spectra")
+        ky_arr    = scan.get("ky")          # (nr, n_ky) or None
+        has_g = g_spectra is not None and not np.all(np.isnan(g_spectra))
+        has_f = f_spectra is not None and not np.all(np.isnan(f_spectra))
+        n_spec_rows = int(has_g) + int(has_f)
+
+        if n_spec_rows > 0:
+            spec_rows = []
+            if has_g:
+                spec_rows.append((g_spectra, r"$\gamma(k_\theta\rho_s)$", "inferno", False))
+            if has_f:
+                spec_rows.append((f_spectra, r"$\omega(k_\theta\rho_s)$", "RdBu_r",  True))
+
+            for irho in range(nr):
+                fig = fn.add_figure(label=f"spectra r/a={rhos[irho]:.2f}")
+                grid = plt.GridSpec(n_spec_rows, n2, hspace=0.55, wspace=0.15, figure=fig)
+
+                ky = ky_arr[irho] if ky_arr is not None else None
+                if ky is None or np.all(np.isnan(ky)):
+                    ky = np.arange(g_spectra.shape[-1] if has_g else f_spectra.shape[-1], dtype=float)
+
+                v1_vals = scan["v1_abs"][irho, :, 0]
+                if np.any(np.isnan(v1_vals)):
+                    v1_vals = scan["varUpDown1"].astype(float)
+
+                v2_vals = scan["v2_abs"][irho, 0, :]
+                if np.any(np.isnan(v2_vals)):
+                    v2_vals = scan["varUpDown2"].astype(float)
+
+                for irow, (spectra, row_title, cmap_name, diverging) in enumerate(spec_rows):
+                    for i2 in range(n2):
+                        ax = fig.add_subplot(grid[irow, i2])
+
+                        Z = spectra[irho, :, i2, :]    # (n1, n_ky)
+                        if not diverging:
+                            Z = np.clip(Z, 0.0, None)  # γ<0 → black (stable)
+
+                        # Per-panel colour range
+                        finite = Z[np.isfinite(Z)]
+                        if finite.size == 0:
+                            ax.set_visible(False)
+                            continue
+                        if diverging:
+                            clim = float(np.nanmax(np.abs(finite)))
+                            vmin_p, vmax_p = -clim, clim
+                        else:
+                            vmin_p, vmax_p = 0.0, float(np.nanmax(finite))
+
+                        mesh = ax.pcolormesh(
+                            v1_vals, ky, Z.T,
+                            cmap=cmap_name, vmin=vmin_p, vmax=vmax_p,
+                            shading="nearest",
+                        )
+
+                        # Dashed line at the scalar ky_target
+                        ax.axhline(ky_target, color="lime", lw=0.8, ls="--", alpha=0.7)
+
+                        cb = plt.colorbar(mesh, ax=ax, pad=0.04, fraction=0.06)
+                        cb.ax.tick_params(labelsize=6)
+
+                        # Axis labels on edges only
+                        if irow == n_spec_rows - 1:
+                            ax.set_xlabel(variable1, fontsize=7)
+                        else:
+                            ax.set_xticklabels([])
+                        if i2 == 0:
+                            ax.set_ylabel(r"$k_\theta\rho_s$", fontsize=8)
+                        else:
+                            ax.set_yticklabels([])
+
+                        ax.tick_params(labelsize=6)
+                        ax.set_title(f"{variable2}={v2_vals[i2]:.2f}", fontsize=7)
+
+                        # Row label on leftmost panel
+                        if i2 == 0:
+                            ax.text(-0.35, 0.5, row_title, transform=ax.transAxes,
+                                    fontsize=8, va="center", ha="center", rotation=90)
+
+                fig.suptitle(f"Instability spectra  r/a = {rhos[irho]:.3f}", fontsize=10)
 
     def plot_scan(
         self,
@@ -2388,42 +3282,37 @@ class TGLF(SIMtools.mitim_simulation):
             ax = ax1_00
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$Q_e$ ($MW/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_ylim(bottom=0)
             ax.set_title("Electron heat flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_10
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$Q_i$ ($MW/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.set_ylim(bottom=0)
             ax.set_title("Ion heat flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_20
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$\\Gamma_e$ ($1E20/s/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.axhline(y=0, ls="-.", c="k", lw=1)
             ax.set_title("Electron particle flux")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax1_30
             ax.set_xlabel(variableLabel)
             ax.set_ylabel("$\\Gamma_i$ ($1E20/s/m^2$)")
-            ax.legend(loc="best", fontsize=fontsizeLeg)
+            ax.legend(loc="best")
             ax.axhline(y=0, ls="-.", c="k", lw=1)
-            ax.set_title(f"Ion particle flux (ION_{self.positionIon_scan})")
-            GRAPHICStools.addDenseAxis(ax)
+            ax.set_title(f"Ion particle flux (ION_{self.ion_OI_position_in_total_padded_list_scan})")
 
         ax = ax1_00e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$Q_e$ (GB)")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Electron heat flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_10e
         ax.set_xlabel(variableLabel)
@@ -2431,7 +3320,6 @@ class TGLF(SIMtools.mitim_simulation):
         # ax.legend(loc='best')
         ax.set_ylim(bottom=0)
         ax.set_title("Ion heat flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_20e
         ax.set_xlabel(variableLabel)
@@ -2439,40 +3327,34 @@ class TGLF(SIMtools.mitim_simulation):
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title("Electron particle flux")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax1_30e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$\\Gamma_i$ (GB)")
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        ax.set_title(f"Ion #{self.positionIon_scan} particle flux")
-        GRAPHICStools.addDenseAxis(ax)
+        ax.set_title(f"Ion #{self.ion_OI_position_in_total_padded_list_scan} particle flux")
 
         ax = ax2_11
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$\\eta_{a/b}=max(\\gamma_{a})/max(\\gamma_{b})$")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Dominant turbulence")
         ax.axhline(y=1.0, ls="--", c="k", lw=0.5)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_01
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$\\gamma$ ($c_s/a$)")
-        ax.legend(loc="best", fontsize=fontsizeLeg)
+        ax.legend(loc="best")
         ax.set_ylim(bottom=0)
         ax.set_title("Largest growth rate")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = ax2_00
         ax.set_xlim([1e-2, 3e1])
-        ax.legend(loc="best", fontsize=fontsizeLeg)
-        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best")
 
         ax = ax2_10
-        GRAPHICStools.addDenseAxis(ax)
 
         # --------------------------------------------------------
         # Plot full TGLFs
@@ -2528,12 +3410,14 @@ class TGLF(SIMtools.mitim_simulation):
         add_baseline_to = 'none', # 'all' or 'first' or 'none'
         variablesDrives=["RLTS_1", "RLTS_2", "RLNS_1", "XNUE", "TAUS_2"],
         minimum_delta_abs={},
-        positionIon=2,
+        ion_OI_position_in_total_padded_list=2,
+        save_and_cleanup=None,  # If a Path/str, save npz there then delete raw scan folders
         **kwargs_TGLFrun,
     ):
         
         '''
-        positionIon is the index in the input.tglf file... so if you want for ion RLNS_5, positionIon=5
+        ion_OI_position_in_total_padded_list is the index in the input.tglf file... so if you want for ion RLNS_5, ion_OI_position_in_total_padded_list=5
+        The name comes from the fact that in input.tglf files electrons are 1, first ion is 2, etc.
         '''
 
         self.variablesDrives = variablesDrives
@@ -2599,7 +3483,15 @@ class TGLF(SIMtools.mitim_simulation):
 
             scan_name = f"{subfolder}_{variable}"  # e.g. turbDrives_RLTS_1
 
-            self.read_scan(label=scan_name, variable=variable,positionIon=positionIon)
+            self.read_scan(label=scan_name, variable=variable, ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list)
+
+        if save_and_cleanup is not None:
+            self.save_npz(save_and_cleanup)
+            import shutil
+            for d in sorted(self.FolderGACODE.glob(f"{subfolder}_*")):
+                if d.is_dir():
+                    shutil.rmtree(d)
+                    print(f"\t- Removed raw scan folder: {IOtools.clipstr(d)}", typeMsg="i")
 
     def plotScanTurbulenceDrives(
         self, label="drives1", figs=None, **kwargs_TGLFscanPlot
@@ -2770,7 +3662,7 @@ class TGLF(SIMtools.mitim_simulation):
                 **kwargs_TGLFrun,
             )
 
-            self.read_scan(label=label, variable=self.variable, positionIon=position)
+            self.read_scan(label=label, variable=self.variable, ion_OI_position_in_total_padded_list=position)
 
             x = self.scans[label]["scanned_variable"]
             yV = self.scans[label]["Gi"]
@@ -2940,8 +3832,7 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_ylabel(f"Transport flux {self.scans[label]['var_y']}")
             ax.set_title("Incremental diffusivity calculations")
             # if len(labels) > 1 or len(self.rhos) > 1:
-            ax.legend(fontsize=8, loc="best")
-            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
 
             ax.set_xlim([x_min * 0.9, x_max * 1.1])
             ax.set_ylim([y_min * 0.9, y_max * 1.1])
@@ -2958,7 +3849,6 @@ class TGLF(SIMtools.mitim_simulation):
 
             ax.set_xlim([0.8, 1.2])
             ax.set_ylim([0.5, 2.0])
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax01
             ax.set_xlabel("$\\rho_N$")
@@ -2966,18 +3856,16 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             # ax.set_ylim(bottom=0)
             ax.set_title("Diffusivity profiles (effective and incremental)")
-            ax.legend(fontsize=10, loc="best")
+            ax.legend(loc="best")
             ax.axhline(y=0.0, ls="-", c="k", lw=0.3)
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax11
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("$\\chi^{PB}$ ($m^2/s$), $V^{PB}$ ($m/s$)")
             ax.set_xlim([0, 1])
             ax.set_title("Phenomenological (diffusivity + pinch)")
-            ax.legend(fontsize=10, loc="best")
+            ax.legend(loc="best")
             ax.axhline(y=0.0, ls="-", c="k", lw=0.3)
-            GRAPHICStools.addDenseAxis(ax)
 
         elif analysisType == "Z":
             grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
@@ -3076,8 +3964,7 @@ class TGLF(SIMtools.mitim_simulation):
             )
             ax.set_ylabel(f"Transport flux {self.scans[label]['var_y']}")
             ax.set_title("D and V calculations")
-            ax.legend(fontsize=7, loc="best")
-            GRAPHICStools.addDenseAxis(ax)
+            ax.legend(loc="best")
 
             ax = ax11
             ax.set_xlabel("$\\rho_N$")
@@ -3085,7 +3972,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("V pinch profiles")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax01
             ax.set_xlabel("$\\rho_N$")
@@ -3093,7 +3979,6 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("D diffusivity profiles")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax02
             ax.set_xlabel("$\\rho_N$")
@@ -3101,14 +3986,12 @@ class TGLF(SIMtools.mitim_simulation):
             ax.set_xlim([0, 1])
             ax.axhline(y=0, lw=1, ls="--", c="k")
             ax.set_title("Gradients at zero-flux condition")
-            GRAPHICStools.addDenseAxis(ax)
 
             ax = ax12
             ax.set_xlabel("$\\rho_N$")
             ax.set_ylabel("Relative $n_Z$")
             ax.set_xlim([0, 1])
             ax.set_title(f"Integrated profile using BC={BC}")
-            GRAPHICStools.addDenseAxis(ax)
 
     def updateConvolution(self):
         self.DRMAJDX_LOC = {}
@@ -3797,7 +4680,7 @@ def readTGLFresults(
 class TGLFoutput(SIMtools.GACODEoutput):
     def __init__(self, FolderGACODE, suffix="", require_all_files=True):
         super().__init__()
-        
+
         self.FolderGACODE, self.suffix = FolderGACODE, suffix
 
         if self.suffix == "":
@@ -3812,6 +4695,139 @@ class TGLFoutput(SIMtools.GACODEoutput):
         self.postprocess()
 
         print(f"\t- TGLF was run with {self.num_species} species, {self.num_nmodes} modes, {self.num_fields} field(s) ({', '.join(self.fields)}), {self.num_ky} wavenumbers",)
+
+    @classmethod
+    def from_inprocess(cls, inputclass, outputs):
+        """
+        Create a TGLFoutput from in-process ctypes results — no file I/O.
+
+        Replicates the ``require_all_files=False`` path of ``TGLFoutput.read()``:
+        all flux quantities are populated from *outputs*; spectral arrays are
+        set to dummy zeros so that ``postprocess()`` and ``unnormalize()`` can
+        run without error.  Spectral/growth-rate metrics will be zero/NaN.
+
+        Parameters
+        ----------
+        inputclass : TGLFinput
+            Processed input object for this rho (provides species ordering,
+            SIGN_IT correction).  May be None (conservative fallback used).
+        outputs : dict
+            Output dict from ``TGLFInProcess.run_from_dict()`` — keys:
+            ``ns``, ``elec_pflux``, ``elec_eflux``, ``elec_mflux``,
+            ``elec_expwd``, ``ion_pflux``, ``ion_eflux``, ``ion_mflux``,
+            ``ion_expwd``.
+        """
+        obj = cls.__new__(cls)
+        SIMtools.GACODEoutput.__init__(obj)   # sets obj.inputFile = None
+
+        obj.FolderGACODE  = None
+        obj.suffix        = ""
+        obj.inputclass    = inputclass
+        obj.roa           = inputclass.plasma["RMIN_LOC"] if inputclass is not None else 0.0
+        obj.inputFile     = ""
+        obj.inputFile_gen = ""
+
+        # --- Species accounting (same logic as TGLFoutput.read()) ---
+        if inputclass is not None:
+            extras = [i - 1 for i in inputclass.ions_info["thermal_list_extras"]]
+            obj.ions_included = (1,) + tuple(extras)
+            obj.fast_included = tuple(i - 1 for i in inputclass.ions_info["fast_list"])
+        else:
+            obj.ions_included = (1,)
+            obj.fast_included = ()
+
+        # --- Flux values ---
+        ns = outputs["ns"]
+        ni = ns - 1
+
+        obj.Ge    = outputs["elec_pflux"]
+        obj.Qe    = outputs["elec_eflux"]
+        obj.Me    = outputs["elec_mflux"]
+        obj.Se    = outputs["elec_expwd"]
+        obj.GiAll = np.array(outputs["ion_pflux"][:ni])
+        obj.QiAll = np.array(outputs["ion_eflux"][:ni])
+        obj.MiAll = np.array(outputs["ion_mflux"][:ni])
+        obj.SiAll = np.array(outputs["ion_expwd"][:ni])
+
+        # Build [e, ion1, ion2, ...] arrays for ions_included indexing
+        Gfull = np.concatenate([[obj.Ge], obj.GiAll])
+        Qfull = np.concatenate([[obj.Qe], obj.QiAll])
+        obj.Gi    = float(Gfull[list(obj.ions_included)].sum())
+        obj.Qi    = float(Qfull[list(obj.ions_included)].sum())
+        obj.Qifast = float(Qfull[list(obj.fast_included)].sum()) if obj.fast_included else 0.0
+
+        # SIGN_IT correction for momentum (same as read())
+        sign_it = inputclass.plasma["SIGN_IT"] if inputclass is not None else 1.0
+        signMt   = -sign_it
+        obj.Me   = obj.Me  * signMt
+        obj.MiAll = obj.MiAll * signMt
+        obj.Mt   = obj.Me + float(obj.MiAll.sum())
+        obj.Si   = float(obj.SiAll.sum())
+
+        # --- Spectral placeholders (mirrors require_all_files=False block) ---
+        obj.ky         = np.zeros((1,))
+        obj.num_ky     = 1
+        obj.num_nmodes = 1
+        obj.num_species = ns
+        obj.num_fields = 1
+        obj.fields     = []
+        obj.Eigenvalues = np.zeros((2, 1, 1))
+        obj.g           = np.zeros((1, 1))
+        obj.f           = np.zeros((1, 1))
+        obj.tglf_model  = {"width": np.zeros((1,)), "spectral_shift": np.zeros((1,)), "ave_p0": np.zeros((1,))}
+        obj.AmplitudeSpectrum    = np.zeros((1, 1, 1))
+        obj.AmplitudeSpectrum_Te = np.zeros((1,))
+        obj.AmplitudeSpectrum_Ti = np.zeros((1, 1))
+        obj.AmplitudeSpectrum_ne = np.zeros((1,))
+        obj.AmplitudeSpectrum_ni = np.zeros((1, 1))
+        obj.nTSpectrum   = np.zeros((1, 1, 1))
+        obj.neTeSpectrum = np.zeros((1, 1))
+        obj.niTiSpectrum = np.zeros((1, 1, 1))
+        obj.FieldSpectrum    = np.zeros((4, 1, 1))
+        obj.v_spectrum       = np.zeros((1, 1))
+        obj.phi_spectrum     = np.zeros((1, 1))
+        obj.a_par_spectrum   = np.zeros((1, 1))
+        obj.a_per_spectrum   = np.zeros((1, 1))
+        obj.SumFluxSpectrum  = np.zeros((5, 1, 1, 1))
+        obj.SumFlux_Qe_phi   = np.zeros((1,)); obj.SumFlux_Ge_phi   = np.zeros((1,))
+        obj.SumFlux_QiAll_phi = np.zeros((1, 1))
+        obj.SumFlux_Qe_a_par = np.zeros((1,)); obj.SumFlux_Ge_a_par = np.zeros((1,))
+        obj.SumFlux_QiAll_a_par = np.zeros((1, 1))
+        obj.SumFlux_Qe_a_per = np.zeros((1,)); obj.SumFlux_Ge_a_per = np.zeros((1,))
+        obj.SumFlux_QiAll_a_per = np.zeros((1, 1))
+        obj.SumFlux_Qe_a  = np.zeros((1,)); obj.SumFlux_Ge_a  = np.zeros((1,))
+        obj.SumFlux_QiAll_a = np.zeros((1, 1))
+        obj.SumFlux_Qe    = np.zeros((1,)); obj.SumFlux_Ge    = np.zeros((1,))
+        obj.SumFlux_QiAll = np.zeros((1, 1))
+        obj.SumFlux_Qi_phi = np.zeros((1,)); obj.SumFlux_Qi_a = np.zeros((1,))
+        obj.SumFlux_Qi     = np.zeros((1,))
+        obj.SumFlux_GiAll_phi = np.zeros((1, 1)); obj.SumFlux_GiAll_a = np.zeros((1, 1))
+        obj.SumFlux_GiAll = np.zeros((1, 1))
+        obj.SumFlux_Gi_phi = np.zeros((1,)); obj.SumFlux_Gi_a = np.zeros((1,))
+        obj.SumFlux_Gi     = np.zeros((1,))
+        obj.SumFlux_MtAll_phi = np.zeros((1, 1)); obj.SumFlux_MtAll_a = np.zeros((1, 1))
+        obj.SumFlux_MtAll  = np.zeros((1, 1))
+        obj.SumFlux_Mt_phi = np.zeros((1,)); obj.SumFlux_Mt_a = np.zeros((1,))
+        obj.SumFlux_Mt     = np.zeros((1,))
+        obj.QLFluxSpectrum  = np.zeros((5, 1, 1, 1, 1))
+        obj.QLFluxSpectrum_Ge_phi    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_phi    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_Ge_a_par    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_par    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_Ge_a_per    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_per    = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_per = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_per = np.zeros((1, 1))
+        obj.IntensitySpectrum    = np.zeros((4, 1, 1, 1))
+        obj.IntensitySpectrum_ne = np.zeros((1, 1)); obj.IntensitySpectrum_Te = np.zeros((1, 1))
+        obj.IntensitySpectrum_ni = np.zeros((1, 1, 1)); obj.IntensitySpectrum_Ti = np.zeros((1, 1, 1))
+
+        obj.postprocess()
+
+        print(f"\t- [in-process] rho={obj.roa:.4f}  "
+              f"Qe={obj.Qe:.4f}  Qi={obj.Qi:.4f}  Ge={obj.Ge:.4f}")
+        return obj
 
     def postprocess(self):
         coeff, klow = 0.0, 0.8
@@ -3841,6 +4857,139 @@ class TGLFoutput(SIMtools.GACODEoutput):
         self.QiEM = np.sum(self.SumFlux_Qi_a)
         self.GeES = np.sum(self.SumFlux_Ge_phi)
         self.GeEM = np.sum(self.SumFlux_Ge_a)
+        self.GiES = np.sum(self.SumFlux_Gi_phi)
+        self.GiEM = np.sum(self.SumFlux_Gi_a)
+        self.MtES = np.sum(self.SumFlux_Mt_phi)
+        self.MtEM = np.sum(self.SumFlux_Mt_a)
+
+    def _compute_derived(self):
+        """
+        Re-derive all slice attributes from the stored base spectra.
+
+        Requires that the following base attributes are already set on self:
+          Eigenvalues, AmplitudeSpectrum, nTSpectrum, FieldSpectrum,
+          SumFluxSpectrum, QLFluxSpectrum, IntensitySpectrum,
+          ions_included, fields, num_fields, inputclass
+        """
+        # ---- Eigenvalues -> g, f ----
+        self.g = self.Eigenvalues[0, :, :]
+        self.f = self.Eigenvalues[1, :, :]
+
+        # ---- AmplitudeSpectrum slices ----
+        self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
+        self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
+        self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
+        self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
+
+        # ---- nTSpectrum slices ----
+        self.neTeSpectrum = self.nTSpectrum[0, :, :]
+        self.niTiSpectrum = self.nTSpectrum[1:, :, :]
+
+        # ---- FieldSpectrum slices ----
+        self.v_spectrum   = self.FieldSpectrum[0, :, :]
+        self.phi_spectrum = self.FieldSpectrum[1, :, :]
+        self.a_par_spectrum = self.FieldSpectrum[2, :, :]
+        self.a_per_spectrum = self.FieldSpectrum[3, :, :]
+
+        # ---- SumFluxSpectrum slices ----
+        self.SumFlux_Qe_phi   = self.SumFluxSpectrum[1, 0, 0, :]
+        self.SumFlux_Ge_phi   = self.SumFluxSpectrum[0, 0, 0, :]
+        self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
+
+        contF = 0
+        if "a_par" in self.fields:
+            self.SumFlux_Qe_a_par    = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+            self.SumFlux_Ge_a_par    = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+            self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+            contF += 1
+        else:
+            self.SumFlux_Qe_a_par    = self.SumFlux_Qe_phi * 0.0
+            self.SumFlux_Ge_a_par    = self.SumFlux_Ge_phi * 0.0
+            self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
+
+        if "a_per" in self.fields:
+            self.SumFlux_Qe_a_per    = self.SumFluxSpectrum[1, 0, 1 + contF, :]
+            self.SumFlux_Ge_a_per    = self.SumFluxSpectrum[0, 0, 1 + contF, :]
+            self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
+        else:
+            self.SumFlux_Qe_a_per    = self.SumFlux_Qe_phi * 0.0
+            self.SumFlux_Ge_a_per    = self.SumFlux_Ge_phi * 0.0
+            self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
+
+        self.SumFlux_Qe_a    = self.SumFlux_Qe_a_par    + self.SumFlux_Qe_a_per
+        self.SumFlux_Ge_a    = self.SumFlux_Ge_a_par    + self.SumFlux_Ge_a_per
+        self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
+
+        self.SumFlux_Qe    = self.SumFlux_Qe_phi    + self.SumFlux_Qe_a
+        self.SumFlux_Ge    = self.SumFlux_Ge_phi    + self.SumFlux_Ge_a
+        self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
+
+        sum_ions = tuple([i - 1 for i in self.ions_included])
+
+        self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
+        self.SumFlux_Qi_a   = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
+        self.SumFlux_Qi     = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
+
+        self.SumFlux_GiAll_phi = self.SumFluxSpectrum[0, 1:, 0, :]
+        self.SumFlux_GiAll_a   = (self.SumFluxSpectrum[0, 1:, 1, :] if self.num_fields > 1
+                                   else self.SumFlux_GiAll_phi * 0.0)
+        self.SumFlux_GiAll     = self.SumFlux_GiAll_phi + self.SumFlux_GiAll_a
+        self.SumFlux_Gi_phi    = self.SumFlux_GiAll_phi[sum_ions, :].sum(axis=0)
+        self.SumFlux_Gi_a      = self.SumFlux_GiAll_a[sum_ions, :].sum(axis=0)
+        self.SumFlux_Gi        = self.SumFlux_Gi_phi + self.SumFlux_Gi_a
+
+        signMt = -self.inputclass.plasma['SIGN_IT']
+        self.SumFlux_MtAll_phi = self.SumFluxSpectrum[2, :, 0, :] * signMt
+        self.SumFlux_MtAll_a   = (self.SumFluxSpectrum[2, :, 1, :] * signMt if self.num_fields > 1
+                                   else self.SumFlux_MtAll_phi * 0.0)
+        self.SumFlux_MtAll     = self.SumFlux_MtAll_phi + self.SumFlux_MtAll_a
+        self.SumFlux_Mt_phi    = self.SumFlux_MtAll_phi.sum(axis=0)
+        self.SumFlux_Mt_a      = self.SumFlux_MtAll_a.sum(axis=0)
+        self.SumFlux_Mt        = self.SumFlux_Mt_phi + self.SumFlux_Mt_a
+
+        # ---- QLFluxSpectrum slices ----
+        self.QLFluxSpectrum_Ge_phi    = self.QLFluxSpectrum[0, 0, 0, :, :]
+        self.QLFluxSpectrum_Qe_phi    = self.QLFluxSpectrum[1, 0, 0, :, :]
+        self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
+        self.QLFluxSpectrum_Gi_phi    = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(axis=0)
+        self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
+        self.QLFluxSpectrum_Qi_phi    = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(axis=0)
+
+        if "a_par" in self.fields:
+            self.QLFluxSpectrum_Ge_a_par    = self.QLFluxSpectrum[0, 0, 1, :, :]
+            self.QLFluxSpectrum_Qe_a_par    = self.QLFluxSpectrum[1, 0, 1, :, :]
+            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
+            self.QLFluxSpectrum_Gi_a_par    = self.QLFluxSpectrum_GiAll_a_par[sum_ions, :].sum(axis=0)
+            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
+            self.QLFluxSpectrum_Qi_a_par    = self.QLFluxSpectrum_QiAll_a_par[sum_ions, :].sum(axis=0)
+        else:
+            self.QLFluxSpectrum_Ge_a_par    = self.QLFluxSpectrum_Ge_phi * 0.0
+            self.QLFluxSpectrum_Qe_a_par    = self.QLFluxSpectrum_Qe_phi * 0.0
+            self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Gi_a_par    = self.QLFluxSpectrum_Qi_phi * 0.0
+            self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Qi_a_par    = self.QLFluxSpectrum_Qi_phi * 0.0
+
+        if "a_per" in self.fields:
+            self.QLFluxSpectrum_Ge_a_per    = self.QLFluxSpectrum[0, 0, 2, :, :]
+            self.QLFluxSpectrum_Qe_a_per    = self.QLFluxSpectrum[1, 0, 2, :, :]
+            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
+            self.QLFluxSpectrum_Gi_a_per    = self.QLFluxSpectrum_GiAll_a_per[sum_ions, :].sum(axis=0)
+            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
+            self.QLFluxSpectrum_Qi_a_per    = self.QLFluxSpectrum_QiAll_a_per[sum_ions, :].sum(axis=0)
+        else:
+            self.QLFluxSpectrum_Ge_a_per    = self.QLFluxSpectrum_Ge_phi * 0.0
+            self.QLFluxSpectrum_Qe_a_per    = self.QLFluxSpectrum_Qe_phi * 0.0
+            self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
+            self.QLFluxSpectrum_Gi_a_per    = self.QLFluxSpectrum_Gi_phi * 0.0
+            self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
+            self.QLFluxSpectrum_Qi_a_per    = self.QLFluxSpectrum_Qi_phi * 0.0
+
+        # ---- IntensitySpectrum slices ----
+        self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
+        self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
+        self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
+        self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
 
     # Redefined because of very specific TGLF stuff
     def read(self,require_all_files=True):
@@ -3931,9 +5080,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 .transpose((2, 1, 0))
             )
 
-            self.g = self.Eigenvalues[0, :, :]
-            self.f = self.Eigenvalues[1, :, :]
-
             # ------------------------------------------------------------------------
             # TGLF model
             # ------------------------------------------------------------------------
@@ -3985,12 +5131,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             self.num_species = self.AmplitudeSpectrum.shape[1]
 
-            self.AmplitudeSpectrum_Te = self.AmplitudeSpectrum[0, 0, :]
-            self.AmplitudeSpectrum_Ti = self.AmplitudeSpectrum[0, 1:, :]
-
-            self.AmplitudeSpectrum_ne = self.AmplitudeSpectrum[1, 0, :]
-            self.AmplitudeSpectrum_ni = self.AmplitudeSpectrum[1, 1:, :]
-
             # ------------------------------------------------------------------------
             # Cross Phase Spectrum
             # ------------------------------------------------------------------------
@@ -4004,9 +5144,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [species,nmode,ky]
             self.nTSpectrum = datanT.transpose((0, 2, 1)) * 180 / (np.pi)
-
-            self.neTeSpectrum = self.nTSpectrum[0, :, :]
-            self.niTiSpectrum = self.nTSpectrum[1:, :, :]
 
             # ----------------------------------------------------------------------------------------
             # Field Spectrum (gyro-bohm normalized field fluctuation intensity spectra per mode)
@@ -4028,11 +5165,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 self.FieldSpectrum[2, i] = data[0, :, 4 * i + 2]
                 self.FieldSpectrum[3, i] = data[0, :, 4 * i + 3]
             # *************************************************
-
-            self.v_spectrum = self.FieldSpectrum[0, :, :]
-            self.phi_spectrum = self.FieldSpectrum[1, :, :]
-            self.a_par_spectrum = self.FieldSpectrum[2, :, :]
-            self.a_per_spectrum = self.FieldSpectrum[3, :, :]
 
             with open(
                 self.FolderGACODE / ("out.tglf.field_spectrum" + self.suffix), "r"
@@ -4071,49 +5203,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [quantity,species,field,ky]
             self.SumFluxSpectrum = data_re.transpose((3, 0, 1, 2))
-            # *************************************************
-
-            self.SumFlux_Qe_phi = self.SumFluxSpectrum[1, 0, 0, :]
-            self.SumFlux_Ge_phi = self.SumFluxSpectrum[0, 0, 0, :]
-            self.SumFlux_QiAll_phi = self.SumFluxSpectrum[1, 1:, 0, :]
-
-            contF = 0
-            if "a_par" in self.fields:
-                self.SumFlux_Qe_a_par = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-                self.SumFlux_Ge_a_par = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-                self.SumFlux_QiAll_a_par = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-                contF += 1
-            else:
-                self.SumFlux_Qe_a_par = self.SumFlux_Qe_phi * 0.0
-                self.SumFlux_Ge_a_par = self.SumFlux_Ge_phi * 0.0
-                self.SumFlux_QiAll_a_par = self.SumFlux_QiAll_phi * 0.0
-
-            if "a_per" in self.fields:
-                self.SumFlux_Qe_a_per = self.SumFluxSpectrum[1, 0, 1 + contF, :]
-                self.SumFlux_Ge_a_per = self.SumFluxSpectrum[0, 0, 1 + contF, :]
-                self.SumFlux_QiAll_a_per = self.SumFluxSpectrum[1, 1:, 1 + contF, :]
-                contF += 1
-            else:
-                self.SumFlux_Qe_a_per = self.SumFlux_Qe_phi * 0.0
-                self.SumFlux_Ge_a_per = self.SumFlux_Ge_phi * 0.0
-                self.SumFlux_QiAll_a_per = self.SumFlux_QiAll_phi * 0.0
-
-            self.SumFlux_Qe_a = self.SumFlux_Qe_a_par + self.SumFlux_Qe_a_per
-            self.SumFlux_Ge_a = self.SumFlux_Ge_a_par + self.SumFlux_Ge_a_per
-            self.SumFlux_QiAll_a = self.SumFlux_QiAll_a_par + self.SumFlux_QiAll_a_per
-
-            self.SumFlux_Qe = self.SumFlux_Qe_phi + self.SumFlux_Qe_a
-            self.SumFlux_Ge = self.SumFlux_Ge_phi + self.SumFlux_Ge_a
-            self.SumFlux_QiAll = self.SumFlux_QiAll_phi + self.SumFlux_QiAll_a
-
-            # Sum ion contributions
 
             print(f"\t\t- For Qi spectrum, summing contributions from ions {self.ions_included} (#0 is e-)",typeMsg="i",)
-            sum_ions = tuple([i - 1 for i in self.ions_included])
-
-            self.SumFlux_Qi_phi = self.SumFlux_QiAll_phi[sum_ions, :].sum(axis=0)
-            self.SumFlux_Qi_a = self.SumFlux_QiAll_a[sum_ions, :].sum(axis=0)
-            self.SumFlux_Qi = self.SumFlux_Qi_phi + self.SumFlux_Qi_a
 
             # ------------------------------------------------------------------------
             # QL Flux Spectrum (QL weights per mode)
@@ -4126,8 +5217,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                 columns=None,
                 numky=self.num_ky,
             )
-
-            # Re-arrange to separa specie and field
 
             data_re = np.reshape(
                 data,
@@ -4143,72 +5232,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             # Using my convention of [quantity,species,field,nmode,ky]
             self.QLFluxSpectrum = data_re.transpose((4, 0, 1, 2, 3))
-            # *************************************************
-
-            self.QLFluxSpectrum_Ge_phi = self.QLFluxSpectrum[0, 0, 0, :, :]
-            self.QLFluxSpectrum_Qe_phi = self.QLFluxSpectrum[1, 0, 0, :, :]
-
-            self.QLFluxSpectrum_GiAll_phi = self.QLFluxSpectrum[0, 1:, 0, :, :]
-            self.QLFluxSpectrum_Gi_phi = self.QLFluxSpectrum_GiAll_phi[sum_ions, :].sum(
-                axis=0
-            )  # Sum over ions
-            self.QLFluxSpectrum_QiAll_phi = self.QLFluxSpectrum[1, 1:, 0, :, :]
-            self.QLFluxSpectrum_Qi_phi = self.QLFluxSpectrum_QiAll_phi[sum_ions, :].sum(
-                axis=0
-            )  # Sum over ions
-
-            contF = 1
-            if "a_par" in self.fields:
-                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum[0, 0, 1, :, :]
-                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum[1, 0, 1, :, :]
-
-                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum[0, 1:, 1, :, :]
-                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_GiAll_a_par[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum[1, 1:, 1, :, :]
-                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_QiAll_a_par[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                contF += 1
-            else:
-                self.QLFluxSpectrum_Ge_a_par = self.QLFluxSpectrum_Ge_phi * 0.0
-                self.QLFluxSpectrum_Qe_a_par = self.QLFluxSpectrum_Qe_phi * 0.0
-
-                self.QLFluxSpectrum_GiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Gi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
-                self.QLFluxSpectrum_QiAll_a_par = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Qi_a_par = self.QLFluxSpectrum_Qi_phi * 0.0
-
-            if "a_per" in self.fields:
-                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum[0, 0, 2, :, :]
-                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum[1, 0, 2, :, :]
-
-                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum[0, 1:, 2, :, :]
-                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_GiAll_a_per[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum[1, 1:, 2, :, :]
-                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_QiAll_a_per[
-                    sum_ions, :
-                ].sum(
-                    axis=0
-                )  # Sum over ions
-                contF += 1
-            else:
-                self.QLFluxSpectrum_Ge_a_per = self.QLFluxSpectrum_Ge_phi * 0.0
-                self.QLFluxSpectrum_Qe_a_per = self.QLFluxSpectrum_Qe_phi * 0.0
-
-                self.QLFluxSpectrum_GiAll_a_per = self.QLFluxSpectrum_GiAll_phi * 0.0
-                self.QLFluxSpectrum_Gi_a_per = self.QLFluxSpectrum_Gi_phi * 0.0
-                self.QLFluxSpectrum_QiAll_a_per = self.QLFluxSpectrum_QiAll_phi * 0.0
-                self.QLFluxSpectrum_Qi_a_per = self.QLFluxSpectrum_Qi_phi * 0.0
 
             # ------------------------------------------------------------------------
             # Intensity Spectrum
@@ -4230,11 +5253,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
             # Using my convention of [quantity=(density,temperature,parallel velocity,parallel energy),species,nmode,ky]
             self.IntensitySpectrum = data_re.transpose((3, 0, 1, 2))
 
-            self.IntensitySpectrum_ne = self.IntensitySpectrum[0, 0, :, :]
-            self.IntensitySpectrum_Te = self.IntensitySpectrum[1, 0, :, :]
-
-            self.IntensitySpectrum_ni = self.IntensitySpectrum[0, 1:, :, :]
-            self.IntensitySpectrum_Ti = self.IntensitySpectrum[1, 1:, :, :]
+            # Re-derive all slice attributes from the base spectra
+            self._compute_derived()
 
         else:
             self.ky = np.zeros((1,))
@@ -4302,6 +5322,20 @@ class TGLFoutput(SIMtools.GACODEoutput):
             self.SumFlux_Qi_a = np.zeros((1,))
             self.SumFlux_Qi = np.zeros((1,))
 
+            self.SumFlux_GiAll_phi = np.zeros((1, 1))
+            self.SumFlux_GiAll_a = np.zeros((1, 1))
+            self.SumFlux_GiAll = np.zeros((1, 1))
+            self.SumFlux_Gi_phi = np.zeros((1,))
+            self.SumFlux_Gi_a = np.zeros((1,))
+            self.SumFlux_Gi = np.zeros((1,))
+
+            self.SumFlux_MtAll_phi = np.zeros((1, 1))
+            self.SumFlux_MtAll_a = np.zeros((1, 1))
+            self.SumFlux_MtAll = np.zeros((1, 1))
+            self.SumFlux_Mt_phi = np.zeros((1,))
+            self.SumFlux_Mt_a = np.zeros((1,))
+            self.SumFlux_Mt = np.zeros((1,))
+
             # QL Flux Spectrum
             self.QLFluxSpectrum = np.zeros((5, 1, 1, 1, 1))
 
@@ -4342,6 +5376,50 @@ class TGLFoutput(SIMtools.GACODEoutput):
         with open(self.FolderGACODE / ("input.tglf" + self.suffix), "r") as fi:
             lines = fi.readlines()
         self.inputFile = "".join(lines)
+
+        if require_all_files:
+
+            # Generated input file (defaults filled in by TGLF)
+            gen_path = self.FolderGACODE / ("input.tglf.gen" + self.suffix)
+            if gen_path.exists():
+                with open(gen_path, "r") as fi:
+                    self.inputFile_gen = fi.read()
+            else:
+                self.inputFile_gen = ""
+
+            # TGLF version string
+            version_path = self.FolderGACODE / ("out.tglf.version" + self.suffix)
+            if version_path.exists():
+                with open(version_path, "r") as fi:
+                    self.tglf_version = fi.read().strip()
+            else:
+                self.tglf_version = ""
+
+            # Scalar saturation parameters
+            self.scalar_sat_params = {}
+            sat_path = self.FolderGACODE / ("out.tglf.scalar_saturation_parameters" + self.suffix)
+            if sat_path.exists():
+                with open(sat_path, "r") as fi:
+                    for line in fi:
+                        line = line.strip()
+                        if line.startswith("!") or "=" not in line:
+                            continue
+                        key, val = line.split("=", 1)
+                        key = key.strip()
+                        val = val.strip().split()[0]  # first token only
+                        try:
+                            val = int(val)
+                        except ValueError:
+                            try:
+                                val = float(val)
+                            except ValueError:
+                                pass
+                        self.scalar_sat_params[key] = val
+
+        else:
+            self.inputFile_gen = ""
+            self.tglf_version = ""
+            self.scalar_sat_params = {}
 
     def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):
         if normalization is not None:
@@ -4434,9 +5512,9 @@ class TGLFoutput(SIMtools.GACODEoutput):
             'sum_flux': ['nspecies', 'nfields', 'nky'],
         }
         data_type_mapper = {
-            'amplitude': ['density', 'temperature'],
+            'amplitude': ['temperature', 'density'],  # index 0 = temperature (dataT appended first), 1 = density
             'eigenvalue': ['imaginary', 'real'],
-            'field': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
+            'field': ['v', 'phi', 'a_par', 'a_per'],  # FieldSpectrum[0]=v, [1]=phi, [2]=a_par, [3]=a_per
             'intensity': ['density', 'temperature', 'parallel_velocity', 'parallel_energy'],
             'ql_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
             'sum_flux': ['particle', 'energy', 'toroidal_stress', 'parallel_stress', 'exchange'],
@@ -4608,7 +5686,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $\\delta T_e$ Amplitude")
         ax.set_ylabel("$A_{T_e}(k_y)$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 1]
 
@@ -4628,7 +5705,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $\\delta n_e$ Amplitude")
         ax.set_ylabel("$A_{n_e}(k_y)$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 1]
 
@@ -4648,7 +5724,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_title("Spectrum: $n_e-T_e$ cross-phase angle")
         ax.set_ylabel("$\\alpha_{n_e,T_e}$ (degrees)")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax.axhline(y=0, ls="--", lw=1, c="k")
         ax.set_ylim([-180, 180])
@@ -4664,7 +5739,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 2]
 
@@ -4675,7 +5749,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 2]
 
@@ -4686,7 +5759,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** Flux Values
 
@@ -4697,7 +5769,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_e/Q_{GB}$")
         ax.set_xlim([0, 1])
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $Q_e$ (GB)")
 
         ax = axs[3, 1]
@@ -4707,7 +5778,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_i/Q_{GB}$")
         ax.set_xlim([0, 1])
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $Q_i$ (GB)")
 
         ax = axs[3, 2]
@@ -4718,7 +5788,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma/\\Gamma_{GB}$")
         ax.set_xlim([0, 1])
         ax.axhline(y=0, ls="--", lw=1, c="k")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Profile: $\\Gamma_e$ (GB)")
 
     def plotTGLF_Contributors(
@@ -4771,9 +5840,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (ES+EM): $Q_e$")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
 
         ax = axs[1, 0]
         ax.plot(
@@ -4800,7 +5868,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 0]
         ax.plot(
@@ -4827,7 +5894,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_{e,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** EM+ES Flux radial
 
@@ -4869,9 +5935,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_xlabel("$r/a$ (RMIN_LOC)")
         ax.set_ylabel("$Q_e$ (GB)")
         ax.set_title("Profile (ES+EM): $Q_e$ (GB)")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 2]
         ax.plot(
@@ -4912,7 +5977,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_i$ (GB)")
         ax.set_title("Profile (ES+EM): $Q_i$ (GB)")
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[2, 2]
 
@@ -4954,7 +6018,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$\\Gamma_e$ (GB)")
         ax.set_title("Profile (ES+EM): $\\Gamma_e$ (GB)")
         ax.axhline(y=0, ls="--", c="k", lw=1)
-        GRAPHICStools.addDenseAxis(ax)
 
         # ***** Cumulative Spectra
 
@@ -4965,7 +6028,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Qe, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $Q_e$")
 
         ax = axs[1, 1]
@@ -4975,7 +6037,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Qi, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $Q_i$")
 
         ax = axs[2, 1]
@@ -4985,7 +6046,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.axhline(y=self.Ge, ls="--", lw=0.5, c=c)
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (Cumulative): $\\Gamma_e$")
         ax.axhline(y=0, ls="--", lw=0.5, c="k")
 
@@ -5056,9 +6116,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$Q_{i,ky}$")
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Spectrum (each ion): $Q_i$")
-        ax.legend(loc="best", fontsize=fontsizeLeg * 1.5, title=title_legend)
+        ax.legend(loc="best", title=title_legend)
 
     def plotTGLF_Fluctuations(
         self, c="b", label="", axs=None, fontsizeLeg=4, title_legend="", cont=0
@@ -5083,7 +6142,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Amplitude Spectrum: $n_e$")
 
         ax = axs[1, 0]
@@ -5091,7 +6149,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Amplitude Spectrum: $T_e$")
 
         ax = axs[2, 0]
@@ -5108,9 +6165,8 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("$n_e-T_e$ Spectrum")
-        ax.legend(loc="best", fontsize=fontsizeLeg, title=title_legend)
+        GRAPHICStools.addLegendApart(ax, size=fontsizeLeg, ratio=0.9, title=title_legend)
 
         ax = axs[3, 0]
         for i in range(self.num_nmodes):
@@ -5126,7 +6182,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Intensity Spectrum: $n_e$")
 
         ax = axs[4, 0]
@@ -5143,7 +6198,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Intensity Spectrum: $T_e$")
 
         for ion in range(self.num_species - 1):
@@ -5159,7 +6213,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Amplitude Spectrum: $n_{{i}}$ (ion {ion+1})")
 
             ax = axs[1, ion + 1]
@@ -5174,7 +6227,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Amplitude Spectrum: $T_{{i}}$ (ion {ion+1})")
 
             ax = axs[2, ion + 1]
@@ -5191,7 +6243,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"$n_i-T_i$ Spectrum (ion {ion+1})")
 
             ax = axs[3, ion + 1]
@@ -5208,7 +6259,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Intensity Spectrum: $n_{{i}}$ (ion {ion+1})")
 
             ax = axs[4, ion + 1]
@@ -5225,7 +6275,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Intensity Spectrum: $T_{{i}}$ (ion {ion+1})")
 
     def plotTGLF_Field(
@@ -5306,9 +6355,7 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title(f"Growth Rate Spectrum")
-        ax.legend(loc="best", fontsize=fontsizeLeg, title=title_legend)
 
         ax = axs[1, 0]
         for i in range(self.num_nmodes):
@@ -5324,7 +6371,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title(f"Field Spectrum: {v[1]}")
 
         # ****************************************************************
@@ -5344,7 +6390,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("QL Spectrum: $Q_e$")
 
         ax = axs[0, 2]
@@ -5361,7 +6406,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("QL Spectrum: $\\Gamma_e$")
 
         for ion in range(self.num_species - 1):
@@ -5378,7 +6422,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"QL Spectrum: $Q_i$ (ion {ion+1})")
 
         # ****************************************************************
@@ -5390,7 +6433,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Sum Flux Spectrum: $Q_e$")
 
         ax = axs[1, 2]
@@ -5398,7 +6440,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         ax.set_xscale("log")
         ax.set_xlabel("$k_{\\theta}\\rho_s$")
-        GRAPHICStools.addDenseAxis(ax)
         ax.set_title("Sum Flux Spectrum: $\\Gamma_e$")
 
         for ion in range(self.num_species - 1):
@@ -5407,8 +6448,233 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
             ax.set_xscale("log")
             ax.set_xlabel("$k_{\\theta}\\rho_s$")
-            GRAPHICStools.addDenseAxis(ax)
             ax.set_title(f"Sum Flux Spectrum: $Q_i$ (ion {ion+1})")
+
+        # Place legend outside the last column so it never overlaps inner plots
+        ax_last = axs[0, axs.shape[1] - 1]
+        handles, labels_h = axs[0, 0].get_legend_handles_labels()
+        box = ax_last.get_position()
+        ax_last.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        prop = {"size": fontsizeLeg} if fontsizeLeg is not None else {}
+        ax_last.legend(handles, labels_h, loc="upper left",
+                       bbox_to_anchor=(1, 1.0), prop=prop, title=title_legend)
+
+    def plotTGLF_IonMomFluxes(
+        self, c="b", label="", axs=None, fontsizeLeg=4, title_legend=None, cont=0
+    ):
+        """
+        Plot per-ion particle fluxes (Gi), per-ion heat flux (QiAll), total momentum
+        flux (Mt) spectra and radial totals.  axs must be shape (3, 4).
+        """
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(14, 7))
+            grid = plt.GridSpec(3, 4, hspace=0.6, wspace=0.3)
+            axs = np.empty((3, 4), dtype=plt.Axes)
+            axs[0, 0] = fig.add_subplot(grid[0, 0])
+            for r in range(3):
+                for c_ in range(4):
+                    if r == 0 and c_ == 0:
+                        continue
+                    sharex = axs[0, 0] if c_ < 2 else None
+                    axs[r, c_] = fig.add_subplot(grid[r, c_], sharex=sharex)
+
+        typeline = GRAPHICStools.listmarkersLS()
+        n_ions = self.SumFlux_GiAll_phi.shape[0]
+
+        # --- Column 0: per-ion particle flux spectra (ES + EM) ---
+        ax = axs[0, 0]
+        for ion in range(n_ions):
+            ax.plot(self.ky, self.SumFlux_GiAll_phi[ion, :], typeline[ion],
+                    color=c, lw=0.7, markersize=2,
+                    label=f"ion {ion+1} ES" if cont == 0 else "")
+            ax.plot(self.ky, self.SumFlux_GiAll_a[ion, :], typeline[ion],
+                    color=c, lw=0.3, markersize=1, alpha=0.5,
+                    label=f"ion {ion+1} EM" if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Gamma_{i,ky}$")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: $\\Gamma_i$ per ion")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 0 row 1: per-ion heat flux spectra ---
+        ax = axs[1, 0]
+        for ion in range(n_ions):
+            ax.plot(self.ky, self.SumFlux_QiAll_phi[ion, :], typeline[ion],
+                    color=c, lw=0.7, markersize=2,
+                    label=f"ion {ion+1} ES" if cont == 0 else "")
+            ax.plot(self.ky, self.SumFlux_QiAll_a[ion, :], typeline[ion],
+                    color=c, lw=0.3, markersize=1, alpha=0.5)
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$Q_{i,ky}$")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: $Q_i$ per ion")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 0 row 2: total momentum flux spectrum ---
+        ax = axs[2, 0]
+        ax.plot(self.ky, self.SumFlux_Mt_phi, "-o", color=c, lw=0.7, markersize=2,
+                label="ES" if cont == 0 else "")
+        ax.plot(self.ky, self.SumFlux_Mt_a, "-s", color=c, lw=0.3, markersize=2,
+                label="EM" if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Pi_{ky}$ (GB)")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Spectrum: Total momentum $\\Pi$")
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 1: cumulative spectra ---
+        ax = axs[0, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Gi), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Gi if hasattr(self, 'Gi') else 0, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $\\Gamma_i$ (summed ions)")
+
+        ax = axs[1, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Qi), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Qi, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $Q_i$ (summed ions)")
+
+        ax = axs[2, 1]
+        ax.plot(self.ky, np.cumsum(self.SumFlux_Mt), "-o", color=c, lw=1.0, markersize=2)
+        ax.axhline(y=self.Mt, ls="--", lw=0.5, c=c)
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Cumulative: $\\Pi$ (total momentum)")
+
+        # --- Column 2: per-ion radial scalars ---
+        ax = axs[0, 2]
+        for ion in range(n_ions):
+            Gi_ion = self.GiAll[ion] if hasattr(self, 'GiAll') and len(self.GiAll) > ion else 0.0
+            ax.plot([self.roa], [Gi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Gamma_i$ (GB)")
+        ax.set_title("Profile: $\\Gamma_i$ per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+        ax = axs[1, 2]
+        for ion in range(n_ions):
+            Qi_ion = self.QiAll[ion] if hasattr(self, 'QiAll') and len(self.QiAll) > ion else 0.0
+            ax.plot([self.roa], [Qi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$Q_i$ (GB)")
+        ax.set_title("Profile: $Q_i$ per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+
+        ax = axs[2, 2]
+        ax.plot([self.roa], [self.MtES], "-o", c=c, markersize=5,
+                label="ES" if cont == 0 else "")
+        ax.plot([self.roa], [self.MtEM], "-s", c=c, markersize=5,
+                label="EM" if cont == 0 else "")
+        ax.plot([self.roa], [self.Mt], "-*", c=c, markersize=5,
+                label="ES+EM" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Pi$ (GB)")
+        ax.set_title("Profile: Total momentum $\\Pi$")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+        # --- Column 3: per-species momentum spectrum ---
+        ax = axs[0, 3]
+        for sp in range(self.SumFlux_MtAll_phi.shape[0]):
+            lbl = "electrons" if sp == 0 else f"ion {sp}"
+            ax.plot(self.ky, self.SumFlux_MtAll_phi[sp, :], typeline[sp],
+                    color=c, lw=0.7, markersize=2,
+                    label=lbl if cont == 0 else "")
+        ax.axhline(y=0, ls="--", lw=1, c="k")
+        ax.set_ylabel("$\\Pi_{ky}$ (GB)")
+        ax.set_xscale("log")
+        ax.set_xlabel("$k_{\\theta}\\rho_s$")
+        ax.set_title("Momentum (ES) per species")
+        ax.legend(loc="best", title=title_legend)
+
+        ax = axs[1, 3]
+        for ion in range(n_ions):
+            Gi_ion = float(np.sum(self.SumFlux_GiAll_phi[ion, :]))
+            ax.plot([self.roa], [Gi_ion], typeline[ion], c=c, markersize=5,
+                    label=f"ion {ion+1}" if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Gamma_i$ ES (GB)")
+        ax.set_title("Profile: $\\Gamma_i$ ES per ion")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+
+        ax = axs[2, 3]
+        for sp in range(self.SumFlux_MtAll_phi.shape[0]):
+            Mt_sp = float(np.sum(self.SumFlux_MtAll_phi[sp, :]))
+            lbl = "electrons" if sp == 0 else f"ion {sp}"
+            ax.plot([self.roa], [Mt_sp], typeline[sp], c=c, markersize=5,
+                    label=lbl if cont == 0 else "")
+        ax.set_xlim([0, 1])
+        ax.set_xlabel("$r/a$")
+        ax.set_ylabel("$\\Pi$ ES (GB)")
+        ax.set_title("Momentum ES per species")
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.legend(loc="best", title=title_legend)
+
+    def plotTGLF_SAT(self, axs=None, c="b", label="", cont=0):
+        """
+        Plot scalar saturation parameters (requires scalar_sat_params to be populated).
+        axs must be shape (1, 2). All labels are overlaid on the same axes as colored lines.
+        """
+
+        if not self.scalar_sat_params:
+            return
+
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(10, 4))
+            grid = plt.GridSpec(1, 2)
+            axs = np.empty((1, 2), dtype=plt.Axes)
+            axs[0, 0] = fig.add_subplot(grid[0, 0])
+            axs[0, 1] = fig.add_subplot(grid[0, 1])
+
+        # ---- left: key scalar SAT parameters, one colored line per label ----
+        scalar_keys = ["ALPHA_ZF", "kymax_out", "vzf_out", "rho_ion", "rho_e",
+                       "ETG_FACTOR", "SAT_geo0_out", "SAT_geo1_out", "SAT_geo2_out"]
+        ax = axs[0, 0]
+        vals_present = {k: self.scalar_sat_params[k] for k in scalar_keys if k in self.scalar_sat_params}
+        if vals_present:
+            ks = list(vals_present.keys())
+            vs = [vals_present[k] for k in ks]
+            xs = np.arange(len(ks))
+            ax.plot(xs, vs, "-o", color=c, lw=1.5, markersize=5, label=label)
+            ax.set_xticks(xs)
+            ax.set_xticklabels(ks, rotation=40, ha="right", fontsize=7)
+            ax.axhline(y=0, ls="--", lw=0.5, c="k")
+            ax.set_title(f"SAT scalars (r/a={self.roa:.3f})")
+            ax.legend(loc="best")
+
+        # ---- right: geometry / normalization parameters as a line plot ----
+        geo_keys = ["Bt0_out", "B_geo0_out", "grad_r0_out", "B_unit", "R_unit", "q_unit"]
+        ax = axs[0, 1]
+        vals_geo = {k: self.scalar_sat_params[k] for k in geo_keys if k in self.scalar_sat_params}
+        if vals_geo:
+            ks = list(vals_geo.keys())
+            vs = [vals_geo[k] for k in ks]
+            xs = np.arange(len(ks))
+            sat_rule = self.scalar_sat_params.get("SAT_RULE", "?")
+            xnu     = self.scalar_sat_params.get("XNU_MODEL", "?")
+            lbl = f"{label}  [SAT{sat_rule}, XNU{xnu}]"
+            ax.plot(xs, vs, "-o", color=c, lw=1.5, markersize=5, label=lbl)
+            ax.set_xticks(xs)
+            ax.set_xticklabels(ks, rotation=40, ha="right", fontsize=7)
+            ax.axhline(y=0, ls="--", lw=0.5, c="k")
+            ax.set_title(f"SAT geometry (r/a={self.roa:.3f})")
+            ax.legend(loc="best")
 
     def plotTGLF_Model(self, c="b", label="", axs=None):
         if axs is None:
@@ -5439,7 +6705,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         for i in [0.3, 1.65]:
             ax.axhline(y=i, lw=0.5, ls="--", c="k")
         ax.set_title("Gaussian Width Spectrum")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[1, 0]
         ax.plot(
@@ -5456,7 +6721,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$kx_e$")
         ax.set_xscale("log")
         ax.set_title("Spectral Shift Spectrum, $<phi|kx/ky|phi>/<phi|phi>$")
-        GRAPHICStools.addDenseAxis(ax)
 
         ax = axs[0, 1]
         ax.plot(
@@ -5473,7 +6737,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
         ax.set_ylabel("$<p_0>$")
         ax.set_xscale("log")
         ax.set_title("SAT0 normalization")
-        GRAPHICStools.addDenseAxis(ax)
 
 
 def processGrowthRates(k, g, f, gs, fs, klow=0.8, coeff=0):

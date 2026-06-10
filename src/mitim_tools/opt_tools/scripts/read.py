@@ -1,5 +1,6 @@
 import argparse
 import copy
+from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
@@ -66,12 +67,8 @@ def plotCompare(folders, plotMeanMax=[True, False]):
     xes = []
     resS = []
     for i, (color, name, folderWork) in enumerate(zip(colors, names, folderWorks)):
-        res = BOgraphics.optimization_results(
-            folderWork / "Outputs" / "optimization_results.out"
-        )
-        res.readClass(
-            STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl")
-        )
+        res = BOgraphics.optimization_results(folderWork / "Outputs" / "optimization_results.out")
+        res.readClass(STRATEGYtools.read_from_scratch(folderWork / "Outputs" / "optimization_object.pkl"))
         res.read()
 
         plotAllmembers = len(folderWorks) <= 3
@@ -109,15 +106,19 @@ def main():
 # ----- Inputs
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--type", type=int, required=False, default=4
-    )  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also final analysis, 3: Others
+    parser.add_argument("--type", type=int, required=False, default=2)  # 0: Only ResultsOpt plotting, 1: Also pickle, 2: Also all, 3: additional, 4: addtional + extra
     parser.add_argument("folders", type=str, nargs="*")
     parser.add_argument("--seeds", type=int, required=False, default=None)
     parser.add_argument("--resolution", type=int, required=False, default=50)
-    parser.add_argument("--save", type=str, required=False, default=None)
     parser.add_argument("--conv", type=float, required=False, default=-1e-2)
     parser.add_argument("--its", type=int, nargs="*", required=False, default=None)
+
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
+    parser.add_argument("--save", type=str, nargs="?", const=IOtools.SAVE_FOLDER_AUTO_SENTINEL, required=False, default=None,
+                        help=f"Folder to save the figures. If flag given without a value, defaults to '<first folder>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
 
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
@@ -133,18 +134,29 @@ def main():
 
     args = parser.parse_args()
 
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
+
+    if args.save == IOtools.SAVE_FOLDER_AUTO_SENTINEL and not args.folders and not (args.remote_folder_parent or args.remote_folders):
+        parser.error("--save without a value needs at least one positional folder argument")
+
     analysis_level = args.type
     seeds = args.seeds
     resolution = args.resolution
-    save_folder = args.save
     conv = args.conv
     rangePlot = args.its
+
+    noshow = args.noshow
+    dpi_fig = args.dpi
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote
     # --------------------------------------------------------------------------------------------------------------------------------------------
 
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, None)
+
+    folder_save = IOtools.resolve_save_folder(args.save, folders[0] if folders else None)
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Fix pkl optimization portals in remote
@@ -172,8 +184,8 @@ def main():
             analysis_level=analysis_level,
             retrieval_level=retrieval_level,
             pointsEvaluateEachGPdimension=resolution,
-            save_folder=save_folder,
             rangesPlot=rangePlot,
+            noshow=noshow,
         )
     else:
         opt_funs = []
@@ -183,8 +195,8 @@ def main():
                 opt_fun.plot_optimization_results(
                     analysis_level=analysis_level,
                     retrieval_level=retrieval_level,
-                    save_folder=save_folder,
                     rangesPlot=rangePlot,
+                    noshow=True,
                 )
             except:
                 print(f"Could not retrieve #{folderWork}", typeMsg="w")
@@ -220,15 +232,32 @@ def main():
 
             GRAPHICStools.addDenseAxis(ax)
         else:
-            print(
-                f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",
-                typeMsg="w",
-            )
-    if opt_fun.fn is not None:
-        opt_fun.fn.show()
-    else:
-        plt.show()
-
+            print(f"Could not produce Violin-plot because no point reached the convergence criterion (factor of {percent})",typeMsg="w",)
+            
+            
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Show figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
+    if not noshow:
+        if opt_fun.fn is not None:
+            opt_fun.fn.show()
+        else:
+            plt.show()
+        
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Save figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
+    if folder_save:
+        if opt_fun.fn is not None:
+            # Use Notebook save method, to collect all figures into a single folder
+            opt_fun.fn.save(folder_save, dpi=dpi_fig)
+        else:
+            if not folder_save.exists():
+                folder_save.mkdir(parents=True)
+            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig, dpi=dpi_fig)
+            
     embed()
 
 if __name__ == "__main__":

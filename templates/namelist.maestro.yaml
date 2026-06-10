@@ -1,88 +1,170 @@
-# (**************************************************************************************************************)
-#
-# This is a complete template for a MAESTRO simulation
-#
-# (**************************************************************************************************************)
+# **************************************************************************************************************
+# MAESTRO simulation template
+# **************************************************************************************************************
+
+# Master random seed for reproducibility, to be sent to all beats that can receive seed
+seed: 0
 
 # ------------------------------------------------------------------------------------------------------------
 # Plasma
 # ------------------------------------------------------------------------------------------------------------
 
-# Name of this simulation
-flag: SPARC PRD
+plasma:
 
-# Master random seed for reproducibility, to be sent to all beats that can receive seed
-seed: 0
+  # Initialization of profiles
+  profiles_initialization:
 
-# Machine parameters
-machine:
+    # How to initialize the boundary and q-profile. Options:
+    #       geqdsk:     use a GEQDSK file directly
+    #       freegs:     use FREEGS to create an equilibrium from boundary parameters
+    #       fibe:       use FIBE to create an equilibrium from boundary parameters, requires geqdsk file to specify f and pressure profiles
+    #       separatrix: create separatrix from parameters (or RZ file) and guess internal equilibrium or use internal_flux_file
+    #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
+    initialization_type: freegs      
 
-  # Engineering parameters (if using values in geqdsk, these must be null, otherwise they will override the geqdsk values if separatrix type is geqdsk)
-  Bt: 12.2
-  Ip: 8.7
+    # How to initialize the profiles. Options:
+    #       eped_initializer: use EPED-based profile initializer (must exist as beat namelist below)
+    #       fixed_profiles:   use fixed profiles from a JSON file
+    #       fixed_bc:         use user-specified boundary conditions (rho_bc, Te_bc, Ti_bc, ne_bc); can still match BetaN and nu_ne via gradient optimization
+    #       null:             use whatever the initialization_type method provides
+    creator_type: eped_initializer
 
-  # Separatrix specification
-  separatrix:
-
-    # Type of separatrix (freegs, geqdsk)
-    type: freegs
-
-    # Parameters for this type of separatrix
     parameters:
 
-      # If the separatrix type receives boundary parameterization, parameters here
+      # If creator_type = eped_initializer: Profiles will be initialized such that BetaN is matched as close as possible
+      BetaN: 1.0    # Normalized global beta
+      nu_ne: 1.3    # Density peaking
+      aLTe_to_aLTi_ratio: 1.0  # Keep this ratio during the BetaN optimization
+      aLT: null     # [Optional] Use this a/LTi directly (aLTe = aLTe_to_aLTi_ratio * aLTi), skipping the BetaN optimization
+      aLn: null     # [Optional] Use this a/Lne directly, skipping the nu_ne optimization
+      nresol: 501   # Radial resolution (number of points) of the created profiles
+
+      # If creator_type = fixed_bc: User-specified boundary condition values at x_bc
+      #   - x_bc + bc_coordinate, Te_bc, Ti_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
+      #   - BetaN and nu_ne (above) are still used to match target values by adjusting aLT and aLn
+      #   - Set BetaN and/or nu_ne to null to skip the corresponding gradient optimization and use aLT/aLn directly
+      x_bc: null           # BC location value (e.g. pedestal top, typically ~0.95)
+      bc_coordinate: "rho" # Coordinate for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin'
+      Te_bc: null          # Te at x_bc (keV)
+      Ti_bc: null          # Ti at x_bc (keV); if null, uses Te_bc
+      # Note: for fixed_bc, neped_20 (from plasma.parameters above) is used directly as ne_bc
+
+      # If initialization_type = profiles: path to profiles file (input.gacode) to initialize with
+      # If creator_type = fixed_profiles:  path to profiles file (json) to initialize with
+      profiles_file: null
+
+  parameters:
+
+    # Global plasma parameters (if initialization_type = geqdsk, Bt and Ip must be null, otherwise they will override the geqdsk values)
+    Bt: 12.2 
+    Ip: 8.7 
+
+    # Profile boundary conditions
+    neped_20: 2.5           # Density at "ped" location as defined by EPED
+    fGped: null             # [Optional] if not null, use this pedestal Greenwald fraction (overrides neped_20).
+                            #            NOTE: Ip and a must be provided for this to work
+    ne_ratio_sep_ped: 0.3   # Ratio nsep/nped 
+    Tesep_eV: 75.0          # Temperature at separatrix (to potentially change if beat provides physics for this, e.g. Lengyel)
+
+    # Separatrix specification (parameters determined depending on initialization_type)
+    separatrix:
+
+      # If initialization_type = freegs, fibe, separatrix: Boundary parameterization (or, alternatively, path to RZ boundary file if "separatrix" mode)
       R: 1.85
       a: 0.57
       delta_sep: 0.57
       kappa_sep: 1.97
+      zeta_sep: 0.0  # Can be left as null to use the squareness of the internal_flux_file, if provided
 
-      # If the separatrix type receives a geqdsk file directly, provide path here
-      geqdsk_file: ""
+      rz_boundary_file: null # [Optional] file containing the separatrix R,Z points
 
-      # For both geqdsk and freegs, number of MXH coefficients to parametrize the boundary
+      # [Optional] If initialization_type = separatrix: path to input.gacode to reproduce internal flux surfaces and other moments
+      internal_flux_file: null
+
+      # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary, once created
       n_mxh: 5
 
+      # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
+      # Options:
+      #      analytic:                Use the analytical formulas (not the best fit) to Turnbull-Miller parameters
+      #      analytic_interpolation:  Use the analytical formulas (not the best fit) to Turnbull-Miller parameters, but interpolating the coefficients at psiN=0.995
+      #      turnbull:                Use Turnbull-Miller parameterization via best-fit methods
+      #      mxh:                     Use MXH parameterization via best-fit methods
+      #      [miller:                  Use Miller parameterization via best-fit methods] -> NOT AVAILABLE YET
+      #      null:                    No trans_beat parameters will be set
+      freeze_995_from: analytic_interpolation
+
+      # If initialization_type = geqdsk or fibe: path to file
+      geqdsk_file: ""
+
+  # Plasma mix
+  species:
+  
+    # Main fuel species
+    fuel: ['D', 'T']      # Only ['D', 'T'] or ['D'] allowed for now
+      
+    # Impurity species
+    Zeff: 1.5
+    
+    mix:
+      # Parameters to be used to find lumped low-Z impurity species that matches Zeff (accounting for minority species as well)
+      fmain: 0.85
+      highZ: W
+      fhighZ: 1.5e-5
+      CShighZ_estimate: 50    # Estimate of the charge state of high-Z impurity, to compute the lumped low-Z impurity at initialization
+      
   # Heating parameters
   heating:
 
-    # Only ICRH heating supported for now
+    # Heating model. Options:
+    #       ICRH:             Ion Cyclotron Resonance Heating model in TRANSP
+    #       NBI:              Neutral Beam Injection model in TRANSP
+    #       gaussian_sources: Simple Gaussian heating sources for electrons and ions
     type: ICRH
 
+    # Heating model parameters
     parameters:
 
-      # ICRF input power
+      # ~~~~~~~~~~~
+      # Parameters ICRF (type = ICRH)
+      # ~~~~~~~~~~~
+
+      # Total input power
       P_icrh: 11.0
+
       # Minority species [Z,A]
       minority: [2, 3]
-      # Minority fraction to be added to the mix
+
+      # Minority fraction to be added to the mix.
+      #     Also honored when type = gaussian_sources: if fmini > 0, TRANSPbeat
+      #     forces Pich on and runs TORIC at the full P_icrh specified above,
+      #     so TRANSP evolves the H-minority density and pressure
+      #     self-consistently. At TRANSP output the auxiliary heating is
+      #     replaced with the gaussian_sources Pe/Pi (downstream beats see
+      #     only the gaussian heating, plus the now-thermalized minority
+      #     density/pressure profiles). Dilution / Zeff via estimateLowZ
+      #     therefore matches what's actually in the plasma.
       fmini: 0.05
 
-# Simulation assumptions
-assumptions:
+      # Antenna frequency (MHz)
+      #     (only if tokamak_structures is null, otherwise it will be taken from the machine structures definition)
+      freq_ICH: null    # If null, estimate on-axis deposition based on field and minority species resonance
 
-  # Impurities
-  Zeff: 1.5
-  mix:
-    fmain: 0.85
-    ZW: 50
-    fW: 1.5e-5
-    
-  # Edge parameters
-  Tesep_eV: 75.0
 
-  # Initialization of profiles
-  initialization:
+      # ~~~~~~~~~~~
+      # Parameters NBI (type = NBI)
+      # ~~~~~~~~~~~
 
-    # neped as the input (engineering) parameter
-    assume_neped: true
-    neped_20: 2.5
+      # Total input power
+      P_nbi: 11.0
 
-    # ne_sep / ne_ped ratio to assume (e.g. for EPED) and construct profiles with
-    nesep_ratio: 0.3
-    
-    # Profiles will be initialized such that these parameters are matched as close as possible
-    BetaN: 1.0
-    density_peaking: 1.3
+      # ~~~~~~~~~~~
+      # Parameters for simple Gaussian sources (type = gaussian_sources)
+      # ~~~~~~~~~~~
+      nu_source: 5.0  # Peaking factor for the source profile
+      Pe: 11.0        # Total electron heating power
+      Pi: 5.0         # Total ion heating power
+
 
 # ------------------------------------------------------------------------------------------------------------
 # MAESTRO workflow parameters
@@ -91,26 +173,54 @@ assumptions:
 maestro:
 
   # Sequence of beats
-  beats: ["transp_soft", "transp", "eped", "portals", "eped", "portals"]
+  beats: ["transp", "eped", "portals", "eped", "portals"]
 
-  # Remove intermediate files to avoid heavy MAESTRO simulation folders
+  # If false, wipe each beat's `run_<name>/` contents after the beat completes.
+  # `beat_results/` is preserved — it carries the canonical state for the next beat
+  # AND for cross-invocation restart (see beat-specific `_inform_save` for what's
+  # persisted: input.gacode + a small sidecar per beat). Plot tabs that depend on
+  # run-folder artifacts degrade gracefully (caught by MAESTROmain._plot_beats's
+  # try/except FileNotFoundError, never fatal):
+  #   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
+  #   - TRANSP CDF detail tab is skipped: the multi-GB CDF is no longer copied to
+  #     beat_results/; only `transp_results.npy` (sawtooth_times + impurity_order)
+  #     travels forward. Sufficient for chain inheritance, not for full CDF plotting.
+  # PORTALS plot tabs are unaffected (their inputs are persisted in beat_results/Outputs/).
   keep_all_files: true
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
+  #       beat_type:                     Used to map this beat to what MAESTRO understands
+  #       base_module:                   Pointer to another beat to use as base for the to start from (and only provide the modifications)
+  #       parameters_prepare:            Parameters that are passed to the prepare() method of the beat class
+  #       preprocess_prepare:            [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
+  #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
+  #       preprocess_run:                [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
   # ---------------------------------------------------------------------------
 
-  eped_beat:
+  eped:
 
-    use_default: false
+    beat_type: eped
 
-    eped_namelist:
+    base_module: null
 
-      # Location of EPED NN files (if null, use full EPED)
+    parameters_prepare:
+
+      # Whether to run with full EPED or EPED-NN
+      use_full_EPED: false
+
+      # Definition of equilibrium parameters that will based to EPED
+      toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
+
+      # (if full EPED) EPED override parameters: dictionary of EPED configuration parameters to override default values in config
+      eped_params_override: {}
+
+      # Location of EPED-NN files and transformation function of this specific NN (only used if use_full_EPED is false)
       nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+      transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
 
-      # Corrections set for EPED indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
+      # Corrections set for EPED-NN indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
       corrections_set:
         Bt: 12.2
         R: 1.85
@@ -120,23 +230,90 @@ maestro:
       ptop_multiplier: 1.0  # Multiplies ptop
       TioverTe: 1.0         # Ti/Te assumption at the pedestal top
 
-  eped_initializer_beat:
-    use_default: false
-    eped_initializer_namelist:
-      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
-      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
-      corrections_set:
-        Bt: 12.2
-        R: 1.85
-        a: 0.57
-      ptop_multiplier: 1.0
-      TioverTe: 1.0
+    preprocess_prepare: null
+    preprocess_prepare_parameters:
+      cpus: null  # if null: use as many as available for this MAESTRO job
+    preprocess_run: import::mitim_modules.maestro.utils.EPEDbeat.preprocess_run_eped
 
-  portals_beat:
+  eped_initializer:
 
-    use_default: false
+    beat_type: eped
 
-    portals_namelist:
+    base_module: eped
+
+    parameters_prepare: {}
+
+  sharpness:
+
+    beat_type: sharpness
+
+    base_module: null
+
+    parameters_prepare:
+
+      # Location of the boundary condition in the coordinate given by bc_coordinate
+      x_bc: 0.90
+
+      # Coordinate system for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin' (normalized poloidal flux)
+      bc_coordinate: "rho"
+
+      # Prescribed sharpness parameter xi (ratio of edge to core temperature gradient)
+      # xi=1 means edge gradient matches core gradient; xi>1 means sharper (more H-mode-like) edge
+      sharpness: 1.0
+
+      # Coordinate system in which the sharpness parameter xi (the gradient ratio) is defined.
+      # Independent of bc_coordinate. Options: 'psin' (default), 'rho' (rho_tor), 'roa' (r/a)
+      sharpness_coordinate: "psin"
+
+      # Ti/Te ratio at the boundary condition location (default 1.0)
+      tite: 1.0
+
+      # If True, override x_bc with the outermost radial location used by the previous
+      # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
+      # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
+      update_bc_based_on_portals: false
+
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: null
+
+  lengyel:
+
+    beat_type: lengyel
+
+    base_module: null
+
+    parameters_prepare:
+
+      # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
+      lengyel_namelist_location: null
+
+      # Path to radas directory. If null, it will use $RADAS_DIR environement variable
+      radas_dir: null
+
+      seed_impurity_species: 
+        name: "Ne"
+        ratio_fZ_sep_top: 1.0
+        edge_profile: "flat"    # Options: "flat", "linear"
+
+      fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
+
+      # Overrides applied to the Lengyel namelist's `input` block (see templates/input.lengyel.controls.yaml).
+      # Any key from that file can be set here verbatim and it will replace the default (or input.gacode-derived)
+      # value for this beat, e.g. override_namelist_params: {parallel_connection_length: '40 m', target_angle_of_incidence: '5 degree'}
+      override_namelist_params: {}
+
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: null
+
+  portals:
+
+    beat_type: portals
+
+    base_module: null
+
+    parameters_prepare:
 
       # If null, it will use the default namelist at: __mitimroot__ / "templates" / "namelist.portals.yaml"
       portals_namelist_location: null
@@ -145,13 +322,11 @@ maestro:
       # PORTALS parameters (only those parameters to change the main PORTALS namelist)
       # ------------------------------------------------------------------------------------------------
       portals_parameters:
+
+        # Same structure as the PORTALS namelist, here indicate only the parameters to change from default "portals_namelist_location"
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
-          exploration_ranges:
-            ymax: 1.0
-            ymin: 4.0
-            yminymax_atleast: [null, 4]
         transport:
           options:
             tglf:
@@ -160,6 +335,7 @@ maestro:
                 extraOptions:
                   USE_BPER: true
               keep_files: "none" 
+              reuse_scan_ball: true # Store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
         target:
           options:
             force_zero_particle_flux: true
@@ -167,35 +343,169 @@ maestro:
         optimization_options:
           convergence_options:
             maximum_iterations: 30
+            stopping_criteria_parameters:
+              maximum_value: 5.e-3                 # Explicit, because of "use_previous_residual" functionality
+              maximum_value_is_rel: true           # Explicit, because of "use_previous_residual" functionality
+
           strategy_options:
-            AllowedExcursions: [0.25, 0.0]
-      
+            AllowedExcursions: [0.25, 0.0]         # Allow to go 25% beyond the gradients lower bound if needed
+          acquisition_options:
+            optimizers: ["sr"]                     # Use only SR optimizer for acquisition function optimization (faster)
+
       # Operations to do to mitim_state before passing it to PORTALS
       initialization_parameters:
         thermalize_fast: true
         quasineutrality: true
+        # zero_source_blocks: list of source-term aliases to zero in the seed
+        # input.gacode handed to PORTALS. Useful when the upstream beat (e.g.
+        # TRANSP) populated radiation/alpha/ohmic and you want PORTALS to see
+        # an "all-auxiliary" sources picture (the only heating left is what's
+        # in qrfe/qrfi/qbeame/qbeami/qione).
+        # Recognized aliases:
+        #   'qrad'  -> qbrem(MW/m^3), qsync(MW/m^3), qline(MW/m^3)
+        #   'qfus'  -> qfuse(MW/m^3), qfusi(MW/m^3)
+        #   'qohme' -> qohme(MW/m^3)
+        # IMPORTANT: zeroing here only persists in the PORTALS output if PORTALS
+        # is configured NOT to evolve the corresponding channel — exclude the
+        # same alias from `target.options.targets_evolve` in the portals_parameters
+        # overlay above. Otherwise PORTALS overwrites the zeros on iter 1.
+        # zero_source_blocks: ['qrad', 'qfus', 'qohme']
 
       # If the width of the pedestal has changed, modify the BC (last in predicted_rX) for PORTALS accordingly
       change_last_radial_call: true
 
+      # Keep the absolute value of the original case as the base to compute relative residuals in subsequent optimizations
+      use_previous_residual: true # Should be set to false if an absolute residual convergence metric is defined in optimization_options
+
       # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
       use_previous_surrogate_data: true
+
+      # Use previous exploration ranges to limit the new exploration ranges (good to avoid cases in which a portals beat reports a zero gradient)
+      use_previous_ranges: true 
 
       # If surrogates exist, use them to find the first training point (and limit to only one point)
       try_flux_match_only_for_first_point: true
 
-    # Operations that will be included as part of the profiles_postprocessing_fun 
-    transport_preprocessing:
+      # If element is not exactly in radiation database, search for closest one
+      enforce_impurity_radiation_existence: true
+
+    preprocess_prepare: import::mitim_modules.maestro.utils.PORTALSbeat.preprocess_prepare_portals
+    preprocess_prepare_parameters:
       # By default, run PORTALS with all impurities lumped into one species
       lumpImpurities: true
       # By default, enforce that all species have the same density gradient
       enforce_same_density_gradients: true
+    preprocess_run: null
 
-  portals_soft_beat:
-    use_default: true
+  portals_soft:
 
-  transp_beat:
-    use_default: true
+    beat_type: portals
 
-  transp_soft_beat:
-    use_default: true
+    base_module: portals
+
+    parameters_prepare:
+
+      # A soft PORTALS beat means:
+      #     No evolving alpha, radiation
+      #     More relaxed convergence criteria and optimization strategy
+      portals_parameters:
+        target:
+          options:
+            targets_evolve: ["qie"]
+        optimization_options:
+          convergence_options:
+            maximum_iterations: 15
+            stopping_criteria_parameters:
+              maximum_value: 10.e-3                 # Reducing residual by 1/0.01 = 100x sufficient for a soft PORTALS run
+              minimum_inputs_variation: [10, 3, 1.0] # A more relaxed variation for soft PORTALS run
+              ricci_value: 0.15                     # A more relaxed Ricci value for soft PORTALS run
+          strategy_options:
+            AllowedExcursions: [0.0, 0.0]           # In case the soft beat makes things too negative when they shoudn't be
+
+
+  transp:
+
+    beat_type: transp
+
+    base_module: null
+
+    parameters_prepare:
+
+      # Mahine structures (ICRF antennas, limiters, VV)
+      #       If null: define structures as a very simplified setup (e.g. one midplane antenna)
+      #       If machine (SPARC, CMOD, ARC, D3D): use actual machine structures harcoded in MITIM (see mitim_tools/experiment_tools/)
+      tokamak_structures: null 
+
+      # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
+      machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
+      transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization. If null, no transition performed
+      currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
+      machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma
+
+      # Smoothing of the separatrix boundary for TRANSP ufile generation
+      mxh_coeffs_smooth_sep: null # if null, it will take n_mxh from "separatrix" section of "plasma"
+
+      # Simulation length
+      flattop_window: 2.5   
+      ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
+
+      # TRANSP namelist parameters
+      useNUBEAMforAlphas: True
+      Pich: True
+      Pnbi: True
+      dtOut_ms : 10.0
+      dtIn_ms : 10.0
+      nzones : 60
+      nzones_energetic : 20
+      nzones_distfun : 10    
+      MCparticles : 1.e+4
+      toric_ntheta : 64  
+      toric_nrho : 128
+
+      # Extract TORIC & NUBEAM additional files for post-analysis
+      extractAC: False     
+      time_before_end: 0.001
+
+    # Function to modify parameters of the namelist based on the rest of namelist
+    preprocess_prepare: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_prepare_transp
+    preprocess_prepare_parameters:
+      cpus_toric: null  # if null: use as many as available for this MAESTRO job
+      cpus_nubeam: null # if null: use as many as available for this MAESTRO job
+    preprocess_run: import::mitim_modules.maestro.utils.TRANSPbeat.preprocess_run_transp
+
+  transp_soft:
+
+    beat_type: transp
+
+    base_module: transp
+
+    # A soft TRANSP beat must be just for current diffusion, no alphas nor ICRF
+    parameters_prepare:
+
+        flattop_window: 20.0 # Long flattop to allow for current diffusion
+
+        Pich: False
+        Pnbi: False
+        useNUBEAMforAlphas: False
+      
+        dtEquilMax_ms: 100.0
+        dtHeating_ms: 100.0
+        dtCurrentDiffusion_ms: 100.0
+        dtOut_ms: 100.0
+        dtIn_ms: 100.0
+     
+  transp_final:
+
+    beat_type: transp
+
+    base_module: transp
+
+    # A final TRANSP beat must be as a normal TRANSP beat, but extracting AC files and estimating 2 sawtooths
+    parameters_prepare:
+
+        ensure_sawtooths: 2
+
+        extractAC: True
+        time_before_end: 0.001
+
+        

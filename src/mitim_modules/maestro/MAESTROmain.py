@@ -1,6 +1,9 @@
 import copy
+from pathlib import Path
 import sys
+import re
 import datetime
+from typing import OrderedDict
 from mitim_tools.misc_tools import IOtools, GUItools, LOGtools
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -9,10 +12,12 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __version__, __mitimroot__
 from IPython import embed
 
+from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
-from mitim_modules.maestro.utils.EPEDbeat import eped_beat
-from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator
+from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
+from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
+from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
 '''
@@ -21,7 +26,7 @@ MAESTRO:
  (If MAESTRO is the orchestrator, then BEAT is each of the beats (steps) that MAESTRO orchestrates)
 '''
 
-ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging
+ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
 class maestro:
 
@@ -32,7 +37,8 @@ class maestro:
             master_cold_start = False,
             overall_log_file = True,
             keep_all_files = True,
-            master_seed = 0
+            master_seed = 0,
+            maestro_namelist = {}
             ):
         '''
         Inputs:
@@ -42,8 +48,10 @@ class maestro:
 
         self.terminal_outputs = terminal_outputs
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
-        self.keep_all_files = keep_all_files             # If True, all files will be kept, if False, only the final output files will be kept
+        self.keep_all_files = keep_all_files              # If True, all files will be kept, if False, only the final output files will be kept
         self.master_seed = master_seed
+
+        self.maestro_namelist = maestro_namelist
 
         # --------------------------------------------------------------------------------------------
         # Prepare folders
@@ -62,7 +70,13 @@ class maestro:
 
         # If terminal outputs, I also want to keep track of what has happened in a log file
         if terminal_outputs and overall_log_file and not ENABLE_EMBED:
-            sys.stdout = LOGtools.Logger(logFile=self.folder_output / "maestro.log", writeAlsoTerminal=True)
+            self.master_log_file = self.folder_output / "maestro.log"
+            sys.stdout = LOGtools.Logger(logFile=self.master_log_file, writeAlsoTerminal=True)
+        else:
+            self.master_log_file = None
+            
+        self.warnings_log_file = self.folder_output / "warnings.log"
+        self.warnings_log_file_new = True
 
         branch, commit_hash = IOtools.get_git_info(__mitimroot__)
         print('\n ---------------------------------------------------------------------------------------------------')
@@ -110,26 +124,67 @@ class maestro:
         elif beat == 'eped':
             print(f'\n- Beat {self.counter_current}: EPED ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = eped_beat(self)
+        elif beat == 'lengyel':
+            print(f'\n- Beat {self.counter_current}: LENGYEL ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = lengyel_beat(self)
+        elif beat == 'sharpness':
+            print(f'\n- Beat {self.counter_current}: SHARPNESS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = sharpness_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
 
         # Define initializer
         self.beat.define_initializer(initializer)
+        
+        # Restart or check
+        self._restart_or_check(cold_start=cold_start)
 
-        # Check here if the beat has already been performed
-        self.check(cold_start = cold_start or self.master_cold_start )
-
+    def _restart_or_check(self, cold_start = False):
+        '''
+        ------------------------------------------------------------------
+        Checker of existence and cold_start handling
+        ------------------------------------------------------------------
+        '''
+        
+        self.beat.cold_start = cold_start or self.master_cold_start
+        
+        # If the beat needs to be cold started, remove folders (to avoid confusions) and proceed to restart
+        if self.beat.cold_start:
+            
+            self.beat.restart()
+            self.beat.run_flag = True
+            
+        # If restart is not imposed manually, check if beat needs to run and inform future ones
+        else:
+            
+            # Check if beat results contain the expected output files
+            self.check()
+        
+            '''
+            If a beat needs to run, all the rest of the beats will need to run from scratch.
+            Inform that such that I call restart() in the next beats via the master_cold_start flag.
+            '''
+            
+            # Print some info if that's the case. If not already cold started, inform that all next beats will need to be cold started
+            if self.beat.run_flag and not self.master_cold_start:
+                print('\t\t- Since this step needs to run, all next ones will need to be cold started', typeMsg = 'i')
+            
+            # Pass the info
+            self.master_cold_start = self.master_cold_start or self.beat.run_flag
+          
     def define_creator(self, method, **kwargs_creator):
         '''
         To initialize some profile functional form
         '''
-        if method == 'eped' or method == 'eped' or 'eped_initializer':
+        if method in ['eped', 'eped_initializer']:
             self.beat.initialize.profile_creator = creator_from_eped(self.beat.initialize,**kwargs_creator)
         elif method == 'parameterization':
             self.beat.initialize.profile_creator = creator_from_parameterization(self.beat.initialize,**kwargs_creator)
-        elif method == 'profiles':
+        elif method in ['profiles', "fixed_profiles"]:
             self.beat.initialize.profile_creator = creator(self.beat.initialize,**kwargs_creator)
+        elif method == 'fixed_bc':
+            self.beat.initialize.profile_creator = creator_from_fixed_bc(self.beat.initialize,**kwargs_creator)
         else:
             raise ValueError(f'[MITIM] Creator method {method} not recognized')
 
@@ -138,7 +193,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Checker')
-    def check(self, beat_check = None, cold_start = False, **kwargs):
+    def check(self, beat_check = None, **kwargs):
         '''
         Note:
             After each beat, the results are passed to an output folder.
@@ -154,23 +209,20 @@ class maestro:
         log_file = self.folder_logs / f'beat_{self.counter_current}_check.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
-            output_file = None
-            if not cold_start:
-                output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
-                if output_file is not None:
-                    print('\t\t- Output file already exists, not running beat', typeMsg = 'i')
+            # Does the output file already exist? That will inform whether the beat needs to run
+            output_file = IOtools.findFileByExtension(beat_check.folder_output, 'input.gacode', agnostic_to_case=True)
+            
+            if output_file is not None:
+                print(f'\t\t- Output file {IOtools.clipstr(output_file)} already exists, not running beat', typeMsg = 'i')
             else:
-                print('\t\t- Forced cold_starting of beat', typeMsg = 'i')
+                print(f'\t\t- Output file {IOtools.clipstr(output_file)} not found, beat will be run')
 
+            # The beat needs to run if output_file is None
             self.beat.run_flag = output_file is None
-
-        # If this beat is cold_started, all next beats will be cold_started
-        if self.beat.run_flag:
-            if not self.master_cold_start:
-                print('\t\t- Since this step needs to start from scratch, all next ones will too', typeMsg = 'i')
-            self.master_cold_start = True
-
-        return output_file is not None
+        
+        isitfinished = not self.beat.run_flag
+            
+        return isitfinished
 
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Initializer',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
@@ -185,6 +237,7 @@ class maestro:
 
         else:
             print('\t\t- Skipping beat initialization because this beat was already run', typeMsg = 'i')
+            self.beat.initialize._minimal_call(*args, **kwargs)
 
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
@@ -192,7 +245,7 @@ class maestro:
             self.beat.initialize._inform_save()
 
             # Creator can also save important parameters
-            if self.beat.initialize.profile_creator is not None:
+            if ("profile_creator" in self.beat.initialize.__dict__) and (self.beat.initialize.profile_creator is not None):
                 self.beat.initialize.profile_creator._inform_save()
 
             if self.profiles_with_engineering_parameters is None:
@@ -219,10 +272,18 @@ class maestro:
                 self.beat.prepare(*args, **kwargs)
         else:
             print('\t\t- Skipping beat preparation because this beat was already run', typeMsg = 'i')
+            # Still hand the beat the namelist parameters that merge_parameters() needs
+            # (finalize+merge re-run even for completed beats): e.g. without
+            # zero_source_blocks a re-invocation would silently un-zero sources
+            # in beat_results/input.gacode and input.gacode_final.
+            self.beat.prepare_minimal(*args, **kwargs)
 
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def run(self, **kwargs):
+        
+        # Pass ENABLE_EMBED to the beat run
+        kwargs.update({'ENABLE_EMBED': ENABLE_EMBED})
 
         # Run 
         print('\t- Running...')
@@ -258,6 +319,83 @@ class maestro:
             for item in self.beat.folder .iterdir():
                 IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
 
+
+    def interpret(self):
+        
+        self.warnings_dict = OrderedDict()
+        
+        # Once each beat is finished, collect all "Warnings" that were in the logs into a single file
+        print('\t- Collecting warnings...')
+        
+        # If master logger exists (run was done with terminal outputs enabled), read from it
+        if self.master_log_file is not None:
+            
+            read_warning(self.master_log_file, self.warnings_dict, 'master')
+            
+        # If not, check all logs
+        else:
+                    
+            order_flags = ["check", "ini", "prep", "run", "inform", "finalize"]
+            order_index = {flag: i for i, flag in enumerate(order_flags)}
+
+            files = [item.name for item in self.folder_logs.glob('*')]
+
+            pattern = re.compile(r"beat_(\d+)_(\w+)\.log")
+
+            def sort_key(name):
+                m = pattern.match(name)
+                if not m:
+                    return (float('inf'), float('inf'))  # unknown pattern → sort last
+
+                beat = int(m.group(1))
+                flag = m.group(2)
+
+                return (beat, order_index.get(flag, float('inf')))
+                
+            sorted_files = sorted(files, key=sort_key)
+            
+            # Read all in order
+            for file in sorted_files:
+                
+                read_warning(self.folder_logs / Path(file), self.warnings_dict, file)  
+            
+        # Organize per group
+        log_group = {}
+        for key in self.warnings_dict:
+            group = key.split('_$')[0]
+            line = key.split('_$')[1]
+            if group not in log_group:
+                log_group[group] = {}
+            log_group[group][line] = self.warnings_dict[key]
+            
+        # If file exist, make sure I keep its contents by appending it to the beginning
+        self.previous_contents = ''
+        if self.warnings_log_file_new and self.warnings_log_file.exists():
+            with open(self.warnings_log_file, 'r') as f:
+                self.previous_contents = f.read()
+            
+        self.warnings_log_file_new = False
+            
+        # Write file
+        with open(self.warnings_log_file, 'w') as f:
+            
+            f.write('\n')
+            f.write(f'   Writing warnings @ time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} from previous runs')
+            f.write('\n')
+            
+            f.write(self.previous_contents)
+            
+            f.write('\n')
+            f.write(f'   Writing warnings @ time: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            f.write('\n')
+            
+            for group in log_group:
+                f.write(f'\n------------------------------------------------------------\n')
+                f.write(f'   Warnings in section: {group}\n')
+                f.write(f'------------------------------------------------------------\n')
+                for line in log_group[group]:
+                    f.write(log_group[group][line]+'\n')
+
     def _freeze_parameters(self, profiles = None):
 
         if profiles is None:
@@ -272,7 +410,7 @@ class maestro:
     def finalize(self):
 
         print(f'- MAESTRO finalizing ******************************* {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-        
+
         log_file = self.folder_output / 'beat_final' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file, msg = f'\t\t* Log info being saved to {IOtools.clipstr(log_file)}'):
 
@@ -281,6 +419,112 @@ class maestro:
             self.beat.profiles_output.write_state(file= final_file)
 
             print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
+
+            # End-of-run human-readable summary report
+            try:
+                self.generate_summary()
+            except Exception as e:
+                print(f'\t\t- Could not generate maestro_summary.md: {e}', typeMsg='w')
+
+    # --------------------------------------------------------------------------------------------
+    # Summary report
+    # --------------------------------------------------------------------------------------------
+
+    def generate_summary(self):
+        '''
+        Build Outputs/maestro_summary.md at end of run.
+        - Rendered (PNG) flowchart of all beats with type + wall-time labels.
+        - printInfo() dump of the final plasma state (input.gacode_final).
+        - One detailed section per beat type {portals, transp, eped},
+          using only the last beat of each type.
+        - Exceptions inside any beat.summary() are caught and recorded;
+          summary generation itself never raises.
+        '''
+        from mitim_modules.maestro.utils.MAESTRObeat import _format_seconds
+
+        print('\t- Generating MAESTRO summary report...')
+
+        # Wall-times per beat counter, parsed from timing.jsonl
+        beat_wall_times = _parse_beat_wall_times(self.folder_performance / 'timing.jsonl')
+
+        # Find the last beat of each tracked type (insertion order in self.beats)
+        TRACKED_TYPES = ['transp', 'portals', 'eped']
+        last_by_type = {}
+        for counter, beat_obj in self.beats.items():
+            if beat_obj.name in TRACKED_TYPES:
+                last_by_type[beat_obj.name] = (counter, beat_obj)
+
+        # Compose final markdown
+        total_wall_time = sum(v for v in beat_wall_times.values() if v is not None) if beat_wall_times else None
+
+        md = []
+        md.append('# MAESTRO summary')
+        md.append('')
+        md.append(f'- **Root:** `{self.folder}`')
+        md.append(f'- **Beats run:** {len(self.beats)}')
+        if total_wall_time is not None:
+            md.append(f'- **Total wall-time (sum of beat timings):** {_format_seconds(total_wall_time)}')
+        md.append(f'- **Generated:** {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        md.append('')
+
+        # Rendered flowchart PNG (matplotlib boxes + arrows)
+        md.append('## Beat flow')
+        md.append('')
+        try:
+            flow_png = _render_beat_flow_png(self.beats, beat_wall_times,
+                                             self.folder_output / 'beat_flow.png')
+            md.append(f'![Beat flow]({flow_png.name})')
+        except Exception as e:
+            md.append(f'*(beat-flow diagram unavailable: {e})*')
+        md.append('')
+
+        # Final plasma state: printInfo() output for input.gacode_final
+        final_file = self.folder_output / 'input.gacode_final'
+        if final_file.exists():
+            md.append('## Final plasma state (`input.gacode_final`)')
+            md.append('')
+            try:
+                info_text = _capture_print_info(final_file)
+                if info_text.strip():
+                    md.append('```text')
+                    md.append(info_text)
+                    md.append('```')
+                else:
+                    md.append('*(printInfo produced no output — verbose level may be 0)*')
+            except Exception as e:
+                md.append(f'*(could not capture printInfo: {e})*')
+            md.append('')
+
+        # Warnings: link rather than embed (file can be long)
+        if self.warnings_log_file.exists():
+            try:
+                size = self.warnings_log_file.stat().st_size
+                if size > 0:
+                    md.append('## Warnings')
+                    md.append('')
+                    md.append(f'See [`warnings.log`](warnings.log) ({size} bytes).')
+                    md.append('')
+            except Exception:
+                pass
+
+        # Detailed sections per tracked type (last beat only)
+        for beat_type in TRACKED_TYPES:
+            if beat_type not in last_by_type:
+                continue
+            counter, beat_obj = last_by_type[beat_type]
+            wt = beat_wall_times.get(counter)
+            try:
+                section = beat_obj.summary(self.folder_output, counter=counter, wall_time_s=wt)
+            except Exception as e:
+                section = f'## {beat_type.upper()} (Beat {counter})\n*(summary generation failed: {e})*\n'
+            if section is not None:
+                md.append(section)
+                md.append('')
+
+        summary_path = self.folder_output / 'maestro_summary.md'
+        with open(summary_path, 'w') as f:
+            f.write('\n'.join(md))
+        print(f'\t\t- Summary written to {IOtools.clipstr(summary_path)}')
 
     # --------------------------------------------------------------------------------------------
     # Plotting operations
@@ -315,10 +559,15 @@ class maestro:
             if only_beats is None or only_beats == beat.name:
 
                 print(f'\t- Plotting beat #{counter}...')
-                log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
-                with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
-                    msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
-                print(msg)
+                try:
+                    log_file = self.folder_logs / f'plot_{counter}.log' if (not self.terminal_outputs) else None
+                    with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
+                        msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
+                    print(msg)
+                except FileNotFoundError:
+                    print(f'\t\t- Could not plot beat #{counter} because some files are missing', typeMsg = 'w')
+                except Exception as e:
+                    print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
 
     def _plot_results(self, fn):
 
@@ -327,4 +576,192 @@ class maestro:
         return MAESTROplot.plot_results(self, fn)
 
 
+def read_warning(file, d, label):
 
+    # Read contents
+    with open(file, 'r') as f:
+        log_lines = f.readlines()
+
+    for i in range(len(log_lines)):
+        if '*WARNING*' in log_lines[i]:
+            d[f'{label}_${i}']= log_lines[i].replace('\t','').replace('\n','').replace('[*WARNING*]','')
+
+    return d
+
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mGKHFJ]')
+
+
+def _capture_print_info(gacode_file):
+    '''
+    Run gacode_state.printInfo() and return its stdout with ANSI color codes
+    stripped. Temporarily forces verbose level >= 3 so printMsg actually emits.
+    '''
+    import io
+    import contextlib
+    from mitim_tools.gacode_tools import PROFILEStools
+    from mitim_tools.misc_tools import CONFIGread
+
+    p = PROFILEStools.gacode_state(gacode_file)
+    p.derive_quantities()
+
+    buf = io.StringIO()
+    original = CONFIGread.read_verbose_level
+    CONFIGread.read_verbose_level = lambda: 5
+    try:
+        with contextlib.redirect_stdout(buf):
+            p.printInfo(label='input.gacode_final')
+    finally:
+        CONFIGread.read_verbose_level = original
+
+    return _ANSI_RE.sub('', buf.getvalue())
+
+
+def _render_beat_flow_png(beats, wall_times, out_path):
+    '''
+    Render the beat-flow diagram as a PNG (boxes + arrows). Wraps to multiple
+    rows when the chain is long. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+    from mitim_modules.maestro.utils.MAESTRObeat import _format_seconds
+
+    COLORS = {
+        'transp':    '#f4a896',  # salmon
+        'portals':   '#9ec5fe',  # sky-blue
+        'eped':      '#b7e4c7',  # light green
+        'lengyel':   '#fff3b0',  # pale yellow
+        'sharpness': '#e0c3fc',  # lavender
+    }
+    DEFAULT_COLOR = '#d0d0d0'
+
+    items = list(beats.items())  # [(counter, beat_obj), ...] insertion order
+    n = len(items)
+    if n == 0:
+        # Empty diagram — still emit something
+        fig, ax = plt.subplots(figsize=(4, 1))
+        ax.text(0.5, 0.5, '(no beats)', ha='center', va='center')
+        ax.set_axis_off()
+        fig.savefig(out_path, dpi=120, bbox_inches='tight')
+        plt.close(fig)
+        return out_path
+
+    # Wrap layout: up to PER_ROW per row
+    PER_ROW = 6
+    rows = [items[i:i + PER_ROW] for i in range(0, n, PER_ROW)]
+    nrows = len(rows)
+    ncols = max(len(r) for r in rows)
+
+    # Box geometry (in axis data units)
+    box_w, box_h = 2.0, 1.4
+    gap_x, gap_y = 0.7, 1.0
+
+    fig_w = ncols * (box_w + gap_x) + 1.0
+    fig_h = nrows * (box_h + gap_y) + 0.5
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+    # Positions: row 0 at top, row index increases downward
+    positions = {}  # counter -> (x_center, y_center)
+    for r, row in enumerate(rows):
+        y = (nrows - 1 - r) * (box_h + gap_y) + box_h / 2
+        # Even rows L->R, odd rows R->L (serpentine flow, looks more natural)
+        order = row if r % 2 == 0 else list(reversed(row))
+        for c, (counter, beat_obj) in enumerate(order):
+            x = c * (box_w + gap_x) + box_w / 2
+            positions[counter] = (x, y, r, c)
+
+    # Draw boxes
+    for counter, beat_obj in items:
+        x, y, r, c = positions[counter]
+        color = COLORS.get(beat_obj.name, DEFAULT_COLOR)
+        box = FancyBboxPatch(
+            (x - box_w / 2, y - box_h / 2), box_w, box_h,
+            boxstyle='round,pad=0.05,rounding_size=0.15',
+            facecolor=color, edgecolor='black', linewidth=1.5,
+        )
+        ax.add_patch(box)
+        wt = wall_times.get(counter)
+        wt_str = _format_seconds(wt) if wt is not None else '–'
+        ax.text(x, y + 0.25, f'Beat {counter}',
+                ha='center', va='center', fontsize=10, color='black')
+        ax.text(x, y - 0.05, beat_obj.name.upper(),
+                ha='center', va='center', fontsize=13, color='black', fontweight='bold')
+        ax.text(x, y - 0.4, wt_str,
+                ha='center', va='center', fontsize=9, color='#333333', style='italic')
+
+    # Draw arrows between consecutive beats
+    ordered = [it[0] for it in items]
+    for prev_counter, next_counter in zip(ordered, ordered[1:]):
+        x0, y0, r0, c0 = positions[prev_counter]
+        x1, y1, r1, c1 = positions[next_counter]
+        if r0 == r1:
+            # Same row: horizontal arrow from edge to edge
+            start = (x0 + box_w / 2, y0)
+            end = (x1 - box_w / 2, y1) if c1 > c0 else (x1 + box_w / 2, y1)
+            if c1 < c0:  # serpentine reversed row
+                start = (x0 - box_w / 2, y0)
+            arrow = FancyArrowPatch(
+                start, end, arrowstyle='-|>', mutation_scale=18,
+                color='#333', linewidth=1.5, shrinkA=0, shrinkB=0,
+            )
+        else:
+            # Row wrap: drop straight down from the last box of previous row
+            start = (x0, y0 - box_h / 2)
+            end = (x1, y1 + box_h / 2)
+            arrow = FancyArrowPatch(
+                start, end, arrowstyle='-|>', mutation_scale=18,
+                color='#333', linewidth=1.5,
+                connectionstyle='arc3,rad=0.0',
+                shrinkA=0, shrinkB=0,
+            )
+        ax.add_patch(arrow)
+
+    ax.set_xlim(-0.3, ncols * (box_w + gap_x) + 0.3)
+    ax.set_ylim(-0.3, nrows * (box_h + gap_y) + 0.3)
+    ax.set_aspect('equal')
+    ax.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
+
+
+def _parse_beat_wall_times(timing_file):
+    '''
+    Parse Outputs/Performance/timing.jsonl produced by `mitim_timer` and return
+    {beat_counter: total_seconds} aggregating all phases (Initializer, Preparation,
+    Run + Finalization, Finalizing) per beat. The mitim_timer log labels carry the
+    beat number — match it via regex. Returns {} on any parse failure.
+    '''
+    import json
+
+    if not timing_file.exists():
+        return {}
+
+    pattern = re.compile(r'Beat\s*#\s*(\d+)')
+    totals = {}
+    try:
+        with open(timing_file, 'r') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                label = d.get('script', '')
+                if 'duration_s' not in d:
+                    continue
+                try:
+                    seconds = float(d['duration_s'])
+                except (TypeError, ValueError):
+                    continue
+                m = pattern.search(label)
+                if not m:
+                    continue
+                counter = int(m.group(1))
+                totals[counter] = totals.get(counter, 0.0) + seconds
+    except Exception:
+        return {}
+    return totals

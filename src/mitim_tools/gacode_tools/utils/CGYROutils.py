@@ -1,4 +1,5 @@
 import os
+import math
 import scipy
 import numpy as np
 from pathlib import Path
@@ -15,10 +16,111 @@ except ModuleNotFoundError:
 from IPython import embed
 import pandas as pd
 
+
+def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
+    """
+    PROFILE_MODEL=1 CGYRO runs (the MITIM default) write rho_star_norm=0.0 to
+    out.cgyro.info because the dimensional anchor (T_e[keV], B_unit[T], a[m])
+    isn't supplied. If a dimensional input.gacode is sitting alongside the run
+    (or in any of its parent folders up to `max_parents`), interpolate
+    derived["rho_sa"] from it at the simulation's r/a (= cgyrodata.rmin) and
+    return that value -- mathematically identical to what CGYRO would have
+    computed under PROFILE_MODEL=2 with the same dimensional inputs.
+
+    Caveat the caller is expected to surface to the user: the dimensionless
+    inputs in input.cgyro (T_e/T_norm, n_e/n_norm, gradients, nu, ...) are not
+    guaranteed to be the ones derived from this input.gacode at this radius.
+    For PORTALS that consistency holds by construction; for ad-hoc
+    `mitim_plot_cgyro <folder>` use it's the user's responsibility.
+
+    Returns: (rho_star_norm, source_path) or (None, None) if no readable
+    input.gacode is found.
+    """
+    folder = Path(folder)
+    candidates = [folder] + list(folder.parents)[:max_parents]
+    for d in candidates:
+        f = d / "input.gacode"
+        if not f.exists():
+            continue
+        try:
+            from mitim_tools.gacode_tools import PROFILEStools
+            profiles = PROFILEStools.gacode_state(str(f))
+            roa_grid = profiles.profiles["rmin(m)"] / profiles.profiles["rmin(m)"][-1]
+            rho_sa = float(np.interp(roa, roa_grid, profiles.derived["rho_sa"]))
+            return rho_sa, f
+        except Exception as e:
+            print(f"\t- Found {f} but could not derive rho_s/a from it ({type(e).__name__}: {e}); skipping", typeMsg='w')
+            continue
+    return None, None
+
+
+def compute_box_and_nradial(
+    q,
+    shear,
+    rmin,
+    ky_min,
+    L_x=90.0,
+    N_radial=256,
+    min_box_size=100,
+):
+    """
+    Pick CGYRO BOX_SIZE and N_RADIAL from local equilibrium quantities.
+
+    Port of an IDL recipe: targets a radial box length of ~L_x (in the IDL
+    author's convention) and ~N_radial radial modes, with N_RADIAL
+    constrained so N_RADIAL/BOX_SIZE is a positive integer and N_RADIAL
+    is even.
+
+    rmin is r/a (i.e., the CGYRO RMIN parameter), ky_min is the CGYRO KY
+    parameter (k_theta * rho_s at the surface). Returns (BOX_SIZE, N_RADIAL)
+    as Python ints.
+    """
+
+    # Only the magnitude of the magnetic shear sets the box-length scale:
+    # reversed-shear radii (s<0, e.g. inner hybrid/advanced-scenario points)
+    # would otherwise yield negative BOX_SIZE/N_RADIAL silently written into
+    # input.cgyro; exactly zero shear makes the heuristic diverge.
+    shear = abs(shear)
+    if shear == 0.0:
+        raise ValueError(
+            "[MITIM] compute_box_and_nradial: magnetic shear is zero at this radius — "
+            "the box-size heuristic diverges. Set BOX_SIZE/N_RADIAL explicitly via "
+            "extraOptions (or disable preprocess_options) for this case."
+        )
+
+    rhostar_int = ky_min / (q / rmin)
+    box_fac = (rmin / (q * shear)) / rhostar_int
+    box_calc = L_x / box_fac
+
+    box_floor = int(math.floor(box_calc))
+    box_ceil = box_floor + 1
+
+    # Literal port of the IDL guard. The raw integer comparison only matches
+    # the original "never smaller than 100 rho_s" comment when box_fac ~ 1.
+    if box_floor*box_fac < min_box_size:
+        box_size = box_ceil
+    else:
+        candidates = [box_floor, box_ceil]
+        deltas = [abs(c * box_fac - L_x) for c in candidates]
+        box_size = candidates[int(np.argmin(deltas))]
+
+    r_fac = N_radial / box_size
+    if (r_fac - math.floor(r_fac)) >= 0.5:
+        r_test = int(math.floor(r_fac)) + 1
+    else:
+        r_test = int(math.floor(r_fac))
+    if (r_test * box_size) % 2 != 0:
+        r_test += 1
+    n_radial_out = int(r_test * box_size)
+
+    return int(box_size), n_radial_out
+
+
 class CGYROlinear_scan:
-    def __init__(self, labels, results):   
+    def __init__(self, labels, results, irho = 0):   
 
         self.labels = labels
+        self.irho = irho
 
         # Store the data in a structured way        
         self.aLTi = []
@@ -32,16 +134,15 @@ class CGYROlinear_scan:
         self.Qi_mean = []
 
         for label in labels:
-            self.ky.append(results[label]['output'][0].ky[0])
-            self.aLTi.append(results[label]['output'][0].aLTi)
-            self.g_mean.append(results[label]['output'][0].g_mean[0])
-            self.f_mean.append(results[label]['output'][0].f_mean[0])
-            
-            self.Qe_mean.append(results[label]['output'][0].Qe_mean)
-            self.Qi_mean.append(results[label]['output'][0].Qi_mean)
+            self.ky.append(results[label]['output'][irho].ky[0])
+            self.aLTi.append(results[label]['output'][irho].aLTi)
+            self.g_mean.append(results[label]['output'][irho].g_mean[0])
+            self.f_mean.append(results[label]['output'][irho].f_mean[0])
+            self.Qe_mean.append(results[label]['output'][irho].Qe_mean)
+            self.Qi_mean.append(results[label]['output'][irho].Qi_mean)
 
             try:
-                self.neTe_mean.append(results[label]['output'][0].neTe_kx0_mean[0])
+                self.neTe_mean.append(results[label]['output'][irho].neTe_kx0_mean[0])
             except:
                 self.neTe_mean.append(np.nan)
 
@@ -68,12 +169,21 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, minimal=False, last_tmin_for_linear=True, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, **kwargs):
+        '''
+        tmin sets the left edge of the window used for signal analysis.
+          tmin >= 0                    : absolute time (a/cs).
+          tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
+                                         counted from the end. e.g. tmin=-0.25
+                                         -> the last 25% of the run.
+          tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
+                                         e.g. tmin=-200 -> the last 200 a/cs
+                                         of the run (self.tmin = t[-1] - 200).
+        '''
         
         super().__init__()
 
         self.folder = folder
-        self.tmin = tmin
         
         if isinstance(self.folder, str):
             self.folder = Path(self.folder)
@@ -103,7 +213,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.linear = True
             if last_tmin_for_linear:
                 print('\t- Forcing tmin to the last time point', typeMsg='i')
-                self.tmin = self.cgyrodata.t[-1]
+                tmin = self.cgyrodata.t[-1]
             
         else:
             self.linear = False
@@ -127,6 +237,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.aLTi = self.cgyrodata.dlntdr[0]
         self.aLTe = self.cgyrodata.dlntdr[self.electron_flag]
         self.aLne = self.cgyrodata.dlnndr[self.electron_flag]
+        
+        self.roa = self.cgyrodata.rmin
     
 
         # ************************
@@ -134,6 +246,18 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # ************************
         
         self.t = self.cgyrodata.tnorm
+        
+        if tmin >= 0.0:
+            self.tmin = tmin
+        elif tmin_is_rel:
+            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
+            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
+        else:
+            self.tmin = self.t[-1] + tmin
+            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
+            if self.tmin < self.t[0]:
+                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
+        
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
         self.theta = self.cgyrodata.theta
@@ -146,7 +270,48 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.Qgb = self.cgyrodata.q_gb_norm
         self.Ggb = self.cgyrodata.gamma_gb_norm
         
-        self.artificial_rhos_factor = self.cgyrodata.rho_star_norm / self.cgyrodata.rhonorm
+        # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm=0 in
+        # out.cgyro.info, which would zero out every fluctuation amplitude at
+        # _process_fluctuations(). If an input.gacode is available alongside
+        # the run, recover rho_star_norm from it at r/a=self.roa. When
+        # PROFILE_MODEL=2 (rho_star_norm already populated) we still cross-
+        # check against input.gacode if present, but always trust CGYRO's own
+        # value as the effective one.
+        rho_star_norm_effective = self.cgyrodata.rho_star_norm
+        self._rho_star_norm_source = ('out.cgyro.info', None)
+        if rho_star_norm_effective <= 0.0:
+            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
+            if rho_sa is not None:
+                print(
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info); "
+                    f"computed rho_star_norm={rho_sa:.4e} from {source} at r/a={self.roa:.4f}. "
+                    f"Fluctuation amplitudes use this *computed* rho_star_norm, not a value the simulation itself used "
+                    f"(input.cgyro dimensionless inputs are assumed consistent with this input.gacode at this radius).",
+                    typeMsg='w',
+                )
+                rho_star_norm_effective = rho_sa
+                self._rho_star_norm_source = ('input.gacode', source)
+            else:
+                print(
+                    f"\t* CGYRO ran with PROFILE_MODEL=1 (rho_star_norm=0 in out.cgyro.info) and no input.gacode was found "
+                    f"in {self.folder} or its first 3 parents; fluctuation amplitudes will be zero. "
+                    f"Drop an input.gacode next to the run to recover physical amplitudes.",
+                    typeMsg='w',
+                )
+                self._rho_star_norm_source = ('zero', None)
+        else:
+            rho_sa, source = _resolve_rho_star_norm_from_input_gacode(self.folder, float(self.roa))
+            if rho_sa is not None:
+                rel_diff = abs(rho_sa - rho_star_norm_effective) / rho_star_norm_effective
+                print(
+                    f"\t* rho_star_norm cross-check at r/a={self.roa:.4f}: "
+                    f"CGYRO (out.cgyro.info)={rho_star_norm_effective:.4e}, "
+                    f"input.gacode ({source})={rho_sa:.4e}, "
+                    f"relative diff={rel_diff*100:.2f}% -- using the CGYRO value.",
+                    typeMsg='i',
+                )
+
+        self.artificial_rhos_factor = rho_star_norm_effective / self.cgyrodata.rhonorm
 
         self._process_linear()
 
@@ -156,7 +321,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             if 'kxky_phi' in self.cgyrodata.__dict__:
                 try:
                     self._process_fluctuations()
-                except ValueError as e:
+                except Exception as e:
                     print(f'\t- Error processing fluctuations: {e}', typeMsg='w')
             else:
                 print(f'\t- No fluctuations found in CGYRO data ({IOtools.clipstr(self.folder)}), skipping fluctuation processing and will not be able to plot default Notebook', typeMsg='w')
@@ -165,7 +330,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         try:
             self._process_fluxes()
-        except ValueError as e:
+        except Exception as e:
                 print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
         #self._process_fluxes()        
         self._saturate_signals()
@@ -175,48 +340,71 @@ class CGYROoutput(SIMtools.GACODEoutput):
     def read_using_cgyroplot(self, folder, suffix):
 
         original_dir = os.getcwd()
-        
-        # Handle files with suffix by creating temporary symbolic links
         self.temp_links = []
+
+        # With job arrays, CGYRO output files for each rho live side-by-side in
+        # the parent folder with a per-rho suffix (e.g. out.cgyro.info_0.8519).
+        # pygacode expects canonical names, so we stage symlinks from canonical
+        # -> suffixed for the duration of the read and clean them up after.
         if suffix:
             import glob
-            
-            # Find all files with the suffix pattern
-            pattern = f"{folder.resolve()}{os.sep}*{suffix}"
-            suffixed_files = glob.glob(pattern)
-            
-            for suffixed_file in suffixed_files:
-                # Create expected filename without suffix
-                original_name = suffixed_file.replace(suffix, '')
-                
-                # Only create symlink if the original doesn't exist and the suffixed file does
-                if not os.path.exists(original_name) and os.path.exists(suffixed_file):
-                    try:
-                        os.symlink(suffixed_file, original_name)
-                        self.temp_links.append(original_name)
-                        print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {os.path.basename(suffixed_file)}")
-                    except (OSError, FileExistsError) as e:
-                        print(f"\t- Warning: Could not create symlink for {os.path.basename(suffixed_file)}: {e}", typeMsg='w')
-        
-        try:
-            print(f"\t- Reading CGYRO data from {folder.resolve()}")
-            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-        except FileNotFoundError:
-            raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
-        except Exception as e:
-            print(f"\t- Error reading CGYRO data: {e}")
-            if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?',typeMsg='q'):
-                os.chdir(folder)
-                os.system("cgyro -t")
-            cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
-        finally:
 
+            folder_abs = folder.resolve()
+            pattern = f"{folder_abs}{os.sep}*{suffix}"
+
+            for suffixed_file in glob.glob(pattern):
+                basename = os.path.basename(suffixed_file)
+                # Strip suffix only from the basename, and only if it is a true
+                # trailing suffix — avoids collateral damage when the suffix
+                # substring happens to appear elsewhere in the path.
+                if not basename.endswith(suffix):
+                    continue
+                original_name = os.path.join(folder_abs, basename[:-len(suffix)])
+
+                # Sweep any stale symlink from a previous (possibly crashed)
+                # read so that symlink creation below is idempotent.
+                if os.path.islink(original_name):
+                    try:
+                        os.unlink(original_name)
+                    except OSError:
+                        pass
+
+                # Skip if a real file already sits at the canonical name.
+                if os.path.exists(original_name) and not os.path.islink(original_name):
+                    continue
+
+                try:
+                    os.symlink(suffixed_file, original_name)
+                    self.temp_links.append(original_name)
+                    print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {basename}")
+                except OSError as e:
+                    print(f"\t- Warning: Could not create symlink for {basename}: {e}", typeMsg='w')
+
+        try:
+            try:
+                print(f"\t- Reading CGYRO data from {folder.resolve()}")
+                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+            except FileNotFoundError:
+                raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
+            except Exception as e:
+                print(f"\t- Error reading CGYRO data: {e}")
+                if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
+                    os.chdir(folder)
+                    os.system("cgyro -t")
+                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+        except Exception:
+            # Guarantee cleanup if the read raises so a subsequent re-read
+            # doesn't trip over stale symlinks.
+            self.remove_symlinks()
+            raise
+        finally:
             os.chdir(original_dir)
-                        
+
         return cgyrodata
 
     def remove_symlinks(self):
-        # Remove temporary symbolic links
+        # Remove temporary symbolic links (idempotent).
+        remaining = []
         for temp_link in self.temp_links:
             try:
                 if os.path.islink(temp_link):
@@ -224,6 +412,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
                     print(f"\t- Removed temporary link: {os.path.basename(temp_link)}")
             except OSError as e:
                 print(f"\t- Warning: Could not remove temporary link {os.path.basename(temp_link)}: {e}", typeMsg='w')
+                remaining.append(temp_link)
+        self.temp_links = remaining
 
     def _process_linear(self):
 
@@ -240,8 +430,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
                         self.linear_converged = True
                         break
         
-            self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
-            self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            if 'fnorm' in self.cgyrodata.__dict__.keys():
+                self.f = self.cgyrodata.fnorm[0,:,:]                # (ky, time)
+                self.g = self.cgyrodata.fnorm[1,:,:]                # (ky, time)
+            else:
+                self.f = self.cgyrodata.freq[0,:,:]                # (ky, time)
+                self.g = self.cgyrodata.freq[1,:,:]                # (ky, time)
+                
             if self.g is np.nan or self.f is np.nan:
                 raise ValueError(f"[MITIM] Could not find f or g in CGYRO data at {info_file}. Please check the folder path or run CGYRO first.")
 
@@ -371,7 +566,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             print(f"\t- Warning: Correlation length calculation failed due to infinite/nan values. Setting l_corr to NaN.", typeMsg='w')
             self.l_corr = np.nan
         else:
-            self.lr_corr = calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
+            self.lr_corr = np.nan #calculate_lcorr(phim, self.kx, self.cgyrodata.n_radial)
 
     def _process_fluxes(self):
         
@@ -418,6 +613,27 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
         else:
             self.Ge_ky = self.Ge_ES_ky
+
+
+
+        # Ions particle flux
+
+        i_species, i_moment = self.ions_flags, 0
+        for i_field, field in enumerate(fields):
+            if field == 'phi':
+                self.Gi_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                # sum over species
+                self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
+            elif field == 'apar':
+                self.Gi_all_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Gi_all_EM_ky = self.Gi_all_EM_apar_ky.copy()
+                # sum over species
+                self.Gi_EM_apar_ky = self.Gi_all_EM_ky.sum(axis=0)
+            elif field == 'bpar':
+                self.Gi_all_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Gi_all_EM_ky += self.Gi_all_EM_aper_ky
+                # sum over species
+                self.Gi_EM_aper_ky = self.Gi_all_EM_aper_ky.sum(axis=0)
         
         # Ions energy flux
         
@@ -438,6 +654,22 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 # sum over species
                 self.Qi_EM_aper_ky = self.Qi_all_EM_aper_ky.sum(axis=0)
 
+        # If electromagnetic contributions exist, sum them to get total fluxes
+        if 'Ge_EM_ky' in self.__dict__:
+            self.Ge_ky = self.Ge_ES_ky + self.Ge_EM_ky
+        else:
+            self.Ge_ky = self.Ge_ES_ky
+        
+        if 'Gi_EM_ky' in self.__dict__:
+            self.Gi_all_ky = self.Gi_all_ES_ky + self.Gi_all_EM_ky
+            # sum over species
+            self.Gi_ky = self.Gi_all_ky.sum(axis=0)
+            self.Gi_EM_ky = self.Gi_all_EM_ky.sum(axis=0)
+        else:
+            self.Gi_all_ky = self.Gi_all_ES_ky
+            # sum over species
+            self.Gi_ky = self.Gi_all_ky.sum(axis=0)
+            self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
 
         if 'Qi_all_EM_ky' in self.__dict__:
             self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
@@ -451,7 +683,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # ************************
         # Sum total 
         # ************************
-        variables = ['Qe','Ge','Qi','Qi_all']
+        variables = ['Qe','Ge','Gi','Qi','Qi_all']
         for var in variables:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
                 if var+i+'_ky' in self.__dict__:
@@ -711,7 +943,6 @@ def quends_analysis(t, S, debug = False):
     window_size = 10
     
     trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
-    
     mean = trimmed_df.mean(window_size=window_size)['signal']
     std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
     
@@ -759,7 +990,7 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delet
                 remote_files
                 )
     
-    # read pickle file as cgyroOutput object
+    # read pickle file as CGYROoutput object
     c={}
     for i, folder_remote in enumerate(folders_remote):
         with open(f"{folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl", "rb") as f:
@@ -773,8 +1004,3 @@ def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delet
             print(f"Deleted local pickle file {folder_local}/{folder_remote.rstrip('/').split('/')[-1]}_data.pkl")
 
     return c
-
-if __name__ == "__main__":
-    c = fetch_CGYROoutput(folder_local=".", folders_remote=["/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_+20%_alne_sugama", "/cosmos/vast/scratch/hallefkt/arc_low_current_v3a_n8_fast_-20%_alne_sugama"], machine="cosmos", minimal=True)
-    c
-    embed()

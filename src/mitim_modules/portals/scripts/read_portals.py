@@ -1,7 +1,8 @@
 import argparse
+from pathlib import Path
 import matplotlib.pyplot as plt
 from mitim_modules.portals.utils import PORTALSanalysis
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, GRAPHICStools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools.misc_tools.utils import remote_tools
 from IPython import embed
@@ -16,25 +17,54 @@ def main():
                         help="Paths to the folders to read.")
 
     # PORTALS specific options
-    parser.add_argument("--max", type=int, required=False, default=None)  # Define max bounds of fluxes based on this one, like 0, -1 or None(best)
-    parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*")
-    parser.add_argument("--all", required=False, default=False, action="store_true")  # Plot all fluxes?
-    parser.add_argument("--file", type=str, required=False, default=None)  # File to save .eps
-    parser.add_argument("--complete", "-c", required=False, default=False, action="store_true")
+    parser.add_argument("--max", type=int, required=False, default=None,
+                        help="Define max bounds of fluxes based on this one, like 0, -1 or None(best)")
+    parser.add_argument("--indeces_extra", type=int, required=False, default=[], nargs="*",
+                        help="Additional indeces to plot.")
+    parser.add_argument("--all", required=False, default=False, action="store_true",
+                        help="If set, it will plot all fluxes, not only the main ones.")
+    parser.add_argument("--complete", "-c", "--full", required=False, default=False, action="store_true",
+                        help="If set, it will plot the complete PORTALS results, not only the metrics.")
+    parser.add_argument("--save", type=str, nargs="?", const=IOtools.SAVE_FOLDER_AUTO_SENTINEL, required=False, default=None,
+                        help=f"Folder to save the figures. If flag given without a value, defaults to '<first folder>/{IOtools.SAVE_FOLDER_DEFAULT_SUBDIR}'. Implies --noshow.")
+    parser.add_argument("--dpi", type=int, required=False, default=120,
+                        help="DPI to save the figures.")
+    parser.add_argument("--noshow", required=False, default=False, action="store_true",
+                        help="If set, it will not show the figures on screen.")
    
     # Remote options
     parser.add_argument("--remote",type=str, required=False, default=None,
                         help="Remote machine to retrieve the folders from. If not provided, it will read the local folders.")
-    parser.add_argument("--remote_folder_parent",type=str, required=False, default=None,
+    parser.add_argument("--remote_folder_parent","--remote_parent_folder",type=str, required=False, default=None,
                         help="Parent folder in the remote machine where the folders are located. If not provided, it will use --remote_folders.")
-    parser.add_argument("--remote_folders",type=str, nargs="*", required=False, default=None,
+    parser.add_argument("--remote_folders","--remote_folder",type=str, nargs="*", required=False, default=None,
                         help="List of folders in the remote machine to retrieve. If not provided, it will use the local folder structures.")
-    parser.add_argument("--remote_minimal", required=False, default=False, action="store_true",
+    parser.add_argument("--remote_minimal","--minimal", required=False, default=False, action="store_true",
                         help="If set, it will only retrieve the folder structure with a few key files.")
     parser.add_argument('--fix', required=False, default=False, action='store_true',
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
 
     args = parser.parse_args()
+
+    # --save implies --noshow (headless save; no point re-rendering on screen).
+    if args.save is not None:
+        args.noshow = True
+
+    # Headless save: force the non-interactive Agg backend *before* any figure
+    # is created. GUItools' headless auto-detection keys off DISPLAY being
+    # unset, but clusters often leave a stale/broken DISPLAY exported — Qt is
+    # then selected and the first plt.figure() hard-aborts on the xcb plugin
+    # ("Could not load the Qt platform plugin"). Forcing Agg here sidesteps Qt
+    # entirely on the no-show path. No effect when actually showing figures.
+    if args.noshow:
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+
+    # --save with no value (auto-default) needs at least one positional folder
+    # so we can resolve the default to <first-folder>/figures_plotting_save.
+    # Fail fast with a clear message rather than crashing later in plot land.
+    if args.save == IOtools.SAVE_FOLDER_AUTO_SENTINEL and not args.folders and not (args.remote_folder_parent or args.remote_folders):
+        parser.error("--save without a value needs at least one positional folder argument")
 
     # --------------------------------------------------------------------------------------------------------------------------------------------
     # Retrieve from remote
@@ -42,7 +72,23 @@ def main():
 
     only_folder_structure_with_files = None
     if args.remote_minimal:
-        only_folder_structure_with_files = ["Outputs/optimization_data.csv","Outputs/optimization_extra.pkl","Outputs/optimization_object.pkl","Outputs/optimization_results.out"]
+        only_folder_structure_with_files = [
+            "Outputs/optimization_data.csv",
+            "Outputs/optimization_extra.pkl",
+            "Outputs/optimization_object.pkl",
+            "Outputs/optimization_results.out",
+            "Outputs/optimization_log.txt",
+            "Outputs/timing.jsonl",]
+        
+        # Bring back also if we were in simple relaxation stage
+        fold = "Initialization/initialization_simple_relax"
+        for i in range(10):
+            only_folder_structure_with_files.append(f"{fold}/portals_sr_ev_{i}/powerstate.pkl")            
+            
+        # Bring back portals profiles
+        fold = "Outputs/portals_profiles"
+        for i in range(100):
+            only_folder_structure_with_files.append(f"{fold}/input.gacode.{i}")            
             
     folders = remote_tools.retrieve_remote_folders(args.folders, args.remote, args.remote_folder_parent, args.remote_folders, only_folder_structure_with_files)
 
@@ -64,11 +110,14 @@ def main():
     # Actual PORTALS plotting
     # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    file = args.file
     indexToMaximize = args.max
     indeces_extra = args.indeces_extra
     plotAllFluxes = args.all
     complete = args.complete
+    
+    dpi_fig = args.dpi
+    folder_save = IOtools.resolve_save_folder(args.save, folders[0] if folders else None)
+    noshow = args.noshow
 
     if not complete:
         size = 8
@@ -78,16 +127,13 @@ def main():
 
     is_any_ini = False
     for i in range(len(folders)):
-        is_any_ini = is_any_ini or isinstance(
-            portals_total[i], PORTALSanalysis.PORTALSinitializer
-        )
+        is_any_ini = is_any_ini or isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer)
 
     requiresFN = (len(folders) > 1) or complete or is_any_ini
 
     if requiresFN:
         from mitim_tools.misc_tools.GUItools import FigureNotebook
-
-        fn = FigureNotebook("PORTALS", geometry="1600x1000")
+        fn = FigureNotebook("PORTALS", geometry="1600x1000", show=not noshow)
     else:
         fn = None
 
@@ -96,7 +142,7 @@ def main():
 
         portals_total[i].fn = fn
 
-        # Plot metrics
+        # Plot metrics only
         if (not complete) or isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
             if isinstance(portals_total[i], PORTALSanalysis.PORTALSinitializer):
                 fig = None
@@ -110,20 +156,42 @@ def main():
                 indexToMaximize=indexToMaximize,
                 plotAllFluxes=plotAllFluxes,
                 indeces_extra=indeces_extra,
-                file_save=file if len(folders) == 1 else None,
                 extra_lab=lab,
             )
 
-        # Plot PORTALS
+        # Plot more PORTALS
         else:
-            portals_total[i].plotPORTALS()
+            portals_total[i].plotPORTALS(plot_transport_models=True, noshow=noshow)
 
-    if fn is not None:
-        fn.show()
-    else:
-        plt.show()
-    embed()
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Show figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
+    if not noshow:
+        if requiresFN:
+            fn.show()
+        else:
+            plt.show()
+        
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    # Save figures?
+    # --------------------------------------------------------------------------------------------------------------------------------------------
+    
+    if folder_save:
+        if requiresFN:
+            # Use Notebook save method, to collect all figures into a single folder
+            fn.save(folder_save, dpi=dpi_fig)
+        else:
+            if not folder_save.exists():
+                folder_save.mkdir(parents=True)
+            GRAPHICStools.output_figure_papers(f"{folder_save}/figure", fig=fig, dpi=dpi_fig)
 
+    # Drop into an interactive shell to poke at portals_total — but only when
+    # showing figures. On a headless `--save` run this would print the IPython
+    # banner and block on input (or dump it in a batch job), contradicting the
+    # "just write to file" intent.
+    if not noshow:
+        embed()
 
 if __name__ == "__main__":
     main()

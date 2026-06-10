@@ -11,6 +11,90 @@ from IPython import embed
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 # ----------------------------------------------------------------------------------------------------------------------------
+# Performance helpers
+# ----------------------------------------------------------------------------------------------------------------------------
+
+_original_thread_state = {}
+
+def configure_performance_settings(n_threads=None):
+    """
+    Restrict thread counts for GP inference and save the original state so that
+    restore_performance_settings() can hand full threads back to physics codes.
+
+    On HPC clusters OMP_NUM_THREADS is typically set to the full node core count by the
+    scheduler (e.g. 64) for the benefit of the physics code.  Passing that value straight
+    to PyTorch causes massive thread oversubscription on the tiny GP matrices used here
+    (e.g. 5×5 Cholesky with 64 threads is ~6× *slower* than with 4 threads).
+    We therefore cap at MITIM_GP_THREADS (default 4) regardless of OMP_NUM_THREADS.
+
+    NOTE: only in-process thread pools (PyTorch, MKL, OpenBLAS via threadpoolctl) are
+    restricted.  Environment variables are NOT modified, so child processes launched for
+    physics evaluation inherit the original scheduler allocation unchanged.
+    """
+    import os
+    import linear_operator
+
+    if n_threads is None:
+        n_threads = int(os.environ.get("MITIM_GP_THREADS", 4))
+
+    # Save original in-process thread counts so restore_performance_settings() can undo this
+    _original_thread_state["torch_num_threads"] = torch.get_num_threads()
+    try:
+        import threadpoolctl
+        _original_thread_state["blas_info"] = threadpoolctl.threadpool_info()
+    except ImportError:
+        pass
+
+    # PyTorch intraop / interop (in-process only — does not affect child processes)
+    torch.set_num_threads(n_threads)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass  # can only be set once before any parallel work
+
+    # BLAS/OpenMP thread pools via threadpoolctl (in-process only — child processes
+    # inherit the environment unchanged and use their full SLURM allocation)
+    try:
+        import threadpoolctl
+        threadpoolctl.threadpool_limits(limits=n_threads, user_api="blas")
+        threadpoolctl.threadpool_limits(limits=n_threads, user_api="openmp")
+        blas_info = {lib["prefix"]: lib["num_threads"] for lib in threadpoolctl.threadpool_info()}
+    except ImportError:
+        blas_info = {"note": "threadpoolctl not available"}
+
+    linear_operator.settings.max_cholesky_size._set_value(2000)
+    print(f"\n\t[MITIM: GP performance] torch_num_threads={n_threads}, blas_threads={blas_info}, max_cholesky_size=2000", typeMsg="i")
+
+
+def restore_performance_settings():
+    """
+    Restore in-process thread counts to the values saved by configure_performance_settings().
+
+    Call this before any in-process physics evaluation so that physics code running in the
+    same Python process gets the full thread allocation back.  Not needed when physics runs
+    as subprocesses (they were never affected).
+    """
+    if not _original_thread_state:
+        return  # configure_performance_settings() was never called
+
+    torch.set_num_threads(_original_thread_state["torch_num_threads"])
+
+    try:
+        import threadpoolctl
+        orig = _original_thread_state.get("blas_info", [])
+        for lib in orig:
+            try:
+                threadpoolctl.threadpool_limits(limits=lib["num_threads"], user_api=lib.get("user_api"))
+            except Exception:
+                pass
+        restored = {lib["prefix"]: lib["num_threads"] for lib in threadpoolctl.threadpool_info()}
+    except ImportError:
+        restored = {}
+
+    print(f"\n\t[MITIM: GP performance] thread pools restored: torch={_original_thread_state['torch_num_threads']}, blas={restored}", typeMsg="i")
+
+
+# ----------------------------------------------------------------------------------------------------------------------------
 # SingleTaskGP needs to be modified because I want to input options and outcome transform taking X, otherwise it should be a copy
 # ----------------------------------------------------------------------------------------------------------------------------
 
@@ -331,6 +415,302 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
 
         return X_tr
 
+    def setup_batched_inference(self):
+        """Pre-compute batched kernel and cached Cholesky/alpha for vectorised posterior.
+
+        Supports two kernel types (may be mixed across models):
+          - ScaleKernel(Matern/RBF): batched via stacked raw parameters
+          - MITIM_ConstantKernel:    K(x1,x2)=1 always; no kernel call needed at inference
+
+        Any mean module is supported (ConstantMean, LinearMean, MITIM_LinearMeanGradients, …).
+        Models are grouped by (kernel_type, n_train, ard) so that heterogeneous training-set
+        sizes are handled — each group is batched independently.
+        Falls back gracefully on any incompatibility.
+        Call once after all sub-models are fitted.
+        """
+        
+        print("[MITIM: GP batching] Setting up combined model for batched inference")
+        
+        import copy
+
+        self._batched_ready = False
+        models = self.models
+        N = len(models)
+        if N == 0:
+            return
+
+        # --- Classify each model; group by (kernel_type, n_train, ard) ---
+        # sc_buckets: dict (n_train, ard) -> list of model indices
+        # ck_buckets: dict (n_train,)     -> list of model indices
+        sc_buckets = {}
+        ck_buckets = {}
+
+        for i, m in enumerate(models):
+            covar  = m.covar_module
+            n_i    = m.train_inputs[0].shape[0]
+            if isinstance(covar, gpytorch.kernels.ScaleKernel) and isinstance(
+                covar.base_kernel, (gpytorch.kernels.MaternKernel, gpytorch.kernels.RBFKernel)
+            ):
+                ard_i = covar.base_kernel.raw_lengthscale.shape[-1]
+                key   = (n_i, ard_i)
+                sc_buckets.setdefault(key, []).append(i)
+            elif isinstance(covar, MITIM_ConstantKernel):
+                ck_buckets.setdefault((n_i,), []).append(i)
+            else:
+                print(
+                    f"\t- Cannot batch: model[{i}] covar_module is "
+                    f"{type(covar).__name__} (not supported)",
+                    typeMsg="w",
+                )
+                return
+
+        try:
+            with torch.no_grad():
+                ref = models[0].train_inputs[0]
+
+                # --- Outcome tf2 stats for ALL models (in original order) ---
+                std_stdvs = torch.cat(
+                    [m.outcome_transform["tf2"].stdvs.reshape(1) for m in models], dim=0
+                )  # (N,)
+                std_means = torch.cat(
+                    [m.outcome_transform["tf2"].means.reshape(1) for m in models], dim=0
+                )  # (N,)
+
+                def _noise(m, n):
+                    lhd = m.likelihood
+                    if isinstance(lhd, gpytorch.likelihoods.FixedNoiseGaussianLikelihood):
+                        return lhd.noise_covar.noise.reshape(n)
+                    return lhd.noise.reshape(1).expand(n)
+
+                def _chol_alpha(mods, K_train_batch, n):
+                    noise   = torch.stack([_noise(m, n) for m in mods])
+                    y       = torch.stack([m.train_targets.reshape(n) for m in mods])
+                    pm      = torch.stack([m.mean_module(m.train_inputs[0]) for m in mods])
+                    K_noisy = K_train_batch + torch.diag_embed(noise)
+                    L       = torch.linalg.cholesky(K_noisy)
+                    alpha   = torch.cholesky_solve((y - pm).unsqueeze(-1), L)
+                    return L, alpha
+
+                # --- Build one batched group per (n_train, ard) bucket ---
+                sc_groups = []
+                for (n, ard), indices in sc_buckets.items():
+                    mods   = [models[i] for i in indices]
+                    raw_ls = torch.stack(
+                        [m.covar_module.base_kernel.raw_lengthscale for m in mods], dim=0
+                    )  # (G, 1, ard)
+                    raw_os = torch.stack(
+                        [m.covar_module.raw_outputscale for m in mods], dim=0
+                    )  # (G,)
+                    bc = copy.deepcopy(mods[0].covar_module)
+                    bc.base_kernel.raw_lengthscale = torch.nn.Parameter(raw_ls.clone())
+                    bc.raw_outputscale             = torch.nn.Parameter(raw_os.clone())
+                    bc.requires_grad_(False)
+                    bc.eval()
+                    X_tr = torch.stack([m.train_inputs[0] for m in mods], dim=0)  # (G, n, ard)
+                    K_tr = bc(X_tr, X_tr).to_dense()
+                    L, alpha = _chol_alpha(mods, K_tr, n)
+                    sc_groups.append({
+                        "indices":     indices,
+                        "n_train":     n,
+                        "ard":         ard,
+                        "batch_covar": bc,
+                        "X_train":     X_tr,
+                        "L":           L,
+                        "alpha":       alpha,
+                        "os":          bc.outputscale.detach(),  # (G,)
+                    })
+
+                # --- Build one batched group per n_train bucket (ck) ---
+                # Since K(x1,x2)=1 always, K_star = ones for any test point.
+                # Both the mean correction (K_star @ alpha) and the predictive variance
+                # (1 - ||L^{-1} @ 1_n||^2) are independent of X, so precompute them once.
+                ck_groups = []
+                for (n,), indices in ck_buckets.items():
+                    mods    = [models[i] for i in indices]
+                    G       = len(mods)
+                    K_tr    = torch.ones(G, n, n, dtype=ref.dtype, device=ref.device)
+                    L, alpha = _chol_alpha(mods, K_tr, n)
+                    # mean correction: sum over training points (G, 1)
+                    mean_correction = alpha.sum(dim=-2)          # (G, 1)
+                    # variance constant: 1 - ||L^{-1} @ 1_n||^2, shape (G, 1)
+                    ones_n   = torch.ones(G, n, 1, dtype=ref.dtype, device=ref.device)
+                    v_ck     = torch.linalg.solve_triangular(L, ones_n, upper=False)  # (G, n, 1)
+                    var_const = (1.0 - (v_ck * v_ck).sum(dim=-2)).clamp(min=0)       # (G, 1)
+                    ck_groups.append({
+                        "indices":         indices,
+                        "n_train":         n,
+                        "mean_correction": mean_correction,
+                        "var_const":       var_const,
+                    })
+
+            self._sc_groups  = sc_groups
+            self._ck_groups  = ck_groups
+            self._std_stdvs  = std_stdvs
+            self._std_means  = std_means
+            self._n_batched  = N
+            self._batched_ready = True
+
+            sc_summary = ", ".join(
+                f"{len(g['indices'])} output(s) [{g['n_train']} train pts, {g['ard']} input dims]"
+                for g in sc_groups
+            )
+            ck_summary = ", ".join(
+                f"{len(g['indices'])} output(s) [{g['n_train']} train pts]"
+                for g in ck_groups
+            )
+            sc_str = f"ScaleKernel groups: {sc_summary}" if sc_groups else "no ScaleKernel outputs"
+            ck_str = f"ConstantKernel groups: {ck_summary}" if ck_groups else "no ConstantKernel outputs"
+            print(
+                f"\t- Setup: {N} outputs total — {sc_str} — {ck_str}",
+                typeMsg="i",
+            )
+
+        except Exception as e:
+            print(f"\t- Setup failed ({e}) — sequential path will be used", typeMsg="w")
+            self._batched_ready = False
+
+    def _batched_posterior(self, X, observation_noise=False):
+        """Vectorised GP posterior for all N models.
+
+        Handles two kernel groups:
+          - ScaleKernel group: one batched kernel call
+          - MITIM_ConstantKernel group: K_star = ones (no kernel call)
+
+        X: raw (pre-transform) test inputs, shape (*batch_dims, M, d_raw).
+        observation_noise: if True, adds per-model likelihood noise to the predictive variance.
+        Returns GPyTorchPosterior with MultitaskMultivariateNormal distribution.
+        """
+        from gpytorch.distributions import MultitaskMultivariateNormal
+        from linear_operator.operators import DiagLinearOperator, BlockDiagLinearOperator, CatLinearOperator
+        from botorch.posteriors.gpytorch import GPyTorchPosterior
+
+        N = self._n_batched
+
+        # Transform inputs per model. prepareToGenerateCommons sets flag_to_store=True so
+        # model[0] computes and caches the powerstate in parameters_combined["powerstate"];
+        # models 1..N-1 reuse that cache.
+        # cold_startCommons() is deferred until after the tf1_factors loop below so that
+        # output_transform_portals can also reuse the cached powerstate via
+        # constructEvaluationProfiles (otherwise it would rebuild the powerstate 63 times).
+        self.prepareToGenerateCommons()
+        Xtr_per_model = [m.transform_inputs(X) for m in self.models]
+
+        orig_shape = X.shape[:-1]   # (*batch_dims, M)
+        M_flat = X[..., 0].numel()  # total test points, flattened
+
+        # --- Process each ScaleKernel group (one batched kernel call per group) ---
+        mean_by_model = [None] * N
+        var_by_model  = [None] * N
+
+        _ref_dtype = None
+        for grp in self._sc_groups:
+            indices = grp["indices"]
+            d       = grp["ard"]
+            Xtr_g   = torch.stack(
+                [Xtr_per_model[i].reshape(M_flat, d) for i in indices], dim=0
+            )  # (G, M_flat, d)
+            K_star  = grp["batch_covar"](Xtr_g, grp["X_train"]).to_dense()  # (G, M_flat, n)
+            prior   = torch.stack(
+                [self.models[i].mean_module(Xtr_per_model[i].reshape(M_flat, d))
+                 for i in indices]
+            )  # (G, M_flat)
+            mean_g  = prior + (K_star @ grp["alpha"]).squeeze(-1)
+            v_g     = torch.linalg.solve_triangular(
+                grp["L"], K_star.transpose(-1, -2), upper=False
+            )  # (G, n, M_flat)
+            var_g   = (grp["os"].unsqueeze(-1) - (v_g * v_g).sum(dim=-2)).clamp(min=0)
+            for j, i in enumerate(indices):
+                mean_by_model[i] = mean_g[j]
+                var_by_model[i]  = var_g[j]
+            _ref_dtype = Xtr_g.dtype
+
+        # --- Process each MITIM_ConstantKernel group ---
+        # K_star = ones for any test X, so mean correction and variance are X-independent
+        # and were precomputed in setup_batched_inference.
+        for grp in self._ck_groups:
+            indices = grp["indices"]
+            G       = len(indices)
+            prior   = torch.stack(
+                [self.models[i].mean_module(
+                     Xtr_per_model[i].reshape(M_flat, Xtr_per_model[i].shape[-1])
+                 ) for i in indices]
+            )  # (G, M_flat)
+            mean_g = prior + grp["mean_correction"].to(X.device)     # (G, M_flat)
+            var_g  = grp["var_const"].to(X.device).expand(G, M_flat) # (G, M_flat)
+            for j, i in enumerate(indices):
+                mean_by_model[i] = mean_g[j]
+                var_by_model[i]  = var_g[j]
+
+        pred_mean = torch.stack(mean_by_model).reshape(N, *orig_shape)
+        pred_var  = torch.stack(var_by_model).reshape(N, *orig_shape)
+
+        # Un-normalise tf2 (Standardize)
+        sh       = [N] + [1] * (pred_mean.dim() - 1)
+        mean_tf2 = pred_mean * self._std_stdvs.view(*sh) + self._std_means.view(*sh)
+        var_tf2  = pred_var  * self._std_stdvs.view(*sh) ** 2
+
+        # Un-normalise tf1 (physics output scaling) per model.
+        # The loop calls transformationOutputs once per model; constructEvaluationProfiles
+        # inside it reuses parameters_combined["powerstate"] (still alive from transform_inputs
+        # above) so the powerstate is built only once across all 63 models.
+        factors_list = []
+        for i, m in enumerate(self.models):
+            tf1 = m.outcome_transform["tf1"]
+            if not (hasattr(tf1, "_cached_factor_X") and tf1._cached_factor_X is X):
+                tf1._cached_factor = tf1.surrogate_parameters["transformationOutputs"](
+                    X, tf1.surrogate_parameters, tf1.output
+                ).to(X.device)
+                tf1._cached_factor_X = X
+            factors_list.append(tf1._cached_factor.squeeze(-1))  # (*orig_shape,)
+        self.cold_startCommons()  # deferred: safe now that both transform_inputs and tf1 factors are done
+
+        factors  = torch.stack(factors_list)                              # (N, *orig_shape)
+        mean_fin = (mean_tf2 * factors).reshape(N, M_flat)               # (N, M_flat)
+        var_fin  = (var_tf2 * factors ** 2).clamp(min=0).reshape(N, M_flat)  # (N, M_flat)
+
+        # Add observation noise per model when requested (required for cache_root=True in qNEI)
+        if observation_noise:
+            def _test_noise(m):
+                lhd = m.likelihood
+                if isinstance(lhd, gpytorch.likelihoods.FixedNoiseGaussianLikelihood):
+                    # Fixed noise has no noise at test points unless learn_additional_noise=True
+                    if lhd.learn_additional_noise:
+                        return lhd.noise.squeeze().to(var_fin)
+                    return torch.zeros(1, dtype=var_fin.dtype, device=var_fin.device)
+                return lhd.noise.squeeze().reshape(1).to(var_fin)
+            noise_per_model = torch.stack([_test_noise(m) for m in self.models])  # (N,)
+            # Apply tf2 variance scaling, then tf1 scaling per point (same pipeline as var_fin)
+            noise_tf2 = noise_per_model * self._std_stdvs ** 2              # (N,)
+            noise_fin = noise_tf2.unsqueeze(-1) * factors.reshape(N, M_flat) ** 2  # (N, M_flat)
+            var_fin = var_fin + noise_fin
+
+        # Build MultitaskMultivariateNormal directly from batched tensors — avoids constructing
+        # N individual MultivariateNormal objects (O(N*M) Python overhead).
+        # interleaved=False: BlockDiagLinearOperator block i covers all M points for task i.
+        mean_out = mean_fin.reshape(N, *orig_shape).permute(*range(1, len(orig_shape) + 1), 0)
+
+        # BlockDiagLinearOperator(DiagLinearOperator(var_fin)) is auto-simplified to
+        # DiagLinearOperator by linear_operator 0.6, which breaks extract_batch_covar
+        # in BoTorch 0.16 (requires BlockDiagLinearOperator). Use CatLinearOperator +
+        # block_dim=-3 to preserve the block structure, matching BoTorch's own approach.
+        #
+        # When X has batch dims (*batch_shape, q, d), orig_shape = (*batch_shape, q) and
+        # MultitaskMultivariateNormal expects covariance (*batch_shape, N*q, N*q) — not the
+        # flat (N*M_flat, N*M_flat). Reshape var_fin to (N, *batch_shape, q) so each
+        # DiagLinearOperator gets shape (*batch_shape, q, q), and CatLinearOperator stacks
+        # them to (*batch_shape, N, q, q) → BlockDiagLinearOperator → (*batch_shape, N*q, N*q).
+        batch_shape = orig_shape[:-1]      # may be () for simple 1-D case
+        q_dim       = orig_shape[-1]       # last dim = jointly evaluated points
+        var_fin_bq  = var_fin.reshape(N, *batch_shape, q_dim)  # (N, *batch_shape, q_dim)
+        cat_covar   = CatLinearOperator(*[DiagLinearOperator(var_fin_bq[i]).unsqueeze(-3) for i in range(N)], dim=-3)
+        block_covar = BlockDiagLinearOperator(cat_covar, block_dim=-3)
+
+        mtmvn = MultitaskMultivariateNormal(
+            mean_out, block_covar, validate_args=False, interleaved=False
+        )
+
+        return GPyTorchPosterior(distribution=mtmvn)
+
     def posterior(
         self,
         X,
@@ -339,6 +719,18 @@ class ModifiedModelListGP(botorch.models.model_list_gp_regression.ModelListGP):
         posterior_transform=None,
         **kwargs,
     ):
+        # Fast batched path: one kernel call for all N models
+        if (
+            getattr(self, "_batched_ready", False)
+            and output_indices is None
+            and posterior_transform is None
+        ):
+            try:
+                return self._batched_posterior(X, observation_noise=observation_noise)
+            except Exception as e:
+                print(f"\t[MITIM: GP batching] posterior failed ({e}) — falling back", typeMsg="w")
+
+        # Sequential fallback
         self.prepareToGenerateCommons()
         posterior = super().posterior(
             X,
@@ -446,9 +838,15 @@ class Transformation_Outcomes(botorch.models.transforms.outcome.Standardize):
 
     def untransform_posterior(self, X, posterior):
         if (self.output is not None) and (self.flag_to_evaluate):
-            factor = self.surrogate_parameters["transformationOutputs"](
-                X, self.surrogate_parameters, self.output
-            ).to(X.device)
+            # Cache factor by X tensor identity: avoids recomputing expensive physics
+            # transform when the same X object is passed multiple times (e.g. inner
+            # optimizer iterations, MC acquisition sampling).
+            if not (hasattr(self, "_cached_factor_X") and self._cached_factor_X is X):
+                self._cached_factor = self.surrogate_parameters["transformationOutputs"](
+                    X, self.surrogate_parameters, self.output
+                ).to(X.device)
+                self._cached_factor_X = X
+            factor = self._cached_factor
 
             self.stdvs = factor
             self.means = self.stdvs * 0.0
@@ -689,7 +1087,7 @@ class MITIM_LinearMeanGradients(gpytorch.means.mean.Mean):
                     'Qi_': 'aLti',
                     'Ge_': 'aLne',
                     'GZ_': 'aLnZ',
-                    'Mt_': 'dw0dr',
+                    'Mt_': 'aLw0_n',
                     'Qie': None  # Referring to energy exchange
                 }
 

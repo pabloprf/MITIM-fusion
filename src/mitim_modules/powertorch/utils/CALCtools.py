@@ -34,19 +34,56 @@ def integration_Lx(x, z, f_bound):
 
     return f
     
-def derivation_into_Lx(r, p):
+def derivation_into_Lx(r, p, array=False):
     """
-    Produces -1/p * dp/dr
-        (adapted from  expro_util.f90, bound_deriv)
+    Produces -1/p * dp/dr using 2nd-order Lagrange interpolating polynomial.
+        (adapted from expro_util.f90, bound_deriv)
+
+    This matches GACODE's internal derivative scheme (bound_deriv), ensuring
+    consistency between POWERTORCH and TGLF/CGYRO/NEO when they recompute
+    gradients from the same input.gacode.
 
     Notes:
         - if r is r/a: a/Lp
     """
 
-    z = MATHtools.deriv(r, -torch.log(p), array=False)
+    if not array:
+        z = MATHtools.deriv(r, -torch.log(p), array=False)
+    else:
+        z = MATHtools.deriv(r, -np.log(p), array=True)
 
     return z
 
+
+def derivation_into_Lx_central(r, p, array=False):
+    """
+    Produces -1/p * dp/dr using central differences.
+
+    Alternative to the default Lagrange method. Central differences are
+    structurally more consistent with integration_Lx's trapezoidal log-space
+    formula, reducing the fine-grid roundtrip error by ~30%. However, they
+    use a different stencil than GACODE's bound_deriv, which can cause
+    small discrepancies when transport codes recompute gradients.
+
+    Notes:
+        - if r is r/a: a/Lp
+    """
+
+    if array:
+        r, p = np.array(r, dtype=float), np.array(p, dtype=float)
+        lnp = np.log(p)
+        z = np.empty_like(lnp)
+        z[1:-1] = -(lnp[2:] - lnp[:-2]) / (r[2:] - r[:-2])
+        z[0] = -(lnp[1] - lnp[0]) / (r[1] - r[0])
+        z[-1] = -(lnp[-1] - lnp[-2]) / (r[-1] - r[-2])
+        return z
+    else:
+        lnp = torch.log(p)
+        z = torch.empty_like(p)
+        z[1:-1] = -(lnp[2:] - lnp[:-2]) / (r[2:] - r[:-2])
+        z[0] = -(lnp[1] - lnp[0]) / (r[1] - r[0])
+        z[-1] = -(lnp[-1] - lnp[-2]) / (r[-1] - r[-2])
+        return z
 
 def integration_dxdr(x, z, z0_bound):
     """
@@ -69,12 +106,25 @@ def integration_dxdr(x, z, z0_bound):
 
 def derivation_into_dxdr(r, p):
     """
-    Produces -dp/dr
+    Produces -dp/dr using 2nd-order Lagrange interpolating polynomial.
+        (adapted from expro_util.f90, bound_deriv)
     """
 
-    # This is the same as it happens in expro_util.f90, bound_deriv
     z = MATHtools.deriv(r, -p, array=False)
+    return z
 
+
+def derivation_into_dxdr_central(r, p):
+    """
+    Produces -dp/dr using central differences.
+    Alternative to the default Lagrange method.
+    """
+
+    neg_p = -p
+    z = torch.empty_like(p)
+    z[1:-1] = (neg_p[2:] - neg_p[:-2]) / (r[2:] - r[:-2])
+    z[0] = (neg_p[1] - neg_p[0]) / (r[1] - r[0])
+    z[-1] = (neg_p[-1] - neg_p[-2]) / (r[-1] - r[-2])
     return z
 
 # ********************************************************************************************************************

@@ -5,6 +5,7 @@ import datetime
 import warnings
 import contextlib
 import logging
+import threading
 from IPython import embed
 
 # Paramiko shows some deprecation warnings that are not relevant
@@ -115,14 +116,22 @@ class prompting_context:
             key = sys.stdin.read(1)
         return key
 
+class InteractiveTerminalError(Exception):
+    pass
+
 def query_yes_no(question, extra=""):
     '''
     From https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input 
     '''
 
     if not sys.stdin.isatty():
-        raise Exception("Interactive terminal response required - something is wrong with this run")
+        raise InteractiveTerminalError("Interactive terminal response required - something is wrong with this run")
 
+    # If stdout is currently redirected to a log file (e.g. per-beat MAESTRO logs), the question
+    # would land in the log while stdin blocks forever on a prompt the user cannot see. Crash instead.
+    # Note this does not trip under the Logger tee (--terminal mode), where prompts remain visible.
+    if log_to_file._context_count > 0:
+        raise InteractiveTerminalError("Interactive question asked while stdout is redirected to a log file - crashing instead of hanging on an invisible prompt")
 
     valid = {"y": True, "n": False, "e": None}
     prompt = " [y/n/e] (yes, no, exit)"
@@ -146,20 +155,143 @@ def query_yes_no(question, extra=""):
         else:
             printMsg("Please respond with 'y' (yes) or 'n' (no)\n")
 
+# ---------------------------------------------------------------------------
+# Thread-local stdout proxy — installed once, lets HiddenPrints work safely
+# across multiple concurrent threads without the threads stomping on each
+# other's sys.stdout replacement.
+# ---------------------------------------------------------------------------
+
+_hp_tls   = threading.local()   # per-thread: current HiddenPrints override
+_hp_lock  = threading.Lock()    # guards the one-time proxy installation
+
+
+class _ThreadLocalStdoutProxy:
+    """sys.stdout replacement that dispatches writes to a per-thread override.
+
+    If the calling thread has an active HiddenPrints context it sees its own
+    filtered stream; all other threads see the original stdout unchanged.
+    """
+
+    def __init__(self, real):
+        # Store without triggering __setattr__ overrides
+        object.__setattr__(self, '_real', real)
+
+    def write(self, msg):
+        target = getattr(_hp_tls, 'override', None)
+        (target if target is not None else self._real).write(msg)
+
+    def flush(self):
+        target = getattr(_hp_tls, 'override', None)
+        (target if target is not None else self._real).flush()
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_real'), name)
+
+
 class HiddenPrints:
     """
     Usage:
             with IOtools.HiddenPrints():
                     printMsg("This will not be printed")
+
+    Thread-safe: multiple threads can each be inside their own HiddenPrints
+    context simultaneously without interfering with each other.
     """
 
+    def __init__(self, show_if_contains=None):
+        """Optionally show only lines that contain given string(s).
+
+        Parameters
+        ----------
+        show_if_contains : str, iterable of str, or None, optional
+            If a string, only lines whose text (after stripping leading
+            whitespace) contains this string are printed. If an iterable
+            of strings, a line is printed if it contains *any* of them.
+            All other output is suppressed. If None (default), all output
+            is suppressed (original behavior of HiddenPrints).
+        """
+
+        # Normalize to a list of substrings or None
+        if show_if_contains is None:
+            self._needles = None
+        elif isinstance(show_if_contains, str):
+            self._needles = [show_if_contains]
+        else:
+            # Assume iterable of strings
+            self._needles = list(show_if_contains)
+
+        # Tracks whether the *current line* should be shown. This is
+        # needed because ``print`` may emit a single logical line via
+        # multiple ``write`` calls (one per argument plus the newline).
+        self._current_line_visible = False
+
     def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
+        # Install the process-wide proxy once (thread-safe, idempotent)
+        with _hp_lock:
+            if not isinstance(sys.stdout, _ThreadLocalStdoutProxy):
+                sys.stdout = _ThreadLocalStdoutProxy(sys.stdout)
+
+        # Resolve the "real" stdout: skip through any enclosing HiddenPrints
+        # so that visible lines always reach the actual terminal/file.
+        prev = getattr(_hp_tls, 'override', None)
+        self._original_stdout = prev._original_stdout if prev is not None \
+            else sys.stdout._real  # type: ignore[attr-defined]
+        self._devnull = open(os.devnull, "w")
+
+        # Set this instance as the per-thread stdout override
+        self._prev_override = prev
+        _hp_tls.override = self
+
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
+        # Restore the previous per-thread override (None if outermost context)
+        _hp_tls.override = self._prev_override
+        if not self._devnull.closed:
+            self._devnull.close()
+
+    def write(self, message):
+        """Conditionally write to stdout based on the configured prefix.
+
+        If ``show_if_contains`` is None, everything is discarded
+        (fully hidden). Otherwise, for each logical *line*, if any part of
+        that line (after stripping leading whitespace) contains *any* of
+        the configured substrings, the whole line is printed; otherwise
+        the whole line is suppressed.
+        """
+
+        text = str(message)
+
+        if self._needles is None:
+            # Original behavior: hide everything inside the context
+            self._devnull.write(text)
+            return
+
+        # ``print`` may call ``write`` multiple times for a single
+        # logical line (one call per argument and one for the newline).
+        # We therefore process the incoming text line-by-line and keep
+        # state about whether the current line should be visible.
+        for chunk in text.splitlines(keepends=True):
+            # Decide visibility at the start of a (potentially new) line
+            if not self._current_line_visible:
+                stripped = chunk.lstrip()
+                if any(needle in stripped for needle in self._needles):
+                    self._current_line_visible = True
+
+            # Route the chunk based on the current line's visibility
+            if self._current_line_visible:
+                self._original_stdout.write(chunk)
+            else:
+                self._devnull.write(chunk)
+
+            # Reset visibility at end-of-line
+            if chunk.endswith("\n"):
+                self._current_line_visible = False
+
+    def flush(self):
+        # Ensure compatibility with file-like API expected for sys.stdout
+        self._original_stdout.flush()
+        self._devnull.flush()
 
 '''
 Log file utilities
@@ -235,7 +367,6 @@ class log_to_file:
             # If the file is closed, reopen it and try again
             self.log = open(self.log_file, 'a')
             self.log.write(clean_message)
-        self.log.flush()  # Ensure each write is immediately flushed
 
     def flush(self):
         # Ensure sys.stdout and sys.stderr are flushed
@@ -327,7 +458,11 @@ Logger
 
 class Logger(object):
     def __init__(self, logFile="logfile.log", DebugMode=0, writeAlsoTerminal=True):
-        self.terminal = sys.stdout
+        # Unwrap the thread-local proxy so Logger.terminal always points at the
+        # real underlying stream.  Without this, Logger ↔ proxy ↔ HiddenPrints
+        # ↔ Logger forms an infinite recursion cycle.
+        raw = sys.stdout
+        self.terminal = raw._real if isinstance(raw, _ThreadLocalStdoutProxy) else raw
         self.logFile = logFile
         self.writeAlsoTerminal = writeAlsoTerminal
 
@@ -336,21 +471,22 @@ class Logger(object):
         print(f"- Creating log file: {logFile}")
 
         if DebugMode == 0:
-            with open(self.logFile, "w") as f:
-                f.write(f"* New run ({currentime})\n")
+            self._log = open(self.logFile, "w")
+            self._log.write(f"* New run ({currentime})\n")
         else:
-            with open(self.logFile, "a") as f:
-                f.write(
-                    f"\n\n\n\n\n\t ~~~~~ Run cold_started ({currentime})~~~~~ \n\n\n\n\n"
-                )
+            self._log = open(self.logFile, "a")
+            self._log.write(
+                f"\n\n\n\n\n\t ~~~~~ Run cold_started ({currentime})~~~~~ \n\n\n\n\n"
+            )
 
     def write(self, message):
         if self.writeAlsoTerminal:
             self.terminal.write(message)
+        self._log.write(strip_ansi_codes(message))
 
-        with open(self.logFile, "a") as self.log:
-            self.log.write(strip_ansi_codes(message))
-
-    # For python 3 compatibility:
     def flush(self):
-        pass
+        self._log.flush()
+
+    def close(self):
+        self._log.flush()
+        self._log.close()

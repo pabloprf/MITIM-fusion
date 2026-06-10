@@ -9,6 +9,145 @@ from mitim_tools.misc_tools import IOtools, MATHtools, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
+# ---------------------------------------------------------------------------
+# Reserved DV name handling: `fidelity_level`
+#
+# Multi-fidelity PORTALS appends `fidelity_level` as an extra DV bounded
+# [0, N-1] (PORTALSinit.py:244, conditional on a dict-form turbulence_model
+# / neoclassical_model spec). PORTALS' classical solvers in
+# mitim_tools/opt_tools/optimizers/multivariate.py iterate index-paired
+# Δx_i ∝ residual_i steps and require len(DVs) == len(residuals). With
+# fidelity_level added, that invariant breaks and the optimizer crashes.
+#
+# `_METHODS_HANDLE_FIDELITY_LEVEL` declares which optimizer methods can
+# handle the extra DV natively. For methods that can't, the wrapper below
+# strip-and-pads transparently: the optimizer sees a reduced-DV problem,
+# `residual_function` invocations inside it are padded with fidelity_level
+# pinned to N-1 (highest fidelity, since post-BO refinement should converge
+# against the most accurate model), and the returned x_opt is re-padded to
+# the full DV shape before the BO loop sees it.
+#
+# Conservative default for unknown method names: True (treat as
+# fidelity-aware). Better to surface a real shape error than silently strip
+# a DV the user expected the optimizer to see.
+# ---------------------------------------------------------------------------
+FIDELITY_LEVEL_DV_NAME = "fidelity_level"
+_METHODS_HANDLE_FIDELITY_LEVEL = {
+    # Keys mirror the optimizer strings used in `acquire_next_points`
+    # (`acquisition_options.optimizers` namelist list, e.g. ["botorch","sr","root"]).
+    "botorch": True,   # GP acquisition; dimension-agnostic
+    "ga":      True,   # genetic algorithm; dimension-agnostic
+    "root":    False,  # scipy.optimize.root (LM); requires len(DVs)==len(residuals)
+    "sr":      False,  # multivariate_tools.simple_relaxation; ditto
+}
+
+
+def _drop_col(t, idx):
+    '''Return a tensor with column `idx` removed along the last axis. Works
+    for shapes (..., D) — used here on (2, D) bounds tensors and (n, D)
+    guess tensors.'''
+    if t is None:
+        return None
+    if idx == 0:
+        return t[..., 1:].clone()
+    if idx == t.shape[-1] - 1:
+        return t[..., :-1].clone()
+    return torch.cat([t[..., :idx], t[..., idx + 1:]], dim=-1)
+
+
+def _insert_col(t, idx, value):
+    '''Insert a column of constant `value` at column index `idx` along the
+    last axis. Inverse of `_drop_col` (modulo dtype/device coercion of
+    `value`).'''
+    if t is None:
+        return None
+    leading = t.shape[:-1]
+    fill = torch.full(leading + (1,), float(value), dtype=t.dtype, device=t.device)
+    if idx == 0:
+        return torch.cat([fill, t], dim=-1)
+    if idx == t.shape[-1]:
+        return torch.cat([t, fill], dim=-1)
+    return torch.cat([t[..., :idx], fill, t[..., idx:]], dim=-1)
+
+
+def _wrap_optimizer_for_fidelity_level(fun, optimize_function, method_name):
+    '''
+    If `fidelity_level` is in the DV list AND `method_name` is registered
+    as not handling it, return a wrapped `optimize_function` that:
+      1. Snapshots `fun.{dimDVs, bounds, bounds_mod, xGuesses}` and
+         `fun.evaluators["residual_function"]` (the full-DV state).
+      2. Replaces them with reduced views (fidelity_level column removed).
+         The wrapped residual_function pads fidelity_level=N-1 before
+         delegating to the original — so the optimizer's residual calls
+         remain valid against the GP's full-DV input expectation.
+      3. Calls `optimize_function(fun, *args, **kwargs)`. The optimizer sees
+         a clean reduced-DV problem.
+      4. Re-pads the returned x_opt with fidelity_level=N-1 at the correct
+         column position so `fun.optimize`'s downstream `select_points` and
+         the BO loop see the full DV signature.
+      5. Restores `fun` to its full-DV state on the way out (try/finally).
+
+    Otherwise returns `optimize_function` unchanged. Single-fidelity runs
+    and fidelity-aware methods (botorch / ga) are no-ops.
+    '''
+    dv_names = list(fun.evaluators["GP"].bounds.keys())
+    if FIDELITY_LEVEL_DV_NAME not in dv_names:
+        return optimize_function
+    if _METHODS_HANDLE_FIDELITY_LEVEL.get(method_name, True):
+        return optimize_function
+
+    fid_idx = dv_names.index(FIDELITY_LEVEL_DV_NAME)
+    fid_max = float(fun.evaluators["GP"].bounds[FIDELITY_LEVEL_DV_NAME][1])
+
+    print(
+        f"\t- [{FIDELITY_LEVEL_DV_NAME}] optimizer '{method_name}' is not fidelity-aware; "
+        f"pinning {FIDELITY_LEVEL_DV_NAME}={int(round(fid_max))} for this stage and stripping "
+        "it from the DV view passed to the optimizer.",
+        typeMsg="i",
+    )
+
+    def wrapped(fun_arg, *args, **kwargs):
+        # Snapshot post-prep state. We restore exactly this in the finally
+        # block; if the optimizer raises, the caller still sees `fun` intact.
+        snap_dimDVs     = fun_arg.dimDVs
+        snap_bounds     = fun_arg.bounds.clone()
+        snap_bounds_mod = fun_arg.bounds_mod.clone()
+        snap_xGuesses   = None if fun_arg.xGuesses is None else fun_arg.xGuesses.clone()
+        snap_residual   = fun_arg.evaluators["residual_function"]
+
+        # Present a reduced view to the optimizer
+        fun_arg.dimDVs     = snap_dimDVs - 1
+        fun_arg.bounds     = _drop_col(snap_bounds, fid_idx)
+        fun_arg.bounds_mod = _drop_col(snap_bounds_mod, fid_idx)
+        if snap_xGuesses is not None:
+            fun_arg.xGuesses = _drop_col(snap_xGuesses, fid_idx)
+
+        # Pad fidelity_level back into X before each residual evaluation so
+        # the GP / scalarized_objective machinery (which trained on full-DV
+        # inputs) keeps working. fid_max is broadcast across the batch.
+        def padded_residual(x, *r_args, **r_kwargs):
+            x_full = _insert_col(x, fid_idx, fid_max)
+            return snap_residual(x_full, *r_args, **r_kwargs)
+        fun_arg.evaluators["residual_function"] = padded_residual
+
+        try:
+            x_opt_red, y_opt, z_opt, acq_eval = optimize_function(fun_arg, *args, **kwargs)
+        finally:
+            # Restore on every path (success or exception) so the caller's
+            # next iteration / next optimizer in the chain sees pristine state.
+            fun_arg.dimDVs     = snap_dimDVs
+            fun_arg.bounds     = snap_bounds
+            fun_arg.bounds_mod = snap_bounds_mod
+            fun_arg.xGuesses   = snap_xGuesses
+            fun_arg.evaluators["residual_function"] = snap_residual
+
+        # Pad fidelity_level=N-1 into x_opt so downstream `select_points`
+        # and the BO loop see the full DV signature.
+        x_opt_full = _insert_col(x_opt_red, fid_idx, fid_max)
+        return x_opt_full, y_opt, z_opt, acq_eval
+
+    return wrapped
+
 class fun_optimization:
     def __init__(self, stepSettings, evaluators, strategy_options):
         self.stepSettings = stepSettings
@@ -20,10 +159,11 @@ class fun_optimization:
 
         # Pass the original bounds of the problem already to the fun class (they may be modified by boundsRefine)
 
-        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds))).to(self.evaluators["GP"].train_X)
+        ref = self.evaluators["GP"].train_X
+        self.bounds = torch.zeros((2, len(self.evaluators["GP"].bounds)), dtype=ref.dtype, device=ref.device)
         for i, ikey in enumerate(self.evaluators["GP"].bounds):
-            self.bounds[0, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][0])
-            self.bounds[1, i] = copy.deepcopy(self.evaluators["GP"].bounds[ikey][1])
+            self.bounds[0, i] = self.evaluators["GP"].bounds[ikey][0]
+            self.bounds[1, i] = self.evaluators["GP"].bounds[ikey][1]
 
         # Define bounds_mod to search optimizer
 
@@ -220,20 +360,31 @@ def acquire_next_points(
 
         # Prepare (run more now to find more solutions, more diversity, even if later best_points is 1)
 
-        if optimizer == "ga":           
+        if optimizer == "ga":
             from mitim_tools.opt_tools.optimizers.evolutionary import optimize_function
-        elif optimizer == "botorch":    
+        elif optimizer == "botorch":
             from mitim_tools.opt_tools.optimizers.botorch_tools import optimize_function
-        elif optimizer == "root" or optimizer == "sr":      
+        elif optimizer == "root" or optimizer == "sr":
             from mitim_tools.opt_tools.optimizers.multivariate import optimize_function
             if optimizer == "root":
                 optimize_function = partial(optimize_function, method="scipy_root")
-            elif optimizer == "sr" : 
+            elif optimizer == "sr" :
                 optimize_function = partial(optimize_function, method="sr")
         else:
             raise ValueError(f"[MITIM] Unknown optimizer {optimizer}")
 
         fun.prep(xGuesses=x_opt,seed=it_number + seed)
+
+        # Reserved DV `fidelity_level`: when the model spec is multi-fidelity
+        # (turbulence_model / neoclassical_model is an int-keyed dict),
+        # PORTALS appends a fidelity_level DV bounded [0, N-1] and the
+        # optimizer chosen here may not handle the extra DV (sr, root).
+        # The wrapper transparently strips fidelity_level for non-aware
+        # optimizers and pins it to N-1; no-op for fidelity-aware methods
+        # (botorch, ga) and for single-fidelity runs.
+        optimize_function = _wrap_optimizer_for_fidelity_level(
+            fun, optimize_function, method_name=optimizer,
+        )
 
         # *********** Optimize
         x_opt, y_opt_residual, z_opt, info, hard_finish_surrogate = fun.optimize(
@@ -339,9 +490,9 @@ def select_points(
 def pointsOperation_concat(
     x_opt2, y_opt_residual2, z_opt2, x_opt_previous, y_opt_previous, z_opt_previous
 ):
-    x_opt = torch.cat((x_opt_previous, x_opt2)).to(x_opt2)
-    y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2)).to(x_opt2)
-    z_opt = torch.cat((z_opt_previous, z_opt2)).to(x_opt2)
+    x_opt = torch.cat((x_opt_previous, x_opt2))
+    y_opt_residual = torch.cat((y_opt_previous, y_opt_residual2))
+    z_opt = torch.cat((z_opt_previous, z_opt2))
 
     print(f"\t- Previous solution set had {x_opt_previous.shape[0]} points, this optimization step adds {x_opt2.shape[0]} new points. Optimization so far has found {x_opt.shape[0]} candidate optima")
 
@@ -411,12 +562,7 @@ def pointsOperation_bounds(
     if z_opt is None:
         z_opt = x_opt.clone()[:, 0]
 
-    x_opt_inbounds, y_opt_inbounds, z_opt_inbounds = (
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-        torch.Tensor().to(fun.stepSettings["dfT"]),
-    )
-    x_removeds = torch.Tensor().to(fun.stepSettings["dfT"])
+    in_idx, out_idx = [], []
     for i in range(x_opt.shape[0]):
         if maxExtrapolation is not None:
             insideBounds = TESTtools.checkSolutionIsWithinBounds(x_opt[i], bounds, maxExtrapolation=maxExtrapolation)
@@ -427,19 +573,15 @@ def pointsOperation_bounds(
             insideBounds = True
 
         if insideBounds:
-            x_opt_inbounds = torch.cat(
-                (x_opt_inbounds, x_opt[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
-            y_opt_inbounds = torch.cat(
-                (y_opt_inbounds, y_opt_residual[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
-            z_opt_inbounds = torch.cat(
-                (z_opt_inbounds, z_opt[i].unsqueeze(0)), axis=0
-            ).to(fun.stepSettings["dfT"])
+            in_idx.append(i)
         else:
-            x_removeds = torch.cat((x_removeds, x_opt[i].unsqueeze(0)), axis=0).to(
-                fun.stepSettings["dfT"]
-            )
+            out_idx.append(i)
+
+    dfT = fun.stepSettings["dfT"]
+    x_opt_inbounds = x_opt[in_idx].to(dfT) if in_idx else torch.empty_like(x_opt[:0])
+    y_opt_inbounds = y_opt_residual[in_idx].to(dfT) if in_idx else torch.empty_like(y_opt_residual[:0])
+    z_opt_inbounds = z_opt[in_idx].to(dfT) if in_idx else torch.empty_like(z_opt[:0])
+    x_removeds = x_opt[out_idx].to(dfT) if out_idx else torch.empty_like(x_opt[:0])
 
     txt = (
         f" (allowed exploration of [{maxExtrapolation[0]*100.0:.1f}%,{maxExtrapolation[1]*100.0:.1f}%] outside bounds)"
@@ -461,23 +603,10 @@ def pointsOperation_common(x_opt, y_opt_residual, z_opt, fun, best_points=None):
     evaluators = fun.evaluators
     stepSettings = fun.stepSettings
 
-    xopt_new, yopt_new, zopt_new = (
-        torch.Tensor().to(x_opt),
-        torch.Tensor().to(y_opt_residual),
-        torch.Tensor().to(z_opt),
-    )
-
-    for i in range(z_opt.shape[0]):
-        if z_opt[i] != 1.0:
-            xopt_new = torch.cat((xopt_new, x_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            yopt_new = torch.cat((yopt_new, y_opt_residual[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            zopt_new = torch.cat((zopt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
+    mask = z_opt != 1.0
+    xopt_new = x_opt[mask].to(stepSettings["dfT"])
+    yopt_new = y_opt_residual[mask].to(stepSettings["dfT"])
+    zopt_new = z_opt[mask].to(stepSettings["dfT"])
 
     print(
         f"\t- Removed {x_opt.shape[0]-xopt_new.shape[0]} points from final candidate set because they belonged to training set (already evaluated), now candidate set has {xopt_new.shape[0]} points"
@@ -485,27 +614,18 @@ def pointsOperation_common(x_opt, y_opt_residual, z_opt, fun, best_points=None):
     x_opt, y_opt_residual, z_opt = xopt_new, yopt_new, zopt_new
 
     # Even if they weren't training, the opt procedures may have generated identical ones
-    xopt_new, yopt_new, zopt_new = (
-        torch.Tensor().to(x_opt),
-        torch.Tensor().to(y_opt_residual),
-        torch.Tensor().to(z_opt),
-    )
+    keep = []
     for i in range(x_opt.shape[0]):
-        equal = False
-        for j in range(evaluators["GP"].train_X.shape[0]):
-            equal = equal or MATHtools.arePointsEqual(
-                x_opt[i], evaluators["GP"].train_X[j]
-            )
-        if not equal:
-            xopt_new = torch.cat((xopt_new, x_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            yopt_new = torch.cat((yopt_new, y_opt_residual[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
-            zopt_new = torch.cat((zopt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                stepSettings["dfT"]
-            )
+        is_dup = any(
+            MATHtools.arePointsEqual(x_opt[i], evaluators["GP"].train_X[j])
+            for j in range(evaluators["GP"].train_X.shape[0])
+        )
+        if not is_dup:
+            keep.append(i)
+
+    xopt_new = x_opt[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(x_opt[:0])
+    yopt_new = y_opt_residual[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(y_opt_residual[:0])
+    zopt_new = z_opt[keep].to(stepSettings["dfT"]) if keep else torch.empty_like(z_opt[:0])
 
     if x_opt.shape[0] - xopt_new.shape[0] > 0:
         print(
@@ -548,9 +668,12 @@ def pointsOperation_random(
     if x_opt.nelement() == 0:
         print(f"\t- Filling space with {best_points} random (LHS) points becaue optimization method found none")
         draw_bounds = fun.bounds
-        x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed)
-        y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach()
-        z_opt = torch.ones(x_opt.shape[0]) * 2
+        # Keep everything on dfT's device/dtype (as the RandomRangeBounds branch
+        # below does): a bare torch.ones here is CPU float32 and crashes GPU runs
+        # when later indexed with CUDA indices in pointsOperation_order.
+        x_opt = SAMPLINGtools.LHS(best_points, draw_bounds, seed=randomSeed).to(stepSettings["dfT"])
+        y_opt_residual = evaluators["acq_function"](x_opt.unsqueeze(1)).detach().to(stepSettings["dfT"])
+        z_opt = torch.ones(x_opt.shape[0]).to(stepSettings["dfT"]) * 2
 
     elif RandomRangeBounds > 0:
         x_optRandom, y_optRandom, z_optRandom = (
@@ -574,7 +697,9 @@ def pointsOperation_random(
             new_y = evaluators["acq_function"](new_opt.unsqueeze(1)).detach()
             x_optRandom = torch.cat((x_optRandom, new_opt)).to(stepSettings["dfT"])
             y_optRandom = torch.cat((y_optRandom, new_y)).to(stepSettings["dfT"])
-            new_z = torch.ones(x_optRandom.shape[0]).to(stepSettings["dfT"]) * 2
+            # One z entry per ADDED point (sizing from the already-concatenated
+            # x_optRandom left z_optRandom longer than the candidate set)
+            new_z = torch.ones(new_opt.shape[0]).to(stepSettings["dfT"]) * 2
             z_optRandom = torch.cat((z_optRandom, new_z), axis=0).to(
                 stepSettings["dfT"]
             )
@@ -677,22 +802,22 @@ def storeInfo(x_opt, acq_evaluated, fun):
     y_ini_res = summarizeSituation(x_ini, fun, printYN=False)
     y, y1, y2, _ = fun.evaluators["residual_function"](x_ini, outputComponents=True)
 
-    infoOPT["x_start"] = copy.deepcopy(x_ini.cpu().numpy())
-    infoOPT["y_res_start"] = copy.deepcopy(y_ini_res.cpu().numpy())
-    infoOPT["yFun_start"] = copy.deepcopy(y1.detach().cpu().numpy())
-    infoOPT["yCal_start"] = copy.deepcopy(y2.detach().cpu().numpy())
-    infoOPT["y_start"] = copy.deepcopy(y.detach().cpu().numpy())
+    infoOPT["x_start"] = x_ini.detach().cpu().numpy().copy()
+    infoOPT["y_res_start"] = y_ini_res.detach().cpu().numpy().copy()
+    infoOPT["yFun_start"] = y1.detach().cpu().numpy().copy()
+    infoOPT["yCal_start"] = y2.detach().cpu().numpy().copy()
+    infoOPT["y_start"] = y.detach().cpu().numpy().copy()
 
     # End
     if x_opt.shape[0] > 0:
         y_opt_res = summarizeSituation(x_opt, fun, printYN=False)
         y, y1, y2, _ = fun.evaluators["residual_function"](x_opt, outputComponents=True)
 
-        infoOPT["x"] = copy.deepcopy(x_opt.cpu().numpy())
-        infoOPT["y_res"] = copy.deepcopy(y_opt_res.cpu().numpy())
-        infoOPT["yFun"] = copy.deepcopy(y1.detach().cpu().numpy())
-        infoOPT["yCal"] = copy.deepcopy(y2.detach().cpu().numpy())
-        infoOPT["y"] = copy.deepcopy(y.detach().cpu().numpy())
+        infoOPT["x"] = x_opt.detach().cpu().numpy().copy()
+        infoOPT["y_res"] = y_opt_res.detach().cpu().numpy().copy()
+        infoOPT["yFun"] = y1.detach().cpu().numpy().copy()
+        infoOPT["yCal"] = y2.detach().cpu().numpy().copy()
+        infoOPT["y"] = y.detach().cpu().numpy().copy()
 
     infoOPT["acq_evaluated"] = acq_evaluated
 
@@ -933,21 +1058,13 @@ def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
     #                                            or if I have allowed ROOT to go outside in the previous iteration)
     # --------------------------------------------------
     if checkBounds:
-        xGuesses_new = torch.Tensor().to(fun.stepSettings["dfT"])
-        z_opt_new = torch.Tensor().to(fun.stepSettings["dfT"])
-        for i in range(xGuesses.shape[0]):
-            if TESTtools.checkSolutionIsWithinBounds(xGuesses[i], fun.bounds):
-                xGuesses_new = torch.cat(
-                    (xGuesses_new, xGuesses[i].unsqueeze(0)), axis=0
-                ).to(fun.stepSettings["dfT"])
-                z_opt_new = torch.cat((z_opt_new, z_opt[i].unsqueeze(0)), axis=0).to(
-                    fun.stepSettings["dfT"]
-                )
+        total_before = xGuesses.shape[0]
+        keep = [i for i in range(xGuesses.shape[0]) if TESTtools.checkSolutionIsWithinBounds(xGuesses[i], fun.bounds)]
+        dfT = fun.stepSettings["dfT"]
+        xGuesses = xGuesses[keep].to(dfT) if keep else torch.empty_like(xGuesses[:0])
+        z_opt = z_opt[keep].to(dfT) if keep else torch.empty_like(z_opt[:0])
 
-        print(f"\t~~ Keeping (inside bounds) {xGuesses_new.shape[0]} points from the total of {xGuesses.shape[0]}")
-
-        xGuesses = xGuesses_new
-        z_opt = z_opt_new
+        print(f"\t~~ Keeping (inside bounds) {xGuesses.shape[0]} points from the total of {total_before}")
 
     # --------------------------------------------------
     # Add random until filling up max number requested
@@ -957,10 +1074,10 @@ def prepFirstStage(fun, numMax=None, checkBounds=False, seed=0, niche_tol=1E-2):
         LHSdraw = torch.from_numpy(
             SAMPLINGtools.LHS(howmany, fun.bounds, seed=seed)
         ).to(fun.stepSettings["dfT"])
-        xGuesses = torch.cat((xGuesses, LHSdraw), axis=0).to(fun.stepSettings["dfT"])
+        xGuesses = torch.cat((xGuesses, LHSdraw), axis=0)
 
-        z_opt_draw = torch.ones(LHSdraw.shape[0]).to(fun.stepSettings["dfT"]) * 2
-        z_opt = torch.cat((z_opt, z_opt_draw), axis=0).to(fun.stepSettings["dfT"])
+        z_opt_draw = torch.ones(LHSdraw.shape[0], dtype=z_opt.dtype, device=z_opt.device) * 2
+        z_opt = torch.cat((z_opt, z_opt_draw), axis=0)
 
     if len(xGuesses) == 0:
         print("* Initial points equal to zero, will likely fail", typeMsg="q")

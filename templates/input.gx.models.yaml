@@ -1,18 +1,43 @@
-"Linear":
-  # Linear with 10 ky modes
+"Linear Tokamak":
   controls:
+    t_max: 250.0
+    geo_option: '"miller"'
     nonlinear_mode: false
     hyper: false
     HB_hyper: false
     nperiod: 2
     nx: 1
-    ny: 28
 
-"Nonlinear":
+"Nonlinear Tokamak":
   controls:
+    t_max: 1000.0
+    geo_option: '"miller"'
     nonlinear_mode: true
     hyper: true
     HB_hyper: true
     nperiod: 1
     nx: 192
-    ny: 64
+
+"Linear Stellarator":
+  controls:
+    t_max: 250.0
+    geo_option: '"vmec"'
+    nonlinear_mode: false
+    hyper: false
+    HB_hyper: false
+    nperiod: 1                # Recommended by GX documentation for stellarators
+    nx: 1                     # Standard for linear runs
+    alpha: 0.0                # Field line label theta - iota*phi. alpha = 0.0 usually corresponds to a field line on the outboard side
+    npol: 6                   # Number of poloidal turns. The field line goes from (-npol*PI, npol*PI]
+
+"Nonlinear Stellarator":
+  controls:
+    t_max: 1000.0
+    geo_option: '"vmec"'
+    nonlinear_mode: true
+    hyper: true
+    HB_hyper: true
+    nperiod: 1                # Recommended by GX documentation for stellarators
+    nx: 192
+    alpha: 0.0                # Field line label theta - iota*phi. alpha = 0.0 usually corresponds to a field line on the outboard side
+    npol: 6                   # Number of poloidal turns. The field line goes from (-npol*PI, npol*PI]

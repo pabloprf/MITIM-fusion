@@ -384,9 +384,9 @@ singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& t
         TRANSPcommand = f"""
 #singularity run --app environ $TRANSP_SINGULARITY < {transp_job.folderExecution}/env_mitim
 singularity run {txt_bind}--app pretr $TRANSP_SINGULARITY {tok}{txt} {runid} < {transp_job.folderExecution}/pre_mitim
-singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q |& tee {runid}tr_dat.log
+singularity run {txt_bind}--app trdat $TRANSP_SINGULARITY {tok} {runid} w q >> {runid}tr_dat.log 2>&1
 singularity run {txt_bind}--app link $TRANSP_SINGULARITY {runid}
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |& tee {transp_job.folderExecution}/{runid}tr.log
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} >> {transp_job.folderExecution}/{runid}tr.log 2>&1
 """
 
     # ********** Start from previous
@@ -397,7 +397,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} |&
         TRANSPcommand_prep = None
 
         TRANSPcommand = f"""
-singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R |& tee {transp_job.folderExecution}/{runid}tr.log
+singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R >> {transp_job.folderExecution}/{runid}tr.log 2>&1
 """
 
     # ------------------
@@ -446,7 +446,7 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
     )
 
     if 'exclusive' not in transp_job.machineSettings["slurm"] or not transp_job.machineSettings["slurm"]["exclusive"]:
-        print("\tTRANSP typically requires exclusive node allocation, but that has not been requested, prone to failure", typeMsg="w")
+        print("\t- TRANSP typically requires exclusive node allocation, but that has not been requested, prone to failure", typeMsg="i")
 
     transp_job.run(waitYN=False)
 
@@ -465,20 +465,18 @@ def interpretRun(infoSLURM, log_file):
         status = 0
         info["info"]["status"] = "running"
 
-        print(
-            f"\t- Run '{info['slurm']['NAME']}' is currently in the SLURM grid, with state '{info['slurm']['STATE']}' (jobid {info['slurm']['JOBID']})",
-            typeMsg="i",
-        )
+        print(f"\t- Run '{info['slurm']['NAME']}' is currently in the SLURM grid, with state '{info['slurm']['STATE']}' (jobid {info['slurm']['JOBID']})",typeMsg="i",)
 
     else:
         """
         Case is not running (finished or failed)
         """
-
         if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
             status = 1
             info["info"]["status"] = "finished"
-        elif ("Error termination" in "\n".join(log_file)) or (
+        elif (
+            "Error termination" in "\n".join(log_file)
+            ) or (
             "Backtrace for this error:" in "\n".join(log_file)
             ) or (
             "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
@@ -497,10 +495,7 @@ def interpretRun(infoSLURM, log_file):
             status = 0
             info["info"]["status"] = "running"
 
-        print(
-            f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",
-            typeMsg="i" if status == 1 else "w",
-        )
+        print(f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",typeMsg="i" if status == 1 else "w",)
         if status == -1:
             pringLogTail(log_file)
 

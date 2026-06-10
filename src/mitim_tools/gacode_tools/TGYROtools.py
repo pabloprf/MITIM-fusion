@@ -33,13 +33,16 @@ for the normalization:
 
 
 class TGYRO:
-    def __init__(self, cdf=None, time=100.0, avTime=0.0):
+    def __init__(self, cdf='.', time=100.0, avTime=0.0):
         """
         cdf is not required if later I provide the input.gacode directly. However, it is best to give a "dummy location"
         so that the name can be grabbed and be used as the nameJob
         """
+        if cdf == None: 
+            self.LocationCDF = None
+        else:
+            self.LocationCDF = Path(cdf) # Path cannot take a nonetype
 
-        self.LocationCDF = cdf
         if cdf is not None:
             _, self.nameRunid = IOtools.getLocInfo(self.LocationCDF)
         else:
@@ -153,10 +156,7 @@ class TGYRO:
             self.profiles = profilesclass_custom
 
         if remove_tmp:
-            print(
-                "\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",
-                typeMsg="i",
-            )
+            print("\t~~ Remove intermediate TGYRO files to avoid consuming too much memory",typeMsg="i",)
             IOtools.shutil_rmtree(self.FolderGACODE_tmp)
 
     def run(
@@ -4656,7 +4656,7 @@ def produceInputs_TGYROworkflow(
 ):
     folderWork = IOtools.expandPath(tmpFolder)
     try:
-        nameRunid = LocationCDF.stem
+        nameRunid = Path(LocationCDF.stem)
     except:
         # This is in case I have given a None to the location of the cdf because I just want
         # to prep() from .cdf and .geq directly

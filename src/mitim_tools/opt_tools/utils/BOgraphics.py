@@ -1,4 +1,5 @@
 import copy
+from turtle import done
 import torch
 import sys
 import pandas as pd
@@ -926,7 +927,49 @@ class optimization_data:
             self.data.to_csv(self.file, index=False)
         else:
             self.data = pd.read_csv(self.file)
+            
+        self._validate()
+    
+    def _validate(self):
+        '''
+        This is done to fix potentially corrupted files
+        '''
+        
+        done_something = False
+        
+        if len(self.data) > 0:
+            
+            num_original = len(self.data)
+            
+            # ------------------------------------------------------------------------------
+            # If a row (a point) starts with NaN in its first coordinate input, remove it
+            # ------------------------------------------------------------------------------
+            
+            
+            first_input = self.inputs[0]
+            self.data = self.data[~self.data[first_input].isna()]
+                
+            num_after = len(self.data)
+            
+            if num_after < num_original:
+                print(f"\t* Removed {num_original - num_after} invalid data points from optimization_data", typeMsg="w")
+                done_something = True
+                
+            # ------------------------------------------------------------------------------
+            # If a row is missing (i.e. Iteration number jump), change the Iteration numbers to be consecutive
+            # ------------------------------------------------------------------------------
 
+            expected_iterations = set(range(len(self.data)))
+            actual_iterations = set(self.data['Iteration'].astype(int).tolist())
+            
+            if expected_iterations != actual_iterations:
+                print(f"\t* Correcting Iteration numbers in optimization_data because of missing iterations ({actual_iterations} -> {expected_iterations})", typeMsg="w")
+                self.data['Iteration'] = range(len(self.data))
+                done_something = True
+                
+        if done_something:
+            self.data.to_csv(self.file, index=False)
+        
     def find_point(self, x):
 
         df_sub = self.data[self.inputs]
@@ -958,9 +1001,7 @@ class optimization_data:
         return y, ystd, coincidentPoint
 
     def extract_points(self, points=[0, 1, 2, 3, 4, 5]):
-        print(
-            f"\t* Reading points from file ({self.file})",
-        )
+        print(f"\t* Reading points from file ({self.file})")
 
         self.data = pd.read_csv(self.file)
 
@@ -1050,6 +1091,8 @@ class optimization_results:
     def __init__(self, file):
         self.file = file
         self.predictedSofar = 0
+        
+        self.printed_criteria = False
 
     def readClass(self, MITIM_BOclass):
         self.MITIM_BO = MITIM_BOclass
@@ -1088,7 +1131,7 @@ class optimization_results:
         except:
             print("\t- Problem retrieving best evaluation", typeMsg="w")
             self.best_absolute = self.best_absolute_index = self.best_absolute_full = None
-
+            
     def addLines(self, lines):
         self.lines = self.OriginalLines + lines
         self.save()
@@ -1279,7 +1322,12 @@ Workflow start time: {IOtools.getStringFromTime()}
 
     def getBest(self, rangeT=None):
 
-        converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        if not self.printed_criteria:
+            converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
+            self.printed_criteria = True
+        else:
+            with LOGtools.HiddenPrints():
+                converged, res = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria'](self.MITIM_BO, parameters = self.MITIM_BO.optimization_options['convergence_options']['stopping_criteria_parameters'])
 
         best_absolute_index = np.nanargmin(res[rangeT[0] : rangeT[1]] if rangeT is not None else res)
         best_absolute = res[best_absolute_index]
@@ -1421,10 +1469,14 @@ Workflow start time: {IOtools.getStringFromTime()}
         fig4 = self.fn.add_figure(label="Improvement", tab_color=tab_color)
         if log is not None:
             figTimes = self.fn.add_figure(label="Times", tab_color=tab_color)
-            grid = plt.GridSpec(2, 1, hspace=0.3, wspace=0.3)
-            axx0 = figTimes.add_subplot(grid[0])
-            axx1 = figTimes.add_subplot(grid[1], sharex=axx0)
-            axsTimes = [axx0, axx1]
+            grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.35, width_ratios=[2, 1])
+            axx0 = figTimes.add_subplot(grid[0, 0])
+            axx1 = figTimes.add_subplot(grid[1, 0], sharex=axx0)
+            axx2 = figTimes.add_subplot(grid[0, 1])
+            axx3 = figTimes.add_subplot(grid[1, 1])
+            axx2.set_title("Time per iteration", fontsize=9)
+            axx3.set_title("Total by type", fontsize=9)
+            axsTimes = [axx0, axx1, axx2, axx3]
 
         _ = self.plotComplete(
             fig=fig1,
@@ -1457,7 +1509,10 @@ Workflow start time: {IOtools.getStringFromTime()}
         _, _ = self.plotImprovement(axs=[ax0, ax1, ax2, ax3])
 
         if log is not None:
-            IOtools.plot_timings(log, axs = [axsTimes[0], axsTimes[1]])
+            try:
+                IOtools.plot_timings(log, axs=[axsTimes[0], axsTimes[1]], ax_summary=axsTimes[2], ax_total=axsTimes[3])
+            except FileNotFoundError:
+                print(f"\t- Could not plot timings likely because this case was run on a different folder/machine than what's currently on. I suggest you run with --fix option", typeMsg="w")
 
         return self.fn
 
@@ -2002,7 +2057,7 @@ Workflow start time: {IOtools.getStringFromTime()}
 
         ms = 3
 
-        # Note: Remember that it is possible that the model mean is not the same as during optimizaiton because of the resolution of the optimization_results points
+        # Note: Remember that it is possible that the model mean is not the same as during optimization because of the resolution of the optimization_results points
 
         ax = axs[2, 0]
         ax.plot(x, yT.mean(axis=1), "-s", label="mean", c="r", markersize=ms)
@@ -2524,10 +2579,13 @@ def plot1D(
     ms=1,
     lw=1.0,
 ):
-    if legendConf:
-        labelMean, labelConf = extralab + "Mean", extralab + "Confidence"
+    if isinstance(legendConf, str):
+        labelMean, labelConf = legendConf, None
     else:
-        labelMean, labelConf = extralab, ""
+        if legendConf:
+            labelMean, labelConf = extralab + "Mean", extralab + "Confidence"
+        else:
+            labelMean, labelConf = extralab, ""
 
     contour = ax.plot(testX, mean, ls, c=color, label=labelMean, markersize=ms, lw=lw)
     if upper is not None:
@@ -2634,6 +2692,29 @@ def printParam(param_name, param, extralab=""):
             printSingleRow(param[i], extralab=extralab + "  ")
     else:
         printSingleRow(param, extralab=extralab + "  ")
+
+def param_state(mll):
+    
+    dictParam = {}
+    for constraint_name, constraint in mll.model.named_constraints():
+        dictParam[constraint_name.replace("_constraint", "")] = constraint
+    
+    param_raw = {}
+    param_actual = {}
+    for param_name, param in mll.model.named_parameters():
+        
+        # Raw parameter
+        param_raw[param_name] = copy.deepcopy(param.detach().cpu().numpy())
+        
+        # Apply transform if any
+        if param_name in dictParam:
+            param = dictParam[param_name].transform(param)
+            
+        param_name = param_name.replace("raw_", "actual_")
+
+        param_actual[param_name] = copy.deepcopy(param.detach().cpu().numpy())
+        
+    return {'raw': param_raw, 'actual': param_actual}
 
 
 def printSingleRow(param, extralab=""):

@@ -1,6 +1,4 @@
 import os
-import io
-import tempfile
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,6 +12,8 @@ import freegs
 from freegs import geqdsk
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
+from torch import ge
+
 
 """
 Note that this module relies on megpy to intrepret the content of g-eqdsk files.
@@ -21,11 +21,18 @@ Modifications are made in MITIM for visualizations and a few extra derivations.
 """
 
 class MITIMgeqdsk:
-    def __init__(self, filename):
+    def __init__(self, filename, refine=1):
 
         self.g = megpy.Equilibrium()
-        self.g.read_geqdsk(f_path=filename)
-        self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True)
+        try:
+            self.g.read_geqdsk(f_path=filename)
+        except ValueError:
+            raise ValueError("-> MITIMgeqdsk: Problem reading g-eqdsk file ", filename)
+        try:
+            self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+        except:
+            print('> Reading geqdsk derived quantities failed, trying increasing refine parameter', typeMsg='w')
+            self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
 
         # Extra derivations in MITIM
         self.derive()
@@ -83,19 +90,8 @@ class MITIMgeqdsk:
 
         self.Jerror = np.abs(self.Jt - self.Jt_fb)
 
-        self.Ip = self.g.raw["current"]
-
-        # Parameterizations of LCFS
-        self.kappa = self.g.derived["miller_geo"]["kappa"][-1]
-        self.kappaU = self.g.derived["miller_geo"]["kappa_u"][-1]
-        self.kappaL = self.g.derived["miller_geo"]["kappa_l"][-1]
-
-        self.delta = self.g.derived["miller_geo"]["delta"][-1]
-        self.deltaU = self.g.derived["miller_geo"]["delta_u"][-1]
-        self.deltaL = self.g.derived["miller_geo"]["delta_l"][-1]
-
-        self.zeta = self.g.derived["miller_geo"]["zeta"][-1]
-
+        self.Ip = self.g.derived["current"]
+        
         self.a = self.g.derived["r"][-1]
         self.Rmag = self.g.derived["Ro"][0]
         self.Zmag = self.g.derived["Zo"][0]
@@ -111,26 +107,7 @@ class MITIMgeqdsk:
         self.cx_area = abs(cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0))
         self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
 
-        self.kappa995 = np.interp(
-            0.995,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["kappa"],
-        )
-        self.kappa95 = np.interp(
-            0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["kappa"],
-        )
-        self.delta995 = np.interp(
-            0.995,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["delta"],
-        )
-        self.delta95 = np.interp(
-            0.95,
-            self.psi_pol_norm,
-            self.g.derived["miller_geo"]["delta"],
-        )
+        self.grab_geo_parameters()
 
         """
         --------------------------------------------------------------------------------------------------------------------------------------
@@ -140,7 +117,7 @@ class MITIMgeqdsk:
             The shaping parameters calculated using fluxsurfaces are correct though.
         """
 
-        self.Rb_gfile, self.Yb_gfile = self.g.raw["rbbbs"].copy(), self.g.raw["zbbbs"].copy()
+        self.Rb_gfile, self.Yb_gfile = self.g.derived["rbbbs"].copy(), self.g.derived["zbbbs"].copy()
         self.Rb, self.Yb = self.g.fluxsurfaces["R"][-1], self.g.fluxsurfaces["Z"][-1]
         
         if len(self.Rb) == 0:
@@ -173,6 +150,151 @@ class MITIMgeqdsk:
             ax.set_ylabel("Z [m]")
 
             plt.show()
+
+    def grab_geo_parameters(self):
+
+        self.geometric_parameters = {}
+        
+        # Create megpy flux surfaces (except separatrix, which is already available in megpy's derived and requires careful handling)
+        Rgrid = self.g.derived['R']
+        Zgrid = self.g.derived['Z']
+        psigrid = self.g.derived['psirz']
+        
+        fs95 = megpy.fluxsurface.FluxSurface()
+        fs95.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.95, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
+        
+        fs995 = megpy.fluxsurface.FluxSurface()
+        fs995.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.995, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
+        
+        # ------------------------------------------------------------------------------------------------------
+        # Actual flux surfaces
+        # ------------------------------------------------------------------------------------------------------
+        
+        # Actual geometric values from the flux surface
+        self.geometric_parameters["actual"] = {}
+        self.geometric_parameters["actual"]["psin95"] = {
+            'R': fs95.R,
+            'Z': fs95.Z,
+        }
+        self.geometric_parameters["actual"]["psin995"] = {
+            'R': fs995.R,
+            'Z': fs995.Z,
+        }
+        # ------------------------------------------------------------------------------------------------------
+        # Analytic definitions (using tracer flux surfaces) under Turnbull-Miller aparameterizations
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.geometric_parameters["analytic"] = {}
+        
+        for miller_geo, flux in zip(
+            [fs95.miller_analytic, fs995.miller_analytic, self.g.derived["miller_geo"]],
+            ['psin95','psin995', 'separatrix']
+            ):
+                self.geometric_parameters["analytic"][flux] = {}
+                
+                self.geometric_parameters["analytic"][flux]["kappa"] = miller_geo["kappa"][-1] if len(miller_geo["kappa"].shape)>0 else miller_geo["kappa"]
+                self.geometric_parameters["analytic"][flux]["kappaU"] = miller_geo["kappa_u"][-1] if len(miller_geo["kappa_u"].shape)>0 else miller_geo["kappa_u"]
+                self.geometric_parameters["analytic"][flux]["kappaL"] = miller_geo["kappa_l"][-1] if len(miller_geo["kappa_l"].shape)>0 else miller_geo["kappa_l"]
+                self.geometric_parameters["analytic"][flux]["delta"] = miller_geo["delta"][-1] if len(miller_geo["delta"].shape)>0 else miller_geo["delta"]
+                self.geometric_parameters["analytic"][flux]["deltaU"] = miller_geo["delta_u"][-1] if len(miller_geo["delta_u"].shape)>0 else miller_geo["delta_u"]
+                self.geometric_parameters["analytic"][flux]["deltaL"] = miller_geo["delta_l"][-1] if len(miller_geo["delta_l"].shape)>0 else miller_geo["delta_l"]
+                self.geometric_parameters["analytic"][flux]["zeta"] = miller_geo["zeta"][-1] if len(miller_geo["zeta"].shape)>0 else miller_geo["zeta"]
+                
+                self.geometric_parameters["analytic"][flux]["R"] = miller_geo["R_miller"]
+                self.geometric_parameters["analytic"][flux]["Z"] = miller_geo["Z_miller"]
+        
+        # ------------------------------------------------------------------------------------------------------
+        # Analytic definitions (using interpolation of miller parameters) under Turnbull-Miller aparameterizations
+        # ------------------------------------------------------------------------------------------------------
+                
+        self.geometric_parameters["analytic_interpolation"] = {'psin95':{}, 'psin995':{}}
+        
+        for var in ['kappa', 'delta', 'zeta']:
+            for flux,psin in [("psin95", 0.95), ("psin995", 0.995)]:
+                self.geometric_parameters["analytic_interpolation"][flux][var] = np.interp(
+                    psin,
+                    self.psi_pol_norm,
+                    self.g.derived["miller_geo"][var],
+                )
+                
+        # ------------------------------------------------------------------------------------------------------
+        # MXH parameterization via best-fit methods
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.geometric_parameters["mxh"] = {'psin995':{}}
+
+        fs995mxh = copy.deepcopy(fs995)
+        fs995mxh.to_mxh(optimize=True)
+        
+        # fs995.shape after to_mxh consists of [R0,Z0,r,kappa,shape_cos0,shape_cos1,shape_sin1,...shape_cos{n},shape_sin{n}]
+        self.geometric_parameters["mxh"]['psin995']["R0"] = copy.deepcopy(fs995mxh.shape[0])
+        self.geometric_parameters["mxh"]['psin995']["Z0"] = copy.deepcopy(fs995mxh.shape[1])
+        self.geometric_parameters["mxh"]['psin995']["rmin"] = copy.deepcopy(fs995mxh.shape[2])
+        self.geometric_parameters["mxh"]['psin995']["kappa"] = copy.deepcopy(fs995mxh.shape[3])
+        self.geometric_parameters["mxh"]['psin995']["delta"] = copy.deepcopy(np.sin(fs995mxh.shape[6]))
+        self.geometric_parameters["mxh"]['psin995']["zeta"] = copy.deepcopy(-fs995mxh.shape[8])
+        self.geometric_parameters["mxh"]['psin995']["shape_cos"] = copy.deepcopy(np.array(([fs995mxh.shape[4]]+list(fs995mxh.shape[5:][::2]))))
+        self.geometric_parameters["mxh"]['psin995']["shape_sin"] = copy.deepcopy(fs995mxh.shape[6:][::2])
+
+        R_param, Z_param, theta_ref = fs995mxh.mxh(fs995mxh.shape, fs995mxh.theta, norm=False)
+        self.geometric_parameters["mxh"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["mxh"]['psin995']["Z"] = copy.deepcopy(Z_param)
+
+        # ------------------------------------------------------------------------------------------------------
+        # Turnbull-Miller parameterization via best-fit methods
+        # ------------------------------------------------------------------------------------------------------
+
+        self.geometric_parameters["turnbull"] =  {'psin995':{}}
+
+        fs995tm = copy.deepcopy(fs995)
+        fs995tm.to_turnbull(initial=fs995tm.shape_analytic)
+        self.geometric_parameters["turnbull"]['psin995']["kappa"] = copy.deepcopy(fs995tm.shape[3])
+        self.geometric_parameters["turnbull"]['psin995']["delta"] = copy.deepcopy(fs995tm.shape[4])
+        self.geometric_parameters["turnbull"]['psin995']["zeta"] = copy.deepcopy(fs995tm.shape[5])
+
+        R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False)
+        self.geometric_parameters["turnbull"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["turnbull"]['psin995']["Z"] = copy.deepcopy(Z_param)
+
+        # ------------------------------------------------------------------------------------------------------
+        # Miller parameterization via best-fit methods #TODO: to change
+        # ------------------------------------------------------------------------------------------------------
+
+        self.geometric_parameters["miller"] =  {'psin995':{}}
+
+        fs995m = copy.deepcopy(fs995)
+        fs995m.to_turnbull(initial=fs995tm.shape_analytic) # change to miller
+        self.geometric_parameters["miller"]['psin995']["kappa"] = copy.deepcopy(fs995m.shape[3])
+        self.geometric_parameters["miller"]['psin995']["delta"] = copy.deepcopy(fs995m.shape[4])
+        self.geometric_parameters["miller"]['psin995']["zeta"] = 0.0
+
+        R_param, Z_param, theta_ref = fs995tm.turnbull(fs995tm.shape, fs995tm.theta, norm=False) # change to miller
+        self.geometric_parameters["miller"]['psin995']["R"] = copy.deepcopy(R_param)
+        self.geometric_parameters["miller"]['psin995']["Z"] = copy.deepcopy(Z_param)
+
+        # ------------------------------------------------------------------------------------------------------
+        # Passing geometric values as object attributes #TODO: remove in the future, this is not to break things for now
+        # ------------------------------------------------------------------------------------------------------
+        
+        self.kappa = self.geometric_parameters["analytic"]["separatrix"]["kappa"]
+        self.kappaU = self.geometric_parameters["analytic"]["separatrix"]["kappaU"]
+        self.kappaL = self.geometric_parameters["analytic"]["separatrix"]["kappaL"]
+        
+        self.delta = self.geometric_parameters["analytic"]["separatrix"]["delta"]
+        self.deltaU = self.geometric_parameters["analytic"]["separatrix"]["deltaU"]
+        self.deltaL = self.geometric_parameters["analytic"]["separatrix"]["deltaL"]
+        
+        self.zeta = self.geometric_parameters["analytic"]["separatrix"]["zeta"]
+        
+        self.kappa95 = self.geometric_parameters["analytic"]["psin95"]["kappa"]
+        self.delta95 = self.geometric_parameters["analytic"]["psin95"]["delta"]
+        
+        self.kappa995 = self.geometric_parameters["analytic"]["psin995"]["kappa"]
+        self.delta995 = self.geometric_parameters["analytic"]["psin995"]["delta"]
+        
+        #TODO: Placeholder for now: zeta from Turnbull
+        #self.zeta995 = self.geometric_parameters["turnbull"]["zeta_995"]
+        
 
     def plotEnclosingBox(self, ax=None, c= "k"):
         if ax is None:
@@ -283,121 +405,62 @@ class MITIMgeqdsk:
     # -----------------------------------------------------------------------------
     # For MAESTRO and TRANSP converstions
     # -----------------------------------------------------------------------------
-    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, PichT = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False):
+    def _geometric_R0(self):
+        """Boundary geometric major radius R0 = (R_out + R_in)/2 at the
+        magnetic-axis elevation.
+
+        Using the global (max,min) of R over the whole separatrix biases R0
+        inward for diverted equilibria: the separatrix dips through the x-point
+        at large |Z| / small R, so min(R) is the x-point, not the inboard
+        midplane. That shrinks R0 and inflates the inferred vacuum field
+        B0 = (R*Bt)/R0 (e.g. 1.587 -> 2.118 T instead of 1.68 -> 2.0 T). Taking
+        the boundary crossings at Z = Zaxis avoids the x-point, which sits
+        off-midplane. For a limited/circular boundary this reduces to the old
+        (max+min)/2.
+        """
+        Rb = np.asarray(self.Rb); Zb = np.asarray(self.Yb)
+        Zaxis = self.g.derived.get('zmaxis', 0.5 * (Zb.max() + Zb.min()))
+        Rc = []
+        for i in range(len(Rb)):
+            j = (i + 1) % len(Rb)
+            z1, z2 = Zb[i], Zb[j]
+            if (z1 - Zaxis) * (z2 - Zaxis) <= 0 and z1 != z2:
+                t = (Zaxis - z1) / (z2 - z1)
+                Rc.append(Rb[i] + t * (Rb[j] - Rb[i]))
+        if len(Rc) >= 2:
+            return 0.5 * (max(Rc) + min(Rc))
+        return 0.5 * (Rb.max() + Rb.min())  # fallback: no clean midplane crossing
+
+    def to_profiles(self, ne0_20 = 1.0, Zeff = 1.5, Paux = 1.0,  Z = 9, coeffs_MXH = 7, plotYN = False, aux_channels = None):
 
         # -------------------------------------------------------------------------------------------------------
         # Quantities from the equilibrium
         # -------------------------------------------------------------------------------------------------------
 
         rhotor = self.g.derived['rho_tor']
-        psi = self.g.derived['psi']                           # Wb/rad
+        psi = self.g.derived['psi']                          # Wb/rad
         torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
-        q = self.g.raw['qpsi']
-        pressure = self.g.raw['pres']       # Pa
-        Ip = self.g.raw['current']*1E-6     # MA
+        q = self.g.derived['qpsi']
+        pressure = self.g.derived['pres']       # Pa
+        Ip = self.g.derived['current']*1E-6     # MA
 
-        RZ = np.array([self.Rb,self.Yb]).T
-        R0 = (RZ.max(axis=0)[0] + RZ.min(axis=0)[0])/2
-        B0 = self.g.raw['rcentr']*self.g.raw['bcentr'] / R0
-
-        # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
-        rhotor = np.array([np.abs(i) for i in rhotor])
-        psi = np.array([np.abs(i) for i in psi])
-        q = np.array([np.abs(i) for i in q])
-        pressure = np.array([np.abs(i) for i in pressure])
-        
-        torfluxa = np.abs(torfluxa)
-        Ip = np.abs(Ip)
-        B0 = np.abs(B0)
-        # ------------------------------------------
+        R0 = self._geometric_R0()
+        B0 = self.g.derived['rcentr']*self.g.derived['bcentr'] / R0
 
         _, rmaj, rmin, zmag, kappa, cn, sn = self.get_MXH_coeff_new(n_coeff=coeffs_MXH)
 
         delta = np.sin(sn[:,1])
         zeta = -sn[:,2]
 
-        # -------------------------------------------------------------------------------------------------------
-        # Pass to profiles
-        # -------------------------------------------------------------------------------------------------------
-
-        profiles = {}
-
-        profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
-        profiles['nion'] = np.array(['2'])
-        profiles['shot'] = np.array(['12345'])
-
-        # Just one specie
-        profiles['name'] = np.array(['D','F'])
-        profiles['type'] = np.array(['[therm]','[therm]'])
-        profiles['masse'] = np.array([5.4488748e-04])
-        profiles['mass'] = np.array([2.0, Z*2])
-        profiles['ze'] = np.array([-1.0])
-        profiles['z'] = np.array([1.0, Z])
-
-        profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
-        profiles['rcentr(m)'] = np.array([R0])
-        profiles['bcentr(T)'] = np.array([B0])
-        profiles['current(MA)'] = np.array([Ip])
-
-        profiles['rho(-)'] = rhotor
-        profiles['polflux(Wb/radian)'] = psi
-        profiles['q(-)'] = q
-
-        # -------------------------------------------------------------------------------------------------------
-        # Flux surfaces
-        # -------------------------------------------------------------------------------------------------------
-
-        profiles['kappa(-)'] = kappa
-        profiles['delta(-)'] = delta
-        profiles['zeta(-)'] = zeta
-        profiles['rmin(m)'] = rmin
-        profiles['rmaj(m)'] = rmaj
-        profiles['zmag(m)'] = zmag
-
-        sn, cn = np.array(sn), np.array(cn)
-        for i in range(coeffs_MXH):
-            profiles[f'shape_cos{i}(-)'] = cn[:,i]
-        for i in range(coeffs_MXH-3):
-            profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
-
-        '''
-        -------------------------------------------------------------------------------------------------------
-        Kinetic profiles
-        -------------------------------------------------------------------------------------------------------
-        Pressure division into temperature and density
-            p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
-            if T=Te=Ti and ne=ni
-            p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
-            T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
-        '''
-
-        C = 1 / (2 * 1.60217662e-19 * 1e20)
-        _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
-        T_keV = C * (pressure / ne_20) * 1E-3
-
-        fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
-
-        profiles['te(keV)'] = T_keV
-        profiles['ti(keV)'] = np.array([T_keV]*2).T
-        profiles['ne(10^19/m^3)'] = ne_20*10.0
-        profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
-
-        # -------------------------------------------------------------------------------------------------------
-        # Power: insert parabolic and use PROFILES volume integration to find desired power
-        # -------------------------------------------------------------------------------------------------------
-
-        _, profiles["qrfe(MW/m^3)"] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
-
-        p = PROFILEStools.gacode_state.scratch(profiles)
-
-        p.profiles["qrfe(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"] *  PichT/p.derived['qRF_MW'][-1] /2
-        p.profiles["qrfi(MW/m^3)"] = p.profiles["qrfe(MW/m^3)"]
-
-        # -------------------------------------------------------------------------------------------------------
-        # Ready to go
-        # -------------------------------------------------------------------------------------------------------
-
-        p.derive_quantities()
+        p = equilibrium_to_profiles(
+            rhotor, psi, q, pressure, torfluxa, R0, B0, Ip,
+            kappa, delta, zeta, rmin, rmaj, zmag, sn[:,:coeffs_MXH], cn[:,:coeffs_MXH],
+            ne0_20 = ne0_20,
+            Zeff = Zeff,
+            Z = Z,
+            Paux = Paux,
+            aux_channels = aux_channels
+        )
 
         # -------------------------------------------------------------------------------------------------------
         # Plotting
@@ -413,13 +476,13 @@ class MITIMgeqdsk:
 
         return p
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0, times = [0.0,1.0]):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
         folder.mkdir(parents=True, exist_ok=True)
 
-        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, PichT = PichT_MW)
+        p = self.to_profiles(ne0_20 = ne0_20, Zeff = Zeff, Paux = Paux_MW)
         p.write_state(folder / 'input.gacode')
 
         transp = p.to_transp(folder = folder, shot = shot, runid = runid, times = times, Vsurf = Vsurf)
@@ -430,16 +493,16 @@ class MITIMgeqdsk:
     # Plotting
     # ---------------------------------------------------------------------------------------------------------------------------------------
 
-    def plot(self, fn=None, extraLabel=""):
-        GEQplotting.plot(self, fn=fn, extraLabel=extraLabel)
+    def plot(self, fn=None, extraLabel="", tab_color=None):
+        GEQplotting.plot(self, fn=fn, extraLabel=extraLabel, tab_color= tab_color )
 
     def plotFS(self, axs=None, color="b", label=""):
         GEQplotting.plotFS(self, axs=axs, color=color, label=label)
 
-    def plotPlasma(self, axs=None, legendYN=False, color="r", label=""):
+    def plotPlasma(self, axs=None, legendYN=True, color="b", label=""):
         GEQplotting.plotPlasma(self, axs=axs, legendYN=legendYN, color=color, label=label)
 
-    def plotGeometry(self, axs=None, color="r"):
+    def plotGeometry(self, axs=None, color="b"):
         GEQplotting.plotGeometry(self, axs=axs, color=color)
 
     def plotFluxSurfaces(self, ax=None, fluxes=[1.0], color="b", alpha=1.0, rhoPol=True, sqrt=False, lw=1, lwB=2, plot1=True, label = ''):
@@ -914,7 +977,7 @@ class freegs_millerized:
         # --------------------------------------------------------------
 
         max_error = 0.0
-        for key in ['R0', 'a', 'kappa_sep', 'delta_sep', 'zeta_sep']:
+        for key in ['R0', 'a', 'kappa_sep', 'delta_sep']: #, 'zeta_sep']:
             miller_value = getattr(self, key)
             sep_value = getattr(self.mitim_separatrix_eq, key.replace('_sep', ''))[0]
             error = abs( (miller_value-sep_value)/miller_value )
@@ -1004,8 +1067,11 @@ class freegs_millerized:
         self.profile_RB = self.eq.fpol(psinorm = psi_profiles)
 
         # Grab quantities
-        self.profile_q95 = self.eq.q(psinorm = 0.95)
-        self.profile_q0 = self.eq.q(psinorm = 0.0)
+        # freegs.Equilibrium.q hits `float(result)` on a (1,) array for scalar psinorm,
+        # which fails under numpy>=2. Pass size-2 arrays to skip that branch; revisit
+        # once freegs-plasma/freegs ships a numpy-2-safe `.item()` cast.
+        self.profile_q95 = float(self.eq.q(psinorm=np.array([0.95, 0.95]))[0])
+        self.profile_q0  = float(self.eq.q(psinorm=np.array([0.0,  0.0]))[0])
         self.profile_betaN = self.eq.betaN()
         self.profile_Li2 = self.eq.internalInductance2()
         self.profile_pave = self.eq.pressure_ave()
@@ -1156,7 +1222,7 @@ class freegs_millerized:
         # From geqdsk to profiles
         return g.to_profiles()
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0, times = [0.0,1.0]):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', ne0_20 = 1E19, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0, times = [0.0,1.0]):
 
         # Produce geqdsk object
         scratch_folder = IOtools.expandPath(folder)
@@ -1165,4 +1231,123 @@ class freegs_millerized:
         self.write(file_scratch)
         g = MITIMgeqdsk(file_scratch)
 
-        return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, PichT_MW=PichT_MW, times=times)
+        return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, Paux_MW=Paux_MW, times=times)
+
+
+def equilibrium_to_profiles(
+        rhotor, psi, q, pressure,torfluxa, R0, B0, Ip,
+        kappa, delta, zeta,rmin, rmaj, zmag,sn, cn,
+        ne0_20 = 1E19,
+        Zeff = 1.5,
+        Z = 1,
+        Paux = 10.0,
+        aux_channels = None
+        ):
+    
+    if aux_channels is None:
+        aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+    
+    # Ensure positive quantities     #TODO: Check if this is necessary, pass directions
+    rhotor = np.array([np.abs(i) for i in rhotor])
+    psi = np.array([np.abs(i) for i in psi])
+    q = np.array([np.abs(i) for i in q])
+    pressure = np.array([np.abs(i) for i in pressure])
+    
+    torfluxa = np.abs(torfluxa)
+    Ip = np.abs(Ip)
+    B0 = np.abs(B0)
+    # ------------------------------------------
+
+
+    # -------------------------------------------------------------------------------------------------------
+    # Pass to profiles
+    # -------------------------------------------------------------------------------------------------------
+
+    profiles = {}
+
+    profiles['nexp'] = np.array([f'{rhotor.shape[0]}'])
+    profiles['nion'] = np.array(['2'])
+    profiles['shot'] = np.array(['12345'])
+
+    # Just one specie
+    profiles['name'] = np.array(['D','F'])
+    profiles['type'] = np.array(['[therm]','[therm]'])
+    profiles['masse'] = np.array([5.4488748e-04])
+    profiles['mass'] = np.array([2.0, Z*2])
+    profiles['ze'] = np.array([-1.0])
+    profiles['z'] = np.array([1.0, Z])
+
+    profiles['torfluxa(Wb/radian)'] = np.array([torfluxa])
+    profiles['rcentr(m)'] = np.array([R0])
+    profiles['bcentr(T)'] = np.array([B0])
+    profiles['current(MA)'] = np.array([Ip])
+
+    profiles['rho(-)'] = rhotor
+    profiles['polflux(Wb/radian)'] = psi
+    profiles['q(-)'] = q
+
+    # -------------------------------------------------------------------------------------------------------
+    # Flux surfaces
+    # -------------------------------------------------------------------------------------------------------
+
+    profiles['kappa(-)'] = kappa
+    profiles['delta(-)'] = delta
+    profiles['zeta(-)'] = zeta
+    profiles['rmin(m)'] = rmin
+    profiles['rmaj(m)'] = rmaj
+    profiles['zmag(m)'] = zmag
+
+    coeffs_MXH = cn.shape[1]
+
+    sn, cn = np.array(sn), np.array(cn)
+    for i in range(coeffs_MXH):
+        profiles[f'shape_cos{i}(-)'] = cn[:,i]
+    for i in range(coeffs_MXH-3):
+        profiles[f'shape_sin{i+3}(-)'] = sn[:,i+3]
+
+    '''
+    -------------------------------------------------------------------------------------------------------
+    Kinetic profiles
+    -------------------------------------------------------------------------------------------------------
+    Pressure division into temperature and density
+        p_Pa = p_e + p_i = Te_eV * e_J * ne_20 * 1e20  + Ti_eV * e_J * ni_20 * 1e20
+        if T=Te=Ti and ne=ni
+        p_Pa = 2 * T_eV * e_J * ne_20 * 1e20
+        T_eV = p_Pa / (2 * e_J * ne_20 * 1e20)
+    '''
+
+    C = 1 / (2 * 1.60217662e-19 * 1e20)
+    _, ne_20 = PLASMAtools.parabolicProfile(Tbar=ne0_20/1.25,nu=1.25,rho=rhotor,Tedge=ne0_20/5)
+    T_keV = C * (pressure / ne_20) * 1E-3
+
+    fZ = (Zeff-1) / (Z**2-Z)  # One-impurity model to give desired Zeff
+
+    profiles['te(keV)'] = T_keV
+    profiles['ti(keV)'] = np.array([T_keV]*2).T
+    profiles['ne(10^19/m^3)'] = ne_20*10.0
+    profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
+
+    # -------------------------------------------------------------------------------------------------------
+    # Power: insert parabolic and use PROFILES volume integration to find desired power
+    # -------------------------------------------------------------------------------------------------------
+
+    # What variables are the ones to substitute in input.gacode?
+    channel_e = aux_channels['e']
+    channel_i = aux_channels['i']
+    channel_total = aux_channels['total']
+
+    _, profiles[channel_e] = PLASMAtools.parabolicProfile(Tbar=1.0,nu=5.0,rho=rhotor,Tedge=0.0)
+
+    p = PROFILEStools.gacode_state.scratch(profiles)
+
+
+    p.profiles[channel_e] = p.profiles[channel_e] *  (Paux / p.derived[channel_total][-1]) /2
+    p.profiles[channel_i] = p.profiles[channel_e]
+
+    # -------------------------------------------------------------------------------------------------------
+    # Ready to go
+    # -------------------------------------------------------------------------------------------------------
+
+    p.derive_quantities()
+    
+    return p

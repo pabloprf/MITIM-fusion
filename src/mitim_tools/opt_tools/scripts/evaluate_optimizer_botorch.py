@@ -132,7 +132,7 @@ for i, (num_restarts, iterations, raw_samples) in enumerate(
 
         # fun_opt = fun.evaluators['acq_function']
 
-        options = {"sample_around_best": True, "disp": True, "seed": int(seed)}
+        options = {"sample_around_best": True, "seed": int(seed)}
         if iterations is not None:
             options["maxiter"] = int(iterations)
 

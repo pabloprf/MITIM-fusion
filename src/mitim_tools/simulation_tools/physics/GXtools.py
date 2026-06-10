@@ -1,5 +1,6 @@
 import netCDF4
-import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
@@ -12,49 +13,18 @@ from IPython import embed
 class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
     def __init__(
         self,
-        rhos=[0.4, 0.6],  # rho locations of interest
+        rhos=[None],  # List of rho locations of interest
     ):
         
         super().__init__(rhos=rhos)
 
         def code_call(folder, n, p, additional_command="", **kwargs):
-            return f"gx -n {n} {folder}/gxplasma.in > {folder}/gxplasma.mitim.log"
-
-        def code_slurm_settings(name, minutes, total_cores_required, cores_per_code_call, type_of_submission, raise_warning=True,array_list=None):
-
-            slurm_settings = {
-                "name": name,
-                "minutes": minutes,
-            }
-
-            # Gather if this is a GPU enabled machine
-            machineSettings = CONFIGread.machineSettings(code='gx')
-            
-            if machineSettings['gpus_per_node'] == 0:
-                if raise_warning:
-                    raise Exception("[MITIM] GX needs GPUs to run, but the selected machine does not have any GPU configured. Please select another machine in the config file with gpus_per_node>0.")
-                else:
-                    print("[MITIM] Warning: GX needs GPUs to run, but the selected machine does not have any GPU configured. Running without GPUs, but this will likely fail.", typeMsg="w")
-
-            if type_of_submission == "slurm_standard":
-                
-                slurm_settings['ntasks'] = total_cores_required
-                slurm_settings['gpuspertask'] = 1 # Because of MPI, each task needs a GPU, and I'm passing cores_per_code_call per task
-                slurm_settings['job_array'] = None
-
-            elif type_of_submission == "slurm_array":
-
-                slurm_settings['ntasks'] = cores_per_code_call
-                slurm_settings['gpuspertask'] = 1
-                slurm_settings['job_array'] = ",".join(array_list)
-
-            return slurm_settings
+            return f"cd {folder}; gx -n {n} gxplasma.in > gxplasma.mitim.log"
 
         self.run_specifications = {
             'code': 'gx',
             'input_file': 'gxplasma.in',
             'code_call': code_call,
-            'code_slurm_settings': code_slurm_settings,
             'control_function': GACODEdefaults.addGXcontrol,
             'controls_file': 'input.gx.controls',
             'state_converter': 'to_gx',
@@ -68,11 +38,11 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         print("\t\t\t GX class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.ResultsFiles_minimal = [
+        self.output_files_simulation["minimal"] = [
             'gxplasma.out.nc'
         ]
 
-        self.ResultsFiles = self.ResultsFiles_minimal + [
+        self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
             'gxplasma.eik.out',
             'gxplasma.eiknc.nc',
             'gxplasma.gx_geo.log',
@@ -80,18 +50,52 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'gxplasma.mitim.log',
             'gxplasma.restart.nc',
             ]
+        
 
     '''
     Redefined here so that I handle restart properly and
-    I can choose numerical setup based on plasma
+        I can choose numerical setup based on plasma and
+        I can send VMEC file if needed and
+        I can send restarts too
     '''
     def run(
         self,
         subfolder,
-        numerics_based_on_plasma = None, # A dictionary with the parameters to match
+        numerics_based_on_plasma = None,    # A dictionary with the parameters to match
+        restart_files = None,               # If provided, dictionary with rhos as keys and restart file paths as values
         **kwargs_sim_run
     ):
         
+        # ------------------------------------
+        # If it's a case with VMEC, send the file
+        # ------------------------------------
+        from mitim_tools.plasmastate_tools.utils import VMECtools
+        if isinstance(self.profiles, VMECtools.vmec_state):
+            print('- Plasma comes from VMEC file, sending it along the GX run', typeMsg='i')
+            
+            # Get the VMEC file path
+            vmec_file = Path(self.profiles.header[0].split('VMEC location')[-1][2:-1])
+            
+            # Add "vmec_file" to GX namelist
+            
+            if 'extraOptions' not in kwargs_sim_run:
+                kwargs_sim_run['extraOptions'] = {}
+            if 'vmec_file' in kwargs_sim_run['extraOptions']:
+                print('\t- Overwriting vmec_file in extraOptions', typeMsg='w')
+
+            kwargs_sim_run['extraOptions']['geo_option'] = f'"vmec"'
+            kwargs_sim_run['extraOptions']['vmec_file'] = f'"{vmec_file.name}"'
+            
+            # Add the file to the list of additional files to send, equal for both radii
+            
+            if 'additional_files_to_send' not in kwargs_sim_run:
+                kwargs_sim_run['additional_files_to_send'] = {}
+            for rho in self.rhos:
+                if rho not in kwargs_sim_run['additional_files_to_send']:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)] = []
+                if vmec_file not in kwargs_sim_run['additional_files_to_send'][rho]:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)].append(vmec_file)
+            
         # ------------------------------------
         # Check about restarts
         # ------------------------------------
@@ -99,15 +103,45 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Assume every template writes a restart file named "gxplasma.restart.nc"
         # If extraOptions indicate not to write a restart, remove the file
         if not kwargs_sim_run.get('extraOptions', {}).get('save_for_restart', True):
-            self.ResultsFiles.remove("gxplasma.restart.nc")
+            self.output_files_simulation["complete"].remove("gxplasma.restart.nc")
             print("\t- Not saving restart file")
 
         # If the name has changed, update the results files list
         if kwargs_sim_run.get('extraOptions', {}).get('restart_to_file', None) is not None:
             restart_name = kwargs_sim_run['extraOptions']['restart_to_file']
-            self.ResultsFiles.remove("gxplasma.restart.nc")
-            self.ResultsFiles.append(restart_name)
+            self.output_files_simulation["complete"].remove("gxplasma.restart.nc")
+            self.output_files_simulation["complete"].append(restart_name)
             print(f"\t- Saving restart file as {restart_name}")
+
+        if (self.profiles.type == 'vmec') or (kwargs_sim_run.get('extraOptions', {}).get('geo_option', 'miller') == 'vmec'):
+            self.output_files_simulation["complete"].remove('gxplasma.eik.out')
+            self.output_files_simulation["complete"].remove('gxplasma.eiknc.nc')
+
+        # ------------------------------------
+        # Add numerical setup based on plasma
+        # ------------------------------------
+        
+        if restart_files is not None:
+            if 'extraOptions' not in kwargs_sim_run:
+                kwargs_sim_run['extraOptions'] = {}
+
+            kwargs_sim_run['extraOptions']['restart'] = True
+            kwargs_sim_run['extraOptions']['restart_from_file'] = []
+            
+            for rho in self.rhos:
+                if rho not in restart_files:
+                    raise Exception(f"[MITIM] You provided restart_files dictionary but {rho = } is missing.")
+                
+                # Add restart file specification
+                kwargs_sim_run['extraOptions']['restart_from_file'].append(f'"{Path(restart_files[rho]).name}"')
+                
+                # Add the file to the list of additional files to sendi
+                if 'additional_files_to_send' not in kwargs_sim_run:
+                    kwargs_sim_run['additional_files_to_send'] = {}
+                if rho not in kwargs_sim_run['additional_files_to_send']:
+                    kwargs_sim_run['additional_files_to_send'][float(rho)] = []
+
+                kwargs_sim_run['additional_files_to_send'][float(rho)].append(Path(restart_files[rho]))
 
         # ------------------------------------
         # Add numerical setup based on plasma
@@ -131,6 +165,9 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         colors=None,
         ):
         
+        # If it has radii, we need to correct the labels
+        labels = self._correct_rhos_labels(labels)
+        
         if fn is None:
             self.fn = GUItools.FigureNotebook("GX MITIM Notebook", geometry="1700x900", vertical=True)
         else:
@@ -141,99 +178,57 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
         # Fluxes
         fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes", tab_color=fn_color)
+        axsFluxes_t = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        grid = plt.GridSpec(1, 3, hspace=0.7, wspace=0.2)
+        # Fluxes (ky)
+        fig = self.fn.add_figure(label=f"{extratitle}Transport Fluxes (ky)")
+        axsFluxes_ky = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax2 = fig.add_subplot(grid[0, 1])
-        ax3 = fig.add_subplot(grid[0, 2])
+        # Turbulence
+        fig = self.fn.add_figure(label="Turbulence (linear)")
+        axsTurbulence = fig.subplot_mosaic(
+            """
+            AC
+            BD
+            """
+        )
 
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
-                
-                typeLs = '-' if c.t.shape[0]>20 else '-s'
-                
-                self._plot_trace(ax1,self.results[label]['output'][irho],"Qe",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
-                self._plot_trace(ax2,self.results[label]['output'][irho],"Qi",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
-                self._plot_trace(ax3,self.results[label]['output'][irho],"Ge",c=colors[i],lw=1.0,ls='-',label_plot=f"{label}, Total")
+        colors = GRAPHICStools.listColors()
 
-                i += 1
-
-        for ax in [ax1, ax2, ax3]:
-            ax.set_xlabel("Time ($L_{ref}/c_s$)")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
-
-        ax1.set_title('Electron heat flux')
-        ax1.set_ylabel("Electron heat flux ($Q_e/Q_{GB}$)")
-        ax1.legend(loc='best', prop={'size': 12})
-
-        ax2.set_title('Ion heat flux')
-        ax2.set_ylabel("Ion heat flux ($Q_i/Q_{GB}$)")
-        ax2.legend(loc='best', prop={'size': 12})
-
-        ax3.set_title('Electron particle flux')
-        ax3.set_ylabel("Electron particle flux ($\\Gamma_e/\\Gamma_{GB}$)")
-        ax3.legend(loc='best', prop={'size': 12})
-        
-        plt.tight_layout()
-
+        for j in range(len(labels)):
             
-        # Linear stability
-        fig = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
-        
-        grid = plt.GridSpec(2, 2, hspace=0.7, wspace=0.2)
+            self.plot_fluxes(
+                axs=axsFluxes_t,
+                label=labels[j],
+                c=colors[j],
+                plotLegend=j == len(labels) - 1,
+            )
 
+            self.plot_fluxes_ky(
+                axs=axsFluxes_ky,
+                label=labels[j],
+                c=colors[j],
+                plotLegend=j == len(labels) - 1,
+            )
 
-        ax1 = fig.add_subplot(grid[0, 0])
-        ax2 = fig.add_subplot(grid[1, 0])
-        
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
-                
-                typeLs = '-' if c.t.shape[0]>20 else '-s'
-                
-                for iky in range(len(c.ky)):
-                    ax1.plot(c.t, c.w[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
-                    ax2.plot(c.t, c.g[:, iky], typeLs, label=f"{label} rho={self.rhos[irho]} ky={c.ky[iky]}", color=colors[i])
-                    i += 1
-                    
-        for ax in [ax1, ax2]:
-            ax.set_xlabel("Time ($L_{ref}/c_s$)")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
-        ax1.set_ylabel("Real frequency")
-        ax1.legend(loc='best', prop={'size': 4})
-        ax2.set_ylabel("Growth rate")
-
-        ax3 = fig.add_subplot(grid[0, 1])
-        ax4 = fig.add_subplot(grid[1, 1])
-
-        i = 0
-        for label in labels:
-            for irho in range(len(self.rhos)):
-                c = self.results[label]['output'][irho]
-                ax3.plot(c.ky, c.w[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                ax4.plot(c.ky, c.g[-1, :], '-s', markersize = 5, label=f"{label} rho={self.rhos[irho]}", color=colors[i])
-                i += 1
-
-        for ax in [ax3, ax4]:
-            ax.set_xlabel("$k_\\theta\\rho_s$")
-            ax.set_xlim(left=0)
-            GRAPHICStools.addDenseAxis(ax)
-
-        ax3.set_ylabel("Real frequency")
-        ax3.legend(loc='best', prop={'size': 12})
-        ax3.axhline(y=0, color='k', linestyle='--', linewidth=1)
-        ax4.set_ylabel("Growth rate")
-        ax4.set_ylim(bottom=0)
-
-        plt.tight_layout()
-
+            self.plot_turbulence(
+                axs=axsTurbulence,
+                label=labels[j],
+                c=colors[j],
+            )
+           
+        # Back to the original labels before _correct_rhos_labels
+        self.results = self.results_all
 
 class GXinput(SIMtools.GACODEinput):
     def __init__(self, file=None):
@@ -272,13 +267,13 @@ class GXinput(SIMtools.GACODEinput):
                     [ ['ikpar_init', 'init_field', 'init_amp', 'gaussian_init'], [] ],
                 '[Geometry]':
                     [ 
-                       ['geo_option'],
-                       ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim']
+                       ['geo_option', 'alpha', 'npol', 'vmec_file'],
+                       ['rhoc', 'Rmaj', 'R_geo', 'shift', 'qinp', 'shat', 'akappa', 'akappri', 'tri', 'tripri', 'betaprim', 'torflux']
                     ],
                 '[Dissipation]':
                     [ ['closure_model', 'hypercollisions', 'nu_hyper_m', 'p_hyper_m', 'nu_hyper_l', 'p_hyper_l', 'hyper', 'D_hyper', 'p_hyper', 'D_H', 'w_osc', 'p_HB', 'HB_hyper'], [] ],
                 '[Restart]':
-                    [ ['save_for_restart', 'nsave','restart_to_file', 'restart', 'restart_from_file'], [] ],
+                    [ ['save_for_restart', 'nsave','restart_to_file', 'restart', 'restart_from_file', 'append_on_restart'], [] ],
                 '[Diagnostics]':
                     [ ['nwrite', 'omega', 'fluxes', 'fields', 'moments'], [] ]
             }
@@ -403,12 +398,20 @@ class GXinput(SIMtools.GACODEinput):
         return param_written
 
 class GXoutput(SIMtools.GACODEoutput):
-    def __init__(self, FolderGACODE, suffix="", tmin = 0.0,  **kwargs):
+    def __init__(self, FolderGACODE, suffix="", tmin = 0.0, tmin_is_rel=True, minimal = False,  **kwargs):
+        '''
+        tmin sets the left edge of the window used for signal analysis.
+          tmin >= 0                    : absolute time (a/cs).
+          tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
+                                         counted from the end. e.g. tmin=-0.25
+                                         -> the last 25% of the run.
+          tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
+                                         e.g. tmin=-200 -> the last 200 a/cs
+                                         of the run (self.tmin = t[-1] - 200).
+        '''
         super().__init__()
-        
-        self.FolderGACODE, self.suffix = FolderGACODE, suffix
-        
-        self.tmin = tmin
+
+        self.FolderGACODE, self.suffix = Path(FolderGACODE), suffix
 
         if suffix == "":
             print(f"\t- Reading results from folder {IOtools.clipstr(FolderGACODE)} without suffix")
@@ -417,40 +420,78 @@ class GXoutput(SIMtools.GACODEoutput):
 
         self.inputclass = GXinput(file=self.FolderGACODE / f"gxplasma.in{self.suffix}")
 
-        self.read()
+        self.read(tmin, tmin_is_rel=tmin_is_rel)
 
-    def read(self):
+    def read(self, tmin, tmin_is_rel=True):
 
         data = netCDF4.Dataset(self.FolderGACODE / f"gxplasma.out.nc{self.suffix}")
         
         self.t = data.groups['Grids'].variables['time'][:] # (time)
+        self.theta = data.groups['Grids'].variables['theta'][:]
         
         # Growth rates
         ikx = 0
-        self.ky = data.groups['Grids'].variables['ky'][1:]   # (ky)
-        self.w = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,0]    # (time, ky)
-        self.g = data.groups['Diagnostics'].variables['omega_kxkyt'][:,1:,ikx,1]    # (time, ky)
+        self.ky = data.groups['Grids'].variables['ky'][:]   # (ky)
+        self.f = np.transpose(data.groups['Diagnostics'].variables['omega_kxkyt'][:,:,ikx,0])    # (ky, time)
+        self.g = np.transpose(data.groups['Diagnostics'].variables['omega_kxkyt'][:,:,ikx,1])    # (ky, time)
 
         # Fluxes
         Q = data.groups['Diagnostics'].variables['HeatFlux_st']     # (time, species)
         G = data.groups['Diagnostics'].variables['ParticleFlux_st'] # (time, species)
+        
+        # Fluxes per ky
+        Q_ky = data.groups['Diagnostics'].variables['HeatFlux_kyst'][:,:,:]   # (time, species, ky)
+        G_ky = data.groups['Diagnostics'].variables['ParticleFlux_kyst'][:,:,:]   # (time, species, ky)
 
         # Assume electrons are always last
         self.Qe = Q[:,-1]
-        self.QiAll = Q[:,:-1]
-        self.Qi = self.QiAll.sum(axis=1)
+        self.Qi_all = np.transpose(Q[:,:-1]) # (species-1, time)
+        self.Qi = self.Qi_all.sum(axis=0) # (time)
         self.Ge = G[:,-1]
-        self.GiAll = G[:,:-1]
-        self.Gi = self.GiAll.sum(axis=1)
+        self.Gi_all = np.transpose(G[:,:-1]) # (species-1, time)
+        self.Gi = self.Gi_all.sum(axis=0) # (time)
+
+        self.Qe_ky = np.transpose(Q_ky[:,-1,:])   # (ky, time)
+        self.Qi_all_ky = np.transpose(Q_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
+        self.Qi_ky = self.Qi_all_ky.sum(axis=0)  # (ky, time)
+        self.Ge_ky = np.transpose(G_ky[:,-1,:])   # (time, ky)
+        self.Gi_all_ky = np.transpose(G_ky[:,:-1,:], (1,2,0))   # (species-1, ky, time)
+        self.Gi_ky = self.Gi_all_ky.sum(axis=0)  # (time, ky)
+        
+        self.ions_flags = [i for i in range(1, self.Qi_all.shape[0])]
+        self.all_names = [f'i{i}' for i in range(1, self.Qi_all.shape[0]+1)]
+        
+        # If linear, last tmin
+        if not bool(data.groups['Inputs'].groups['Controls'].variables['nonlinear_mode'][:]):
+            self.tmin = self.t[-1]
+            print(f"\t- Linear simulation, setting tmin to last time", typeMsg='i')
+        
+        if tmin >= 0.0:
+            self.tmin = tmin
+        elif tmin_is_rel:
+            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
+            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
+        else:
+            self.tmin = self.t[-1] + tmin
+            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
+            if self.tmin < self.t[0]:
+                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
 
         self._signal_analysis()
 
     def _signal_analysis(self):
         
         flags = [
+            'g',
+            'f',
             'Qe',
+            'Qi_all',
             'Qi',
             'Ge',
+            'Qe_ky',
+            'Qi_all_ky',
+            'Qi_ky',
+            'Ge_ky',
         ]
         
         for iflag in flags:

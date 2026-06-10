@@ -1,0 +1,18 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# mitim_dark.mplstyle
+# Dark-background theme for presentations / notebooks.
+# Loaded after dark_background, so only overrides what we want to change.
+# ─────────────────────────────────────────────────────────────────────────────
+
+figure.figsize      : 8, 5
+figure.dpi          : 100
+
+# ── Softer grid on dark background ───────────────────────────────────────────
+grid.color          : 1.0
+grid.alpha          : 0.12
+
+# ── Lighter tick/frame lines ─────────────────────────────────────────────────
+axes.linewidth      : 0.6
+
+# ── Color cycle adjusted for dark backgrounds (brighter) ─────────────────────
+axes.prop_cycle : cycler('color', ['56B4E9', 'FF6B6B', '2ECC71', 'F39C12', 'A29BFE', 'FD79A8', '55EFC4', 'FDCB6E', 'B2BEC3', '74B9FF'])

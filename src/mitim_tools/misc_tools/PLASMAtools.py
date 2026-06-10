@@ -121,23 +121,23 @@ def LHthreshold_nmin(Ip, Bt, a, Rmajor):
     return nLH_min
 
 
-def LHthreshold_Martin1(n, Bt, S, nmin=0):
+def LHthreshold_Martin1(n, Bt, S, nmin=[0]):
     return 0.0488 * n**0.717 * Bt**0.803 * S**0.941 * nminfactor(nmin, n)
 
 
-def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=0):
+def LHthreshold_Martin2(n, Bt, a, Rmajor, nmin=[0]):
     return 2.15 * n**0.782 * Bt**0.772 * a**0.975  * Rmajor**0.999 * nminfactor(nmin, n)
 
 
-def LHthreshold_Schmid1(n, Bt, S, nmin=0):
+def LHthreshold_Schmid1(n, Bt, S, nmin=[0]):
     return 0.0029 * (n * 10) ** 1.05 * Bt**0.68 * S**0.93 * nminfactor(nmin, n)
 
 
-def LHthreshold_Schmid2(n, Bt, S, nmin=0):
+def LHthreshold_Schmid2(n, Bt, S, nmin=[0]):
     return 0.0021 * (n * 10) ** 1.07 * Bt**0.76 * S * nminfactor(nmin, n)
 
 
-def LHthreshold_Martin1_low(n, Bt, S, nmin=0):
+def LHthreshold_Martin1_low(n, Bt, S, nmin=[0]):
     return (
         0.0488
         * np.exp(-0.057)
@@ -182,6 +182,51 @@ def nminfactor(nmin, n):
     else:
         return np.array(nminfact)
 
+
+def bootstrap_fraction_estimate(a, R, beta_pol):
+    
+    return 2/3 * (a/R)**0.5 * beta_pol
+
+def q_profile_scale(psin, q, scale_factor, location_pivot = 0.95, location_axis=0.1, debug=False):
+    '''
+    This function scales the q profile such that q(location_pivot in psi_pol_n) is scaled by scale_factor.
+    If None, just full profile is scaled, if value is given, ensure q on axis is maintained, within some range
+    '''
+    
+    if location_pivot is None:
+        scale_factor_array = scale_factor * np.ones_like(q)
+    else:
+        loc_index_axis = np.argmin( np.abs(psin - location_axis) )
+        loc_index = np.argmin( np.abs(psin - location_pivot) )
+        '''
+        The scaling factor is developed as follows:
+        1.0 from axis to loc_index_axis,
+        then linear from there to loc_index (where it reaches scale_factor),
+        and continues that trend to the edge.
+        '''
+        scale_factor_array = np.ones_like(q)
+        for i in range(loc_index_axis, len(q)):
+            scale_factor_array[i] = 1.0 + (scale_factor - 1.0) * (psin[i] - psin[loc_index_axis]) / (psin[loc_index] - psin[loc_index_axis])
+    
+    if debug:
+        fig, axs = plt.subplots(2,1, figsize=(6,8))
+        axs[0].plot(psin, q, label='Original q')
+        axs[0].plot(psin, q * scale_factor_array, label='Scaled q')
+        axs[0].axvline(x=location_pivot, ls='--', c='k', label='Location factor')
+        axs[0].axhline(y=1.0, ls='--', c='r', label='q=1')
+        axs[0].set_xlabel('psi_pol_n')
+        axs[0].set_ylabel('q')
+        axs[0].legend()
+        axs[1].plot(psin, scale_factor_array, label='Scaling factor')
+        axs[1].axvline(x=location_pivot, ls='--', c='k', label='Location factor')
+        axs[1].set_xlabel('psi_pol_n')
+        axs[1].set_ylabel('Scaling factor')
+        axs[1].legend()
+        plt.tight_layout()
+        plt.show()
+        embed()
+    
+    return q * scale_factor_array
 
 def convective_flux(Te, Gamma_e):
     # keV and 1E20 m^-3/s (or /m^2)
@@ -560,7 +605,6 @@ def predictPeaking(nu, p, Bt, Gstar_NBI, logFun=np.log):  #TODO: FIX Gstar
 
     return ne_peak_empirical_l, ne_peak_empirical, ne_peak_empirical_u
 
-
 def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
     """
     Notes:
@@ -593,11 +637,9 @@ def calculateCoulombLogarithm(Te, ne, Z=None, ni=None, Ti=None):  #TODO: FIX
 
     return logLei, logLii
 
-
 # --------------------------------------------------------------------------------------------------------------------------------
 # Radiation
 # --------------------------------------------------------------------------------------------------------------------------------
-
 
 def synchrotron(Te_keV, ne20, B_ref, aspect_rat, r_min, r_coeff=0.8):
     # From TGYRO
@@ -607,13 +649,15 @@ def synchrotron(Te_keV, ne20, B_ref, aspect_rat, r_min, r_coeff=0.8):
     f = c2 * ((1.0 - r_coeff) * (1 + c1 / aspect_rat / Te_keV**0.5) / r_min) ** 0.5
     qsync = f * B_ref**2.5 * Te_keV**2.5 * ne20**0.5
 
-    return qsync * 1e-7  # from erg
+    if qsync.isnan().any():
+        print('\t* Synchrotron radiation could not be calculated... assuming zero', typeMsg='w')
+        qsync = torch.zeros(qsync.shape)
 
+    return qsync * 1e-7  # from erg
 
 # --------------------------------------------------------------------------------------------------------------------------------
 #
 # --------------------------------------------------------------------------------------------------------------------------------
-
 
 def chi_inc(aLTe, Qe_MWm2, Te_keV, a_m, ne_20, aLTe_base, order=2):
     Te_J = Te_keV * 1e3 * e_J
@@ -761,6 +805,16 @@ def getOmegaBC():
 
     return omegaEdge, whereOmega
 
+def BetaN_engineering(pressure_MPa, B0, a_m, Ip_MA):
+    """
+    Calculate BetaN
+    """
+    
+    Beta = pressure_MPa * 1e6 / (B0 ** 2 / (2 * 4 * np.pi * 1e-7))
+    
+    BetaN =  Beta / ( abs(Ip_MA) / ( a_m * np.abs(B0) ) ) * 100.0  # expressed in percent
+    
+    return BetaN
 
 def implementProfileBoost(x, y, y_new_ix, ix=90):
     """
@@ -829,33 +883,53 @@ def estimateDensityProfile(mitimNML):
     # Core
     # ~~~~~~~~~~~~~~~~~~~~~~~
 
-    ne0 = netop * estimatePeaking(mitimNML)
+    ne0 = netop * 1.49
 
     ne = MATHtools.fitCoreFunction(ne, x, ne0, netop, ix, coeff=3)
 
     return x, ne
 
 
-def estimatePeaking(mitimNML):
-    ne0_neTop = 1.49
+def Bcoil_to_Bt(Bcoil, R, a, coil_to_innerleg=1.0):
+    """Estimate Bt from coil field Bcoil."""
+    return Bcoil * (R - a - coil_to_innerleg) / R
 
-    return ne0_neTop
+def Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=1.0):
+    """Estimate coil field Bcoil from Bt."""
+    return Bt * R / (R - a - coil_to_innerleg)
 
+def physics_to_engineering(Ip, Bt, R, a, ne20, kappa95, delta95, Psol, coil_to_innerleg=1.0):
 
-def BaxisBcoil(a, b, rmajor, Bt=None, Bcoil=None):
-    epsilonB = (a + b) / rmajor
+    aspect = R / a
+    qstar = evaluate_qstar(Ip, R, kappa95, Bt, 1/aspect, delta95, isInputIp=True, ITERcorrection=True, includeShaping=True)
+    fG = ne20 / Greenwald_density(Ip, a) 
+    bcoil = Bt_to_Bcoil(Bt, R, a, coil_to_innerleg=coil_to_innerleg)
+    
+    Plh = LHthreshold_Martin2(ne20, Bt, a, R)
+    flh = Psol / Plh
 
-    if Bt is None:
-        Bt = Bcoil * (1 - epsilonB)
-    elif Bcoil is None:
-        Bcoil = Bt / (1 - epsilonB)
+    
+    return aspect, qstar, fG, bcoil, flh
 
-    return Bt, Bcoil
-
-
-def FrequencyOnAxis(Bt):
-    return Bt * 10.0
-
+def engineering_to_physics(aspect, qstar, fG, bcoil, a, kappa95, delta95, flh, R=None, coil_to_innerleg=1.0):
+    
+    if R is None:
+        R = aspect * a
+    elif a is None:
+        a = R / aspect
+    else:
+        raise Exception("Either R or a must be None")
+    
+    Bt = Bcoil_to_Bt(bcoil, R, a, coil_to_innerleg=coil_to_innerleg)
+    Ip = evaluate_qstar(qstar, R, kappa95, Bt, 1/aspect, delta95, isInputIp=False, ITERcorrection=True, includeShaping=True)
+    nG = Greenwald_density(Ip, a)
+    
+    ne20 = fG * nG
+    
+    Plh = LHthreshold_Martin2(ne20, Bt, a, R)
+    Psol = flh * Plh
+    
+    return R, a, Ip, Bt, ne20, Psol
 
 def estimateLowZ(fDT, Zeff, Zmini, fmini, Zhigh, fhigh, force_integer=True):
 
@@ -908,7 +982,7 @@ def evaluate_qstar(
 ):
     """
     Notes:
-            Ip in MA
+        Ip in MA
     """
 
     Constant = 5.0  # 2*np.pi/(4*np.pi*1E-7) * 1E-6
@@ -1148,6 +1222,16 @@ def calculateHeatFluxWidth_Eich(Bp_OMP, Psol, R0, epsilon):
 
     return Lambda_q_Eich14, Lambda_q_Eich15
 
+def estimate_surface_area_tokamak(R, a, kappa):
+    '''
+    Large aspect ratio approximation using Ramanujan's approximation for the ellipse perimeter,
+    and multiplying by the toroidal circumference
+    '''
+    
+    Lp = np.pi * a *  ( 3*(1+kappa) - np.sqrt( (3+kappa)*(1+3*kappa) ) )
+    A = 2 * np.pi * R * Lp
+    
+    return A
 
 def calculateUpstreamTemperature(Lambda_q, q95, ne, P_LCFS, R, Bp, Bt):
     """

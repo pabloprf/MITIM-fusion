@@ -93,7 +93,7 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
         X = torch.tensor(x, requires_grad=True).to(dfT1)
 
         # Evaluate value and local jacobian
-        QhatD, JD = mitim_jacobian(function_for_optimizer_prep, X, vectorize=True)  # vectorize: Fast calculation of the jacobian (much faster, but experimental)
+        QhatD, JD = mitim_jacobian(function_for_optimizer_prep, X)
 
         # Avoid numerical artifacts for off-block-diagonal elements that should be zero but numerically are not
         JD[JD.abs() <= jacobian_numerical_filter] = 0.0
@@ -208,7 +208,9 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     # Initial condition
     # ********************************************************************************************
 
-    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel
+    # Convert relax to tensor of the same dimensions as x, such that it can be dynamically changed per channel.
+    # Any of {relax0, dx_max, dx_max_abs, dx_min_abs} may arrive as a per-batch tensor (shape
+    # broadcastable to x_initial); torch.where in _sr_step handles either case transparently.
     relax = torch.ones_like(x_initial) * relax0
 
     x_history, y_history, metric_history = [], [], []
@@ -227,14 +229,20 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         tol = tol_rel * M.max().item()
         print(f"\t* Relative tolerance of {tol_rel:.1e} will be used, resulting in an absolute tolerance of {tol:.1e}")
 
-    print(f"\t* Flux-grad relationship of {relax0} and maximum gradient jump of {dx_max}")
+    def _fmt_knob(v):
+        if isinstance(v, torch.Tensor):
+            flat = v.flatten().tolist()
+            return flat[0] if len(flat) == 1 else flat
+        return v
+
+    print(f"\t* Flux-grad relationship of {_fmt_knob(relax0)} and maximum gradient jump of {_fmt_knob(dx_max)}")
 
     # ********************************************************************************************
     # Iterative strategy
     # ********************************************************************************************
 
     hardbreak = False
-    relax_history, step_history = [], []
+    relax_history, step_history, osc_check_iters = [], [], []
     its_since_last_dyn_relax, i = 0, 0
     
     for i in range(int(maxiter) - 1):
@@ -280,16 +288,18 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
                 x_history,
                 y_history,
                 relax,
-                relax_dyn_decrease, 
+                relax_dyn_decrease,
                 relax_dyn_num,
                 i,
-                its_since_last_dyn_relax
+                its_since_last_dyn_relax,
+                osc_check_iters,
                 )
             
+        relax_history.append(relax.clone())
+
         # For debugging
         if debug:
             step_history.append(x_step.detach().clone())
-            relax_history.append(relax.clone())
 
         if hardbreak:
             break
@@ -317,22 +327,29 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     else:
         y_history, x_history, metric_history = torch.Tensor(), torch.Tensor(), torch.Tensor()
 
+    relax_history = torch.stack(relax_history) if relax_history else torch.Tensor()
+
     if debug:
 
-        relax_history = torch.stack(relax_history)
         step_history = torch.stack(step_history)
-        
+
+        x_history_np = x_history.detach().cpu().numpy()
+        y_history_np = y_history.detach().cpu().numpy()
+        r_history_np = relax_history.detach().cpu().numpy()   # already stacked
+        m_history_np = metric_history.detach().cpu().numpy()
+        s_history_np = step_history.detach().cpu().numpy()
+
         for candidate in range(x_history.shape[1]):
-            
+
             fig, axs = plt.subplots(nrows=2, ncols=3, figsize=(15, 10), sharex=True)
-            
+
             axs = axs.flatten()
-            
-            x = x_history[:,candidate,:].cpu().numpy()
-            y = y_history[:,candidate,:].cpu().numpy()
-            r = relax_history[:,candidate,:].cpu().numpy()
-            m = metric_history[:,candidate].cpu().numpy()
-            s = step_history[:,candidate,:].cpu().numpy()
+
+            x = x_history_np[:,candidate,:]
+            y = y_history_np[:,candidate,:]
+            r = r_history_np[:,candidate,:]
+            m = m_history_np[:,candidate]
+            s = s_history_np[:,candidate,:]
             
             colors = GRAPHICStools.listColors()[:x.shape[-1]]
 
@@ -358,6 +375,24 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         
             plt.tight_layout()
 
+        ytr0, ytar0, yout0 = flux_residual_evaluator(x_history[0,:,:])
+        ytr, ytar, yout = flux_residual_evaluator(x_new)
+
+        fig, axs = plt.subplots(ncols=np.max([ytr.shape[0], 2]), nrows=2, figsize=(15, 10), sharex=True)
+        for j in range(ytr.shape[0]):
+            axs[0,j].plot(x_history[0,j,:].detach().cpu().numpy(),'-o',c='b')
+            axs[1,j].plot(ytr0[j].detach().cpu().numpy(),'-o',c='b', label='Transport')
+            axs[1,j].plot(ytar0[j].detach().cpu().numpy(),'--o',c='b', label='Target')
+            
+            axs[0,j].plot(x_new[j].detach().cpu().numpy(),'-o',c='r')
+            axs[1,j].plot(ytr[j].detach().cpu().numpy(),'-o',c='r', label='Transport')
+            axs[1,j].plot(ytar[j].detach().cpu().numpy(),'--o',c='r', label='Target')
+            
+            axs[1,j].legend(loc='best')
+            GRAPHICStools.addDenseAxis(axs[0,j])
+            GRAPHICStools.addDenseAxis(axs[1,j])
+        plt.tight_layout()
+
         plt.show()
         
         embed()
@@ -370,30 +405,30 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
     index_best = divmod(idx_flat.item(), metric_history.shape[1])
     print(f"\t* Best metric: {metric_history[index_best].item():.2e} at iteration {index_best[0]} for candidate in position {index_best[1]}",typeMsg="i")
 
-    return x_best, y_history, x_history, metric_history
+    return x_best, y_history, x_history, metric_history, relax_history, tol, osc_check_iters
 
 def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, threshold_zero_flux_issue=1e-10, bounds=None, thr_bounds=1e-4):
-    
+
     # Calculate step in gradient (if target > transport, dx>0 because I want to increase gradients)
     dx = relax * (QT - Q) / (Q**2 + QT**2).clamp(min=threshold_zero_flux_issue) ** 0.5
 
-    # Prevent big steps - Clamp to the max step (with the right sign)
-    ix = dx.abs() > dx_max
-    dx[ix] = dx_max * (dx[ix] / dx[ix].abs())
+    # Prevent big steps - Clamp to the max step (with the right sign). Use torch.where so
+    # dx_max can be either a scalar float or a tensor broadcastable against dx (per-batch).
+    dx = torch.where(dx.abs() > dx_max, dx.sign() * dx_max, dx)
 
     # Define absolute step (Note for PRF: abs() was added by me, I think it performs better that way!)
     x_step = dx * x.abs()
 
-    # Absolute steps limits
+    # Absolute steps limits. Both dx_max_abs and dx_min_abs also accept scalar or broadcastable tensor.
+    # Preserve the original convention of using sign=+1 when x_step is exactly 0 (matches the old
+    # nan_to_num(0/0 -> 1.0) path).
     if dx_max_abs is not None:
-        ix = x_step.abs() > dx_max_abs
-        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
-        x_step[ix] = dx_max_abs * direction
-    
+        direction = torch.where(x_step != 0, x_step.sign(), torch.ones_like(x_step))
+        x_step = torch.where(x_step.abs() > dx_max_abs, direction * dx_max_abs, x_step)
+
     if dx_min_abs is not None:
-        ix = x_step.abs() < dx_min_abs
-        direction = torch.nan_to_num(x_step[ix] / x_step[ix].abs(), nan=1.0)
-        x_step[ix] = dx_min_abs * direction
+        direction = torch.where(x_step != 0, x_step.sign(), torch.ones_like(x_step))
+        x_step = torch.where(x_step.abs() < dx_min_abs, direction * dx_min_abs, x_step)
 
     # Update
     x_new = x + x_step
@@ -405,11 +440,13 @@ def _sr_step(x, Q, QT, relax, dx_max, dx_max_abs = None, dx_min_abs = None, thre
 
     return x_new, x_step
 
-def _dynamic_relax(x, y, relax, relax_dyn_decrease, relax_dyn_num, iteration_num, iteration_applied):
+def _dynamic_relax(x, y, relax, relax_dyn_decrease, relax_dyn_num, iteration_num, iteration_applied, osc_check_iters):
 
     min_relax = 1e-6
 
     if iteration_num - iteration_applied > relax_dyn_num:
+
+        osc_check_iters.append(iteration_num)
 
         mask_reduction = _check_oscillation(torch.stack(x), relax_dyn_num)
 
@@ -496,87 +533,49 @@ def _check_oscillation(signal_raw, relax_dyn_num):
 
 
 
-'''
-********************************************************************************************************************************** 
-The original implementation of torch.autograd.functional.jacobian runs the function once and then computes the jacobian.
-This implementation simply copies what the original does, but returns the outputs so that I don't need to calculate them again.
-**********************************************************************************************************************************
-'''
+def mitim_jacobian(func, X):
+    """
+    Jacobian of func(X) w.r.t. X, plus the function output.
 
-from torch.autograd.functional import _autograd_grad, _construct_standard_basis_for, _grad_postprocess, _grad_preprocess, _tuple_postprocess, _as_tuple, _check_requires_grad
+    X: (n_in,) for a single point, or (n_pts, n_in) for a batch of independent
+    evaluations (e.g. GP posterior at multiple test points).
 
-def mitim_jacobian(
-    func,
-    inputs,
-    create_graph=False,
-    strict=False,
-    vectorize=False,
-    strategy="reverse-mode",
-    ):
+    Returns: (output, jacobian)
+      - single:  output (n_out,),        jacobian (n_out, n_in)
+      - batched: output (n_pts, n_out),  jacobian (n_pts, n_out, n_in)
 
+    Strategy chosen automatically by output shape:
+      - 1D output  → one backward pass with is_grads_batched=True (n_out VJPs in
+                      parallel; efficient for single-point).
+      - 2D output  → n_out sequential backward passes, each covering all n_pts
+                      simultaneously.  Cross-point terms are zero for independent
+                      evaluations so unit grad_outputs per column gives the correct
+                      per-point Jacobian with O(n_out) rather than O(n_pts*n_out) work.
+    """
     with torch.enable_grad():
-        is_inputs_tuple, inputs = _as_tuple(inputs, "inputs", "jacobian")
-        inputs = _grad_preprocess(inputs, create_graph=create_graph, need_graph=True)
+        x = X.detach().requires_grad_(True)
+        output = func(x)
 
-        outputs = func(*inputs)
-        is_outputs_tuple, outputs = _as_tuple(
-            outputs, "outputs of the user-provided function", "jacobian"
-        )
-        _check_requires_grad(outputs, "outputs", strict=strict)
-
-        if vectorize:
-
-            # Step 1: Construct grad_outputs by splitting the standard basis
-            output_numels = tuple(output.numel() for output in outputs)
-            grad_outputs = _construct_standard_basis_for(outputs, output_numels)
-            flat_outputs = tuple(output.reshape(-1) for output in outputs)
-
-            # Step 2: Call vmap + autograd.grad
-            def vjp(grad_output):
-                vj = list(
-                    _autograd_grad(
-                        flat_outputs,
-                        inputs,
-                        grad_output,
-                        create_graph=create_graph,
-                        is_grads_batched=True,
-                    )
+        if output.dim() == 1:
+            # Single-point: one batched backward (n_out VJPs simultaneously)
+            n_out = output.numel()
+            basis = torch.eye(n_out, dtype=output.dtype, device=output.device)
+            jacobian = torch.autograd.grad(output, x, grad_outputs=basis,
+                                           is_grads_batched=True)[0]  # (n_out, n_in)
+        else:
+            # Batched: n_out sequential backwards over all pts at once
+            n_out = output.shape[-1]
+            cols = []
+            for j in range(n_out):
+                g = torch.zeros_like(output)
+                g[..., j] = 1.0
+                cols.append(
+                    torch.autograd.grad(output, x, grad_outputs=g,
+                                        retain_graph=(j < n_out - 1))[0].detach()
                 )
-                for el_idx, vj_el in enumerate(vj):
-                    if vj_el is not None:
-                        continue
-                    vj[el_idx] = torch.zeros_like(inputs[el_idx]).expand(
-                        (sum(output_numels),) + inputs[el_idx].shape
-                    )
-                return tuple(vj)
+            jacobian = torch.stack(cols, dim=-2)  # (n_pts, n_out, n_in)
 
-            jacobians_of_flat_output = vjp(grad_outputs)
-
-            # Step 3: The returned jacobian is one big tensor per input. In this step,
-            # we split each Tensor by output.
-            jacobian_input_output = []
-            for jac_input_i, input_i in zip(jacobians_of_flat_output, inputs):
-                jacobian_input_i_output = []
-                for jac, output_j in zip(
-                    jac_input_i.split(output_numels, dim=0), outputs
-                ):
-                    jacobian_input_i_output_j = jac.view(output_j.shape + input_i.shape)
-                    jacobian_input_i_output.append(jacobian_input_i_output_j)
-                jacobian_input_output.append(jacobian_input_i_output)
-
-            # Step 4: Right now, `jacobian` is a List[List[Tensor]].
-            # The outer List corresponds to the number of inputs,
-            # the inner List corresponds to the number of outputs.
-            # We need to exchange the order of these and convert to tuples
-            # before returning.
-            jacobian_output_input = tuple(zip(*jacobian_input_output))
-
-            jacobian_output_input = _grad_postprocess(
-                jacobian_output_input, create_graph
-            )
-            return outputs[0],_tuple_postprocess(
-                jacobian_output_input, (is_outputs_tuple, is_inputs_tuple)
-            )
+        return output.detach(), jacobian
 
 class logistic:
     """

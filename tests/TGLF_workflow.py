@@ -8,6 +8,7 @@ cold_start = True
 
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_test"
 input_tglf = __mitimroot__ / "tests" / "data" / "input.tglf"
+npz_file   = folder / "tglf_results.npz"
 
 if cold_start and folder.exists():
     os.system(f"rm -r {folder.resolve()}")
@@ -22,10 +23,10 @@ tglf.run(
     runWaveForms  = [0.67, 10.0],
     forceIfcold_start=True,
     extraOptions={"USE_BPER": False, "USE_BPAR": False},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
-tglf.read(label="ES (SAT1)")
+tglf.read(label="ES (SAT1)", save_and_cleanup=npz_file)
 
 tglf.run(
     "run2/",
@@ -33,10 +34,10 @@ tglf.run(
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
-tglf.read(label="EM (SAT1)")
+tglf.read(label="EM (SAT1)", save_and_cleanup=npz_file)
 
 tglf.run(
     "run3/",
@@ -44,12 +45,11 @@ tglf.run(
     cold_start=cold_start,
     forceIfcold_start=True,
     extraOptions={"USE_BPER": True, "USE_BPAR": True},
-    slurm_setup={"cores": 4, "minutes": 1},
+    allocation={"resources_per_call": 4, "minutes": 10},
 )
 
-tglf.read(label="EM (SAT3)")
+tglf.read(label="EM (SAT3)", save_and_cleanup=npz_file)
 
-tglf.plot(labels=["EM (SAT1)","ES (SAT1)", "EM (SAT3)"])
-
-# Required if running in non-interactive mode
-tglf.fn.show()
+tglf_loaded = TGLFtools.TGLF.from_npz(npz_file)
+tglf_loaded.plot(labels=["ES (SAT1)", "EM (SAT1)", "EM (SAT3)"])
+tglf_loaded.fn.show()

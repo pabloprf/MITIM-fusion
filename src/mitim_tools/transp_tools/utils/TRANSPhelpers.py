@@ -40,6 +40,7 @@ class transp_run:
             'ne': ['ner','NEL','x', 1E20*1E-6],
             'Zeff': ['zf2','ZF2','x', 1.0],
             'PichT': ['rfp','RFP',[1], 1E6],
+            'PnbiT': ['nb2','NB2',[1], 1E6],
         }
 
     # --------------------------------------------------------------------------------------------
@@ -49,7 +50,7 @@ class transp_run:
     def write_namelist(
         self,
         timings = {},
-        tokamak_structures = 'SPARC',
+        tokamak_structures = None,
         **transp_params
         ):
         ''' 
@@ -117,7 +118,14 @@ class transp_run:
     # Ufiles
     # --------------------------------------------------------------------------------------------
 
-    def write_ufiles(self, structures_position = -1, radial_position = 0, use_mry_file = False):
+    def write_ufiles(
+            self,
+            structures_position = -1,
+            radial_position = 0,
+            use_mry_file = False,
+            mxh_coeffs_smooth = 5,
+            is_machine_fixed = False
+            ):
         '''
         Write ufiles based on variables that were stored (e.g. from freegs or cdf)
         '''
@@ -211,7 +219,14 @@ class transp_run:
             for time in self.times:
                 if (time in self.geometry) and ('R_sep' in self.geometry[time]):
 
-                    thetas, R, Z = prepare_RZsep_for_TRANSP(self.geometry[time]['R_sep'], self.geometry[time]['Z_sep'])
+                    if mxh_coeffs_smooth is not None:
+                        thetas, R, Z = prepare_RZsep_for_TRANSP(
+                            self.geometry[time]['R_sep'],
+                            self.geometry[time]['Z_sep'],
+                            n_coeff=mxh_coeffs_smooth
+                            )
+                    else:
+                        R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
                     r0, z0 = (R.max()+R.min())/2, (Z.max()+Z.min())/2
 
@@ -274,9 +289,11 @@ class transp_run:
             # Write Antenna in namelist
             # --------------------------------------------------------------------------------------------
 
-            self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
-            self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
-            self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
+            if not is_machine_fixed:
+
+                self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
+                self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
+                self.namelist_variables['thicha'] = self.geometry_select['antenna_t']
 
         else:
             self.geometry_select = None
@@ -290,7 +307,7 @@ class transp_run:
                 IOtools.changeValue(self.nml, var, self.namelist_variables[var], None, "=", MaintainComments=True)
             print("\t- Namelist updated with new parameters of VV and antenna", typeMsg='i')
         else:
-            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='w')
+            print("\t- Namelist not available in this transp instance yet, defering writing VV and antenna to later", typeMsg='i')
 
     def ufiles_from(self, folder_original, ufiles):
         '''
@@ -303,16 +320,6 @@ class transp_run:
     # --------------------------------------------------------------------------------------------
     # Utilities to populate specific times with something
     # --------------------------------------------------------------------------------------------
-
-    def add_variable_time(self, time, value_x, value, variable='QPR'):
-
-        if time not in self.variables.keys():
-            self.variables[time] = {}
-
-        self.variables[time][variable] = {
-            'x': value_x,
-            'z': value
-        }
 
     def add_g_time(self, time, g_file_loc):
 
@@ -327,21 +334,48 @@ class transp_run:
         self.geometry[time]['R_sep'] = R_sep
         self.geometry[time]['Z_sep'] = Z_sep
 
-    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3):
 
+    def power_on_time(self, time, power_MW, ramp_time = 1E-3, nchannels = 1, n_channels_active = 1, variable_name = 'RFP'):
+
+        channels_array = np.arange(nchannels) +1
+
+        def add_variable_time(time, value):
+
+            if time not in self.variables.keys():
+                self.variables[time] = {}
+            value = value * np.ones(nchannels) / n_channels_active
+
+            self.variables[time][variable_name] = {
+                'x': channels_array,
+                'z': value
+            }
+        
         for t in self.variables.keys():
             if t>time:
-                self.add_variable_time(t, None, power_MW*1E6, variable='RFP')
+                add_variable_time(t, power_MW*1E6)
             else:
-                self.add_variable_time(t, None, 0.0, variable='RFP')
+                add_variable_time(t, 0.0)
         
         time_prev = round(time - ramp_time, 10)
-        self.add_variable_time(time_prev, None, 0.0, variable='RFP')
-        self.add_variable_time(time, None, power_MW*1E6, variable='RFP')
-        self.add_variable_time(1E3, None, power_MW*1E6, variable='RFP')
+        add_variable_time(time_prev, 0.0)
+        add_variable_time(time, power_MW*1E6)
+        add_variable_time(1E3, power_MW*1E6)
+
+    def icrf_on_time(self, time, power_MW, freq_MHz, ramp_time = 1E-3, nicha = 1):
+
+        self.power_on_time(time, power_MW, ramp_time = ramp_time, nchannels = nicha, n_channels_active = nicha, variable_name = 'RFP')  
 
         # Antenna Frequency
-        IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
+        if freq_MHz is not None:
+            IOtools.changeValue(self.nml, "frqicha", freq_MHz*1E6, None, "=", MaintainComments=True)
+
+        self.quantities['PichT'][2] = 'x' #channels_array
+
+    def nbi_on_time(self, time, power_MW, ramp_time = 1E-3, nbeams = 1, nbeams_active = 1):
+
+        self.power_on_time(time, power_MW, ramp_time = ramp_time, nchannels = nbeams, n_channels_active = nbeams_active, variable_name = 'NB2')  
+
+        self.quantities['PnbiT'][2] = 'x' #channels_array
 
     # --------------------------------------------------------------------------------------------
 
@@ -453,8 +487,7 @@ class transp_run:
         GRAPHICStools.adjust_figure_layout(fig)
         plt.show()
 
-
-def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi, 100, endpoint=True), plotYN = False):
+def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=5, thetas = np.linspace(0, 2*np.pi, 101, endpoint=True), plotYN = False):
     '''
     TRANSP tends to give troubles with kinks, curvatures and loops in the boundary files.
     This method developed in MITIM helps to smooth the boundary and avoid these issues.
@@ -468,8 +501,8 @@ def prepare_RZsep_for_TRANSP(Ro, Zo, n_coeff=6, thetas = np.linspace(0, 2*np.pi,
 
     if plotYN:
         fig, ax = plt.subplots()
-        ax.plot(Ro, Zo, 'o', label='Original')
-        ax.plot(surfaces.R[0], surfaces.Z[0], label='Smoothed')
+        ax.plot(Ro, Zo, '-o', ms=5, label='Original')
+        ax.plot(surfaces.R[0], surfaces.Z[0], '-s', ms=5, label=f'Smoothed n_coeff={n_coeff}')
         ax.legend(loc='best')
         ax.set_aspect('equal')
         ax.set_xlabel('R [m]')
@@ -603,7 +636,7 @@ class transp_input_time:
 
         self.geometry['R_lim'], self.geometry['Z_lim'] = rvv, zvv
 
-    def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
 
         # Create Miller FreeGS for the desired geometry
         self.f = GEQtools.freegs_millerized( R, a, kappa_sep, delta_sep, zeta_sep, z0)
@@ -612,9 +645,9 @@ class transp_input_time:
         self.f.derive()
         #self.f.check(plotYN=True)
 
-        self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+        self._from_freegs_eq(time, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, Paux_MW = Paux_MW)
 
-    def _from_freegs_eq(self, time, freegs_eq_object = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def _from_freegs_eq(self, time, freegs_eq_object = None, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
 
         if freegs_eq_object is None:
             freegs_eq_object = self.f.eq
@@ -631,9 +664,9 @@ class transp_input_time:
         RB = freegs_eq_object._profiles._fvac* 1E2 
         RZ = freegs_eq_object.separatrix(npoints= 100)
 
-        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, Paux_MW = Paux_MW)
 
-    def from_geqdsk(self, time, geqdsk_object, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def from_geqdsk(self, time, geqdsk_object, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
         
 
         rhotor = geqdsk_object.g['RHOVN']
@@ -644,9 +677,9 @@ class transp_input_time:
         RB = geqdsk_object.g['RCENTR']*geqdsk_object.g['BCENTR'] * 1E2 
         RZ = np.array([geqdsk_object.Rb,geqdsk_object.Yb]).T
 
-        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, PichT_MW = PichT_MW)
+        self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, Paux_MW = Paux_MW)
 
-    def _from_eq_quantities(self, time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, PichT_MW = 11.0):
+    def _from_eq_quantities(self, time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
 
         self.variables = {}
         self.ne0_20 = ne0_20
@@ -728,10 +761,14 @@ class transp_input_time:
                 'z': Zeff * np.ones(len(rhotor))
                 }
 
-        if PichT_MW is not None:
+        if Paux_MW is not None:
             self.variables['RFP'] = {
                 'x': [1],
-                'z': PichT_MW * 1E6
+                'z': Paux_MW * 1E6
+                }
+            self.variables['NB2'] = {
+                'x': [1],
+                'z': Paux_MW * 1E6
                 }
 
         # --------------------------------------------------------------
@@ -769,7 +806,7 @@ class transp_input_time:
         for var in self.transp_instance.quantities.keys():
             self.variables[self.transp_instance.quantities[var][1]] = {}
 
-            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT']:
+            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT','PnbiT']:
                 self.variables[self.transp_instance.quantities[var][1]]['x'],self.variables[self.transp_instance.quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
             
             # --------------------------------------------------------------
@@ -809,6 +846,9 @@ class transp_input_time:
         elif var == 'PichT':
             x = [1]
             z = self.p.derived['qRF_MW'][-1]*1E6
+        elif var == 'PnbiT':
+            x = [1]
+            z = self.p.derived['qBEAM_MW'][-1]*1E6
 
         return x,z
 
@@ -952,9 +992,7 @@ def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     if ax is not None:
         ax.plot(x, y, "-o", markersize=0.5, lw=0.5, c="k", label="lims")
 
-    print(
-        f"\t- Limiters UFile created in ...{IOtools.clipstr(UFilePath)}"
-    )
+    print(f"\t- Limiters UFile created in ...{IOtools.clipstr(UFilePath)}")
 
 def writeBoundary(nameFile, rs_orig, zs_orig):
     numpoints = len(rs_orig)

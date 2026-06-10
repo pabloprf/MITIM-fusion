@@ -19,7 +19,6 @@ def add_figures(fn, fnlab='', fnlab_pre='', tab_color=None):
 
     return figs
 
-
 def add_axes(figs):
 
     fig1, fig2, fig3, fig4, fig5, fig6, fig7 = figs
@@ -591,6 +590,7 @@ def plot_gradients(
             markersize=ms,
             alpha=alpha,
         )
+        i = 0
         if fast_color is not None:
             for i in range(len(self.Species)):
                 if self.Species[i]["S"] != "therm":
@@ -604,7 +604,8 @@ def plot_gradients(
                                 alpha=alpha,
                                 label=self.Species[i]["N"],
             )
-        ax.legend(loc="best", fontsize=7)
+        if i >0:
+            ax.legend(loc="best", fontsize=7)
         ax = axs4[5]
         ax.plot(
             xcoord[:ix],
@@ -697,17 +698,24 @@ def plot_gradients(
         )
         axs4[6 + cont].set_ylabel("$w_0$ (krad/s)")
         axs4[6 + cont].set_xlabel(labelx)
+        
+        var = -self.derived["dw0dr"][:ix] * 1e-5
+        varlab = "-$d\\omega_0/dr$ (krad/s/cm)"
+        
+        # var = self.derived["dw0dr"][:ix] * self.derived["a"] / self.profiles['w0(rad/s)'][:ix]
+        # varlab = "a/$L_{w0}$"
+        
         if "derived" in self.__dict__:
             axs4[7 + cont].plot(
                 xcoord[:ix],
-                self.derived["dw0dr"][:ix] * 1e-5,
+                var,
                 ls,
                 c=color,
                 lw=lw,
                 markersize=ms,
                 alpha=alpha,
             )
-        axs4[7 + cont].set_ylabel("-$d\\omega_0/dr$ (krad/s/cm)")
+        axs4[7 + cont].set_ylabel(varlab)
         axs4[7 + cont].axhline(y=0, ls="--", lw=0.5, c="k")
         axs4[7 + cont].set_xlabel(labelx)
         if autoscale:
@@ -1337,6 +1345,8 @@ def plotAll(profiles_list, figs=None, extralabs=None, lastRhoGradients=0.89):
         else:
             extralab = f"{extralabs[i]}, "
             
+        if profiles is None:
+            continue
         profiles.plot(
             axs1=axsProf_1,axs2=axsProf_2,axs3=axsProf_3,axs4=axsProf_4,axsFlows=axsFlows,axs6=axsProf_6,axsImps=axsImps,
             color=colors[i],legYN=True,extralab=extralab,lsFlows=ls[i],legFlows=i == 0,showtexts=False,lastRhoGradients=lastRhoGradients,

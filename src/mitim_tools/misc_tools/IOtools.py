@@ -38,6 +38,16 @@ import urllib.error as urlERR  # urllibE
 
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
+class nullcontext:
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        return
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
 class speeder(object):
     def __init__(self, file='./profiler.prof'):
         self.file = Path(file).expanduser()
@@ -98,17 +108,17 @@ class timer:
     # ────────────────────────────────────────────────────────────────────
     def _finish(self):
         
-        dt = time.perf_counter() - self.t0_wall
+        self.dt = time.perf_counter() - self.t0_wall
         t1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f'\t\t* {self.name} took {createTimeTXT(dt)}')
+        print(f'\n\t\t* {self.name} took {createTimeTXT(self.dt)}\n')
 
         if self.log_file:
             record = {
                 "script"      : self.name,
                 "t_start"     : self.t0,
                 "ts_end"      : t1,
-                "duration_s"  : dt,
+                "duration_s"  : self.dt,
             }
             with Path(self.log_file).open("a", buffering=1) as f:
                 f.write(json.dumps(record) + "\n")
@@ -175,7 +185,7 @@ def mitim_timer(
     return decorator_timer
 
 # ---------------------------------------------------------------------------
-def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= '', log=False):
+def plot_timings(jsonl_path, axs = None, ax_summary = None, ax_total = None, unit: str = "min", color = "b", label= '', log=False):
     """
     Plot cumulative durations from a .jsonl timing ledger written by @mitim_timer,
     with vertical lines when the beat number changes.
@@ -184,14 +194,39 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
     ----------
     jsonl_path : str | Path
         File with one JSON record per line.
+    ax_summary : matplotlib Axes or None
+        If provided, plot a stacked-bar summary of time per beat broken down by
+        category (portals / transp / eped / other).
     unit : {"s", "min", "h"}
         Unit for the y-axis.
     """
     multiplier = {"s": 1, "min": 1 / 60, "h": 1 / 3600}[unit]
+    
+    rotation = 30
 
     scripts, script_time, cumulative, beat_nums, script_restarts = [], [], [], [], []
     running = 0.0
     beat_pat = re.compile(r"Beat\s*#\s*(\d+)")
+    iter_pat = re.compile(r"@\s*(\d+)\s*$")   # "Surr @ 3", "Eval @ 1", …
+
+    beat_summary = {}   # {group_num: {cat: total_time_in_unit}}
+    all_cats     = []   # ordered list of unique categories encountered
+
+    def _script_type(script_name):
+        """Category = script name with 'Beat #N' prefix or '@ N' suffix stripped."""
+        t = beat_pat.sub('', script_name)   # remove Beat #N
+        t = iter_pat.sub('', t)             # remove @ N
+        return t.strip(' -_:/') or 'other'
+
+    def _group_num(script_name):
+        """Group index: beat number for MAESTRO scripts, iteration for BO scripts."""
+        m = beat_pat.search(script_name)
+        if m:
+            return int(m.group(1))
+        m = iter_pat.search(script_name)
+        if m:
+            return int(m.group(1))
+        return 0
 
     # ── read the file ───────────────────────────────────────────────────────
     with Path(jsonl_path).expanduser().open() as f:
@@ -199,9 +234,18 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
             if not line.strip():
                 continue
             rec = json.loads(line)
-            
+
+            # ── beat/iter summary (every record, including restarts) ─────────
+            bnum = _group_num(rec["script"])
+            cat  = _script_type(rec["script"])
+            if cat not in all_cats:
+                all_cats.append(cat)
+            if bnum not in beat_summary:
+                beat_summary[bnum] = {}
+            beat_summary[bnum][cat] = beat_summary[bnum].get(cat, 0.0) + rec["duration_s"] * multiplier
+
             if rec["script"] not in scripts:
-            
+
                 scripts.append(rec["script"])
                 script_time.append(rec["duration_s"] * multiplier)
                 running += rec["duration_s"]* multiplier
@@ -209,17 +253,17 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
                 m = beat_pat.search(rec["script"])
                 beat_nums.append(int(m.group(1)) if m else None)
-                
+
                 script_restarts.append(0.0)
-                
+
             else:
                 # If the script is already in the list, it means it was restarted
                 idx = scripts.index(rec["script"])
                 script_restarts[idx] += rec["duration_s"] * multiplier
-                
-                cumulative[-1] += script_restarts[idx] 
-                running += script_restarts[idx] 
-                
+
+                cumulative[-1] += script_restarts[idx]
+                running += script_restarts[idx]
+
 
     if not scripts:
         raise ValueError(f"No records found in {jsonl_path}")
@@ -264,9 +308,9 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
     #ax.set_xlim(left=0)
     ax.set_ylabel(f"Cumulative time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    ax.set_xticks(x, scripts, rotation=rotation, ha="right", fontsize=8)
     GRAPHICStools.addDenseAxis(ax)
-    ax.legend(loc='upper left', fontsize=8)
+    ax.legend(loc='best', fontsize=8)
 
 
     ax = axs[1]
@@ -287,11 +331,51 @@ def plot_timings(jsonl_path, axs = None, unit: str = "min", color = "b", label= 
 
     #ax.set_xlim(left=0)
     ax.set_ylabel(f"Time ({unit})"); #ax.set_ylim(bottom=0)
-    ax.set_xticks(x, scripts, rotation=10, ha="right", fontsize=8)
+    ax.set_xticks(x, scripts, rotation=rotation, ha="right", fontsize=8)
     GRAPHICStools.addDenseAxis(ax)
     if log:
         ax.set_yscale('log')
-    
+
+    # ── shared color map for categories (built from what's actually in the data) ──
+    _palette   = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    cat_colors = {cat: _palette[i % len(_palette)] for i, cat in enumerate(all_cats)}
+
+    # ── beat summary panel (optional) ───────────────────────────────────────
+    if ax_summary is not None and beat_summary:
+        beats_sorted  = sorted(beat_summary.keys())
+        has_beat_pat  = any(beat_pat.search(s) for s in scripts)
+        beat_labels   = [
+            (f"Beat #{b}" if has_beat_pat else f"Iter #{b}") if b > 0 else "init"
+            for b in beats_sorted
+        ]
+        bottom = [0.0] * len(beats_sorted)
+        for cat in all_cats:
+            vals = [beat_summary[b].get(cat, 0.0) for b in beats_sorted]
+            if any(v > 0 for v in vals):
+                ax_summary.bar(beat_labels, vals, bottom=bottom,
+                               color=cat_colors[cat], label=cat, alpha=0.85)
+                bottom = [b + v for b, v in zip(bottom, vals)]
+        ax_summary.set_ylabel(f"Time ({unit})")
+        ax_summary.set_xlabel("Beat")
+        ax_summary.tick_params(axis='x', rotation=rotation, labelsize=8)
+        plt.setp(ax_summary.get_xticklabels(), ha="right", rotation_mode="anchor")
+        ax_summary.legend(fontsize=8, loc='best')
+        GRAPHICStools.addDenseAxis(ax_summary)
+
+    # ── total-by-category panel (optional) ──────────────────────────────────
+    if ax_total is not None and beat_summary:
+        totals = {cat: sum(beat_summary[b].get(cat, 0.0) for b in beat_summary) for cat in all_cats}
+        cats_present = [c for c in all_cats if totals[c] > 0]
+        vals  = [totals[c] for c in cats_present]
+        bars  = ax_total.bar(cats_present, vals,
+                             color=[cat_colors[c] for c in cats_present], alpha=0.85)
+        ax_total.bar_label(bars, fmt=lambda v: f"{v:.1f}", fontsize=8, padding=2)
+        ax_total.set_ylabel(f"Total time ({unit})")
+        ax_total.tick_params(axis='x', rotation=rotation, labelsize=9)
+        plt.setp(ax_total.get_xticklabels(), ha="right", rotation_mode="anchor")
+        ax_total.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax_total)
+
     return x, scripts
 
 
@@ -309,6 +393,36 @@ def hook_method(before=None, after=None):
             return result
         return wrapper
     return decorator
+
+SAVE_FOLDER_AUTO_SENTINEL = "@auto"
+SAVE_FOLDER_DEFAULT_SUBDIR = "figures_plotting_save"
+
+
+def resolve_save_folder(save_arg, primary_path, default_subdir=SAVE_FOLDER_DEFAULT_SUBDIR, sentinel=SAVE_FOLDER_AUTO_SENTINEL):
+    '''
+    Resolve the --save CLI argument shared by mitim_plot_* scripts:
+      - None              -> None (no save requested)
+      - <sentinel>        -> primary_path / default_subdir   (auto-anchored)
+      - any other string  -> Path(save_arg)                  (user-supplied literal)
+
+    `primary_path` is the directory the figures should land inside. For
+    folder-based scripts this is the run's folder; for file-based scripts
+    the caller should pass `Path(file).parent` so the figures land next to
+    the file, not inside it. Caller is also expected to parser.error when
+    the user typed `--save` with no value but provided no positional, so
+    the failure mode is "useful CLI error" rather than a confusing path.
+    '''
+    if save_arg is None:
+        return None
+    if save_arg == sentinel:
+        if primary_path is None:
+            raise ValueError(
+                f"--save defaulted to '{sentinel}' but no anchor path was provided. "
+                f"Pass an explicit anchor or use --save <path>."
+            )
+        return Path(primary_path) / default_subdir
+    return Path(save_arg)
+
 
 def clipstr(txt, chars=40):
     if not isinstance(txt, str):
@@ -793,17 +907,11 @@ def createTimeTXT(duration_in_s, until=3):
     minutes = divmod(hours[1], 60)  # Use remainder of hours to calc minutes
     seconds = divmod(minutes[1], 1)  # Use remainder of minutes to calc seconds
 
-    try:
-        milisec = int(
-            (
-                duration_in_s
-                - (days[0] * 24 * 3600 + hours[0] * 3600 + minutes[0] * 60 + seconds[0])
-            )
-            * 1000
-        )
-        milisec_txt = f" ({str(milisec).zfill(2)}ms)"
-    except:
-        milisec_txt = ""
+    milisec = duration_in_s * 1e3
+    if 1 <= abs(milisec) < 1000:
+        milisec_txt = f" ({milisec:.1f} ms)"
+    else:
+        milisec_txt = f" ({milisec:.2e} ms)"
 
     if days[0] > 0:
         txt = f"{days[0]}d "
@@ -829,8 +937,12 @@ def createTimeTXT(duration_in_s, until=3):
             txt = "<1min "
         else:
             txt = f"<1s{milisec_txt} "
+    else:
+        txt += milisec_txt
 
-    return txt[:-1]
+    # Strip only the trailing space left by the component builders; rstrip (not
+    # txt[:-1]) so we don't eat the closing ')' when milisec_txt was appended last.
+    return txt.rstrip()
 
 
 def renameCommand(ini, fin, folder="~/"):
@@ -945,7 +1057,7 @@ def findFileByExtension(
         if len(allfiles) > 1:
             # print(allfiles)
             if not ForceFirst:
-                raise Exception("More than one file with same extension in the folder!")
+                raise Exception(f"More than one file with same extension {extension} in the folder: {fpath}")
             else:
                 allfiles = [allfiles[0]]
 
@@ -953,7 +1065,7 @@ def findFileByExtension(
             retpath = allfiles[0]
         else:
             print(
-                f"\t\t~ File with extension {extension} not found in {fpath}, returning None"
+                f"\t\t~ File with extension {extension} not found in {clipstr(fpath)}, returning None"
             )
     else:
         fstr = clipstr(f"{fpath}")
@@ -1589,7 +1701,9 @@ def ArrayToString(ll):
 def expandPath(path, fixSpaces=False, ensurePathValid=False):
     npath = Path(os.path.expandvars(path)).expanduser()
     if ensurePathValid:
-        assert npath.exists()
+        if not npath.exists():
+            print(f"\t\t~ Path does not exist: {npath} (from {path})", typeMsg="w")
+            raise AssertionError(f"Path does not exist: {npath}")
     return npath.resolve() if npath.exists() else npath # To cover cases in which the path is an environment variable that does not exist as file/dir
 
 
@@ -1921,79 +2035,120 @@ def print_machine_info(output_file=None):
 
     # System Information
     info_lines.append("=== System Information ===")
-    info_lines.append(f"System: {platform.system()}")
-    info_lines.append(f"Node Name: {platform.node()}")
-    info_lines.append(f"Release: {platform.release()}")
-    info_lines.append(f"Version: {platform.version()}")
-    info_lines.append(f"Machine: {platform.machine()}")
+    info_lines.append(f"Python:    {platform.python_version()} ({platform.python_implementation()})")
+    info_lines.append(f"System:    {platform.system()} {platform.release()}  ({platform.machine()})")
+    info_lines.append(f"Node:      {platform.node()}")
     info_lines.append(f"Processor: {platform.processor()}")
+    try:
+        from mitim_tools import __version__ as mitim_version
+        info_lines.append(f"MITIM:     {mitim_version}")
+    except Exception:
+        pass
 
     # CPU Information
     info_lines.append("\n=== CPU Information ===")
     logical_cpus = os.cpu_count()
-    info_lines.append(f"Logical CPUs (os.cpu_count()): {logical_cpus}")
-
-    # Attempt to get CPU frequency (limited without external packages)
-    try:
-        if platform.system() == "Windows":
-            import subprocess
-            cmd = 'wmic cpu get MaxClockSpeed'
-            max_freq = subprocess.check_output(cmd, shell=True).decode().split('\n')[1].strip()
-            info_lines.append(f"Max Frequency: {max_freq} MHz")
-        elif platform.system() == "Linux":
-            with open('/proc/cpuinfo') as f:
-                cpuinfo = f.read()
-            import re
-            matches = re.findall(r"cpu MHz\s+:\s+([\d.]+)", cpuinfo)
-            if matches:
-                current_freq = matches[0]
-                info_lines.append(f"Current Frequency: {current_freq} MHz")
-        else:
-            info_lines.append("CPU Frequency information not available.")
-    except Exception as e:
-        info_lines.append("Error retrieving CPU Frequency information.")
-
-    # PyTorch CPU Information
-    info_lines.append("\n=== PyTorch Information ===")
-    num_threads = torch.get_num_threads()
-    num_interop_threads = torch.get_num_interop_threads()
-    openmp_enabled = getattr(torch.backends, 'openmp', None)
-    mkl_enabled = getattr(torch.backends, 'mkl', None)
-
-    info_lines.append(f"PyTorch Intraop Threads: {num_threads}")
-    info_lines.append(f"PyTorch Interop Threads: {num_interop_threads}")
-    info_lines.append(f"OpenMP Enabled in PyTorch: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}")
-    info_lines.append(f"MKL Enabled in PyTorch: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
-
-    for var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK"]:
-        info_lines.append(f"{var}: {os.environ.get(var, 'Not set')}")
-
-    f = io.StringIO()
-    with redirect_stdout(f):
-        torch.__config__.show()
-    info_lines.append("\n=== PyTorch Build Config ===")
-    info_lines.append(f.getvalue())
-
-    info_lines.append("\n=== Package Versions ===")
-    for pkg in ["torch", "gpytorch", "botorch"]:
-        try:
-            mod = __import__(pkg)
-            info_lines.append(f"{pkg}: {mod.__version__}")
-        except Exception:
-            info_lines.append(f"{pkg}: not available")
+    info_lines.append(f"Logical CPUs:  {logical_cpus}")
 
     try:
         import psutil
+        physical_cpus = psutil.cpu_count(logical=False)
+        info_lines.append(f"Physical CPUs: {physical_cpus}")
+        freq = psutil.cpu_freq()
+        if freq:
+            info_lines.append(f"CPU Frequency: current={freq.current:.0f} MHz, max={freq.max:.0f} MHz")
+        mem = psutil.virtual_memory()
+        info_lines.append(f"RAM:           {mem.total / 2**30:.1f} GB total, {mem.available / 2**30:.1f} GB available")
         proc = psutil.Process()
+        proc_mem = proc.memory_info()
+        info_lines.append(f"Process RSS:   {proc_mem.rss / 2**30:.2f} GB")
         if hasattr(proc, "cpu_affinity"):
-            info_lines.append(f"Process affinity (cpus): {proc.cpu_affinity()}")
-        else:
-            info_lines.append("CPU affinity not supported on this platform/psutil build")
+            affinity = proc.cpu_affinity()
+            info_lines.append(f"CPU affinity:  {len(affinity)} cores {affinity}")
     except ImportError:
-        info_lines.append("psutil not installed (skipping affinity check)")
+        info_lines.append("(psutil not installed — physical CPU count, freq, RAM, affinity unavailable)")
+    except Exception as e:
+        info_lines.append(f"(psutil query failed: {e})")
 
-    info_lines.append("=============================\n\n")
+    # Environment variables that affect threading
+    info_lines.append("\n=== Thread Environment ===")
+    thread_vars = [
+        "MITIM_GP_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS", "SLURM_CPUS_PER_TASK",
+    ]
+    for var in thread_vars:
+        val = os.environ.get(var, "not set")
+        info_lines.append(f"  {var:<26} {val}")
+
+    # PyTorch threading state
+    info_lines.append("\n=== PyTorch Information ===")
+    info_lines.append(f"Default dtype:  {torch.get_default_dtype()}")
+    info_lines.append(f"Intraop threads (current): {torch.get_num_threads()}")
+    info_lines.append(f"Interop threads (current): {torch.get_num_interop_threads()}")
+    openmp_enabled = getattr(torch.backends, 'openmp', None)
+    mkl_enabled    = getattr(torch.backends, 'mkl', None)
+    info_lines.append(f"OpenMP: {openmp_enabled.is_available() if openmp_enabled else 'N/A'}   "
+                      f"MKL: {mkl_enabled.is_available() if mkl_enabled else 'N/A'}")
+
+    # GPU / CUDA
+    info_lines.append("\n=== GPU / CUDA ===")
+    if torch.cuda.is_available():
+        info_lines.append(f"CUDA available:  True  (version {torch.version.cuda})")
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            mem_total = props.total_mem / 2**30
+            mem_alloc = torch.cuda.memory_allocated(i) / 2**30
+            mem_reserved = torch.cuda.memory_reserved(i) / 2**30
+            info_lines.append(f"  GPU {i}: {props.name}  ({mem_total:.1f} GB total, {mem_alloc:.2f} GB allocated, {mem_reserved:.2f} GB reserved)")
+        if torch.backends.cudnn.is_available():
+            info_lines.append(f"  cuDNN: {torch.backends.cudnn.version()}  (enabled={torch.backends.cudnn.enabled})")
+        else:
+            info_lines.append("  cuDNN: not available")
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        info_lines.append(f"CUDA available:  False")
+        info_lines.append(f"MPS available:   True  (Apple Silicon GPU)")
+    else:
+        info_lines.append(f"CUDA available:  False")
+        info_lines.append(f"MPS available:   False")
+
+    # BLAS thread pool state (threadpoolctl, if available)
+    try:
+        import threadpoolctl
+        blas_pools = threadpoolctl.threadpool_info()
+        if blas_pools:
+            info_lines.append("BLAS thread pools (threadpoolctl):")
+            for lib in blas_pools:
+                info_lines.append(f"  {lib.get('prefix','?'):20s} {lib.get('num_threads','?')} threads  [{lib.get('filepath','?')}]")
+        else:
+            info_lines.append("BLAS thread pools: none detected by threadpoolctl")
+    except ImportError:
+        info_lines.append("BLAS thread pools: threadpoolctl not installed (install for runtime BLAS thread control)")
+
+    # PyTorch build config — only the lines that matter for linear algebra
+    try:
+        f = io.StringIO()
+        with redirect_stdout(f):
+            torch.__config__.show()
+        blas_lines = [
+            ln.strip() for ln in f.getvalue().splitlines()
+            if re.search(r"BLAS|LAPACK|MKL|OpenMP|AVX", ln, re.IGNORECASE)
+        ]
+        if blas_lines:
+            info_lines.append("PyTorch build (BLAS/MKL/OpenMP lines):")
+            info_lines.extend(f"  {ln}" for ln in blas_lines)
+    except Exception:
+        pass
+
+    # Package versions
+    info_lines.append("\n=== Package Versions ===")
+    for pkg in ["numpy", "scipy", "torch", "gpytorch", "botorch", "linear_operator"]:
+        try:
+            mod = __import__(pkg)
+            info_lines.append(f"  {pkg:<20s} {mod.__version__}")
+        except Exception:
+            info_lines.append(f"  {pkg:<20s} not installed")
+
+    info_lines.append("=============================\n")
 
     # Output to screen or file
     output = '\n'.join(info_lines)
@@ -2163,15 +2318,41 @@ class CPU_Unpickler(pickle_dill.Unpickler):
 
 def read_mitim_yaml(path: str):
 
+    yaml_dir = Path(path).resolve().parent
+
+    def _import_from_string(modattr):
+        """Import a function/class from an 'import::' string, with sidecar file support."""
+        import importlib
+        import importlib.util
+
+        if modattr.startswith("import::"):
+            modattr = modattr[len("import::"):]
+        module_name, attr = modattr.rsplit(".", 1)
+
+        # If the module is a sidecar file next to this YAML, load it from disk
+        sidecar = yaml_dir / f"{module_name}.py"
+        if sidecar.exists():
+            spec = importlib.util.spec_from_file_location(module_name, sidecar)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return getattr(mod, attr)
+
+        return getattr(importlib.import_module(module_name), attr)
+
     def resolve(x):
         if isinstance(x, dict):
+            # Reconstruct functools.partial from serialized form
+            if "_partial_import" in x:
+                import functools
+                func = _import_from_string(x["_partial_import"])
+                args = resolve(x.get("args", []))
+                kwargs = resolve(x.get("kwargs", {}))
+                return functools.partial(func, *args, **kwargs)
             return {k: resolve(v) for k, v in x.items()}
         if isinstance(x, list):
             return [resolve(v) for v in x]
         if isinstance(x, str) and x.startswith("import::"):
-            modattr = x[len("import::"):]
-            module_name, attr = modattr.rsplit(".", 1)
-            return getattr(importlib.import_module(module_name), attr)
+            return _import_from_string(x)
         return x
 
     with open(path, "r") as f:
@@ -2182,13 +2363,22 @@ def read_mitim_yaml(path: str):
 import yaml
 import numpy as np
 import inspect
+import functools
 from pathlib import Path
 from typing import Any, Mapping
+
+# Module-level collector for __main__ functions encountered during YAML normalization.
+# Populated by _as_import_string, consumed and cleared by write_mitim_yaml.
+_main_functions_to_save = {}
+
+_SIDECAR_MODULE = "_saved_functions"
 
 def _as_import_string(obj: Any) -> str:
     """
     Return an 'import::module.qualname' for callables/classes.
-    Falls back to str(obj) if module/name aren't available.
+    If the callable is from __main__, its source is collected into
+    _main_functions_to_save for later writing to a sidecar file,
+    and the import string references the sidecar module instead.
     """
     # Handle bound methods
     if inspect.ismethod(obj):
@@ -2196,6 +2386,8 @@ def _as_import_string(obj: Any) -> str:
         mod = func.__module__
         qn = getattr(func, "__qualname__", func.__name__)
         qn = qn.replace("<locals>.", "")
+        if mod == "__main__":
+            return _collect_main_function(func, qn)
         return f"import::{mod}.{qn}"
     # Handle functions, classes, other callables with module/name
     if inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
@@ -2203,6 +2395,8 @@ def _as_import_string(obj: Any) -> str:
         name = getattr(obj, "__qualname__", getattr(obj, "__name__", None))
         if mod and name:
             name = name.replace("<locals>.", "")
+            if mod == "__main__":
+                return _collect_main_function(obj, name)
             return f"import::{mod}.{name}"
         return f"import::{str(obj)}"
 
@@ -2213,12 +2407,59 @@ def _as_import_string(obj: Any) -> str:
     # Fallback
     return f"import::{str(obj)}"
 
+
+def _collect_main_function(func, name):
+    """
+    Collect a __main__ function's source code for saving to a sidecar file.
+    Returns the import string referencing the sidecar module.
+    """
+    try:
+        source = inspect.getsource(func)
+        # Dedent in case the function was defined inside a block
+        import textwrap
+        source = textwrap.dedent(source)
+        _main_functions_to_save[name] = source
+    except (OSError, TypeError):
+        from mitim_tools.misc_tools.LOGtools import printMsg as _print
+        _print(
+            f"Could not extract source for __main__ function '{name}'. "
+            f"It will not be reproducible from the saved namelist.",
+            typeMsg="w",
+        )
+    return f"import::{_SIDECAR_MODULE}.{name}"
+
+
+def _extract_imports_from_main():
+    """
+    Extract all import statements from the __main__ module's source file.
+    These are needed so the saved functions can find their dependencies.
+    """
+    import sys
+    main_mod = sys.modules.get("__main__")
+    if main_mod is None:
+        return ""
+
+    main_file = getattr(main_mod, "__file__", None)
+    if main_file is None or not Path(main_file).exists():
+        return ""
+
+    import_lines = []
+    with open(main_file, "r") as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith("import ") or stripped.startswith("from "):
+                import_lines.append(line.rstrip())
+
+    return "\n".join(import_lines)
+
+
 def _normalize_for_yaml(obj: Any) -> Any:
     """
     Recursively convert objects into YAML-safe Python builtins.
     - NumPy arrays/scalars -> lists/scalars
     - Paths -> str
     - sets -> lists
+    - functools.partial -> structured dict with _partial_import/args/kwargs
     - callables/classes/methods -> 'import::module.qualname'
     Leaves basic builtins as-is.
     """
@@ -2242,12 +2483,20 @@ def _normalize_for_yaml(obj: Any) -> Any:
 
     # Mappings
     if isinstance(obj, Mapping):
-        # ensure keys are YAML-safe (coerce to str if needed)
         return {str(k): _normalize_for_yaml(v) for k, v in obj.items()}
 
     # Sequences
     if isinstance(obj, (list, tuple)):
         return [_normalize_for_yaml(v) for v in obj]
+
+    # functools.partial -> structured dict with function + args + kwargs
+    if isinstance(obj, functools.partial):
+        result = {"_partial_import": _as_import_string(obj.func)}
+        if obj.args:
+            result["args"] = [_normalize_for_yaml(a) for a in obj.args]
+        if obj.keywords:
+            result["kwargs"] = {str(k): _normalize_for_yaml(v) for k, v in obj.keywords.items()}
+        return result
 
     # Anything callable or class-like -> import string
     if inspect.ismethod(obj) or inspect.isfunction(obj) or inspect.isbuiltin(obj) or inspect.isclass(obj) or callable(obj):
@@ -2267,10 +2516,18 @@ def write_mitim_yaml(parameters: Mapping[str, Any], path: str) -> None:
     General YAML writer:
     - No assumptions about keys (works for solution/transport/target and also optimization_options).
     - Normalizes everything to YAML-safe types, including function objects.
+    - Functions defined in __main__ are saved to a sidecar _saved_functions.py
+      file next to the YAML, and referenced via import::_saved_functions.func_name.
     """
     if not isinstance(parameters, Mapping):
         raise TypeError("parameters must be a dict-like mapping")
+
+    # Clear the collector before normalization
+    _main_functions_to_save.clear()
+
     clean = _normalize_for_yaml(parameters)
+
+    path = Path(path)
 
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(
@@ -2282,3 +2539,32 @@ def write_mitim_yaml(parameters: Mapping[str, Any], path: str) -> None:
             allow_unicode=True,
             width=1000,
         )
+
+    # Write sidecar file with __main__ functions if any were collected
+    if _main_functions_to_save:
+        imports = _extract_imports_from_main()
+        sidecar_path = path.parent / f"{_SIDECAR_MODULE}.py"
+
+        # Merge with an existing sidecar rather than clobbering it: two namelists
+        # written to the same folder (e.g. PORTALS writes namelist.portals.yaml and
+        # optimization.namelist.yaml) must both keep their functions importable.
+        # Same-named functions are skipped — within one process they carry identical
+        # source, collected from the same __main__.
+        existing = sidecar_path.read_text(encoding="utf-8") if sidecar_path.exists() else ""
+        new_functions = {name: source for name, source in _main_functions_to_save.items()
+                         if f"def {name}(" not in existing}
+
+        if new_functions:
+            with open(sidecar_path, "a" if existing else "w", encoding="utf-8") as f:
+                if not existing:
+                    f.write(f"# Auto-generated by MITIM write_mitim_yaml — source extracted from __main__\n")
+                if imports:
+                    f.write(f"\n{imports}\n")
+                for name, source in new_functions.items():
+                    f.write(f"\n{source}\n")
+
+        from mitim_tools.misc_tools.LOGtools import printMsg as _print
+        _print(f"Saved {len(new_functions)} __main__ function(s) to {sidecar_path} "
+               f"({len(_main_functions_to_save) - len(new_functions)} already present)", typeMsg="i")
+
+        _main_functions_to_save.clear()

@@ -1,0 +1,10 @@
+# Build artefacts from build_tglf_lib.sh / build_neo_lib.sh / build_vgen_lib.sh — platform-specific, never commit.
+tglf_build/
+neo_build/
+vgen_build/
+
+# f2py generated stubs and build logs
+*.c
+*.f
+*.log
+__pycache__/

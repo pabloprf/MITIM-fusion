@@ -1,0 +1,74 @@
+algorithms:
+  - calc_magnetic_field_and_safety_factor
+  - calc_fieldline_pitch_at_omp
+  - read_atomic_data
+  - calc_kappa_e0
+  - build_CzLINT_for_seed_impurities
+  - build_mean_charge_for_seed_impurities
+  - build_CzLINT_for_fixed_impurities
+  - build_mean_charge_for_fixed_impurities
+  - calc_momentum_loss_from_cc_fit
+  - calc_power_loss_from_cc_fit
+  - calc_electron_temp_from_cc_fit
+  - run_extended_lengyel_model_with_S_Zeff_and_alphat_correction
+  - calc_sound_speed_at_target
+  - calc_target_density
+  - calc_flux_density_to_pascals_factor
+  - calc_parallel_to_perp_factor
+  - calc_ion_flux_to_target
+  - calc_divertor_neutral_pressure
+  - calc_heat_flux_perp_to_target
+input:
+    # Set the path to the atomic data directory made by radas.
+    radas_dir: "PATH:./radas_dir"
+    # Length along a magnetic fieldline from divertor target to
+    # divertor entrance.
+    divertor_parallel_length: 10.0 m
+    # Length along a magnetic fieldline from divertor target to
+    # outboard midplane or stagnation point.
+    parallel_connection_length: 30 m
+    # Major radius
+    major_radius: 1.85 m
+    # Minor radius
+    minor_radius: 0.57 m
+    # Elongation at psiN = 0.95
+    elongation_psi95: 1.7
+    # Triangularity at psiN = 0.95
+    triangularity_psi95: 0.3
+    # Magnetic field on axis
+    magnetic_field_on_axis: 12.2 T
+    # Plasma current
+    plasma_current: 8.7 MA
+    # Ratio of Bpol_OMP / Bpol_avg
+    ratio_of_upstream_to_average_poloidal_field: 4/3
+    # Main ion mass (or average mass, i.e. DT = 2.5amu)
+    ion_mass: 2.5 amu
+    # List of impurities used for seeding, and their relative concentrations.
+    seed_impurity_species: ["Neon"]
+    seed_impurity_weights: [1.0]
+    # List of background impurities, and their concentration relative to the electron density.
+    fixed_impurity_species: ["Tungsten"]
+    fixed_impurity_weights: [1.5e-5]
+    # Take any nearest ne or ne_tau value for the atomic data, regardless of how close it is
+    # to the reference value.
+    rtol_nearest_for_atomic_data: 1e-1
+    # Impurity residence time multiplied by electron density
+    reference_ne_tau: 0.5 ms n20
+    # gamma_sh
+    sheath_heat_transmission_factor: 7.5
+    # Angle of incidence between magnetic fieldline and divertor target
+    target_angle_of_incidence: 3 degree
+    # Ratio between lambda_INT and lambda_q
+    divertor_broadening_factor: 3.0
+    # Power crossing separatrix
+    power_crossing_separatrix: 20.9MW
+    # Fraction of power directed to outer divertor
+    fraction_of_P_SOL_to_divertor: 2/3
+    # Upstream electron density
+    separatrix_electron_density: 15.0e19/m^3
+    # Electron temperature at target
+    target_electron_temp: 2.34eV
+    # Set number of iterations for Lengyel model. Should set this large, so that the result doesn't
+    # change if you keep increasing it.
+    iterations_for_alphat: 50
+    iterations_for_Lengyel_model: 5

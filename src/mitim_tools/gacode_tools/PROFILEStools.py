@@ -54,6 +54,8 @@ class gacode_state(MITIMstate.mitim_state):
         # Ensure correctness (wrong names in older input.gacode files)
         if "qmom(Nm)" in self.profiles:
             self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(Nm)")
+        if "qmom(MW/m^3)" in self.profiles:
+            self.profiles["qmom(N/m^2)"] = self.profiles.pop("qmom(MW/m^3)")
         if "qpar_beam(MW/m^3)" in self.profiles:
             self.profiles["qpar_beam(1/m^3/s)"] = self.profiles.pop("qpar_beam(MW/m^3)")
         if "qpar_wall(MW/m^3)" in self.profiles:
@@ -142,10 +144,20 @@ class gacode_state(MITIMstate.mitim_state):
                         self.profiles[title] = np.array(var0)
                 else:
                     # varT = [float(j) for j in var0[1:]]
+                    if len(var0) == 0:
+                        continue  # Sometimes there are extra blank lines, skip
                     """
                     Sometimes there's a bug in TGYRO, where the powers may be too low (E-191) that cannot be properly written
                     """
-                    varT = [float(j) if (j[-4].upper() == "E" or "." in j) else 0.0for j in var0[1:]]
+                    if var0[1].lower() == 'nan':
+                        raise Exception(f'[MITIM] There is a NaN in input.gacode (variable {title}), cannot continue')
+                    if var0[1].lower() == 'inf':
+                        raise Exception(f'[MITIM] There is an infinity in input.gacode (variable {title}), cannot continue')
+                    
+                    try:
+                        varT = [float(j) if (j[-4].upper() == "E" or "." in j) else 0.0 for j in var0[1:]]
+                    except IndexError:
+                        raise Exception(f'[MITIM] There is a malformed number in input.gacode (variable {title}), cannot continue')
 
                     var.append(varT)
 
@@ -247,9 +259,8 @@ class gacode_state(MITIMstate.mitim_state):
 		Surf 		= V' <|grad r|>	 
 		Surf_GACODE = V'
 		"""
-        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"])
+        self.derived["surfGACODE_geo"] = (self.derived["surf_geo"] / self.derived["gradr_geo"]) # This should be equivalent to volp_geo
         self.derived["surfGACODE_geo"][np.isnan(self.derived["surfGACODE_geo"])] = 0
-
 
         self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
@@ -263,6 +274,10 @@ class gacode_state(MITIMstate.mitim_state):
 
         self.derived["zeta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
         
+        # Higher-order MXH shaping at 0.995 (used by EPED when toq_eq_choice == 'mxh')
+        self.derived["s_three995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin3(-)"])
+        self.derived["s_four995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin4(-)"])
+        
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 
     def plot_geometry(self, axs3, color="b", legYN=True, extralab="", lw=1, fs=6):
@@ -271,7 +286,6 @@ class gacode_state(MITIMstate.mitim_state):
 
         rho = self.profiles["rho(-)"]
         lines = GRAPHICStools.listLS()
-
 
         ax = ax00c
 
@@ -285,7 +299,6 @@ class gacode_state(MITIMstate.mitim_state):
 
         GRAPHICStools.addDenseAxis(ax)
         GRAPHICStools.autoscale_y(ax, bottomy=0)
-
 
         ax = ax01c
         ax.plot(self.profiles["rho(-)"], self.derived['volp_geo'], color=color, lw=lw, label = extralab)
@@ -318,7 +331,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax10c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_cos):
+        for i, s in enumerate(self.shape_sin):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -340,7 +353,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax11c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_sin):
+        for i, s in enumerate(self.shape_cos):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -353,7 +366,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_xlim([0, 1])
         ax.set_xlabel("$\\rho$")
         ax.set_ylabel(f"cos-shape (>{minShape:.1e})")
-        if legYN:
+        if legYN and cont>0:
             ax.legend(loc="best", fontsize=fs)
             GRAPHICStools.gradientSPAN(ax, -minShape, +minShape, color='k', startingalpha = 0.2, endingalpha = 0.2, orientation='horizontal')
 
@@ -434,7 +447,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax3D
         self.plot_plasma_boundary(ax=ax, color=color)
         
-    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", label = '', lw=1.0, lw1=2.0):
+    def plot_state_flux_surfaces(self, ax=None, surfaces_rho=np.linspace(0, 1, 11), color="b", color1=None, label = '', lw=1.0, lw1=2.0, reflect = False, include995=False, **kwargs):
         
         if ax is None:
             plt.ion()
@@ -442,6 +455,9 @@ class gacode_state(MITIMstate.mitim_state):
             provided = False
         else:
             provided = True
+            
+        if color1 is None:
+            color1 = color
 
         for rho in surfaces_rho:
             ir = np.argmin(np.abs(self.profiles["rho(-)"] - rho))
@@ -452,8 +468,39 @@ class gacode_state(MITIMstate.mitim_state):
                     self.derived["Z_surface"][i_toroidal,ir, :],
                     "-",
                     lw=lw if rho<1.0 else lw1,
-                    c=color,
+                    c=color if rho<1.0 else color1,
                 )
+                if reflect:
+                    # Reflect the surface across the midplane
+                    ax.plot(
+                        self.derived["R_surface"][i_toroidal,ir, :] * -1,
+                        self.derived["Z_surface"][i_toroidal,ir, :],
+                        "-",
+                        lw=lw if rho<1.0 else lw1,
+                        c=color if rho<1.0 else color1,
+                    )
+        
+        if include995:
+            ir = np.argmin(np.abs(self.derived["psi_pol_n"] - 0.995))
+            for i_toroidal in range(self.derived["R_surface"].shape[0]):
+                ax.plot(
+                    self.derived["R_surface"][i_toroidal,ir, :],
+                    self.derived["Z_surface"][i_toroidal,ir, :],
+                    "--",
+                    lw=lw,
+                    c=color,
+                    label = label + ' @ 0.995'
+                )
+                if reflect:
+                    # Reflect the surface across the midplane
+                    ax.plot(
+                        self.derived["R_surface"][i_toroidal,ir, :] * -1,
+                        self.derived["Z_surface"][i_toroidal,ir, :],
+                        "--",
+                        lw=lw,
+                        c=color,
+                        label = label + ' @ 0.995'
+                    )
 
         ax.axhline(y=0, ls="--", lw=0.2, c="k")
         ax.plot(
@@ -512,6 +559,11 @@ class gacode_state(MITIMstate.mitim_state):
         ax.set_aspect("equal")
 
 def calculateGeometricFactors(profiles, n_theta=1001):
+    '''
+    Note that some tests I did with this in very shaped plasmas (e.g. delta>0.7),  bp2_geo required extremely high n_theta
+    to converge (e.g. n_theta of 100001 was required although still oscillated) in the last few radial points.
+    Although the volume average of converged somewhat faster.
+    '''
 
     # ----------------------------------------
     # Raw parameters from the file
@@ -575,6 +627,7 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_fluxsurfave_bp2,
         geo_fluxsurfave_bt2,
         bt_geo0,
+        failed_radii,
     ) = volp_surf_geo_vectorized(
         R,
         r,
@@ -593,6 +646,17 @@ def calculateGeometricFactors(profiles, n_theta=1001):
         geo_signb_in=signb,
         n_theta=n_theta,
     )
+    
+    # How to deal with failed radii?
+    if len(failed_radii) > 0:
+        print('Geometric factors calculation failed, '
+              'likely due to very extreme shaping that was not properly run by an equilibrium solver.',
+              f'Radii that failed: r/a = {r[failed_radii]}, positions {failed_radii} out of {len(r)-1}',
+              'To avoid use of failed radii, I will zero out <Bpol^2> which is the most sensitive quantity.',
+              'Extreme caution is advised for all other quantities such as dV/dr and <|grad r|>, and calculations relying on them',
+              'such as volume integrations or flux surface averages.',
+              typeMsg='w')
+        geo_fluxsurfave_bp2[failed_radii] = 0.0
 
     """
 	from expro_util.f90 we have:
@@ -806,6 +870,14 @@ def volp_surf_geo_vectorized(
 
         geov_nsin[i] = (geov_bigr_r[i] * geov_bigr_t[i] + bigz_r[i] * bigz_t[i]) / geov_l_t[i]
 
+    '''
+    -----------------------------------------------------------------------------------------------------------------
+    The above calculation of the geov_grad_r can sometimes lead to negative values due to extreme shaping and this 
+    method of calculation. In those cases, if a poloidal angle leads to negative values, we flag the radii as failed.
+    '''
+    failed_radii = np.where(np.sum(geov_grad_r<0.0,axis=0) > 0)[0]
+    # ----------------------------------------------------------------------------------------------------------------
+
     c = 0.0
     for i in range(n_theta - 1):
         c += geov_l_t[i] / (geov_bigr[i] * geov_grad_r[i])
@@ -877,7 +949,7 @@ def volp_surf_geo_vectorized(
             + geov_bt[i] ** 2 * geov_g_theta[i] / geov_b[i] / denom
         )
 
-    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0
+    return geo_volume_prime, geo_surf, geo_fluxsurfave_grad_r, geo_fluxsurfave_bp2, geo_fluxsurfave_bt2, bt_geo0, failed_radii
 
 def xsec_area_RZ(R,Z):
     # calculates the cross-sectional area of the plasma for each flux surface
@@ -885,9 +957,11 @@ def xsec_area_RZ(R,Z):
     for i in range(R.shape[0]):
         R0 = np.max(R[i,:]) - np.min(R[i,:])
         Z0 = np.max(Z[i,:]) - np.min(Z[i,:])
-        xsec_area.append(np.trapz(R[i], Z[i]))
+        try:
+            xsec_area.append(np.trapezoid(R[i], Z[i]))
+        except AttributeError:
+            xsec_area.append(np.trapz(R[i], Z[i]))
 
     xsec_area = np.array(xsec_area)
 
     return xsec_area
-

@@ -118,7 +118,7 @@ def gacode_to_powerstate(self, rho_vec=None):
     quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MW"]
     quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20"]
     quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20"] * 0.0
-    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_Jmiller"]
+    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_J"]
 
     if 'qfus' not in self.target_options["options"]["targets_evolve"]:
         # Fusion fixed
@@ -177,6 +177,8 @@ def gacode_to_powerstate(self, rho_vec=None):
     for i in range(input_gacode.profiles['ni(10^19/m^3)'].shape[1]):
         cases_to_parameterize.append([f"ni{i}", "ni(10^19/m^3)", i, 1.0, True])
 
+    smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
+
     self.profile_constructors_fine, self.profile_constructors_coarse, self.profile_constructors_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
         quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
@@ -192,9 +194,10 @@ def gacode_to_powerstate(self, rho_vec=None):
             self.plasma["roa"],
             parameterize_in_aLx=key[4],
             multiplier_quantity=key[3],
+            smooth_around_coarsing=smooth_around_coarsing,
         )
 
-        self.plasma[f"aL{key[0]}"] = aLy_coarse[:-1, 1]
+        self.plasma[f"aL{key[0]}"] = aLy_coarse[:, 1]
 
         # Check that it's not completely zero
         if key[0] in self.predicted_channels:
@@ -262,7 +265,7 @@ def powerstate_to_gacode(
 
     # Default options for postprocessing
     
-    Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", True)
+    Tfast_ratio = postprocess_input_gacode.get("Tfast_ratio", False)  # Fallback matches the template default (namelist.portals.yaml applyCorrections)
     Ti_thermals = postprocess_input_gacode.get("Ti_thermals", True)
     ni_thermals = postprocess_input_gacode.get("ni_thermals", True)
     recalculate_ptot = postprocess_input_gacode.get("recalculate_ptot", True)
@@ -351,7 +354,7 @@ def powerstate_to_gacode(
 
     return profiles
 
-def powerstate_to_gacode_powers(self, profiles):
+def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
 
     profiles.derive_quantities(rederiveGeometry=False)
 
@@ -359,32 +362,46 @@ def powerstate_to_gacode_powers(self, profiles):
 
     state_temp = self.copy_state()
 
-    # ------------------------------------------------------------------------------------------
-    # Recalculate powers with powerstate on the gacode-original fine grid
-    # ------------------------------------------------------------------------------------------
+    if rederive_at_high_res:
+        # ------------------------------------------------------------------------------------------
+        # Recalculate powers with powerstate on the gacode-original fine grid
+        # ------------------------------------------------------------------------------------------
 
-    # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
-    extra_points = 2  # If I don't allow this, it will fail
-    rhoy = profiles.profiles["rho(-)"][1:-extra_points]
-    with LOGtools.HiddenPrints():
-        state_temp.__init__(
-            profiles,
-            evolution_options={"rhoPredicted": rhoy},
-            target_options={
-                "evaluator": targets_analytic.analytical_model,
-                "options": {
-                    "targets_evolve": self.target_options["options"]["targets_evolve"], # Important to keep the same as in the original
-                    "target_evaluator_method": "powerstate",
-                    "force_zero_particle_flux": self.target_options["options"]["force_zero_particle_flux"],
-                    "percent_error": self.target_options["options"]["percent_error"]
-                    }
-                },
-            increase_profile_resol = False
+        # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
+        extra_points = 2  # If I don't allow this, it will fail
+        rhoy = profiles.profiles["rho(-)"][1:-extra_points]
+        with LOGtools.HiddenPrints():
+            state_temp.__init__(
+                profiles,
+                evolution_options={"rhoPredicted": rhoy},
+                target_options={
+                    "evaluator": targets_analytic.analytical_model,
+                    "options": {
+                        "targets_evolve": self.target_options["options"]["targets_evolve"], # Important to keep the same as in the original
+                        "target_evaluator_method": "powerstate",
+                        "force_zero_particle_flux": self.target_options["options"]["force_zero_particle_flux"],
+                        "percent_error": self.target_options["options"]["percent_error"]
+                        }
+                    },
+                increase_profile_resol = False
+                )
+        state_temp.calculateProfileFunctions()
+        state_temp.target_options["options"]["target_evaluator_method"] = "powerstate"
+        state_temp.calculateTargets()
+        # ------------------------------------------------------------------------------------------
+
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.profiles[conversions[ikey]][:-extra_points] = state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+
+    else:
+        # Just interpolate from powerstate to gacode grid
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.profiles[conversions[ikey]] = interpolation_function(
+                profiles.profiles["rho(-)"],
+                state.plasma["rho"][position_in_powerstate_batch,:].cpu().numpy(),
+                state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
             )
-    state_temp.calculateProfileFunctions()
-    state_temp.target_options["options"]["target_evaluator_method"] = "powerstate"
-    state_temp.calculateTargets()
-    # ------------------------------------------------------------------------------------------
+
 
     conversions = {}
 
@@ -402,10 +419,10 @@ def powerstate_to_gacode_powers(self, profiles):
 
     for ikey in conversions:
         if conversions[ikey] in profiles.profiles:
-            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
         else:
             profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
-            profiles.profiles[conversions[ikey]][:-extra_points] = state_temp.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
     
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
@@ -456,7 +473,7 @@ def defineIons(self, input_gacode, rho_vec, dfT):
     self.plasma["ions_set_Tion"] = Tion
     self.plasma["ions_set_c_rad"] = c_rad
 
-def improve_resolution_profiles(profiles, rhoMODEL):
+def improve_resolution_profiles(profiles, rhoMODEL, smooth_around_coarsing=True):
     """
     Resolution of input.gacode
     **************************
@@ -493,13 +510,16 @@ def improve_resolution_profiles(profiles, rhoMODEL):
 
     # ----------------------------------------------------------------------------------
     # 2. Add extra resolution around the modelled (e.g. TGYRO) points
+    #    (only needed when smoothAroundCoarsing is enabled, to provide the
+    #    neighboring fine-grid points that get flattened)
     # ----------------------------------------------------------------------------------
 
-    for i in range(points_updown):
-        rho_new = np.append(
-            np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
-            rhoMODEL - d_spacing_coarse * (i + 1),
-        )
+    if smooth_around_coarsing:
+        for i in range(points_updown):
+            rho_new = np.append(
+                np.append(rho_new, rhoMODEL + d_spacing_coarse * (i + 1)),
+                rhoMODEL - d_spacing_coarse * (i + 1),
+            )
 
     # ----------------------------------------------------------------------------------
     # Change resolution

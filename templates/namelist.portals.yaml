@@ -52,9 +52,9 @@ solution:
     #           'te': [1.0, 0.5, 0.5, 0.5]
     #           'ti': [0.5, 0.5, 0.5, 0.5]
     #           ...
-    ymax: 1.0
-    ymin: 1.0
-    yminymax_atleast: null # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0 to 2.0 even if not achieved via the ymin/ymax specification
+    ymin: 1.0               # Means it will explore -1x from the original gradients, i.e. from 0.0 gradient
+    ymax: 3.0               # Means it will explore +3x from the original gradients, i.e. up to 3 x aLT_original
+    yminymax_atleast: [0,2] # Defines minimum range of exploration, e.g. [0,2] means the gradient range will be at least from 0.0 to 2.0 even if not achieved via the ymin & ymax specification
 
     # enforce_finite_aLT is used to be able to select ymin = 2.0 for ne but ensure that te, ti is at, e.g., enforce_finite_aLT = 0.95
     enforce_finite_aLT: null
@@ -67,7 +67,7 @@ solution:
 
     reevaluate_targets: 0
 
-    # DEPCRECATED, #TOREMOVE
+    # DEPCRECATED, #TODO: REMOVE
     fixed_gradients: null
 
   # If False, remove full model folder after evaluation, to avoid carrying large folders (e.g. in MAESTRO runs)
@@ -77,8 +77,7 @@ solution:
   impurity_trick: true
 
   # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
-  fZ0_as_weight: null
-  fImp_orig: 1.0
+  fZ0_as_weight: 1.0 # if null, it will not be used
 
   # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
   scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
@@ -86,14 +85,14 @@ solution:
   # Physics-informed parameters to fit surrogates (numbers are the last iteration to consider that line; keys are the physics-informed parameters
   # and the values are the corresponding variables to check if they have varied, that affect that input)
   portals_transformation_variables:
-    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
-    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
+    10:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0]}
+    30:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0]}
     10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne]}
 
   # Physics-informed parameters to fit surrogates for trace impurities
   portals_transformation_variables_trace:
-    10: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
-    30: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
+    10:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], aLnZ: [aLnZ]}
+    30:    {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], aLnZ: [aLnZ]}
     10000: {aLte: [aLte], aLti: [aLti], aLne: [aLne], aLw0_n: [aLw0], nuei: [te, ne], tite: [te, ti], w0_n: [w0], beta_e: [te, ne], aLnZ: [aLnZ]}
 
 # -----------------------------------------------------------------
@@ -105,7 +104,47 @@ transport:
   # Transport model class
   evaluator: "import::mitim_modules.powertorch.utils.TRANSPORTtools.portals_transport_model"
 
-  # Select transport models (when instantiating the evaluator, assign these parameters)
+  # If True, run transport models in-process if they allow that option.
+  #     E.g.,
+  #         TGLF and NEO via ctypes, libtglf_serial.so / libneo_serial.so) instead of forking subprocesses.
+  #         Requires the shared libraries to be built once per machine via:
+  #             cd src/mitim_tools/simulation_tools/interfaces && bash build_tglf_lib.sh
+  #             cd src/mitim_tools/simulation_tools/interfaces && bash build_neo_lib.sh
+  # When True, every PORTALS transport call is executed in-memory with no folder / file I/O.
+  in_process: false
+
+  # Select transport models (when instantiating the evaluator, assign these parameters).
+  #
+  # Each entry below points to an `options.<instance_name>` block further down. Every
+  # options block should carry a `code:` field (tglf / cgyro / gx / neo) so the dispatcher
+  # knows which backend to call; if omitted the dispatcher falls back to the block key
+  # itself (back-compat for old namelists).
+  #
+  # Single-fidelity form (default) — plain string matching an entry in `options` below:
+  #     turbulence_model: "tglf"
+  #     neoclassical_model: "neo"
+  #
+  # Multi-fidelity form — int-keyed dict. An extra `fidelity_level` design variable is
+  # appended at the end of the DV vector, bounded [0, N-1], rounded to int at dispatch:
+  #     turbulence_model:
+  #       0: 'tglf'
+  #       1: 'cgyro'
+  #     neoclassical_model: "neo"
+  # `fidelity_level` is a RESERVED DV name. If `acquisition_options.optimizers` includes
+  # a method that doesn't natively handle multi-fidelity (currently `sr`, `root` — they
+  # iterate index-paired Δx_i ∝ residual_i and need len(DVs)==len(residuals)), the
+  # framework auto-pins fidelity_level to its max value (N-1, highest fidelity) for that
+  # optimizer's stage and strips it from the DV view the optimizer sees. `botorch` and
+  # `ga` handle fidelity_level natively as continuous/integer DVs — no auto-pin. See
+  # `OPTtools._METHODS_HANDLE_FIDELITY_LEVEL` for the registry.
+  #
+  # Named instances (e.g. two different TGLF configs). In this case the `code:` field in
+  # each options block is required, since the block key (e.g. `tglf1`) is not itself a
+  # backend code:
+  #     turbulence_model:
+  #       0: 'tglf1'
+  #       1: 'tglf2'
+  # and in `options` below define `tglf1: {code: tglf, run: {...}, ...}` and likewise `tglf2`.
   evaluator_instance_attributes:
 
     # Turbulent transport model
@@ -114,6 +153,42 @@ transport:
     # Neoclassical transport model
     neoclassical_model: "neo"
 
+  # Function to post-process input.gacode only *before* passing to transport codes (i.e. not for targets).
+  #
+  # The value is a *callable* (typically a `functools.partial(...)`) with signature
+  #     fn(file_profs: Path) -> gacode_state
+  # that may modify the file in place.
+  #
+  # Per-model override: each `transport.options.<name>` block below can carry its own
+  # `profiles_postprocessing_fun:` field. When set, it OVERRIDES (does not compose with)
+  # this top-level default for that model only. Resolution per evaluator side
+  # (turbulence / neoclassical) at evaluation time:
+  #     transport.options.<active_name>.profiles_postprocessing_fun
+  #     -> falls back to transport.profiles_postprocessing_fun (this field)
+  #     -> falls back to None (no postproc)
+  #
+  # When the turbulence and neoclassical sides resolve to *different* callables, the
+  # transport layer materialises two parallel input.gacode copies (`input.gacode.turb`
+  # and `input.gacode.neo`) and tracks per-side `impurityPosition_transport_{turb,neo}`.
+  # Same callable on both sides (the back-compat default) keeps the legacy single-copy
+  # fast path with byte-identical behavior.
+  profiles_postprocessing_fun: null
+
+  # Flatten the gradient at fine-grid neighbors of each coarse control point, creating a small
+  # plateau that ensures any derivative stencil (including TGYRO/GACODE's higher-order Lagrange)
+  # recovers the correct gradient value from the reconstructed profile. Also adds extra fine-grid
+  # points at +-1e-3 around each control point to support the plateau. Set to false to skip both
+  # (more uniform grid, but gradient recomputation by transport codes may see slope-change artifacts).
+  flatten_gradients_at_control_points: true
+
+  # Corrections to be applied to each iteration input.gacode file
+  applyCorrections:
+    Ti_thermals: true       # Keep all *thermal* ion temperatures equal to the main Ti
+    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
+    recalculate_ptot: true  # Recompute PTOT to insert in input file each time (careful if you have made fast ions thermal)
+    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
+    force_mach: null        # Change w0 to match this Mach number when Ti varies
+
   # Simulation kwargs to be passed directly to run and read commands (defaults here)
   options:
 
@@ -121,6 +196,16 @@ transport:
     # TGLF
     # *********************************************************************************************************
     tglf:
+
+      # Backend code for this options block (tglf / cgyro / gx / neo). Required when the block
+      # key isn't one of those names (e.g. named multi-fidelity instances like `tglf1`).
+      # If omitted, the dispatcher falls back to the block key itself.
+      code: tglf
+
+      # Per-model override for `transport.profiles_postprocessing_fun`. If non-null,
+      # this callable replaces the global one for TGLF only (see the top-level field
+      # for signature and resolution rules).
+      profiles_postprocessing_fun: null
 
       # Kwargs to be passed to the run command
       run:
@@ -136,7 +221,10 @@ transport:
       # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
       reuse_scan_ball: false
 
-      # Files to keep from simulation (none: all runs will only keep minimal files; base: minimal files for scans only; all: retrieve all files)
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     base: minimal files for scans only, base TGLF will be kept
+      #     all: retrieve all files from all runs
       keep_files: "base" 
 
       # Number of cores to use per TGLF instance
@@ -153,7 +241,14 @@ transport:
     # *********************************************************************************************************
     neo:
 
-      run: 
+      # Backend code (see note on the tglf block above).
+      code: neo
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (NEO only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
+
+      run:
         code_settings: "Sonic"
 
       read: {}
@@ -161,23 +256,222 @@ transport:
       # (%) Error (std, in percent) of model evaluation
       percent_error: 10.0
 
+      # Compute the neoclassical E×B shearing rate from NEO (profiles_gen -vgen) and pass it to TGLF as VEXB_SHEAR.
+      # This is appropriate when toroidal rotation is zero or negligible: Er is then determined by the
+      # combination of the ion pressure gradient and the neoclassical poloidal rotation (Waltz-Miller formula).
+      # Set to null (default) or false to disable. Set to true to use default NEO resolution settings, or
+      # provide a dict to override specific options, e.g.:
+      #   vgen_exb_shear:
+      #     er: 2          # Er method: 2 = NEO weak rotation limit (recommended for zero Vtor)
+      #     vel: 1         # Velocity method: 1 = NEO weak rotation limit
+      #     nth: "17,39"   # Min,max poloidal theta resolution
+      #     matched_ion: 1 # Ion species index to match (1-indexed)
+      vgen_exb_shear: null
+
     # *********************************************************************************************************
     # CGYRO
     # *********************************************************************************************************
     cgyro:
 
+      # Backend code (see note on the tglf block above).
+      code: cgyro
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (CGYRO only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
+
       run:
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
-      
+
+        # Folder containing per-radius CGYRO binary restart files named
+        # "bin.cgyro.restart_<rho:.4f>" (matching what CGYRO writes and MITIM
+        # retrieves after a run). Each is staged into the rho subfolder renamed
+        # to "bin.cgyro.restart" so CGYRO picks it up as a WARM START
+        # (restart_flag=2, per cgyro_init_h.f90): the saved turbulent state is
+        # reused as the initial condition, but t resets to 0 and fresh
+        # out.cgyro.* output files are written. Raises if the folder or any
+        # binary file is missing.
+        # Note: the companion "out.cgyro.tag" file is deliberately NOT staged.
+        # Staging it would trigger CGYRO's true-restart mode (restart_flag=1,
+        # io_control=3), which requires the full out.cgyro.* time-series
+        # bundle on disk for rewind/truncate and is not physically meaningful
+        # for PORTALS (each iteration changes input.cgyro parameters, so
+        # continuing in time across them is ill-defined).
+        # MAX_TIME tip: CGYRO warm-start resets t to 0, so MAX_TIME in
+        # extraOptions is the ADDITIONAL time the restarted run simulates on
+        # top of the saved state — set it to the window you want for
+        # statistics after the saved turbulent state, not the cumulative
+        # time since the original iteration 0.
+        restart_from_folder: null
+
+        # Automatic warm-start chain across PORTALS iterations when
+        # restart_from_folder is null. Options:
+        #   null       no automatic restart (default).
+        #   "first"    every iteration N >= 1 warm-starts from iteration 0's
+        #              bin.cgyro.restart (cheap: same seed state reused every
+        #              time; requires iteration 0 to have written restarts).
+        #   "all"      every iteration N >= 1 warm-starts from iteration
+        #              N-1's restart (chained: each iter picks up where the
+        #              previous one left off; requires *every* iteration to
+        #              write restarts, not just ev0).
+        #   "best"     per-radius selection: each rho independently warm-starts
+        #              from the prior iteration whose turbulent flux at that
+        #              rho is closest, by L2 norm over the active channels in
+        #              GB units, to the *current turbulent target*
+        #              (target_GB - current_neoc_GB). Different rhos can pick
+        #              different source iterations. Tie-broken in favor of the
+        #              higher iteration index (more representative profile).
+        #              If a rho has no prior iteration with both fluxes_turb.json
+        #              and bin.cgyro.restart_<rho:.4f>, that rho is cold-started
+        #              with a warning (NON-fatal — different from "first"/"all").
+        # Source folder (picked up automatically once the source iteration
+        # has finished):
+        #   Execution/Evaluation.{src}/transport_simulation_folder/base_cgyro
+        # or, during the simple-relax initializer:
+        #   Initialization/initialization_simple_relax/portals_sr_ev_{src}/
+        #     transport_simulation_folder/base_cgyro
+        # IMPORTANT:
+        #   - You MUST configure RESTART_STEP (and any related CGYRO restart
+        #     settings) in extraOptions so the source iteration writes
+        #     bin.cgyro.restart_<rho:.4f> files; otherwise later iterations
+        #     will proceed WITHOUT a restart and a warning will be printed.
+        #   - Source iterations must keep those files on disk. keep_files:
+        #     "all" is safest; "pickle"/"none" may unlink CGYRO outputs.
+        #   - MAX_TIME on iterations >= 1 should be sized as the ADDITIONAL
+        #     time you want to simulate on top of the saved state (CGYRO
+        #     warm-start resets t to 0). Example: if iteration 0 wrote its
+        #     restart at t=200 a/cs and you want another 100 a/cs of stats,
+        #     set MAX_TIME: 100 — not 300.
+        #   - "best" additionally requires fluxes_turb.json (and ideally
+        #     fluxes_neoc.json) on disk for prior iterations — these are
+        #     written automatically after each iteration's transport read,
+        #     so no extra setup is needed beyond what "first"/"all" already
+        #     require for the binary restart files.
+        #   - If restart_from_folder is also set, it takes precedence and
+        #     this option is ignored (with a warning).
+        # DEPRECATED: the older `restart_from_first: true` still works as an
+        # alias for restart_from_cases: "first" but prints a notice.
+        restart_from_cases: null
+
+        # Per-iteration CGYRO extraOptions overrides, merged on top of
+        # `extraOptions` key-by-key. Keyed by iteration selectors:
+        #   "N"    -> applies to iteration N
+        #   ">N"   -> applies to every iteration > N
+        #   ">=N"  -> applies to every iteration >= N
+        #   "<N"   -> applies to every iteration < N
+        #   "<=N"  -> applies to every iteration <= N
+        # Multiple matching keys are applied in order (ranges first, then
+        # exact-integer keys, so an exact "5" wins over ">4" for iter 5).
+        # Example — iter 0 seeds the restart chain with frequent writes
+        # and a long window; iter 5 resets with a shorter window; every
+        # iter after 5 runs with a minimal window:
+        #   extraOptions_special:
+        #     "0":
+        #       RESTART_STEP: 100
+        #       MAX_TIME: 800
+        #     "5":
+        #       MAX_TIME: 200
+        #     ">5":
+        #       MAX_TIME: 100
+        # DEPRECATED: the older `extraOptions_first: {...}` still works as
+        # an alias for `extraOptions_special: {"0": {...}}` but prints a
+        # notice.
+        extraOptions_special: {}
+
+        # Per-iteration SLURM allocation overrides, merged on top of
+        # `allocation` key-by-key. Same selector syntax as
+        # extraOptions_special ("N", ">N", ">=N", "<N", "<=N"; exact keys
+        # win over ranges). Typical use: iter 0 pays the full transient
+        # before writing its restart blob and needs the most wall-clock;
+        # later iterations only run MAX_TIME past the warm-start and can
+        # fit in shorter slots.
+        # Example — iter 0 gets 480 min, iter 5 gets 4 min, iters 6+ get 2 min:
+        #   allocation:
+        #     minutes: 60     # baseline for un-matched iters
+        #   allocation_special:
+        #     "0":
+        #       minutes: 480
+        #     "5":
+        #       minutes: 4
+        #     ">5":
+        #       minutes: 2
+        # DEPRECATED: the older `allocation_first: {...}` still works as
+        # an alias for `allocation_special: {"0": {...}}` but prints a
+        # notice.
+        allocation_special: {}
+
+        # If True (and run_type=="submit"), on restart PORTALS re-attaches to the slurm
+        # job recorded in <base_cgyro>/cgyro_submission.json instead of resubmitting.
+        check_existing_runs: False
+
+        # Polling cadence for .check() when run_type=="submit" (minutes)
+        every_n_minutes: 10
+
+        # SSH connect retry behaviour for the mitim_job that owns the cluster
+        # connection. ssh_retry_wait_seconds is the wait between attempts;
+        # ssh_retry_attempts is either an integer (max attempts before
+        # giving up) or `null` to retry forever — recommended for long
+        # PORTALS-CGYRO workflows that should ride out overnight VPN
+        # flaps. Defaults below match the historical 5 s / 3-attempt cap.
+        ssh_retry_wait_seconds: 5
+        ssh_retry_attempts: 3
+
+        # Auto stall-detect-and-resubmit. The custom checker classifies each
+        # rho on every poll; when a rho has been STALLED (no out.cgyro.timing
+        # update for the existing 5-10 min warn threshold) or STALLED_INIT
+        # (no out.cgyro.timing ever) for longer than the *kill* threshold
+        # below, the polling loop:
+        #   1. scancels just that array index (siblings keep running),
+        #   2. removes stale signal files from the rho's remote subfolder
+        #      (out.cgyro.timing/.tag/.info, slurm logs) but preserves
+        #      bin.cgyro.restart so the rescue keeps the warm start,
+        #   3. resubmits a single-task sbatch into the same subfolder with
+        #      `--exclude=<bad_node>` parsed from the parent array's
+        #      NODELIST so the rescue lands somewhere else.
+        # Cap: max_resubmits_per_rho per BO iteration (the ledger lives on
+        # the gk_object and resets each new evaluation). After the cap is
+        # exhausted that rho is left alone; fetch reports it missing and
+        # downstream handles the gap. Set auto_resubmit_enabled=False to
+        # restore the historical detect-only behavior.
+        auto_resubmit_enabled: True
+        stall_init_kill_seconds: 1800
+        stall_running_kill_seconds: 1800
+        max_resubmits_per_rho: 1
+
+        # Slurm allocation (optional; each field falls back to per-code defaults +
+        # machine config if omitted).
+        #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
+        #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
+        #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
+        #                        --gpus-per-node / --ntasks-per-node counts
+        #   minutes            : slurm --time in minutes. 300 = 5h, the usual cap for
+        #                        CGYRO nonlinear runs.
+        #   mem                : per-node memory string passed to sbatch --mem
+        #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
+        #   submission_type    : "slurm_array" (default on GPU machines: one array
+        #                        element per rho, whole node per element on
+        #                        OverSubscribe=NO partitions) or "slurm_standard"
+        #                        (single allocation, parallel '&' body).
+        #   exclusive          : force sbatch --exclusive. Omit/null to defer to
+        #                        the machine config's slurm.exclusive.
+
       read:
-        tmin: 0.0
-      
-      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable
-      Qi_stable_criterion: 0.01
+        # tmin: left edge of the signal-analysis window.
+        #   tmin >= 0                    : absolute time (a/cs).
+        #   tmin <  0, tmin_is_rel: true : fraction of the total sim time from the end
+        #                                  (e.g. tmin: -0.3 -> last 30% of the run).
+        #   tmin <  0, tmin_is_rel: false: absolute offset (a/cs) from the end
+        #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
+        tmin: -0.3
+        tmin_is_rel: true
+
+      # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable.
+      # Set to null to disable the stable-flux check entirely (no std inflation).
+      Qi_stable_criterion: 0.001
 
       # (%) For CGYRO runs, minimum error based on target if case is considered stable
       Qi_stable_percent_error: 5.0
@@ -185,33 +479,47 @@ transport:
       # If True, always run base TGLF to keep track of discrepancies
       run_base_tglf: True
 
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
+
     # *********************************************************************************************************
     # GX
     # *********************************************************************************************************
     gx:
+
+      # Backend code (see note on the tglf block above).
+      code: gx
+
+      # Per-model override for `transport.profiles_postprocessing_fun` (GX only).
+      # See the top-level field for signature and resolution rules.
+      profiles_postprocessing_fun: null
 
       run:
 
         code_settings: "Nonlinear"
         extraOptions: {}
 
-        # Run type: normal (submit and wait), submit (submit and do not wait), prep (do not submit)
+        # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
-      
+
       read:
-        tmin: 0.0
+        # tmin: left edge of the signal-analysis window.
+        #   tmin >= 0                    : absolute time (a/cs).
+        #   tmin <  0, tmin_is_rel: true : fraction of the total sim time from the end
+        #                                  (e.g. tmin: -0.3 -> last 30% of the run).
+        #   tmin <  0, tmin_is_rel: false: absolute offset (a/cs) from the end
+        #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
+        tmin: -0.3
+        tmin_is_rel: true
 
-  # Function to post-process input.gacode only *before* passing to transport codes
-  profiles_postprocessing_fun: null
-
-  # Corrections to be applied to each iteration input.gacode file
-  applyCorrections:
-    Ti_thermals: true       # Keep all thermal ion temperatures equal to the main Ti
-    ni_thermals: true       # Adjust for quasineutrality by modifying the thermal ion densities together with ne
-    recalculate_ptot: true  # Recompute PTOT to insert in input file each time
-    Tfast_ratio: false      # Keep the ratio of Tfast/Te constant throughout the Te evolution
-    force_mach: null        # Change w0 to match this Mach number when Ti varies
-
+      # Files to keep from simulation
+      #     none: all runs will only keep minimal files
+      #     all: retrieve all files from all runs
+      #     pickle: retrieve only the gk_object as pickle file (removing all other files to save space)
+      keep_files: "pickle" 
 
 # -----------------------------------------------------------------
 # Target model parameters
@@ -251,11 +559,26 @@ optimization_namelist_location: null # If null, it will grab the default at: __m
 
 optimization_options:
 
-  initialization_options: 
+  initialization_options:
 
     # PORTALS works well with 5 initial training points obtained with simple relaxation
     initial_training: 5
     initialization_fun: "import::mitim_modules.portals.utils.PORTALSoptimization.initialization_simple_relax"
+
+    # Per-trajectory solver-option overrides for the simple-relax initializer.
+    # Each list entry defines one trajectory; all trajectories run in parallel (one batched
+    # flux_match call dispatching N concurrent TGLF+NEO evaluations per step). Each trajectory
+    # contributes `initial_training / len(initialization_params)` training points.
+    # Requirements:
+    #   - initial_training must be divisible by the number of entries
+    #   - permitted keys per trajectory: relax, dx_max, dx_max_abs, dx_min_abs, relax_dyn,
+    #     relax_dyn_decrease, relax_dyn_num, tol, tol_rel, print_each, perturbation_base
+    #   - perturbation_base (default 0) shifts the starting gradients by the given fraction
+    #     (e.g. 0.1 = all a/Lx increased by 10% from the base), creating diversity in the
+    #     initial training set without changing the relax dynamics
+    # Single trajectory with default parameters (equivalent to the historical behaviour):
+    initialization_params:
+      - {}
 
   # Convergence options for the optimization process
   convergence_options:
@@ -269,7 +592,7 @@ optimization_options:
     stopping_criteria_parameters:
 
       # Criterion 2: Residual reduction
-      maximum_value: 5.e-3                # Reducing residual by 200x is enough for most PORTALS runs
+      maximum_value: 5.e-3                # Reducing residual by 1/0.005 = 200x is usually enough for most PORTALS runs
       maximum_value_is_rel: true          # Indicates that maximum_value is relative to iteration #0
 
       # Criterion 3: Variation of input parameters
@@ -285,7 +608,26 @@ optimization_options:
     # Relative improvement for stopping criteria of the acquisition optimization
     relative_improvement_for_stopping: 1.e-2    # Reducing residual by 100x is enough
 
-    # Type of acquisition function (Options: ["posterior_mean", "noisy_logei_mc", ...])
+    # Type of acquisition function (only applicable with "botorch" optimizers).
+    # Controls what quantity is maximized during the inner acquisition optimization (i.e., where to evaluate next).
+    #
+    # IMPORTANT: this setting only matters when "botorch" is in the optimizers list below.
+    # The "sr" and "root" optimizers use the residual function directly and ignore this.
+    #
+    # Analytic (no MC samples, cheaper):
+    #   "posterior_mean"    — maximizes h(E[Y]): objective applied to the GP mean.
+    #                         Fast, but only exact for linear objectives. For nonlinear
+    #                         objectives this approximates E[h(Y)] via Jensen's inequality.
+    #
+    # Monte Carlo (draw samples from posterior, correct for nonlinear objectives):
+    #   "simple_regret_mc"  — maximizes E[h(Y)]: MC estimate of the expected objective.
+    #                         Correct analog of "posterior_mean" for nonlinear objectives;
+    #                         the two differ by Jensen's inequality when h is nonlinear.
+    #   "logei_mc"          — maximizes log E[max(h(Y)-best, 0)]: log-EI, numerically
+    #                         stable. Balances exploration/exploitation. Use for standard BO.
+    #   "noisy_logei_mc"    — same as logei_mc but accounts for observation noise when
+    #                         computing best_f. More accurate with noisy GPs, higher cost.
+    #   "ei_mc"             — non-log version of logei_mc; less numerically stable.
     type:  "posterior_mean"
 
     # Optimizers to apply sequentially (Options: ["sr", "root", "botorch"])
@@ -295,6 +637,13 @@ optimization_options:
 
     # Function to select the GP parameters depending on each channel/radius (superseeds the main optimization namelist)
     surrogate_selection: "import::mitim_modules.portals.PORTALStools.surrogate_selection_portals"
+
+    # To avoid messing surrogates with exploiding fluxes, remove them from the training set if they are outside of 100 std from the rest of points
+    stds_outside: 100       # Standard deviations outside the mean to consider a point as an outlier
+    stds_outside_checker: 5 # Check for outliers only if there are at least these many points
+
+    # To add additional training points for certain fluxes and locations
+    extrapointsFile: null # Path to .csv file (same structure as surrogate_data.csv)
 
   strategy_options:
 

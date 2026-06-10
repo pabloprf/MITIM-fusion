@@ -566,11 +566,10 @@ def defineFirstWall():
 
 
 def ICRFantennas(MHz=[80.0, 78.0]):
-    nichas = 2  # 1
 
     lines = [
         "! ----- Antenna Parameters",
-        f"nicha       = {nichas}         \t ! Number of ICRH antennae",
+        f"nicha       = 2         \t ! Number of ICRH antennae",
         f"frqicha     = {MHz[0]}e6,{MHz[1]}e6 ! Frequency of antenna (Hz)",
         "!prficha    = 0.0,0.0       ! Power of antenna (W)",
         "rfartr      = 2.0           ! Distance (cm) from antenna for Faraday shield",

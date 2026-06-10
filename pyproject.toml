@@ -1,29 +1,37 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
+
+# Read the version statically from src/mitim_tools/__init__.py so there is a
+# single place to bump it on each release (no literal version duplicated here).
+[tool.setuptools.dynamic]
+version = {attr = "mitim_tools.__version__"}
+
+# Explicit src-layout package discovery (also required for the version `attr`
+# above to locate the mitim_tools package under src/).
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project]
 name = "MITIM"
-version = "4.0.0"
+dynamic = ["version"]   # single source of truth: src/mitim_tools/__init__.py:__version__
 description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest botorch, 3.13 has issues with tensorflow
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
 ]
 classifiers = [
   "Programming Language :: Python :: 3.12",
-  "License :: OSI Approved :: MIT License",
   "Topic :: Scientific/Engineering",
   "Operating System :: OS Independent",
 ]
 
 dependencies = [
-  "pip",
   "numpy",
   "matplotlib",
-  "argparse",
   "h5py",
   "netCDF4",
   "xarray",
@@ -38,23 +46,27 @@ dependencies = [
   "paramiko",
   "tqdm",
   "shapely",
-  "freegs",
+  "freegs @ git+https://github.com/freegs-plasma/freegs.git@9fbec2056b4322ea253bb5614896d549365163f3",  # PyPI 0.8.2 has a bug in critical.find_critical that fails under numpy>=2; pin to upstream master until a fixed release is cut
   "botorch",
   "psutil",
   "tensorflow", 
   "f90nml",
   "pyyaml",
-  "megpy>=2.0",
+  "megpy>=2.0.8",
   "fibe>=0.3",
+  "periodictable",
   "scikit-image",   # Stricly not for MITIM, but good to have for pygacode
-  #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
-  # "vmecpp",
+  # "extended-lengyel @ git+https://github.com/cfs-energy/extended-lengyel.git",
   # "quends @ git+https://github.com/sandialabs/quends.git"
+  #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
 ]
 
 [project.optional-dependencies]
 pyqt = [
   "PyQt6",
+]
+vmec = [
+  "vmecpp",
 ]
 test = [
   "pytest",
@@ -71,7 +83,9 @@ test = [
 mitim_plot_gacode = "mitim_tools.gacode_tools.scripts.read_gacode:main"
 mitim_plot_tgyro = "mitim_tools.gacode_tools.scripts.read_tgyro:main"
 mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--suffix _0.55] [--gacode input.gacode]
+mitim_plot_vgen = "mitim_tools.gacode_tools.scripts.read_vgen:main"      # <folder> [--gacode input.gacode]
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
+mitim_plot_gx = "mitim_tools.simulation_tools.scripts.read_gx:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
 mitim_plot_eped = "mitim_tools.eped_tools.scripts.plot_eped:main"

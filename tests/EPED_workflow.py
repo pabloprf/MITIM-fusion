@@ -1,11 +1,10 @@
 import os
-import matplotlib.pyplot as plt
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools import __mitimroot__
 
 cold_start = True
 
-folder = __mitimroot__ / "tests" / "scratch" / "eped_test2"
+folder = __mitimroot__ / "tests" / "scratch" / "eped_test"
 
 if cold_start and os.path.exists(folder):
     os.system(f"rm -r {folder}")
@@ -32,15 +31,21 @@ eped.run(
     scan_param = {'variable': 'neped', 'values': [15.0, 30.0, 45.0, 60.0, 75.0]},
     keep_nsep_ratio = 0.4,
     nproc_per_run = 64,
+    eped_params_override = {'TEPED_BOUND': [0.3, 1.4, 0.01]}, # Example of changing EPED config parameters
     cold_start = cold_start,
     job_array_limit=5,
     removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
-
 )
 
-eped.read(subfolder='case1')
+eped.read(
+    subfolder='case1'
+    )
 
-eped.plot(labels=['case1'])
+eped.plot(
+    labels=['case1'],
+    scan_params = ['neped'],
+    scan_params_labels=['$n_{e,ped}\\ (10^{19}m^{-3})$']
+    )
 
 eped.fn.show()
 

@@ -156,12 +156,8 @@ class TRANSPgeneric:
 
         while not ConvergedRun:
             timeDifference = 0
-            tt = (
-                datetime.datetime.now() + datetime.timedelta(minutes=minWait)
-            ).strftime("%H:%M")
-            print(
-                f">> Waiting for run {self.runid} to converge... (check every {minWait}min, at {tt})"
-            )
+            tt = (datetime.datetime.now() + datetime.timedelta(minutes=minWait)).strftime("%H:%M")
+            print(f">> Waiting for run {self.runid} to converge... (check every {minWait}min, at {tt})")
 
             try:
                 del self.cdfs["r1"]
@@ -181,9 +177,7 @@ class TRANSPgeneric:
                 timeTot = self.cdfs["r1"].t[-1] - self.cdfs["r1"].t[0]
 
                 if hoursStatic > maxhoursStatic:
-                    print(
-                        f" >> {self.runid} run has not progressed in {hoursStatic:.1f}h (> {maxhoursStatic:.1f}h), assume there is a problem with it"
-                    )
+                    print(f" >> {self.runid} run has not progressed in {hoursStatic:.1f}h (> {maxhoursStatic:.1f}h), assume there is a problem with it")
                     self.statusStop = 1  # 0
 
             except:
@@ -263,13 +257,9 @@ class TRANSPgeneric:
                 print(">> Simulation finished, not waiting for check")
             else:
                 if first:
-                    print(
-                        f">> Simulation just submitted, will check status in {checkMin}min (at {tt})"
-                    )
+                    print(f">> Simulation just submitted, will check status in {checkMin}min (at {tt})")
                 else:
-                    print(
-                        f">> Not finished yet, will check status in {checkMin}min (at {tt})"
-                    )
+                    print(f">> Not finished yet, will check status in {checkMin}min (at {tt})")
                 time.sleep(60.0 * checkMin)
                 time_passed += 60.0 * checkMin
 
@@ -292,9 +282,7 @@ class TRANSPgeneric:
 
             print(">> Grabbing intermediate files?")
             if time_passed >= 60.0 * grabIntermediateEachMin:
-                print(
-                    f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)"
-                )
+                print(f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)")
                 self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
                 time_passed = 0.0
             else:
@@ -467,11 +455,13 @@ def ensureMPIcompatibility(nml_file, nml_file_ptsolver, mpisettings):
         _ = IOtools.changeValue(nml_file, "nptr_pserve", 0, [], "=", MaintainComments=True)
 
     # If no NUBEAM, no MPI
-    val = IOtools.findValue(nml_file, "nalpha", "=", raiseException=False)
-    if (val is None) or (int(val) > 0):
+    val_alpha = IOtools.findValue(nml_file, "nalpha", "=", raiseException=False)
+    val_nubeam = IOtools.findValue(nml_file, "nlbeam", "=", raiseException=False)
+    
+    if ( (val_alpha is None) or (int(val_alpha) > 0) ) and ( (val_nubeam is None) or not bool(val_nubeam) ):
         mpisettings["trmpi"] = 1
         _ = IOtools.changeValue(nml_file, "nbi_pserve", 0, [], "=", MaintainComments=True)
-
+        
     # -------- Further checkers
     toric_mpi = IOtools.findValue(nml_file, "ntoric_pserve", "=", raiseException=False)
     nbi_mpi = IOtools.findValue(nml_file, "nbi_pserve", "=", raiseException=False)

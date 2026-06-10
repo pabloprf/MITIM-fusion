@@ -1,5 +1,6 @@
 import shutil
 import torch
+import datetime
 import copy
 from collections import OrderedDict
 import numpy as np
@@ -21,17 +22,20 @@ from IPython import embed
 
 class portals(STRATEGYtools.opt_evaluator):
     def __init__(
-        self, 
+        self,
         folder,                             # Folder where the PORTALS workflow will be run
-        portals_namelist = None,
-        tensor_options = {
-            "dtype": torch.double,
-            "device": torch.device("cpu"),
-        },
+        portals_namelist=None,
+        tensor_options=None,
         ):
 
+        if tensor_options is None:
+            tensor_options = {
+                "dtype": torch.double,
+                "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            }
+
         print("\n-----------------------------------------------------------------------------------------")
-        print("\t\t\t PORTALS class module")
+        print(f"\t\t\t PORTALS class module {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("-----------------------------------------------------------------------------------------\n")
 
         super().__init__(
@@ -72,8 +76,8 @@ class portals(STRATEGYtools.opt_evaluator):
     ):
 
         # Grab exploration ranges
-        ymax = self.portals_parameters["solution"]["exploration_ranges"]["ymax"]
-        ymin = self.portals_parameters["solution"]["exploration_ranges"]["ymin"]
+        ymax = float(self.portals_parameters["solution"]["exploration_ranges"]["ymax"])
+        ymin = float(self.portals_parameters["solution"]["exploration_ranges"]["ymin"])
         limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
         fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
         yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
@@ -82,6 +86,27 @@ class portals(STRATEGYtools.opt_evaluator):
         start_from_folder = self.portals_parameters["solution"]["exploration_ranges"]["start_from_folder"]
         reevaluate_targets = self.portals_parameters["solution"]["exploration_ranges"]["reevaluate_targets"]
 
+        # Multi-fidelity detection — turbulence_model / neoclassical_model may be a plain
+        # string (single fidelity, as today) or an int-keyed dict (multi-fidelity). When
+        # multi-fidelity, an extra `fidelity_level` design variable gets appended at the
+        # end of the DV vector so the acquisition optimizer can pick a fidelity to evaluate.
+        #
+        # `fidelity_level` is a RESERVED DV name. Optimizers that can't handle the extra
+        # DV (sr, root — they iterate index-paired Δx_i ∝ residual_i and need
+        # len(DVs)==len(residuals)) are auto-wrapped at the dispatch boundary in
+        # mitim_tools/opt_tools/OPTtools.py: the wrapper strips fidelity_level, runs the
+        # solver in reduced-DV space against a residual_function that pads
+        # fidelity_level=N-1 (highest fidelity) before delegating, and re-pads the
+        # returned x_opt. Fidelity-aware optimizers (botorch, ga) are no-ops.
+        # See OPTtools._METHODS_HANDLE_FIDELITY_LEVEL for the registry.
+        def _n_fidelities(spec):
+            return len(spec) if isinstance(spec, dict) else 1
+
+        turb_spec = self.portals_parameters["transport"]["evaluator_instance_attributes"]["turbulence_model"]
+        neo_spec = self.portals_parameters["transport"]["evaluator_instance_attributes"]["neoclassical_model"]
+        n_fidelities = max(_n_fidelities(turb_spec), _n_fidelities(neo_spec))
+        add_fidelity_level_variable = n_fidelities > 1
+
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Make sure that options that are required by good behavior of PORTALS
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,7 +114,7 @@ class portals(STRATEGYtools.opt_evaluator):
         print(">> PORTALS flags pre-check")
 
         # Check that I haven't added a deprecated variable that I expect some behavior from
-        IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read"], askQuestions=askQuestions)
+        IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read", "portals_transformation_variables"], askQuestions=askQuestions)
 
         key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
@@ -133,6 +158,8 @@ class portals(STRATEGYtools.opt_evaluator):
             tensor_options = self.tensor_options,
             seedInitial=seedInitial,
             checkForSpecies=askQuestions,
+            add_fidelity_level_variable=add_fidelity_level_variable,
+            n_fidelities=n_fidelities,
         )
         print(">> PORTALS initalization module (END)", typeMsg="i")
 
@@ -240,13 +267,12 @@ class portals(STRATEGYtools.opt_evaluator):
 			Note: var_dict['Qe_tr_turb'] must have shape (dim1...N, num_radii)
 		"""
 
-        var_dict = {}
+        var_dict_parts = {}
         for of in ofs_ordered_names:
-
             var = '_'.join(of.split("_")[:-1])
-            if var not in var_dict:
-                var_dict[var] = torch.Tensor().to(Y)
-            var_dict[var] = torch.cat((var_dict[var], Y[..., ofs_ordered_names == of]), dim=-1)
+            var_dict_parts.setdefault(var, []).append(Y[..., ofs_ordered_names == of])
+
+        var_dict = {var: torch.cat(parts, dim=-1).to(Y) for var, parts in var_dict_parts.items()}
 
         """
 		-------------------------------------------------------------------------
@@ -360,6 +386,21 @@ class portals(STRATEGYtools.opt_evaluator):
 
             optimization_data.data.to_csv(optimization_data.file, index=False)
 
+    def finalize_evaluation(self, *args, **kwargs):
+        '''
+        If the case has converged, do something
+        '''
+        
+        suffix = datetime.date.today().strftime("%Y%m%d")
+        
+        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
+        powerstate = portals.powerstates[portals.ibest]
+        
+        powerstate.profiles.write_state(self.folder / "Outputs" / f"input.gacode_final_{suffix}")
+        powerstate.profiles_transport.write_state(self.folder / "Outputs" / f"input.gacode_transport_final_{suffix}")
+        
+        print(f"\n- Final profiles (iteration {portals.ibest}) written to Outputs/input.gacode_final_{suffix} and Outputs/input.gacode_transport_final_{suffix}", typeMsg="i")
+
 def runModelEvaluator(
     self,
     FolderEvaluation,
@@ -402,6 +443,14 @@ def runModelEvaluator(
 
     # In certain cases, I want to cold_start the model directly from the PORTALS call instead of powerstate
     powerstate.transport_options["cold_start"] = cold_start
+
+    # Multi-fidelity: if the optimizer chose a fidelity_level DV, round it to int and route
+    # it into the transport instance via the existing evaluator_instance_attributes setattr
+    # pipeline (STATEtools.calculateTransport applies these attributes to the transport
+    # instance before calling .evaluate()).
+    if "fidelity_level" in dictDVs:
+        fidelity_level = int(round(float(dictDVs["fidelity_level"]["value"])))
+        powerstate.transport_options["evaluator_instance_attributes"]["fidelity_level"] = fidelity_level
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)
@@ -469,9 +518,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
 
     return dictOFs
 
-def analyze_results(
-    self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,
-    ):
+def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")
@@ -489,13 +536,13 @@ def analyze_results(
 
     if plotYN:
         portals_full.fn = fn
-        portals_full.plotPORTALS(tabs_colors_common=tabs_colors)
+        portals_full.plotPORTALS(tabs_colors_common=tabs_colors, plot_transport_models=analysis_level>2)
 
     # ----------------------------------------------------------------------------------------------------------------
     # Running cases: Original and Best
     # ----------------------------------------------------------------------------------------------------------------
 
-    if analysis_level in [2, 5]:
+    if analysis_level >= 3:
         portals_full.runCases(onlyBest=onlyBest, cold_start=cold_start, fn=fn)
 
     return portals_full.opt_fun.mitim_model.optimization_object

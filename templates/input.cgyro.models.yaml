@@ -1,7 +1,72 @@
+# ------------------------------------------------------------
+# Standard linear setup
+# ------------------------------------------------------------
+
 "Linear":
   controls:
     NONLINEAR_FLAG: 0
+    N_TOROIDAL: 1
 
-"Nonlinear":
+# ------------------------------------------------------------
+# Standard nonlinear setup
+# ------------------------------------------------------------
+
+"Nonlinear_high":
   controls:
     NONLINEAR_FLAG: 1
+    N_TOROIDAL: 24
+    DELTA_T: 0.04
+    MAX_TIME: 1200
+    # Sugama
+    COLLISION_MODEL: 4
+    ROTATION_MODEL: 2
+    SHEAR_METHOD: 2
+    # High resolutions
+    N_XI: 24  
+    N_THETA: 24
+  preprocess_options:
+    ky_min: 0.08
+    L_x: 120
+    N_radial: 512
+    min_box_size: 85
+
+# Reduce resolutions
+"Nonlinear_reduced1":
+  base: "Nonlinear_high"
+  controls:
+    N_XI: 16  
+    N_THETA: 16
+  preprocess_options:
+    N_radial: 256
+
+"Nonlinear_reduced2":
+  base: "Nonlinear_reduced1"
+  controls:
+    COLLISION_MODEL: 1 # Lorentz operator
+    ROTATION_MODEL: 1
+    N_TOROIDAL: 16
+  preprocess_options:
+    L_x: 90
+
+"Nonlinear_reduced3":
+  base: "Nonlinear_reduced2"
+  controls:
+    COLLISION_MODEL: 5 # Diagonal Lorentz operator
+    N_TOROIDAL: 12
+  preprocess_options:
+    ky_min: 0.1
+    N_radial: 192
+    L_x: 90
+    min_box_size: 60
+
+# ------------------------------------------------------------
+# Very low resolution case for testing of workflows
+# ------------------------------------------------------------
+
+"Nonlinear_silly":
+  base: "Nonlinear_reduced3"
+  controls:
+    N_XI: 8
+    N_THETA: 8
+  preprocess_options:
+    N_radial: 96

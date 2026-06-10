@@ -161,22 +161,22 @@ def mitimRun(
 
     # Write results into Tabular Data, but make sure it is only one process at a time
 
-    inputs = []
-    for i in bounds:
-        inputs.append(i)
+    inputs = list(bounds)
 
     if optimization_data is not None:
+        
+        # Only move ahead if lock is acquired (not other process is writing at the same time)
         if lock is not None:
             lock.acquire()
         _,_,objective = optimization_object.scalarized_objective(torch.from_numpy(y))
-        optimization_data.update_data_point(x,y,yE,objective=objective.cpu().numpy())
+        optimization_data.update_data_point(x,y,yE,objective=objective.detach().cpu().numpy())
+        
+        # Release lock so that other processes can write
         if lock is not None:
             lock.release()
 
     try:
-        y_txt = ""
-        for i in range(y.shape[0]):
-            y_txt += "\t\ty{0} = {1:.5f}, yE{0.5f} = {2:.5f}\n".format(i, y[i], yE[i])
+        y_txt = "\n".join(f"\t\ty{i} = {y[i]:.5f}, yE{i} = {yE[i]:.5f}" for i in range(y.shape[0]))
         print(f"\n~ Evaluation.{numEval} result:\n", y_txt)
     except:
         pass

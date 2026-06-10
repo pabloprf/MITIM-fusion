@@ -7,6 +7,54 @@ from mitim_tools.misc_tools import IOtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg
 from IPython import embed
 
+
+class MachineConfig(dict):
+    """
+    Typed view of a machine configuration.
+
+    Backed by a plain ``dict`` so all existing ``d[key]``, ``d.get(...)``,
+    and mutation call-sites keep working unchanged. In addition, a small set
+    of well-known fields is exposed as attributes for readable access and
+    static-analysis friendliness:
+
+        machine, user, folderWork, cores_per_node, gpus_per_node,
+        slurm, modules, tunnel, port, identity, isTunnelSameMachine
+
+    Keeping it a ``dict`` subclass is deliberate — it lets the typed shape
+    slide in without a repo-wide refactor of every access pattern. Tools that
+    want the types can read attributes; tools that don't still see a dict.
+    """
+
+    _TYPED_FIELDS = (
+        "machine", "user", "folderWork", "cores_per_node", "gpus_per_node",
+        "slurm", "modules", "tunnel", "port", "identity",
+        "isTunnelSameMachine",
+    )
+
+    def __getattr__(self, name):
+        if name in self._TYPED_FIELDS:
+            return self.get(name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name, value):
+        if name in self._TYPED_FIELDS:
+            self[name] = value
+        else:
+            super().__setattr__(name, value)
+
+    # Helpful accessors for the resolver
+    @property
+    def has_slurm(self) -> bool:
+        return bool((self.get("slurm") or {}).get("partition"))
+
+    @property
+    def gpus(self) -> int:
+        return int(self.get("gpus_per_node") or 0)
+
+    @property
+    def cores(self) -> int:
+        return int(self.get("cores_per_node") or 0)
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Configuration file
 # ---------------------------------------------------------------------------------------------------------------------
@@ -40,14 +88,19 @@ class ConfigManager:
             else:
                 from mitim_tools import __mitimroot__
                 self._config_file_path = __mitimroot__ / "templates" / "config_user.json"
-                printMsg(f"\t[MITIM Configuration file path not set, assuming {self._config_file_path}]", typeMsg='i')
+                printMsg(f"[MITIM Configuration file path not set, assuming {self._config_file_path}]")
         return self._config_file_path
 
 config_manager = ConfigManager()
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+_settings_cache = None
+
 def load_settings():
+    global _settings_cache
+    if _settings_cache is not None:
+        return _settings_cache
 
     _config_file_path = config_manager.get()
 
@@ -55,9 +108,16 @@ def load_settings():
     with open(_config_file_path, "r") as f:
         settings = json.load(f)
 
+    _settings_cache = settings
     return settings
 
+_verbose_level_cache = None
+
 def read_verbose_level():
+    global _verbose_level_cache
+    if _verbose_level_cache is not None:
+        return _verbose_level_cache
+
     s = load_settings()
     if "verbose_level" in s["preferences"]:
         verbose = int(s["preferences"]["verbose_level"])
@@ -68,7 +128,14 @@ def read_verbose_level():
     if verbose in [1, 2]:
         LOGtools.ignoreWarnings()
 
+    _verbose_level_cache = verbose
     return verbose
+
+def reset_config_cache():
+    """Force re-read of config file and verbose level on next access."""
+    global _settings_cache, _verbose_level_cache
+    _settings_cache = None
+    _verbose_level_cache = None
 
 def read_dpi():
     s = load_settings()
@@ -104,18 +171,35 @@ def machineSettings(
     -------------------------------------------------
     """
 
-    if forceUsername is not None:
+    # Detect in-place local execution: machine is local AND scratch is null/missing/empty.
+    # In that case the job runs directly in folder_local with no copy-in/copy-out roundtrip.
+    is_local_machine = s[machine].get("machine") == "local"
+    scratch_cfg = s[machine].get("scratch", None)
+    run_in_place = (
+        is_local_machine
+        and forceUsername is None
+        and (scratch_cfg is None or str(scratch_cfg).strip() == "")
+    )
+
+    if run_in_place:
+        username = s[machine].get("username", "dummy")
+        # When called without a local folder (e.g. grab_machine_settings peeks for cpu_count),
+        # leave folderWork empty; real job dispatch always provides append_folder_local.
+        if append_folder_local is None:
+            scratch = ""
+        else:
+            scratch = str(IOtools.expandPath(append_folder_local))
+    elif forceUsername is not None:
         username = forceUsername
         scratch = f"/home/{username}/scratch/{nameScratch_full}"
+        scratch = scratch[:255]
     else:
         username = s[machine]["username"] if ("username" in s[machine]) else "dummy"
         scratch = f"{s[machine]['scratch']}/{nameScratch_full}"
+        scratch = scratch[:255]
+    # ----
 
-    # General limit of 255 characters in path
-    scratch = scratch[:255]
-    # ----  
-
-    machineSettings = {
+    machineSettings = MachineConfig({
         "machine": s[machine]["machine"],
         "user": username,
         "tunnel": None,
@@ -123,6 +207,7 @@ def machineSettings(
         "identity": None,
         "modules": "", #"source ~/.bashrc",
         "folderWork": scratch,
+        "run_in_place": run_in_place,
         "slurm": {},
         "cores_per_node": s[machine].get("cores_per_node", None),
         "gpus_per_node": s[machine].get("gpus_per_node", 0),
@@ -131,7 +216,7 @@ def machineSettings(
             if "isTunnelSameMachine" in s[machine]
             else False
         ),
-    }
+    })
 
     # I can give extra things to load in the config file
     if (
@@ -169,9 +254,7 @@ def machineSettings(
     # ************************************************************************************************************************
 
     if machineSettings["machine"] == "local":
-        machineSettings["folderWork"] = IOtools.expandPath(
-            machineSettings["folderWork"]
-        )
+        machineSettings["folderWork"] = IOtools.expandPath(machineSettings["folderWork"])
 
     if forceUsername is not None:
         machineSettings["identity"] = f"~/.ssh/id_rsa_{forceUsername}"

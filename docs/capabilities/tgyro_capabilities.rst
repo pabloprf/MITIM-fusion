@@ -1,8 +1,8 @@
 TGYRO
 =====
 
-**MITIM** can be used to run the TGYRO transport solver, interpret results and plot revelant quantities.
-This framework does not provide linceses or support to run TGYRO, therefore, please see :ref:`Installation` for information on how to get TGYRO working and how to configure your setup.
+**MITIM** can be used to run the TGYRO transport solver, interpret results and plot relevant quantities.
+This framework does not provide licenses or support to run TGYRO, therefore, please see :ref:`Installation` for information on how to get TGYRO working and how to configure your setup.
 
 Once setup has been successful, the following regression test should run smoothly:
 
@@ -71,7 +71,7 @@ Now it is time to set the TGYRO settings, such as the radial range (``vectorRang
     physics_options = { 'TypeTarget':2 }   # 2: Only evolve exchange, 3: Reactor
     PredictionSet   = [1,1,0]              # Profiles to predict: [Te, Ti, ne]
     iterations      = 5                    # Number of TGYRO iterations
-    TGLFsettings    = 5                    # TGLF pre-sets
+    TGLFsettings    = 'SAT2em'             # TGLF pre-set (see templates/input.tglf.models.yaml)
 
 Now TGYRO can be run:
 

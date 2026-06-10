@@ -26,6 +26,14 @@
         "cores_per_node":  8,
         "gpus_per_node": 0
     },
+    "local_inplace": {
+        "machine":    "local",
+        "username":   "exampleusername",
+        "scratch":    null,
+        "modules":    "",
+        "cores_per_node":  8,
+        "gpus_per_node": 0
+    },
     "engaging": {
         "machine":          "orcd-login001.mit.edu", 
         "username":         "exampleusername",
