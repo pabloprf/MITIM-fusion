@@ -4,20 +4,30 @@ DESCRIPTION
 
 ### New Features
 
-*   💥 **New MAESTRO `confinement` beat**, which sets the temperature boundary condition at a chosen radial location such that the plasma matches a target confinement level (H-factor, `H98y2` or `H89p`). Since the H-factor cannot be inverted analytically for T_bc, it is found by Nelder-Mead minimization (same spirit as the eped_initializer BetaN matching), applying the BC at each trial Te_bc with the sharpness-beat machinery (core preserves a/LT and a/Ln; edge anchored at the BC and separatrix values, with `edge_shape` selecting a straight line in psi_n or the initializer's pedestal tanh in r/a). An optional `alpha_power_feedback` recomputes qfuse/qfusi analytically at every trial Te_bc so the H-factor accounts for the alpha-heating response (relevant for burning plasmas; no-op for non-DT), and `density_treatment` chooses whether the density profiles are rescaled to ne_bc or left completely untouched by the BC change (the latter option is also available in the sharpness beat). Includes all standard beat methods: restart robustness, plots (optimization diagnostics + H-factor-inputs panel), and trans-beat parameter hand-off so subsequent PORTALS beats reuse surrogate data. **The MAESTRO `Special` plotting tab gains a `Confinement Evolution` column tracking the energy confinement time and H-factors (`H98y2`, `H89p`) across beats.** See the `confinement` section of `templates/namelist.maestro.yaml`.
+*   💥 **New MAESTRO `confinement` beat**, which sets the temperature boundary condition at a chosen radial location such that the plasma matches a target confinement level (H-factor, `H98y2` or `H89p`). Since the H-factor cannot be inverted analytically for T_bc, it is found by Nelder-Mead minimization (same spirit as the eped_initializer BetaN matching), applying the BC at each trial Te_bc with the sharpness-beat machinery (core preserves a/LT and a/Ln; edge anchored at the BC and separatrix values, with `edge_shape` selecting a straight line in psi_n or the initializer's pedestal tanh in r/a). An optional `alpha_power_feedback` recomputes qfuse/qfusi analytically at every trial Te_bc so the H-factor accounts for the alpha-heating response (relevant for burning plasmas; no-op for non-DT), and `density_treatment` chooses whether the density profiles are rescaled to ne_bc or left completely untouched by the BC change (the latter option is also available in the sharpness beat). Includes all standard beat methods: restart robustness, plots (optimization diagnostics + H-factor-inputs panel), and trans-beat parameter hand-off so subsequent PORTALS beats reuse surrogate data. See the `confinement` section of `templates/namelist.maestro.yaml`.
+
+*   💥 **New `gknn` turbulence model for PORTALS** — a TGLF-GKNN-JAX neural-network surrogate (TGLF `SAT3` + GKNN corrections), selectable via the `gknn` block under `transport.options`. It ships a dedicated `profiles_postprocessing_fun` that lumps the plasma to two ions (main + a single lumped impurity) and enforces quasineutrality for network compatibility, plus an `apply_gknn` toggle to run with or without the GKNN correction factors on top of the base TGLF-NN. The `tglf_gknn_jax` package is an optional dependency — runs degrade gracefully when it is absent. See the `gknn` block in `templates/namelist.portals.yaml`.
+
+*   💥 **New `mitim_clean_maestro` tool** — a CLI (`mitim_clean_maestro FOLDER ...`) that prunes a finished MAESTRO run folder down to the directory structure and key files needed to reload results (`input.gacode`, namelists, `.nc`/`.npy` outputs, optimization data, figures, …), with an aggressive mode for deeper cleaning. Useful for shrinking runs before archiving or transfer.
+
+*   💥 **MAESTRO plotting additions** — the `Special` tab gains a `Confinement Evolution` column (energy confinement time and `H98y2`/`H89p` across beats), and the sharpness beat gains a profiles-vs-coordinates tab (Te/Ti/ne against `rho_tor`, `r/a`, `psi_n`). Special-tab cosmetics too: wider inter-column spacing, non-fusion `Q`/`Pfus` are no longer drawn as meaningless ~1e-14 noise, the density-peaking axis autoscales instead of clamping, and the multi-case `Profiles ALL` tab is only built when more than one run is plotted.
 
 ### Bug Fixes
 
-*   🐛 **NEW BUG FIX**, description
+*   🐛 **Fixed a startup crash in the LHS initialization of Bayesian optimization** when the design-variable bounds arrive as a numpy array (the GPU device/dtype-adoption path required a tensor). PORTALS/BO runs no longer fail at initialization on this path. Also applied to `main` as a hotfix.
+
+*   🐛 **MAESTRO/PORTALS runs no longer crash when a SLURM status poll cannot retrieve `squeue`** (e.g. a transient cluster or VPN hiccup) — the poll degrades to a pending state instead of raising.
+
+*   🐛 **Remote `exec_command` calls are now covered by the SSH transient-retry policy** (used for `squeue`/`tar` status polls), so long PORTALS/CGYRO runs survive brief connection drops during status checks.
 
 ### Changes for developers (internal execution)
 
-*   🔎 **NEW CHANGE**, description
+*   🔎 **The MAESTRO namelist now warns when a `fixed_bc` creator uses a `bc_coordinate` other than `'rho'`**, since the boundary condition is expected in `rho`.
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **The new `gknn` turbulence model needs the optional `tglf_gknn_jax` package** (`pip install tglf_gknn_jax[onnx]`). It is not a hard dependency: importing it is wrapped in a try/except, and code paths that reference `tglf_gknn` degrade gracefully (no warning spam) when it is not installed, so existing environments are unaffected.
 
 ---
 
-*Thanks to everyone who contributed to this release: USER LIST. Portions of this release were developed with AI-assisted coding (Claude Code).*
+*Thanks to everyone who contributed to this release: Garud Snoep, Audrey Saltzman. Portions of this release were developed with AI-assisted coding (Claude Code).*
