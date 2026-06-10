@@ -17,6 +17,7 @@ from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
+from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 
@@ -130,6 +131,9 @@ class maestro:
         elif beat == 'sharpness':
             print(f'\n- Beat {self.counter_current}: SHARPNESS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = sharpness_beat(self)
+        elif beat == 'confinement':
+            print(f'\n- Beat {self.counter_current}: CONFINEMENT ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = confinement_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
@@ -632,6 +636,7 @@ def _render_beat_flow_png(beats, wall_times, out_path):
         'eped':      '#b7e4c7',  # light green
         'lengyel':   '#fff3b0',  # pale yellow
         'sharpness': '#e0c3fc',  # lavender
+        'confinement': '#a8dadc',  # light teal
     }
     DEFAULT_COLOR = '#d0d0d0'
 

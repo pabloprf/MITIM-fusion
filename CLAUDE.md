@@ -267,7 +267,9 @@ beats: ["transp", "eped", "portals", "eped", "portals"]
 = *spin up TRANSP equilibrium → solve pedestal with EPED → run PORTALS core
 prediction → re-solve EPED with the new pressure → re-run PORTALS to
 self-consistency*. Other beat types: `transp_soft`, `transp_final`,
-`portals_soft`, `eped_initializer`, `lengyel`, `sharpness`. Each beat defines
+`portals_soft`, `eped_initializer`, `lengyel`, `sharpness`, **`confinement`
+(sets the temperature BC by minimizing over T_bc until a target H-factor —
+`H98y2` or `H89p` — is matched; sources stay frozen during the scan)**. Each beat defines
 `prepare()`, `run()`, `interpret()`, and merges its output into a frozen
 `profiles_with_engineering_parameters` that the next beat starts from.
 
@@ -468,3 +470,22 @@ committing.
 - **`prep()` snapshots**: PORTALS/MAESTRO snapshot their namelist at `prep()` /
   `define_beat()` time. Edits after that point are silently ignored. If a knob
   needs to change mid-run, it has to be re-read from the on-disk snapshot.
+
+
+---
+
+## 8. Logging of changes
+
+- The github logic in MITIM-fusion is that the "main" branch remains untouched until
+  a new release is ready. Changes occur in "development", with the exception of
+  important bug fixes.
+- Whenever you commit anything to main directly or development, I want you to log
+  the changes in the RELEASE_NOTES.md file that exists in "docs/". That file should
+  follow the same template as common release documents in github: 
+  https://github.com/pabloprf/MITIM-fusion/releases (see also as an example:
+  "docs/RELEASE_NOTES_template.md"). Once a release has happened, you will clear up
+  that RELEASE document and start again.
+- Do not add trivial stuff, only add items to the document that are worth pointing
+  to users and developers. Keep all the changes for a specific capability inside
+  that bullet point as much as possible. For example, if improvements to a MAESTRO
+  beat, do not populate the document with more than one bullet, unless needed.
