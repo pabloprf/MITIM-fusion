@@ -348,7 +348,15 @@ class sharpness_beat(beat):
             fn = GUItools.FigureNotebook("Sharpness")
 
         loaded_results, profiles_after = self.grab_output()
-        profiles_before = PROFILEStools.gacode_state(self.folder / "input.gacode")
+        # "before" profiles = the input this beat received. self.folder/input.gacode is
+        # wiped under keep_all_files: false; fall back to the initializer copy (the same
+        # input.gacode the beat ran on), which survives the cleanup.
+        before_file = self.folder / "input.gacode"
+        if not before_file.exists():
+            cands = sorted(self.folder_beat.glob("initializer_*/input.gacode"))
+            if cands:
+                before_file = cands[0]
+        profiles_before = PROFILEStools.gacode_state(before_file)
         profiles_before.derive_quantities(rederiveGeometry=False)
 
         if loaded_results is not None and profiles_after is not None:
