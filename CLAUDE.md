@@ -489,3 +489,5 @@ committing.
   to users and developers. Keep all the changes for a specific capability inside
   that bullet point as much as possible. For example, if improvements to a MAESTRO
   beat, do not populate the document with more than one bullet, unless needed.
+- Contributors should not be added per item, but at the end of the document. Don't
+  add myself.
