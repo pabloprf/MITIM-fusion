@@ -362,6 +362,7 @@ class sharpness_beat(beat):
         if loaded_results is not None and profiles_after is not None:
             profiles_after.derive_quantities(rederiveGeometry=False)
             _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, counter)
+            _plot_sharpness_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter)
         else:
             # Fallback: nothing to show yet
             fig = fn.add_figure(label="Sharpness", tab_color=counter)
@@ -930,5 +931,80 @@ def _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, co
     fig.suptitle(
         rf"Sharpness beat  |  $\xi={xi:.2f}$,  $\psi_{{n,bc}}={psin_bc_g:.3f}$"
         rf"  ($\rho_N={rho_bc_rho:.3f}$),  $T_{{e,bc}}={Te_bc:.3f}$ keV{xi_note}",
+        fontsize=FS,
+    )
+
+
+def _plot_sharpness_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter):
+    """
+    Full Te, Ti, ne profiles (rows) plotted against each of the three coordinate
+    systems rho_tor, r/a, psi_n (columns), before (blue) and after (red) the
+    sharpness boundary condition. The BC location is marked by a vertical dashed
+    line in whichever coordinate each column uses.
+    """
+
+    FS, FS_tick, FS_leg = 13, 11, 10
+    cb, ca = "royalblue", "crimson"
+    lw = 1.8
+
+    rho_bc_rho = loaded_results["rho_bc_rho"]
+    psin_bc    = loaded_results["psin_bc"]
+
+    # Coordinate arrays for each state (geometry is unchanged by the BC, so before/after
+    # share roa/psin, but read each from its own state to be safe).
+    def _coords(p):
+        return {"rho": p.profiles["rho(-)"],
+                "roa": p.derived["roa"],
+                "psin": p.derived["psi_pol_n"]}
+
+    # Profile values for each state (ne in 10^20 m^-3 to match the other sharpness tab).
+    def _vals(p):
+        return {"Te": p.profiles["te(keV)"],
+                "Ti": p.profiles["ti(keV)"][:, 0],
+                "ne": p.profiles["ne(10^19/m^3)"] * 0.1}
+
+    cb_x, ca_x = _coords(profiles_before), _coords(profiles_after)
+    vb, va     = _vals(profiles_before),   _vals(profiles_after)
+
+    # BC location in each coordinate (rho from results; roa interpolated; psin from results)
+    roa_bc = float(np.interp(rho_bc_rho, ca_x["rho"], ca_x["roa"]))
+    bc_loc = {"rho": rho_bc_rho, "roa": roa_bc, "psin": psin_bc}
+
+    rows = [("Te", r"$T_e$ (keV)"),
+            ("Ti", r"$T_i$ (keV)"),
+            ("ne", r"$n_e$ ($10^{20}$ m$^{-3}$)")]
+    cols = [("rho",  r"$\rho_{tor}$"),
+            ("roa",  r"$r/a$"),
+            ("psin", r"$\psi_n$")]
+
+    fig = fn.add_figure(label="Sharpness - Profiles", tab_color=counter)
+    gs  = fig.add_gridspec(3, 3, hspace=0.4, wspace=0.4)
+
+    col_top_ax = {}   # top axis of each column, so the panels below share its x-axis
+    for ir, (rk, rlab) in enumerate(rows):
+        for ic, (ck, clab) in enumerate(cols):
+            # Link x within a column: zoom/pan on any panel drives the whole column.
+            ax = fig.add_subplot(gs[ir, ic], sharex=col_top_ax.get(ic))
+            if ir == 0:
+                col_top_ax[ic] = ax
+            # markers expose the actual grid points underneath the lines
+            ax.plot(cb_x[ck], vb[rk], '-o', color=cb, lw=lw, ms=4.0, mew=0, label="before")
+            ax.plot(ca_x[ck], va[rk], '-o', color=ca, lw=lw, ms=4.0, mew=0, label="after")
+            ax.axvline(bc_loc[ck], color="k", ls="--", lw=1.0, label="BC")
+            ax.set_ylabel(rlab, fontsize=FS)
+            ax.set_xlim([0, 1])
+            ax.set_ylim(bottom=0)
+            ax.tick_params(labelsize=FS_tick)
+            GRAPHICStools.addDenseAxis(ax)
+            if ir == 0:                       # column header = coordinate of this column
+                ax.set_title(clab, fontsize=FS)
+            if ir == len(rows) - 1:           # x-axis label only on the bottom row
+                ax.set_xlabel(clab, fontsize=FS)
+            if ir == 0 and ic == 0:
+                ax.legend(prop={"size": FS_leg}, loc="best")
+
+    fig.suptitle(
+        rf"Sharpness profiles  |  BC at $\rho_{{tor}}={bc_loc['rho']:.3f}$, "
+        rf"$r/a={bc_loc['roa']:.3f}$, $\psi_n={bc_loc['psin']:.3f}$",
         fontsize=FS,
     )
