@@ -29,6 +29,10 @@ def LHS(samples, bounds, seed=0):
     # Adopt the dtype AND device of `bounds`: the scaling loop below assigns
     # bounds-derived values into lhs slices, which fails for a CPU lhs when
     # bounds live on GPU (and downstream acquisition calls need the model device).
+    # `bounds` may arrive as a numpy array (e.g. boundsInitialization from the
+    # LHS init path) — coerce so `.to()` always receives a tensor; this is a
+    # no-op pass-through (no copy, keeps device/dtype) when it already is one.
+    bounds = torch.as_tensor(bounds)
     lhs = torch.from_numpy(samples_np).to(bounds)
 
     for iDV in range(bounds.shape[-1]):
