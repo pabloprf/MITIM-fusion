@@ -9,7 +9,7 @@ from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pyro import factor
-from scipy.optimize import minimize
+from scipy.optimize import brentq
 from IPython import embed
 
 # --------------------------------------------------------------------------------------------
@@ -880,6 +880,23 @@ class creator:
 # Profile creator from parameterization: Create profiles from a parameterization
 # --------------------------------------------------------------------------------------------
 
+def _match_gradient_to_target(mismatch_fun, bounds, label, xtol=1e-4):
+    '''
+    Solve mismatch_fun(x) = 0 for a signed, monotonic relative mismatch (e.g. BetaN or
+    ne-peaking vs their targets as a function of a single a/L knob) by bracketed root
+    finding. If the target is unreachable within bounds, saturate at the closest bound
+    and warn (Nelder-Mead used to stall silently against the bound here).
+    '''
+    f_lo, f_hi = mismatch_fun(bounds[0]), mismatch_fun(bounds[1])
+
+    if f_lo * f_hi > 0:
+        x = bounds[0] if abs(f_lo) < abs(f_hi) else bounds[1]
+        mismatch = f_lo if x == bounds[0] else f_hi
+        print(f"\t- {label} target unreachable within bounds {bounds}, saturating at {x} (relative mismatch: {mismatch:+.2%})", typeMsg='w')
+        return x
+
+    return brentq(mismatch_fun, bounds[0], bounds[1], xtol=xtol)
+
 class creator_from_parameterization(creator):
     
         def __init__(
@@ -920,9 +937,9 @@ class creator_from_parameterization(creator):
                         
             self.aLTe_to_aLTi_ratio = aLTe_to_aLTi_ratio
 
-        def _return_profile_peaking_residual(self, aLn, x_a, x_top=None):
+        def _return_profile_peaking_mismatch(self, aLn, x_a, x_top=None):
 
-            # returns the residual of the betaN to match the profile to the EPED guess
+            # returns the signed relative mismatch of the ne peaking (monotonic in aLn)
 
             x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
 
@@ -930,12 +947,12 @@ class creator_from_parameterization(creator):
             self.profiles_insert = {'roa': x, 'Te': ne, 'Ti': ne, 'ne': ne}
             super().__call__()
 
-            return ((self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne) ** 2
+            return (self.initialize_instance.profiles_current.derived['ne_peaking0.2'] - self.nu_ne) / self.nu_ne
 
-        def _return_profile_betan_residual(self, aLTi, x_a, aLn, x_top=None):
+        def _return_profile_betan_mismatch(self, aLTi, x_a, aLn, x_top=None):
 
-            # returns the residual of the betaN to match the profile to the EPED guess
-            
+            # returns the signed relative mismatch of the BetaN (monotonic in aLTi)
+
             x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi*self.aLTe_to_aLTi_ratio, x_a = x_a,nx = self.nresol)
             x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ttop_keV, self.Tsep_keV, aLTi, x_a = x_a,nx = self.nresol)
             x, ne = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.netop_20, self.nesep_20, aLn, x_a = x_a,nx = self.nresol)
@@ -944,7 +961,7 @@ class creator_from_parameterization(creator):
             self.profiles_insert = {'roa': x, 'Te': Te, 'Ti': Ti, 'ne': ne}
             super().__call__()
 
-            return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
+            return (self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN
     
         def __call__(self):
 
@@ -957,13 +974,11 @@ class creator_from_parameterization(creator):
                 aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
                 print(f'\n\t - Using aLn = {aLn}')
             else:
-                aLn_guess = 0.2
-                # Find the density gradient that matches the peaking
+                # Find the density gradient that matches the peaking (bracketed root find; monotonic)
                 print(f'\n\t- Optimizing aLn to match ne peaking = {self.nu_ne}')
-                bounds = [(0.0,3.0)]
-                res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
-                aLn = res.x[0]
-                print(f'\n\t- Gradient: aLn = {aLn:.2f}')
+                aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+                self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
+                print(f'\n\t- Gradient: aLn = {aLn:.4f}')
                 print(f'\t- ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
 
             # Find the temperature gradient that matches the BetaN
@@ -971,13 +986,11 @@ class creator_from_parameterization(creator):
                 aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
                 print(f'\n\t- Using aLT = {aLT}')
             else:
-                aLT_guess = 2.0
-                # Find the temperature gradient that matches the BetaN
+                # Find the temperature gradient that matches the BetaN (bracketed root find; monotonic)
                 print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
-                bounds = [(0.5,3.0)]
-                res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
-                aLT = res.x[0]
-                print(f'\n\t- Gradient: aLTi = {aLT:.2f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.2f}')
+                aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+                self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
+                print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
                 print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
             # Create profiles
@@ -1111,7 +1124,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
         self.Te_bc = Te_bc
         self.Ti_bc = Ti_bc if Ti_bc is not None else Te_bc
 
-    def _return_profile_betan_residual(self, aLTi, x_a, aLn, x_top=None):
+    def _return_profile_betan_mismatch(self, aLTi, x_a, aLn, x_top=None):
 
         x, Te = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Te_bc, self.Tsep_keV, aLTi*self.aLTe_to_aLTi_ratio, x_a=x_a, nx=self.nresol)
         x, Ti = FunctionalForms.MITIMfunctional_aLyTanh(x_top, self.Ti_bc, self.Tsep_keV, aLTi, x_a=x_a, nx=self.nresol)
@@ -1120,7 +1133,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
         self.profiles_insert = {'roa': x, 'Te': Te, 'Ti': Ti, 'ne': ne}
         creator.__call__(self)
 
-        return ((self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN) ** 2
+        return (self.initialize_instance.profiles_current.derived['BetaN_engineering'] - self.BetaN) / self.BetaN
 
     def __call__(self):
 
@@ -1173,11 +1186,9 @@ class creator_from_fixed_bc(creator_from_parameterization):
             aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
             print(f'\n\t- Using fixed aLn = {aLn:.4f} (no nu_ne optimization)')
         else:
-            aLn_guess = 0.2
             print(f'\n\t- Optimizing aLn to match nu_ne = {self.nu_ne:.4f}')
-            bounds = [(0.0, 3.0)]
-            res = minimize(self._return_profile_peaking_residual, [aLn_guess], args=(x_a, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
-            aLn = res.x[0]
+            aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+            self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
             print(f'\t  --> aLn = {aLn:.4f}')
             print(f'\t  --> ne peaking achieved: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
 
@@ -1186,11 +1197,9 @@ class creator_from_fixed_bc(creator_from_parameterization):
             aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
             print(f'\n\t- Using fixed aLT = {aLT:.4f} (no BetaN optimization)')
         else:
-            aLT_guess = 2.0
             print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN:.4f} (aLTe/aLTi = {self.aLTe_to_aLTi_ratio:.4f})')
-            bounds = [(0.5, 3.0)]
-            res = minimize(self._return_profile_betan_residual, [aLT_guess], args=(x_a, aLn, x_top), method='Nelder-Mead', tol=1e-3, bounds=bounds)
-            aLT = res.x[0]
+            aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+            self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
             print(f'\t  --> aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
             print(f'\t  --> BetaN achieved: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
 
