@@ -43,14 +43,18 @@ class diffusion_model(TRANSPORTtools.power_transport):
             self.powerstate.plasma["a"].unsqueeze(-1),
         )
 
-        self.QeMWm2_tr_turb = Pe_tr * 2 / 3
-        self.QiMWm2_tr_turb = Pi_tr * 2 / 3
+        # Fluxes must be written into powerstate.plasma (the contract that
+        # calculateMetrics/flux_match read), not as attributes of this object
+        plasma = self.powerstate.plasma
 
-        self.QeMWm2_tr_neoc = Pe_tr * 1 / 3
-        self.QiMWm2_tr_neoc = Pi_tr * 1 / 3
+        plasma["QeMWm2_tr_turb"] = Pe_tr * 2 / 3
+        plasma["QiMWm2_tr_turb"] = Pi_tr * 2 / 3
 
-        self.QeMWm2_tr = self.QeMWm2_tr_turb + self.QeMWm2_tr_neoc
-        self.QiMWm2_tr = self.QiMWm2_tr_turb + self.QiMWm2_tr_neoc
+        plasma["QeMWm2_tr_neoc"] = Pe_tr * 1 / 3
+        plasma["QiMWm2_tr_neoc"] = Pi_tr * 1 / 3
+
+        plasma["QeMWm2_tr"] = plasma["QeMWm2_tr_turb"] + plasma["QeMWm2_tr_neoc"]
+        plasma["QiMWm2_tr"] = plasma["QiMWm2_tr_turb"] + plasma["QiMWm2_tr_neoc"]
 
 # ------------------------------------------------------------------
 # SURROGATE
