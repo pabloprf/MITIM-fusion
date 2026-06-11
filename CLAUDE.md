@@ -42,7 +42,7 @@ src/
     freegsu/               # FreeGS-based equilibrium optimization
 templates/                 # YAML namelists + config_user_example.json
 tests/                     # *_workflow.py regression tests + unit tests
-tutorials/                 # PORTALS_tutorial.py, TGLF_tutorial.py, …
+tutorials/                 # legacy tutorials (being replaced by tests/capability_tests/)
 docs/                      # Sphinx sources for readthedocs
 ```
 
@@ -173,7 +173,7 @@ mitim_run_portals myrun --batch          # non-interactive (CI / SLURM)
 mitim_run_portals myrun --no-log-file    # don't redirect stdout to Outputs/optimization_log.txt
 ```
 
-Programmatic (`tutorials/PORTALS_tutorial.py` is the canonical example):
+Programmatic (`tests/capability_tests/portals_standard.py` is the canonical example):
 
 ```python
 from mitim_modules.portals import PORTALSmain

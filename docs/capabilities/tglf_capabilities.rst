@@ -215,7 +215,7 @@ Run 1D scans of TGLF input parameter
 
 *Under Development*
 
-*(In the meantime, please checkout* `tutorials/TGLF_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/TGLF_tutorial.py>`_ *)*
+*(In the meantime, please checkout the standalone teaching scripts in* `tests/capability_tests/ <https://github.com/pabloprf/MITIM-fusion/tree/main/tests/capability_tests>`_ *)*
 
 
 TGLF aliases

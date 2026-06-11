@@ -27,7 +27,7 @@ Run a standard profile prediction with PORTALS-TGLF
 
 *Under Development*
 
-*(In the meantime, please checkout* `tutorials/PORTALS_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/PORTALS_tutorial.py>`_ *)*
+*(In the meantime, please checkout* `tests/capability_tests/portals_standard.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tests/capability_tests/portals_standard.py>`_ *)*
 
 Run a standard profile prediction with PORTALS-CGYRO
 ----------------------------------------------------

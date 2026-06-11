@@ -50,6 +50,10 @@ portals_fun = PORTALSmain.portals(folderWork)
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 5
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 
+# The run can also stop earlier on residual reduction, e.g. requiring a 100x improvement:
+#   portals_fun.optimization_options["convergence_options"]["stopping_criteria_parameters"]["maximum_value"] = 1e-2
+#   portals_fun.optimization_options["convergence_options"]["stopping_criteria_parameters"]["maximum_value_is_rel"] = True
+
 # --- Solution: what to predict ---------------------------------------------------------------------------------------
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti"]
@@ -108,3 +112,6 @@ mitim_bo.run()
 # All figures go into a multi-tab MITIM FigureNotebook (portals_fun.fn); show() opens the GUI
 portals_fun.plot_optimization_results(analysis_level=2)
 portals_fun.fn.show()
+
+# A run (finished or still going) can also be plotted from the terminal at any time with:
+#   mitim_plot_portals <run-folder>

@@ -3717,7 +3717,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
 
         if analysisType == "chi_e":
             variableLabel = "RLTS_1"
-        elif analysisType == "chi_ei":
+        elif analysisType in ("chi_i", "chi_ei"):
             variableLabel = "RLTS_2"
         elif analysisType == "Z":
             variableLabel = self.variable
