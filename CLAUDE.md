@@ -493,3 +493,6 @@ committing.
   add the github repo main author.
 - Do not add to RELEASE_NOTES at the moment of implementation, add stuff at the moment
   of making the commit.
+- The information in the RELEASE document shouldn't be comprehensive, do not necessarily
+  explain all the logic that led to that capability or bug fix. Except when it is very
+  important, each bullet should not expand more than 5 lines.
