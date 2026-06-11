@@ -1190,7 +1190,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
 
         # SAT parameters tab (only if at least one run has them populated)
         has_sat_params = any(
-            self.results[lbl]["output"][ir].scalar_sat_params
+            getattr(self.results[lbl]["output"][ir], "scalar_sat_params", None)
             for lbl in labels
             for ir in range(len(self.results[lbl]["output"]))
         )
@@ -4733,6 +4733,10 @@ class TGLFoutput(SIMtools.GACODEoutput):
         obj.roa           = inputclass.plasma["RMIN_LOC"] if inputclass is not None else 0.0
         obj.inputFile     = ""
         obj.inputFile_gen = ""
+        obj.tglf_version  = ""
+        # No out.tglf.scalar_saturation_parameters file in-process: keep the
+        # attribute present (empty) so plot()/plotTGLF_SAT() skip gracefully
+        obj.scalar_sat_params = {}
 
         # --- Species accounting (same logic as TGLFoutput.read()) ---
         if inputclass is not None:
@@ -6638,7 +6642,7 @@ class TGLFoutput(SIMtools.GACODEoutput):
         axs must be shape (1, 2). All labels are overlaid on the same axes as colored lines.
         """
 
-        if not self.scalar_sat_params:
+        if not getattr(self, "scalar_sat_params", None):
             return
 
         if axs is None:
