@@ -506,3 +506,5 @@ committing.
   go ahead and create the script (and commit it together with the capability).
 - Make sure that you fix bugs, or change argument definitions, etc, that you modify
   the test accordingly.
+- These files are meant to be verbose, lots of info for users to understand what is 
+  going on.

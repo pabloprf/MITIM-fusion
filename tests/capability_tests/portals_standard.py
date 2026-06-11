@@ -11,10 +11,10 @@ Key teaching points:
        You do NOT need to write your own YAML — just modify those dictionaries
        in-situ before calling prep(). (prep() snapshots the namelist into the
        run folder; edits after prep() are ignored.)
-    2. The TGLF saturation rule and any individual TGLF input parameter are
-       controlled via transport.options.tglf.run (code_settings / extraOptions).
-    3. NEO is the default neoclassical model; its preset is controlled via
-       transport.options.neo.run.code_settings.
+    2. Code settings follow a three-level hierarchy (see the Transport models
+       section below): controls file -> code_settings preset -> extraOptions.
+    3. TGLF (turbulence) and NEO (neoclassical) are the default transport
+       models; each has its own options block under transport.options.
 """
 
 from mitim_tools.opt_tools import STRATEGYtools
@@ -23,11 +23,16 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools
 
+# cold_start=True starts from scratch (here, removing the previous folder); False reuses
+# whatever is already in the folder (completed evaluations are detected and skipped)
 cold_start = True
 
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
+
+# Working folder of the run: everything (inputs, per-iteration model runs, logs, results)
+# is written under it
 folderWork = __mitimroot__ / "tests" / "scratch" / "capability_portals_standard"
 
 if cold_start and folderWork.exists():
@@ -51,34 +56,48 @@ portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti"]
 
 # --- Transport models ------------------------------------------------------------------------------------------------
 # Turbulence and neoclassical backends are selected in
-# transport.evaluator_instance_attributes (defaults: tglf + neo), and each backend has
-# its own options block. `code_settings` selects a preset from
-# templates/input.<code>.models.yaml; `extraOptions` overrides individual input
-# parameters of the code on top of that preset.
+# transport.evaluator_instance_attributes (defaults: tglf + neo).
+#
+# The input file each code receives is built in three levels, each overriding the
+# previous one:
+#   1. Controls file (templates/input.<code>.controls): the full set of default
+#      control parameters for the code.
+#   2. Models file (templates/input.<code>.models.yaml): the preset named by
+#      `code_settings` (e.g. TGLF saturation rules "SAT0"..."SAT3", NEO "Sonic")
+#      overrides the specific controls that define that model.
+#   3. `extraOptions`: a dictionary of individual input parameters, applied last —
+#      the final word on any control, regardless of what the preset says.
 
-# TGLF: choose the saturation rule and force electrostatic fluctuations
+# TGLF: choose the saturation rule (level 2) and force electrostatic fluctuations (level 3)
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT2"
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["extraOptions"] = {
     "USE_BPER": False,
     "USE_BPAR": False,
 }
 
-# NEO: choose the preset ("Sonic" -> ROTATION_MODEL=2, see templates/input.neo.models.yaml)
+# NEO: choose the preset (level 2; "Sonic" -> ROTATION_MODEL=2 on top of templates/input.neo.controls)
+# and increase the pitch-angle resolution on top of it (level 3)
 portals_fun.portals_parameters["transport"]["options"]["neo"]["run"]["code_settings"] = "Sonic"
+portals_fun.portals_parameters["transport"]["options"]["neo"]["run"]["extraOptions"] = {"N_XI": 25}
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 2. Prepare the plasma state and the run
 # ---------------------------------------------------------------------------------------------------------------------
 
+# Load the input.gacode into a plasma-state object and apply standard corrections
+# (recompute total pressure, make fast species thermal, enforce quasineutrality)
 plasma_state = PROFILEStools.gacode_state(inputgacode)
 plasma_state.correct(options={"recalculate_ptot": True, "remove_fast": True, "quasineutrality": True})
 
+# prep() defines the optimization problem (DVs = gradients at predicted_rho, OFs = flux
+# residuals) and snapshots the namelist into the folder — edits after this point are ignored
 portals_fun.prep(plasma_state)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 3. Run the optimization
 # ---------------------------------------------------------------------------------------------------------------------
 
+# MITIM_BO is the generic optimization driver; askQuestions=False avoids interactive prompts
 mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, cold_start=cold_start, askQuestions=False)
 mitim_bo.run()
 
@@ -86,5 +105,6 @@ mitim_bo.run()
 # 4. Plot results (flux-matching evolution, surrogate behavior, profiles)
 # ---------------------------------------------------------------------------------------------------------------------
 
+# All figures go into a multi-tab MITIM FigureNotebook (portals_fun.fn); show() opens the GUI
 portals_fun.plot_optimization_results(analysis_level=2)
 portals_fun.fn.show()
