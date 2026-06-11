@@ -84,7 +84,7 @@ class GKplotting:
         except Exception:
             pass
 
-        if meanstd and z_std>0.0:
+        if meanstd and z_std is not None and z_std > 0.0:
             GRAPHICStools.fillGraph(
                 ax,
                 t[t>object_grab.tmin],
@@ -126,6 +126,11 @@ class GKplotting:
             if np.isfinite(ymax) and np.isfinite(ymin) and ymax > ymin:
                 ax.set_ylim(ymin, ymax)
 
+    def _annotate_unavailable(self, ax, what):
+        ax.text(0.5, 0.5, f"{what}\nnot available in this output", transform=ax.transAxes,
+                ha='center', va='center', fontsize=9, color='gray')
+        ax.set_xticks([]); ax.set_yticks([])
+
     def plot_fluxes(self, axs=None, label="", c="b", lw=1, plotLegend=True, factor=2.5):
 
         if axs is None:
@@ -134,8 +139,8 @@ class GKplotting:
 
             axs = fig.subplot_mosaic(
                 """
-				AB
-                CD
+				ABEG
+                CDFH
 				"""
             )
 
@@ -193,6 +198,71 @@ class GKplotting:
         if plotLegend:
             self._finalize_flux_axis(ax, factor=factor)
 
+        # Ion particle fluxes (total)
+        if "E" in axs:
+            ax = axs["E"]
+            if "Gi" in self.results[label].__dict__:
+                self._plot_trace(ax,label,"Gi",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+                if "Gi_EM" in self.results[label].__dict__:
+                    self._plot_trace(ax,label,"Gi_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+                ax.set_xlabel("$t$ ($a/c_s$)")
+                ax.set_ylabel("$\\Gamma_i$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                if plotLegend:
+                    self._finalize_flux_axis(ax, factor=factor)
+            else:
+                self._annotate_unavailable(ax, "Ion particle flux")
+            ax.set_title('Ion particle fluxes')
+
+        # Ion species particle fluxes
+        if "F" in axs:
+            ax = axs["F"]
+            if "Gi_all" in self.results[label].__dict__:
+                for j, i in enumerate(self.results[label].ions_flags):
+                    self._plot_trace(ax,label,self.results[label].Gi_all[j],c=c,lw=lw,ls=ls[j],label_plot=f"{label}, {self.results[label].all_names[i]}", meanstd=False)
+                ax.set_xlabel("$t$ ($a/c_s$)")
+                ax.set_ylabel("$\\Gamma_i$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                if plotLegend:
+                    self._finalize_flux_axis(ax, factor=factor)
+            else:
+                self._annotate_unavailable(ax, "Per-species particle fluxes")
+            ax.set_title('Ion particle fluxes (separate species)')
+
+        # Momentum flux (all species)
+        if "G" in axs:
+            ax = axs["G"]
+            if "Mt" in self.results[label].__dict__:
+                self._plot_trace(ax,label,"Mt",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, Total")
+                if "Mt_EM" in self.results[label].__dict__:
+                    self._plot_trace(ax,label,"Mt_EM",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, EM ($A_\\parallel$+$A_\\perp$)", meanstd=False)
+                ax.set_xlabel("$t$ ($a/c_s$)")
+                ax.set_ylabel("$\\Pi$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                ax.axhline(0.0, color='k', ls='--', lw=0.5)
+                if plotLegend:
+                    self._finalize_flux_axis(ax, factor=factor)
+            else:
+                self._annotate_unavailable(ax, "Momentum flux")
+            ax.set_title('Momentum flux (all species)')
+
+        # Turbulent energy exchange
+        if "H" in axs:
+            ax = axs["H"]
+            if "Se" in self.results[label].__dict__:
+                self._plot_trace(ax,label,"Se",c=c,lw=lw,ls=ls[0],label_plot=f"{label}, electrons")
+                if "Si" in self.results[label].__dict__:
+                    self._plot_trace(ax,label,"Si",c=c,lw=lw,ls=ls[1],label_plot=f"{label}, ions (sum)", meanstd=False)
+                ax.set_xlabel("$t$ ($a/c_s$)")
+                ax.set_ylabel("$S$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                ax.axhline(0.0, color='k', ls='--', lw=0.5)
+                if plotLegend:
+                    self._finalize_flux_axis(ax, factor=factor)
+            else:
+                self._annotate_unavailable(ax, "Turbulent exchange\n(needs CGYRO output with n_flux=4)")
+            ax.set_title('Turbulent energy exchange')
+
         # horizontal=0.9 (vs the default 0.3) gives each column enough slack for
         # the addLegendApart extrusion on subplots A/C; without this bump the
         # legend text spills across the gutter onto subplots B/D.
@@ -206,11 +276,11 @@ class GKplotting:
 
             axs = fig.subplot_mosaic(
                 """
-                AC
-                BD
+                ACE
+                BDF
                 """
             )
-            
+
         ls = GRAPHICStools.listLS()
 
         # Electron energy flux
@@ -259,12 +329,44 @@ class GKplotting:
         for j, i in enumerate(self.results[label].ions_flags):
             ax.plot(self.results[label].ky, self.results[label].Qi_all_ky_mean[j],ls[j]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[i]}")
 
-        ax.set_xlabel("$t$ ($a/c_s$)"); #ax.set_xlim(left=0.0)
+        ax.set_xlabel("$k_{\\theta} \\rho_s$")
         ax.set_ylabel("$Q_i$ (GB)")
         GRAPHICStools.addDenseAxis(ax)
         ax.set_title('Ion energy fluxes vs. $k_\\theta\\rho_s$(separate species)')
         if plotLegend:
             ax.legend(loc='best', prop={'size': 8},)
+
+        # Ion species particle fluxes
+        if "E" in axs:
+            ax = axs["E"]
+            if "Gi_all_ky_mean" in self.results[label].__dict__:
+                for j, i in enumerate(self.results[label].ions_flags):
+                    ax.plot(self.results[label].ky, self.results[label].Gi_all_ky_mean[j],ls[j]+'o', markersize=5, color=c, label=f"{label}, {self.results[label].all_names[i]}")
+                ax.set_xlabel("$k_{\\theta} \\rho_s$")
+                ax.set_ylabel("$\\Gamma_i$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                ax.axhline(0.0, color='k', ls='--', lw=1)
+                if plotLegend:
+                    ax.legend(loc='best', prop={'size': 8},)
+            else:
+                self._annotate_unavailable(ax, "Per-species particle fluxes")
+            ax.set_title('Ion particle fluxes vs. $k_\\theta\\rho_s$ (separate species)')
+
+        # Momentum flux
+        if "F" in axs:
+            ax = axs["F"]
+            if "Mt_ky_mean" in self.results[label].__dict__:
+                ax.plot(self.results[label].ky, self.results[label].Mt_ky_mean, '-o', markersize=5, color=c, label=label+' (mean)')
+                ax.fill_between(self.results[label].ky, self.results[label].Mt_ky_mean-self.results[label].Mt_ky_std, self.results[label].Mt_ky_mean+self.results[label].Mt_ky_std, color=c, alpha=0.2)
+                ax.set_xlabel("$k_{\\theta} \\rho_s$")
+                ax.set_ylabel("$\\Pi$ (GB)")
+                GRAPHICStools.addDenseAxis(ax)
+                ax.axhline(0.0, color='k', ls='--', lw=1)
+                if plotLegend:
+                    ax.legend(loc='best', prop={'size': 8},)
+            else:
+                self._annotate_unavailable(ax, "Momentum flux")
+            ax.set_title('Momentum flux vs. $k_\\theta\\rho_s$')
 
         GRAPHICStools.adjust_subplots(axs=axs, vertical=0.3, horizontal=0.3)
         

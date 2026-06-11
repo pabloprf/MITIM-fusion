@@ -1184,16 +1184,34 @@ class gyrokinetic_model:
             self.QiGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Qi_std for i in range(len(rho_locations))])
                     
             self.GeGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Ge_mean for i in range(len(rho_locations))])
-            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Ge_std for i in range(len(rho_locations))]) 
-            
-            self.GZGB_turb = self.QeGB_turb*0.0 #TODO     
-            self.GZGB_turb_stds = self.QeGB_turb*0.0 #TODO          
+            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Ge_std for i in range(len(rho_locations))])
 
-            self.MtGB_turb = self.QeGB_turb*0.0 #TODO     
-            self.MtGB_turb_stds = self.QeGB_turb*0.0 #TODO     
+            outputs = gk_object.results[subfolder_name]['output']
 
-            self.QieGB_turb = self.QeGB_turb*0.0 #TODO     
-            self.QieGB_turb_stds = self.QeGB_turb*0.0 #TODO     
+            # GZ: particle flux of the PORTALS trace impurity. MITIM writes input.cgyro
+            # species in input.gacode ion order (electrons last), so the powerstate's
+            # turbulence-side impurity position indexes Gi_all directly.
+            imp_pos = self._impurity_position_transport_for("turb")
+            self.GZGB_turb = np.array([outputs[i].Gi_all_mean[imp_pos] for i in range(len(rho_locations))])
+            self.GZGB_turb_stds = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(len(rho_locations))])
+
+            # Mt: momentum flux summed over all species (same convention as TGLF's
+            # Mt = Me + sum(Mi)). No sign flip: CGYRO's native sign is the physical
+            # GACODE convention (it receives MACH/GAMMA_E/GAMMA_P unflipped, like NEO);
+            # TGLF's -SIGN_IT flip only undoes its parity-mapped rotation inputs
+            # (tgyro_tglf_map.f90:197-199 / tgyro_flux.f90:199,208).
+            self.MtGB_turb = np.array([outputs[i].Mt_mean for i in range(len(rho_locations))])
+            self.MtGB_turb_stds = np.array([outputs[i].Mt_std for i in range(len(rho_locations))])
+
+            # Qie: electron turbulent energy exchange (the quantity TGLF passes as Se).
+            # Older CGYRO outputs carry no exchange moment (n_flux=3) -> zero + warning.
+            if hasattr(outputs[0], 'Se_mean'):
+                self.QieGB_turb = np.array([outputs[i].Se_mean for i in range(len(rho_locations))])
+                self.QieGB_turb_stds = np.array([outputs[i].Se_std for i in range(len(rho_locations))])
+            else:
+                print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
+                self.QieGB_turb = self.QeGB_turb*0.0
+                self.QieGB_turb_stds = self.QeGB_turb*0.0
 
         elif run_type == 'prep':
             
@@ -1651,13 +1669,19 @@ class cgyro_model(gyrokinetic_model):
             Ge_batch[p, :]     = np.array([outputs[i].Ge_mean for i in range(nrho)])
             Ge_std_batch[p, :] = np.array([outputs[i].Ge_std for i in range(nrho)])
 
-            # GZ, Mt, Qie not yet available from CGYRO — zero as in single-plasma path
-            GZ_batch[p, :]     = 0.0  # TODO
-            GZ_std_batch[p, :] = 0.0  # TODO
-            Mt_batch[p, :]     = 0.0  # TODO
-            Mt_std_batch[p, :] = 0.0  # TODO
-            S_batch[p, :]      = 0.0  # TODO
-            S_std_batch[p, :]  = 0.0  # TODO
+            # GZ / Mt / Qie: same extraction and conventions as the single-plasma path
+            imp_pos = self._impurity_position_transport_for("turb")
+            GZ_batch[p, :]     = np.array([outputs[i].Gi_all_mean[imp_pos] for i in range(nrho)])
+            GZ_std_batch[p, :] = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(nrho)])
+            Mt_batch[p, :]     = np.array([outputs[i].Mt_mean for i in range(nrho)])
+            Mt_std_batch[p, :] = np.array([outputs[i].Mt_std for i in range(nrho)])
+            if hasattr(outputs[0], 'Se_mean'):
+                S_batch[p, :]      = np.array([outputs[i].Se_mean for i in range(nrho)])
+                S_std_batch[p, :]  = np.array([outputs[i].Se_std for i in range(nrho)])
+            else:
+                print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
+                S_batch[p, :]      = 0.0
+                S_std_batch[p, :]  = 0.0
 
         # Optional remote scratch cleanup on the submit path — see the
         # single-plasma branch for the rationale. Same try/except shape so
