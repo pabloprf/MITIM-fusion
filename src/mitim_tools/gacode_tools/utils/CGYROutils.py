@@ -190,7 +190,13 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.folder = Path(self.folder)
 
         self.cgyrodata = self.read_using_cgyroplot(self.folder, suffix)
-            
+
+        # --------------------------------------------------------------
+        # Read timing information (out.cgyro.timing)
+        # --------------------------------------------------------------
+
+        self._read_timing(suffix)
+
         # --------------------------------------------------------------
         # Read inputs
         # --------------------------------------------------------------
@@ -338,6 +344,70 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._saturate_signals()
         
         self.remove_symlinks()
+
+    def _read_timing(self, suffix=None):
+        """
+        Parse out.cgyro.timing (wall-clock seconds spent in each code section):
+        a 'Setup time' block with one row of initialization timings, and a
+        'Run time' table with one row per data output (last column = TOTAL).
+        Stores (attributes absent if the file is missing or malformed):
+            self.timing_setup : dict {section: seconds} of the setup block
+            self.timing_names : run-phase section names (TOTAL excluded)
+            self.timing       : (n_outputs, n_sections) seconds per output
+            self.timing_total : (n_outputs,) TOTAL column
+        """
+        candidates = ([self.folder / f"out.cgyro.timing{suffix}"] if suffix else []) + [self.folder / "out.cgyro.timing"]
+        file = next((f for f in candidates if f.exists()), None)
+        if file is None:
+            print("\t- No out.cgyro.timing found; timing information will not be available", typeMsg="i")
+            return
+
+        lines = file.read_text().splitlines()
+        setup_names, setup_vals, run_names, run_rows = [], [], [], []
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith("Setup time") and i + 2 < len(lines):
+                setup_names = lines[i + 1].split()
+                try:
+                    setup_vals = [float(v) for v in lines[i + 2].split()]
+                except ValueError:
+                    setup_vals = []
+                i += 3
+                continue
+            if line.startswith("Run time") and i + 1 < len(lines):
+                run_names = lines[i + 1].split()
+                i += 2
+                # Consume the numeric rows of the table; stop at anything else
+                # (a truncated last row from a killed run is simply dropped)
+                while i < len(lines):
+                    parts = lines[i].split()
+                    if len(parts) != len(run_names):
+                        break
+                    try:
+                        run_rows.append([float(v) for v in parts])
+                    except ValueError:
+                        break
+                    i += 1
+                continue
+            i += 1
+
+        if not run_rows:
+            print(f"\t- Could not parse run-time table from {file}; timing information will not be available", typeMsg="w")
+            return
+
+        data = np.array(run_rows)
+        if run_names[-1].upper() == "TOTAL":
+            self.timing_total = data[:, -1]
+            self.timing = data[:, :-1]
+            self.timing_names = run_names[:-1]
+        else:
+            self.timing_total = data.sum(axis=1)
+            self.timing = data
+            self.timing_names = run_names
+
+        if setup_names and len(setup_vals) == len(setup_names):
+            self.timing_setup = dict(zip(setup_names, setup_vals))
 
     def read_using_cgyroplot(self, folder, suffix):
 

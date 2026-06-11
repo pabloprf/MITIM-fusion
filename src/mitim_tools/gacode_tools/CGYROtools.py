@@ -1328,6 +1328,14 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 
                 axs2D.append(fig.subplot_mosaic(mosaic))
         
+        fig = self.fn.add_figure(label="Timing")
+        axsTiming = fig.subplot_mosaic(
+            """
+            AC
+            BC
+            """
+        )
+
         fig = self.fn.add_figure(label="Inputs")
         axsInputs = fig.subplot_mosaic(
             """
@@ -1409,6 +1417,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
                 colorbars_all.append(colorbars)
 
+            _safe_plot(self.plot_timing,
+                axs=axsTiming,
+                label=labels[j],
+                c=colors[j],
+            )
+
             _safe_plot(self.plot_inputs,
                 ax=axsInputs["A"],
                 label=labels[j],
@@ -1460,8 +1474,75 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Back to the original labels before _correct_rhos_labels
         self.results = self.results_all
 
+    def plot_timing(self, axs=None, label="", c="b"):
+        """
+        Characterize the computational cost of the run from out.cgyro.timing
+        (wall-clock seconds spent in each code section, one row per data output):
+            A: wall time per data output (TOTAL column)
+            B: cumulative wall time (setup time included as offset)
+            C: share of the total run time spent in each code section
+        """
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(15, 8))
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BC
+                """
+            )
+
+        data = self.results[label]
+        if "timing" not in data.__dict__:
+            print(f"\t- No timing information for {label}; skipping timing plot", typeMsg="w")
+            return
+
+        steps = np.arange(1, len(data.timing_total) + 1)
+        setup_time = sum(getattr(data, "timing_setup", {}).values())
+        total_time = setup_time + data.timing_total.sum()
+
+        # A: cost of each data output
+        ax = axs["A"]
+        ax.plot(steps, data.timing_total, "-o", c=c, lw=1.0, markersize=3, label=label)
+        ax.axhline(data.timing_total.mean(), c=c, ls="--", lw=0.5)
+        ax.set_xlabel("Data output #")
+        ax.set_ylabel("Wall time per output (s)")
+        ax.set_title("Cost per data output (dashed: mean)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
+        # B: cumulative cost
+        ax = axs["B"]
+        ax.plot(
+            steps,
+            (setup_time + np.cumsum(data.timing_total)) / 60.0,
+            "-o", c=c, lw=1.0, markersize=3,
+            label=f"{label} (setup {setup_time:.1f}s, total {total_time/60.0:.1f}min)",
+        )
+        ax.set_xlabel("Data output #")
+        ax.set_ylabel("Cumulative wall time (min)")
+        ax.set_title("Cumulative cost (setup included)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
+        # C: where the time goes, by code section
+        ax = axs["C"]
+        share = 100.0 * data.timing.sum(axis=0) / data.timing.sum()
+        y = np.arange(len(data.timing_names))
+        ax.plot(share, y, "o", c=c, markersize=8, label=label)
+        ax.set_yticks(y)
+        ax.set_yticklabels(data.timing_names)
+        ax.invert_yaxis()
+        ax.set_xlabel("Share of run time (%)")
+        ax.set_title("Time per code section")
+        ax.set_xlim(left=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
-        
+
         if ax is None:
             plt.ion()
             fig, ax = plt.subplots(1, 1, figsize=(18, 9))
