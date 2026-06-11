@@ -41,7 +41,7 @@ src/
     vitals/                # VITALS validation workflow
     freegsu/               # FreeGS-based equilibrium optimization
 templates/                 # YAML namelists + config_user_example.json
-tests/                     # *_workflow.py regression tests + unit tests
+tests/                     # unit tests + capability_tests/ teaching scripts
 tests/capability_tests/    # standalone teaching scripts (see §9; replaced tutorials/)
 docs/                      # Sphinx sources for readthedocs
 ```
@@ -431,21 +431,19 @@ e.g. `FARMINGtools.retrieve()`).
 
 ## 6. Tests as documented entry points
 
-`tests/*_workflow.py` are runnable end-to-end smoke tests that double as
-copy-paste templates:
+The legacy `tests/*_workflow.py` smoke tests have ALL been replaced by the
+standalone teaching scripts in `tests/capability_tests/` (see §9): verbose,
+runnable, end-to-end examples covering every wrapped code and workflow
+(PORTALS, MAESTRO, TGLF, NEO, CGYRO, GX, TGYRO, TRANSP, EPED, FreeGS, VGEN,
+Lengyel, VITALS, powertorch, the generic BO engine, in-process execution and
+SLURM submission). They double as smoke tests.
 
-- `MAESTRO_workflow.py` — minimal MAESTRO chain.
-- `GX_workflow.py`, `LENGYEL_workflow.py`, `TGYRO_workflow.py` — per-code
-  smoke tests.
-- Workflows fully reproduced by a teaching script have been removed in favor of
-  `tests/capability_tests/` (so far: OPT, PORTALS, TGLF, TGLF 1D/2D scans,
-  TGLF-from-TRANSP-CDF, NEO, NEO-VGEN, CGYRO, EPED, FREEGS, POWERTORCH,
-  TRANSP, VITALS).
-- `test_cgyro_auto_resubmit.py` — unit tests for the CGYRO stall/resubmit logic.
+Unit tests:
+- `test_cgyro_auto_resubmit.py` — CGYRO stall/resubmit logic.
 - `test_*_inprocess.py` — ctypes-backed in-process TGLF/NEO.
 
 If you change something that touches PORTALS, MAESTRO, or a transport
-interface, run the relevant `tests/*_workflow.py` (or at minimum
+interface, run the relevant `tests/capability_tests/` script (or at minimum
 `tests/test_*_inprocess.py` and `tests/test_cgyro_auto_resubmit.py`) before
 committing.
 

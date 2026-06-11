@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-	python3 MITIM-fusion/tests/TGYRO_workflow.py
+	python3 MITIM-fusion/tests/capability_tests/tgyro_run_from_inputgacode.py
 
 .. contents:: Contents
     :local:
