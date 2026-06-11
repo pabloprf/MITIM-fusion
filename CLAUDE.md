@@ -496,3 +496,13 @@ committing.
 - The information in the RELEASE document shouldn't be comprehensive, do not necessarily
   explain all the logic that led to that capability or bug fix. Except when it is very
   important, each bullet should not expand more than 5 lines.
+
+
+## 9. Teaching
+
+- In "MITIM-fusion/tests/capability_tests/", individual standalone scripts provide
+  "tutorial-like" capabilities to teach users how to use the code base.
+- When a new capability is added and you deem it worth it of adding it to the tests,
+  go ahead and create the script (and commit it together with the capability).
+- Make sure that you fix bugs, or change argument definitions, etc, that you modify
+  the test accordingly.

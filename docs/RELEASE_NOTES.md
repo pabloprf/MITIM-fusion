@@ -6,6 +6,8 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
+*   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: tutorial-like, runnable examples of MITIM capabilities, kept up to date as capabilities are added or APIs change. First entries: `portals_standard.py` (PORTALS with TGLF+NEO, in-situ namelist modification), `tglf_run.py` (standalone TGLF, `code_settings` presets vs `extraOptions`), and `tglf_scan.py` (TGLF parameter scans). Expected to eventually replace the `tutorials/` folder.
+
 
 ### Bug Fixes
 
