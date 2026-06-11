@@ -6,6 +6,8 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
+*   ⏱️ **New "Timing" tab in the CGYRO plot notebook**, characterizing the computational cost of the run from `out.cgyro.timing`: wall time per data output, cumulative wall time (setup included), and the share of run time spent in each code section (nl, str, field, shear, coll, io, ...).
+
 
 ### Bug Fixes
 
