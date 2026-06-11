@@ -6,19 +6,24 @@ from a plasma state (input.gacode). CGYRO runs on the machine configured for
 it in config_user.json (possibly remote, via SLURM).
 
 Key teaching points:
-    1. The same three-level settings hierarchy as TGLF/NEO applies: controls
-       file (templates/input.cgyro.controls, full defaults) -> `code_settings`
-       preset (templates/input.cgyro.models.yaml) -> `extraOptions` (individual
-       parameters, the final word).
+    1. Unlike TGLF/NEO (three levels), the CGYRO settings hierarchy has FOUR
+       levels: controls file (templates/input.cgyro.controls, full defaults)
+       -> `code_settings` preset (templates/input.cgyro.models.yaml) ->
+       `extraOptions` (individual parameters) -> `preprocess_options` (ky_min,
+       L_x, N_radial, min_box_size). The fourth level computes the
+       perpendicular grid (KY, BOX_SIZE, N_RADIAL) per radius from the local
+       equilibrium and, for those grid keys, it has the final word — it
+       overrides even extraOptions (a warning is printed if they conflict).
     2. The nonlinear presets form a fidelity ladder via `base:` inheritance in
        the models file: "Nonlinear_high" -> "Nonlinear_reduced1/2/3" ->
        "Nonlinear_silly", each lowering resolutions and physics fidelity
        (collisions, rotation) on top of its parent. Here we use
        "Nonlinear_silly", the cheapest one, meant only for testing workflows —
-       NOT for physics production.
-    3. Presets also carry `preprocess_options` (ky_min, L_x, N_radial, ...)
-       from which MITIM automatically builds a consistent BOX_SIZE/N_RADIAL
-       perpendicular grid at each radius.
+       NOT for physics production. Presets also carry their own default
+       `preprocess_options`, which user-supplied values override per-key.
+    3. The last section shows how to set preprocess_options explicitly and
+       inspect the generated inputs with run_type='prep' (write the input
+       files only, no submission) before committing to an expensive run.
 """
 
 from mitim_tools.gacode_tools import CGYROtools
@@ -78,7 +83,34 @@ cgyro.run(
 cgyro.read(label="nonlinear_silly")
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 3. Plot (flux time traces, spectra, 2D fluctuations)
+# 3. Automatic perpendicular-grid setup via preprocess_options (no submission)
+# ---------------------------------------------------------------------------------------------------------------------
+
+cgyro.run(
+    "nonlinear_preprocessed",
+    code_settings="Nonlinear_silly",
+    extraOptions={"MAX_TIME": 10.0},
+    # The fourth level of the CGYRO hierarchy (see docstring): from these, MITIM computes
+    # a consistent KY/BOX_SIZE/N_RADIAL perpendicular grid at each radius from the local
+    # equilibrium, overriding the preset defaults (and extraOptions, for those grid keys)
+    preprocess_options={
+        "ky_min": 0.3,  # minimum (box) binormal wavenumber
+        "L_x": 90,      # radial box size (rho_s units)
+        "N_radial": 256,
+    },
+    allocation={"resources_per_call": 8, "minutes": 10},
+    cold_start=cold_start,
+    forceIfcold_start=True,
+    # 'prep' only writes the input files: inspect them before an expensive submission
+    run_type="prep",
+)
+
+# The generated files (input.cgyro_<rho>) can now be inspected in the run folder: the
+# BOX_SIZE and N_RADIAL written in them were computed by MITIM from the local equilibrium
+# to form a consistent perpendicular grid for the requested ky_min/L_x/N_radial
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 4. Plot (flux time traces, spectra, 2D fluctuations)
 # ---------------------------------------------------------------------------------------------------------------------
 
 # All figures go into a multi-tab MITIM FigureNotebook (cgyro.fn); show() opens the GUI

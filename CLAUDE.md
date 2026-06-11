@@ -432,13 +432,13 @@ e.g. `FARMINGtools.retrieve()`).
 `tests/*_workflow.py` are runnable end-to-end smoke tests that double as
 copy-paste templates:
 
-- `PORTALS_workflow.py` — minimal PORTALS-TGLF run.
 - `MAESTRO_workflow.py` — minimal MAESTRO chain.
-- `CGYRO_workflow.py`, `GX_workflow.py`, `EPED_workflow.py`,
-  `FREEGS_workflow.py`, `LENGYEL_workflow.py`, `TGYRO_workflow.py`,
-  `TRANSP_workflow.py`, `VITALS_workflow.py` — per-code smoke tests.
+- `GX_workflow.py`, `EPED_workflow.py`, `FREEGS_workflow.py`,
+  `LENGYEL_workflow.py`, `TGYRO_workflow.py`, `TRANSP_workflow.py`,
+  `VITALS_workflow.py` — per-code smoke tests.
 - Workflows fully reproduced by a teaching script have been removed in favor of
-  `tests/capability_tests/` (so far: OPT, TGLF, TGLF scans, NEO, NEO-VGEN).
+  `tests/capability_tests/` (so far: OPT, PORTALS, TGLF, TGLF scans, NEO,
+  NEO-VGEN, CGYRO).
 - `test_cgyro_auto_resubmit.py` — unit tests for the CGYRO stall/resubmit logic.
 - `test_*_inprocess.py` — ctypes-backed in-process TGLF/NEO.
 

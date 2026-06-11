@@ -1,25 +1,25 @@
 """
-CAPABILITY: Linear CGYRO run from an input.gacode
--------------------------------------------------
-This script teaches how to run a (cheap) linear CGYRO simulation starting from
-a plasma state (input.gacode). CGYRO runs on the machine configured for it in
-config_user.json (possibly remote, via SLURM).
+CAPABILITY: CGYRO via submit / check / fetch (detached runs)
+------------------------------------------------------------
+This script teaches how to submit a CGYRO run without blocking on it: the
+run() call returns right after the SLURM submission, and the results are
+checked and retrieved later. This is the natural pattern for expensive runs
+(hours/days of wall-clock), where you do not want a python process waiting
+on the cluster queue.
 
 Key teaching points:
-    1. CGYRO(rhos=[...]) + prep(input.gacode, ...) generates one input.cgyro
-       per requested radius, same pattern as TGLF/NEO.
-    2. The "Linear" preset (templates/input.cgyro.models.yaml) sets
-       NONLINEAR_FLAG=0 with a single toroidal mode; `extraOptions` selects the
-       binormal wavenumber KY of that mode and, here, a very short MAX_TIME to
-       keep the run cheap.
-    3. `allocation` controls the resources of each CGYRO instance (one per
-       radius). run_type='normal' submits and waits; for long runs, use
-       run_type='submit' and come back later with cgyro.check() + cgyro.fetch().
+    1. run_type='submit' stages the inputs, submits the SLURM job(s) and
+       returns immediately (contrast with run_type='normal', which waits, and
+       run_type='prep', which only writes the input files). Anything can be
+       done between submission and retrieval — including other submissions.
+    2. check(every_n_minutes=N) polls the queue every N minutes until the job
+       leaves it (it also walks the CGYRO output files to report progress).
+    3. fetch() retrieves the output files from the run machine and organizes
+       them in the working folder; after that, read() and plot() work exactly
+       as in a blocking run (see cgyro_linear_run_from_inputgacode.py).
     4. Note that CGYRO has a FOURTH settings level on top of the usual
-       controls -> code_settings -> extraOptions hierarchy: `preprocess_options`,
-       which builds the perpendicular grid from the local equilibrium (not
-       needed for a single linear mode; see
-       cgyro_nonlinear_run_from_inputgacode.py).
+       controls -> code_settings -> extraOptions hierarchy: `preprocess_options`
+       (see cgyro_nonlinear_run_from_inputgacode.py).
 """
 
 from mitim_tools.gacode_tools import CGYROtools
@@ -33,7 +33,7 @@ cold_start = True
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 # Working folder of the run: prepared inputs, remote job files and outputs live in it
-folder = __mitimroot__ / "tests" / "scratch" / "capability_cgyro_linear"
+folder = __mitimroot__ / "tests" / "scratch" / "capability_cgyro_submit"
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if cold_start and folder.exists():
@@ -50,36 +50,50 @@ cgyro = CGYROtools.CGYRO(rhos=[0.5])
 cgyro.prep(input_gacode, folder)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 2. Run a single linear mode
+# 2. Submit a cheap linear run and return immediately
 # ---------------------------------------------------------------------------------------------------------------------
 
 cgyro.run(
     # Name of the subfolder (inside the working folder) where this run lives
-    "linear_ky05",
+    "linear_submitted",
     # Preset from templates/input.cgyro.models.yaml (level 2 of the hierarchy):
     # "Linear" sets NONLINEAR_FLAG=0 and a single toroidal mode (N_TOROIDAL=1)
     code_settings="Linear",
     # Individual input.cgyro parameters, applied on top of the preset (level 3)
     extraOptions={
         "KY": 0.5,        # binormal wavenumber (ky*rho_s) of the linear mode
-        "MAX_TIME": 30.0, # very short, just for demonstration (real linear runs need convergence of the eigenvalue)
+        "MAX_TIME": 30.0, # very short, just for demonstration
     },
     # Resources of each CGYRO instance (one per radius): cores or GPUs per call, and SLURM time limit
     allocation={"resources_per_call": 8, "minutes": 10},
     cold_start=cold_start,
     # With cold_start=True, remove previous results without asking for confirmation interactively
     forceIfcold_start=True,
-    # 'normal' submits and waits for completion; 'submit' returns immediately
-    # (come back later with cgyro.check() and cgyro.fetch()); 'prep' only writes the input files
-    run_type="normal",
+    # The point of this capability: submit and DO NOT wait
+    run_type="submit",
 )
-# read() parses the out.cgyro.* output files and stores the results in the object under the label
-cgyro.read(label="linear_ky05")
+
+# ... the job is now in the queue; this script could do other work here,
+# e.g. submit more runs to other folders ...
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 3. Plot (eigenvalue convergence, fluctuation structure)
+# 3. Wait for completion, retrieve the outputs and read them
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Poll the queue every minute until the job leaves it
+cgyro.check(every_n_minutes=1)
+
+# Retrieve the output files from the run machine and organize them in the working folder
+cgyro.fetch()
+
+# From here on, everything is identical to a blocking run
+# (read() parses the out.cgyro.* output files and stores the results under the label)
+cgyro.read(label="linear_submitted")
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 4. Plot
 # ---------------------------------------------------------------------------------------------------------------------
 
 # All figures go into a multi-tab MITIM FigureNotebook (cgyro.fn); show() opens the GUI
-cgyro.plot(labels=["linear_ky05"])
+cgyro.plot(labels=["linear_submitted"])
 cgyro.fn.show()

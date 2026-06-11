@@ -7,7 +7,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 MITIM-fusion/tests/PORTALS_workflow.py
+   python3 MITIM-fusion/tests/capability_tests/portals_standard.py
 
 .. warning::
 
