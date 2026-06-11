@@ -6,7 +6,7 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
-*   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: verbose, tutorial-like, runnable examples of MITIM capabilities, kept up to date as capabilities are added or APIs change. First entries cover PORTALS (TGLF+NEO with in-situ namelist modification), standalone TGLF runs (from input.tglf or input.gacode), TGLF scans, turbulence-drives scans, incremental-diffusivity analysis, eigenfunction waveforms, reloading results from .npz, NEO runs, the neoclassical E×B from VGEN, and cheap linear/nonlinear CGYRO runs. The outdated `tutorials/TGLF_tutorial.py` and `tutorials/PORTALS_tutorial.py` have been removed, replaced by these scripts.
+*   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: verbose, tutorial-like, runnable examples of MITIM capabilities, kept up to date as capabilities are added or APIs change. First entries cover PORTALS (TGLF+NEO with in-situ namelist modification), standalone TGLF runs (from input.tglf or input.gacode), TGLF scans, turbulence-drives scans, incremental-diffusivity analysis, eigenfunction waveforms, reloading results from .npz, NEO runs, the neoclassical E×B from VGEN, cheap linear/nonlinear CGYRO runs, a linear-spectrum CGYRO-vs-GX comparison, and SLURM job submission (`run_slurm` launching `mitim_run_portals`). The outdated `tutorials/TGLF_tutorial.py`, `tutorials/PORTALS_tutorial.py` and `tutorials/linear_gk_tutorial.py` have been removed, replaced by these scripts.
 
 
 ### Bug Fixes
