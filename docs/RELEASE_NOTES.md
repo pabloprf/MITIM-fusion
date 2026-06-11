@@ -1,6 +1,6 @@
-# vX.Y.Z — TITLE
+# v5.1.0 — MAESTRO confinement beat, GKNN surrogate, full CGYRO transport channels, and boundary-gradient fixes
 
-DESCRIPTION
+This release introduces the MAESTRO `confinement` beat (matching a target H-factor through the temperature boundary condition), the `gknn` neural-network turbulence surrogate for PORTALS, complete CGYRO transport channels (momentum, exchange, ion particle fluxes) with PORTALS-CGYRO support for them, and a set of important fixes to the gradients that PORTALS receives at its boundary-condition location, the TGLF flux-uncertainty model, and the trace-impurity D/V analysis.
 
 ### New Features
 
