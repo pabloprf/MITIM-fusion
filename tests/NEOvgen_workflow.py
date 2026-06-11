@@ -1,6 +1,7 @@
 import os
 from mitim_tools.gacode_tools import NEOtools, PROFILEStools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -10,7 +11,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "neovgen_test"
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 # Load the plasma state
 plasma_state = PROFILEStools.gacode_state(input_gacode)

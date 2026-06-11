@@ -1,6 +1,7 @@
 import os
 from mitim_tools.gacode_tools import TGYROtools, PROFILEStools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 """
 Regression test to run and plot TGYRO results from am example input.gacode file
@@ -16,7 +17,7 @@ gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "tgyro_test"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 profiles = PROFILEStools.gacode_state(gacode_file)
 tgyro = TGYROtools.TGYRO()

@@ -32,8 +32,8 @@ For this reason, this workflow assumes that a folder exists with all the plasma 
 
 	folder_original = Path("MITIM-fusion/tests/data/FolderTRANSP/")
 	folder 			= Path("MITIM-fusion/tests/scratch/transp_tut/")
-	os.system(f"rm -r {folder}")
-	os.system(f"cp -r {folder_original} {folder}")
+	shutil.rmtree(folder)
+	shutil.copytree(folder_original, folder, dirs_exist_ok=True)
 
 First, one would initialize the TRANSP class with the given folder and the tokamak name:
 

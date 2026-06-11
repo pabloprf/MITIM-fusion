@@ -4,6 +4,7 @@ from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.vitals import VITALSmain
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -15,7 +16,7 @@ inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 folderWork = __mitimroot__ / "tests" / "scratch" / "vitals_test"
 
 if cold_start and os.path.exists(folderWork):
-    os.system(f"rm -r {folderWork}")
+    IOtools.shutil_rmtree(folderWork)
 
 rho = 0.5
 code_settings = 2

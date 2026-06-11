@@ -1,6 +1,7 @@
 import os
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -11,7 +12,7 @@ input_tglf = __mitimroot__ / "tests" / "data" / "input.tglf"
 npz_file   = folder / "tglf_results.npz"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 tglf = TGLFtools.TGLF()
 tglf.prep_from_file(folder, input_tglf)

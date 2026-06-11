@@ -4,6 +4,7 @@ from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSoptimization, PORTALSanalysis
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -14,7 +15,7 @@ inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 folderWork = __mitimroot__ / "tests" / "scratch" / "portals_test"
 
 if cold_start and folderWork.exists():
-    os.system(f"rm -r {folderWork.resolve()}")
+    IOtools.shutil_rmtree(folderWork)
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Optimization Class

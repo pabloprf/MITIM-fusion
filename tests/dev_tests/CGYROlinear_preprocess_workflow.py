@@ -1,6 +1,6 @@
 import os
 from mitim_tools.gacode_tools import CGYROtools
-from mitim_tools.misc_tools import GUItools
+from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools import __mitimroot__
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "cgyro_linear_preprocess_test"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder}")
+    IOtools.shutil_rmtree(folder)
 
 folder.mkdir(parents=True, exist_ok=True)
 

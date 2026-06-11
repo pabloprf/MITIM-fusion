@@ -13,8 +13,10 @@ In engaging, with 32 cores, should take ~1h20min
 """
 
 import os
+import shutil
 from mitim_tools.transp_tools import TRANSPtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -34,13 +36,13 @@ folderInput = __mitimroot__ / "tests" / "data" / "FolderTRANSP"
 folder = __mitimroot__ / "tests" / "scratch" / "transp_test"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 runid = 'Z99'
 
 # ---- Prepare NML and UFILES
-os.system(f"cp -r {folderInput} {folder}")
-os.system(f"mv {folder / '12345X01TR.DAT'} {folder / f'12345{runid}TR.DAT'}")
+shutil.copytree(folderInput, folder, dirs_exist_ok=True)
+(folder / '12345X01TR.DAT').replace(folder / f'12345{runid}TR.DAT')
 # ---------------------------
 
 # Define TRANSP class and where it is run

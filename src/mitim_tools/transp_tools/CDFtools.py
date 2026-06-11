@@ -1,4 +1,5 @@
 import os
+import tarfile
 import shutil
 import pickle
 import copy
@@ -15158,8 +15159,8 @@ class transp_output:
 
         # ---- Zip at this stage
 
-        os.chdir(self.FolderCDF)
-        os.system("tar -czvf TRANSPrun.tar RELEASE_folder")
+        with tarfile.open(self.FolderCDF / "TRANSPrun.tar", "w:gz") as tar:
+            tar.add(self.FolderCDF / "RELEASE_folder", arcname="RELEASE_folder")
         IOtools.shutil_rmtree(self.FolderCDF / 'RELEASE_folder')
         (self.FolderCDF / 'TRANSPrun.tar').replace(self.FolderCDF / 'RELEASE_folder')
 

@@ -3,7 +3,7 @@ import numpy as np
 from mitim_tools.gacode_tools.PROFILEStools import gacode_state
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools.physics import GXtools
-from mitim_tools.misc_tools import GUItools, GRAPHICStools
+from mitim_tools.misc_tools import IOtools, GUItools, GRAPHICStools
 from mitim_tools import __mitimroot__
 
 cold_start = True
@@ -13,7 +13,7 @@ gacode_file = __mitimroot__ / "tests" / "data" / "input.gacode"
 folder = __mitimroot__ / "tests" / "scratch" / "linear_gk_tutorial"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder}")
+    IOtools.shutil_rmtree(folder)
 
 folder.mkdir(parents=True, exist_ok=True)
 

@@ -1,7 +1,7 @@
 import os
 from mitim_tools.gacode_tools.PROFILEStools import gacode_state
 from mitim_tools.simulation_tools.physics import GXtools
-from mitim_tools.misc_tools import GUItools
+from mitim_tools.misc_tools import IOtools, GUItools
 from mitim_tools import __mitimroot__
 
 cold_start = True
@@ -18,7 +18,7 @@ p.lumpIons()
 # --------------------------------
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 gx = GXtools.GX(rhos=[0.5, 0.6])
 gx.prep(p, folder)

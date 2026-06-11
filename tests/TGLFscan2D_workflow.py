@@ -2,6 +2,7 @@ import os
 import numpy as np
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -12,7 +13,7 @@ input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 npz_file    = folder / "scan2d_results.npz"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 tglf = TGLFtools.TGLF(rhos=[0.5, 0.7])
 tglf.prep(input_gacode, folder, cold_start=cold_start)

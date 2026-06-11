@@ -946,17 +946,13 @@ def createTimeTXT(duration_in_s, until=3):
 
 
 def renameCommand(ini, fin, folder="~/"):
+    # (used to shell out to perl-rename on mfe hosts -- non-portable -- with a
+    #  Python fallback that crashed on str.sub; now a single portable path)
     ipath = Path(folder).expanduser()
     if ini is not None:
-        if "mfe" in socket.gethostname():
-            os.chdir(ipath)
-            os.system(f'rename "s/{ini}/{fin}/" *')
-        else:
-            for filepath in ipath.glob(f"*{ini}*"):
-                newname = filepath.name
-                newname = newname.sub(f"{ini}", f"{fin}")
-                opath = filepath.parent / newname
-                filepath.replace(opath)
+        for filepath in ipath.glob(f"*{ini}*"):
+            opath = filepath.parent / filepath.name.replace(ini, fin)
+            filepath.replace(opath)
 
 
 def readExecutionParams(folderExecution, nums=[0, 9]):

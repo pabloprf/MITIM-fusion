@@ -1,13 +1,14 @@
 import os
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
 folder = __mitimroot__ / "tests" / "scratch" / "eped_test"
 
 if cold_start and os.path.exists(folder):
-    os.system(f"rm -r {folder}")
+    IOtools.shutil_rmtree(folder)
 
 eped = EPEDtools.EPED(folder=folder)
 

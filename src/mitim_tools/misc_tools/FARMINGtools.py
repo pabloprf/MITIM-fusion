@@ -1823,10 +1823,13 @@ def printEfficiencySLURM(out_file):
 
     if jobid is not None:
         print(f"Evaluating efficienty of job {jobid}:")
-        print("\n****** SEFF:")
-        os.system(f"seff {jobid}")
-        print("\n****** SACCT:")
-        os.system(f"sacct -j {jobid}")
+        try:
+            print("\n****** SEFF:")
+            subprocess.run(["seff", str(jobid)])
+            print("\n****** SACCT:")
+            subprocess.run(["sacct", "-j", str(jobid)])
+        except FileNotFoundError as e:
+            print(f"\t- SLURM utility not available ({e})", typeMsg='w')
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions for quick remote executions

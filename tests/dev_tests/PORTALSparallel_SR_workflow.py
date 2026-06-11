@@ -4,6 +4,7 @@ from mitim_modules.portals import PORTALSmain
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 # ---------------------------------------------------------------------------
 # PORTALS parallel simple-relax workflow test
@@ -28,7 +29,7 @@ inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 folderWork = __mitimroot__ / "tests" / "scratch" / "portals_parallel_SR_test"
 
 if cold_start and folderWork.exists():
-    os.system(f"rm -r {folderWork.resolve()}")
+    IOtools.shutil_rmtree(folderWork)
 
 # ---------------------------------------------------------------------------
 # PORTALS optimization class: start from the default namelist and override

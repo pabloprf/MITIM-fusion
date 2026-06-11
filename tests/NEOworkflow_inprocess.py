@@ -21,6 +21,7 @@ import os
 import numpy as np
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -68,7 +69,7 @@ SCAN_KWARGS = dict(
 # subprocess run
 folder_sub = __mitimroot__ / "tests" / "scratch" / "neo_scan_sub"
 if cold_start and folder_sub.exists():
-    os.system(f"rm -r {folder_sub.resolve()}")
+    IOtools.shutil_rmtree(folder_sub)
 
 neo_sub = NEOtools.NEO(rhos=rhos, in_process=False)
 neo_sub.prep(input_gacode, folder_sub)

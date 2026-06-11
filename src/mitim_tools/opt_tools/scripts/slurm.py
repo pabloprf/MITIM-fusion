@@ -1,6 +1,8 @@
 import math
 import os
+import subprocess
 from mitim_tools.misc_tools import FARMINGtools, IOtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """
@@ -141,7 +143,9 @@ def run_slurm(
             command_execution = " && ".join(parts)
 
         if machine == "local":
-            os.system(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log')
+            result = subprocess.run(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log', shell=True)
+            if result.returncode != 0:
+                print(f"\t- Local sbatch submission returned non-zero exit code ({result.returncode}), check {folder}/sbatch_submission.log", typeMsg='w')
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,
@@ -248,7 +252,9 @@ def run_slurm_array(
             command_execution = f"sbatch {fileSBATCH}"
 
         if machine == "local":
-            os.system(command_execution)
+            result = subprocess.run(command_execution, shell=True)
+            if result.returncode != 0:
+                print(f"\t- Local sbatch submission returned non-zero exit code ({result.returncode})", typeMsg='w')
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,

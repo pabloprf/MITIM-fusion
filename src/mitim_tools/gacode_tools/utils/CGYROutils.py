@@ -1,5 +1,6 @@
 import os
 import math
+import subprocess
 import scipy
 import numpy as np
 from pathlib import Path
@@ -390,8 +391,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
             except Exception as e:
                 print(f"\t- Error reading CGYRO data: {e}")
                 if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
-                    os.chdir(folder)
-                    os.system("cgyro -t")
+                    try:
+                        subprocess.run(["cgyro", "-t"], cwd=str(folder))
+                    except FileNotFoundError:
+                        print("\t- 'cgyro' executable not found in PATH", typeMsg='w')
                 cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
         except Exception:
             # Guarantee cleanup if the read raises so a subsequent re-read

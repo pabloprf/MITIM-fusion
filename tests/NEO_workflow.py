@@ -2,6 +2,7 @@ import os
 import numpy as np
 from mitim_tools.gacode_tools import NEOtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -11,7 +12,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "neo_test"
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 neo = NEOtools.NEO(rhos=np.linspace(0.8,0.95,10))
 neo.prep(input_gacode, folder)

@@ -1,6 +1,7 @@
 import os
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -15,7 +16,7 @@ if radas_dir_env is None:
     raise EnvironmentError("[MITIM] The RADAS_DIR environment variable is not set")
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 # Initialize Lengyel object
 l = Lengyel()

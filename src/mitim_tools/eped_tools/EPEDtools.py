@@ -230,7 +230,7 @@ class EPED:
             run_name = rel.split('/')[0]  # 'run<i+1>' — the original scan index
             target = self.folder_run / f'output_{run_name}.nc'
             target.unlink(missing_ok=True)
-            os.system(f'mv {self.folder_run / rel} {target}')
+            (self.folder_run / rel).replace(target)
 
     def _prep_input_files(
             self,

@@ -6,6 +6,7 @@ import os
 import numpy as np
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -15,7 +16,7 @@ cdf_file = __mitimroot__ / "tests" / "data" / "12345.CDF"
 folder = __mitimroot__ / "tests" / "scratch" / "tglf_full_test"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder}")
+    IOtools.shutil_rmtree(folder)
 
 tglf = TGLFtools.TGLF(cdf=cdf_file, time=2.5, avTime=0.02, rhos=np.array([0.6, 0.8]))
 _ = tglf.prep_using_tgyro(folder, cold_start=cold_start)

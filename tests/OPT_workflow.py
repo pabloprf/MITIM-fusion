@@ -6,6 +6,7 @@ To run: python3  tests/MITIM_workflow.py
 import os
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 cold_start = True
 
@@ -66,7 +67,7 @@ namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
 folderWork = __mitimroot__ / "tests" / "scratch" / "opt_test"
 
 if cold_start and os.path.exists(folderWork):
-    os.system(f"rm -r {folderWork}")
+    IOtools.shutil_rmtree(folderWork)
 
 # -----------------------------------------------------------------------------------------------------
 # ----- Workflow

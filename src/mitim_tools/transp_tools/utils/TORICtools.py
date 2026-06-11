@@ -1,4 +1,5 @@
 import math, netCDF4, os, glob, copy, pdb
+import tarfile
 import numpy as np
 
 try:
@@ -652,7 +653,7 @@ def whatIon(Z, A, T, n, thresholdT=50, thresholdn=1e5):
 
 def convertToReadable(tarfile_full, checkExtension="ncdf"):
 
-    foldertar, tarfile = IOtools.getLocInfo(tarfile_full, with_extension=True)
+    foldertar, tarfile_name = IOtools.getLocInfo(tarfile_full, with_extension=True)
 
     try:
         ncdf_exists = IOtools.findFileByExtension(foldertar, checkExtension) is not None
@@ -663,8 +664,8 @@ def convertToReadable(tarfile_full, checkExtension="ncdf"):
         print(
             f"\t\t- There is not a TORIC ncdf in {foldertar}, I need to extract the tar file first"
         )
-        os.chdir(foldertar)
-        os.system(f"tar -xvf {tarfile}")
+        with tarfile.open(foldertar / tarfile_name) as tar:
+            tar.extractall(foldertar)
         print("\t\t\t* Extracted!")
 
     return foldertar
