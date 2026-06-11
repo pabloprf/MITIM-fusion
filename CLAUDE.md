@@ -386,9 +386,11 @@ Most workflows accept either a path to `input.gacode` or a live state.
 when supported) via ctypes against `libtglf_serial.so` / `libneo_serial.so`,
 no folder I/O, no subprocess fork. Build the libs once per machine via
 `src/mitim_tools/simulation_tools/interfaces/build_{tglf,neo}_lib.sh`.
-Tests covering this path: `tests/test_tglf_inprocess.py`,
-`tests/test_neo_inprocess.py`, `tests/NEOworkflow_inprocess.py`,
-`tests/TGLFworkflow_inprocess.py`.
+Tests covering this path: `tests/test_tglf_inprocess.py` and
+`tests/test_neo_inprocess.py` (unit), plus the teaching comparisons
+`tests/capability_tests/tglf_run_inprocess.py` and
+`tests/capability_tests/neo_run_inprocess.py` (standard vs in-process,
+overlaid).
 
 ### 5.3 `profiles_postprocessing_fun`
 
