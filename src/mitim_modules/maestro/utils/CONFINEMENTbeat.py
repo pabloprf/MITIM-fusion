@@ -678,10 +678,14 @@ def _h_factor_params_text(loaded_results, profiles_before, profiles_after):
 
 def _plot_confinement_beat(fn, loaded_results, profiles_before, profiles_after, counter):
     """
-    Main confinement beat figure (2 rows x 3 plot cols + info column).
+    Main confinement beat figure (3 rows x 3 plot cols + info column).
 
     Row 0 — Te, Ti, ne profiles vs r/a, before (blue) and after (red), BC marked.
-    Row 1 — Optimization diagnostics:
+    Row 1 — a/L_Te, a/L_Ti, a/L_ne gradients vs rho_N, before/after, BC marked.
+            The region beyond the BC is drawn at 0.5 alpha and excluded from
+            the y-limits (the analytical-edge gradients are much larger and
+            would otherwise hide the core structure).
+    Row 2 — Optimization diagnostics:
         - H-factor vs evaluation number (target dashed)
         - Te_bc vs evaluation number
         - H-factor vs Te_bc trajectory (target crosshair, final point starred)
@@ -720,6 +724,13 @@ def _plot_confinement_beat(fn, loaded_results, profiles_before, profiles_after, 
     Ti_a   = profiles_after.profiles["ti(keV)"][:, 0]
     ne_a   = profiles_after.profiles["ne(10^19/m^3)"] * 0.1
 
+    # Normalized inverse gradient scale lengths a/Lx (main ion for Ti, matching Ti[:,0])
+    aLTe_b, aLTi_b, aLne_b = profiles_before.derived["aLTe"], profiles_before.derived["aLTi"][:, 0], profiles_before.derived["aLne"]
+    aLTe_a, aLTi_a, aLne_a = profiles_after.derived["aLTe"],  profiles_after.derived["aLTi"][:, 0],  profiles_after.derived["aLne"]
+
+    rho_b  = profiles_before.profiles["rho(-)"]
+    rho_a  = profiles_after.profiles["rho(-)"]
+
     ibc    = int(np.argmin(np.abs(profiles_after.profiles["rho(-)"] - rho_bc_rho)))
     roa_bc = roa_a[ibc]
 
@@ -739,6 +750,12 @@ def _plot_confinement_beat(fn, loaded_results, profiles_before, profiles_after, 
     ymax_Te = _ymax(roa_cut, (roa_b, Te_b), (roa_a, Te_a))
     ymax_Ti = _ymax(roa_cut, (roa_b, Ti_b), (roa_a, Ti_a))
     ymax_ne = _ymax(roa_cut, (roa_b, ne_b), (roa_a, ne_a))
+
+    # Gradient panels: y-range from the core region ONLY (strictly up to the BC,
+    # no margin) — the analytical-edge gradients beyond it are much larger
+    ymax_gTe = _ymax(rho_bc_rho, (rho_b, aLTe_b), (rho_a, aLTe_a))
+    ymax_gTi = _ymax(rho_bc_rho, (rho_b, aLTi_b), (rho_a, aLTi_a))
+    ymax_gne = _ymax(rho_bc_rho, (rho_b, aLne_b), (rho_a, aLne_a))
 
     # ------------------------------------------------------------------
     # Style constants
@@ -764,13 +781,16 @@ def _plot_confinement_beat(fn, loaded_results, profiles_before, profiles_after, 
     # Figure
     # ------------------------------------------------------------------
     fig = fn.add_figure(label="Confinement", tab_color=counter)
-    gs  = fig.add_gridspec(2, 4, hspace=0.45, wspace=0.40, width_ratios=[1, 1, 1, 0.55])
+    gs  = fig.add_gridspec(3, 4, hspace=0.55, wspace=0.40, width_ratios=[1, 1, 1, 0.55])
     axTe = fig.add_subplot(gs[0, 0])
     axTi = fig.add_subplot(gs[0, 1])
     axne = fig.add_subplot(gs[0, 2])
-    axHe = fig.add_subplot(gs[1, 0])
-    axTb = fig.add_subplot(gs[1, 1])
-    axHT = fig.add_subplot(gs[1, 2])
+    axgTe = fig.add_subplot(gs[1, 0])
+    axgTi = fig.add_subplot(gs[1, 1])
+    axgne = fig.add_subplot(gs[1, 2])
+    axHe = fig.add_subplot(gs[2, 0])
+    axTb = fig.add_subplot(gs[2, 1])
+    axHT = fig.add_subplot(gs[2, 2])
     axIn = fig.add_subplot(gs[:, 3])
     axIn.set_axis_off()
 
@@ -797,7 +817,30 @@ def _plot_confinement_beat(fn, loaded_results, profiles_before, profiles_after, 
     axne.legend(prop={"size": FS_leg}, loc="upper right")
 
     # =====================================================================
-    # ROW 1 — optimization diagnostics
+    # ROW 1 — normalized inverse gradient scale lengths a/Lx vs rho_N
+    # =====================================================================
+    # Markers expose the grid points: the analytical edge starts one grid point
+    # past the BC, so without markers that single cell renders as a jump "at"
+    # the BC line even though the value AT the BC point is exactly preserved.
+    # The edge region (beyond the BC point) is drawn at 0.5 alpha and excluded
+    # from the y-limits, so the panels focus on the core structure.
+
+    def _plot_grad(ax, y_b, y_a, ylab, ymax, legend=False):
+        ax.plot(rho_b[:ibc + 1], y_b[:ibc + 1], "-o", color=cb, lw=lw, ms=3.5, mew=0, label="before")
+        ax.plot(rho_a[:ibc + 1], y_a[:ibc + 1], "-o", color=ca, lw=lw, ms=3.5, mew=0, label="after")
+        ax.plot(rho_b[ibc:], y_b[ibc:], "-o", color=cb, lw=lw, ms=3.5, mew=0, alpha=0.5)
+        ax.plot(rho_a[ibc:], y_a[ibc:], "-o", color=ca, lw=lw, ms=3.5, mew=0, alpha=0.5)
+        ax.axvline(rho_bc_rho, color="k", ls=":", lw=1.0, zorder=0)
+        _style(ax, r"$\rho_N$", ylab, ylab + " profile", [0, 1], ymax)
+        if legend:
+            ax.legend(prop={"size": FS_leg}, loc="upper left")
+
+    _plot_grad(axgTe, aLTe_b, aLTe_a, r"$a/L_{T_e}$", ymax_gTe, legend=True)
+    _plot_grad(axgTi, aLTi_b, aLTi_a, r"$a/L_{T_i}$", ymax_gTi)
+    _plot_grad(axgne, aLne_b, aLne_a, r"$a/L_{n_e}$", ymax_gne)
+
+    # =====================================================================
+    # ROW 2 — optimization diagnostics
     # =====================================================================
 
     evals = np.arange(1, len(hist_H) + 1)

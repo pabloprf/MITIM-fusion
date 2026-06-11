@@ -486,17 +486,26 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
     """
     Modify *profiles* in-place (returns modified copy) so that:
 
-    - Edge region (rho > rho_bc), per edge_shape:
-        'linear': Te, Ti, ne interpolated linearly in psi_n from bc to separatrix.
+    - Edge region, per edge_shape:
+        'linear': Te, Ti, ne interpolated linearly in psi_n down to the separatrix.
         'tanh':   Te, Ti, ne follow the pedestal tanh of FunctionalForms.pedestal_tanh
-                  in r/a (the same functional form the eped_initializer uses), passing
-                  exactly through the bc value at r/a_bc and the separatrix value.
+                  in r/a (the same functional form the eped_initializer uses).
                   NOTE: the sharpness beat's xi definition assumes the linear edge
                   gradient, so it always uses 'linear'; 'tanh' is for the confinement
                   beat, whose matching criterion (H-factor) is integral.
-    - Core region (rho <= rho_bc):
-        profiles scaled to match bc value at rho_bc while preserving the
-        normalised gradient (aLT) shape from the current transport solution.
+        The analytical edge starts ONE grid point past the BC (anchored at the
+        core-extended value at ibc+1): the BC point's 3-point derivative stencil
+        (MATHtools.deriv / GACODE bound_deriv) then reads core-shaped values on
+        both sides, so the a/L gradients that PORTALS reads at its last control
+        point are preserved exactly. The slope discontinuity sits at ibc+1,
+        outside the PORTALS prediction grid. (Anchoring the edge at ibc itself
+        polluted the BC-point gradient by ~2x and propagated into the next
+        PORTALS beat's starting DVs.)
+    - Core region (rho <= rho_bc, extended through ibc+1):
+        profiles multiplied by y_bc / y_old(ibc) — the exact way to change the
+        BC value while preserving the normalised gradients a/L of the current
+        transport solution (log-derivatives are invariant under scaling; no
+        derive-then-integrate roundtrip error).
     - Density, per density_treatment:
         'bc':   ne treated like the temperatures (core rescaled to ne_bc_1e19
                 preserving a/Lne, edge replaced) and all ion densities rescaled
@@ -529,41 +538,51 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
 
     ibc = int(np.argmin(np.abs(rho - rho_bc_rho)))
 
+    # The analytical edge starts one grid point past the BC (see docstring);
+    # guard the degenerate case of a BC at the very edge of the grid.
+    i_edge = min(ibc + 1, len(rho) - 2)
+
     # ---- edge grids ----
-    # Use grid values at ibc as anchors to ensure exact continuity, even if
-    # psin_bc was computed by interpolation and may differ slightly.
-    psin_edge      = psi_pol_n[ibc:]
-    psin_bc_grid   = psi_pol_n[ibc]
-    roa_edge       = roa[ibc:]
-    roa_bc_grid    = roa[ibc]
+    # Anchored at grid values at i_edge to ensure exact continuity with the
+    # extended core.
+    psin_edge      = psi_pol_n[i_edge:]
+    psin_anchor    = psi_pol_n[i_edge]
+    roa_edge       = roa[i_edge:]
+    roa_anchor     = roa[i_edge]
 
-    def _linear_edge(y_bc, y_sep):
-        """Linear interpolation in psi_n from bc (at ibc) to separatrix."""
-        return y_bc + (y_sep - y_bc) * (psin_edge - psin_bc_grid) / (1.0 - psin_bc_grid)
+    def _linear_edge(y_anchor, y_sep):
+        """Linear interpolation in psi_n from the anchor (at i_edge) to separatrix."""
+        return y_anchor + (y_sep - y_anchor) * (psin_edge - psin_anchor) / (1.0 - psin_anchor)
 
-    def _tanh_edge(y_bc, y_sep):
-        """Pedestal tanh in r/a from bc (at ibc) to separatrix, as in the initializer."""
+    def _tanh_edge(y_anchor, y_sep):
+        """Pedestal tanh in r/a from the anchor (at i_edge) to separatrix, as in the initializer."""
         from mitim_tools.popcon_tools import FunctionalForms
-        _, y = FunctionalForms.pedestal_tanh(y_bc, y_sep, 1.0 - roa_bc_grid, x=roa_edge)
+        _, y = FunctionalForms.pedestal_tanh(y_anchor, y_sep, 1.0 - roa_anchor, x=roa_edge)
         return y
 
     _edge = _tanh_edge if edge_shape == "tanh" else _linear_edge
+
+    def _scale_core(y, y_bc):
+        """Exact a/L-preserving core: multiply by y_bc/y(ibc) through i_edge."""
+        y_new = y.copy()
+        y_new[:i_edge + 1] = y[:i_edge + 1] * (y_bc / y[ibc])
+        return y_new
 
     Te_sep     = float(p.profiles["te(keV)"][-1])
     Ti_sep     = float(p.profiles["ti(keV)"][-1, 0])
     ne_sep     = float(p.profiles["ne(10^19/m^3)"][-1])
 
     # ---- build new full profiles ----
-    Te_new  = _scale_core_with_aLT(roa, rho, p.profiles["te(keV)"],          ibc, Te_bc)
-    Ti_new  = _scale_core_with_aLT(roa, rho, p.profiles["ti(keV)"][:, 0],    ibc, Ti_bc)
+    Te_new  = _scale_core(p.profiles["te(keV)"],       Te_bc)
+    Ti_new  = _scale_core(p.profiles["ti(keV)"][:, 0], Ti_bc)
 
-    # Replace edge with the selected shape
-    Te_new[ibc:]  = _edge(Te_bc,     Te_sep)
-    Ti_new[ibc:]  = _edge(Ti_bc,     Ti_sep)
+    # Replace edge with the selected shape, anchored at the core-extended value at i_edge
+    Te_new[i_edge:]  = _edge(Te_new[i_edge], Te_sep)
+    Ti_new[i_edge:]  = _edge(Ti_new[i_edge], Ti_sep)
 
     if density_treatment == "bc":
-        ne_new        = _scale_core_with_aLT(roa, rho, p.profiles["ne(10^19/m^3)"], ibc, ne_bc_1e19)
-        ne_new[ibc:]  = _edge(ne_bc_1e19, ne_sep)
+        ne_new          = _scale_core(p.profiles["ne(10^19/m^3)"], ne_bc_1e19)
+        ne_new[i_edge:] = _edge(ne_new[i_edge], ne_sep)
         # Ratios of ion species to electron density (before modification)
         nine_orig = p.profiles["ni(10^19/m^3)"] / p.profiles["ne(10^19/m^3)"][:, None]
 
@@ -590,49 +609,6 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
     p.derive_quantities(rederiveGeometry=False)
 
     return p
-
-
-def _scale_core_with_aLT(roa, rho, y, ibc, y_bc):
-    """
-    Return a new profile array where:
-      - The value at index ibc equals y_bc
-      - The core (0..ibc) is reconstructed by integrating the OLD normalised
-        gradient (aLT) inward from the new boundary value y_bc.
-        This preserves gradient-driven-transport physics in the core while
-        allowing the absolute level to shift to match the new BC.
-      - The edge (ibc+1 .. end) is left unchanged here (caller replaces it).
-
-    Parameters
-    ----------
-    roa  : array  – r/a grid
-    rho  : array  – rho_tor grid  (not used here, kept for symmetry)
-    y    : array  – profile values (e.g. Te in keV)
-    ibc  : int    – index of the BC location
-    y_bc : float  – new value at the BC
-    """
-
-    # Guard against zero / negative values
-    y_safe = np.where(y > 0, y, 1e-10 * np.abs(y).max())
-
-    # Compute the normalised gradient aL = -d(ln y)/d(roa) from current profile
-    aL = CALCtools.derivation_into_Lx(
-        torch.from_numpy(roa[:ibc + 2]),
-        torch.from_numpy(y_safe[:ibc + 2]),
-        array=False,
-    ).numpy()
-
-    # Integrate from ibc inward using integration_Lx
-    #   integration_Lx expects (batch, dim) tensors and the BC at the LAST point
-    roa_core   = torch.from_numpy(roa[:ibc + 1]).unsqueeze(0)
-    aL_core    = torch.from_numpy(aL[:ibc + 1]).unsqueeze(0)
-    y_bc_t     = torch.tensor([[y_bc]], dtype=torch.float64)
-
-    y_core_new = CALCtools.integration_Lx(roa_core, aL_core, y_bc_t).squeeze().numpy()
-
-    y_new = y.copy()
-    y_new[:ibc + 1] = y_core_new
-
-    return y_new
 
 
 def _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, counter):

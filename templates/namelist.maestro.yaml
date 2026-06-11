@@ -269,10 +269,12 @@ maestro:
 
       # Prescribed sharpness parameter xi (ratio of edge to core temperature gradient)
       # xi=1 means edge gradient matches core gradient; xi>1 means sharper (more H-mode-like) edge
-      # How the BC is applied: core (rho < rho_bc) preserves a/LT and a/Ln (equivalent to a
-      # multiplicative scaling of the core profiles; absolute gradients dT/dr scale with the
-      # BC ratio); edge (rho > rho_bc) is replaced by a straight line in psi_n from the BC
-      # value down to the (kept-fixed) separatrix value.
+      # How the BC is applied: core (rho < rho_bc) preserves a/LT and a/Ln exactly (the
+      # profiles are multiplied by T_bc,new/T_bc,old; absolute gradients dT/dr scale with
+      # the BC ratio); edge is replaced by a straight line in psi_n down to the
+      # (kept-fixed) separatrix value. The analytical edge starts ONE grid point past
+      # the BC, so the a/L gradients that PORTALS reads at its last control point are
+      # preserved exactly (the slope kink sits outside the PORTALS prediction grid).
       sharpness: 1.0
 
       # Coordinate system in which the sharpness parameter xi (the gradient ratio) is defined.
@@ -326,13 +328,15 @@ maestro:
       # machinery as the sharpness beat.
       # How the BC is applied (same machinery as the sharpness beat):
       #   - Core (rho < rho_bc): the normalized logarithmic gradients a/LT and a/Ln are
-      #     PRESERVED (re-integrated inward from the new BC value), which is equivalent
-      #     to a multiplicative scaling of the core profiles by T_bc,new/T_bc,old. The
+      #     PRESERVED exactly (the profiles are multiplied by T_bc,new/T_bc,old). The
       #     absolute gradients dT/dr are NOT preserved -- they scale with that same
       #     ratio. a/LT is the gradient-driven-transport quantity, so PORTALS surrogate
       #     data remains reusable across the BC change.
-      #   - Edge (rho > rho_bc): profiles replaced by the shape selected with edge_shape
-      #     below, anchored at the BC value and the (kept-fixed) separatrix value.
+      #   - Edge: profiles replaced by the shape selected with edge_shape below, down to
+      #     the (kept-fixed) separatrix value. The analytical edge starts ONE grid point
+      #     past the BC, so the a/L gradients that PORTALS reads at its last control
+      #     point are preserved exactly (the slope kink sits outside the PORTALS
+      #     prediction grid).
       #   - Density: per density_treatment below (rescaled to ne_bc, or left untouched).
       # NOTE: by default, the auxiliary, fusion and radiation source profiles stored in
       # input.gacode are NOT recomputed during the Te_bc scan (total heating power stays

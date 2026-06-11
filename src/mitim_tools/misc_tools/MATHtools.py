@@ -339,6 +339,17 @@ def extrapolateCubicSpline(x, xp, yp):
     return s(x)
 
 
+def extrapolatePchip(x, xp, yp):
+    """
+    Shape-preserving (monotone) piecewise-cubic Hermite interpolation. Unlike
+    the cubic spline, it cannot overshoot/ring next to slope discontinuities
+    (e.g. a pedestal top), at the cost of being only C1 there.
+    """
+    s = interpolate.PchipInterpolator(xp, yp, extrapolate=True)
+
+    return s(x)
+
+
 def circle(Raxis, num=100):
     theta = np.linspace(0, 2 * np.pi, int(num))
     R, Z = np.zeros(num), np.zeros(num)
