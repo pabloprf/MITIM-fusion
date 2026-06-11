@@ -246,17 +246,19 @@ def run_maestro_local(
         folder = IOtools.expandPath('./')
 
     m = maestro(
-        folder, 
-        master_seed = seed, 
-        terminal_outputs = terminal_outputs, 
+        folder,
+        master_seed = seed,
+        terminal_outputs = terminal_outputs,
         overall_log_file = True,
-        master_cold_start = force_cold_start, 
+        master_cold_start = force_cold_start,
         keep_all_files = keep_all_files,
         maestro_namelist = maestro_namelist
         )
 
     # -------------------------------------------------------------------------
     # Loop through beats
+    #   (a previously finalized run's artifacts are stashed to a backup folder
+    #    automatically at the first beat run() — see maestro.unfinalize)
     # -------------------------------------------------------------------------
 
     creator_added = False

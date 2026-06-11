@@ -10,6 +10,8 @@ DESCRIPTION
 
 *   💥 **New `mitim_clean_maestro` tool** — a CLI (`mitim_clean_maestro FOLDER ...`) that prunes a finished MAESTRO run folder down to the directory structure and key files needed to reload results (`input.gacode`, namelists, `.nc`/`.npy` outputs, optimization data, figures, …), with an aggressive mode for deeper cleaning. Useful for shrinking runs before archiving or transfer.
 
+*   💥 **MAESTRO now backs up a previous run's finalization when restarted on the same folder.** At the first beat execution, the artifacts of a previously completed run (`Outputs/input.gacode_final`, `maestro_summary.md`, `beat_flow.png`, and the `maestro_plots/` figures from `--save`) are moved to a timestamped `Outputs/finalization_backup_*/` folder, and are regenerated when the restarted run reaches its own finalization — immediately if all beats are already complete, or after any newly added beats run. Plot-only consumers (`mitim_plot_maestro`) never touch the artifacts. The new `maestro.unfinalize()` method can also be called manually.
+
 *   💥 **MAESTRO plotting additions** — the `Special` tab gains a `Confinement Evolution` column (energy confinement time and `H98y2`/`H89p` across beats), and the sharpness beat gains a profiles-vs-coordinates tab (Te/Ti/ne against `rho_tor`, `r/a`, `psi_n`). Special-tab cosmetics too: wider inter-column spacing, non-fusion `Q`/`Pfus` are no longer drawn as meaningless ~1e-14 noise, the density-peaking axis autoscales instead of clamping, and the multi-case `Profiles ALL` tab is only built when more than one run is plotted.
 
 ### Bug Fixes

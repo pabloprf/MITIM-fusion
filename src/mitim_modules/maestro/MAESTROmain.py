@@ -1,4 +1,5 @@
 import copy
+import shutil
 from pathlib import Path
 import sys
 import re
@@ -103,10 +104,14 @@ class maestro:
         self.profiles_with_engineering_parameters = None # Start with None, but will be populated at first initialization
 
         '''
-        Parameters that can be passed from beat to beat (e.g. PORTALS residual or geqdsk 0.995 flux surface or rho_top EPED) 
+        Parameters that can be passed from beat to beat (e.g. PORTALS residual or geqdsk 0.995 flux surface or rho_top EPED)
         --------------------------------------------------------------------------------------------------------------------
         '''
-        self.parameters_trans_beat = {} 
+        self.parameters_trans_beat = {}
+
+        # Whether this instance has already stashed a previous run's finalization
+        # artifacts (done automatically at the first beat run())
+        self._unfinalize_done = False
 
     def define_beat(self, beat, initializer = None, cold_start = False):
 
@@ -285,7 +290,15 @@ class maestro:
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Run + Finalization',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
     def run(self, **kwargs):
-        
+
+        # First beat execution of this instance: stash any previous run's finalization
+        # artifacts so the restarted run regenerates them at its own finalize().
+        # Hooked here (and not in __init__) because plot-only consumers (grabMAESTRO)
+        # also construct maestro and call define_beat()/check(), but never run() —
+        # plotting a finished case must not touch its finalization.
+        if not self._unfinalize_done:
+            self.unfinalize()
+
         # Pass ENABLE_EMBED to the beat run
         kwargs.update({'ENABLE_EMBED': ENABLE_EMBED})
 
@@ -408,6 +421,40 @@ class maestro:
         print('\t\t- Freezing engineering parameters from MAESTRO')
         self.profiles_with_engineering_parameters = copy.deepcopy(profiles)
         self.profiles_with_engineering_parameters.write_state(file= (self.folder_output / 'input.gacode_frozen'))
+
+    def unfinalize(self):
+        '''
+        Move the finalization artifacts of a previously completed MAESTRO run
+        (final input.gacode, summary report, beat-flow diagram, saved figures)
+        to a timestamped backup folder under Outputs. Called automatically at
+        the first beat run() when MAESTRO executes on a folder that already
+        contains a run: the finalization is regenerated when the restarted run
+        reaches its own finalize() — immediately if all beats are already
+        complete, or after any newly added beats have run. No-op if no
+        finalization artifacts exist.
+        '''
+
+        self._unfinalize_done = True
+
+        artifacts = [
+            self.folder_output / 'input.gacode_final',
+            self.folder_output / 'maestro_summary.md',
+            self.folder_output / 'beat_flow.png',
+            self.folder_output / 'beat_final',      # log file of the finalize step
+            self.folder / 'maestro_plots',          # figures from mitim_run_maestro --save
+        ]
+        artifacts = [item for item in artifacts if item.exists()]
+
+        if len(artifacts) == 0:
+            return
+
+        backup_folder = self.folder_output / f'finalization_backup_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        backup_folder.mkdir(parents=True, exist_ok=True)
+
+        print(f'\t- Folder contains a previously finalized MAESTRO run, moving its finalization artifacts to {IOtools.clipstr(backup_folder)}', typeMsg='i')
+        for item in artifacts:
+            shutil.move(str(item), str(backup_folder / item.name))
+            print(f'\t\t- {item.name}')
 
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Finalizing',
         log_file = lambda self: self.folder_performance / "timing.jsonl")
