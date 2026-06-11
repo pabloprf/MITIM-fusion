@@ -825,44 +825,64 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             return extraOptions
 
-        if any(nt <= 0 or nt % resources_per_call != 0 for nt in n_tor_list):
+        # CGYRO aborts at startup unless the MPI rank count (= resources_per_call) is a
+        # multiple of the number of toroidal groups, N_TOROIDAL/TOROIDALS_PER_PROC (which
+        # also requires TOROIDALS_PER_PROC to divide N_TOROIDAL). The smallest valid
+        # TOROIDALS_PER_PROC maximizes toroidal parallelism (leftover rank multiplicity
+        # goes to the velocity/radial decomposition); TOROIDALS_PER_PROC=N_TOROIDAL (a
+        # single group) is always valid, so a solution always exists.
+        def _is_valid(nt, tpp):
+            return tpp > 0 and nt % tpp == 0 and resources_per_call % (nt // tpp) == 0
+
+        def _smallest_valid(nt):
+            return next(tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp))
+
+        if any(nt <= 0 for nt in n_tor_list):
             print(
-                f"\t- [preprocess] N_TOROIDAL={n_tor_list} not divisible by "
-                f"resources_per_call={resources_per_call}; leaving TOROIDALS_PER_PROC as-is",
+                f"\t- [preprocess] Invalid N_TOROIDAL={n_tor_list}; leaving TOROIDALS_PER_PROC as-is",
                 typeMsg="w",
             )
             return extraOptions
 
-        # Respect an explicit user-supplied TOROIDALS_PER_PROC in extraOptions:
-        # if set there, leave it untouched (user is overriding on purpose).
+        # Respect an explicit user-supplied TOROIDALS_PER_PROC in extraOptions
+        # (user is overriding on purpose), but warn if CGYRO will reject the combination.
         if 'TOROIDALS_PER_PROC' in extraOptions:
+            tpp_user = extraOptions['TOROIDALS_PER_PROC']
+            tpp_user_list = [int(v) for v in tpp_user] if isinstance(tpp_user, (list, np.ndarray)) else [int(tpp_user)] * len(n_tor_list)
+            for nt, tpp in zip(n_tor_list, tpp_user_list):
+                if not _is_valid(nt, tpp):
+                    print(
+                        f"\t- [preprocess] User-supplied TOROIDALS_PER_PROC={tpp} is incompatible with "
+                        f"N_TOROIDAL={nt} and resources_per_call={resources_per_call} "
+                        f"(MPI ranks must be a multiple of N_TOROIDAL/TOROIDALS_PER_PROC); CGYRO may abort",
+                        typeMsg="w",
+                    )
             return extraOptions
 
-        required_divisors = [nt // resources_per_call for nt in n_tor_list]
         extraOptions = copy.deepcopy(extraOptions)
-        tpp_src = controls.get('TOROIDALS_PER_PROC', required_divisors[0])
-        tpp_list = [int(v) for v in tpp_src] if isinstance(tpp_src, (list, np.ndarray)) else [int(tpp_src)] * len(required_divisors)
+        tpp_src = controls.get('TOROIDALS_PER_PROC', 1)
+        tpp_list = [int(v) for v in tpp_src] if isinstance(tpp_src, (list, np.ndarray)) else [int(tpp_src)] * len(n_tor_list)
 
-        # Broadcast a scalar constraint to match len(tpp_list); pad divisors if N_TOROIDAL was scalar.
-        if len(required_divisors) == 1 and len(tpp_list) > 1:
-            required_divisors = required_divisors * len(tpp_list)
-        if len(tpp_list) != len(required_divisors):
+        # Broadcast a scalar N_TOROIDAL to match a per-rho TOROIDALS_PER_PROC list.
+        if len(n_tor_list) == 1 and len(tpp_list) > 1:
+            n_tor_list = n_tor_list * len(tpp_list)
+        if len(tpp_list) != len(n_tor_list):
             print(
                 f"\t- [preprocess] TOROIDALS_PER_PROC length {len(tpp_list)} mismatches "
-                f"N_TOROIDAL length {len(required_divisors)}; leaving as-is",
+                f"N_TOROIDAL length {len(n_tor_list)}; leaving as-is",
                 typeMsg="w",
             )
             return extraOptions
 
         coerced = [
-            v if (v > 0 and v % d == 0) else d
-            for v, d in zip(tpp_list, required_divisors)
+            tpp if _is_valid(nt, tpp) else _smallest_valid(nt)
+            for tpp, nt in zip(tpp_list, n_tor_list)
         ]
 
         if coerced != tpp_list:
             print(
-                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted to be a multiple of "
-                f"N_TOROIDAL/resources={required_divisors}: {coerced}",
+                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted from {tpp_list} to {coerced} so that "
+                f"MPI ranks ({resources_per_call}) are a multiple of N_TOROIDAL/TOROIDALS_PER_PROC",
                 typeMsg="w",
             )
 
