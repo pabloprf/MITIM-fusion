@@ -1639,6 +1639,13 @@ def create_slurm_execution_files(
     job_array_limit = slurm_settings.setdefault("array_limit", None)
     job_exclusive   = slurm_settings.setdefault("exclusive", False)
 
+    # Requeue-ability: True (default) emits --requeue, False emits --no-requeue,
+    # None leaves the cluster default. Explicit --requeue makes behavior uniform
+    # across clusters (slurm.conf JobRequeue varies): on preemption or node
+    # failure the job goes back in the queue under the same id instead of dying,
+    # and MITIM workflows resume from their on-disk checkpoints when re-executed.
+    job_requeue     = slurm_settings.setdefault("requeue", True)
+
     # ---------------------------------------------------
     # slurm_allocation indicate the machine specifications as given by the config instead of individual job
     # ---------------------------------------------------
@@ -1709,6 +1716,10 @@ def create_slurm_execution_files(
     # (`slurm_settings.exclusive`).
     if request_exclusive_node or job_exclusive:
         commandSBATCH.append("#SBATCH --exclusive")
+    if job_requeue is True:
+        commandSBATCH.append("#SBATCH --requeue")
+    elif job_requeue is False:
+        commandSBATCH.append("#SBATCH --no-requeue")
     if nodes is not None:
         commandSBATCH.append(f"#SBATCH --nodes {nodes}")
     if ntasks is not None:
