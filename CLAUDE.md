@@ -42,7 +42,7 @@ src/
     freegsu/               # FreeGS-based equilibrium optimization
 templates/                 # YAML namelists + config_user_example.json
 tests/                     # *_workflow.py regression tests + unit tests
-tutorials/                 # legacy tutorials (being replaced by tests/capability_tests/)
+tests/capability_tests/    # standalone teaching scripts (see §9; replaced tutorials/)
 docs/                      # Sphinx sources for readthedocs
 ```
 

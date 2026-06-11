@@ -6,11 +6,13 @@ run_slurm(). As an example, it launches a PORTALS run through its command-line
 interface (mitim_run_portals), which is how long cases are typically farmed
 out to a cluster instead of being run in the local terminal.
 
-NOTE: this requires a SLURM partition configured for the machine that will
-receive the job. With machine="local" (the default), the job is submitted on
-this same machine, so config_user.json must define a `slurm` block for
-"local"; alternatively, pass machine="<name>" to submit to a configured
-remote host.
+NOTE: this example uses the "engaging_rpp" machine block of config_user.json,
+which is an MIT-specific cluster (the PSFC partition of the Engaging/ORCD
+system) — shown here as a concrete example of how a real configuration looks.
+If you are not at MIT, simply point `machine_config` below to a machine block
+defined in your own config_user.json. The script is meant to be executed on
+the cluster itself (e.g. its login node), since run_slurm() submits to the
+scheduler of the machine it runs on by default (machine="local").
 
 Key teaching points:
     1. mitim_run_portals runs PORTALS from files on disk: a folder containing
@@ -65,18 +67,24 @@ nml["optimization_options"]["convergence_options"]["maximum_iterations"] = 2
 IOtools.write_mitim_yaml(nml, folder / "namelist.portals.yaml")
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 2. Grab the SLURM settings of this machine from config_user.json
+# 2. Grab the SLURM settings of the cluster from config_user.json
 # ---------------------------------------------------------------------------------------------------------------------
+
+# MIT-specific example (see NOTE in the docstring): the "engaging_rpp" block defines,
+# among others, slurm.partition (e.g. "sched_mit_psfc_r8") and `modules` (the shell
+# command that activates the MITIM environment on that cluster). Replace with the
+# name of a machine block in your own config_user.json
+machine_config = "engaging_rpp"
 
 settings = load_settings()
 
-# Partition to submit to (see NOTE in the docstring)
-partition = settings["local"]["slurm"]["partition"]
+# Partition to submit to
+partition = settings[machine_config]["slurm"]["partition"]
 
 # Shell command(s) executed before the script inside the job, to set up the python
 # environment (e.g. "source ~/venvs/mitim/bin/activate" or a module-load string).
 # Here we reuse the `modules` field of the machine configuration
-environment = settings["local"].get("modules", "") or ""
+environment = settings[machine_config].get("modules", "") or ""
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 3. Submit mitim_run_portals as a SLURM job
@@ -89,7 +97,8 @@ run_slurm(
     folder,
     partition,
     environment,
-    # Submit on this machine ("local", default); use a configured remote name otherwise
+    # "local" (default) submits to the scheduler of the machine this script runs on —
+    # i.e. execute this script on the cluster itself (here, engaging_rpp's login node)
     machine="local",
     # Job size: wall-time (hours) and number of cores (n)
     hours=1,
