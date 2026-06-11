@@ -386,8 +386,8 @@ Most workflows accept either a path to `input.gacode` or a live state.
 when supported) via ctypes against `libtglf_serial.so` / `libneo_serial.so`,
 no folder I/O, no subprocess fork. Build the libs once per machine via
 `src/mitim_tools/simulation_tools/interfaces/build_{tglf,neo}_lib.sh`.
-Tests covering this path: `tests/test_tglf_inprocess.py` and
-`tests/test_neo_inprocess.py` (unit), plus the teaching comparisons
+Tests covering this path: `tests/dev_tests/test_tglf_inprocess.py` and
+`tests/dev_tests/test_neo_inprocess.py` (unit), plus the teaching comparisons
 `tests/capability_tests/tglf_run_inprocess.py` and
 `tests/capability_tests/neo_run_inprocess.py` (standard vs in-process,
 overlaid).
@@ -438,14 +438,14 @@ runnable, end-to-end examples covering every wrapped code and workflow
 Lengyel, VITALS, powertorch, the generic BO engine, in-process execution and
 SLURM submission). They double as smoke tests.
 
-Unit tests:
+Unit tests (in `tests/dev_tests/`):
 - `test_cgyro_auto_resubmit.py` — CGYRO stall/resubmit logic.
 - `test_*_inprocess.py` — ctypes-backed in-process TGLF/NEO.
 
 If you change something that touches PORTALS, MAESTRO, or a transport
 interface, run the relevant `tests/capability_tests/` script (or at minimum
-`tests/test_*_inprocess.py` and `tests/test_cgyro_auto_resubmit.py`) before
-committing.
+`tests/dev_tests/test_*_inprocess.py` and
+`tests/dev_tests/test_cgyro_auto_resubmit.py`) before committing.
 
 ---
 
