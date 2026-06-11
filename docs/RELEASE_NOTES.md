@@ -6,6 +6,8 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
+*   🩹 **MAESTRO EPED beat can now retry instead of dying on "EPED failed to find any stable solution"**: new namelist knobs `teped_retries` (default 0, old behavior) and `teped_retry_lower_factor` (default 0.7) re-run EPED with the floor of the explored pedestal-temperature window (`TEPED_BOUND`) lowered relative to the original per attempt.
+
 *   ⏱️ **New "Timing" tab in the CGYRO plot notebook**, characterizing the computational cost of the run from `out.cgyro.timing`: wall time per data output, cumulative wall time (setup included), and the share of run time spent in each code section (nl, str, field, shear, coll, io, ...).
 
 
