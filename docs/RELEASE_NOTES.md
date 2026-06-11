@@ -6,7 +6,7 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
-*   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: verbose, tutorial-like, runnable examples of MITIM capabilities, kept up to date as capabilities are added or APIs change. First entries cover PORTALS (TGLF+NEO with in-situ namelist modification), standalone TGLF runs (from input.tglf or input.gacode), TGLF scans, turbulence-drives scans, incremental-diffusivity analysis, eigenfunction waveforms, reloading results from .npz, NEO runs, the neoclassical E×B from VGEN, cheap linear/nonlinear CGYRO runs, a linear-spectrum CGYRO-vs-GX comparison, and SLURM submission of single jobs and job arrays (`run_slurm` / `run_slurm_array`). The `tutorials/` folder has been removed entirely, replaced by these scripts.
+*   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: verbose, tutorial-like, runnable examples of MITIM capabilities, kept up to date as capabilities are added or APIs change. First entries cover PORTALS (TGLF+NEO with in-situ namelist modification), standalone TGLF runs (from input.tglf or input.gacode), TGLF scans, turbulence-drives scans, incremental-diffusivity analysis, eigenfunction waveforms, reloading results from .npz, NEO runs, the neoclassical E×B from VGEN, cheap linear/nonlinear CGYRO runs, a linear-spectrum CGYRO-vs-GX comparison, SLURM submission of single jobs and job arrays (`run_slurm` / `run_slurm_array`), and the generic Bayesian-optimization engine on a custom function. The `tutorials/` folder and the workflow tests fully reproduced by these scripts (OPT, TGLF, TGLF scans, NEO, NEO-VGEN) have been removed, replaced by them.
 
 
 ### Bug Fixes

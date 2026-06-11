@@ -15,9 +15,9 @@ Once setup has been successful, the following regression test should run smoothl
    
    .. code-block:: console
 
-      python3 MITIM-fusion/tests/OPT_workflow.py
+      python3 MITIM-fusion/tests/capability_tests/bayesian_optimization_custom_function.py
 
-      python3 MITIM-fusion/tests/TGLF_workflow.py
+      python3 MITIM-fusion/tests/capability_tests/tglf_run_from_tglfinput.py
 
    If both of those tests work, it is highly likely that the PORTALS workflow will work as well.
 

@@ -1,6 +1,6 @@
 """
 Regression test to run and plot TGLF results from a TRANSP output file
-To run: python3  tests/TGLF_workflow.py
+To run: python3  tests/TGLFfull_workflow.py
 """
 import os
 import numpy as np

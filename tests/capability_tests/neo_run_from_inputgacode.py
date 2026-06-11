@@ -14,6 +14,8 @@ Key teaching points:
     3. `multipliers` is an alternative to `extraOptions` for plasma parameters:
        instead of setting an absolute value, it multiplies the base value that
        prep() derived from the plasma state at each radius.
+    4. run_scan()/read_scan()/plot_scan() work exactly as for TGLF (see
+       tglf_scan.py), here used to scan the main-ion temperature gradient.
 """
 
 import numpy as np
@@ -83,4 +85,21 @@ neo.read(label="Sonic low res + 50% aLTi")
 
 # All figures go into a multi-tab MITIM FigureNotebook (neo.fn); show() opens the GUI
 neo.plot(labels=["Sonic", "Sonic low res", "Sonic low res + 50% aLTi"])
+
+# ---------------------------------------------------------------------------------------------------------------------
+# 4. Scan a parameter, exactly as in the TGLF scans
+# ---------------------------------------------------------------------------------------------------------------------
+
+# DLNTDR_1 is the input.neo name of the normalized temperature gradient (a/LT) of
+# species 1 (first ion); varUpDown gives the multipliers applied to the base value
+neo.run_scan(
+    "scan_aLTi",
+    variable="DLNTDR_1",
+    varUpDown=np.linspace(0.5, 1.5, 4),
+    cold_start=cold_start,
+)
+neo.read_scan(label="scan_aLTi", variable="DLNTDR_1")
+
+# Adding the scan figures to the same notebook as the runs above (fn=neo.fn)
+neo.plot_scan(labels=["scan_aLTi"], fn=neo.fn)
 neo.fn.show()

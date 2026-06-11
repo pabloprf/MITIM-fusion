@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-    python3 MITIM-fusion/tests/TGLF_workflow.py
+    python3 MITIM-fusion/tests/capability_tests/tglf_run_from_tglfinput.py
 
 .. contents:: Contents
     :local:
