@@ -490,4 +490,6 @@ committing.
   that bullet point as much as possible. For example, if improvements to a MAESTRO
   beat, do not populate the document with more than one bullet, unless needed.
 - Contributors should not be added per item, but at the end of the document. Don't
-  add myself.
+  add the github repo main author.
+- Do not add to RELEASE_NOTES at the moment of implementation, add stuff at the moment
+  of making the commit.
