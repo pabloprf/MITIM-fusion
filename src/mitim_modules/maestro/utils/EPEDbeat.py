@@ -39,7 +39,7 @@ class eped_beat(beat):
             ptop_multiplier = 1.0,    # Multiplier for the ptop, useful for sensitivity studies
             TioverTe = 1.0,           # Ratio of Ti/Te at the top of the pedestal
             eped_params_override = None,
-            teped_retries = 0,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found
+            teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
             teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
             **kwargs
             ):

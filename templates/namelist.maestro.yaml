@@ -228,8 +228,8 @@ maestro:
       # (if full EPED) Retries when EPED finds no stable solution within the explored
       # pedestal-temperature window: each retry lowers the floor of TEPED_BOUND relative
       # to the original one (floor_n = floor_0 * teped_retry_lower_factor^n) and re-runs.
-      # teped_retries: 0 (default) keeps the old behavior of failing immediately.
-      teped_retries: 0
+      # Set teped_retries: 0 to fail immediately instead (pre-retry behavior).
+      teped_retries: 2
       teped_retry_lower_factor: 0.7
 
       # Location of EPED-NN files and transformation function of this specific NN (only used if use_full_EPED is false)
