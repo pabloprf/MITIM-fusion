@@ -10,7 +10,13 @@ Key teaching points:
        `portals_fun.portals_parameters` and `portals_fun.optimization_options`.
        You do NOT need to write your own YAML — just modify those dictionaries
        in-situ before calling prep(). (prep() snapshots the namelist into the
-       run folder; edits after prep() are ignored.)
+       run folder; edits after prep() are ignored.) ALL such modifications are
+       completely OPTIONAL: the template defaults define a sensible run, and
+       every line below that touches those dictionaries is just overriding a
+       default for demonstration (here, mostly to keep the example cheap).
+       In particular, BE WARNED: this script caps the run at 2 BO iterations
+       for a quick check — far too few for a converged flux match (see the
+       warning at the optimization-controls section below).
     2. Code settings follow a three-level hierarchy (see the Transport models
        section below): controls file -> code_settings preset -> extraOptions.
     3. TGLF (turbulence) and NEO (neoclassical) are the default transport
@@ -44,9 +50,19 @@ if cold_start and folderWork.exists():
 
 portals_fun = PORTALSmain.portals(folderWork)
 
+# NOTE: everything from here to prep() is OPTIONAL — with no modifications at all,
+# PORTALS runs with the template defaults. These overrides are only for demonstration
+# and to keep this example cheap.
+
 # --- Optimization controls -------------------------------------------------------------------------------------------
 # The run starts with `initial_training` simple-relaxation (SR) evaluations to seed the
 # surrogates, then performs up to `maximum_iterations` Bayesian-optimization iterations.
+#
+# *** WARNING ***: maximum_iterations=2 is set here ONLY so that this teaching script
+# finishes quickly — 2 BO iterations are NOT enough to converge a real flux-matching
+# problem, and the resulting profiles should NOT be trusted. For actual physics runs,
+# leave the template default (or set a generous cap) and let the convergence criteria
+# stop the run.
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 5
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 

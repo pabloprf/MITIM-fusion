@@ -51,8 +51,9 @@ neo.prep(input_gacode, folder)
 
 # Preset only (level 2 of the hierarchy): "Sonic" is defined in
 # templates/input.neo.models.yaml and solves the Hinton-Wong generalized
-# equations (ROTATION_MODEL=2). The first argument is the name of the
-# subfolder (inside the working folder) where this run lives
+# equations (ROTATION_MODEL=2). Omitting code_settings entirely would run with
+# the bare controls-file defaults (level 1). The first argument is the name of
+# the subfolder (inside the working folder) where this run lives
 neo.run("sonic/", code_settings="Sonic", cold_start=cold_start)
 # read() parses the NEO output files and stores the results in the object under the label
 neo.read(label="Sonic")

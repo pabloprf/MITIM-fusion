@@ -9,7 +9,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 MITIM-fusion/tests/VITALS_workflow.py
+   python3 MITIM-fusion/tests/capability_tests/vitals_tglf_validation.py
 
 .. contents:: Contents
     :local:
