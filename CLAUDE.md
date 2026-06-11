@@ -436,8 +436,9 @@ copy-paste templates:
 - `GX_workflow.py`, `LENGYEL_workflow.py`, `TGYRO_workflow.py` — per-code
   smoke tests.
 - Workflows fully reproduced by a teaching script have been removed in favor of
-  `tests/capability_tests/` (so far: OPT, PORTALS, TGLF, TGLF 1D/2D scans, NEO,
-  NEO-VGEN, CGYRO, EPED, FREEGS, POWERTORCH, TRANSP, VITALS).
+  `tests/capability_tests/` (so far: OPT, PORTALS, TGLF, TGLF 1D/2D scans,
+  TGLF-from-TRANSP-CDF, NEO, NEO-VGEN, CGYRO, EPED, FREEGS, POWERTORCH,
+  TRANSP, VITALS).
 - `test_cgyro_auto_resubmit.py` — unit tests for the CGYRO stall/resubmit logic.
 - `test_*_inprocess.py` — ctypes-backed in-process TGLF/NEO.
 
