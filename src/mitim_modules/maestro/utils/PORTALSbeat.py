@@ -546,7 +546,8 @@ class portals_beat(beat):
 
             solution_overlay = self.portals_parameters.setdefault('solution', {})
 
-            if 'predicted_roa' in solution_overlay:
+            # Value-aware check (overlays may carry predicted_roa: null alongside predicted_rho)
+            if solution_overlay.get('predicted_roa') is not None:
 
                 print('\t\t- Using EPED pedestal top rho to select last radial location of PORTALS (in r/a)')
 
@@ -583,7 +584,9 @@ class portals_beat(beat):
             last_radial_location_moved = True
 
             # Check if I changed it previously and it hasn't moved
-            if strKeys in self.maestro_instance.parameters_trans_beat:
+            # (value-aware: old runs may have stored predicted_roa=None in the trans-beat
+            #  parameters, and a missing/None entry must not skip this no-move check)
+            if self.maestro_instance.parameters_trans_beat.get(strKeys) is not None:
                 print(f'\t\t\t* {strKeys} in previous PORTALS beat: {self.maestro_instance.parameters_trans_beat[strKeys]}')
                 print(f'\t\t\t* {strKeys} in current PORTALS beat: {self.portals_parameters["solution"][strKeys]}')
 
@@ -662,10 +665,16 @@ class portals_beat(beat):
         -------------------------------------------------------------------------------------------
         '''
 
-        if 'predicted_roa' in portals_parameters['solution']:
+        # Value-aware checks: the PORTALS template carries BOTH keys, with the unused
+        # one set to null (predicted_roa wins only when actually provided). Checking
+        # key presence alone stored predicted_roa=None here, so the next beat's
+        # _inform never found its predicted_rho in the trans-beat parameters, skipped
+        # the no-move check, declared a bogus move ("from 0.9 to 0.9"), and silently
+        # disabled the flux-match-first warm start and the last-location surrogate reuse.
+        if portals_parameters['solution'].get('predicted_roa') is not None:
             self.maestro_instance.parameters_trans_beat['predicted_roa'] = portals_parameters['solution']['predicted_roa']
             print(f'\t\t* predicted_roa saved for future beats: {portals_parameters["solution"]["predicted_roa"]}')
-        elif 'predicted_rho' in portals_parameters['solution']:
+        elif portals_parameters['solution'].get('predicted_rho') is not None:
             self.maestro_instance.parameters_trans_beat['predicted_rho'] = portals_parameters['solution']['predicted_rho']
             print(f'\t\t* predicted_rho saved for future beats: {portals_parameters["solution"]["predicted_rho"]}')
 

@@ -560,10 +560,10 @@ class confinement_beat(beat):
         # 0. Grab the last PORTALS prediction radius if requested
         if self.update_bc_based_on_portals:
             tb = self.maestro_instance.parameters_trans_beat
-            if "predicted_rho" in tb:
+            if tb.get("predicted_rho") is not None:
                 self._portals_rho_bc = (float(tb["predicted_rho"][-1]), "rho")
                 print(f"\t\t- update_bc_based_on_portals: BC location will use predicted_rho[-1] = {self._portals_rho_bc[0]:.4f} (rho)")
-            elif "predicted_roa" in tb:
+            elif tb.get("predicted_roa") is not None:
                 self._portals_rho_bc = (float(tb["predicted_roa"][-1]), "roa")
                 print(f"\t\t- update_bc_based_on_portals: BC location will use predicted_roa[-1] = {self._portals_rho_bc[0]:.4f} (roa)")
             else:
