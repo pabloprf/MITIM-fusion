@@ -330,14 +330,20 @@ def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G,
     params['fGped'] = fG * ped_vol_G
 
     ne20 = PLASMAtools.Greenwald_density(Ip_final, a) * fG
-    # Main-ion mass from the base namelist's fuel, for the Martin-2 isotope factor
-    # (2/mbg)^1.11 -- the same factor MITIM applies in derived['LH_Martin2'], so the
-    # P_LH used to set the power matches the achieved fLH = Psol/P_LH. ['D'] -> 2.0,
-    # ['D','T'] -> 2.5 (a D-T plasma's threshold is ~22% lower than a pure-D one).
+    # Evaluate the L-H threshold the SAME way MITIM's derived['LH_Martin2'] does, so
+    # the power set here matches the achieved fLH = Psol/P_LH:
+    #   - nmin low-density correction (LHthreshold_nmin): below n_min the Martin-2
+    #     threshold rises again. Omitting it (the default nmin=[0]) set the power up
+    #     to ~2x too LOW for low-density / low-fG plasmas -- e.g. JET fG=0.2 had
+    #     ne<n_min, giving achieved fLH=0.37 for a requested 0.8.
+    #   - (2/mbg)^1.11 isotope factor from the base namelist's fuel: ['D'] -> 2.0,
+    #     ['D','T'] -> 2.5 (a D-T threshold is ~22% lower than a pure-D one).
     _ION_MASS = {'H': 1.0, 'D': 2.0, 'T': 3.0}
     fuel = nm['plasma']['species']['fuel']
     mbg = sum(_ION_MASS[s] for s in fuel) / len(fuel)
-    Ptot = PLASMAtools.LHthreshold_Martin2(ne20, Bt, a, R) * (2.0 / mbg) ** 1.11 * fLH
+    nmin = PLASMAtools.LHthreshold_nmin(Ip_final, Bt, a, R)
+    Ptot = (PLASMAtools.LHthreshold_Martin2(ne20, Bt, a, R, nmin=nmin)
+            * (2.0 / mbg) ** 1.11 * fLH)
 
     heat = nm['plasma']['heating']
     heat['type'] = 'gaussian_sources'
