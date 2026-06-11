@@ -1,16 +1,16 @@
 """
-CAPABILITY: PORTALS predicting te, ti, ne and nZ with turbulent exchange
-------------------------------------------------------------------------
+CAPABILITY: PORTALS predicting te, ti, ne, nZ and w0 with turbulent exchange
+----------------------------------------------------------------------------
 This script teaches how to run PORTALS beyond the standard temperature
 prediction (see portals_standard.py first): predicting also the electron
-density and the density of a trace impurity, and treating the turbulent
-energy exchange as an additional surrogate.
+density, the density of a trace impurity and the rotation, and treating the
+turbulent energy exchange as an additional surrogate.
 
 Key teaching points:
     1. predicted_channels can include, on top of "te"/"ti": "ne" (electron
        density), "nZ" (density of the trace impurity selected with
-       `trace_impurity`, driven by its particle flux), and "w0" (rotation,
-       driven by the momentum flux; not used here).
+       `trace_impurity`, driven by its particle flux), and "w0" (toroidal
+       rotation, driven by the momentum flux).
     2. turbulent_exchange_as_surrogate=True fits the turbulent energy
        exchange from the transport code as an extra surrogate, so the
        electron-ion exchange in the targets accounts for it self-consistently.
@@ -56,8 +56,8 @@ portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 
 # --- Solution: what to predict ---------------------------------------------------------------------------------------
 portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 
-# Channels beyond te/ti: electron density and trace-impurity density
-portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ"]
+# Channels beyond te/ti: electron density, trace-impurity density and toroidal rotation
+portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti", "ne", "nZ", "w0"]
 
 # The impurity whose density profile "nZ" refers to (matched by name in the input.gacode
 # species list); its particle flux becomes the transport channel that drives nZ
