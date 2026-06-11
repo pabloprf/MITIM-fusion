@@ -385,7 +385,16 @@ class eped_beat(beat):
                         eped_params_override = dict(self.eped_params_override) if self.eped_params_override is not None else {}
                         if attempt > 0:
                             bound = list(eped_params_override.get('TEPED_BOUND', self._default_teped_bound()))
-                            bound[0] = bound[0] * self.teped_retry_lower_factor**attempt
+                            # Lower the floor but keep max and step: the step is the resolution
+                            # of the teped search (accuracy of the returned ptop/wtop), so it must
+                            # NOT be scaled with the window — retried solutions stay as accurate
+                            # as normal ones. Snap the new floor to the step grid (at least one
+                            # step above zero) so the explored values stay tidy.
+                            new_floor = bound[0] * self.teped_retry_lower_factor**attempt
+                            step = bound[2] if len(bound) > 2 and bound[2] > 0 else None
+                            if step is not None:
+                                new_floor = max(step, round(round(new_floor / step) * step, 10))
+                            bound[0] = new_floor
                             eped_params_override['TEPED_BOUND'] = bound
                             print(f"\t- EPED retry {attempt}/{self.teped_retries}: lowering explored teped floor, TEPED_BOUND = {bound}", typeMsg='w')
                             # Clean slate for the re-run (the failed attempt left no output file)
