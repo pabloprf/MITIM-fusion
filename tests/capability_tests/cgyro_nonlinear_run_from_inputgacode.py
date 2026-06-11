@@ -68,7 +68,7 @@ cgyro.run(
     # Individual input.cgyro parameters, applied on top of the preset (level 3): this
     # MAX_TIME overrides the preset's inherited MAX_TIME=1200 — extraOptions always wins
     extraOptions={
-        "MAX_TIME": 10.0,  # very short, just for demonstration (real runs need saturated-flux statistics)
+        "MAX_TIME": 5.0,  # very short, just for demonstration (real runs need saturated-flux statistics)
     },
     # Resources of each CGYRO instance (one per radius): cores or GPUs per call, and SLURM time limit
     allocation={"resources_per_call": 8, "minutes": 10},
@@ -89,14 +89,14 @@ cgyro.read(label="nonlinear_silly")
 cgyro.run(
     "nonlinear_preprocessed",
     code_settings="Nonlinear_silly",
-    extraOptions={"MAX_TIME": 10.0},
+    extraOptions={"MAX_TIME": 5.0},
     # The fourth level of the CGYRO hierarchy (see docstring): from these, MITIM computes
     # a consistent KY/BOX_SIZE/N_RADIAL perpendicular grid at each radius from the local
     # equilibrium, overriding the preset defaults (and extraOptions, for those grid keys)
     preprocess_options={
-        "ky_min": 0.3,  # minimum (box) binormal wavenumber
+        "ky_min": 0.1,  # minimum (box) binormal wavenumber
         "L_x": 90,      # radial box size (rho_s units)
-        "N_radial": 256,
+        "N_radial": 48,
     },
     allocation={"resources_per_call": 8, "minutes": 10},
     cold_start=cold_start,
