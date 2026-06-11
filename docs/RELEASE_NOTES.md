@@ -15,7 +15,7 @@ DESCRIPTION
 
 *   🐛 **`mitim_check_maestro` was blind to SLURM cancellations** (e.g. preemption on `mit_preemptable`): requeued jobs showed an innocent PENDING/RUNNING. Cancellation notices in `slurm_error.dat` are now surfaced — live requeued jobs are annotated with the cancellation time/reason, and cancelled jobs no longer in the queue are reported as definite FAILED with the reason instead of a generic timestamp.
 
-*   🐛 **Plotting in-process TGLF results crashed** (`AttributeError: 'TGLFoutput' object has no attribute 'scalar_sat_params'`): `TGLFoutput.from_inprocess` was missing attributes added later to the file-reading path, and the SAT-parameters plot now also skips gracefully for legacy objects without them.
+*   🐛 **Plotting in-process TGLF results crashed** (`AttributeError` on `scalar_sat_params`, then `IndexError` in the fluctuation spectra): `TGLFoutput.from_inprocess` was missing attributes added later to the file-reading path, and its placeholder spectral arrays were sized 1 along the species/ion axes while plot loops iterate the actual species counts. All placeholders now carry consistent dimensions; verified by running the full standard-vs-in-process comparison and notebook build end-to-end.
 
 *   🐛 **The analytic diffusion transport model of powertorch was broken** (`transport_analytic.diffusion_model` still wrote fluxes as object attributes instead of into `powerstate.plasma`, crashing `calculate()`/`flux_match()` with `KeyError: 'QeMWm2_tr'`). Now follows the current evaluator contract.
 
