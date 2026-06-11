@@ -269,6 +269,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         self.Qgb = self.cgyrodata.q_gb_norm
         self.Ggb = self.cgyrodata.gamma_gb_norm
+        self.Pgb = self.cgyrodata.pi_gb_norm
         
         # PROFILE_MODEL=1 (MITIM default) leaves rho_star_norm=0 in
         # out.cgyro.info, which would zero out every fluctuation amplitude at
@@ -660,7 +661,10 @@ class CGYROoutput(SIMtools.GACODEoutput):
         else:
             self.Ge_ky = self.Ge_ES_ky
         
-        if 'Gi_EM_ky' in self.__dict__:
+        # (checking the per-species key: the field loop sets Gi_all_EM_ky, never a
+        #  summed Gi_EM_ky -- the old check on 'Gi_EM_ky' silently dropped the
+        #  electromagnetic contribution to the ion particle fluxes in EM runs)
+        if 'Gi_all_EM_ky' in self.__dict__:
             self.Gi_all_ky = self.Gi_all_ES_ky + self.Gi_all_EM_ky
             # sum over species
             self.Gi_ky = self.Gi_all_ky.sum(axis=0)
@@ -669,7 +673,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.Gi_all_ky = self.Gi_all_ES_ky
             # sum over species
             self.Gi_ky = self.Gi_all_ky.sum(axis=0)
-            self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
+        self.Gi_ES_ky = self.Gi_all_ES_ky.sum(axis=0)
 
         if 'Qi_all_EM_ky' in self.__dict__:
             self.Qi_all_ky = self.Qi_all_ES_ky + self.Qi_all_EM_ky
@@ -679,20 +683,78 @@ class CGYROoutput(SIMtools.GACODEoutput):
             self.Qi_all_ky = self.Qi_all_ES_ky
             self.Qi_ky = self.Qi_all_ky.sum(axis=0)
             self.Qi_ES_ky = self.Qi_all_ES_ky.sum(axis=0)
-        
+
+        # Momentum flux, per species and summed over ALL species including electrons
+        # (same convention as TGLF's Mt = Me + sum(Mi)). pygacode ky_flux moment
+        # ordering: 0 = Gamma, 1 = Q, 2 = Pi, 3 = S (turbulent exchange).
+        # Sign convention: CGYRO's native sign IS the physical GACODE convention --
+        # no flip needed. The -SIGN_IT flip TGLFtools applies to Mt exists only to
+        # undo TGLF's parity-mapped rotation inputs (tgyro_tglf_map.f90:197-199
+        # flips vexb/vpar/vpar_shear in, tgyro_flux.f90:199,208 flips mflux out);
+        # CGYRO receives MACH/GAMMA_E/GAMMA_P unflipped (orientation via
+        # IPCCW/BTCCW), like NEO, whose momentum flux TGYRO also takes unflipped.
+
+        i_species, i_moment = self.all_flags, 2
+        for i_field, field in enumerate(fields):
+            if field == 'phi':
+                self.Mt_all_ES_ky = ky_flux[i_species, i_moment, i_field, :, :]
+            elif field == 'apar':
+                self.Mt_all_EM_apar_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Mt_all_EM_ky = self.Mt_all_EM_apar_ky.copy()
+            elif field == 'bpar':
+                self.Mt_all_EM_aper_ky = ky_flux[i_species, i_moment, i_field, :, :]
+                self.Mt_all_EM_ky += self.Mt_all_EM_aper_ky
+
+        if 'Mt_all_EM_ky' in self.__dict__:
+            self.Mt_all_ky = self.Mt_all_ES_ky + self.Mt_all_EM_ky
+            self.Mt_EM_ky = self.Mt_all_EM_ky.sum(axis=0)
+        else:
+            self.Mt_all_ky = self.Mt_all_ES_ky
+        self.Mt_ky = self.Mt_all_ky.sum(axis=0)
+        self.Mt_ES_ky = self.Mt_all_ES_ky.sum(axis=0)
+
+        # Turbulent energy exchange (moment 3), written by recent CGYRO versions
+        # (the number of flux moments is autodetected by pygacode from the file size;
+        # older outputs only carry the 3 moments Gamma, Q, Pi)
+        if ky_flux.shape[1] > 3:
+            i_moment = 3
+            for i_field, field in enumerate(fields):
+                if field == 'phi':
+                    self.S_all_ES_ky = ky_flux[self.all_flags, i_moment, i_field, :, :]
+                elif field == 'apar':
+                    self.S_all_EM_apar_ky = ky_flux[self.all_flags, i_moment, i_field, :, :]
+                    self.S_all_EM_ky = self.S_all_EM_apar_ky.copy()
+                elif field == 'bpar':
+                    self.S_all_EM_aper_ky = ky_flux[self.all_flags, i_moment, i_field, :, :]
+                    self.S_all_EM_ky += self.S_all_EM_aper_ky
+
+            if 'S_all_EM_ky' in self.__dict__:
+                self.S_all_ky = self.S_all_ES_ky + self.S_all_EM_ky
+            else:
+                self.S_all_ky = self.S_all_ES_ky
+
+            # Electron exchange (the quantity PORTALS uses as Qie, matching TGLF's Se)
+            self.Se_ky = self.S_all_ky[self.electron_flag, :, :]
+            # Ion exchange, per species (input.gacode ion order) and summed
+            self.Si_all_ky = self.S_all_ky[self.ions_flags, :, :]
+            self.Si_ky = self.Si_all_ky.sum(axis=0)
+        else:
+            print('\t- This CGYRO output carries no turbulent-exchange moment (n_flux=3); Se/Si not available', typeMsg='i')
+
         # ************************
-        # Sum total 
+        # Sum total
         # ************************
-        variables = ['Qe','Ge','Gi','Qi','Qi_all']
+        variables = ['Qe','Ge','Gi','Qi','Qi_all','Gi_all','Mt','Mt_all','Se','Si','Si_all']
         for var in variables:
             for i in ['', '_ES', '_EM_apar', '_EM_aper', '_EM']:
                 if var+i+'_ky' in self.__dict__:
                     self.__dict__[var+i] = self.__dict__[var+i+'_ky'].sum(axis=-2)  # (time)
-        
-        # Convert to MW/m^2     
+
+        # Convert to real units
         self.QeMWm2 = self.Qe * self.Qgb
         self.QiMWm2 = self.Qi * self.Qgb
         self.Qi_allMWm2 = self.Qi_all * self.Qgb
+        self.MtJm2 = self.Mt * self.Pgb
         
     def _saturate_signals(self):
         
@@ -712,12 +774,28 @@ class CGYROoutput(SIMtools.GACODEoutput):
             'Qi_all_ky',
             'Ge',
             'Ge_ky',
+            'Gi',
+            'Gi_ky',
+            'Gi_all',
+            'Gi_all_ky',
+            'Mt',
+            'MtJm2',
+            'Mt_ky',
+            'Mt_all',
+            'Se',
+            'Se_ky',
+            'Si',
+            'Si_all',
             'Qe_ES',
             'Qi_ES',
             'Ge_ES',
+            'Gi_ES',
+            'Mt_ES',
             'Qe_EM',
             'Qi_EM',
             'Ge_EM',
+            'Gi_EM',
+            'Mt_EM',
             'g',
             'f',
         ]

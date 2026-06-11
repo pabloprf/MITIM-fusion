@@ -976,7 +976,17 @@ class optimization_data:
         matches = df_sub.apply(lambda row: np.allclose(row, x), axis=1)
         df = self.data[matches]
 
-        return df, df['Iteration'].item() if len(df) > 0 else None
+        if len(df) > 1:
+            # Coincident rows can legitimately appear, e.g. a simple-relax
+            # flux-match trajectory oscillating back onto a point it already
+            # evaluated. Use the first one, consistent with grab_data_point's
+            # df.iloc[0] choice for y/ystd (the rows are duplicates anyway).
+            print(
+                f"\t* Found {len(df)} coincident rows in optimization data for the requested point, using the first one",
+                typeMsg="w",
+            )
+
+        return df, int(df['Iteration'].iloc[0]) if len(df) > 0 else None
 
     def grab_data_point(self, x, printStuff=True):
 

@@ -1940,7 +1940,11 @@ def multiplier_input(var_orig, multiplier, minimum_delta_abs = None):
     if minimum_delta_abs is not None:
         if (multiplier != 1.0) and abs(delta) < minimum_delta_abs:
             print(f"\t\t\t- delta = {delta} is smaller than minimum_delta_abs = {minimum_delta_abs}, enforcing",typeMsg="i")
-            delta = np.sign(delta) * minimum_delta_abs
+            # Direction from the multiplier when the base value is exactly zero:
+            # np.sign(0.0) = 0 made this floor a no-op precisely in the zero-value
+            # case it exists for (e.g. aLn ~ 0.0, zero-rotation shear)
+            direction = np.sign(delta) if delta != 0.0 else np.sign(multiplier - 1.0)
+            delta = direction * minimum_delta_abs
 
     return var_orig + delta
 

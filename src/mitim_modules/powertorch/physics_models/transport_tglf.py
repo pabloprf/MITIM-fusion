@@ -350,6 +350,59 @@ class tglf_model:
                     else:
                         print(f"\t\t\t* The thermal ion considered by TGLF was summed into the Qi", typeMsg="i")
 
+def _build_uncertainty_scan_setup(predicted_channels, ion_OI_position_in_total_padded_list, minimum_abs_gradient):
+    '''
+    Map each predicted channel to the TGLF input variable scanned to estimate flux
+    uncertainties, plus the value-derived secondary inputs (TAUS/XNUE/BETAE).
+
+    Note that the scanned variable is only the REPRESENTATIVE of the group that the
+    corresponding powerstate DV actually moves: completeVariation_TGLF (wired as the
+    TGLF run_specifications['complete_variation'] and applied inside _prepare_scan)
+    co-varies with the same multiplier:
+        RLTS_2      -> RLTS of all thermal ions
+        RLNS_1      -> RLNS of all thermal ions (quasineutral with electrons)
+        TAUS_2      -> TAUS of all thermal ions
+        VEXB_SHEAR  -> VPAR_SHEAR of electrons + all thermal ions (both ~ d(w0)/dr)
+
+    The minimum_delta_abs floor (same numerical value as for the gradients, in their
+    respective TGLF units) avoids no-op scan members around zero values (e.g. aLn ~ 0.0
+    or zero-rotation shears, which would otherwise report artificially zero stds). The
+    floor is registered for every species position (TGLF supports up to 6) so the
+    co-varied keys produced by completeVariation_TGLF are floored consistently with
+    their representative.
+    '''
+
+    variables_to_scan = []
+    for i in predicted_channels:
+        if i == 'te': variables_to_scan.append('RLTS_1')
+        if i == 'ti': variables_to_scan.append('RLTS_2')
+        if i == 'ne': variables_to_scan.append('RLNS_1')
+        if i == 'nZ': variables_to_scan.append(f'RLNS_{ion_OI_position_in_total_padded_list}')
+        if i == 'w0': variables_to_scan.append('VEXB_SHEAR')
+
+    #TODO: Only if that parameter is changing at that location
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
+        variables_to_scan.append('TAUS_2')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('XNUE')
+    if 'te' in predicted_channels or 'ne' in predicted_channels:
+        variables_to_scan.append('BETAE')
+
+    max_species_tglf = 6
+    minimum_delta_abs = {}
+    for ikey in variables_to_scan:
+        if 'RL' in ikey:
+            base = ikey.rsplit('_', 1)[0]   # RLTS / RLNS
+            for j in range(1, max_species_tglf + 1):
+                minimum_delta_abs[f'{base}_{j}'] = minimum_abs_gradient
+        if ikey == 'VEXB_SHEAR':
+            minimum_delta_abs['VEXB_SHEAR'] = minimum_abs_gradient
+            for j in range(1, max_species_tglf + 1):
+                minimum_delta_abs[f'VPAR_SHEAR_{j}'] = minimum_abs_gradient
+
+    return variables_to_scan, minimum_delta_abs
+
+
 def _run_tglf_uncertainty_model(
     tglf,
     rho_locations,
@@ -375,30 +428,13 @@ def _run_tglf_uncertainty_model(
 
     ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2 # Because in input.tglf 1 is electrons, and 2 is first ion, etc
 
-    # Prepare scan 
-    variables_to_scan = []
-    for i in predicted_channels:
-        if i == 'te': variables_to_scan.append('RLTS_1')
-        if i == 'ti': variables_to_scan.append('RLTS_2')
-        if i == 'ne': variables_to_scan.append('RLNS_1')
-        if i == 'nZ': variables_to_scan.append(f'RLNS_{ion_OI_position_in_total_padded_list}')
-        if i == 'w0': variables_to_scan.append('VEXB_SHEAR') #TODO: is this correct? or VPAR_SHEAR?
+    # Prepare scan (see _build_uncertainty_scan_setup for the channel -> variable
+    # mapping, the completeVariation_TGLF co-variation and the zero-value floors)
+    variables_to_scan, minimum_delta_abs = _build_uncertainty_scan_setup(
+        predicted_channels, ion_OI_position_in_total_padded_list, minimum_abs_gradient
+    )
 
-    #TODO: Only if that parameter is changing at that location
-    if 'te' in predicted_channels or 'ti' in predicted_channels:
-        variables_to_scan.append('TAUS_2')
-    if 'te' in predicted_channels or 'ne' in predicted_channels:
-        variables_to_scan.append('XNUE')
-    if 'te' in predicted_channels or 'ne' in predicted_channels:
-        variables_to_scan.append('BETAE')
-    
     relative_scan = [1-delta, 1+delta]
-
-    # Enforce at least "minimum_abs_gradient" in gradient, to avoid zero gradient situations
-    minimum_delta_abs = {}
-    for ikey in variables_to_scan:
-        if 'RL' in ikey:
-            minimum_delta_abs[ikey] = minimum_abs_gradient
 
     name = subfolder_name
 
@@ -553,27 +589,12 @@ def _run_tglf_uncertainty_model_batched(
 
     ion_OI_position_in_total_padded_list = ion_OI_position_in_ion_list + 2
 
-    # Build the scan-variable list (same logic as the single-plasma path)
-    variables_to_scan = []
-    for i in predicted_channels:
-        if i == 'te': variables_to_scan.append('RLTS_1')
-        if i == 'ti': variables_to_scan.append('RLTS_2')
-        if i == 'ne': variables_to_scan.append('RLNS_1')
-        if i == 'nZ': variables_to_scan.append(f'RLNS_{ion_OI_position_in_total_padded_list}')
-        if i == 'w0': variables_to_scan.append('VEXB_SHEAR')
-    if 'te' in predicted_channels or 'ti' in predicted_channels:
-        variables_to_scan.append('TAUS_2')
-    if 'te' in predicted_channels or 'ne' in predicted_channels:
-        variables_to_scan.append('XNUE')
-    if 'te' in predicted_channels or 'ne' in predicted_channels:
-        variables_to_scan.append('BETAE')
+    # Same scan setup as the single-plasma path
+    variables_to_scan, minimum_delta_abs = _build_uncertainty_scan_setup(
+        predicted_channels, ion_OI_position_in_total_padded_list, minimum_abs_gradient
+    )
 
     relative_scan = [1 - delta, 1 + delta]
-
-    minimum_delta_abs = {}
-    for ikey in variables_to_scan:
-        if 'RL' in ikey:
-            minimum_delta_abs[ikey] = minimum_abs_gradient
 
     N = len(plasma_labels)
     num_cases_total = N * len(rho_locations) * len(variables_to_scan) * len(relative_scan)
@@ -722,16 +743,38 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
     # Read previous ball and append
     # --------------------------------------------------------------------------------------------------------
 
+    rho_ball = np.array([])
+    input_ball = np.array([])
+    output_ball = np.array([])
+
     if Path(file).exists():
-        
+
         print(f"\t- Reusing previous TGLF scan evaluations within the delta ball to capture combinations")
-        
+
         # Grab ball contents
         with np.load(file) as data:
             rho_ball = data['rho']
             input_ball = data['input_params']
             output_ball = data['output_params']
-            
+            input_keys_ball = data['input_keys'] if 'input_keys' in data else None
+
+        # The npz stores the inputs positionally: if the scanned-variable set changed
+        # since the ball was written (e.g. different predicted channels on a restart),
+        # the stored inputs would be silently misinterpreted -- discard the ball instead.
+        # (input_keys was added later: files without it are only checked by count)
+        if (input_keys_ball is not None and list(input_keys_ball) != list(input_params_keys)) or \
+           (input_keys_ball is None and input_ball.shape[1] != len(input_params_keys)):
+            print(
+                f"\t\t- Ball file was written with different scan variables "
+                f"({list(input_keys_ball) if input_keys_ball is not None else input_ball.shape[1]} vs {list(input_params_keys)}); "
+                "discarding it and starting a fresh ball", typeMsg="w",
+            )
+            rho_ball = np.array([])
+            input_ball = np.array([])
+            output_ball = np.array([])
+
+    if rho_ball.shape[0] != 0:
+
         precision_check = 1E-5 # I needed to add a small number to avoid numerical issues because TGLF input files have limited precision
             
         # Get the indeces of the points within the delta ball (condition in which all inputs are within the delta of the base case for that specific radius)
@@ -804,13 +847,9 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
         Qe, Qi, Ge, GZ, Mt, S = unique_results
         
         print(f"\t\t>>> Flux arrays have shape {Qe.shape} after finding unique points")
-        
+
     else:
-        
-        rho_ball = np.array([])
-        input_ball = np.array([])
-        output_ball = np.array([])
-        
+
         Qe, Qi, Ge, GZ, Mt, S = Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig
 
     # --------------------------------------------------------------------------------------------------------
@@ -822,8 +861,10 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
         input_params = np.append(input_ball, input_params, axis=2)
         output_params = np.append(output_ball, output_params, axis=2)
 
-    # Save the new ball
-    np.savez(file, rho=rho_locations, input_params=input_params, output_params=output_params)
+    # Save the new ball (input_keys records the positional meaning of input_params,
+    # so a future run with different scan variables can detect the mismatch)
+    np.savez(file, rho=rho_locations, input_params=input_params, output_params=output_params,
+             input_keys=np.array(input_params_keys))
     print(f"\t- Saved updated ball with {input_params.shape[-1]} points to {IOtools.clipstr(file)}", typeMsg="i")
     
     return Qe, Qi, Ge, GZ, Mt, S

@@ -523,8 +523,14 @@ def improve_resolution_profiles(profiles, rhoMODEL, smooth_around_coarsing=True)
 
     # ----------------------------------------------------------------------------------
     # Change resolution
+    #   Shape-preserving (PCHIP) interpolation: the default cubic spline rings when
+    #   interpolating across a slope discontinuity (e.g. a pedestal top sitting at
+    #   the last control point), leaving non-monotonic wiggles in the inserted
+    #   fine-grid points right next to the control radius — which show up as
+    #   artificial a/L dips for nearly-flat unpredicted channels like ne.
     # ----------------------------------------------------------------------------------
-    profiles.changeResolution(rho_new=rho_new)
+    from mitim_tools.misc_tools import MATHtools
+    profiles.changeResolution(rho_new=rho_new, interpolation_function=MATHtools.extrapolatePchip)
 
 def debug_transformation(p, p_new, s):
 

@@ -43,8 +43,14 @@ plasma:
       #   - x_bc + bc_coordinate, Te_bc, Ti_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
       #   - BetaN and nu_ne (above) are still used to match target values by adjusting aLT and aLn
       #   - Set BetaN and/or nu_ne to null to skip the corresponding gradient optimization and use aLT/aLn directly
-      x_bc: null           # BC location value (e.g. pedestal top, typically ~0.95)
-      bc_coordinate: "rho" # Coordinate for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin'
+      #
+      #   !! Recommend bc_coordinate: 'rho'. rho_tor is the immutable grid coordinate carried
+      #      unchanged across beats; 'roa'/'psin' depend on the equilibrium, which is not yet
+      #      solved at separatrix initialization, so the BC can be pinned at the wrong rho_tor
+      #      and drift once the real equilibrium is solved. The non-rho options are kept
+      #      available to accommodate future improvements.
+      x_bc: null           # BC location value in bc_coordinate (e.g. pedestal top, typically ~0.95)
+      bc_coordinate: "rho" # 'rho' (rho_tor) recommended; 'roa'/'psin' unreliable at init (see note above)
       Te_bc: null          # Te at x_bc (keV)
       Ti_bc: null          # Ti at x_bc (keV); if null, uses Te_bc
       # Note: for fixed_bc, neped_20 (from plasma.parameters above) is used directly as ne_bc
@@ -160,6 +166,10 @@ plasma:
 
       # ~~~~~~~~~~~
       # Parameters for simple Gaussian sources (type = gaussian_sources)
+      #     Keep in mind that these implement the profiles of source densities
+      #     to provide the desired integrated powers using the current volume
+      #     integrals. If the equilibrium changes across beats, the actual Pe/Pi
+      #     delivered by the same source parameters can change.
       # ~~~~~~~~~~~
       nu_source: 5.0  # Peaking factor for the source profile
       Pe: 11.0        # Total electron heating power
@@ -259,6 +269,12 @@ maestro:
 
       # Prescribed sharpness parameter xi (ratio of edge to core temperature gradient)
       # xi=1 means edge gradient matches core gradient; xi>1 means sharper (more H-mode-like) edge
+      # How the BC is applied: core (rho < rho_bc) preserves a/LT and a/Ln exactly (the
+      # profiles are multiplied by T_bc,new/T_bc,old; absolute gradients dT/dr scale with
+      # the BC ratio); edge is replaced by a straight line in psi_n down to the
+      # (kept-fixed) separatrix value. The analytical edge starts ONE grid point past
+      # the BC, so the a/L gradients that PORTALS reads at its last control point are
+      # preserved exactly (the slope kink sits outside the PORTALS prediction grid).
       sharpness: 1.0
 
       # Coordinate system in which the sharpness parameter xi (the gradient ratio) is defined.
@@ -268,9 +284,109 @@ maestro:
       # Ti/Te ratio at the boundary condition location (default 1.0)
       tite: 1.0
 
+      # What to do with the density profiles at the BC change. Options:
+      #     'bc':   core ne rescaled to ne_bc (= neped_20) preserving a/Lne, edge replaced
+      #             with the same shape as the temperatures, ion densities rescaled to
+      #             keep ni/ne ratios (default, original behavior)
+      #     'keep': ne and all ion densities left untouched; only Te/Ti are modified.
+      #             The neped_20 passed to subsequent beats is then the actual ne at
+      #             rho_bc read from the profiles (any inherited neped_20 is ignored).
+      density_treatment: "bc"
+
       # If True, override x_bc with the outermost radial location used by the previous
       # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
       # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
+      update_bc_based_on_portals: false
+
+    preprocess_prepare: null
+    preprocess_prepare_parameters: {}
+    preprocess_run: null
+
+  confinement:
+
+    beat_type: confinement
+
+    base_module: null
+
+    parameters_prepare:
+
+      # Location of the boundary condition in the coordinate given by bc_coordinate
+      x_bc: 0.90
+
+      # Coordinate system for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin' (normalized poloidal flux)
+      bc_coordinate: "rho"
+
+      # Confinement scaling law whose H-factor is matched. Options:
+      #     'H98y2': IPB98(y,2) thermal energy confinement scaling (default)
+      #     'H89p':  ITER89-P L-mode scaling
+      confinement_scaling: "H98y2"
+
+      # Target H-factor value. Te_bc cannot be inverted analytically from the H-factor
+      # (it depends on the volume-integrated thermal stored energy of the full modified
+      # profiles), so it is found by Nelder-Mead minimization of ((H - target)/target)^2,
+      # applying the boundary condition at each trial Te_bc with the same profile
+      # machinery as the sharpness beat.
+      # How the BC is applied (same machinery as the sharpness beat):
+      #   - Core (rho < rho_bc): the normalized logarithmic gradients a/LT and a/Ln are
+      #     PRESERVED exactly (the profiles are multiplied by T_bc,new/T_bc,old). The
+      #     absolute gradients dT/dr are NOT preserved -- they scale with that same
+      #     ratio. a/LT is the gradient-driven-transport quantity, so PORTALS surrogate
+      #     data remains reusable across the BC change.
+      #   - Edge: profiles replaced by the shape selected with edge_shape below, down to
+      #     the (kept-fixed) separatrix value. The analytical edge starts ONE grid point
+      #     past the BC, so the a/L gradients that PORTALS reads at its last control
+      #     point are preserved exactly (the slope kink sits outside the PORTALS
+      #     prediction grid).
+      #   - Density: per density_treatment below (rescaled to ne_bc, or left untouched).
+      # NOTE: by default, the auxiliary, fusion and radiation source profiles stored in
+      # input.gacode are NOT recomputed during the Te_bc scan (total heating power stays
+      # frozen); the H-factor responds through the thermal stored energy. Source
+      # self-consistency is recovered by the subsequent PORTALS/TRANSP beat in the chain.
+      # See alpha_power_feedback below to lift this assumption for the fusion sources.
+      confinement: 1.0
+
+      # Ti/Te ratio at the boundary condition location (default 1.0)
+      tite: 1.0
+
+      # Shape of the Te/Ti/ne profiles in the edge region (rho > rho_bc). Options:
+      #     'linear': straight line in psi_n from the BC value to the separatrix value
+      #     'tanh':   pedestal tanh in r/a, the same functional form the eped_initializer
+      #               uses (FunctionalForms.pedestal_tanh), also anchored at the BC and
+      #               separatrix values
+      edge_shape: "linear"
+
+      # If true, recompute the fusion source profiles (qfuse/qfusi) from the trial
+      # profiles at every minimization step, using the analytic powerstate targets
+      # (transport-free; same model as PORTALS analytical targets). The H-factor then
+      # accounts for the alpha-heating response to the BC change: raising Te_bc raises
+      # Pfus -> raises qHeat -> H grows slower than with frozen sources (H ~ W*P^-0.31
+      # for H98y2), so in burning plasmas freezing the sources underestimates the Te_bc
+      # needed for a given target. The recomputed qfus is also written into the beat
+      # output state (and the baseline H is recomputed with the same model for a
+      # consistent comparison). Radiation/exchange sources are left untouched: they do
+      # not enter the H-factor and are evolved by the next PORTALS beat anyway.
+      # No-op for non-DT plasmas (analytic model returns zero fusion without thermal D+T).
+      # Cost: negligible (analytic, no transport calls).
+      alpha_power_feedback: false
+
+      # What to do with the density profiles at the BC change. Options:
+      #     'bc':   core ne rescaled to ne_bc (= neped_20) preserving a/Lne, edge replaced
+      #             with the same shape as the temperatures, ion densities rescaled to
+      #             keep ni/ne ratios (default, original behavior)
+      #     'keep': ne and all ion densities left untouched; only Te/Ti are modified, so
+      #             the H-factor responds to the BC purely through the temperatures (note
+      #             the tau scalings carry a density dependence, e.g. <ne>^0.41 in H98y2,
+      #             so 'bc' lets density move H independently of Te_bc). The neped_20
+      #             passed to subsequent beats is then the actual ne at rho_bc read from
+      #             the profiles (any inherited neped_20 is ignored).
+      density_treatment: "bc"
+
+      # Bounds on Te_bc (keV) for the minimization
+      Te_bc_bounds: [0.05, 10.0]
+
+      # If True, override x_bc with the outermost radial location used by the previous
+      # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
+      # bc_coordinate is updated automatically.
       update_bc_based_on_portals: false
 
     preprocess_prepare: null
@@ -344,7 +460,7 @@ maestro:
           convergence_options:
             maximum_iterations: 30
             stopping_criteria_parameters:
-              maximum_value: 5.e-3                 # Explicit, because of "use_previous_residual" functionality
+              maximum_value: 1.e-5                 # Very strict because we prefer to converge with Ricci criteria
               maximum_value_is_rel: true           # Explicit, because of "use_previous_residual" functionality
 
           strategy_options:

@@ -3649,9 +3649,16 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             # ------------------------
             # Add trace impurity
             # ------------------------
-            
+
             for irho in self.inputs_files:
-                position = self.inputs_files[irho].addTraceSpecie(Z, A, AS=fimp)
+                # input.tglf MASS_X is normalized (to deuterium by MITIM/TGYRO convention --
+                # see the prep() note), and addTraceSpecie expects an already-normalized
+                # mass, but `trace` provides the PHYSICAL A in amu. Infer the file's own
+                # normalization mass from its electron row (MASS_1 = me_amu / mass_ref) so
+                # the conversion is exact regardless of how the input file was generated.
+                # (Passing A unnormalized made the trace species a factor ~2 too heavy.)
+                mass_ref_amu = PLASMAtools.me_u / self.inputs_files[irho].species[1]["MASS"]
+                position = self.inputs_files[irho].addTraceSpecie(Z, A / mass_ref_amu, AS=fimp)
 
             self.variable = f"RLNS_{position}"
 
@@ -4300,7 +4307,7 @@ class TGLFinput(SIMtools.GACODEinput):
             specie[ivar] = self.species[positionCopy][ivar]
 
         self.species[position] = specie
-        print(f" ~~ Specie Z = {ZS}, A = {MASS} added with index {position}")
+        print(f" ~~ Specie ZS = {ZS}, MASS (normalized) = {MASS} added with index {position}")
 
         self.plasma["NS"] += 1
         self.num_recorded += 1

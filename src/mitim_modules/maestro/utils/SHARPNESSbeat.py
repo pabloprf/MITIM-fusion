@@ -48,6 +48,7 @@ class sharpness_beat(beat):
         sharpness=1.0,
         sharpness_coordinate="psin",   # coordinate for xi derivative: 'rho', 'roa', or 'psin'
         tite=1.0,
+        density_treatment="bc",        # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
     ):
@@ -68,6 +69,12 @@ class sharpness_beat(beat):
             This is independent of bc_coordinate.
         tite : float
             Ti / Te ratio at the boundary condition (default 1.0).
+        density_treatment : str
+            'bc' (default): core ne rescaled to ne_bc (= neped_20) preserving
+            a/Lne, edge replaced, ion densities rescaled to keep ni/ne ratios.
+            'keep': ne and all ion densities left untouched; only Te/Ti are
+            modified. The neped_20 passed to subsequent beats is then the
+            actual ne at rho_bc read from the profiles.
         update_bc_based_on_portals : bool
             If True, override x_bc with the outermost radial location used by
             the previous PORTALS beat (stored in parameters_trans_beat as
@@ -83,19 +90,24 @@ class sharpness_beat(beat):
             raise ValueError(
                 f"sharpness_coordinate must be 'rho', 'roa', or 'psin', got '{sharpness_coordinate}'"
             )
+        if density_treatment not in ("bc", "keep"):
+            raise ValueError(
+                f"density_treatment must be 'bc' or 'keep', got '{density_treatment}'"
+            )
 
         self.x_bc = x_bc
         self.bc_coordinate = bc_coordinate
         self.sharpness = sharpness
         self.sharpness_coordinate = sharpness_coordinate
         self.tite = tite
+        self.density_treatment = density_treatment
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
         self.neped_20 = None   # resolved in _inform() from plasma/parameters or previous beat
 
         print(
             f"\t- Sharpness beat: x_bc={x_bc} ({bc_coordinate}), sharpness_coord={sharpness_coordinate}, "
-            f"xi={sharpness}, Ti/Te={tite}",
+            f"xi={sharpness}, Ti/Te={tite}, density_treatment={density_treatment}",
             typeMsg="i",
         )
 
@@ -164,7 +176,18 @@ class sharpness_beat(beat):
         # 2. Determine ne_bc
         # ------------------------------------------------------------------
 
-        if self.neped_20 is None:
+        if self.density_treatment == "keep":
+            # Density untouched: ne_bc reported (and passed forward as neped_20) is the
+            # actual ne at rho_bc from the profiles, not any inherited target
+            ne_bc_1e19 = float(np.interp(rho_bc_rho, rho, ne))
+            ne_bc_20   = ne_bc_1e19 * 0.1   # convert 10^19 -> 10^20
+            if self.neped_20 is not None:
+                print(
+                    f"\t- density_treatment='keep': ne/ni profiles left untouched; ignoring "
+                    f"neped_20={self.neped_20:.3f}, reporting actual ne at rho_bc: {ne_bc_20:.3f} 10^20 m^-3",
+                    typeMsg="i",
+                )
+        elif self.neped_20 is None:
             # Fall back: use ne from profiles at rho_bc
             ne_bc_1e19 = float(np.interp(rho_bc_rho, rho, ne))
             ne_bc_20   = ne_bc_1e19 * 0.1   # convert 10^19 -> 10^20
@@ -238,6 +261,7 @@ class sharpness_beat(beat):
             Te_bc,
             Ti_bc,
             ne_bc_1e19,
+            density_treatment=self.density_treatment,
         )
 
         # ------------------------------------------------------------------
@@ -261,6 +285,7 @@ class sharpness_beat(beat):
             "aLT_Te_bc":      aLT_Te_bc,
             "droa_dcoord_bc": droa_dcoord_bc,
             "tite":           self.tite,
+            "density_treatment": self.density_treatment,
         }
 
         for key, val in sharpness_results.items():
@@ -362,6 +387,7 @@ class sharpness_beat(beat):
         if loaded_results is not None and profiles_after is not None:
             profiles_after.derive_quantities(rederiveGeometry=False)
             _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, counter)
+            _plot_sharpness_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter)
         else:
             # Fallback: nothing to show yet
             fig = fn.add_figure(label="Sharpness", tab_color=counter)
@@ -381,10 +407,10 @@ class sharpness_beat(beat):
         #    sharpness_coordinate is NOT changed — it governs the derivative, not the location)
         if self.update_bc_based_on_portals:
             tb = self.maestro_instance.parameters_trans_beat
-            if "predicted_rho" in tb:
+            if tb.get("predicted_rho") is not None:
                 self._portals_rho_bc = (float(tb["predicted_rho"][-1]), "rho")
                 print(f"\t\t- update_bc_based_on_portals: BC location will use predicted_rho[-1] = {self._portals_rho_bc[0]:.4f} (rho)")
-            elif "predicted_roa" in tb:
+            elif tb.get("predicted_roa") is not None:
                 self._portals_rho_bc = (float(tb["predicted_roa"][-1]), "roa")
                 print(f"\t\t- update_bc_based_on_portals: BC location will use predicted_roa[-1] = {self._portals_rho_bc[0]:.4f} (roa)")
             else:
@@ -455,15 +481,37 @@ def _convert_bc_location(rho_bc, coordinate, rho, roa, psi_pol_n):
         raise ValueError(f"Unknown coordinate: {coordinate}")
 
 
-def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19):
+def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19, edge_shape="linear",
+                        density_treatment="bc"):
     """
     Modify *profiles* in-place (returns modified copy) so that:
 
-    - Edge region (rho > rho_bc):
-        Te, Ti, ne interpolated linearly in psi_n from bc to separatrix.
-    - Core region (rho <= rho_bc):
-        profiles scaled to match bc value at rho_bc while preserving the
-        normalised gradient (aLT) shape from the current transport solution.
+    - Edge region, per edge_shape:
+        'linear': Te, Ti, ne interpolated linearly in psi_n down to the separatrix.
+        'tanh':   Te, Ti, ne follow the pedestal tanh of FunctionalForms.pedestal_tanh
+                  in r/a (the same functional form the eped_initializer uses).
+                  NOTE: the sharpness beat's xi definition assumes the linear edge
+                  gradient, so it always uses 'linear'; 'tanh' is for the confinement
+                  beat, whose matching criterion (H-factor) is integral.
+        The analytical edge starts ONE grid point past the BC (anchored at the
+        core-extended value at ibc+1): the BC point's 3-point derivative stencil
+        (MATHtools.deriv / GACODE bound_deriv) then reads core-shaped values on
+        both sides, so the a/L gradients that PORTALS reads at its last control
+        point are preserved exactly. The slope discontinuity sits at ibc+1,
+        outside the PORTALS prediction grid. (Anchoring the edge at ibc itself
+        polluted the BC-point gradient by ~2x and propagated into the next
+        PORTALS beat's starting DVs.)
+    - Core region (rho <= rho_bc, extended through ibc+1):
+        profiles multiplied by y_bc / y_old(ibc) — the exact way to change the
+        BC value while preserving the normalised gradients a/L of the current
+        transport solution (log-derivatives are invariant under scaling; no
+        derive-then-integrate roundtrip error).
+    - Density, per density_treatment:
+        'bc':   ne treated like the temperatures (core rescaled to ne_bc_1e19
+                preserving a/Lne, edge replaced) and all ion densities rescaled
+                to keep ni/ne ratios.
+        'keep': ne and all ion densities left exactly as in the input profiles;
+                only Te/Ti are modified (ne_bc_1e19 is ignored).
 
     Parameters
     ----------
@@ -472,8 +520,15 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19)
     psin_bc     : float   – BC location in psi_n
     Te_bc       : float   – Te at BC  [keV]
     Ti_bc       : float   – Ti at BC  [keV]
-    ne_bc_1e19  : float   – ne at BC  [10^19 m^-3]
+    ne_bc_1e19  : float   – ne at BC  [10^19 m^-3] (unused if density_treatment='keep')
+    edge_shape  : str     – 'linear' (default) or 'tanh'
+    density_treatment : str – 'bc' (default) or 'keep'
     """
+
+    if edge_shape not in ("linear", "tanh"):
+        raise ValueError(f"edge_shape must be 'linear' or 'tanh', got '{edge_shape}'")
+    if density_treatment not in ("bc", "keep"):
+        raise ValueError(f"density_treatment must be 'bc' or 'keep', got '{density_treatment}'")
 
     p = copy.deepcopy(profiles)
 
@@ -483,42 +538,65 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19)
 
     ibc = int(np.argmin(np.abs(rho - rho_bc_rho)))
 
-    # ---- edge grids ----
-    # Use psi_pol_n[ibc] (grid value) as anchor to ensure exact continuity,
-    # even if psin_bc was computed by interpolation and may differ slightly.
-    psin_edge      = psi_pol_n[ibc:]
-    psin_bc_grid   = psi_pol_n[ibc]
+    # The analytical edge starts one grid point past the BC (see docstring);
+    # guard the degenerate case of a BC at the very edge of the grid.
+    i_edge = min(ibc + 1, len(rho) - 2)
 
-    def _linear_edge(y_bc, y_sep):
-        """Linear interpolation in psi_n from bc (at ibc) to separatrix."""
-        return y_bc + (y_sep - y_bc) * (psin_edge - psin_bc_grid) / (1.0 - psin_bc_grid)
+    # ---- edge grids ----
+    # Anchored at grid values at i_edge to ensure exact continuity with the
+    # extended core.
+    psin_edge      = psi_pol_n[i_edge:]
+    psin_anchor    = psi_pol_n[i_edge]
+    roa_edge       = roa[i_edge:]
+    roa_anchor     = roa[i_edge]
+
+    def _linear_edge(y_anchor, y_sep):
+        """Linear interpolation in psi_n from the anchor (at i_edge) to separatrix."""
+        return y_anchor + (y_sep - y_anchor) * (psin_edge - psin_anchor) / (1.0 - psin_anchor)
+
+    def _tanh_edge(y_anchor, y_sep):
+        """Pedestal tanh in r/a from the anchor (at i_edge) to separatrix, as in the initializer."""
+        from mitim_tools.popcon_tools import FunctionalForms
+        _, y = FunctionalForms.pedestal_tanh(y_anchor, y_sep, 1.0 - roa_anchor, x=roa_edge)
+        return y
+
+    _edge = _tanh_edge if edge_shape == "tanh" else _linear_edge
+
+    def _scale_core(y, y_bc):
+        """Exact a/L-preserving core: multiply by y_bc/y(ibc) through i_edge."""
+        y_new = y.copy()
+        y_new[:i_edge + 1] = y[:i_edge + 1] * (y_bc / y[ibc])
+        return y_new
 
     Te_sep     = float(p.profiles["te(keV)"][-1])
     Ti_sep     = float(p.profiles["ti(keV)"][-1, 0])
     ne_sep     = float(p.profiles["ne(10^19/m^3)"][-1])
 
     # ---- build new full profiles ----
-    Te_new  = _scale_core_with_aLT(roa, rho, p.profiles["te(keV)"],          ibc, Te_bc)
-    Ti_new  = _scale_core_with_aLT(roa, rho, p.profiles["ti(keV)"][:, 0],    ibc, Ti_bc)
-    ne_new  = _scale_core_with_aLT(roa, rho, p.profiles["ne(10^19/m^3)"],     ibc, ne_bc_1e19)
+    Te_new  = _scale_core(p.profiles["te(keV)"],       Te_bc)
+    Ti_new  = _scale_core(p.profiles["ti(keV)"][:, 0], Ti_bc)
 
-    # Replace edge with linear-in-psi_n
-    Te_new[ibc:]  = _linear_edge(Te_bc,     Te_sep)
-    Ti_new[ibc:]  = _linear_edge(Ti_bc,     Ti_sep)
-    ne_new[ibc:]  = _linear_edge(ne_bc_1e19, ne_sep)
+    # Replace edge with the selected shape, anchored at the core-extended value at i_edge
+    Te_new[i_edge:]  = _edge(Te_new[i_edge], Te_sep)
+    Ti_new[i_edge:]  = _edge(Ti_new[i_edge], Ti_sep)
+
+    if density_treatment == "bc":
+        ne_new          = _scale_core(p.profiles["ne(10^19/m^3)"], ne_bc_1e19)
+        ne_new[i_edge:] = _edge(ne_new[i_edge], ne_sep)
+        # Ratios of ion species to electron density (before modification)
+        nine_orig = p.profiles["ni(10^19/m^3)"] / p.profiles["ne(10^19/m^3)"][:, None]
 
     # ---- store modified profiles ----
-    # Ratios of ion species to electron density (before modification)
-    nine_orig = p.profiles["ni(10^19/m^3)"] / p.profiles["ne(10^19/m^3)"][:, None]
     TiTimain_orig = p.profiles["ti(keV)"] / p.profiles["ti(keV)"][:, [0]]
 
     p.profiles["te(keV)"]          = Te_new
     p.profiles["ti(keV)"][:, 0]   = Ti_new
-    p.profiles["ne(10^19/m^3)"]   = ne_new
 
-    # Keep ion-to-electron density ratios
-    for i in range(p.profiles["ni(10^19/m^3)"].shape[-1]):
-        p.profiles["ni(10^19/m^3)"][:, i] = ne_new * nine_orig[:, i]
+    if density_treatment == "bc":
+        p.profiles["ne(10^19/m^3)"]   = ne_new
+        # Keep ion-to-electron density ratios
+        for i in range(p.profiles["ni(10^19/m^3)"].shape[-1]):
+            p.profiles["ni(10^19/m^3)"][:, i] = ne_new * nine_orig[:, i]
 
     # Make all thermal ions share the same temperature profile
     p.makeAllThermalIonsHaveSameTemp()
@@ -531,49 +609,6 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19)
     p.derive_quantities(rederiveGeometry=False)
 
     return p
-
-
-def _scale_core_with_aLT(roa, rho, y, ibc, y_bc):
-    """
-    Return a new profile array where:
-      - The value at index ibc equals y_bc
-      - The core (0..ibc) is reconstructed by integrating the OLD normalised
-        gradient (aLT) inward from the new boundary value y_bc.
-        This preserves gradient-driven-transport physics in the core while
-        allowing the absolute level to shift to match the new BC.
-      - The edge (ibc+1 .. end) is left unchanged here (caller replaces it).
-
-    Parameters
-    ----------
-    roa  : array  – r/a grid
-    rho  : array  – rho_tor grid  (not used here, kept for symmetry)
-    y    : array  – profile values (e.g. Te in keV)
-    ibc  : int    – index of the BC location
-    y_bc : float  – new value at the BC
-    """
-
-    # Guard against zero / negative values
-    y_safe = np.where(y > 0, y, 1e-10 * np.abs(y).max())
-
-    # Compute the normalised gradient aL = -d(ln y)/d(roa) from current profile
-    aL = CALCtools.derivation_into_Lx(
-        torch.from_numpy(roa[:ibc + 2]),
-        torch.from_numpy(y_safe[:ibc + 2]),
-        array=False,
-    ).numpy()
-
-    # Integrate from ibc inward using integration_Lx
-    #   integration_Lx expects (batch, dim) tensors and the BC at the LAST point
-    roa_core   = torch.from_numpy(roa[:ibc + 1]).unsqueeze(0)
-    aL_core    = torch.from_numpy(aL[:ibc + 1]).unsqueeze(0)
-    y_bc_t     = torch.tensor([[y_bc]], dtype=torch.float64)
-
-    y_core_new = CALCtools.integration_Lx(roa_core, aL_core, y_bc_t).squeeze().numpy()
-
-    y_new = y.copy()
-    y_new[:ibc + 1] = y_core_new
-
-    return y_new
 
 
 def _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, counter):
@@ -930,5 +965,82 @@ def _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, co
     fig.suptitle(
         rf"Sharpness beat  |  $\xi={xi:.2f}$,  $\psi_{{n,bc}}={psin_bc_g:.3f}$"
         rf"  ($\rho_N={rho_bc_rho:.3f}$),  $T_{{e,bc}}={Te_bc:.3f}$ keV{xi_note}",
+        fontsize=FS,
+    )
+
+
+def _plot_sharpness_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter,
+                                    label="Sharpness"):
+    """
+    Full Te, Ti, ne profiles (rows) plotted against each of the three coordinate
+    systems rho_tor, r/a, psi_n (columns), before (blue) and after (red) the
+    boundary condition. The BC location is marked by a vertical dashed line in
+    whichever coordinate each column uses. `label` names the figure tab (also
+    reused by the confinement beat, which applies the same BC machinery).
+    """
+
+    FS, FS_tick, FS_leg = 13, 11, 10
+    cb, ca = "royalblue", "crimson"
+    lw = 1.8
+
+    rho_bc_rho = loaded_results["rho_bc_rho"]
+    psin_bc    = loaded_results["psin_bc"]
+
+    # Coordinate arrays for each state (geometry is unchanged by the BC, so before/after
+    # share roa/psin, but read each from its own state to be safe).
+    def _coords(p):
+        return {"rho": p.profiles["rho(-)"],
+                "roa": p.derived["roa"],
+                "psin": p.derived["psi_pol_n"]}
+
+    # Profile values for each state (ne in 10^20 m^-3 to match the other sharpness tab).
+    def _vals(p):
+        return {"Te": p.profiles["te(keV)"],
+                "Ti": p.profiles["ti(keV)"][:, 0],
+                "ne": p.profiles["ne(10^19/m^3)"] * 0.1}
+
+    cb_x, ca_x = _coords(profiles_before), _coords(profiles_after)
+    vb, va     = _vals(profiles_before),   _vals(profiles_after)
+
+    # BC location in each coordinate (rho from results; roa interpolated; psin from results)
+    roa_bc = float(np.interp(rho_bc_rho, ca_x["rho"], ca_x["roa"]))
+    bc_loc = {"rho": rho_bc_rho, "roa": roa_bc, "psin": psin_bc}
+
+    rows = [("Te", r"$T_e$ (keV)"),
+            ("Ti", r"$T_i$ (keV)"),
+            ("ne", r"$n_e$ ($10^{20}$ m$^{-3}$)")]
+    cols = [("rho",  r"$\rho_{tor}$"),
+            ("roa",  r"$r/a$"),
+            ("psin", r"$\psi_n$")]
+
+    fig = fn.add_figure(label=f"{label} - Profiles", tab_color=counter)
+    gs  = fig.add_gridspec(3, 3, hspace=0.4, wspace=0.4)
+
+    col_top_ax = {}   # top axis of each column, so the panels below share its x-axis
+    for ir, (rk, rlab) in enumerate(rows):
+        for ic, (ck, clab) in enumerate(cols):
+            # Link x within a column: zoom/pan on any panel drives the whole column.
+            ax = fig.add_subplot(gs[ir, ic], sharex=col_top_ax.get(ic))
+            if ir == 0:
+                col_top_ax[ic] = ax
+            # markers expose the actual grid points underneath the lines
+            ax.plot(cb_x[ck], vb[rk], '-o', color=cb, lw=lw, ms=4.0, mew=0, label="before")
+            ax.plot(ca_x[ck], va[rk], '-o', color=ca, lw=lw, ms=4.0, mew=0, label="after")
+            ax.axvline(bc_loc[ck], color="k", ls="--", lw=1.0, label="BC")
+            ax.set_ylabel(rlab, fontsize=FS)
+            ax.set_xlim([0, 1])
+            ax.set_ylim(bottom=0)
+            ax.tick_params(labelsize=FS_tick)
+            GRAPHICStools.addDenseAxis(ax)
+            if ir == 0:                       # column header = coordinate of this column
+                ax.set_title(clab, fontsize=FS)
+            if ir == len(rows) - 1:           # x-axis label only on the bottom row
+                ax.set_xlabel(clab, fontsize=FS)
+            if ir == 0 and ic == 0:
+                ax.legend(prop={"size": FS_leg}, loc="best")
+
+    fig.suptitle(
+        rf"{label} profiles  |  BC at $\rho_{{tor}}={bc_loc['rho']:.3f}$, "
+        rf"$r/a={bc_loc['roa']:.3f}$, $\psi_n={bc_loc['psin']:.3f}$",
         fontsize=FS,
     )

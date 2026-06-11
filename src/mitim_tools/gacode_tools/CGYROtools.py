@@ -1234,15 +1234,15 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         fig = self.fn.add_figure(label="Fluxes (time)")
         axsFluxes_t = fig.subplot_mosaic(
             """
-            AC
-            BD
+            ACEG
+            BDFH
             """
         )
         fig = self.fn.add_figure(label="Fluxes (ky)")
         axsFluxes_ky = fig.subplot_mosaic(
             """
-            AC
-            BD
+            ACE
+            BDF
             """
         )
         fig = self.fn.add_figure(label="Intensities (time)")

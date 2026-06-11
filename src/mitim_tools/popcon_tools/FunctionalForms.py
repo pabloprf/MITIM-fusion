@@ -166,8 +166,21 @@ def MITIMfunctional_aLyTanh(
                                         y_top
                                     ).cpu().numpy()[0]
 
-    # Merge
-    y = np.concatenate([Ycore, Yped[bc_index+1:]])
+    # Merge: extend the core ONE grid point past x_top at the prescribed aLy and
+    # re-anchor the pedestal tanh there (passing exactly through that point and
+    # y_sep). The core/pedestal slope discontinuity then sits at bc_index+1
+    # rather than at the pedestal top itself, so the centered 3-point derivative
+    # AT x_top — which becomes the PORTALS boundary-condition control point in
+    # MAESTRO chains — reads exactly the prescribed core aLy instead of a
+    # core/pedestal mix (which showed up as an artificial a/L spike at the BC,
+    # most visibly for nearly-flat channels like ne).
+    # (aLy arrives as a 1-element array when called inside scipy.minimize loops,
+    #  e.g. the eped_initializer peaking/BetaN matching — y_anchor must be scalar
+    #  for the pedestal_tanh fit)
+    i_anchor = min(bc_index + 1, len(x) - 2)
+    y_anchor = float(Ycore[-1]) * float(np.exp(-np.squeeze(aLy) * (x[i_anchor] - x[bc_index])))
+    _, Yped_anchor = pedestal_tanh(y_anchor, y_sep, 1 - x[i_anchor], x=x)
+    y = np.concatenate([Ycore, [y_anchor], Yped_anchor[i_anchor + 1:]])
 
     if plotYN:
         fig, axs = plt.subplots(nrows=2, figsize=(6, 8))

@@ -216,8 +216,14 @@ class PORTALSanalyzer:
             self.ibest = self.ilast
 
         if len(self.powerstates) <= self.ibest:
-            print("\t- PORTALS was read after new residual was computed but before pickle was written!",typeMsg="w")
-            self.ibest -= 1
+            # best_absolute_index (from optimization_results) can exceed the available
+            # powerstates (from optimization_extra) by one when PORTALS is read after a
+            # new residual was computed but before the pickle was written -- or by more
+            # on a resumed run, where optimization_data carries rows from a previous
+            # attempt whose powerstates were never stored. Clamp to the last available
+            # evaluation (identical to the old ibest -= 1 in the off-by-one case).
+            print(f"\t- Best evaluation index ({self.ibest}) has no stored powerstate (only {len(self.powerstates)} available, e.g. resumed run or read mid-write); using the last available one", typeMsg="w")
+            self.ibest = len(self.powerstates) - 1
             self.iextra = None
 
         self.profiles_next = None

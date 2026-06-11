@@ -13,6 +13,7 @@ from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
+from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
 from IPython import embed
 
 MARKERSIZE = 1
@@ -39,6 +40,8 @@ def grabMAESTRO(folder):
             beat_types.append('lengyel')
         elif (folder_beats / f'{beats[beat]}' / 'run_sharpness').exists():
             beat_types.append('sharpness')
+        elif (folder_beats / f'{beats[beat]}' / 'run_confinement').exists():
+            beat_types.append('confinement')
 
     if len(beats) == 0:
         raise ValueError(f"No beats found in {folder_beats}")
@@ -112,6 +115,8 @@ def plot_results(self, fn):
             key = f'Lengyel b#{i+1}'
         elif isinstance(beat, sharpness_beat):
             key = f'Sharpness b#{i+1}'
+        elif isinstance(beat, confinement_beat):
+            key = f'Confinement b#{i+1}'
         else:
             key = f'Beat b#{i+1}'
 
@@ -222,15 +227,16 @@ def plot_results(self, fn):
     
     axs = fig.subplot_mosaic(
         """
-        ABGI
-        ABGI
-        AEGI
-        DEHJ
-        DFHJ
-        DFHJ
-        """
+        ABGIK
+        ABGIK
+        AEGIK
+        DEHJL
+        DFHJL
+        DFHJL
+        """,
+        gridspec_kw={"wspace": 0.55},
     )
-    
+
     plot_special_quantities(ps, ps_lab, axs)
     
     if (self.folder_performance / 'timing.jsonl').exists():
@@ -253,6 +259,7 @@ def plot_results(self, fn):
 def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     
     x, BetaN, Pfus, p_th, p_tot, Pin, Q, fG, nu_ne, q95, q0, xsaw,p90 = [], [], [], [], [], [], [], [], [], [], [], [], []
+    tauE, H98, H89 = [], [], []
     for p,pl in zip(ps,ps_lab):
         x.append(pl)
         BetaN.append(p.derived['BetaN_engineering'])
@@ -267,6 +274,17 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
         q0.append(p.derived['q0'])
         xsaw.append(p.derived['roa_saw'])
         p90.append(np.interp(0.9,p.profiles['rho(-)'],p.derived['pthr_manual']))
+        tauE.append(p.derived['tauE'])
+        H98.append(p.derived['H98'])
+        H89.append(p.derived['H89'])
+
+    # Fusion power/gain below ~1 kW is numerical noise (e.g. non-fusion beats);
+    # blank those out so the Performance axes don't autoscale to a meaningless
+    # ~1e-14 spread. Q is masked wherever Pfus is, since both track "is there fusion".
+    Pfus, Q = np.array(Pfus, dtype=float), np.array(Q, dtype=float)
+    meaningless = Pfus < 1e-3
+    Pfus[meaningless] = np.nan
+    Q[meaningless] = np.nan
 
     def _special(ax,x):
         for xi in x:
@@ -356,9 +374,13 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax = axs['H']
     ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$\\nu_{ne}$')
+    ax.axhline(y=1, color='k', lw=1, ls='--')  # flat-density reference
     GRAPHICStools.addDenseAxis(ax)
-    ax.set_ylim(bottom = 0)
-    
+    # No bottom=0 floor (that pins peaking ~1 to the ceiling): autoscale to the data,
+    # then widen just enough to keep the y=1 reference line in view.
+    _lo, _hi = ax.get_ylim()
+    ax.set_ylim(min(_lo, 0.98), max(_hi, 1.02))
+
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
     
     _special(ax, x)
@@ -386,9 +408,35 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax.set_ylabel('Inversion radius (roa)')
     GRAPHICStools.addDenseAxis(ax)
     ax.set_ylim([0,1])
-    
+
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
-    
+
+    _special(ax, x)
+
+    # -----------------------------------------------------------------
+    ax = axs['K']
+    ax.plot(x, tauE, '-s', color=color, markersize=7, lw = 1)
+    ax.set_ylabel('$\\tau_E$ (s)')
+    ax.set_title('Confinement Evolution')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+
+    ax.set_xticklabels([])
+
+    _special(ax, x)
+
+    ax = axs['L']
+    ax.plot(x, H98, '-s', color=color, markersize=7, lw = 1, label='H98y2')
+    ax.plot(x, H89, '-*', color=color, markersize=7, lw = 1, label='H89p')
+    ax.set_ylabel('$H$')
+    ax.axhline(y=1, color = 'k', lw = 2, ls = '--')
+    GRAPHICStools.addDenseAxis(ax)
+    ax.set_ylim(bottom = 0)
+    if legYN:
+        ax.legend()
+
+    ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
+
     _special(ax, x)
 
     # -----------------------------------------------------------------

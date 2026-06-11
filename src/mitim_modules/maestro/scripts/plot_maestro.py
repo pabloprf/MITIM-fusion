@@ -119,13 +119,14 @@ def main():
         
         axsAll = fig.subplot_mosaic(
             """
-            ABGI
-            ABGI
-            AEGI
-            DEHJ
-            DFHJ
-            DFHJ
-            """
+            ABGIK
+            ABGIK
+            AEGIK
+            DEHJL
+            DFHJL
+            DFHJL
+            """,
+            gridspec_kw={"wspace": 0.55},
         )
         
         fig = fn.add_figure(label='MAESTRO timings ALL', tab_color=4)
@@ -162,12 +163,14 @@ def main():
             
         ps_final.append(m.final_state)
 
-    # Plot all profiles
-    if any(ps_final):
-        figsProfs = state_plotting.add_figures(fn,fnlab_pre = "MAESTRO Profiles ALL - ", tab_color=5)
-        state_plotting.plotAll(ps_final, figs=figsProfs)
-    else:
-        print("No final profiles to plot, MAESTRO simulation did not finish all required beats", typeMsg="w")
+    # Plot all final profiles overlaid — only meaningful when comparing multiple
+    # cases; for a single case these profiles are already in its 'MAESTRO - ' tabs.
+    if len(folders) > 1:
+        if any(ps_final):
+            figsProfs = state_plotting.add_figures(fn,fnlab_pre = "MAESTRO Profiles ALL - ", tab_color=5)
+            state_plotting.plotAll(ps_final, figs=figsProfs)
+        else:
+            print("No final profiles to plot, MAESTRO simulation did not finish all required beats", typeMsg="w")
             
     
     if len(folders) > 1:
