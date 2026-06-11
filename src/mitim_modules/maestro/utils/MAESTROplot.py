@@ -374,9 +374,12 @@ def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):
     ax = axs['H']
     ax.plot(x, nu_ne, '-s', color=color, markersize=7, lw = 1)
     ax.set_ylabel('$\\nu_{ne}$')
+    ax.axhline(y=1, color='k', lw=1, ls='--')  # flat-density reference
     GRAPHICStools.addDenseAxis(ax)
-    # No bottom=0 floor: peaking sits around ~1, so anchoring at 0 pins the data to
-    # the ceiling. Let it autoscale both ends with margins.
+    # No bottom=0 floor (that pins peaking ~1 to the ceiling): autoscale to the data,
+    # then widen just enough to keep the y=1 reference line in view.
+    _lo, _hi = ax.get_ylim()
+    ax.set_ylim(min(_lo, 0.98), max(_hi, 1.02))
 
     ax.tick_params(axis='x', rotation=rotation, labelsize=fontsize)
     
