@@ -42,6 +42,7 @@ plasma_state = PROFILEStools.gacode_state(__mitimroot__ / "tests" / "data" / "in
 # (powertorch works with torch tensors in double precision)
 rho = torch.from_numpy(np.linspace(0.1, 0.9, 9)).to(dtype=torch.double)
 
+# Initialize the powerstate with the plasma state
 s = STATEtools.powerstate(
     plasma_state,
     # Channels to evolve and the coarse radii where they are parametrized

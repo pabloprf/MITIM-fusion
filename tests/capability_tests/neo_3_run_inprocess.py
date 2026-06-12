@@ -11,6 +11,12 @@ PREREQUISITE — build the shared library once per machine:
     cd src/mitim_tools/simulation_tools/interfaces
     bash build_neo_lib.sh
 
+*** WARNING ***: in-process execution currently returns MINIMAL data — the
+flux values only. Spectral quantities (ky spectra, eigenvalues, fluctuation
+amplitudes, ...) are zero-filled placeholders, so the corresponding plot
+panels will be empty/zero for the in-process labels. Use the standard route
+when you need more than fluxes.
+
 Key teaching points:
     1. Only TWO changes with respect to a standard run: `in_process=True` in
        the constructor, and prep() without a folder (there is no file I/O at
@@ -86,3 +92,4 @@ neo_sub.results["in-process"] = neo_ip.results["in-process"]
 # The two labels should lie exactly on top of each other in every panel
 neo_sub.plot(labels=["subprocess", "in-process"])
 neo_sub.fn.show()
+

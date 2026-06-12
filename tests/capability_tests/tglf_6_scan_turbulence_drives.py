@@ -66,6 +66,8 @@ tglf.runScanTurbulenceDrives(
 # 3. Plot fluxes vs each drive at each radius
 # ---------------------------------------------------------------------------------------------------------------------
 
-# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
-tglf.plotScanTurbulenceDrives(label="turb_drives")
+# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI.
+# plotTGLFs=False skips the per-scan-point TGLF notebooks (set True to inspect each point)
+tglf.plotScanTurbulenceDrives(label="turb_drives", plotTGLFs=False)
 tglf.fn.show()
+

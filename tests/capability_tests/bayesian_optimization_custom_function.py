@@ -3,7 +3,7 @@ CAPABILITY: Generic MITIM Bayesian optimization on a custom function
 --------------------------------------------------------------------
 This script teaches how to use the MITIM surrogate-based optimization engine
 (the same one that powers PORTALS) on your own function. The problem solved
-here is trivial on purpose — find x such that x^2 matches the target value 15
+here is trivial on purpose — find z such that z^2 matches the target value 15
 — so that the focus is on the framework, not the physics.
 
 Key teaching points:
@@ -94,7 +94,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 
 # templates/namelist.optimization.yaml carries all the optimizer defaults (acquisition,
 # surrogate options, convergence criteria, ...); read it and modify in-situ, exactly as
-# the PORTALS namelist is modified in portals_standard.py
+# the PORTALS namelist is modified in portals_1_standard.py
 namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
 opt_fun1D = opt_class(folderWork, namelist)
 

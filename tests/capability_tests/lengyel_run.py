@@ -29,6 +29,7 @@ Key teaching points:
 """
 
 import os
+import matplotlib.pyplot as plt
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools
@@ -57,11 +58,11 @@ if cold_start and folder.exists():
 
 # Lengyel() reads the default controls yaml; a custom one can be passed with
 # namelist_location=...
-l = Lengyel()
+lengyel = Lengyel()
 
 # prep() sets the radas atomic-data directory and overwrites the machine/plasma inputs
 # with the values derived from the input.gacode (printed to the terminal as it does so)
-l.prep(
+lengyel.prep(
     radas_dir=radas_dir_env,
     input_gacode=input_gacode,
 )
@@ -72,7 +73,7 @@ l.prep(
 
 # Any input of the controls yaml can be overridden as a keyword argument; results are
 # parsed into l.results (a dictionary of quantities with units)
-l.run(
+lengyel.run(
     folder / "tmp_run",
     cold_start=cold_start,
 )
@@ -83,10 +84,12 @@ l.run(
 
 # One run per value of `scan_name`; any other input override applies to all of them.
 # plotYN=True plots the separatrix electron temperature vs the scanned input at the end
-l.run_scan(
+lengyel.run_scan(
     folder=folder / "tmp_scan",
     scan_name="power_crossing_separatrix",
     scan_values=["10MW", "20MW", "30MW"],
     plasma_current="2.0 MA",
     plotYN=True,
 )
+
+plt.show()

@@ -5,7 +5,7 @@ This script teaches how to run TGYRO — the GACODE flux-matching transport
 solver — through MITIM, starting from a plasma state. TGYRO iterates the
 profiles with a classical (gradient-based) scheme until TGLF+NEO fluxes match
 the targets: it is the traditional alternative to the surrogate-based PORTALS
-(see portals_standard.py), and what PORTALS is benchmarked against. TGYRO runs
+(see portals_1_standard.py), and what PORTALS is benchmarked against. TGYRO runs
 on the machine configured for "tgyro" in config_user.json.
 
 Key teaching points:
@@ -98,3 +98,4 @@ tgyro.read(label="run1")
 # All figures go into a multi-tab MITIM FigureNotebook (tgyro.fn); show() opens the GUI
 tgyro.plot(labels=["run1"])
 tgyro.fn.show()
+

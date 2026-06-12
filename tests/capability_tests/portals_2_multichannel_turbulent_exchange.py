@@ -2,7 +2,7 @@
 CAPABILITY: PORTALS predicting te, ti, ne, nZ and w0 with turbulent exchange
 ----------------------------------------------------------------------------
 This script teaches how to run PORTALS beyond the standard temperature
-prediction (see portals_standard.py first): predicting also the electron
+prediction (see portals_1_standard.py first): predicting also the electron
 density, the density of a trace impurity and the rotation, and treating the
 turbulent energy exchange as an additional surrogate.
 
@@ -14,7 +14,7 @@ Key teaching points:
     2. turbulent_exchange_as_surrogate=True fits the turbulent energy
        exchange from the transport code as an extra surrogate, so the
        electron-ion exchange in the targets accounts for it self-consistently.
-    3. Once the run is over, the trained surrogates can be flux-matched
+    3. [optionally] Once the run is over, the trained surrogates can be flux-matched
        directly (flux_match_surrogate), with no new transport-code calls —
        useful to explore e.g. different targets at negligible cost.
     4. Any finished (or running) PORTALS folder can be re-read with
@@ -49,7 +49,7 @@ if cold_start and folderWork.exists():
 
 portals_fun = PORTALSmain.portals(folderWork)
 
-# --- Optimization controls (see portals_standard.py) ------------------------------------------------------------------
+# --- Optimization controls (see portals_1_standard.py) ------------------------------------------------------------------
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 5
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 
@@ -66,7 +66,7 @@ portals_fun.portals_parameters["solution"]["trace_impurity"] = "N"
 # Fit the turbulent energy exchange as an extra surrogate (see docstring)
 portals_fun.portals_parameters["solution"]["turbulent_exchange_as_surrogate"] = True
 
-# --- Transport models (see portals_standard.py for the settings hierarchy) --------------------------------------------
+# --- Transport models (see portals_1_standard.py for the settings hierarchy) --------------------------------------------
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
 
 # ---------------------------------------------------------------------------------------------------------------------

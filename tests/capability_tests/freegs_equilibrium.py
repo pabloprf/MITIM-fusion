@@ -4,8 +4,8 @@ CAPABILITY: Free-boundary equilibrium with FreeGS from shape parameters
 This script teaches how to build a Grad-Shafranov equilibrium from scratch —
 no input files needed — using the FreeGS solver wrapped by MITIM, starting
 from a Miller-like parametrization of the separatrix. This runs locally and
-in seconds: it is how MAESTRO bootstraps an equilibrium before any transport
-code is involved.
+in seconds: it is an option for MAESTRO to bootstrap an equilibrium before
+any transport code is involved.
 
 Key teaching points:
     1. freegs_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0) defines the
@@ -43,7 +43,7 @@ zeta_sep = 0.0    # separatrix squareness
 z0 = 0.0          # vertical position of the magnetic axis (m)
 
 # Plasma
-p0_MPa = 2.0      # pressure on axis (MPa)
+p0_MPa = 5.0      # pressure on axis (MPa)
 Ip_MA = 8.7       # plasma current (MA)
 B_T = 12.16       # vacuum toroidal field at R (T)
 

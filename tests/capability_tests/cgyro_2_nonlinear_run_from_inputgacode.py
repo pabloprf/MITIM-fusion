@@ -3,7 +3,7 @@ CAPABILITY: Nonlinear CGYRO run from an input.gacode
 ----------------------------------------------------
 This script teaches how to run a (cheap) nonlinear CGYRO simulation starting
 from a plasma state (input.gacode). CGYRO runs on the machine configured for
-it in config_user.json (possibly remote, via SLURM).
+it in config_user.json (possibly remote, possibly via SLURM).
 
 Key teaching points:
     1. Unlike TGLF/NEO (three levels), the CGYRO settings hierarchy has FOUR
@@ -76,7 +76,8 @@ cgyro.run(
     # With cold_start=True, remove previous results without asking for confirmation interactively
     forceIfcold_start=True,
     # 'normal' submits and waits for completion; 'submit' returns immediately
-    # (come back later with cgyro.check() and cgyro.fetch()); 'prep' only writes the input files
+    # (come back later with cgyro.check() and cgyro.fetch(), see cgyro_2_nonlinear_run_from_inputgacode.py);
+    # 'prep' only writes the input files
     run_type="normal",
 )
 # read() parses the out.cgyro.* output files and stores the results in the object under the label
@@ -116,3 +117,5 @@ cgyro.run(
 # All figures go into a multi-tab MITIM FigureNotebook (cgyro.fn); show() opens the GUI
 cgyro.plot(labels=["nonlinear_silly"])
 cgyro.fn.show()
+
+# This full process should take in the order of ~3 minutes using 8 cores (example in a MacBook Pro M3 Pro Max)

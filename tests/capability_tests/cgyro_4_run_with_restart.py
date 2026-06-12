@@ -58,9 +58,9 @@ cgyro.prep(input_gacode, folder)
 cgyro.run(
     "seed",
     # Lowest-fidelity nonlinear preset, only for testing workflows (see
-    # cgyro_nonlinear_run_from_inputgacode.py for the fidelity ladder)
+    # cgyro_2_nonlinear_run_from_inputgacode.py for the fidelity ladder)
     code_settings="Nonlinear_silly",
-    extraOptions={"MAX_TIME": 2.0},  # very short, just for demonstration
+    extraOptions={"MAX_TIME": 5.0},  # very short, just for demonstration
     allocation={"resources_per_call": 8, "minutes": 10},
     cold_start=cold_start,
     forceIfcold_start=True,
@@ -97,3 +97,7 @@ cgyro.read(label="warmstart")
 # All figures go into a multi-tab MITIM FigureNotebook (cgyro.fn); show() opens the GUI
 cgyro.plot(labels=["seed", "warmstart"])
 cgyro.fn.show()
+
+# Note that the warm-started run does not start exactly at the end of the seed run,
+# because CGYRO doesn't print a flux value at t=0 and the data is very transient, so 1 a/cs
+# matters

@@ -124,3 +124,4 @@ MITIM_BO.run()
 # All figures go into a multi-tab MITIM FigureNotebook (vitals_fun.fn); show() opens the GUI
 vitals_fun.plot_optimization_results(analysis_level=4)
 vitals_fun.fn.show()
+

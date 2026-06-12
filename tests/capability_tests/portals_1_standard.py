@@ -71,8 +71,10 @@ portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 
 #   portals_fun.optimization_options["convergence_options"]["stopping_criteria_parameters"]["maximum_value_is_rel"] = True
 
 # --- Solution: what to predict ---------------------------------------------------------------------------------------
-portals_fun.portals_parameters["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 portals_fun.portals_parameters["solution"]["predicted_channels"] = ["te", "ti"]
+
+# if predicted_roa is specified, it will supersede predicted_rho (default)
+portals_fun.portals_parameters["solution"]["predicted_roa"] = [0.25, 0.45, 0.65, 0.85]
 
 # --- Transport models ------------------------------------------------------------------------------------------------
 # Turbulence and neoclassical backends are selected in

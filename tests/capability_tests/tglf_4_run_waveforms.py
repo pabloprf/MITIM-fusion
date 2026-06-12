@@ -70,3 +70,4 @@ tglf.read(label="SAT2 with WF")
 # All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
 tglf.plot(labels=["SAT2 with WF"])
 tglf.fn.show()
+

@@ -2,7 +2,7 @@
 CAPABILITY: Standalone NEO runs from an input.gacode
 ----------------------------------------------------
 This script teaches how to run the NEO neoclassical code starting from a
-plasma state (input.gacode).
+plasma state (input.gacode) at selected radii.
 
 Key teaching points:
     1. NEO(rhos=[...]) + prep(input.gacode, ...) generates one input.neo per
@@ -15,7 +15,7 @@ Key teaching points:
        instead of setting an absolute value, it multiplies the base value that
        prep() derived from the plasma state at each radius.
     4. run_scan()/read_scan()/plot_scan() work exactly as for TGLF (see
-       tglf_scan.py), here used to scan the main-ion temperature gradient.
+       tglf_5_scan.py), here used to scan the main-ion temperature gradient.
 """
 
 import numpy as np

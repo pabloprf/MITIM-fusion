@@ -11,6 +11,12 @@ PREREQUISITE — build the shared library once per machine:
     cd src/mitim_tools/simulation_tools/interfaces
     bash build_tglf_lib.sh
 
+*** WARNING ***: in-process execution currently returns MINIMAL data — the
+flux values only. Spectral quantities (ky spectra, eigenvalues, fluctuation
+amplitudes, ...) are zero-filled placeholders, so the corresponding plot
+panels will be empty/zero for the in-process labels. Use the standard route
+when you need more than fluxes.
+
 Key teaching points:
     1. Only TWO changes with respect to a standard run: `in_process=True` in
        the constructor, and prep() without a folder (there is no file I/O at
@@ -26,7 +32,7 @@ Key teaching points:
     4. Results from different TGLF objects can be combined into one notebook
        by copying the labeled entry across `results` dictionaries.
     5. Limitation: runWaveForms is not supported in-process (it is skipped
-       with a warning).
+       with a warning). Only fluxes will be compared.
 """
 
 import numpy as np

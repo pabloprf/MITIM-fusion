@@ -7,7 +7,7 @@ and compare physics settings.
 Key teaching points:
     1. prep_from_file() takes an existing input.tglf as-is (no plasma state
        needed). Results are in gyro-Bohm units only, since there is no
-       experimental normalization attached (see tglf_run_from_inputgacode.py
+       experimental normalization attached (see tglf_1_run_from_inputgacode.py
        for the alternative).
     2. The input file each run receives is built in three levels, each
        overriding the previous one: the controls file
@@ -18,7 +18,7 @@ Key teaching points:
     3. read(label=..., save_and_cleanup=...) stores each run under a label in a
        single .npz file and removes the raw run folders. The results stay in
        memory for plotting; the .npz allows reloading later without re-running
-       (see tglf_read_fromnpz.py).
+       (see tglf_3_read_fromnpz.py).
 """
 
 from mitim_tools.gacode_tools import TGLFtools
@@ -87,3 +87,4 @@ tglf.read(label="EM (SAT3)", save_and_cleanup=npz_file)
 # All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
 tglf.plot(labels=["ES (SAT1)", "EM (SAT3)"])
 tglf.fn.show()
+

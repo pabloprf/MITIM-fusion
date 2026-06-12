@@ -31,7 +31,7 @@ Key teaching points:
        external notebook (fn=...) with a per-analysis tab color (fn_color) and
        tab-label prefix (extratitle), so everything lives in a single window.
     4. The remaining flavor, 'Z' (trace-impurity D and V), has its own
-       capability test: tglf_analysis_trace_impurity.py.
+       capability test: tglf_9_analysis_DV_trace_impurity.py.
 """
 
 from mitim_tools.gacode_tools import TGLFtools
@@ -117,3 +117,4 @@ tglf.plotAnalysis(labels=["chi_i_sat2"], analysisType="chi_i", plotTGLFs=False, 
 tglf.plotAnalysis(labels=["chi_ei_sat2"], analysisType="chi_ei", plotTGLFs=False, fn=fn, fn_color=2, extratitle="chi_ei - ")
 
 fn.show()
+

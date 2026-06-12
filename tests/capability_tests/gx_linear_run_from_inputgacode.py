@@ -14,7 +14,7 @@ Key teaching points:
        (templates/input.gx.models.yaml) -> `extraOptions`.
     2. Unlike CGYRO, GX computes the whole linear ky spectrum in a SINGLE run:
        the grid is set through y0 (kymin = 1/y0) and ny (nky = 1 + (ny-1)/3).
-       See linear_gk_cgyro_vs_gx.py for a direct comparison of both codes.
+       See ../dev_tests/linear_gk_cgyro_vs_gx.py for a direct comparison of both codes.
     3. lumpIons() bundles all ions of the plasma state into a single effective
        species, making the runs cheaper.
     4. The save_figures switch shows the headless pattern for non-interactive

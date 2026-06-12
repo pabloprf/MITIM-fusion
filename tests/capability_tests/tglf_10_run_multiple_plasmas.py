@@ -101,3 +101,4 @@ for ax in axs:
 fig.suptitle("TGLF over two plasmas, shared radii, one parallel submission")
 fig.tight_layout()
 plt.show()
+

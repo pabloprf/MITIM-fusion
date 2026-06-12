@@ -91,3 +91,4 @@ neo.read_vgen()
 # All figures go into a multi-tab MITIM FigureNotebook (neo.fn); show() opens the GUI
 neo.plot_vgen()
 neo.fn.show()
+

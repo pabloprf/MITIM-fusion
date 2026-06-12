@@ -69,6 +69,8 @@ tglf.read_scan(label="scan_aLTe", variable="RLTS_1", save_and_cleanup=npz_file)
 # 3. Plot the scan (fluxes and spectra vs a/LTe at each radius)
 # ---------------------------------------------------------------------------------------------------------------------
 
-# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
-tglf.plot_scan(labels=["scan_aLTe"])
+# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI.
+# plotTGLFs=False skips the per-scan-point TGLF notebooks (set True to inspect each point)
+tglf.plot_scan(labels=["scan_aLTe"], plotTGLFs=False)
 tglf.fn.show()
+

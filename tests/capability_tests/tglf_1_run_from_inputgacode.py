@@ -10,7 +10,8 @@ Key teaching points:
        (look inside the run folder to see them).
     2. Because the plasma state is attached, results carry the experimental
        normalizations: fluxes can be plotted in both gyro-Bohm and physical
-       units (contrast with tglf_run_from_tglfinput.py, gyro-Bohm only).
+       units (contrast with tglf_2_run_from_tglfinput.py, gyro-Bohm only).
+       Those extra plots in real units are added by default.
     3. The same code_settings/extraOptions hierarchy applies: controls file
        defaults -> code_settings preset -> extraOptions overrides.
 """
@@ -68,3 +69,4 @@ tglf.read(label="EM (SAT2)")
 # All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
 tglf.plot(labels=["EM (SAT2)"])
 tglf.fn.show()
+

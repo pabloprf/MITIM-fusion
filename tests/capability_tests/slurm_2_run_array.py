@@ -6,7 +6,7 @@ value — as a single SLURM job array. This is the natural way to farm
 parameter scans (e.g. one MAESTRO/PORTALS case per engineering point) without
 submitting jobs one by one.
 
-NOTE: as in slurm_run_portals.py, this example uses the "engaging_rpp"
+NOTE: as in slurm_1_run_portals.py, this example uses the "engaging_rpp"
 machine block of config_user.json, which is an MIT-specific cluster (the PSFC
 partition of the Engaging/ORCD system). If you are not at MIT, point
 `machine_config` below to a machine block defined in your own

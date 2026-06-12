@@ -70,3 +70,4 @@ tglf.runAnalysis(
 # plotTGLFs=False skips the per-scan-point TGLF notebooks
 tglf.plotAnalysis(labels=["traceW_sat2"], analysisType="Z", plotTGLFs=False)
 tglf.fn.show()
+
