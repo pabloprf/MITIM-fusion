@@ -2911,17 +2911,21 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         colorsLines = GRAPHICStools.listColors()[5:]
 
         if unnormalization_successful:
-            grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             ax1_00 = fig1.add_subplot(grid[0, 0])
             ax1_10 = fig1.add_subplot(grid[0, 1], sharex=ax1_00)
             ax1_20 = fig1.add_subplot(grid[0, 2], sharex=ax1_00)
-            ax1_30 = fig1.add_subplot(grid[0, 3], sharex=ax1_00)
+            ax1_30 = fig1.add_subplot(grid[1, 0], sharex=ax1_00)
+            ax1_40 = fig1.add_subplot(grid[1, 1], sharex=ax1_00)
+            ax1_50 = fig1.add_subplot(grid[1, 2], sharex=ax1_00)
 
-        grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
         ax1_00e = fig1e.add_subplot(grid[0, 0])
         ax1_10e = fig1e.add_subplot(grid[0, 1], sharex=ax1_00e)
         ax1_20e = fig1e.add_subplot(grid[0, 2], sharex=ax1_00e)
-        ax1_30e = fig1e.add_subplot(grid[0, 3], sharex=ax1_00e)
+        ax1_30e = fig1e.add_subplot(grid[1, 0], sharex=ax1_00e)
+        ax1_40e = fig1e.add_subplot(grid[1, 1], sharex=ax1_00e)
+        ax1_50e = fig1e.add_subplot(grid[1, 2], sharex=ax1_00e)
 
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax2_00 = fig2.add_subplot(grid[0, 0])
@@ -2976,6 +2980,8 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 self.scans[label]["Ge_gb"],
                 self.scans[label]["Gi_gb"],
             )
+            Mt, S = self.scans[label]["Mt"], self.scans[label]["S"]
+            Mt_gb, S_gb = self.scans[label]["Mt_gb"], self.scans[label]["S_gb"]
             eta1, eta2 = self.scans[label]["eta_ITGETG"], self.scans[label]["eta_ITGTEM"]
             itg, tem, etg = (
                 self.scans[label]["g_ITG_max"],
@@ -3187,6 +3193,22 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                         x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0
                     )
 
+                for ax_n, ax_e, y_n, y_e in (
+                    (ax1_40 if unnormalization_successful else None, ax1_40e, Mt, Mt_gb),
+                    (ax1_50 if unnormalization_successful else None, ax1_50e, S, S_gb),
+                ):
+                    if ax_n is not None:
+                        ax_n.plot(x[irho], y_n[irho], "-", c=colorLine, lw=1.0,
+                                  label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$")
+                        ax_n.scatter(x[irho], y_n[irho], marker="o", facecolor=colorsC, s=ms)
+                        if positionBase is not None:
+                            ax_n.axvline(x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0)
+                    ax_e.plot(x[irho], y_e[irho], "-", c=colorLine, lw=1.0,
+                              label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$")
+                    ax_e.scatter(x[irho], y_e[irho], marker="o", facecolor=colorsC, s=ms)
+                    if positionBase is not None:
+                        ax_e.axvline(x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0)
+
                 axs = [ax2_00, ax2_10]
 
                 for ivar in range(ky.shape[1]):
@@ -3326,6 +3348,20 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             ax.axhline(y=0, ls="-.", c="k", lw=1)
             ax.set_title(f"Ion particle flux (ION_{self.ion_OI_position_in_total_padded_list_scan})")
 
+            ax = ax1_40
+            ax.set_xlabel(variableLabel)
+            ax.set_ylabel("$\\Pi$ ($J/m^2$)")
+            GRAPHICStools.addDenseAxis(ax)
+            ax.axhline(y=0, ls="-.", c="k", lw=1)
+            ax.set_title("Momentum flux")
+
+            ax = ax1_50
+            ax.set_xlabel(variableLabel)
+            ax.set_ylabel("$S_e$ ($MW/m^3$)")
+            GRAPHICStools.addDenseAxis(ax)
+            ax.axhline(y=0, ls="-.", c="k", lw=1)
+            ax.set_title("Turbulent exchange")
+
         ax = ax1_00e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$Q_e$ (GB)")
@@ -3353,6 +3389,20 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title(f"Ion #{self.ion_OI_position_in_total_padded_list_scan} particle flux")
+
+        ax = ax1_40e
+        ax.set_xlabel(variableLabel)
+        ax.set_ylabel("$\\Pi$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.set_title("Momentum flux")
+
+        ax = ax1_50e
+        ax.set_xlabel(variableLabel)
+        ax.set_ylabel("$S_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.set_title("Turbulent exchange")
 
         ax = ax2_11
         ax.set_xlabel(variableLabel)
