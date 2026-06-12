@@ -3705,15 +3705,24 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             # Back to original (not trace)
             self.inputs_files = self.inputs_files_orig
 
-    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None, plotTGLFs=True):
+    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None, plotTGLFs=True, fn=None, fn_color=None, extratitle=""):
+        """
+        fn: existing FigureNotebook to add the tabs to (a new one is created if None),
+            so several analyses can share one notebook.
+        fn_color: tab color for this analysis' tabs (color name or integer).
+        extratitle: prefix for the tab labels (e.g. 'chi_e - '), to tell analyses apart.
+        """
         if figs is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF Analysis MITIM Notebook", geometry="1500x900"
-            )
-            fig1 = self.fn.add_figure(label="Analysis")
-            fig2 = self.fn.add_figure(label="Fluxes")
-            fig2e = self.fn.add_figure(label="Fluxes (GB)")
-            fig3 = self.fn.add_figure(label="Linear Stability")
+            if fn is None:
+                self.fn = GUItools.FigureNotebook(
+                    "TGLF Analysis MITIM Notebook", geometry="1500x900"
+                )
+            else:
+                self.fn = fn
+            fig1 = self.fn.add_figure(label=f"{extratitle}Analysis", tab_color=fn_color)
+            fig2 = self.fn.add_figure(label=f"{extratitle}Fluxes", tab_color=fn_color)
+            fig2e = self.fn.add_figure(label=f"{extratitle}Fluxes (GB)", tab_color=fn_color)
+            fig3 = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
 
         if analysisType == "chi_e":
             variableLabel = "RLTS_1"
