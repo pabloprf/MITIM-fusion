@@ -2200,6 +2200,10 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 ax12 = figWF.add_subplot(grid[1, 2])
                 ax13 = figWF.add_subplot(grid[1, 3])
 
+                # Evaluated waveform kys of every label/rho in this tab, so the
+                # eigenvalue axes can be windowed to keep all of them visible
+                kys_evaluated = []
+
                 cont = 0
                 for contLab, label in enumerate(labels):
 
@@ -2225,6 +2229,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                             self.rhos[irho_cont]
                         ]
                         theta = wf["theta"] / np.pi
+
+                        # With forceClosestUnstableWF, the evaluation can land far
+                        # from the requested ky (e.g. at ion scales when no unstable
+                        # mode exists nearby) — keep it visible in the window
+                        kys_evaluated.append(float(wf["ky"][0]))
 
                         markers = GRAPHICStools.listmarkers()
 
@@ -2352,6 +2361,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                     ax.set_xlim([-3, 3])
                     ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
 
+                # Window of the eigenvalue axes: span the requested ky AND every
+                # evaluated waveform ky, so no evaluation marker is clipped out
+                kys_window = kys_evaluated + [ky_single_stored_unique[kycont]]
+                xlim_wf = [max(0.0, min(kys_window) - 2.0), max(kys_window) + 2.0]
+
                 ax = ax00
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\gamma$ ($c_s/a$)")
@@ -2360,7 +2374,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -2369,7 +2383,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
