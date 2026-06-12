@@ -69,6 +69,8 @@ tglf.runAnalysis(
 # 3. Plot the flux response and the derived diffusivities
 # ---------------------------------------------------------------------------------------------------------------------
 
-# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI
-tglf.plotAnalysis(labels=["chi_e_sat2"], analysisType="chi_e")
+# All figures go into a multi-tab MITIM FigureNotebook (tglf.fn); show() opens the GUI.
+# plotTGLFs=False skips the per-scan-point TGLF notebooks (11 points x 2 radii of them);
+# set it to True to inspect the spectra of each individual scan point
+tglf.plotAnalysis(labels=["chi_e_sat2"], analysisType="chi_e", plotTGLFs=False)
 tglf.fn.show()
