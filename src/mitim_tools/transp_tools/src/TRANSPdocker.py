@@ -116,11 +116,13 @@ if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_fo
 # tr_build.py reads the pserve allocation from <target>_pserv.tmp, written by tr_start in
 # the PPPL production system (not shipped in the containers). Generate it here: it selects
 # the MPI vs serial makefile (max of the values) and the serial/parallel NUBEAM and PT_SOLVER
-# library variants (nbi_pserve / nptr_pserve).
+# library variants (nbi_pserve / nptr_pserve). The leading blank on each line is REQUIRED:
+# datchk_mpi in TR.EXE re-reads this file skipping the first column (Fortran list-directed
+# writes prepend one), and without it the names are read as "bi_pserve" etc. and it aborts.
 cat > {runid}_pserv.tmp << EOF
-nbi_pserve = {mpisettings["trmpi"]}
-ntoric_pserve = {mpisettings["toricmpi"]}
-nptr_pserve = {mpisettings["ptrmpi"]}
+ nbi_pserve = {mpisettings["trmpi"]}
+ ntoric_pserve = {mpisettings["toricmpi"]}
+ nptr_pserve = {mpisettings["ptrmpi"]}
 EOF
 
 # Target is the bare runid (no "tr" suffix): the makefile rule is `$(NAME): $(NAME)ex.o`
