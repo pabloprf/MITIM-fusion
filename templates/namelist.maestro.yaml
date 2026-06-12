@@ -216,8 +216,9 @@ maestro:
 
     parameters_prepare:
 
-      # Whether to run with full EPED or EPED-NN
-      use_full_EPED: false
+      # Whether to run with full EPED (true) or an EPED-NN surrogate (false; requires
+      # the nn_location/norm_location entries below)
+      use_full_EPED: true
 
       # Definition of equilibrium parameters that will based to EPED
       toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
@@ -232,16 +233,16 @@ maestro:
       teped_retries: 2
       teped_retry_lower_factor: 0.7
 
-      # Location of EPED-NN files and transformation function of this specific NN (only used if use_full_EPED is false)
-      nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
-      norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
-      transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
-
-      # Corrections set for EPED-NN indicate the values that I force them to be exact, to avoid NN issues with non-trained parameters
-      corrections_set:
-        Bt: 12.2
-        R: 1.85
-        a: 0.57
+      # (if use_full_EPED: false) Location of the EPED-NN files and the transformation
+      # function of that specific NN, e.g.:
+      #   nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
+      #   norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
+      #   transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
+      # A `corrections_set:` dictionary (e.g. {Bt: 12.2, R: 1.85, a: 0.57}) can force
+      # exact input values, to avoid NN issues with non-trained parameters.
+      nn_location: null
+      norm_location: null
+      transform_inputs_fun: null
 
       # Operations after EPED pressure predictions
       ptop_multiplier: 1.0  # Multiplies ptop
