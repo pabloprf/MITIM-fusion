@@ -678,7 +678,7 @@ def chi_inc(aLTe, Qe_MWm2, Te_keV, a_m, ne_20, aLTe_base, order=2):
     Chi_eff = -Qe_base / gradTe_base * (1.0e6 / ne)
 
     # Calculate power balance chi
-    Chi_pb_x = (1 / gradTe) * scipy.integrate.cumtrapz(Chi_inc_x, gradTe, initial=0)
+    Chi_pb_x = (1 / gradTe) * scipy.integrate.cumulative_trapezoid(Chi_inc_x, gradTe, initial=0)
     Chi_pb = np.interp(aLTe_base, x_grid, Chi_pb_x)
 
     QeCond = -ne * Chi_pb * gradTe_base  # W/m^2

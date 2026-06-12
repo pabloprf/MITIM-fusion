@@ -25,6 +25,8 @@ DESCRIPTION
 
 *   🐛 **`mitim_check_maestro` was blind to SLURM cancellations** (e.g. preemption on `mit_preemptable`): requeued jobs showed an innocent PENDING/RUNNING. Cancellation notices in `slurm_error.dat` are now surfaced — live requeued jobs are annotated with the cancellation time/reason, and cancelled jobs no longer in the queue are reported as definite FAILED with the reason instead of a generic timestamp.
 
+*   🐛 **Crashes with modern SciPy/NumPy in integration helpers**: `scipy.integrate.cumtrapz` (removed in SciPy 1.14) and `np.trapz` (removed in NumPy 2.0) were still used in `PLASMAtools.chi_inc`, `MATHtools` and `PROFILEStools` — breaking e.g. the TGLF incremental-diffusivity analysis. All call sites migrated to `cumulative_trapezoid`/`np.trapezoid`.
+
 *   🐛 **Standalone CGYRO runs never returned their `bin.cgyro.restart` files**: the stale-warm-start cleanup in the execution script compared the restart's mtime against `out.cgyro.info`, which CGYRO finalizes AFTER writing the restart — so every fresh restart was deleted before retrieval. The baseline is now a marker file touched at run start. (PORTALS warm-start chaining was mostly unaffected because wall-clock-killed runs never append the EXIT line.)
 
 *   🐛 **Plotting in-process TGLF results crashed** (`AttributeError` on `scalar_sat_params`, then `IndexError` in the fluctuation spectra): `TGLFoutput.from_inprocess` was missing attributes added later to the file-reading path, and its placeholder spectral arrays were sized 1 along the species/ion axes while plot loops iterate the actual species counts. All placeholders now carry consistent dimensions; verified by running the full standard-vs-in-process comparison and notebook build end-to-end.
