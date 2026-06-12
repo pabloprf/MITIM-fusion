@@ -103,8 +103,9 @@ pretr {tok}{txt_mpi} {runid} < pre_mitim
 trdat {tok} {runid} w q 2>&1 | tee {runid}tr_dat.log
 
 # Link the run executable (what the old singularity "link" app did, but with tr_build.py
-# instead of uplink, as TRANSPhub instructs for versions >= 23.2)
-if [ ! -e {runid}TF.PLN ]; then csh $SC/label {runid}; fi
+# instead of uplink, as TRANSPhub instructs for versions >= 23.2). label must rerun if a
+# previous partial attempt left TF.PLN behind without the pserve file tr_build.py reads.
+if [ ! -e {runid}TF.PLN ] || [ ! -e {runid}tr_pserv.tmp ]; then csh $SC/label {runid}; fi
 if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_for {runid}; fi
 tr_build.py trexe {runid}tr
 
