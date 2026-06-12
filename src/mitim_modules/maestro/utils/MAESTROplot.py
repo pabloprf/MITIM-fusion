@@ -253,7 +253,13 @@ def plot_results(self, fn):
                              axs=[ax_A, ax_B], ax_summary=ax_C, ax_total=ax_D, log=False)
         ax_C.set_title("Time per Beat", fontsize=9)
         ax_D.set_title("Total by type", fontsize=9)
-    
+
+    # Bring the summary tabs (MAESTRO special + timings) to the front: they are
+    # the at-a-glance view of the whole run, so they should be the default tabs
+    # (show() then opens on the first one)
+    n_summary = 2 if (self.folder_performance / 'timing.jsonl').exists() else 1
+    fn.move_tabs_block_to_front(len(fn.tab_titles) - n_summary, n_summary)
+
     return ps, ps_lab
 
 def plot_special_quantities(ps, ps_lab, axs, color='b', label = '', legYN=True):

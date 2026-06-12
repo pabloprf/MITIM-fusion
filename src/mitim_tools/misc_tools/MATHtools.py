@@ -261,7 +261,7 @@ def calculateDistance(xi, x):
 
 
 def integrate(x, deriv):
-    return np.append([0], scipy.integrate.cumtrapz(deriv, x=x))
+    return np.append([0], scipy.integrate.cumulative_trapezoid(deriv, x=x))
 
 
 def integrate_definite(x, y, rangex=None):
@@ -271,7 +271,7 @@ def integrate_definite(x, y, rangex=None):
         try:
             return np.trapezoid(y, x=x)
         except AttributeError:
-            return np.trapz(y, x=x)
+            return np.trapezoid(y, x=x)
     else:
         return 0
 

@@ -119,6 +119,27 @@ class FigureNotebook:
         self.tabs = TabWidget(
             vertical=vertical, xextend=int(geometry.split("x")[0]) - 200
         )
+
+        # Quick navigation for long tab lists: jump to the first / last tab
+        # (complements the native scroll arrows of the tab bar)
+        try:
+            corner = QtWidgets.QWidget()
+            lay = QtWidgets.QHBoxLayout(corner)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(0)
+            for txt, tip, idx_fun in (
+                ("|<", "Go to first tab", lambda: 0),
+                (">|", "Go to last tab", lambda: self.tabs.count() - 1),
+            ):
+                b = QtWidgets.QToolButton()
+                b.setText(txt)
+                b.setToolTip(tip)
+                b.clicked.connect(lambda _=False, f=idx_fun: self.tabs.setCurrentIndex(f()))
+                lay.addWidget(b)
+            self.tabs.setCornerWidget(corner, QtCore.Qt.Corner.TopRightCorner)
+        except Exception:
+            pass  # purely cosmetic; never block notebook creation
+
         self.MainWindow.setCentralWidget(self.tabs)
         self.MainWindow.resize(int(geometry.split("x")[0]), int(geometry.split("x")[1]))
 
@@ -292,6 +313,14 @@ class FigureNotebook:
                 "\n> MITIM FigureNotebook running headless (no Qt display).", typeMsg="w"
             )
             return
+        # Always open on the first tab: plotting passes may have moved tab blocks
+        # around (Qt keeps the previously-current widget selected through moves),
+        # which otherwise leaves an arbitrary mid-list tab as the visible one.
+        try:
+            if self.tabs is not None and self.tabs.count() > 0:
+                self.tabs.setCurrentIndex(0)
+        except Exception:
+            pass
         print(f"\n> MITIM Notebook open, titled: {self.windowtitle}", typeMsg="i")
         print("\t- Close the notebook to continue")
         self.app.exec()

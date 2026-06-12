@@ -124,7 +124,7 @@ class Lengyel():
     
         # Plot
         if plotYN:
-            plt.ion(); fig, ax = plt.subplots()
+            fig, ax = plt.subplots()
             for val in scan_values:
                 res = self.results_scan[val]
                 ax.plot(

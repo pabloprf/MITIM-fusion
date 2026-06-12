@@ -41,6 +41,7 @@ class eped_beat(beat):
             eped_params_override = None,
             teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
             teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
+            minutes_slurm = 240,           # (full EPED) SLURM time limit of each EPED case (the EPEDtools default of 30 min is far too short for full EPED)
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -86,6 +87,7 @@ class eped_beat(beat):
         self.eped_params_override = eped_params_override
         self.teped_retries = teped_retries
         self.teped_retry_lower_factor = teped_retry_lower_factor
+        self.minutes_slurm = minutes_slurm
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -653,6 +655,7 @@ class eped_beat(beat):
             subfolder = 'case1',
             input_params = input_params,
             nproc_per_run = nproc_per_run,
+            minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
             eped_params_override = eped_params_override,
         )

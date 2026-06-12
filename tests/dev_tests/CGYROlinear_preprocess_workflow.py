@@ -8,10 +8,11 @@ from mitim_tools import __mitimroot__
 #
 # This test exercises the preprocess_options knob added in commit 848e408a
 # (auto BOX_SIZE / N_RADIAL from local equilibrium quantities). Unlike the
-# preprocess section in CGYRO_workflow.py — which runs with run_type='prep'
-# to only inspect the generated input files — this test invokes a full
-# `run_type='normal'` linear run at one rho so the auto-computed BOX_SIZE,
-# N_RADIAL and KY are exercised end-to-end through the submission pipeline.
+# preprocess section in capability_tests/cgyro_02_nonlinear_run_from_inputgacode.py
+# — which runs with run_type='prep' to only inspect the generated input files —
+# this test invokes a full `run_type='normal'` linear run at one rho so the
+# auto-computed BOX_SIZE, N_RADIAL and KY are exercised end-to-end through the
+# submission pipeline.
 # ---------------------------------------------------------------------------
 
 cold_start = True

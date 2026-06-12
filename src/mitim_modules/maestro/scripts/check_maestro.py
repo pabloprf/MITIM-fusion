@@ -156,7 +156,9 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
             # -r: one row per job-array element, so PENDING elements report their
             # full <job>_<task> id instead of the aggregated <job>_[lo-hi%N] row,
             # which never matches the per-case stub ids from run_maestro_scan.
-            ["squeue", "-u", user, "-o", "%i|%T|%V|%S|%C|%P", "-h", "-r"],
+            # %j (job name) enables the fallback match for cases whose recorded
+            # job id went stale (e.g. manual resubmissions).
+            ["squeue", "-u", user, "-o", "%i|%T|%V|%S|%C|%P|%j", "-h", "-r"],
             capture_output=True,
             text=True,
             check=False,
@@ -170,9 +172,9 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
     jobs: dict[str, dict[str, str]] = {}
     for raw_line in squeue_out.stdout.splitlines():
         parts = raw_line.strip().split("|")
-        if len(parts) != 6:
+        if len(parts) != 7:
             continue
-        job_id, state, submit_time, start_time, cores, partition = (p.strip() for p in parts)
+        job_id, state, submit_time, start_time, cores, partition, name = (p.strip() for p in parts)
         if job_id:
             jobs[job_id] = {
                 "state": state,
@@ -180,6 +182,7 @@ def get_squeue_by_jobid(user: str | None = None) -> dict[str, dict[str, str]]:
                 "start_time": start_time,
                 "cores": cores,
                 "partition": partition,
+                "name": name,
             }
     return jobs
 
@@ -230,10 +233,28 @@ def _job_status_from_squeue(folder_str, squeue_by_jobid):
             job_match = _RE_SLURM_JOB.search(output_line)
 
     if not job_match:
-        return '', None, None
+        job_id = None
+        job_info = None
+    else:
+        job_id = job_match.group(1)
+        job_info = squeue_by_jobid.get(job_id)
 
-    job_id = job_match.group(1)
-    job_info = squeue_by_jobid.get(job_id)
+    matched_by_name = False
+    if not job_info:
+        # Fallback: the recorded job id is stale (e.g. the case was manually
+        # resubmitted, so a new id is in the queue but no log was refreshed).
+        # MAESTRO jobs are deterministically named mitim_<folder name> (with an
+        # optional _c<N> suffix for chained wall-time chunks), so match by name
+        # in the same squeue snapshot; latest submission wins.
+        target = f"mitim_{Path(folder_str).name}"
+        candidates = [
+            info for info in squeue_by_jobid.values()
+            if info.get("name") == target or info.get("name", "").startswith(target + "_c")
+        ]
+        if candidates:
+            job_info = max(candidates, key=lambda i: i.get("submit_time", ""))
+            matched_by_name = True
+
     if not job_info:
         return '', None, job_id
 
@@ -248,14 +269,16 @@ def _job_status_from_squeue(folder_str, squeue_by_jobid):
     use_start = state.upper() == "RUNNING" and start_time not in ("", "N/A", "Unknown")
     ref_time = start_time if use_start else submit_time
 
+    name_note = " [recorded jobid stale; matched by job name]" if matched_by_name else ""
+
     try:
         ref_dt = datetime.strptime(ref_time, '%Y-%m-%dT%H:%M:%S')
         delta = datetime.now() - ref_dt
         hours = delta.days * 24 + delta.seconds // 3600
         minutes = (delta.seconds % 3600) // 60
-        return f"{state} for {hours}h {minutes}m ({cores} cores, {partition})", state, job_id
+        return f"{state} for {hours}h {minutes}m ({cores} cores, {partition}){name_note}", state, job_id
     except Exception:
-        return f"{state} (submitted {submit_time}) ({cores} cores on {partition})", state, job_id
+        return f"{state} (submitted {submit_time}) ({cores} cores on {partition}){name_note}", state, job_id
 
 
 def _classify_folder(folder, squeue_by_jobid, chars_folder_clip, show_full_path):
