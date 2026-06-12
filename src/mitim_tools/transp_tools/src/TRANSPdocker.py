@@ -113,16 +113,16 @@ trdat {tok} {runid} w q 2>&1 | tee {runid}tr_dat.log
 if [ ! -e {runid}TF.PLN ]; then csh $SC/label {runid}; fi
 if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_for {runid}; fi
 
-# tr_build.py reads the pserve allocation from <target>_pserv.tmp, written by tr_start in
-# the PPPL production system (not shipped in the containers). Generate it here: it selects
-# the MPI vs serial makefile (max of the values) and the serial/parallel NUBEAM and PT_SOLVER
-# library variants (nbi_pserve / nptr_pserve). The leading blank on each line is REQUIRED:
-# datchk_mpi in TR.EXE re-reads this file skipping the first column (Fortran list-directed
-# writes prepend one), and without it the names are read as "bi_pserve" etc. and it aborts.
+# <target>_pserv.tmp is written by tr_start in the PPPL production system (not shipped in
+# the containers). It records the PSERVE on/off FLAGS (matching the namelist NBI_PSERVE etc.,
+# NOT the process counts, which go in the *_NPROCS env vars): tr_build.py uses them to select
+# the MPI vs serial makefile and library variants, and datchk_mpi inside TR.EXE cross-checks
+# them against the namelist at startup. The leading blank on each line is REQUIRED: datchk_mpi
+# reads the file skipping the first column (Fortran list-directed writes prepend one).
 cat > {runid}_pserv.tmp << EOF
- nbi_pserve = {mpisettings["trmpi"]}
- ntoric_pserve = {mpisettings["toricmpi"]}
- nptr_pserve = {mpisettings["ptrmpi"]}
+ nbi_pserve = {1 if mpisettings["trmpi"] > 0 else 0}
+ ntoric_pserve = {1 if mpisettings["toricmpi"] > 0 else 0}
+ nptr_pserve = {1 if mpisettings["ptrmpi"] > 0 else 0}
 EOF
 
 # Target is the bare runid (no "tr" suffix): the makefile rule is `$(NAME): $(NAME)ex.o`
