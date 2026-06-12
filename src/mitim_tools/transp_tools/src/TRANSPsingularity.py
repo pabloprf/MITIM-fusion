@@ -12,6 +12,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 MINUTES_ALLOWED_JOB_GET = 30
+MINUTES_ALLOWED_JOB_PREP = 10  # trdat/pretr: fast and serial, just needs a compute node
 class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
     def __init__(self, FolderTRANSP, tokamak):
         super().__init__(FolderTRANSP, tokamak)
@@ -419,13 +420,28 @@ singularity run {txt_bind}--cleanenv --app transp $TRANSP_SINGULARITY {runid} R 
             shellPreCommands=shellPreCommands,
         )
 
-        # tr_dat doesn't need slurm
-        lS = copy.deepcopy(transp_job.launchSlurm)
-        transp_job.launchSlurm = False
+        # tr_dat is fast and serial, but it MUST run on a compute node: singularity
+        # needs user namespaces, which login nodes may not allow (e.g. engaging).
+        # Submit it as its own minimal SLURM job (1 task, 1 cpu, short time,
+        # non-exclusive) instead of running it front-end or hijacking the main
+        # job's (large, possibly exclusive) allocation. On machines without
+        # SLURM, launchSlurm is already False and this runs as before.
+        sS = copy.deepcopy(transp_job.slurm_settings)
+        machine_slurm = transp_job.machineSettings.get("slurm", {}) if isinstance(transp_job.machineSettings.get("slurm", {}), dict) else {}
+        exclusive_original = machine_slurm.get("exclusive", False)
+        transp_job.slurm_settings = {
+            "job-name": f"{sS.get('job-name', f'transp_{runid}')}_trdat",
+            "minutes": MINUTES_ALLOWED_JOB_PREP,
+            "ntasks": 1,
+            "cpus-per-task": 1,
+        }
+        machine_slurm["exclusive"] = False
 
         transp_job.run()
 
-        transp_job.launchSlurm = lS  # Back to original
+        # Back to the original settings for the full TRANSP job
+        transp_job.slurm_settings = sS
+        machine_slurm["exclusive"] = exclusive_original
 
         # Interpret
         TRANSPhelpers.interpret_trdat( folderWork / f'{runid}tr_dat.log')
