@@ -17,7 +17,7 @@ scheduler of the machine it runs on by default (machine="local").
 Key teaching points:
     1. mitim_run_portals runs PORTALS from files on disk: a folder containing
        `input.gacode` and `namelist.portals.yaml` (the on-disk equivalent of
-       the in-memory dictionary modification shown in portals_1_standard.py).
+       the in-memory dictionary modification shown in portals_01_standard.py).
        The --batch flag makes it non-interactive (required inside a job).
     2. run_slurm(command, folder, partition, environment, ...) writes the
        sbatch file into the folder, submits it, and returns: monitor with
@@ -60,7 +60,7 @@ shutil.copy2(input_gacode, folder / "input.gacode")
 
 # Start from the default template namelist and modify it BEFORE writing it to the run
 # folder — the on-disk file plays the role that the in-situ dictionary modification
-# plays in portals_1_standard.py
+# plays in portals_01_standard.py
 nml = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.portals.yaml")
 nml["solution"]["predicted_rho"] = [0.25, 0.45, 0.65, 0.85]
 nml["optimization_options"]["convergence_options"]["maximum_iterations"] = 2

@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-	python3 MITIM-fusion/tests/capability_tests/transp_1_run.py
+	python3 MITIM-fusion/tests/capability_tests/transp_01_run.py
 
 .. contents:: Contents
     :local:

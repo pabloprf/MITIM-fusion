@@ -8,7 +8,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 MITIM-fusion/tests/capability_tests/freegs_1_equilibrium.py
+   python3 MITIM-fusion/tests/capability_tests/freegs_01_equilibrium.py
 
 *Under Development*
 

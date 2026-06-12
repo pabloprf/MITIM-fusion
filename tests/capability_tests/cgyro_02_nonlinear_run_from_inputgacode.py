@@ -76,7 +76,7 @@ cgyro.run(
     # With cold_start=True, remove previous results without asking for confirmation interactively
     forceIfcold_start=True,
     # 'normal' submits and waits for completion; 'submit' returns immediately
-    # (come back later with cgyro.check() and cgyro.fetch(), see cgyro_2_nonlinear_run_from_inputgacode.py);
+    # (come back later with cgyro.check() and cgyro.fetch(), see cgyro_02_nonlinear_run_from_inputgacode.py);
     # 'prep' only writes the input files
     run_type="normal",
 )

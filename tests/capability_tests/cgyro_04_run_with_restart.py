@@ -58,7 +58,7 @@ cgyro.prep(input_gacode, folder)
 cgyro.run(
     "seed",
     # Lowest-fidelity nonlinear preset, only for testing workflows (see
-    # cgyro_2_nonlinear_run_from_inputgacode.py for the fidelity ladder)
+    # cgyro_02_nonlinear_run_from_inputgacode.py for the fidelity ladder)
     code_settings="Nonlinear_silly",
     extraOptions={"MAX_TIME": 5.0},  # very short, just for demonstration
     allocation={"resources_per_call": 8, "minutes": 10},

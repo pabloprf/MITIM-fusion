@@ -7,7 +7,7 @@ stiffness landscape — at several radii, starting from an input.gacode file.
 
 Key teaching points:
     1. run_scan2d() runs one TGLF case per (value1, value2) combination:
-       `variable1`/`variable2` are input.tglf parameter names (see tglf_5_scan.py
+       `variable1`/`variable2` are input.tglf parameter names (see tglf_05_scan.py
        for where they come from) and varUpDown1/2 are the multipliers of the
        base value at each radius — a 4x4 grid here, so 16 runs per radius.
     2. read_scan2d() aggregates everything into 2D maps per radius (fluxes of

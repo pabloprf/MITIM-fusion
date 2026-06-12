@@ -17,13 +17,13 @@ Key teaching points:
        sawteeth/noise); prep_using_tgyro() then builds the per-rho inputs.
     2. Several saturation rules can be run and read under different labels,
        each with eigenfunction waveforms at requested ky's (see
-       tglf_4_run_waveforms.py).
+       tglf_04_run_waveforms.py).
     3. d_perp_cm at read() time activates the synthetic fluctuation
        diagnostic (perpendicular resolution of the measurement at each rho),
        and the measured fluctuation levels with error bars are attached via
        NormalizationSets["EXP"] — the plot then shows model vs experiment for
        fluxes AND fluctuations (same machinery that VITALS exploits, see
-       vitals_1_tglf_validation.py).
+       vitals_01_tglf_validation.py).
 """
 
 import numpy as np

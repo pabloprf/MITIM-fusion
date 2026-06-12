@@ -15,7 +15,7 @@ Key teaching points:
        instead of setting an absolute value, it multiplies the base value that
        prep() derived from the plasma state at each radius.
     4. run_scan()/read_scan()/plot_scan() work exactly as for TGLF (see
-       tglf_5_scan.py), here used to scan the main-ion temperature gradient.
+       tglf_05_scan.py), here used to scan the main-ion temperature gradient.
 """
 
 import numpy as np

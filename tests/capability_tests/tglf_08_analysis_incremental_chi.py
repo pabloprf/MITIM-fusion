@@ -31,7 +31,7 @@ Key teaching points:
        external notebook (fn=...) with a per-analysis tab color (fn_color) and
        tab-label prefix (extratitle), so everything lives in a single window.
     4. The remaining flavor, 'Z' (trace-impurity D and V), has its own
-       capability test: tglf_9_analysis_DV_trace_impurity.py.
+       capability test: tglf_09_analysis_DV_trace_impurity.py.
 """
 
 from mitim_tools.gacode_tools import TGLFtools

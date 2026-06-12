@@ -1,7 +1,7 @@
 """
 CAPABILITY: Reload TGLF results from a .npz file
 ------------------------------------------------
-NOTE: Run tglf_2_run_from_tglfinput.py first — this script reads the .npz file
+NOTE: Run tglf_02_run_from_tglfinput.py first — this script reads the .npz file
 that one produces.
 
 This script teaches how to restore TGLF results without re-running the code.
@@ -21,7 +21,7 @@ from mitim_tools import __mitimroot__
 npz_file = __mitimroot__ / "tests" / "scratch" / "capability_tglf_run_from_tglfinput" / "tglf_results.npz"
 
 if not npz_file.exists():
-    raise FileNotFoundError(f"[MITIM] {npz_file} not found: run tglf_2_run_from_tglfinput.py first")
+    raise FileNotFoundError(f"[MITIM] {npz_file} not found: run tglf_02_run_from_tglfinput.py first")
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 1. Restore the TGLF object from the .npz and plot the stored labels

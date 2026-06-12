@@ -173,7 +173,7 @@ mitim_run_portals myrun --batch          # non-interactive (CI / SLURM)
 mitim_run_portals myrun --no-log-file    # don't redirect stdout to Outputs/optimization_log.txt
 ```
 
-Programmatic (`tests/capability_tests/portals_1_standard.py` is the canonical example):
+Programmatic (`tests/capability_tests/portals_01_standard.py` is the canonical example):
 
 ```python
 from mitim_modules.portals import PORTALSmain
@@ -391,7 +391,7 @@ spectral quantities are zero-filled placeholders.
 Tests covering this path: `tests/dev_tests/test_tglf_inprocess.py` and
 `tests/dev_tests/test_neo_inprocess.py` (unit), plus the teaching comparisons
 `tests/capability_tests/tglf_11_run_inprocess.py` and
-`tests/capability_tests/neo_3_run_inprocess.py` (standard vs in-process,
+`tests/capability_tests/neo_03_run_inprocess.py` (standard vs in-process,
 overlaid).
 
 ### 5.3 `profiles_postprocessing_fun`
