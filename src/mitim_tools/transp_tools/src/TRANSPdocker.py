@@ -2,6 +2,7 @@ import sys
 import shutil
 import subprocess
 from mitim_tools.misc_tools import IOtools
+from mitim_tools.transp_tools import NMLtools
 from mitim_tools.transp_tools.utils import TRANSPhelpers
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -94,7 +95,8 @@ export NPTR_NPROCS={mpisettings["ptrmpi"]}
 export NGEN_NPROCS=0
 export NCQL3D_NPROCS=0
 
-set -e
+# pipefail so that a failing step aborts the script even when piped into tee
+set -eo pipefail
 
 # Pre-processing
 pretr {tok}{txt_mpi} {runid} < pre_mitim
@@ -146,6 +148,12 @@ def run_transp_docker(
 
     # Same convention as TRANSPsingularity.defineRunParameters: 1 means "not used", exported as 0
     mpisettings = {k: (0 if int(v) == 1 else int(v)) for k, v in mpisettings.items()}
+
+    # Point the namelist input paths (inputdir, solver templates) to the run folder, as
+    # runSINGULARITY does via adaptNML at submission time — inputs copied from a previous
+    # run carry stale absolute paths. nshot is read from the namelist itself (unchanged).
+    nshot = IOtools.findValue(folder / f"{runid}TR.DAT", "nshot", "=")
+    NMLtools.adaptNML(folder, runid, int(float(nshot)), str(folder))
 
     file_script = write_commands_script(folder, runid, tok, mpisettings, nparallel)
     log_file = folder / f"{runid}tr.log"
