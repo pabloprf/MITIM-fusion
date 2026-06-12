@@ -37,6 +37,8 @@ DESCRIPTION
 
 ### Changes for developers (internal execution)
 
+*   🖥️ **Notebook/plotting UX**: FigureNotebooks always open on the FIRST tab (script-built notebooks could open on an arbitrary mid-list tab after internal tab reordering, e.g. PORTALS `plot_optimization_results`); a long tab bar now has jump-to-first/last corner buttons next to the scroll arrows; and MAESTRO plots place the "MAESTRO special" and "MAESTRO timings" summary tabs first, as the default view (both from `m.plot()` and `mitim_plot_maestro`).
+
 *   📈 **TGLF plotting improvements**: waveform tabs no longer clip the evaluated-ky markers out of the eigenvalue axes (relevant when `forceClosestUnstableWF` lands far from the requested ky); 1D and 2D scans now also show the momentum flux and turbulent exchange (and the selected ion particle flux in 2D); `plotAnalysis` can compose several analyses into one notebook (`fn`/`fn_color`/`extratitle`) and skip per-point notebooks (`plotTGLFs`).
 
 *   🔒 **`run_slurm`/`run_slurm_array` gained lock-file protection and log-append mode**: `lock_file=True` makes the sbatch script create a `job.lock` in the run folder and abort if a recent one exists (timeout via `lock_file_timeout_hours`, default 12h), preventing redundant submissions of the same case from racing on the same files; `append_mode=True` adds `--open-mode=append` so re-launched jobs append to `slurm_output/error.dat` instead of overwriting them (preserving e.g. preemption notices across requeues).
