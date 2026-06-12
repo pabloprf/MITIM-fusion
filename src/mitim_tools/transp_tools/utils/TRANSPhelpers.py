@@ -1176,6 +1176,13 @@ def decomposeMoments(R, Z, nfour=5, r_ini = [180, 70, 3.0], z_ini = [0.0, 140, -
 
     return rmom, zmom, r_eval, z_eval
 
+# Apptainer/singularity messages indicating the container itself could not start (e.g. node image
+# with unprivileged user namespaces disabled and no apptainer-suid), so TRANSP never ran at all
+CONTAINER_LAUNCH_ERRORS = [
+    "Failed to create user namespace",
+    "max_user_namespaces",
+]
+
 def interpret_trdat(file):
     file = IOtools.expandPath(file)
     if not file.exists():
@@ -1185,6 +1192,13 @@ def interpret_trdat(file):
             aux = f.readlines()
 
         file_plain = "".join(aux)
+
+        if any(err in file_plain for err in CONTAINER_LAUNCH_ERRORS):
+            raise RuntimeError(
+                "[MITIM] TRDAT could not run: the container failed to launch on this node"
+                " (user namespace creation denied, check user.max_user_namespaces)."
+                " TRANSP cannot run here, aborting now instead of waiting for the job time limit"
+            )
 
         errors = [pos for pos, char in enumerate(file_plain) if char == "?"]
 
