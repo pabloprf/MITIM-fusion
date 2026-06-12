@@ -1602,7 +1602,10 @@ def create_slurm_execution_files(
     slurm_allocation={},
     launchSlurm=True,
     slurm_settings = None,
-    if_array_relabel = False
+    if_array_relabel = False,
+    lock_file=None,
+    lock_file_timeout_hours=12,
+    append_mode = False
 ):
     
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
@@ -1638,6 +1641,13 @@ def create_slurm_execution_files(
     job_array       = slurm_settings.setdefault("array", None)
     job_array_limit = slurm_settings.setdefault("array_limit", None)
     job_exclusive   = slurm_settings.setdefault("exclusive", False)
+
+    # Requeue-ability: True (default) emits --requeue, False emits --no-requeue,
+    # None leaves the cluster default. Explicit --requeue makes behavior uniform
+    # across clusters (slurm.conf JobRequeue varies): on preemption or node
+    # failure the job goes back in the queue under the same id instead of dying,
+    # and MITIM workflows resume from their on-disk checkpoints when re-executed.
+    job_requeue     = slurm_settings.setdefault("requeue", True)
 
     # ---------------------------------------------------
     # slurm_allocation indicate the machine specifications as given by the config instead of individual job
@@ -1709,6 +1719,10 @@ def create_slurm_execution_files(
     # (`slurm_settings.exclusive`).
     if request_exclusive_node or job_exclusive:
         commandSBATCH.append("#SBATCH --exclusive")
+    if job_requeue is True:
+        commandSBATCH.append("#SBATCH --requeue")
+    elif job_requeue is False:
+        commandSBATCH.append("#SBATCH --no-requeue")
     if nodes is not None:
         commandSBATCH.append(f"#SBATCH --nodes {nodes}")
     if ntasks is not None:
@@ -1723,6 +1737,8 @@ def create_slurm_execution_files(
         commandSBATCH.append(f"#SBATCH --gpus-per-node={gpuspernode}")
     if exclude is not None:
         commandSBATCH.append(f"#SBATCH --exclude={exclude}")
+    if append_mode:
+        commandSBATCH.append("#SBATCH --open-mode=append")
 
     commandSBATCH.append("#SBATCH --profile=all")
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
@@ -1738,6 +1754,43 @@ def create_slurm_execution_files(
     commandSBATCH.append('echo "***********************************************************************************************"')
     commandSBATCH.append('echo ""')
     commandSBATCH.append("")
+
+    if lock_file == True:
+        commandSBATCH.extend([
+            f'LOCK_FILE="{folderExecution}/job.lock"',
+            f'LOCK_TIMEOUT={lock_file_timeout_hours * 3600}  # {lock_file_timeout_hours} hours in seconds',
+            '',
+            '# Check if lock file already exists',
+            'if [ -f "$LOCK_FILE" ]; then',
+            '    # Get current time and file modification time',
+            '    CURRENT_TIME=$(date +%s)',
+            '    FILE_TIME=$(stat -c%Y "$LOCK_FILE" 2>/dev/null || stat -f%m "$LOCK_FILE" 2>/dev/null)',
+            '    AGE=$((CURRENT_TIME - FILE_TIME))',
+            '    ',
+            '    # If lock is older than 12 hours, delete it and continue',
+            '    if [ "$AGE" -gt "$LOCK_TIMEOUT" ]; then',
+            '        echo "Lock file is stale ($(($AGE / 3600)) hours old), removing and proceeding..."',
+            '        rm -f "$LOCK_FILE"',
+            '    else',
+            '        # Lock is recent, another job may be running',
+            '        echo "ERROR: Lock file exists ($(($AGE / 60)) minutes old). Another job may be running."',
+            '        exit 1',
+            '    fi',
+            'fi',
+            '',
+            '# Cleanup function runs on exit (success, failure, or timeout)',
+            'cleanup() {',
+            '    rm -f "$LOCK_FILE"',
+            '    echo "Lock file cleaned up at $(date)"',
+            '}',
+            '',
+            'trap cleanup EXIT',
+            '',
+            '# Create lock file',
+            'touch "$LOCK_FILE"',
+            'echo "Lock file created at $(date)"',
+            '',
+        ])
 
     # If modules, add them, but also make sure I expand the potential aliases that they may have!
     full_command = ["shopt -s expand_aliases",modules_remote] if (modules_remote is not None) else []
@@ -1823,10 +1876,13 @@ def printEfficiencySLURM(out_file):
 
     if jobid is not None:
         print(f"Evaluating efficienty of job {jobid}:")
-        print("\n****** SEFF:")
-        os.system(f"seff {jobid}")
-        print("\n****** SACCT:")
-        os.system(f"sacct -j {jobid}")
+        try:
+            print("\n****** SEFF:")
+            subprocess.run(["seff", str(jobid)])
+            print("\n****** SACCT:")
+            subprocess.run(["sacct", "-j", str(jobid)])
+        except FileNotFoundError as e:
+            print(f"\t- SLURM utility not available ({e})", typeMsg='w')
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions for quick remote executions

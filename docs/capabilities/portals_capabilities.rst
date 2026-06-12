@@ -7,7 +7,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 MITIM-fusion/tests/PORTALS_workflow.py
+   python3 MITIM-fusion/tests/capability_tests/portals_01_standard.py
 
 .. warning::
 
@@ -15,9 +15,9 @@ Once setup has been successful, the following regression test should run smoothl
    
    .. code-block:: console
 
-      python3 MITIM-fusion/tests/OPT_workflow.py
+      python3 MITIM-fusion/tests/capability_tests/optimization_01_custom_function.py
 
-      python3 MITIM-fusion/tests/TGLF_workflow.py
+      python3 MITIM-fusion/tests/capability_tests/tglf_02_run_from_tglfinput.py
 
    If both of those tests work, it is highly likely that the PORTALS workflow will work as well.
 
@@ -27,7 +27,7 @@ Run a standard profile prediction with PORTALS-TGLF
 
 *Under Development*
 
-*(In the meantime, please checkout* `tutorials/PORTALS_tutorial.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tutorials/PORTALS_tutorial.py>`_ *)*
+*(In the meantime, please checkout* `tests/capability_tests/portals_01_standard.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tests/capability_tests/portals_01_standard.py>`_ *)*
 
 Run a standard profile prediction with PORTALS-CGYRO
 ----------------------------------------------------

@@ -72,7 +72,8 @@ class Lengyel():
             folder.mkdir(parents=True, exist_ok=True)
         elif cold_start:
             print(f"\t- Cold starting Lengyel run; cleaning folder '{folder}'")
-            os.system(f'rm -rf {folder}/*')
+            for item in folder.iterdir():
+                IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
         
         # Potentially modify namelist with input_dict
         for key in input_dict:
@@ -123,7 +124,7 @@ class Lengyel():
     
         # Plot
         if plotYN:
-            plt.ion(); fig, ax = plt.subplots()
+            fig, ax = plt.subplots()
             for val in scan_values:
                 res = self.results_scan[val]
                 ax.plot(

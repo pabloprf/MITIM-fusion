@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
 from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 
 # ---------------------------------------------------------------------------
 # Multi-plasma TGLF workflow test
@@ -22,7 +23,7 @@ folder = __mitimroot__ / "tests" / "scratch" / "tglf_multi_plasma_test"
 input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if cold_start and folder.exists():
-    os.system(f"rm -r {folder.resolve()}")
+    IOtools.shutil_rmtree(folder)
 
 # ---------------------------------------------------------------------------
 # Build two distinct plasma states from the shared test input.gacode:

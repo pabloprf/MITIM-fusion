@@ -35,6 +35,7 @@ rhos = [0.5, 0.7]
 # a summary table at the end.  Use as: with timed("label"): ...
 # ---------------------------------------------------------------------------
 from contextlib import contextmanager
+from mitim_tools.misc_tools import IOtools
 
 TIMINGS: list[tuple[str, float]] = []
 
@@ -95,7 +96,7 @@ DRIVES_KWARGS = dict(
 # subprocess run
 folder_sub = __mitimroot__ / "tests" / "scratch" / "tglf_drives_sub"
 if cold_start and folder_sub.exists():
-    os.system(f"rm -r {folder_sub.resolve()}")
+    IOtools.shutil_rmtree(folder_sub)
 
 with timed("scanTurbulenceDrives: subprocess"):
     tglf_sub = TGLFtools.TGLF(rhos=rhos, in_process=False)

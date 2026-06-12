@@ -559,25 +559,28 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
             # Post-CGYRO: drop a warm-start bin.cgyro.restart that the run did
             # not overwrite, so the retrieval tarball doesn't ferry back an
-            # unchanged blob we already have locally. out.cgyro.info is
-            # written by CGYRO at every startup (cgyro_write_timedata.f90),
-            # so its mtime is a reliable "this run started after here"
-            # baseline. If bin.cgyro.restart is strictly newer, CGYRO wrote
-            # it during the run -> keep. Otherwise (older or equal, i.e.
-            # staged by PORTALS before the run, not rewritten) -> delete.
+            # unchanged blob we already have locally. The "did this run write
+            # it?" baseline is a marker file touched by this script right
+            # before launching CGYRO: a restart newer than the marker was
+            # written during the run -> keep; older or equal (staged before
+            # the run, not rewritten) -> delete. Do NOT use out.cgyro.info as
+            # the baseline: CGYRO appends its EXIT line to it at the END of
+            # the run, so its mtime postdates the restart write and that
+            # comparison deletes every legitimately fresh restart.
             # No-op when either file is absent (e.g. CGYRO crashed at init
             # or the run didn't use a warm-start at all). Wrapped in a
             # block so the slurm_array additional_command's trailing newline
             # doesn't break chaining.
             restart_path = f"{p}/{folder}/bin.cgyro.restart"
-            info_path = f"{p}/{folder}/out.cgyro.info"
+            marker_path = f"{p}/{folder}/.mitim_run_started"
+            marker_cmd = f'touch "{marker_path}"'
             cleanup_cmd = (
-                f'if [ -f "{restart_path}" ] && [ -f "{info_path}" ] && '
-                f'[ ! "{restart_path}" -nt "{info_path}" ]; then '
-                f'rm -f "{restart_path}"; fi'
+                f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
+                f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
+                f'rm -f "{restart_path}"; fi; rm -f "{marker_path}"'
             )
 
-            return cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
+            return marker_cmd + "\n" + cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
 
         # On GPU machines, always use a job array so each radius gets its own GPU allocation.
         _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
@@ -825,44 +828,64 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             )
             return extraOptions
 
-        if any(nt <= 0 or nt % resources_per_call != 0 for nt in n_tor_list):
+        # CGYRO aborts at startup unless the MPI rank count (= resources_per_call) is a
+        # multiple of the number of toroidal groups, N_TOROIDAL/TOROIDALS_PER_PROC (which
+        # also requires TOROIDALS_PER_PROC to divide N_TOROIDAL). The smallest valid
+        # TOROIDALS_PER_PROC maximizes toroidal parallelism (leftover rank multiplicity
+        # goes to the velocity/radial decomposition); TOROIDALS_PER_PROC=N_TOROIDAL (a
+        # single group) is always valid, so a solution always exists.
+        def _is_valid(nt, tpp):
+            return tpp > 0 and nt % tpp == 0 and resources_per_call % (nt // tpp) == 0
+
+        def _smallest_valid(nt):
+            return next(tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp))
+
+        if any(nt <= 0 for nt in n_tor_list):
             print(
-                f"\t- [preprocess] N_TOROIDAL={n_tor_list} not divisible by "
-                f"resources_per_call={resources_per_call}; leaving TOROIDALS_PER_PROC as-is",
+                f"\t- [preprocess] Invalid N_TOROIDAL={n_tor_list}; leaving TOROIDALS_PER_PROC as-is",
                 typeMsg="w",
             )
             return extraOptions
 
-        # Respect an explicit user-supplied TOROIDALS_PER_PROC in extraOptions:
-        # if set there, leave it untouched (user is overriding on purpose).
+        # Respect an explicit user-supplied TOROIDALS_PER_PROC in extraOptions
+        # (user is overriding on purpose), but warn if CGYRO will reject the combination.
         if 'TOROIDALS_PER_PROC' in extraOptions:
+            tpp_user = extraOptions['TOROIDALS_PER_PROC']
+            tpp_user_list = [int(v) for v in tpp_user] if isinstance(tpp_user, (list, np.ndarray)) else [int(tpp_user)] * len(n_tor_list)
+            for nt, tpp in zip(n_tor_list, tpp_user_list):
+                if not _is_valid(nt, tpp):
+                    print(
+                        f"\t- [preprocess] User-supplied TOROIDALS_PER_PROC={tpp} is incompatible with "
+                        f"N_TOROIDAL={nt} and resources_per_call={resources_per_call} "
+                        f"(MPI ranks must be a multiple of N_TOROIDAL/TOROIDALS_PER_PROC); CGYRO may abort",
+                        typeMsg="w",
+                    )
             return extraOptions
 
-        required_divisors = [nt // resources_per_call for nt in n_tor_list]
         extraOptions = copy.deepcopy(extraOptions)
-        tpp_src = controls.get('TOROIDALS_PER_PROC', required_divisors[0])
-        tpp_list = [int(v) for v in tpp_src] if isinstance(tpp_src, (list, np.ndarray)) else [int(tpp_src)] * len(required_divisors)
+        tpp_src = controls.get('TOROIDALS_PER_PROC', 1)
+        tpp_list = [int(v) for v in tpp_src] if isinstance(tpp_src, (list, np.ndarray)) else [int(tpp_src)] * len(n_tor_list)
 
-        # Broadcast a scalar constraint to match len(tpp_list); pad divisors if N_TOROIDAL was scalar.
-        if len(required_divisors) == 1 and len(tpp_list) > 1:
-            required_divisors = required_divisors * len(tpp_list)
-        if len(tpp_list) != len(required_divisors):
+        # Broadcast a scalar N_TOROIDAL to match a per-rho TOROIDALS_PER_PROC list.
+        if len(n_tor_list) == 1 and len(tpp_list) > 1:
+            n_tor_list = n_tor_list * len(tpp_list)
+        if len(tpp_list) != len(n_tor_list):
             print(
                 f"\t- [preprocess] TOROIDALS_PER_PROC length {len(tpp_list)} mismatches "
-                f"N_TOROIDAL length {len(required_divisors)}; leaving as-is",
+                f"N_TOROIDAL length {len(n_tor_list)}; leaving as-is",
                 typeMsg="w",
             )
             return extraOptions
 
         coerced = [
-            v if (v > 0 and v % d == 0) else d
-            for v, d in zip(tpp_list, required_divisors)
+            tpp if _is_valid(nt, tpp) else _smallest_valid(nt)
+            for tpp, nt in zip(tpp_list, n_tor_list)
         ]
 
         if coerced != tpp_list:
             print(
-                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted to be a multiple of "
-                f"N_TOROIDAL/resources={required_divisors}: {coerced}",
+                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted from {tpp_list} to {coerced} so that "
+                f"MPI ranks ({resources_per_call}) are a multiple of N_TOROIDAL/TOROIDALS_PER_PROC",
                 typeMsg="w",
             )
 
@@ -1308,6 +1331,14 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 
                 axs2D.append(fig.subplot_mosaic(mosaic))
         
+        fig = self.fn.add_figure(label="Timing")
+        axsTiming = fig.subplot_mosaic(
+            """
+            AC
+            BC
+            """
+        )
+
         fig = self.fn.add_figure(label="Inputs")
         axsInputs = fig.subplot_mosaic(
             """
@@ -1389,6 +1420,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
                 colorbars_all.append(colorbars)
 
+            _safe_plot(self.plot_timing,
+                axs=axsTiming,
+                label=labels[j],
+                c=colors[j],
+            )
+
             _safe_plot(self.plot_inputs,
                 ax=axsInputs["A"],
                 label=labels[j],
@@ -1440,8 +1477,75 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # Back to the original labels before _correct_rhos_labels
         self.results = self.results_all
 
+    def plot_timing(self, axs=None, label="", c="b"):
+        """
+        Characterize the computational cost of the run from out.cgyro.timing
+        (wall-clock seconds spent in each code section, one row per data output):
+            A: wall time per data output (TOTAL column)
+            B: cumulative wall time (setup time included as offset)
+            C: share of the total run time spent in each code section
+        """
+        if axs is None:
+            plt.ion()
+            fig = plt.figure(figsize=(15, 8))
+            axs = fig.subplot_mosaic(
+                """
+                AC
+                BC
+                """
+            )
+
+        data = self.results[label]
+        if "timing" not in data.__dict__:
+            print(f"\t- No timing information for {label}; skipping timing plot", typeMsg="w")
+            return
+
+        steps = np.arange(1, len(data.timing_total) + 1)
+        setup_time = sum(getattr(data, "timing_setup", {}).values())
+        total_time = setup_time + data.timing_total.sum()
+
+        # A: cost of each data output
+        ax = axs["A"]
+        ax.plot(steps, data.timing_total, "-o", c=c, lw=1.0, markersize=3, label=label)
+        ax.axhline(data.timing_total.mean(), c=c, ls="--", lw=0.5)
+        ax.set_xlabel("Data output #")
+        ax.set_ylabel("Wall time per output (s)")
+        ax.set_title("Cost per data output (dashed: mean)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
+        # B: cumulative cost
+        ax = axs["B"]
+        ax.plot(
+            steps,
+            (setup_time + np.cumsum(data.timing_total)) / 60.0,
+            "-o", c=c, lw=1.0, markersize=3,
+            label=f"{label} (setup {setup_time:.1f}s, total {total_time/60.0:.1f}min)",
+        )
+        ax.set_xlabel("Data output #")
+        ax.set_ylabel("Cumulative wall time (min)")
+        ax.set_title("Cumulative cost (setup included)")
+        ax.set_ylim(bottom=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
+        # C: where the time goes, by code section
+        ax = axs["C"]
+        share = 100.0 * data.timing.sum(axis=0) / data.timing.sum()
+        y = np.arange(len(data.timing_names))
+        ax.plot(share, y, "o", c=c, markersize=8, label=label)
+        ax.set_yticks(y)
+        ax.set_yticklabels(data.timing_names)
+        ax.invert_yaxis()
+        ax.set_xlabel("Share of run time (%)")
+        ax.set_title("Time per code section")
+        ax.set_xlim(left=0)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.legend(loc="best", prop={"size": 8})
+
     def plot_inputs(self, ax = None, label="", c="b", ms = 10, normalization_label=None, only_plot_differences=False):
-        
+
         if ax is None:
             plt.ion()
             fig, ax = plt.subplots(1, 1, figsize=(18, 9))

@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import time
 import datetime
 import re
@@ -1214,7 +1215,7 @@ def interpretPage(the_page, NBImissing_isStopped=True):
 
 
 def printUser(users, NBImissing_isStopped=True):
-    os.system("clear")
+    subprocess.run("clear", shell=True)
     print(
         f'Checking TRANSP Grid usage for {", ".join(users)} ({datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})'
     )

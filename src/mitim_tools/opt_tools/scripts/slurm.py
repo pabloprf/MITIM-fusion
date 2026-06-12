@@ -1,6 +1,8 @@
 import math
 import os
+import subprocess
 from mitim_tools.misc_tools import FARMINGtools, IOtools
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 """
@@ -40,6 +42,11 @@ def run_slurm(
         nameJob = None,
     # For job arrays:
         job_array = None,
+    # Lock file settings (to avoid multiple concurrent runs of the same array)
+        lock_file = None,
+        lock_file_timeout_hours = 12,
+    # Append mode for sbatch (to avoid overwriting logs when re-launching the same job)
+        append_mode = False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -113,6 +120,9 @@ def run_slurm(
                 slurm_settings=slurm_settings,
                 label_log_files=label,
                 if_array_relabel=True,
+                lock_file=lock_file,
+                lock_file_timeout_hours=lock_file_timeout_hours,
+                append_mode=append_mode,
                 wait_until_sbatch=wait,
             )
             sbatch_files.append(fileSBATCH_i)
@@ -141,7 +151,9 @@ def run_slurm(
             command_execution = " && ".join(parts)
 
         if machine == "local":
-            os.system(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log')
+            result = subprocess.run(command_execution + f' 2>&1 | tee {folder}/sbatch_submission.log', shell=True)
+            if result.returncode != 0:
+                print(f"\t- Local sbatch submission returned non-zero exit code ({result.returncode}), check {folder}/sbatch_submission.log", typeMsg='w')
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,
@@ -177,6 +189,11 @@ def run_slurm_array(
     # Interaction settings:
         wait = False,
         nameJob = None,
+    # Lock file settings (to avoid multiple concurrent runs of the same array)
+        lock_file = None,
+        lock_file_timeout_hours = 12,
+    # Append mode for sbatch (to avoid overwriting logs when re-launching the same job)
+        append_mode = False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -235,9 +252,12 @@ def run_slurm_array(
             command,
             folder,
             folder_local=folder,
+            lock_file=lock_file,
+            lock_file_timeout_hours=lock_file_timeout_hours,
             slurm_allocation=slurm_allocation,
             slurm_settings = slurm_settings,
             if_array_relabel=False,
+            append_mode=append_mode,
             wait_until_sbatch=wait,
         )
 
@@ -248,7 +268,9 @@ def run_slurm_array(
             command_execution = f"sbatch {fileSBATCH}"
 
         if machine == "local":
-            os.system(command_execution)
+            result = subprocess.run(command_execution, shell=True)
+            if result.returncode != 0:
+                print(f"\t- Local sbatch submission returned non-zero exit code ({result.returncode})", typeMsg='w')
         else:
             FARMINGtools.perform_quick_remote_execution(
                 folder,

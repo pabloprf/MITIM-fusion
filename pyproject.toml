@@ -68,6 +68,10 @@ pyqt = [
 vmec = [
   "vmecpp",
 ]
+lengyel = [
+  "extended-lengyel",
+  "radas",
+]
 test = [
   "pytest",
   "coverage",

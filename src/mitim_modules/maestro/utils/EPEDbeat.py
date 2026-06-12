@@ -9,6 +9,7 @@ from scipy.optimize import curve_fit
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.eped_tools import EPEDtools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools, LOGtools
+from mitim_tools import __mitimroot__
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -38,6 +39,9 @@ class eped_beat(beat):
             ptop_multiplier = 1.0,    # Multiplier for the ptop, useful for sensitivity studies
             TioverTe = 1.0,           # Ratio of Ti/Te at the top of the pedestal
             eped_params_override = None,
+            teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
+            teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
+            minutes_slurm = 240,           # (full EPED) SLURM time limit of each EPED case (the EPEDtools default of 30 min is far too short for full EPED)
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -81,6 +85,9 @@ class eped_beat(beat):
         self.corrections_set = corrections_set
         
         self.eped_params_override = eped_params_override
+        self.teped_retries = teped_retries
+        self.teped_retry_lower_factor = teped_retry_lower_factor
+        self.minutes_slurm = minutes_slurm
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -371,20 +378,51 @@ class eped_beat(beat):
                 if not self.use_full_EPED:
                     ptop_kPa, wtop_psipol = self.nn(*inputs_to_eped)
                 else:
-                    try:
-                        ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=self.eped_params_override, nproc_per_run=nproc_per_run, cold_start=cold_start)
-                    except LOGtools.InteractiveTerminalError:
-                        # Possibility that EPED could not find any stable solution
-                        if (self.folder / 'case1' / 'mitim.out').exists():
-                            error_line = "all stable or fail to find solution"
-                            # Read file to find line
-                            with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
-                                lines = f.readlines()
-                                for line in lines:
-                                    if error_line in line:
-                                        raise Exception('[MITIM] EPED failed to find any stable solution, cannot continue this simulation')
-                        raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
-                        
+                    # Retry loop: when EPED finds no stable solution within the explored
+                    # pedestal-temperature window, retry with the floor of TEPED_BOUND
+                    # lowered by teped_retry_lower_factor per attempt (relative to the
+                    # original floor: floor_n = floor_0 * factor^n).
+                    for attempt in range(1 + self.teped_retries):
+
+                        eped_params_override = dict(self.eped_params_override) if self.eped_params_override is not None else {}
+                        if attempt > 0:
+                            bound = list(eped_params_override.get('TEPED_BOUND', self._default_teped_bound()))
+                            # Lower the floor but keep max and step: the step is the resolution
+                            # of the teped search (accuracy of the returned ptop/wtop), so it must
+                            # NOT be scaled with the window — retried solutions stay as accurate
+                            # as normal ones. Snap the new floor to the step grid (at least one
+                            # step above zero) so the explored values stay tidy.
+                            new_floor = bound[0] * self.teped_retry_lower_factor**attempt
+                            step = bound[2] if len(bound) > 2 and bound[2] > 0 else None
+                            if step is not None:
+                                new_floor = max(step, round(round(new_floor / step) * step, 10))
+                            bound[0] = new_floor
+                            eped_params_override['TEPED_BOUND'] = bound
+                            print(f"\t- EPED retry {attempt}/{self.teped_retries}: lowering explored teped floor, TEPED_BOUND = {bound}", typeMsg='w')
+                            # Clean slate for the re-run (the failed attempt left no output file)
+                            if (self.folder / 'case1').exists():
+                                IOtools.shutil_rmtree(self.folder / 'case1')
+
+                        try:
+                            ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=eped_params_override if eped_params_override else None, nproc_per_run=nproc_per_run, cold_start=cold_start)
+                            break
+                        except LOGtools.InteractiveTerminalError:
+                            # Possibility that EPED could not find any stable solution
+                            no_stable_solution = False
+                            if (self.folder / 'case1' / 'mitim.out').exists():
+                                error_line = "all stable or fail to find solution"
+                                # Read file to find line
+                                with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
+                                    for line in f.readlines():
+                                        if error_line in line:
+                                            no_stable_solution = True
+                                            break
+                            if not no_stable_solution:
+                                raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
+                            if attempt == self.teped_retries:
+                                raise Exception(f'[MITIM] EPED failed to find any stable solution (after {self.teped_retries} teped-lowering retries), cannot continue this simulation')
+                            print('\t- EPED found no stable solution within the explored teped window', typeMsg='w')
+
                     if store_scan and self.nn==None:
                         store_scan = False
                         print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
@@ -522,6 +560,17 @@ class eped_beat(beat):
 
         return eped_results
 
+    @staticmethod
+    def _default_teped_bound():
+        """TEPED_BOUND [min, max, step] from the template EPED config (the values the
+        run would use when not overridden), needed to lower the floor on retries."""
+        config_file = __mitimroot__ / "templates" / "eped.config"
+        for line in config_file.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("TEPED_BOUND"):
+                return [float(v) for v in stripped.split("=", 1)[1].split()]
+        return [0.4, 1.4, 0.01]
+
     def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, eped_params_override=None, nproc_per_run=64, cold_start=True):
         '''
             Run the full EPED code with the given inputs.
@@ -606,6 +655,7 @@ class eped_beat(beat):
             subfolder = 'case1',
             input_params = input_params,
             nproc_per_run = nproc_per_run,
+            minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
             eped_params_override = eped_params_override,
         )

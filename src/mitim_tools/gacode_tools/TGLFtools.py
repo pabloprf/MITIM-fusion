@@ -1190,7 +1190,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
 
         # SAT parameters tab (only if at least one run has them populated)
         has_sat_params = any(
-            self.results[lbl]["output"][ir].scalar_sat_params
+            getattr(self.results[lbl]["output"][ir], "scalar_sat_params", None)
             for lbl in labels
             for ir in range(len(self.results[lbl]["output"]))
         )
@@ -2200,6 +2200,10 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 ax12 = figWF.add_subplot(grid[1, 2])
                 ax13 = figWF.add_subplot(grid[1, 3])
 
+                # Evaluated waveform kys of every label/rho in this tab, so the
+                # eigenvalue axes can be windowed to keep all of them visible
+                kys_evaluated = []
+
                 cont = 0
                 for contLab, label in enumerate(labels):
 
@@ -2225,6 +2229,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                             self.rhos[irho_cont]
                         ]
                         theta = wf["theta"] / np.pi
+
+                        # With forceClosestUnstableWF, the evaluation can land far
+                        # from the requested ky (e.g. at ion scales when no unstable
+                        # mode exists nearby) — keep it visible in the window
+                        kys_evaluated.append(float(wf["ky"][0]))
 
                         markers = GRAPHICStools.listmarkers()
 
@@ -2352,6 +2361,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                     ax.set_xlim([-3, 3])
                     ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
 
+                # Window of the eigenvalue axes: span the requested ky AND every
+                # evaluated waveform ky, so no evaluation marker is clipped out
+                kys_window = kys_evaluated + [ky_single_stored_unique[kycont]]
+                xlim_wf = [max(0.0, min(kys_window) - 2.0), max(kys_window) + 2.0]
+
                 ax = ax00
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\gamma$ ($c_s/a$)")
@@ -2360,7 +2374,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -2369,7 +2383,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2638,7 +2652,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         n1, n2, nr = len(varUpDown1), len(varUpDown2), len(self.rhos)
 
         arrs = {k: np.full((nr, n1, n2), np.nan)
-                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "g_ky")}
+                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "Mt_gb", "Se_gb", "g_ky")}
         v1_abs = np.full((nr, n1, n2), np.nan)
         v2_abs = np.full((nr, n1, n2), np.nan)
 
@@ -2677,6 +2691,8 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                     arrs["Qi_gb"][irho, i1, i2] = out.Qi
                     arrs["Ge_gb"][irho, i1, i2] = out.Ge
                     arrs["Gi_gb"][irho, i1, i2] = float(out.GiAll[ion_idx]) if hasattr(out, "GiAll") and len(out.GiAll) > ion_idx else np.nan
+                    arrs["Mt_gb"][irho, i1, i2] = float(getattr(out, "Mt", np.nan))
+                    arrs["Se_gb"][irho, i1, i2] = float(getattr(out, "Se", np.nan))
                     ky_idx = int(np.argmin(np.abs(out.ky - ky_target)))
                     arrs["g_ky"][irho, i1, i2]  = float(out.g[0, ky_idx])
                     if parsed:
@@ -2723,6 +2739,9 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             ("Qe_gb", "Qe (GB)",              r"$Q_e$ (GB)"),
             ("Qi_gb", "Qi (GB)",              r"$Q_i$ (GB)"),
             ("Ge_gb", "Ge (GB)",              r"$\Gamma_e$ (GB)"),
+            ("Gi_gb", "Gi (GB)",              r"$\Gamma_i$ (GB)"),
+            ("Mt_gb", "Mt (GB)",              r"$\Pi$ (GB)"),
+            ("Se_gb", "S (GB)",               r"$S_e$ (GB)"),
             ("g_ky",  f"gamma at ky~{ky_target}", rf"$\gamma$ at $k_\theta\rho_s\approx{ky_target}$"),
         ]
 
@@ -2892,17 +2911,21 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         colorsLines = GRAPHICStools.listColors()[5:]
 
         if unnormalization_successful:
-            grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
+            grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
             ax1_00 = fig1.add_subplot(grid[0, 0])
             ax1_10 = fig1.add_subplot(grid[0, 1], sharex=ax1_00)
             ax1_20 = fig1.add_subplot(grid[0, 2], sharex=ax1_00)
-            ax1_30 = fig1.add_subplot(grid[0, 3], sharex=ax1_00)
+            ax1_30 = fig1.add_subplot(grid[1, 0], sharex=ax1_00)
+            ax1_40 = fig1.add_subplot(grid[1, 1], sharex=ax1_00)
+            ax1_50 = fig1.add_subplot(grid[1, 2], sharex=ax1_00)
 
-        grid = plt.GridSpec(1, 4, hspace=0.3, wspace=0.3)
+        grid = plt.GridSpec(2, 3, hspace=0.3, wspace=0.3)
         ax1_00e = fig1e.add_subplot(grid[0, 0])
         ax1_10e = fig1e.add_subplot(grid[0, 1], sharex=ax1_00e)
         ax1_20e = fig1e.add_subplot(grid[0, 2], sharex=ax1_00e)
-        ax1_30e = fig1e.add_subplot(grid[0, 3], sharex=ax1_00e)
+        ax1_30e = fig1e.add_subplot(grid[1, 0], sharex=ax1_00e)
+        ax1_40e = fig1e.add_subplot(grid[1, 1], sharex=ax1_00e)
+        ax1_50e = fig1e.add_subplot(grid[1, 2], sharex=ax1_00e)
 
         grid = plt.GridSpec(2, 2, hspace=0.3, wspace=0.3)
         ax2_00 = fig2.add_subplot(grid[0, 0])
@@ -2957,6 +2980,8 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 self.scans[label]["Ge_gb"],
                 self.scans[label]["Gi_gb"],
             )
+            Mt, S = self.scans[label]["Mt"], self.scans[label]["S"]
+            Mt_gb, S_gb = self.scans[label]["Mt_gb"], self.scans[label]["S_gb"]
             eta1, eta2 = self.scans[label]["eta_ITGETG"], self.scans[label]["eta_ITGTEM"]
             itg, tem, etg = (
                 self.scans[label]["g_ITG_max"],
@@ -3168,6 +3193,22 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                         x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0
                     )
 
+                for ax_n, ax_e, y_n, y_e in (
+                    (ax1_40 if unnormalization_successful else None, ax1_40e, Mt, Mt_gb),
+                    (ax1_50 if unnormalization_successful else None, ax1_50e, S, S_gb),
+                ):
+                    if ax_n is not None:
+                        ax_n.plot(x[irho], y_n[irho], "-", c=colorLine, lw=1.0,
+                                  label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$")
+                        ax_n.scatter(x[irho], y_n[irho], marker="o", facecolor=colorsC, s=ms)
+                        if positionBase is not None:
+                            ax_n.axvline(x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0)
+                    ax_e.plot(x[irho], y_e[irho], "-", c=colorLine, lw=1.0,
+                              label=labZX + f"$\\rho_N={self.rhos[irho_cont]:.4f}$")
+                    ax_e.scatter(x[irho], y_e[irho], marker="o", facecolor=colorsC, s=ms)
+                    if positionBase is not None:
+                        ax_e.axvline(x=x[irho][positionBase], ls="--", c=scan_colors[0], lw=1.0)
+
                 axs = [ax2_00, ax2_10]
 
                 for ivar in range(ky.shape[1]):
@@ -3307,6 +3348,20 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             ax.axhline(y=0, ls="-.", c="k", lw=1)
             ax.set_title(f"Ion particle flux (ION_{self.ion_OI_position_in_total_padded_list_scan})")
 
+            ax = ax1_40
+            ax.set_xlabel(variableLabel)
+            ax.set_ylabel("$\\Pi$ ($J/m^2$)")
+            GRAPHICStools.addDenseAxis(ax)
+            ax.axhline(y=0, ls="-.", c="k", lw=1)
+            ax.set_title("Momentum flux")
+
+            ax = ax1_50
+            ax.set_xlabel(variableLabel)
+            ax.set_ylabel("$S_e$ ($MW/m^3$)")
+            GRAPHICStools.addDenseAxis(ax)
+            ax.axhline(y=0, ls="-.", c="k", lw=1)
+            ax.set_title("Turbulent exchange")
+
         ax = ax1_00e
         ax.set_xlabel(variableLabel)
         ax.set_ylabel("$Q_e$ (GB)")
@@ -3334,6 +3389,20 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         # ax.legend(loc='best')
         ax.axhline(y=0, ls="--", c="k", lw=1)
         ax.set_title(f"Ion #{self.ion_OI_position_in_total_padded_list_scan} particle flux")
+
+        ax = ax1_40e
+        ax.set_xlabel(variableLabel)
+        ax.set_ylabel("$\\Pi$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.set_title("Momentum flux")
+
+        ax = ax1_50e
+        ax.set_xlabel(variableLabel)
+        ax.set_ylabel("$S_e$ (GB)")
+        GRAPHICStools.addDenseAxis(ax)
+        ax.axhline(y=0, ls="--", c="k", lw=1)
+        ax.set_title("Turbulent exchange")
 
         ax = ax2_11
         ax.set_xlabel(variableLabel)
@@ -3705,24 +3774,33 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             # Back to original (not trace)
             self.inputs_files = self.inputs_files_orig
 
-    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
+    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None, plotTGLFs=True, fn=None, fn_color=None, extratitle=""):
+        """
+        fn: existing FigureNotebook to add the tabs to (a new one is created if None),
+            so several analyses can share one notebook.
+        fn_color: tab color for this analysis' tabs (color name or integer).
+        extratitle: prefix for the tab labels (e.g. 'chi_e - '), to tell analyses apart.
+        """
         if figs is None:
-            self.fn = GUItools.FigureNotebook(
-                "TGLF Analysis MITIM Notebook", geometry="1500x900"
-            )
-            fig1 = self.fn.add_figure(label="Analysis")
-            fig2 = self.fn.add_figure(label="Fluxes")
-            fig2e = self.fn.add_figure(label="Fluxes (GB)")
-            fig3 = self.fn.add_figure(label="Linear Stability")
+            if fn is None:
+                self.fn = GUItools.FigureNotebook(
+                    "TGLF Analysis MITIM Notebook", geometry="1500x900"
+                )
+            else:
+                self.fn = fn
+            fig1 = self.fn.add_figure(label=f"{extratitle}Analysis", tab_color=fn_color)
+            fig2 = self.fn.add_figure(label=f"{extratitle}Fluxes", tab_color=fn_color)
+            fig2e = self.fn.add_figure(label=f"{extratitle}Fluxes (GB)", tab_color=fn_color)
+            fig3 = self.fn.add_figure(label=f"{extratitle}Linear Stability", tab_color=fn_color)
 
         if analysisType == "chi_e":
             variableLabel = "RLTS_1"
-        elif analysisType == "chi_ei":
+        elif analysisType in ("chi_i", "chi_ei"):
             variableLabel = "RLTS_2"
         elif analysisType == "Z":
             variableLabel = self.variable
         self.plot_scan(
-            labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel
+            labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel, plotTGLFs=plotTGLFs
         )
 
         colors = GRAPHICStools.listColors()
@@ -4733,6 +4811,10 @@ class TGLFoutput(SIMtools.GACODEoutput):
         obj.roa           = inputclass.plasma["RMIN_LOC"] if inputclass is not None else 0.0
         obj.inputFile     = ""
         obj.inputFile_gen = ""
+        obj.tglf_version  = ""
+        # No out.tglf.scalar_saturation_parameters file in-process: keep the
+        # attribute present (empty) so plot()/plotTGLF_SAT() skip gracefully
+        obj.scalar_sat_params = {}
 
         # --- Species accounting (same logic as TGLFoutput.read()) ---
         if inputclass is not None:
@@ -4782,53 +4864,56 @@ class TGLFoutput(SIMtools.GACODEoutput):
         obj.g           = np.zeros((1, 1))
         obj.f           = np.zeros((1, 1))
         obj.tglf_model  = {"width": np.zeros((1,)), "spectral_shift": np.zeros((1,)), "ave_p0": np.zeros((1,))}
-        obj.AmplitudeSpectrum    = np.zeros((1, 1, 1))
+        # IMPORTANT: any axis that plot methods index by species/ion must be sized
+        # with the actual counts (ns species, ni ions) — plot loops are driven by
+        # num_species/ions_included, and size-1 dummies crash with IndexError.
+        obj.AmplitudeSpectrum    = np.zeros((2, ns, 1))
         obj.AmplitudeSpectrum_Te = np.zeros((1,))
-        obj.AmplitudeSpectrum_Ti = np.zeros((1, 1))
+        obj.AmplitudeSpectrum_Ti = np.zeros((ni, 1))
         obj.AmplitudeSpectrum_ne = np.zeros((1,))
-        obj.AmplitudeSpectrum_ni = np.zeros((1, 1))
-        obj.nTSpectrum   = np.zeros((1, 1, 1))
+        obj.AmplitudeSpectrum_ni = np.zeros((ni, 1))
+        obj.nTSpectrum   = np.zeros((ns, 1, 1))
         obj.neTeSpectrum = np.zeros((1, 1))
-        obj.niTiSpectrum = np.zeros((1, 1, 1))
+        obj.niTiSpectrum = np.zeros((ni, 1, 1))
         obj.FieldSpectrum    = np.zeros((4, 1, 1))
         obj.v_spectrum       = np.zeros((1, 1))
         obj.phi_spectrum     = np.zeros((1, 1))
         obj.a_par_spectrum   = np.zeros((1, 1))
         obj.a_per_spectrum   = np.zeros((1, 1))
-        obj.SumFluxSpectrum  = np.zeros((5, 1, 1, 1))
+        obj.SumFluxSpectrum  = np.zeros((5, ns, 1, 1))
         obj.SumFlux_Qe_phi   = np.zeros((1,)); obj.SumFlux_Ge_phi   = np.zeros((1,))
-        obj.SumFlux_QiAll_phi = np.zeros((1, 1))
+        obj.SumFlux_QiAll_phi = np.zeros((ni, 1))
         obj.SumFlux_Qe_a_par = np.zeros((1,)); obj.SumFlux_Ge_a_par = np.zeros((1,))
-        obj.SumFlux_QiAll_a_par = np.zeros((1, 1))
+        obj.SumFlux_QiAll_a_par = np.zeros((ni, 1))
         obj.SumFlux_Qe_a_per = np.zeros((1,)); obj.SumFlux_Ge_a_per = np.zeros((1,))
-        obj.SumFlux_QiAll_a_per = np.zeros((1, 1))
+        obj.SumFlux_QiAll_a_per = np.zeros((ni, 1))
         obj.SumFlux_Qe_a  = np.zeros((1,)); obj.SumFlux_Ge_a  = np.zeros((1,))
-        obj.SumFlux_QiAll_a = np.zeros((1, 1))
+        obj.SumFlux_QiAll_a = np.zeros((ni, 1))
         obj.SumFlux_Qe    = np.zeros((1,)); obj.SumFlux_Ge    = np.zeros((1,))
-        obj.SumFlux_QiAll = np.zeros((1, 1))
+        obj.SumFlux_QiAll = np.zeros((ni, 1))
         obj.SumFlux_Qi_phi = np.zeros((1,)); obj.SumFlux_Qi_a = np.zeros((1,))
         obj.SumFlux_Qi     = np.zeros((1,))
-        obj.SumFlux_GiAll_phi = np.zeros((1, 1)); obj.SumFlux_GiAll_a = np.zeros((1, 1))
-        obj.SumFlux_GiAll = np.zeros((1, 1))
+        obj.SumFlux_GiAll_phi = np.zeros((ni, 1)); obj.SumFlux_GiAll_a = np.zeros((ni, 1))
+        obj.SumFlux_GiAll = np.zeros((ni, 1))
         obj.SumFlux_Gi_phi = np.zeros((1,)); obj.SumFlux_Gi_a = np.zeros((1,))
         obj.SumFlux_Gi     = np.zeros((1,))
-        obj.SumFlux_MtAll_phi = np.zeros((1, 1)); obj.SumFlux_MtAll_a = np.zeros((1, 1))
-        obj.SumFlux_MtAll  = np.zeros((1, 1))
+        obj.SumFlux_MtAll_phi = np.zeros((ni, 1)); obj.SumFlux_MtAll_a = np.zeros((ni, 1))
+        obj.SumFlux_MtAll  = np.zeros((ni, 1))
         obj.SumFlux_Mt_phi = np.zeros((1,)); obj.SumFlux_Mt_a = np.zeros((1,))
         obj.SumFlux_Mt     = np.zeros((1,))
-        obj.QLFluxSpectrum  = np.zeros((5, 1, 1, 1, 1))
+        obj.QLFluxSpectrum  = np.zeros((5, ns, 1, 1, 1))
         obj.QLFluxSpectrum_Ge_phi    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_phi    = np.zeros((1, 1))
-        obj.QLFluxSpectrum_GiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_phi = np.zeros((1, 1))
-        obj.QLFluxSpectrum_QiAll_phi = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_phi = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Gi_phi = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_phi = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Qi_phi = np.zeros((1, 1))
         obj.QLFluxSpectrum_Ge_a_par    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_par    = np.zeros((1, 1))
-        obj.QLFluxSpectrum_GiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_par = np.zeros((1, 1))
-        obj.QLFluxSpectrum_QiAll_a_par = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_GiAll_a_par = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Gi_a_par = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_par = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Qi_a_par = np.zeros((1, 1))
         obj.QLFluxSpectrum_Ge_a_per    = np.zeros((1, 1)); obj.QLFluxSpectrum_Qe_a_per    = np.zeros((1, 1))
-        obj.QLFluxSpectrum_GiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Gi_a_per = np.zeros((1, 1))
-        obj.QLFluxSpectrum_QiAll_a_per = np.zeros((1, 1, 1)); obj.QLFluxSpectrum_Qi_a_per = np.zeros((1, 1))
-        obj.IntensitySpectrum    = np.zeros((4, 1, 1, 1))
+        obj.QLFluxSpectrum_GiAll_a_per = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Gi_a_per = np.zeros((1, 1))
+        obj.QLFluxSpectrum_QiAll_a_per = np.zeros((ni, 1, 1)); obj.QLFluxSpectrum_Qi_a_per = np.zeros((1, 1))
+        obj.IntensitySpectrum    = np.zeros((4, ns, 1, 1))
         obj.IntensitySpectrum_ne = np.zeros((1, 1)); obj.IntensitySpectrum_Te = np.zeros((1, 1))
-        obj.IntensitySpectrum_ni = np.zeros((1, 1, 1)); obj.IntensitySpectrum_Ti = np.zeros((1, 1, 1))
+        obj.IntensitySpectrum_ni = np.zeros((ni, 1, 1)); obj.IntensitySpectrum_Ti = np.zeros((ni, 1, 1))
 
         obj.postprocess()
 
@@ -6638,7 +6723,7 @@ class TGLFoutput(SIMtools.GACODEoutput):
         axs must be shape (1, 2). All labels are overlaid on the same axes as colored lines.
         """
 
-        if not self.scalar_sat_params:
+        if not getattr(self, "scalar_sat_params", None):
             return
 
         if axs is None:

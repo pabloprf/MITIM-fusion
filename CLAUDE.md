@@ -41,8 +41,8 @@ src/
     vitals/                # VITALS validation workflow
     freegsu/               # FreeGS-based equilibrium optimization
 templates/                 # YAML namelists + config_user_example.json
-tests/                     # *_workflow.py regression tests + unit tests
-tutorials/                 # PORTALS_tutorial.py, TGLF_tutorial.py, …
+tests/                     # unit tests + capability_tests/ teaching scripts
+tests/capability_tests/    # standalone teaching scripts (see §9; replaced tutorials/)
 docs/                      # Sphinx sources for readthedocs
 ```
 
@@ -173,7 +173,7 @@ mitim_run_portals myrun --batch          # non-interactive (CI / SLURM)
 mitim_run_portals myrun --no-log-file    # don't redirect stdout to Outputs/optimization_log.txt
 ```
 
-Programmatic (`tutorials/PORTALS_tutorial.py` is the canonical example):
+Programmatic (`tests/capability_tests/portals_01_standard.py` is the canonical example):
 
 ```python
 from mitim_modules.portals import PORTALSmain
@@ -386,9 +386,13 @@ Most workflows accept either a path to `input.gacode` or a live state.
 when supported) via ctypes against `libtglf_serial.so` / `libneo_serial.so`,
 no folder I/O, no subprocess fork. Build the libs once per machine via
 `src/mitim_tools/simulation_tools/interfaces/build_{tglf,neo}_lib.sh`.
-Tests covering this path: `tests/test_tglf_inprocess.py`,
-`tests/test_neo_inprocess.py`, `tests/NEOworkflow_inprocess.py`,
-`tests/TGLFworkflow_inprocess.py`.
+CAVEAT: in-process execution currently returns MINIMAL data (fluxes only);
+spectral quantities are zero-filled placeholders.
+Tests covering this path: `tests/dev_tests/test_tglf_inprocess.py` and
+`tests/dev_tests/test_neo_inprocess.py` (unit), plus the teaching comparisons
+`tests/capability_tests/tglf_11_run_inprocess.py` and
+`tests/capability_tests/neo_03_run_inprocess.py` (standard vs in-process,
+overlaid).
 
 ### 5.3 `profiles_postprocessing_fun`
 
@@ -429,23 +433,21 @@ e.g. `FARMINGtools.retrieve()`).
 
 ## 6. Tests as documented entry points
 
-`tests/*_workflow.py` are runnable end-to-end smoke tests that double as
-copy-paste templates:
+The legacy `tests/*_workflow.py` smoke tests have ALL been replaced by the
+standalone teaching scripts in `tests/capability_tests/` (see §9): verbose,
+runnable, end-to-end examples covering every wrapped code and workflow
+(PORTALS, MAESTRO, TGLF, NEO, CGYRO, GX, TGYRO, TRANSP, EPED, FreeGS, VGEN,
+Lengyel, VITALS, powertorch, the generic BO engine, in-process execution and
+SLURM submission). They double as smoke tests.
 
-- `PORTALS_workflow.py` — minimal PORTALS-TGLF run.
-- `PORTALSparallel_SR_workflow.py` — multi-trajectory simple-relax init.
-- `MAESTRO_workflow.py` — minimal MAESTRO chain.
-- `CGYRO_workflow.py`, `TGLF_workflow.py`, `NEO_workflow.py`, `GX_workflow.py`,
-  `EPED_workflow.py`, `FREEGS_workflow.py`, `LENGYEL_workflow.py`,
-  `TGYRO_workflow.py`, `TRANSP_workflow.py`, `VITALS_workflow.py` — per-code
-  smoke tests.
-- `test_cgyro_auto_resubmit.py` — unit tests for the CGYRO stall/resubmit logic.
+Unit tests (in `tests/dev_tests/`):
+- `test_cgyro_auto_resubmit.py` — CGYRO stall/resubmit logic.
 - `test_*_inprocess.py` — ctypes-backed in-process TGLF/NEO.
 
 If you change something that touches PORTALS, MAESTRO, or a transport
-interface, run the relevant `tests/*_workflow.py` (or at minimum
-`tests/test_*_inprocess.py` and `tests/test_cgyro_auto_resubmit.py`) before
-committing.
+interface, run the relevant `tests/capability_tests/` script (or at minimum
+`tests/dev_tests/test_*_inprocess.py` and
+`tests/dev_tests/test_cgyro_auto_resubmit.py`) before committing.
 
 ---
 
@@ -496,3 +498,15 @@ committing.
 - The information in the RELEASE document shouldn't be comprehensive, do not necessarily
   explain all the logic that led to that capability or bug fix. Except when it is very
   important, each bullet should not expand more than 5 lines.
+
+
+## 9. Teaching
+
+- In "MITIM-fusion/tests/capability_tests/", individual standalone scripts provide
+  "tutorial-like" capabilities to teach users how to use the code base.
+- When a new capability is added and you deem it worth it of adding it to the tests,
+  go ahead and create the script (and commit it together with the capability).
+- Make sure that you fix bugs, or change argument definitions, etc, that you modify
+  the test accordingly.
+- These files are meant to be verbose, lots of info for users to understand what is 
+  going on.
