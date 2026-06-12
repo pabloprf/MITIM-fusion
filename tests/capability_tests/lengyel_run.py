@@ -7,7 +7,8 @@ impurity concentration required for detachment — populating its inputs from a
 plasma state. It runs locally and in seconds.
 
 PREREQUISITES:
-    - The `extended_lengyel` python package installed in the environment.
+    - The `extended_lengyel` and `radas` python packages, installable as the
+      optional MITIM extra:  pip install -e .[lengyel]
     - The RADAS_DIR environment variable pointing to a radas atomic-data
       directory (generate it once with: radas -c radas_config.yml -s tungsten
       ... with the proper config and impurities).
