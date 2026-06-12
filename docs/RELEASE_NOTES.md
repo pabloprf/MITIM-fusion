@@ -33,6 +33,8 @@ DESCRIPTION
 
 ### Changes for developers (internal execution)
 
+*   📈 **TGLF plotting improvements**: waveform tabs no longer clip the evaluated-ky markers out of the eigenvalue axes (relevant when `forceClosestUnstableWF` lands far from the requested ky); 2D scans now also map the selected ion particle flux, the momentum flux and the turbulent exchange; `plotAnalysis` can compose several analyses into one notebook (`fn`/`fn_color`/`extratitle`) and skip per-point notebooks (`plotTGLFs`).
+
 *   🔒 **`run_slurm`/`run_slurm_array` gained lock-file protection and log-append mode**: `lock_file=True` makes the sbatch script create a `job.lock` in the run folder and abort if a recent one exists (timeout via `lock_file_timeout_hours`, default 12h), preventing redundant submissions of the same case from racing on the same files; `append_mode=True` adds `--open-mode=append` so re-launched jobs append to `slurm_output/error.dat` instead of overwriting them (preserving e.g. preemption notices across requeues).
 
 *   🔎 **New `lengyel` optional-dependencies group** (`pip install mitim-fusion[lengyel]`): installs `extended-lengyel` and `radas`, required by the Lengyel divertor/SOL model wrapper (same pattern as the `vmec` extra).
