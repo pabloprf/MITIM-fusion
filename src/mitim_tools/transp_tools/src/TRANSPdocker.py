@@ -103,10 +103,20 @@ pretr {tok}{txt_mpi} {runid} < pre_mitim
 trdat {tok} {runid} w q 2>&1 | tee {runid}tr_dat.log
 
 # Link the run executable (what the old singularity "link" app did, but with tr_build.py
-# instead of uplink, as TRANSPhub instructs for versions >= 23.2). label must rerun if a
-# previous partial attempt left TF.PLN behind without the pserve file tr_build.py reads.
-if [ ! -e {runid}TF.PLN ] || [ ! -e {runid}tr_pserv.tmp ]; then csh $SC/label {runid}; fi
+# instead of uplink, as TRANSPhub instructs for versions >= 23.2)
+if [ ! -e {runid}TF.PLN ]; then csh $SC/label {runid}; fi
 if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_for {runid}; fi
+
+# tr_build.py reads the pserve allocation from <target>_pserv.tmp, written by tr_start in
+# the PPPL production system (not shipped in the containers). Generate it here: it selects
+# the MPI vs serial makefile (max of the values) and the serial/parallel NUBEAM and PT_SOLVER
+# library variants (nbi_pserve / nptr_pserve).
+cat > {runid}tr_pserv.tmp << EOF
+nbi_pserve = {mpisettings["trmpi"]}
+ntoric_pserve = {mpisettings["toricmpi"]}
+nptr_pserve = {mpisettings["ptrmpi"]}
+EOF
+
 tr_build.py trexe {runid}tr
 
 # Run TRANSP
