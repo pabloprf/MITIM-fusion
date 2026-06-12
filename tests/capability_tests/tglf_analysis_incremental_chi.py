@@ -14,10 +14,10 @@ Key teaching points:
          - Vpinch  : the equivalent heat pinch
        This requires the experimental normalizations, so the object must be
        prepared from a plasma state (input.gacode), not from a bare input.tglf.
-    2. Other analysis types: 'chi_i' (RLTS_2 -> Qi), 'chi_ei' (cross-term:
-       ion temperature gradient on electron heat flux) and 'Z' (trace-impurity
-       D and V from a particle-flux scan; the trace charge and physical mass
-       are given with trace=[Z, A]).
+    2. Other analysis types, each with its own capability test: 'chi_i' and
+       'chi_ei' (ion and cross diffusivities, see
+       tglf_analysis_incremental_chi_ion.py) and 'Z' (trace-impurity D and V,
+       see tglf_analysis_trace_impurity.py).
     3. plotAnalysis() shows the flux response and the derived coefficients.
 """
 
