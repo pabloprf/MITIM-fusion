@@ -26,15 +26,17 @@ Key teaching points:
        prepared from a plasma state (input.gacode), not from a bare input.tglf.
     2. Each runAnalysis() call performs its own scan in its own subfolder
        (note 'chi_i' and 'chi_ei' scan the same parameter, but the runs are
-       not shared between them), and each plotAnalysis() call opens its own
-       notebook.
-    3. The remaining flavor, 'Z' (trace-impurity D and V), has its own
+       not shared between them).
+    3. The three analyses share ONE FigureNotebook: plotAnalysis() accepts an
+       external notebook (fn=...) with a per-analysis tab color (fn_color) and
+       tab-label prefix (extratitle), so everything lives in a single window.
+    4. The remaining flavor, 'Z' (trace-impurity D and V), has its own
        capability test: tglf_analysis_trace_impurity.py.
 """
 
 from mitim_tools.gacode_tools import TGLFtools
 from mitim_tools import __mitimroot__
-from mitim_tools.misc_tools import IOtools
+from mitim_tools.misc_tools import IOtools, GUItools
 
 # cold_start=True starts from scratch (here, removing the previous folder); False reuses
 # results already present in the folder instead of re-running
@@ -101,19 +103,17 @@ tglf.runAnalysis(
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 5. Plot the three analyses (each call opens its own notebook)
+# 5. Plot the three analyses in ONE notebook (one tab color per analysis)
 # ---------------------------------------------------------------------------------------------------------------------
 
+# A single notebook shared by the three analyses: each plotAnalysis() call adds its tabs
+# with its own color (fn_color) and label prefix (extratitle).
 # plotTGLFs=False skips the per-scan-point TGLF notebooks (11 of them per analysis);
 # set it to True to inspect the spectra of each individual scan point
-tglf.plotAnalysis(labels=["chi_e_sat2"], analysisType="chi_e", plotTGLFs=False)
-fn_e = tglf.fn
+fn = GUItools.FigureNotebook("TGLF incremental-diffusivity analyses", geometry="1500x900")
 
-tglf.plotAnalysis(labels=["chi_i_sat2"], analysisType="chi_i", plotTGLFs=False)
-fn_i = tglf.fn
+tglf.plotAnalysis(labels=["chi_e_sat2"], analysisType="chi_e", plotTGLFs=False, fn=fn, fn_color=0, extratitle="chi_e - ")
+tglf.plotAnalysis(labels=["chi_i_sat2"], analysisType="chi_i", plotTGLFs=False, fn=fn, fn_color=1, extratitle="chi_i - ")
+tglf.plotAnalysis(labels=["chi_ei_sat2"], analysisType="chi_ei", plotTGLFs=False, fn=fn, fn_color=2, extratitle="chi_ei - ")
 
-tglf.plotAnalysis(labels=["chi_ei_sat2"], analysisType="chi_ei", plotTGLFs=False)
-
-fn_e.show()
-fn_i.show()
-tglf.fn.show()
+fn.show()
