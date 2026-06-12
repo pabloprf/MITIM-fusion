@@ -128,8 +128,16 @@ def _exe_command(runid, nparallel, restart=False):
     start_or_restart = "R" if restart else "S"
     if nparallel > 1:
         # MPI runs are single-node only (TRANSPhub known limitation).
-        # --allow-run-as-root is required under docker (container user is root) and harmless under apptainer
-        return f"""echo "localhost slots={nparallel}" > machines
+        # --allow-run-as-root is required under docker (container user is root) and harmless under apptainer.
+        # CMA single-copy shared memory must be disabled: hosts with Yama ptrace_scope=1 deny the
+        # process_vm_readv between sibling ranks inside the container (dmesg "ptrace attach ...
+        # attempted"), silently deadlocking all ranks at 100% CPU on the first inter-rank exchange
+        # (the NUBEAM server handoff at the first sources timestep). Both spellings so it covers
+        # OpenMPI 4 (vader btl) and 5 (smsc framework); unknown MCA env vars are ignored.
+        return f"""export OMPI_MCA_btl_vader_single_copy_mechanism=none
+export OMPI_MCA_smsc=^cma
+
+echo "localhost slots={nparallel}" > machines
 mpirun --allow-run-as-root -n {nparallel} -machinefile machines ./{runid}TR.EXE {runid} {start_or_restart}
 """
     else:
