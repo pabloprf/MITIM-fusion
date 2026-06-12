@@ -118,11 +118,15 @@ if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_fo
 # NOT the process counts, which go in the *_NPROCS env vars): tr_build.py uses them to select
 # the MPI vs serial makefile and library variants, and datchk_mpi inside TR.EXE cross-checks
 # them against the namelist at startup. The leading blank on each line is REQUIRED: datchk_mpi
-# reads the file skipping the first column (Fortran list-directed writes prepend one).
+# reads the file skipping the first column (Fortran list-directed writes prepend one). All six
+# pserve components of the trcom module must be present (fewer lines = I/O error and abort).
 cat > {runid}_pserv.tmp << EOF
  nbi_pserve = {1 if mpisettings["trmpi"] > 0 else 0}
  ntoric_pserve = {1 if mpisettings["toricmpi"] > 0 else 0}
  nptr_pserve = {1 if mpisettings["ptrmpi"] > 0 else 0}
+ ngenray_pserve = 0
+ ncql3d_pserve = 0
+ ndep_pserve = 0
 EOF
 
 # Target is the bare runid (no "tr" suffix): the makefile rule is `$(NAME): $(NAME)ex.o`
