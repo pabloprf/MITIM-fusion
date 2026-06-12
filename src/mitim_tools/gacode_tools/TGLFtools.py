@@ -2200,6 +2200,10 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 ax12 = figWF.add_subplot(grid[1, 2])
                 ax13 = figWF.add_subplot(grid[1, 3])
 
+                # Evaluated waveform kys of every label/rho in this tab, so the
+                # eigenvalue axes can be windowed to keep all of them visible
+                kys_evaluated = []
+
                 cont = 0
                 for contLab, label in enumerate(labels):
 
@@ -2225,6 +2229,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                             self.rhos[irho_cont]
                         ]
                         theta = wf["theta"] / np.pi
+
+                        # With forceClosestUnstableWF, the evaluation can land far
+                        # from the requested ky (e.g. at ion scales when no unstable
+                        # mode exists nearby) — keep it visible in the window
+                        kys_evaluated.append(float(wf["ky"][0]))
 
                         markers = GRAPHICStools.listmarkers()
 
@@ -2352,6 +2361,11 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                     ax.set_xlim([-3, 3])
                     ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
 
+                # Window of the eigenvalue axes: span the requested ky AND every
+                # evaluated waveform ky, so no evaluation marker is clipped out
+                kys_window = kys_evaluated + [ky_single_stored_unique[kycont]]
+                xlim_wf = [max(0.0, min(kys_window) - 2.0), max(kys_window) + 2.0]
+
                 ax = ax00
                 ax.set_xlabel("$k_\\theta \\rho_s$")
                 ax.set_ylabel("$\\gamma$ ($c_s/a$)")
@@ -2360,7 +2374,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                         ax, size=6, ratio=0.6, title=title_legend
                     )
                 ax.set_title("Growth Rate")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
                 # ax.set_yscale('log')
 
                 ax = ax10
@@ -2369,7 +2383,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 if addLegend:
                     GRAPHICStools.addLegendApart(ax, size=6, ratio=0.6, withleg=False)
                 ax.set_title("Real Frequency")
-                ax.set_xlim([ky_single_stored_unique[kycont] - 2.0, ky_single_stored_unique[kycont] + 2])
+                ax.set_xlim(xlim_wf)
 
                 ax = ax01
                 ax.set_xlabel("Poloidal angle $\\theta$ ($\\pi$)")
@@ -2638,7 +2652,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         n1, n2, nr = len(varUpDown1), len(varUpDown2), len(self.rhos)
 
         arrs = {k: np.full((nr, n1, n2), np.nan)
-                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "g_ky")}
+                for k in ("Qe_gb", "Qi_gb", "Ge_gb", "Gi_gb", "Mt_gb", "Se_gb", "g_ky")}
         v1_abs = np.full((nr, n1, n2), np.nan)
         v2_abs = np.full((nr, n1, n2), np.nan)
 
@@ -2677,6 +2691,8 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                     arrs["Qi_gb"][irho, i1, i2] = out.Qi
                     arrs["Ge_gb"][irho, i1, i2] = out.Ge
                     arrs["Gi_gb"][irho, i1, i2] = float(out.GiAll[ion_idx]) if hasattr(out, "GiAll") and len(out.GiAll) > ion_idx else np.nan
+                    arrs["Mt_gb"][irho, i1, i2] = float(getattr(out, "Mt", np.nan))
+                    arrs["Se_gb"][irho, i1, i2] = float(getattr(out, "Se", np.nan))
                     ky_idx = int(np.argmin(np.abs(out.ky - ky_target)))
                     arrs["g_ky"][irho, i1, i2]  = float(out.g[0, ky_idx])
                     if parsed:
@@ -2723,6 +2739,9 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             ("Qe_gb", "Qe (GB)",              r"$Q_e$ (GB)"),
             ("Qi_gb", "Qi (GB)",              r"$Q_i$ (GB)"),
             ("Ge_gb", "Ge (GB)",              r"$\Gamma_e$ (GB)"),
+            ("Gi_gb", "Gi (GB)",              r"$\Gamma_i$ (GB)"),
+            ("Mt_gb", "Mt (GB)",              r"$\Pi$ (GB)"),
+            ("Se_gb", "S (GB)",               r"$S_e$ (GB)"),
             ("g_ky",  f"gamma at ky~{ky_target}", rf"$\gamma$ at $k_\theta\rho_s\approx{ky_target}$"),
         ]
 
