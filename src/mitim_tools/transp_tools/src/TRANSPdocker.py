@@ -1,3 +1,4 @@
+import sys
 import shutil
 import subprocess
 from mitim_tools.misc_tools import IOtools
@@ -139,7 +140,8 @@ def run_transp_docker(
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         for line in process.stdout:
-            print(line, end="")  # live progress on screen
+            sys.stdout.write(line)  # live progress on screen (print is shadowed by printMsg, which takes no `end`)
+            sys.stdout.flush()
             f.write(line)
             f.flush()
         process.wait()
