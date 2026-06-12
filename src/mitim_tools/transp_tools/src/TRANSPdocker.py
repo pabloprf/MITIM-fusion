@@ -77,6 +77,12 @@ export PATH=$TR/exe:$TR/bin:$TR/qcsh:$TR/csh:$TR/tools:$PATH
 for d in /opt/*/lib /opt/*/*/lib $TR/lib; do [ -d "$d" ] && LD_LIBRARY_PATH="$d:$LD_LIBRARY_PATH"; done
 export LD_LIBRARY_PATH
 
+# IMAS coupling: transp_local.rc sets IMAS_ON=1 and transp.rc then builds the IMAS link
+# line from IMAS_PREFIX, which in the PPPL production environment comes from their IMAS
+# module and is not defined anywhere in the image. Auto-detect the versioned install.
+export IMAS_PREFIX=$(ls -d /opt/imas/* 2>/dev/null | tail -1)
+export IMAS_HOME=$IMAS_PREFIX
+
 # Build-time environment (compilers/linker flags used to link the run executable)
 source $TR/transp_local.rc
 source $TR/transp.rc
