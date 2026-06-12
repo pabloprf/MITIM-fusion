@@ -108,7 +108,10 @@ class EPED:
                 'time': SLURMtools.format_time(minutes_slurm),
                 'ntasks-per-node': nproc_per_run,
                 'array': job_array,
-                'array_limit': job_array_limit,
+                # The %N concurrency throttle only means something with several
+                # array elements; suppress it for a single case so the sbatch
+                # does not read confusingly as "--array=1%N"
+                'array_limit': job_array_limit if len(job_array_indices) > 1 else None,
             }
         )
 
