@@ -6,6 +6,8 @@ DESCRIPTION
 
 *   💥 **NEW FEATURE**, descriptions
 
+*   🩹 **Full-EPED beats no longer die on the 30-minute SLURM default**: the MAESTRO EPED beat now passes a `minutes_slurm` knob (default 240, documented in the template namelist) to each EPED case — the `EPEDtools` default of 30 min was far too short for the full width x teped stability sweep and jobs were cancelled on the time limit. Also, single-case EPED submissions no longer carry the confusing `--array=1%N` concurrency suffix.
+
 *   🩹 **MAESTRO EPED beat can now retry instead of dying on "EPED failed to find any stable solution"**: new namelist knobs `teped_retries` (default 2; set 0 for the old fail-immediately behavior) and `teped_retry_lower_factor` (default 0.7) re-run EPED with the floor of the explored pedestal-temperature window (`TEPED_BOUND`) lowered relative to the original per attempt.
 
 *   ⏱️ **New "Timing" tab in the CGYRO plot notebook**, characterizing the computational cost of the run from `out.cgyro.timing`: wall time per data output, cumulative wall time (setup included), and the share of run time spent in each code section (nl, str, field, shear, coll, io, ...).
