@@ -3705,7 +3705,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             # Back to original (not trace)
             self.inputs_files = self.inputs_files_orig
 
-    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None):
+    def plotAnalysis(self, labels=["analysis1"], analysisType="chi_e", figs=None, plotTGLFs=True):
         if figs is None:
             self.fn = GUItools.FigureNotebook(
                 "TGLF Analysis MITIM Notebook", geometry="1500x900"
@@ -3717,12 +3717,12 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
 
         if analysisType == "chi_e":
             variableLabel = "RLTS_1"
-        elif analysisType == "chi_ei":
+        elif analysisType in ("chi_i", "chi_ei"):
             variableLabel = "RLTS_2"
         elif analysisType == "Z":
             variableLabel = self.variable
         self.plot_scan(
-            labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel
+            labels=labels, figs=[fig2, fig2e, fig3], variableLabel=variableLabel, plotTGLFs=plotTGLFs
         )
 
         colors = GRAPHICStools.listColors()
