@@ -47,6 +47,8 @@ DESCRIPTION
 
 *   🔮 **NEW CONSIDERATION**, description
 
+*   🔮 **The MAESTRO template namelist now defaults to full EPED** (`use_full_EPED: true`): the EPED-NN entries (`nn_location`, `norm_location`, `transform_inputs_fun`) default to null and the NN-specific `corrections_set` was removed from the template (both documented as comments for users who switch back to the NN surrogate).
+
 ---
 
 *Thanks to everyone who contributed to this release: @AudreySaltzman. Portions of this release were developed with AI-assisted coding (Claude Code).*
