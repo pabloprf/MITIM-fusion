@@ -84,6 +84,10 @@ export NPTR_NPROCS={mpisettings["ptrmpi"]}
 export NGEN_NPROCS=0
 export NCQL3D_NPROCS=0
 
+# TRANSP needs an unlimited stack (large Fortran automatic arrays); the container shell
+# default (typically 8 MB) produces silent, deterministic SIGSEGVs mid-run
+ulimit -s unlimited 2>/dev/null || true
+
 # pipefail so that a failing step aborts the script even when piped into tee
 set -eo pipefail
 """
