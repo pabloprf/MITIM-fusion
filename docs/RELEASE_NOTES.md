@@ -17,6 +17,8 @@ DESCRIPTION
 
 *   🐛 **NEW BUG FIX**, description
 
+*   🐛 **The TRANSP trdat/pretr prep stage now runs as its own minimal SLURM job** (1 task, 1 cpu, 10 min, non-exclusive) instead of executing the singularity container front-end: login nodes may not allow the user namespaces singularity needs (e.g. engaging), which forced node-targeted machine configs. On machines without SLURM the behavior is unchanged.
+
 *   🐛 **TRANSP-singularity runs no longer hang until the job time limit when the container fails to launch** (e.g. nodes whose OS image disables unprivileged user namespaces and lacks `apptainer-suid`, seen on some `mit_preemptable` nodes): the namespace-creation error is now caught at the trdat prep step (raising immediately) and in the run-status checker (flagging the run as stopped), so the failure surfaces within minutes instead of burning the full allocation.
 
 *   🐛 **Hardened the initializer's BetaN and ne-peaking matching against numerical path-sensitivity.** The parameterization/eped/fixed_bc profile creators matched BetaN (via aLTi) and ne peaking (via aLn) with Nelder-Mead at `tol=1e-3`, which accepts up to ~3% target error and stalls unpredictably near the aLTi bound — bit-level FP differences (e.g. EPED-NN inference on different cluster nodes) could shift the starting plasma's BetaN by ~5%, seeding run-to-run divergence of full MAESTRO chains from identical inputs. Both matches are monotonic in their gradient knob, so they now use bracketed root finding (`brentq`) on the signed mismatch — deterministic and exact — and an unreachable target saturates at the closest bound with an explicit warning instead of silently stalling.
