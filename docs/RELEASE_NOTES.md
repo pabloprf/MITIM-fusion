@@ -47,4 +47,4 @@ DESCRIPTION
 
 ---
 
-*Thanks to everyone who contributed to this release: USER LIST. Portions of this release were developed with AI-assisted coding (Claude Code).*
+*Thanks to everyone who contributed to this release: @AudreySaltzman. Portions of this release were developed with AI-assisted coding (Claude Code).*
