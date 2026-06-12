@@ -15,7 +15,7 @@ Once setup has been successful, the following regression test should run smoothl
    
    .. code-block:: console
 
-      python3 MITIM-fusion/tests/capability_tests/bayesian_optimization_custom_function.py
+      python3 MITIM-fusion/tests/capability_tests/bayesian_optimization_1_custom_function.py
 
       python3 MITIM-fusion/tests/capability_tests/tglf_2_run_from_tglfinput.py
 

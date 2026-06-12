@@ -23,7 +23,7 @@ Key teaching points:
        and the measured fluctuation levels with error bars are attached via
        NormalizationSets["EXP"] — the plot then shows model vs experiment for
        fluxes AND fluctuations (same machinery that VITALS exploits, see
-       vitals_tglf_validation.py).
+       vitals_1_tglf_validation.py).
 """
 
 import numpy as np
