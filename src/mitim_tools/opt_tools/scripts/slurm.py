@@ -42,6 +42,11 @@ def run_slurm(
         nameJob = None,
     # For job arrays:
         job_array = None,
+    # Lock file settings (to avoid multiple concurrent runs of the same array)
+        lock_file = None,
+        lock_file_timeout_hours = 12,
+    # Append mode for sbatch (to avoid overwriting logs when re-launching the same job)
+        append_mode = False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -115,6 +120,9 @@ def run_slurm(
                 slurm_settings=slurm_settings,
                 label_log_files=label,
                 if_array_relabel=True,
+                lock_file=lock_file,
+                lock_file_timeout_hours=lock_file_timeout_hours,
+                append_mode=append_mode,
                 wait_until_sbatch=wait,
             )
             sbatch_files.append(fileSBATCH_i)
@@ -181,6 +189,11 @@ def run_slurm_array(
     # Interaction settings:
         wait = False,
         nameJob = None,
+    # Lock file settings (to avoid multiple concurrent runs of the same array)
+        lock_file = None,
+        lock_file_timeout_hours = 12,
+    # Append mode for sbatch (to avoid overwriting logs when re-launching the same job)
+        append_mode = False,
 ):
 
     folder = IOtools.expandPath(folder)
@@ -239,9 +252,12 @@ def run_slurm_array(
             command,
             folder,
             folder_local=folder,
+            lock_file=lock_file,
+            lock_file_timeout_hours=lock_file_timeout_hours,
             slurm_allocation=slurm_allocation,
             slurm_settings = slurm_settings,
             if_array_relabel=False,
+            append_mode=append_mode,
             wait_until_sbatch=wait,
         )
 
