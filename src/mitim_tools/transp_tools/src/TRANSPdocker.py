@@ -124,9 +124,9 @@ cat > {runid}_pserv.tmp << EOF
  nbi_pserve = {1 if mpisettings["trmpi"] > 0 else 0}
  ntoric_pserve = {1 if mpisettings["toricmpi"] > 0 else 0}
  nptr_pserve = {1 if mpisettings["ptrmpi"] > 0 else 0}
+ ndep_pserve = 0
  ngenray_pserve = 0
  ncql3d_pserve = 0
- ndep_pserve = 0
 EOF
 
 # Target is the bare runid (no "tr" suffix): the makefile rule is `$(NAME): $(NAME)ex.o`
