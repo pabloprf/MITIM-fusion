@@ -111,13 +111,15 @@ if [ ! -e {runid}ex.for ] && [ ! -e {runid}ex.f90 ]; then csh $SC/copy_expert_fo
 # the PPPL production system (not shipped in the containers). Generate it here: it selects
 # the MPI vs serial makefile (max of the values) and the serial/parallel NUBEAM and PT_SOLVER
 # library variants (nbi_pserve / nptr_pserve).
-cat > {runid}tr_pserv.tmp << EOF
+cat > {runid}_pserv.tmp << EOF
 nbi_pserve = {mpisettings["trmpi"]}
 ntoric_pserve = {mpisettings["toricmpi"]}
 nptr_pserve = {mpisettings["ptrmpi"]}
 EOF
 
-tr_build.py trexe {runid}tr
+# Target is the bare runid (no "tr" suffix): the makefile rule is `$(NAME): $(NAME)ex.o`
+# with output $(NAME)TR.EXE, matching the {runid}ex.o that copy_expert_for produces.
+tr_build.py trexe {runid}
 
 # Run TRANSP
 {run_command}
