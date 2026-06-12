@@ -489,6 +489,15 @@ def interpretRun(infoSLURM, log_file):
             ):
             status = -1
             info["info"]["status"] = "stopped"
+        elif any(err in "\n".join(log_file) for err in TRANSPhelpers.CONTAINER_LAUNCH_ERRORS):
+            # The container never started, so TRANSP never ran. Without this catch, the log
+            # matches nothing below and MITIM waits until the job time limit.
+            status = -1
+            info["info"]["status"] = "stopped"
+            print(
+                "\t- The TRANSP container failed to launch on this node (user namespace creation denied, check user.max_user_namespaces). TRANSP is NOT running, flagging run as stopped",
+                typeMsg="w",
+            )
         else:
             print("\t- No error nor termination found, assuming it is still running",typeMsg="w",)
             pringLogTail(log_file, typeMsg="i")

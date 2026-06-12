@@ -19,6 +19,8 @@ DESCRIPTION
 
 *   🐛 **`TGLF.plotAnalysis` crashed for `analysisType='chi_i'`** (unset scan-variable label); it now plots against RLTS_2 like the cross-term analysis.
 
+*   🐛 **TRANSP-singularity runs no longer hang until the job time limit when the container fails to launch** (e.g. nodes whose OS image disables unprivileged user namespaces and lacks `apptainer-suid`, seen on some `mit_preemptable` nodes): the namespace-creation error is now caught at the trdat prep step (raising immediately) and in the run-status checker (flagging the run as stopped), so the failure surfaces within minutes instead of burning the full allocation.
+
 *   🐛 **Hardened the initializer's BetaN and ne-peaking matching against numerical path-sensitivity.** The parameterization/eped/fixed_bc profile creators matched BetaN (via aLTi) and ne peaking (via aLn) with Nelder-Mead at `tol=1e-3`, which accepts up to ~3% target error and stalls unpredictably near the aLTi bound — bit-level FP differences (e.g. EPED-NN inference on different cluster nodes) could shift the starting plasma's BetaN by ~5%, seeding run-to-run divergence of full MAESTRO chains from identical inputs. Both matches are monotonic in their gradient knob, so they now use bracketed root finding (`brentq`) on the signed mismatch — deterministic and exact — and an unreachable target saturates at the closest bound with an explicit warning instead of silently stalling.
 
 *   🐛 **`mitim_check_maestro` was blind to SLURM cancellations** (e.g. preemption on `mit_preemptable`): requeued jobs showed an innocent PENDING/RUNNING. Cancellation notices in `slurm_error.dat` are now surfaced — live requeued jobs are annotated with the cancellation time/reason, and cancelled jobs no longer in the queue are reported as definite FAILED with the reason instead of a generic timestamp.
@@ -32,6 +34,8 @@ DESCRIPTION
 *   🐛 **CGYRO crashed at startup when the core count did not divide `N_TOROIDAL`** (e.g. nonlinear presets with `N_TOROIDAL=12` on 8 local cores: "MPI processes not a multiple of N_TOROIDAL/N_TOROIDAL_PER_PROCESS"). The automatic `TOROIDALS_PER_PROC` selection now implements CGYRO's actual constraint (ranks must be a multiple of toroidal groups), picking the smallest valid value for any core count.
 
 ### Changes for developers (internal execution)
+
+*   🔎 **New `lengyel` optional-dependencies group** (`pip install mitim-fusion[lengyel]`): installs `extended-lengyel` and `radas`, required by the Lengyel divertor/SOL model wrapper (same pattern as the `vmec` extra).
 
 *   🔎 **All MITIM-generated sbatch files now request `--requeue`**: on preemption (e.g. preemptable partitions) or node failure, SLURM puts the job back in the queue under the same id instead of killing it, and MITIM workflows resume from their on-disk checkpoints when re-executed. Opt out per job with `slurm_settings={'requeue': False}` (emits `--no-requeue`) or `None` (cluster default).
 
