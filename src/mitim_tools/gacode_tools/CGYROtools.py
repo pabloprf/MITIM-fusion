@@ -559,25 +559,28 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
             # Post-CGYRO: drop a warm-start bin.cgyro.restart that the run did
             # not overwrite, so the retrieval tarball doesn't ferry back an
-            # unchanged blob we already have locally. out.cgyro.info is
-            # written by CGYRO at every startup (cgyro_write_timedata.f90),
-            # so its mtime is a reliable "this run started after here"
-            # baseline. If bin.cgyro.restart is strictly newer, CGYRO wrote
-            # it during the run -> keep. Otherwise (older or equal, i.e.
-            # staged by PORTALS before the run, not rewritten) -> delete.
+            # unchanged blob we already have locally. The "did this run write
+            # it?" baseline is a marker file touched by this script right
+            # before launching CGYRO: a restart newer than the marker was
+            # written during the run -> keep; older or equal (staged before
+            # the run, not rewritten) -> delete. Do NOT use out.cgyro.info as
+            # the baseline: CGYRO appends its EXIT line to it at the END of
+            # the run, so its mtime postdates the restart write and that
+            # comparison deletes every legitimately fresh restart.
             # No-op when either file is absent (e.g. CGYRO crashed at init
             # or the run didn't use a warm-start at all). Wrapped in a
             # block so the slurm_array additional_command's trailing newline
             # doesn't break chaining.
             restart_path = f"{p}/{folder}/bin.cgyro.restart"
-            info_path = f"{p}/{folder}/out.cgyro.info"
+            marker_path = f"{p}/{folder}/.mitim_run_started"
+            marker_cmd = f'touch "{marker_path}"'
             cleanup_cmd = (
-                f'if [ -f "{restart_path}" ] && [ -f "{info_path}" ] && '
-                f'[ ! "{restart_path}" -nt "{info_path}" ]; then '
-                f'rm -f "{restart_path}"; fi'
+                f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
+                f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
+                f'rm -f "{restart_path}"; fi; rm -f "{marker_path}"'
             )
 
-            return cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
+            return marker_cmd + "\n" + cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
 
         # On GPU machines, always use a job array so each radius gets its own GPU allocation.
         _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')

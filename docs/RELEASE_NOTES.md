@@ -19,7 +19,11 @@ DESCRIPTION
 
 *   🐛 **`TGLF.plotAnalysis` crashed for `analysisType='chi_i'`** (unset scan-variable label); it now plots against RLTS_2 like the cross-term analysis.
 
+*   🐛 **Hardened the initializer's BetaN and ne-peaking matching against numerical path-sensitivity.** The parameterization/eped/fixed_bc profile creators matched BetaN (via aLTi) and ne peaking (via aLn) with Nelder-Mead at `tol=1e-3`, which accepts up to ~3% target error and stalls unpredictably near the aLTi bound — bit-level FP differences (e.g. EPED-NN inference on different cluster nodes) could shift the starting plasma's BetaN by ~5%, seeding run-to-run divergence of full MAESTRO chains from identical inputs. Both matches are monotonic in their gradient knob, so they now use bracketed root finding (`brentq`) on the signed mismatch — deterministic and exact — and an unreachable target saturates at the closest bound with an explicit warning instead of silently stalling.
+
 *   🐛 **`mitim_check_maestro` was blind to SLURM cancellations** (e.g. preemption on `mit_preemptable`): requeued jobs showed an innocent PENDING/RUNNING. Cancellation notices in `slurm_error.dat` are now surfaced — live requeued jobs are annotated with the cancellation time/reason, and cancelled jobs no longer in the queue are reported as definite FAILED with the reason instead of a generic timestamp.
+
+*   🐛 **Standalone CGYRO runs never returned their `bin.cgyro.restart` files**: the stale-warm-start cleanup in the execution script compared the restart's mtime against `out.cgyro.info`, which CGYRO finalizes AFTER writing the restart — so every fresh restart was deleted before retrieval. The baseline is now a marker file touched at run start. (PORTALS warm-start chaining was mostly unaffected because wall-clock-killed runs never append the EXIT line.)
 
 *   🐛 **Plotting in-process TGLF results crashed** (`AttributeError` on `scalar_sat_params`, then `IndexError` in the fluctuation spectra): `TGLFoutput.from_inprocess` was missing attributes added later to the file-reading path, and its placeholder spectral arrays were sized 1 along the species/ion axes while plot loops iterate the actual species counts. All placeholders now carry consistent dimensions; verified by running the full standard-vs-in-process comparison and notebook build end-to-end.
 
