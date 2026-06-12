@@ -37,6 +37,8 @@ DESCRIPTION
 
 ### Changes for developers (internal execution)
 
+*   🔒 **`run_slurm`/`run_slurm_array` gained lock-file protection and log-append mode**: `lock_file=True` makes the sbatch script create a `job.lock` in the run folder and abort if a recent one exists (timeout via `lock_file_timeout_hours`, default 12h), preventing redundant submissions of the same case from racing on the same files; `append_mode=True` adds `--open-mode=append` so re-launched jobs append to `slurm_output/error.dat` instead of overwriting them (preserving e.g. preemption notices across requeues).
+
 *   🔎 **New `lengyel` optional-dependencies group** (`pip install mitim-fusion[lengyel]`): installs `extended-lengyel` and `radas`, required by the Lengyel divertor/SOL model wrapper (same pattern as the `vmec` extra).
 
 *   🔎 **All MITIM-generated sbatch files now request `--requeue`**: on preemption (e.g. preemptable partitions) or node failure, SLURM puts the job back in the queue under the same id instead of killing it, and MITIM workflows resume from their on-disk checkpoints when re-executed. Opt out per job with `slurm_settings={'requeue': False}` (emits `--no-requeue`) or `None` (cluster default).
