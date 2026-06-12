@@ -1,10 +1,8 @@
-# vX.Y.Z — TITLE
+# v5.2.0 — Capability tests teaching suite & cluster robustness
 
-DESCRIPTION
+This release introduces `tests/capability_tests/`: a comprehensive suite of standalone, verbose teaching scripts covering every major MITIM capability, replacing both the `tutorials/` folder and all the legacy `tests/*_workflow.py` smoke tests. On top of it, this cycle brings substantial robustness improvements for cluster operation (EPED retries and allocations, TRANSP on restricted login nodes, SLURM requeueing and preemption awareness, CGYRO parallel-layout and restart handling) and a set of plotting/UX upgrades.
 
 ### New Features
-
-*   💥 **NEW FEATURE**, descriptions
 
 *   📚 **New `tests/capability_tests/` folder with standalone teaching scripts**: verbose, tutorial-like, runnable examples of every major MITIM capability — all wrapped codes (TGLF including scans, turbulence drives, waveforms, incremental-diffusivity analyses (electron/ion/cross), trace-impurity D/V, from-TRANSP-CDF, in-process and multi-plasma parallel submissions; NEO including VGEN E×B and in-process; CGYRO including detached submit/check/fetch, grid preprocessing, warm-start restart chaining and SLURM job arrays over radii; GX; TGYRO; TRANSP; EPED; FreeGS; Lengyel), the PORTALS (standard and multi-channel) and MAESTRO workflows, VITALS, powertorch flux matching, the generic Bayesian-optimization engine, a CGYRO-vs-GX linear comparison, and SLURM job/array submission. They replace the `tutorials/` folder and ALL the legacy `tests/*_workflow.py` smoke tests (both removed), and are kept up to date as capabilities are added or APIs change.
 
@@ -16,8 +14,6 @@ DESCRIPTION
 
 
 ### Bug Fixes
-
-*   🐛 **NEW BUG FIX**, description
 
 *   🐛 **`TGLF.plotAnalysis` crashed for `analysisType='chi_i'`** (unset scan-variable label); it now plots against RLTS_2 like the cross-term analysis.
 
@@ -55,7 +51,7 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **`tutorials/` and `tests/*_workflow.py` no longer exist**: any script, bookmark or documentation pointing at them should move to the corresponding `tests/capability_tests/` script (each code has a numbered, ordered set, e.g. `tglf_01_...` to `tglf_11_...`).
 
 *   🔮 **The MAESTRO template namelist now defaults to full EPED** (`use_full_EPED: true`): the EPED-NN entries (`nn_location`, `norm_location`, `transform_inputs_fun`) default to null and the NN-specific `corrections_set` was removed from the template (both documented as comments for users who switch back to the NN surrogate).
 
