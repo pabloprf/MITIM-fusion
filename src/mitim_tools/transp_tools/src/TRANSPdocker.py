@@ -142,10 +142,22 @@ def _exe_command(runid, nparallel, restart=False):
 export OMPI_MCA_smsc=^cma
 
 echo "localhost slots={nparallel}" > machines
+# Capture how the executable terminates (set -e would otherwise abort silently)
+set +e
 mpirun --allow-run-as-root -n {nparallel} -machinefile machines ./{runid}TR.EXE {runid} {start_or_restart}
+rc=$?
+set -e
+echo "[MITIM] TRANSP executable terminated with exit code $rc"
+if [ $rc -ne 0 ]; then exit $rc; fi
 """
     else:
-        return f"./{runid}TR.EXE {runid} {start_or_restart}\n"
+        return f"""set +e
+./{runid}TR.EXE {runid} {start_or_restart}
+rc=$?
+set -e
+echo "[MITIM] TRANSP executable terminated with exit code $rc"
+if [ $rc -ne 0 ]; then exit $rc; fi
+"""
 
 
 # ------------------------------------------------------------------------------------------------------
