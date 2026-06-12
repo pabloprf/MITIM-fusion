@@ -35,7 +35,7 @@
         "gpus_per_node": 0
     },
     "engaging": {
-        "machine":          "orcd-login001.mit.edu", 
+        "machine":          "orcd-login001.mit.edu",
         "username":         "exampleusername",
         "slurm": {
             "partition":    "sched_mit_psfc",
@@ -43,6 +43,10 @@
         },
         "scratch":          "/orcd/pool/003/exampleusername/scratch/",
         "modules":    "",
+        "transp": {
+            "container_style":  "docker",
+            "image":            "/orcd/pool/003/exampleusername/transp_v25.1.0.sif"
+        },
         "cores_per_node":  64,
         "gpus_per_node": 0
     },

@@ -62,7 +62,9 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         )
 
     def run(self, cold_startFromPrevious=False, **kwargs):
-        runSINGULARITY(
+        # _backend_* are class attributes assigned at the bottom of this module; TRANSPdocker
+        # overrides them with the docker-style equivalents and inherits everything else
+        self._backend_run(
             self.job,
             self.runid,
             self.shotnumber,
@@ -98,7 +100,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         **kwargs,
     ):
 
-        runSINGULARITY_look(
+        self._backend_look(
             self.FolderTRANSP,
             self.job.folderExecution,
             self.runid,
@@ -118,7 +120,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         #     self.statusStop = 0
 
     def fetch(self, label="run1", retrieveAC=False, **kwargs):
-        runSINGULARITY_finish(
+        self._backend_finish(
             self.FolderTRANSP,
             self.runid,
             self.tok,
@@ -661,3 +663,10 @@ def organizeACfiles(
         for i in range(nummax):
             if (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').exists():
                 (FolderTRANSP / f'{runid}_TOR_TAR.GZ{i + 1}').replace(FolderTRANSP / 'TORBEAM_folder' / f'{runid}_TOR_TAR.GZ{i + 1}')
+
+
+# Backends used by run/get/fetch (assigned here because the functions are defined after the
+# class). TRANSPdocker subclasses TRANSPsingularity and replaces these three.
+TRANSPsingularity._backend_run = staticmethod(runSINGULARITY)
+TRANSPsingularity._backend_look = staticmethod(runSINGULARITY_look)
+TRANSPsingularity._backend_finish = staticmethod(runSINGULARITY_finish)

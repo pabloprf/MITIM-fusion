@@ -16,9 +16,17 @@ Overall routine to handle runs depending on being globus or singularity
 def TRANSP(*args):
     s = CONFIGread.load_settings()
 
-    if s["preferences"]["transp"] == "globus":
+    machine = s["preferences"]["transp"]
+
+    if machine == "globus":
         from mitim_tools.transp_tools.src.TRANSPglobus import (
             TRANSPglobus as TRANSPclass,
+        )
+    elif s[machine].get("transp", {}).get("container_style", "singularity") == "docker":
+        # docker-lineage containers (v25+, no singularity apps), see machine config:
+        # "transp": {"container_style": "docker", "image": "/path/to/transp_vX.Y.Z.sif"}
+        from mitim_tools.transp_tools.src.TRANSPdocker import (
+            TRANSPdocker as TRANSPclass,
         )
     else:
         from mitim_tools.transp_tools.src.TRANSPsingularity import (
