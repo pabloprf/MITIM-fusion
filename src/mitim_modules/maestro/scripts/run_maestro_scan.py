@@ -372,11 +372,18 @@ def _shape95_ratios_from_gacode(baseline_gacode):
 def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
     """Write scan_folders.txt and submit one sbatch array of len(folders) tasks.
 
-    When ``per_case_logs`` is True, the per-task command's stdout/stderr are
-    redirected into the case folder ($F) as slurm.out/slurm.err. This is done
-    inside the script (not via #SBATCH --output) because the case folder name
-    is only known at run time, after sed-reading scan_folders.txt; SLURM
-    resolves --output at submit time and can only key it by %A_%a.
+    When ``per_case_logs`` is True, each case folder gets slurm.out/slurm.err as
+    symlinks into SLURM's live array logs (slurm_output/slurm_error_<%A>_<%a>.dat in
+    the main folder). The case folder name is only known at run time (after
+    sed-reading scan_folders.txt), so the link is created inside the script. We
+    symlink rather than redirect so the logs (a) stream live and (b) are reachable
+    from BOTH the case folder and the main folder; a redirect would move them out of
+    the array logs, and a tee child can be reaped before flushing on a fast-exit
+    traceback. mitim stays the last command, so its exit code propagates to SLURM.
+    Caveat: the links point up into the main folder -- they dangle if a single case
+    folder is copied away on its own.
+
+    `slurm['exclude']` (and `slurm['qos']`) are forwarded to run_slurm when present.
     """
     listing = main_folder / 'scan_folders.txt'
     listing.write_text('\n'.join(str(f) for f in folders) + '\n')
@@ -387,15 +394,19 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
 
     cpus = slurm['cpus']
     save_flag = '--save' if save else ''
-    redirect = ' > "$F/slurm.out" 2> "$F/slurm.err"' if per_case_logs else ''
-    script = (
-        f'F=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" {listing}) && '
-        f'mitim_run_maestro $F --namelist $F/namelist.yaml --cpus {cpus} {save_flag}'
-        f'{redirect}'
-    ).rstrip()
+    mitim_cmd = f'mitim_run_maestro $F --namelist $F/namelist.yaml --cpus {cpus} {save_flag}'.rstrip()
+    if per_case_logs:
+        suffix = '${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}'  # %A_%a, expanded at run time
+        link_out = f'ln -sf "{main_folder}/slurm_output_{suffix}.dat" "$F/slurm.out"'
+        link_err = f'ln -sf "{main_folder}/slurm_error_{suffix}.dat" "$F/slurm.err"'
+        run_cmd = f'{link_out} && {link_err} && {mitim_cmd}'
+    else:
+        run_cmd = mitim_cmd
+    script = f'F=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" {listing}) && {run_cmd}'
 
     run_slurm(script, main_folder, slurm['partition'], slurm['environment'],
               hours=slurm['hours'], n=cpus, mem=slurm['memory'],
+              exclude=slurm.get('exclude'), qos=slurm.get('qos'),
               max_hours=slurm.get('max_hours', 8),
               exclusive=False, are_n_threads=False, ntasks_per_node=cpus,
               job_array=job_array)

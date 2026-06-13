@@ -4,16 +4,16 @@ DESCRIPTION
 
 ### New Features
 
-*   💥 **NEW FEATURE**, descriptions
+*   📊 **MAESTRO summary report** (`Outputs/maestro_summary.md`) now embeds the per-beat "special quantities" evolution and the timing breakdown (`maestro_special.png`, `maestro_timing.png`) next to the existing beat-flow diagram — the same plots produced when plotting a case, now in the standalone report.
 
 
 ### Bug Fixes
 
-*   🐛 **NEW BUG FIX**, description
+*   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
 ### Changes for developers (internal execution)
 
-*   🔎 **NEW CHANGE**, description
+*   🔎 **MAESTRO scan per-case logs** now symlink each case's `slurm.out`/`slurm.err` to the live SLURM array logs (`slurm_output/slurm_error_<jobid>_<task>.dat`) instead of redirecting — logs stream live and are reachable from both the case and main folders (links dangle only if a case folder is copied away on its own).
 
 ### Back-compatibility considerations and defaults
 

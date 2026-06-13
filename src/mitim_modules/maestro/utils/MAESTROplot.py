@@ -79,57 +79,55 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
 
     return m, ps, ps_lab
 
+_BEAT_TYPE_LABELS = [
+    (transp_beat, 'TRANSP'), (portals_beat, 'PORTALS'), (eped_beat, 'EPED'),
+    (lengyel_beat, 'Lengyel'), (sharpness_beat, 'Sharpness'), (confinement_beat, 'Confinement'),
+]
+
+
+def collect_beat_states(self):
+    '''
+    Per-beat output plasma states, in beat order, prefixed by the 'Initial profiles'
+    state. Returns (objs, ps, ps_lab):
+        objs    -- OrderedDict {label: gacode_state or None} (None = output file missing)
+        ps      -- the gacode_state entries that actually loaded
+        ps_lab  -- their labels (e.g. 'PORTALS b#7')
+    Shared by plot_results (the MAESTRO 'special' tab) and the maestro_summary.md
+    special figure so both views stay in sync.
+    '''
+    objs = OrderedDict()
+
+    init_gacode = Path(f'{self.beats[1].initialize.folder}/input.gacode')
+    objs['Initial profiles'] = PROFILEStools.gacode_state(init_gacode) if init_gacode.exists() else None
+
+    for i, beat in enumerate(self.beats.values()):
+        profs = (PROFILEStools.gacode_state(beat.folder_output / 'input.gacode')
+                 if (beat.folder_output / 'input.gacode').exists() else None)
+        key = next((lab for cls, lab in _BEAT_TYPE_LABELS if isinstance(beat, cls)), 'Beat')
+        objs[f'{key} b#{i+1}'] = profs
+
+    ps, ps_lab = [], []
+    for label, obj in objs.items():
+        if isinstance(obj, PROFILEStools.gacode_state):
+            ps.append(obj)
+            ps_lab.append(label)
+    return objs, ps, ps_lab
+
+
 def plot_results(self, fn):
 
     # ********************************************************************************************************
     # Collect info
     # ********************************************************************************************************
 
-    # Collect initialization
+    # Collect initialization geqdsk (profiles are gathered with the per-beat states below)
     ini = {'geqdsk': None, 'profiles': None}
     if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
         ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
-    if Path(f'{self.beats[1].initialize.folder}/input.gacode').exists():
-        ini['profiles'] = PROFILEStools.gacode_state(f'{self.beats[1].initialize.folder}/input.gacode')
 
     # Collect PORTALS profiles and TRANSP cdfs translated to profiles
-    objs = OrderedDict()
-
-    objs['Initial profiles'] = ini['profiles']
-
-    for i,beat in enumerate(self.beats.values()):
-
-        # _, profs = beat.grab_output()
-        if (beat.folder_output / 'input.gacode').exists():
-            profs = PROFILEStools.gacode_state(beat.folder_output / 'input.gacode')
-        else:
-            profs = None
-
-        if isinstance(beat, transp_beat):
-            key = f'TRANSP b#{i+1}'
-        elif isinstance(beat, portals_beat):
-            key = f'PORTALS b#{i+1}'
-        elif isinstance(beat, eped_beat):
-            key = f'EPED b#{i+1}'
-        elif isinstance(beat, lengyel_beat):
-            key = f'Lengyel b#{i+1}'
-        elif isinstance(beat, sharpness_beat):
-            key = f'Sharpness b#{i+1}'
-        elif isinstance(beat, confinement_beat):
-            key = f'Confinement b#{i+1}'
-        else:
-            key = f'Beat b#{i+1}'
-
-        objs[key] = profs
-
-    # ********************************************************************************************************
-    # Plot profiles
-    # ********************************************************************************************************
-    ps, ps_lab = [], []
-    for label in objs:
-        if isinstance(objs[label], PROFILEStools.gacode_state):
-            ps.append(objs[label])
-            ps_lab.append(label)
+    objs, ps, ps_lab = collect_beat_states(self)
+    ini['profiles'] = objs['Initial profiles']
 
     maxPlot = 5
     if len(ps) > 0:

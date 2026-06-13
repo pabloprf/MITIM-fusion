@@ -440,6 +440,8 @@ class maestro:
             self.folder_output / 'input.gacode_final',
             self.folder_output / 'maestro_summary.md',
             self.folder_output / 'beat_flow.png',
+            self.folder_output / 'maestro_special.png',
+            self.folder_output / 'maestro_timing.png',
             self.folder_output / 'beat_final',      # log file of the finalize step
             self.folder / 'maestro_plots',          # figures from mitim_run_maestro --save
         ]
@@ -528,6 +530,29 @@ class maestro:
         except Exception as e:
             md.append(f'*(beat-flow diagram unavailable: {e})*')
         md.append('')
+
+        # Special-quantities figure: per-beat evolution of the key 0D quantities
+        # (the same 'MAESTRO special' view produced when plotting the case).
+        md.append('## Special quantities')
+        md.append('')
+        try:
+            special_png = _render_special_png(self, self.folder_output / 'maestro_special.png')
+            md.append(f'![Special quantities]({special_png.name})')
+        except Exception as e:
+            md.append(f'*(special-quantities figure unavailable: {e})*')
+        md.append('')
+
+        # Timing figure: per-beat cumulative wall-time (the 'MAESTRO timings' view)
+        timing_jsonl = self.folder_performance / 'timing.jsonl'
+        if timing_jsonl.exists():
+            md.append('## Timing')
+            md.append('')
+            try:
+                timing_png = _render_timing_png(timing_jsonl, self.folder_output / 'maestro_timing.png')
+                md.append(f'![Timing]({timing_png.name})')
+            except Exception as e:
+                md.append(f'*(timing figure unavailable: {e})*')
+            md.append('')
 
         # Final plasma state: printInfo() output for input.gacode_final
         final_file = self.folder_output / 'input.gacode_final'
@@ -666,6 +691,59 @@ def _capture_print_info(gacode_file):
         CONFIGread.read_verbose_level = original
 
     return _ANSI_RE.sub('', buf.getvalue())
+
+
+def _render_special_png(maestro, out_path):
+    '''
+    Render the per-beat "special quantities" evolution (BetaN, Pfus, Q, density,
+    current, confinement, ...) to a PNG, reusing the exact same figure mosaic and
+    MAESTROplot.plot_special_quantities used by the interactive 'MAESTRO special'
+    tab. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+    from mitim_modules.maestro.utils import MAESTROplot
+
+    _, ps, ps_lab = MAESTROplot.collect_beat_states(maestro)
+    for p in ps:
+        p.derive_quantities()
+
+    fig = plt.figure(figsize=(16, 9))
+    axs = fig.subplot_mosaic(
+        """
+        ABGIK
+        ABGIK
+        AEGIK
+        DEHJL
+        DFHJL
+        DFHJL
+        """,
+        gridspec_kw={"wspace": 0.55},
+    )
+    MAESTROplot.plot_special_quantities(ps, ps_lab, axs)
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
+
+
+def _render_timing_png(timing_jsonl, out_path):
+    '''
+    Render the per-beat cumulative wall-time (the 'MAESTRO timings' view) to a PNG,
+    reusing IOtools.plot_timings. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(14, 7))
+    gs = fig.add_gridspec(2, 2, width_ratios=[2, 1], hspace=0.35, wspace=0.35)
+    ax_A = fig.add_subplot(gs[0, 0])
+    ax_B = fig.add_subplot(gs[1, 0], sharex=ax_A)
+    ax_C = fig.add_subplot(gs[0, 1])
+    ax_D = fig.add_subplot(gs[1, 1])
+    IOtools.plot_timings(timing_jsonl, axs=[ax_A, ax_B], ax_summary=ax_C, ax_total=ax_D, log=False)
+    ax_C.set_title("Time per Beat", fontsize=9)
+    ax_D.set_title("Total by type", fontsize=9)
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
 
 
 def _render_beat_flow_png(beats, wall_times, out_path):
