@@ -152,6 +152,33 @@ class eped_beat(beat):
             for key, value in self.current_evaluation.items()
         )
 
+    def _classify_eped_failure(self, mitim_out):
+        '''Classify why an EPED run returned no results, by scanning its mitim.out.
+
+        Returns (no_stable_solution, execution_failed):
+          - no_stable_solution: EPED actually ran but found no unstable mode within the
+            explored teped window -- a genuine physics outcome, worth a teped-lowering retry.
+          - execution_failed: the TOQ/ELITE binaries produced no output files at all (the
+            "collect ... : not completed" / FileNotFoundError signature, e.g. a bad or
+            incompatible compute node). With no growth-rate files the spectrum array is
+            empty, so EPED *also* prints "all stable or fail to find solution" -- but this
+            is an infrastructure failure, not physics, and retrying the same node (or
+            lowering the teped floor) cannot fix it.
+        '''
+        no_stable_solution = execution_failed = False
+        if mitim_out.exists():
+            with open(mitim_out, 'r') as f:
+                for line in f:
+                    if "all stable or fail to find solution" in line:
+                        no_stable_solution = True
+                    # TOQ wrote no equilibrium, or zero ELITE .gamma files were collected:
+                    # the stability binaries never produced output (not a physics result).
+                    if ("collect toq.time : not completed" in line) or (".gamma file" in line and "not completed" in line):
+                        execution_failed = True
+                    if no_stable_solution and execution_failed:
+                        break
+        return no_stable_solution, execution_failed
+
     def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False, nproc_per_run=64, cold_start=True):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
@@ -424,16 +451,14 @@ class eped_beat(beat):
                             ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=eped_params_override if eped_params_override else None, nproc_per_run=nproc_per_run, cold_start=cold_start)
                             break
                         except LOGtools.InteractiveTerminalError:
-                            # Possibility that EPED could not find any stable solution
-                            no_stable_solution = False
-                            if (self.folder / 'case1' / 'mitim.out').exists():
-                                error_line = "all stable or fail to find solution"
-                                # Read file to find line
-                                with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
-                                    for line in f.readlines():
-                                        if error_line in line:
-                                            no_stable_solution = True
-                                            break
+                            # EPED returned no results. Distinguish a genuine physics
+                            # no-solution (retry by lowering the teped floor) from an
+                            # execution failure where TOQ/ELITE produced no output files at
+                            # all (e.g. a bad/incompatible compute node) -- the latter cannot
+                            # be fixed by retrying the same node, so surface it immediately.
+                            no_stable_solution, execution_failed = self._classify_eped_failure(self.folder / 'case1' / 'mitim.out')
+                            if execution_failed:
+                                raise Exception(f'[MITIM] EPED produced no output files -- TOQ/ELITE did not run (likely a bad/incompatible compute node); this is an execution failure rather than a physics no-solution, with inputs [{self._eped_inputs_summary()}]')
                             if not no_stable_solution:
                                 raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
                             if attempt == self.teped_retries:
