@@ -101,6 +101,48 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             return self.read_inprocess(label=label, folder=folder)
         return super().read(label=label, folder=folder, **kwargs)
 
+    def prep_from_file(
+        self,
+        FolderGACODE,  # Main folder where the run lives
+        input_neo_file,  # input.neo file to start with
+        input_gacode=None,
+    ):
+        """Prepare a NEO class to read an already-run folder directly from its
+        input.neo (no mitim_state needed). Mirrors TGLF.prep_from_file: sets the
+        normalizations from input.gacode (if given) and the radial location from
+        the input file's RMIN_OVER_A, so read() can be called on the outputs."""
+        print("> Preparation of NEO class directly from input.neo")
+
+        from mitim_tools.gacode_tools import PROFILEStools
+        from mitim_tools.gacode_tools.utils import NORMtools
+
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+
+        self.NormalizationSets, _ = NORMtools.normalizations(
+            PROFILEStools.gacode_state(input_gacode) if input_gacode is not None else None)
+
+        inputclass = NEOinput(file=input_neo_file)
+
+        roa = inputclass.plasma["RMIN_OVER_A"]
+        print(f"\t- This file correspond to r/a={roa} according to RMIN_OVER_A")
+
+        if self.NormalizationSets["input_gacode"] is not None:
+            rho = np.interp(
+                roa,
+                self.NormalizationSets["input_gacode"].derived["roa"],
+                self.NormalizationSets["input_gacode"].profiles["rho(-)"],
+            )
+            print(f"\t\t- rho={rho:.4f}, using input.gacode for conversion")
+        else:
+            print(
+                "\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",
+                typeMsg="w",
+            )
+            rho = roa
+
+        self.rhos = [rho]
+        self.inputs_files = {self.rhos[0]: inputclass}
+
     def plot(
         self,
         fn=None,

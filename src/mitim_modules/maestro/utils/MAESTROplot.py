@@ -70,12 +70,13 @@ def grabMAESTRO(folder):
 
     return m
 
-def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True):
+def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot = True, summary_only = False):
 
     m = grabMAESTRO(folder)
 
     # Plot
-    ps, ps_lab = m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats, full_plot = full_plot)
+    ps, ps_lab = m.plot(fn = fn, num_beats=num_beats, only_beats = only_beats,
+                        full_plot = full_plot, summary_only = summary_only)
 
     return m, ps, ps_lab
 
@@ -114,74 +115,95 @@ def collect_beat_states(self):
     return objs, ps, ps_lab
 
 
-def plot_results(self, fn):
+def plot_results(self, fn, summary_only=False):
 
     # ********************************************************************************************************
     # Collect info
     # ********************************************************************************************************
 
-    # Collect initialization geqdsk (profiles are gathered with the per-beat states below)
-    ini = {'geqdsk': None, 'profiles': None}
-    if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
-        ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
-
-    # Collect PORTALS profiles and TRANSP cdfs translated to profiles
+    # Per-beat states (needed for the 'special' tab) are always collected.
     objs, ps, ps_lab = collect_beat_states(self)
-    ini['profiles'] = objs['Initial profiles']
 
-    maxPlot = 5
-    if len(ps) > 0:
-        # Plot profiles
-        figs = state_plotting.add_figures(fn,fnlab_pre = 'MAESTRO - ')
-        log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
-        with LOGtools.conditional_log_to_file(log_file=log_file):
-            state_plotting.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
+    # Detailed per-beat tabs: profiles, geqdsk, init, and beat-to-beat transitions.
+    # Skipped when summary_only is set -- then only the cross-beat 'special' and
+    # 'timings' summary tabs (built below) are produced.
+    if not summary_only:
 
-    for p,pl in zip(ps,ps_lab):
-        p.printInfo(label = pl)
+        ini = {'geqdsk': None, 'profiles': objs['Initial profiles']}
+        if (self.beats[1].initialize.folder / 'input.geqdsk').exists():
+            ini['geqdsk'] = GEQtools.MITIMgeqdsk(self.beats[1].initialize.folder / 'input.geqdsk')
 
-    keys = list(objs.keys())
-    lw, ms = 1, 0
+        maxPlot = 5
+        if len(ps) > 0:
+            # Plot profiles
+            figs = state_plotting.add_figures(fn,fnlab_pre = 'MAESTRO - ')
+            log_file = self.folder_logs/'plot_maestro.log' if (not self.terminal_outputs) else None
+            with LOGtools.conditional_log_to_file(log_file=log_file):
+                state_plotting.plotAll(ps[-maxPlot:], extralabs=ps_lab[-maxPlot:], figs=figs)
 
-    # Plot geqdsk?
-    if ini['geqdsk'] is not None:
-        ini['geqdsk'].plot(fn=fn, extraLabel='GEQDSK - ', tab_color=2)
+        for p,pl in zip(ps,ps_lab):
+            p.printInfo(label = pl)
 
-    # ********************************************************************************************************
-    # Plot initialization (geqdsk to input.gacode)
-    # ********************************************************************************************************
+        keys = list(objs.keys())
+        lw, ms = 1, 0
 
-    fig = fn.add_figure(label='MAESTRO init', tab_color=3)
-    axs = fig.subplot_mosaic(
-        """
-        ABCDHK
-        AEFGIJ
-        """
-    )
-    axs = [ ax for ax in axs.values() ]
+        # Plot geqdsk?
+        if ini['geqdsk'] is not None:
+            ini['geqdsk'].plot(fn=fn, extraLabel='GEQDSK - ', tab_color=2)
 
-    if ini['geqdsk'] is not None:
-        plot_g_quantities(ini['geqdsk'], axs, color = 'b', lw = lw, ms = ms)
+        # ****************************************************************************************************
+        # Plot initialization (geqdsk to input.gacode)
+        # ****************************************************************************************************
 
-    if objs[keys[0]] is not None:
-        objs[keys[0]].plotRelevant(axs = axs, color = 'r', label =keys[0], lw = lw, ms = ms, include995=True)
+        fig = fn.add_figure(label='MAESTRO init', tab_color=3)
+        axs = fig.subplot_mosaic(
+            """
+            ABCDHK
+            AEFGIJ
+            """
+        )
+        axs = [ ax for ax in axs.values() ]
 
-    GRAPHICStools.adjust_figure_layout(fig)
+        if ini['geqdsk'] is not None:
+            plot_g_quantities(ini['geqdsk'], axs, color = 'b', lw = lw, ms = ms)
 
-    # ********************************************************************************************************
-    # Plot transition N -> N+1
-    # ********************************************************************************************************
+        if objs[keys[0]] is not None:
+            objs[keys[0]].plotRelevant(axs = axs, color = 'r', label =keys[0], lw = lw, ms = ms, include995=True)
 
-    label = "MAESTRO Transition"
+        GRAPHICStools.adjust_figure_layout(fig)
 
-    for i in range(len(objs)-1):
-        obj1 = objs[keys[i]]
-        obj2 = objs[keys[i+1]]
+        # ****************************************************************************************************
+        # Plot transition N -> N+1
+        # ****************************************************************************************************
 
-        if obj1 is None or obj2 is None:
-            continue
+        label = "MAESTRO Transition"
 
-        fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=3)
+        for i in range(len(objs)-1):
+            obj1 = objs[keys[i]]
+            obj2 = objs[keys[i+1]]
+
+            if obj1 is None or obj2 is None:
+                continue
+
+            fig = fn.add_figure(label=f'{label} {i}->{i+1}', tab_color=3)
+            axs = fig.subplot_mosaic(
+                """
+                ABCDHJ
+                AEFGIK
+                """
+            )
+            axs = [ ax for ax in axs.values() ]
+
+            obj1.plotRelevant(axs = axs, color = 'b', label =keys[i], lw = lw, ms = ms)
+            obj2.plotRelevant(axs = axs, color = 'r', label =keys[i+1], lw = lw, ms = ms)
+
+            GRAPHICStools.adjust_figure_layout(fig)
+
+        # ****************************************************************************************************
+        # Plot transition 0 -> last
+        # ****************************************************************************************************
+
+        fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=3)
         axs = fig.subplot_mosaic(
             """
             ABCDHJ
@@ -190,33 +212,15 @@ def plot_results(self, fn):
         )
         axs = [ ax for ax in axs.values() ]
 
-        obj1.plotRelevant(axs = axs, color = 'b', label =keys[i], lw = lw, ms = ms)
-        obj2.plotRelevant(axs = axs, color = 'r', label =keys[i+1], lw = lw, ms = ms)
+        if ini['geqdsk'] is not None:
+            plot_g_quantities(ini['geqdsk'], axs, color = 'm', lw = lw, ms = ms)
+        if objs[keys[0]] is not None:
+            objs[keys[0]].plotRelevant(axs = axs, color = 'b', label =keys[0], lw = lw, ms = ms, include995=True)
+
+        if objs[keys[-1]] is not None:
+            objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms, include995=True)
 
         GRAPHICStools.adjust_figure_layout(fig)
-
-    # ********************************************************************************************************
-    # Plot transition 0 -> last
-    # ********************************************************************************************************
-
-    fig = fn.add_figure(label=f'{label} {0}->{len(keys)}', tab_color=3)
-    axs = fig.subplot_mosaic(
-        """
-        ABCDHJ
-        AEFGIK
-        """
-    )
-    axs = [ ax for ax in axs.values() ]
-    
-    if ini['geqdsk'] is not None:
-        plot_g_quantities(ini['geqdsk'], axs, color = 'm', lw = lw, ms = ms)
-    if objs[keys[0]] is not None:
-        objs[keys[0]].plotRelevant(axs = axs, color = 'b', label =keys[0], lw = lw, ms = ms, include995=True)
-    
-    if objs[keys[-1]] is not None:
-        objs[keys[-1]].plotRelevant(axs = axs, color = 'r', label =keys[-1], lw = lw, ms = ms, include995=True)
-
-    GRAPHICStools.adjust_figure_layout(fig)
 
     # ********************************************************************************************************
     # Plot special info

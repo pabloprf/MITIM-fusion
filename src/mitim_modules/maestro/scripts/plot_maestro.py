@@ -67,6 +67,8 @@ def main():
                         help="If set, it will only retrieve the folder structure with a few key files.")
     parser.add_argument('--fix', required=False, default=False, action='store_true',
                         help="If set, it will fix the pkl optimization portals in the remote folders.")
+    parser.add_argument('--summary','--special', required=False, default=False, action='store_true',
+                        help="If set, plot only the cross-beat 'MAESTRO special' and 'MAESTRO timings' summary tabs (no per-beat / profile / transition tabs).")
 
     args = parser.parse_args()
 
@@ -98,9 +100,10 @@ def main():
     # Actual interpreting and plotting
     # --------------------------------------------------------------------------------------------------------------------------------------------
 
-    beats = args.beats if not args.remote_minimal else 0
+    beats = args.beats if not (args.remote_minimal or args.summary) else 0
     only = args.only
     full = args.full
+    summary_only = args.summary
 
     # If a single "*" is given, expand to all subdirectories of the current directory
     if folders == ["*"]:
@@ -147,7 +150,7 @@ def main():
     x0, scripts0 = [], []
     ps_final = []
     for i,folder in enumerate(folders):
-        m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full)
+        m, ps, ps_lab = MAESTROplot.plotMAESTRO(folder, fn = fn, num_beats=beats, only_beats = only, full_plot = full, summary_only = summary_only)
         ms.append(m)
 
         # Plot all special quantities together

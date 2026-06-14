@@ -607,7 +607,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
-    def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
+    def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True, summary_only = False):
 
         print('*** Plotting MAESTRO ******************************************************************** ')
 
@@ -618,13 +618,14 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        if num_beats>0:
+        # summary_only -> only the cross-beat 'special' + 'timings' tabs (no per-beat tabs)
+        if num_beats>0 and not summary_only:
             self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        ps, ps_lab = self._plot_results(self.fn)
+        ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
 
         if not wasProvided:
             self.fn.show()
-            
+
         return ps, ps_lab
 
     def _plot_beats(self, fn, num_beats = 2, only_beats = None, full_plot = True):
@@ -645,11 +646,11 @@ class maestro:
                 except Exception as e:
                     print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
 
-    def _plot_results(self, fn):
+    def _plot_results(self, fn, summary_only = False):
 
         print('\t- Plotting MAESTRO results...')
 
-        return MAESTROplot.plot_results(self, fn)
+        return MAESTROplot.plot_results(self, fn, summary_only = summary_only)
 
 
 def read_warning(file, d, label):
