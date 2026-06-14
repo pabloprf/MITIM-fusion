@@ -227,6 +227,18 @@ class mitim_job:
             so I just want to retrieve them. In that case, I do not remove the scratch folder going in, and I do not execute the commands.
         '''
 
+        # Make run() idempotent w.r.t. the input file/folder lists. Below, fileSBATCH/
+        # fileSHELL are appended and self.input_files/self.input_folders are rewritten to
+        # paths relative to folder_local, in place. If run() is re-invoked on the same job
+        # (e.g. SIMtools._run's "repeat once" retry after a transient error), repeating
+        # that on the now-relative paths makes relative_to() raise ValueError. Snapshot the
+        # caller's originals on the first call and restore them on every subsequent one.
+        if not hasattr(self, "_input_lists_snapshot"):
+            self._input_lists_snapshot = (list(self.input_files), list(self.input_folders))
+        else:
+            self.input_files = list(self._input_lists_snapshot[0])
+            self.input_folders = list(self._input_lists_snapshot[1])
+
         removeScratchFolders_goingOut = removeScratchFolders
         if removeScratchFolders_goingIn is None:
             removeScratchFolders_goingIn = removeScratchFolders
