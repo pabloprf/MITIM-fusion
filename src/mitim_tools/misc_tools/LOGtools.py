@@ -332,8 +332,11 @@ class log_to_file:
 
     def __enter__(self):
         if log_to_file._context_count == 0:
-            # First entry into the context, set up logging
-            self.log = open(self.log_file, 'a')
+            # First entry into the context, set up logging.
+            # Line-buffered (buffering=1) so progress streams to disk as each line is
+            # printed, instead of only appearing when the ~8 KB block buffer fills or the
+            # beat ends (__exit__ flushes) -- otherwise a long beat's run log looks empty.
+            self.log = open(self.log_file, 'a', buffering=1)
             self.stdout_fd = sys.stdout.fileno()
             self.stderr_fd = sys.stderr.fileno()
 
@@ -364,8 +367,8 @@ class log_to_file:
         try:
             self.log.write(clean_message)
         except ValueError:
-            # If the file is closed, reopen it and try again
-            self.log = open(self.log_file, 'a')
+            # If the file is closed, reopen it and try again (keep it line-buffered)
+            self.log = open(self.log_file, 'a', buffering=1)
             self.log.write(clean_message)
 
     def flush(self):
