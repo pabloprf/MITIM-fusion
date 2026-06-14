@@ -996,6 +996,14 @@ class MITIM_BO:
     def updateSet(
         self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
     ):
+        # No new points to insert -- e.g. a resumed step whose pkl checkpoint lagged behind
+        # optimization_data.csv leaves x_next empty. There is nothing to evaluate, record or
+        # print, so skip rather than letting the results writer index one past the end of
+        # train_X (addPoints' includePoints=[N-len(x_next), N-len(x_next)+1] -> [N, N+1]).
+        if len(self.x_next) == 0:
+            print("\t- x_next is empty: no new points to update the set with, skipping this update", typeMsg="w")
+            return self.train_Y[:0], self.train_Ystd[:0]
+
         # ~~~~~~~~~~~~~~~~~~
         # What's the expected value of the next points?
         # ~~~~~~~~~~~~~~~~~~

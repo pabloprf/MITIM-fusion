@@ -23,6 +23,8 @@ DESCRIPTION
 
 *   🐛 **MAESTRO per-beat logs** (`Outputs/Logs/beat_<n>_*.log`) are now line-buffered, so a long-running beat's log (e.g. a multi-hour TRANSP run) streams progress live instead of staying empty until the beat finishes — the block buffer previously only flushed on close.
 
+*   🐛 **PORTALS restart robustness**: a resumed optimization whose pkl checkpoint lagged behind `optimization_data.csv` could leave `x_next` empty and crash the results writer with an `IndexError` (indexing one past the end of `train_X`). `MITIM_BO.updateSet` now treats an empty `x_next` as a no-op and skips the step instead of crashing.
+
 ### Changes for developers (internal execution)
 
 *   🔎 **MAESTRO scan per-case logs** now symlink each case's `slurm.out`/`slurm.err` to the live SLURM array logs (`slurm_output/slurm_error_<jobid>_<task>.dat`) instead of redirecting — logs stream live and are reachable from both the case and main folders (links dangle only if a case folder is copied away on its own).
