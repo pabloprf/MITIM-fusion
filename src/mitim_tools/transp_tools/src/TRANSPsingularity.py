@@ -584,12 +584,18 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         removeScratchFolders=False
     )  # Because it needs to read what it was there from run()
 
+    # Surface the finish outputs (the heavy {runid}.CDF, logs, AC files, ...) from
+    # results/{tok}.00/ up into folderWork, where storeCDF / the rest of MITIM read them.
     odir = folderWork / "results" / f"{tok}.00"
     for item in odir.glob('*'):
         if item.is_file():
             shutil.copy2(item, folderWork)
         elif item.is_dir():
             shutil.copytree(item, folderWork / item.name, dirs_exist_ok=True)
+
+    # Drop the retrieved results/ tree: it's an identical copy of what we just surfaced
+    # (notably the heavy .CDF) and nothing reads it locally — storeCDF reads folderWork.
+    shutil.rmtree(folderWork / "results", ignore_errors=True)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 
