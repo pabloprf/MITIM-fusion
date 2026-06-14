@@ -19,6 +19,8 @@ DESCRIPTION
 
 *   🔎 **MAESTRO scan per-case logs** now symlink each case's `slurm.out`/`slurm.err` to the live SLURM array logs (`slurm_output/slurm_error_<jobid>_<task>.dat`) instead of redirecting — logs stream live and are reachable from both the case and main folders (links dangle only if a case folder is copied away on its own).
 
+*   🔎 **MAESTRO EPED beat** now reports the EPED inputs (R, a, BetaN, …) alongside the "no stable solution" warning and the final failure, so a failing case can be diagnosed from the log.
+
 ### Back-compatibility considerations and defaults
 
 *   🔮 **NEW CONSIDERATION**, description

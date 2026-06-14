@@ -135,6 +135,23 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
+    # Per-key display format (unit + precision) for the EPED inputs, used to report the
+    # inputs that led to a failure. Keys not listed (e.g. from corrections_set) fall back to '{:.3g}'.
+    _EPED_INPUT_FMT = {
+        'Ip': '{:.2f} MA', 'Bt': '{:.2f} T', 'R': '{:.2f} m', 'a': '{:.2f} m',
+        'kappa995': '{:.3f}', 'delta995': '{:.3f}', 'neped_20': '{:.2f} 1E20', 'BetaN': '{:.2f}',
+        'zeff': '{:.2f}', 'Tesep_keV': '{:.3f} keV', 'nesep_ratio': '{:.2f}',
+        'zeta995': '{:.3f}', 's_three': '{:.3f}', 's_four': '{:.3f}',
+    }
+
+    def _eped_inputs_summary(self):
+        '''One-line "key=value unit, ..." summary of the EPED inputs of the current
+        evaluation (self.current_evaluation), to report what led to a failure.'''
+        return ', '.join(
+            f"{key}={self._EPED_INPUT_FMT.get(key, '{:.3g}').format(float(value))}"
+            for key, value in self.current_evaluation.items()
+        )
+
     def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False, nproc_per_run=64, cold_start=True):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
@@ -420,8 +437,8 @@ class eped_beat(beat):
                             if not no_stable_solution:
                                 raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
                             if attempt == self.teped_retries:
-                                raise Exception(f'[MITIM] EPED failed to find any stable solution (after {self.teped_retries} teped-lowering retries), cannot continue this simulation')
-                            print('\t- EPED found no stable solution within the explored teped window', typeMsg='w')
+                                raise Exception(f'[MITIM] EPED failed to find any stable solution (after {self.teped_retries} teped-lowering retries) with inputs [{self._eped_inputs_summary()}], cannot continue this simulation')
+                            print(f'\t- EPED found no stable solution within the explored teped window, with inputs [{self._eped_inputs_summary()}]', typeMsg='w')
 
                     if store_scan and self.nn==None:
                         store_scan = False
