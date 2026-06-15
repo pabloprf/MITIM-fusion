@@ -10,6 +10,8 @@ DESCRIPTION
 
 *   🧭 **`mitim_plot_neo`** reads and plots NEO results from an existing folder, mirroring `mitim_plot_tglf` (positional folders, `--suffixes`, `--gacode` for normalizations) via a new `NEO.prep_from_file`.
 
+*   ⚙️ **SR acquisition optimizer (`halt_on`)**: new `optimizer_options.sr.halt_on` (`best` | `all`). The batched restarts halt together when the *best* restart meets the tolerance (`best`, default, unchanged) or only once *every* restart does (`all`) — use `all` when more than one `x_best` is consumed, so all returned candidates are comparably converged instead of the slower ones being truncated. The batched-restart behavior of both ROOT and SR (and what `relative_improvement_for_stopping` controls) is now documented in `namelist.optimization.yaml` and the solver docstrings.
+
 
 ### Bug Fixes
 
