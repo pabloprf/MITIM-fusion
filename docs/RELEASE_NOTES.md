@@ -33,6 +33,8 @@ DESCRIPTION
 
 *   🔎 **MAESTRO EPED beat** failure diagnostics: reports the EPED inputs (R, a, BetaN, …) alongside the "no stable solution" warning and the final failure, and now distinguishes a compute-node execution failure (TOQ/ELITE produced no output files) from a genuine pedestal no-solution — the former is surfaced immediately as an execution error instead of being masked by futile teped-lowering retries and a misleading "no stable solution".
 
+*   🔧 **SLURM `exclusive` accepts a string**: setting `exclusive: "user"` (or `"mcs"`) now emits `#SBATCH --exclusive=user` instead of plain `--exclusive`, so a scan can keep nodes free of *other* users while still packing the user's own array tasks onto each node — node isolation for large scans without the one-task-per-node core waste. A bare `True` is unchanged (plain `--exclusive`).
+
 ### Back-compatibility considerations and defaults
 
 *   🔮 **NEW CONSIDERATION**, description

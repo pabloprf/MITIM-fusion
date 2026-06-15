@@ -1728,9 +1728,13 @@ def create_slurm_execution_files(
     # --exclusive can co-exist with arrays (one whole node per array element)
     # and with packed jobs (whole nodes via per-job slurm_settings). Honor
     # both the machine config (`slurm_allocation`) and the per-job override
-    # (`slurm_settings.exclusive`).
-    if request_exclusive_node or job_exclusive:
-        commandSBATCH.append("#SBATCH --exclusive")
+    # (`slurm_settings.exclusive`). A string value (e.g. "user" or "mcs") emits
+    # --exclusive=<value>, which keeps OTHER users off the node while letting this
+    # user's own array tasks pack onto it; a bare True stays plain --exclusive
+    # (one whole node per job).
+    exclusive = request_exclusive_node or job_exclusive
+    if exclusive:
+        commandSBATCH.append(f"#SBATCH --exclusive={exclusive}" if isinstance(exclusive, str) else "#SBATCH --exclusive")
     if job_requeue is True:
         commandSBATCH.append("#SBATCH --requeue")
     elif job_requeue is False:
