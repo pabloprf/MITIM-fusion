@@ -383,7 +383,8 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
     Caveat: the links point up into the main folder -- they dangle if a single case
     folder is copied away on its own.
 
-    `slurm['exclude']` (and `slurm['qos']`) are forwarded to run_slurm when present.
+    `slurm['exclude']`, `slurm['qos']` and `slurm['exclusive']` are forwarded to run_slurm
+    when present (`exclusive` may be a bool or the string "user"/"mcs").
     """
     listing = main_folder / 'scan_folders.txt'
     listing.write_text('\n'.join(str(f) for f in folders) + '\n')
@@ -408,7 +409,7 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
               hours=slurm['hours'], n=cpus, mem=slurm['memory'],
               exclude=slurm.get('exclude'), qos=slurm.get('qos'),
               max_hours=slurm.get('max_hours', 8),
-              exclusive=False, are_n_threads=False, ntasks_per_node=cpus,
+              exclusive=slurm.get('exclusive', False), are_n_threads=False, ntasks_per_node=cpus,
               job_array=job_array)
 
     _write_per_case_sbatch_stubs(main_folder, folders)
