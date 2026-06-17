@@ -35,11 +35,8 @@ def calculate_new(aLTe, aLn, aLTi, p, roatop = 0.95):
     if resolution_targets is not None:
         
         p_mod.derive_quantities(rederiveGeometry=False)
-        
-        power = STATEtools.powerstate(p_mod,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, resolution_targets)[1:]}, increase_profile_resol=False)
-        power.calculateProfileFunctions()
-        power.calculateTargets()
-        TRANSFORMtools.powerstate_to_gacode_powers(power, p_mod, rederive_at_high_res=False)
+
+        p_mod.recompute_targets()
 
     p_mod.derive_quantities(rederiveGeometry=False)
     p_mod.selfconsistentPTOT()

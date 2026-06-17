@@ -1852,6 +1852,135 @@ class mitim_state:
             self.write_state(file=new_file)
             self.printInfo()
         
+    def recompute_targets(self, targets=["qie", "qrad", "qfus"], debug=False):
+        """
+        Re-derive the source target profiles — radiation (``qrad`` -> qbrem/qsync/qline),
+        fusion alpha heating (``qfus`` -> qfuse/qfusi) and electron-ion energy exchange
+        (``qie`` -> qei) — from the current kinetic profiles (Te, Ti, ne, ni, geometry)
+        with the analytic target model, writing them back into this state's gacode
+        columns IN PLACE (returns self).
+
+        The analytic targets depend only on the LOCAL profiles + geometry, never on
+        gradients, so they are evaluated directly on this state's FULL native rho grid
+        (every point, axis to separatrix): no gradient / gyro-Bohm machinery is run
+        (``calculateProfileFunctions`` is skipped), and no edge points are left stale.
+        Single entry point used by the MAESTRO confinement beat and RAPIDS.
+
+        Args:
+            targets: subset of ["qie", "qrad", "qfus"] to recompute. Channels not listed
+                are left untouched — e.g. pass ["qfus"] to refresh only alpha heating
+                without swapping an upstream beat's radiation model.
+            debug: if True, pop debug plots (recomputed channels before/after, the
+                kinetic profiles sampled, and their a/Lx gradients); best effort,
+                never affects the result.
+
+        No-op physics where a channel is identically zero (e.g. fusion in a non-DT or
+        cold plasma — the analytic model returns zero without thermal D+T).
+        """
+        from mitim_modules.powertorch import STATEtools
+        from mitim_modules.powertorch.physics_models import targets_analytic
+
+        # channel -> [(powerstate plasma key, gacode column)]
+        target_columns = {
+            "qie":  [("qie", "qei(MW/m^3)")],
+            "qrad": [("qrad_bremms", "qbrem(MW/m^3)"), ("qrad_sync", "qsync(MW/m^3)"), ("qrad_line", "qline(MW/m^3)")],
+            "qfus": [("qfuse", "qfuse(MW/m^3)"), ("qfusi", "qfusi(MW/m^3)")],
+        }
+
+        if debug:
+            before = {col: copy.deepcopy(self.profiles[col])
+                      for t in targets for _, col in target_columns[t] if col in self.profiles}
+
+        # Powerstate on the FULL native grid (the axis is prepended internally). The
+        # targets read only local profiles + geometry, so we call the evaluator's
+        # evaluate() directly and skip calculateProfileFunctions / flux_integrate /
+        # postprocessing — no gradient or gyro-Bohm machinery, every grid point covered.
+        power = STATEtools.powerstate(
+            self,
+            evolution_options={"rhoPredicted": self.profiles["rho(-)"][1:]},
+            target_options={
+                "evaluator": targets_analytic.analytical_model,
+                "options": {"targets_evolve": targets, "target_evaluator_method": "powerstate"},
+            },
+            transport_options={"evaluator": None, "options": {}},
+            increase_profile_resol=False,
+        )
+        power.target_options["evaluator"](power).evaluate()
+
+        # plasma grid == native gacode grid, so write every point back directly
+        for t in targets:
+            for plasma_key, col in target_columns[t]:
+                if col in self.profiles:
+                    self.profiles[col] = power.plasma[plasma_key][0].cpu().numpy()
+
+        self.derive_quantities(rederiveGeometry=False)
+
+        if debug:
+            # One figure: each recomputed target (bottom row) above its driving
+            # profiles (top row), so it's clear what each channel is computed from.
+            import matplotlib.pyplot as plt
+
+            rho = self.profiles["rho(-)"]
+            Te = self.profiles["te(keV)"]
+            Ti = self.profiles["ti(keV)"][:, 0]
+            ne = self.profiles["ne(10^19/m^3)"]
+            Zeff = self.derived["Zeff"]
+            fuel = [(nm, self.profiles["ni(10^19/m^3)"][:, i])
+                    for i, nm in enumerate(self.profiles["name"]) if nm in ("D", "T")]
+
+            fig, axs = plt.subplots(2, len(targets), figsize=(4.8 * len(targets), 7), squeeze=False)
+            fig.suptitle("recompute_targets — drivers (top) and recomputed targets (bottom)")
+
+            for j, t in enumerate(targets):
+                # Top: the profiles that set this channel (temperatures on the left
+                # axis, densities/Zeff on a right twin axis)
+                axd, axn = axs[0, j], None
+                if t == "qie":
+                    axd.plot(rho, Te, "r-", label="Te (keV)")
+                    axd.plot(rho, Ti, "b-", label="Ti (keV)")
+                    axd.set_ylabel("keV")
+                elif t == "qrad":
+                    axd.plot(rho, Te, "r-", label="Te (keV)"); axd.set_ylabel("keV")
+                    axn = axd.twinx()
+                    axn.plot(rho, ne, "g-", label=r"ne (1e19/m$^3$)")
+                    axn.plot(rho, Zeff, "m--", label="Zeff")
+                    axn.set_ylabel(r"ne (1e19/m$^3$) · Zeff")
+                elif t == "qfus":
+                    axd.plot(rho, Ti, "b-", label="Ti (keV)"); axd.set_ylabel("keV")
+                    axn = axd.twinx()
+                    for k, (nm, nd) in enumerate(fuel):
+                        ls = "--" if k == len(fuel) - 1 else "-"   # last dashed: nD/nT usually overlap
+                        axn.plot(rho, nd, ls, label=f"n{nm} (1e19/m$^3$)")
+                    axn.set_ylabel(r"1e19/m$^3$")
+                axd.set_title(t); axd.grid(alpha=0.3)
+                if axn is None:
+                    axd.legend(fontsize=8)
+                else:
+                    h, l = axd.get_legend_handles_labels()
+                    h2, l2 = axn.get_legend_handles_labels()
+                    axd.legend(h + h2, l + l2, fontsize=8)
+
+                # Bottom: the recomputed target, before vs after (markers mark grid points)
+                axt = axs[1, j]
+                cols = [col for _, col in target_columns[t] if col in self.profiles]
+                axt.plot(rho, sum(before[col] for col in cols), "k.-", ms=3, lw=1.0, label="before")
+                axt.plot(rho, sum(self.profiles[col] for col in cols), "r.-", ms=3, lw=1.0, label="recomputed")
+                if t == "qrad":   # break the total into its brem / sync / line components
+                    for _, col in target_columns[t]:
+                        if col in self.profiles:
+                            axt.plot(rho, self.profiles[col], lw=0.9, label=col.split("(")[0][1:])
+                axt.set_xlabel(r"$\rho$"); axt.set_ylabel(f"{t}  (MW/m$^3$)")
+                axt.legend(fontsize=8); axt.grid(alpha=0.3)
+                if t == "qie":
+                    axt.axhline(0, color="k", lw=0.8, ls="--")   # exchange changes sign
+                else:
+                    axt.set_ylim(bottom=0)                        # radiation/fusion are non-negative
+
+            fig.tight_layout()
+            plt.show()
+
+        return self
+
     def enforce_same_density_gradients(self, onlyThermal=False):
         txt = ""
         for sp in range(len(self.Species)):

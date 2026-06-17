@@ -4,6 +4,8 @@ DESCRIPTION
 
 ### New Features
 
+*   🔌 **`gacode_state.recompute_targets()`**: re-derives the radiation (qbrem/qsync/qline), fusion alpha-heating (qfuse/qfusi) and electron-ion exchange (qei) power profiles from the kinetic profiles with the analytic target model, evaluated on the full radial grid (no edge points left stale). It is now the single entry point used by the MAESTRO confinement beat and RAPIDS instead of their inline powerstate round-trips; `debug=True` plots each recomputed channel against the profiles that drive it.
+
 *   📊 **MAESTRO summary report** (`Outputs/maestro_summary.md`) now embeds the per-beat "special quantities" evolution and the timing breakdown (`maestro_special.png`, `maestro_timing.png`) next to the existing beat-flow diagram — the same plots produced when plotting a case, now in the standalone report.
 
 *   🎼 **`mitim_plot_maestro --summary`** (alias `--special`) plots only the cross-beat "MAESTRO special" and "MAESTRO timings" summary tabs, skipping the per-beat / profile / transition tabs — a fast at-a-glance view of a run.
