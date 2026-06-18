@@ -108,6 +108,8 @@ class transp_beat(beat):
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
+        write_rotation = None,                      # Pass the incoming w0 into TRANSP (omg U-File): None=auto
+                                                    # (pass if w0!=0), True=force, False=never (zero rotation / no E×B shear)
         **transp_namelist
         ):
         '''
@@ -131,6 +133,7 @@ class transp_beat(beat):
         if transition_window is None:
             transition_window = 0.0
         self.transition_window     = transition_window
+        self.write_rotation = write_rotation   # whether this beat carries rotation: in (omg U-File) and out (w0)
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ self.transition_window       # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
@@ -162,7 +165,8 @@ class transp_beat(beat):
             folder = self.folder,
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
-            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
+            write_rotation = write_rotation,
             )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -416,6 +420,13 @@ class transp_beat(beat):
         time_extraction = cdf_results.t[it_extract]
         print(f'\t\t- Extracting profiles at extract_at={self.extract_at} -> t={time_extraction:.4f}s (slice {it_extract} of {len(cdf_results.t)-1})', typeMsg='i')
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
+
+        # Rotation OUT to the next beat: to_profiles writes w0 = OMEGA (TRANSP's
+        # rotation). With write_rotation=False, keep the chain rotation-free by zeroing
+        # it so the downstream PORTALS beat sees zero rotation / no E×B shear.
+        if getattr(self, 'write_rotation', None) is False:
+            self.profiles_output.profiles['w0(rad/s)'] = self.profiles_output.profiles['w0(rad/s)'] * 0.0
+            self.profiles_output.derive_quantities(rederiveGeometry=False)
 
         # Potentially force auxiliary
         self._add_heating_profiles(force_auxiliary_heating_at_output)

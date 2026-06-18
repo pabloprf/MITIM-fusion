@@ -3234,7 +3234,7 @@ class mitim_state:
         return input_parameters
 
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, write_rotation = None):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3242,6 +3242,15 @@ class mitim_state:
 
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
+
+        # Pass the toroidal rotation into TRANSP as the 'omg' U-File: angular frequency
+        # (rad/s), a flux function identical to input.gacode w0(rad/s) — no Vtor=w0*R
+        # conversion. Auto-on when w0 is non-zero (a no-op otherwise, so runs with no
+        # prescribed rotation are unchanged); pass write_rotation=True/False to force.
+        # write_namelist then auto-enables UFrotation so TRANSP reads it (nlvphi=T).
+        if write_rotation or (write_rotation is None and np.any(self.profiles['w0(rad/s)'] != 0.0)):
+            transp.quantities['w0'] = ['omg', 'OMG', 'x', 1.0]
+
         for time in times:
             transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
 

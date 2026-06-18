@@ -57,6 +57,12 @@ class transp_run:
         Create a namelist for TRANSP based on default parameters + transp_params
         '''
 
+        # If a rotation U-File is being written (w0 present), have TRANSP read it
+        # (UFrotation -> nlvphi=T + register the 'omg' U-File). An explicit
+        # UFrotation passed by the caller is respected.
+        if 'w0' in self.quantities:
+            transp_params.setdefault('UFrotation', True)
+
         self.nml_object = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
         self.nml_object.define_machine(tokamak_structures)
         self.nml_object.populate(**transp_params)
@@ -806,7 +812,7 @@ class transp_input_time:
         for var in self.transp_instance.quantities.keys():
             self.variables[self.transp_instance.quantities[var][1]] = {}
 
-            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT','PnbiT']:
+            if var in ['Ip','RBt_vacuum','q','Te','Ti','ne','Zeff','PichT','PnbiT','w0']:
                 self.variables[self.transp_instance.quantities[var][1]]['x'],self.variables[self.transp_instance.quantities[var][1]]['z'] = self._produce_quantity_profiles(var = var)
             
             # --------------------------------------------------------------
@@ -840,6 +846,11 @@ class transp_input_time:
         elif var == 'ne':
             x = self.p.profiles['rho(-)']
             z = self.p.profiles['ne(10^19/m^3)']*1E19*1E-6
+        elif var == 'w0':
+            # Toroidal angular rotation, rad/s -> 'omg' U-File (rad/sec); same quantity,
+            # factor 1.0. Flux function (no major-radius dependence).
+            x = self.p.profiles['rho(-)']
+            z = self.p.profiles['w0(rad/s)']
         elif var == 'Zeff':
             x = self.p.profiles['rho(-)']
             z = self.p.derived['Zeff']

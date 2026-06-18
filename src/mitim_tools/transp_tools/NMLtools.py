@@ -134,6 +134,7 @@ class transp_nml:
             "lim": ["LIM",None],
             "zf2": ["ZF2",-5],
             "gfd": ["GFD",None],
+            "omg": ["OMG",-5],   # bulk toroidal rotation, angular frequency (rad/s), on sqrt-tor-flux
             }
 
         self.Ufiles = {}
@@ -151,6 +152,15 @@ class transp_nml:
 
         self.LimitersInNML = transp_params.get("LimitersInNML",False)
         self.UFrotation = transp_params.get("UFrotation",False)
+        # When reading rotation from a U-File, register the bulk-rotation 'omg' U-File
+        # (angular frequency, rad/s) so addUFILES emits preomg/extomg/nriomg.
+        if self.UFrotation and 'omg' not in self.Ufiles:
+            self.Ufiles['omg'] = potential_ufiles['omg']
+        # Compute the NCLASS neoclassical radial electrostatic potential profile (nlvwnc).
+        # ON by default: this is what writes EPOTNC/OMEGA_NC to the CDF, i.e. the
+        # neoclassical Er and toroidal rotation. It is purely diagnostic (does not
+        # feed back into the transport solution) and inexpensive.
+        self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential",True)
 
         self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
@@ -924,7 +934,7 @@ class transp_nml:
             "xl2ncvph  = 0.85   ! Maximum r/a",
             "",
             "nlivpo    = F	    ! Radial electrostatic potential and field from U-File",
-            "nlvwnc    = F      ! Compute NCLASS radial electrostatic potential profile",
+            f"nlvwnc    = {'T' if self.computeNCLASSpotential else 'F'}      ! Compute NCLASS radial electrostatic potential profile",
             "",
         ]
 
