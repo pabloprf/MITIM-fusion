@@ -481,9 +481,11 @@ maestro:
           acquisition_options:
             optimizers: ["sr"]                     # Use only SR optimizer for acquisition function optimization (faster)
 
-      # Operations to do to mitim_state before passing it to PORTALS
+      # gacode_state.correct() operations applied to the seed input.gacode before PORTALS
       initialization_parameters:
+        # Reclassify fast ions as thermal (set their Ti to the main thermal Ti, keep density)
         thermalize_fast: true
+        # Enforce quasineutrality by adjusting ion densities
         quasineutrality: true
         # zero_source_blocks: list of source-term aliases to zero in the seed
         # input.gacode handed to PORTALS. Useful when the upstream beat (e.g.
