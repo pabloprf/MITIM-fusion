@@ -63,6 +63,9 @@ class EPED:
             removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
             eped_params_override = None,
             teped_guess_eV = -1, # if -1, EPED will choose its own guess
+            m = 2.5, z = 1, mi = 20, zi = 10, # plasma composition: main-ion mass/charge and impurity mass/charge.
+                                              # Defaults (50/50 D-T main ion + neon impurity) match the EPED-NN training;
+                                              # callers (e.g. the MAESTRO EPED beat) pass the actual plasma values.
             ):
         '''
         Notes:
@@ -173,6 +176,7 @@ class EPED:
                 eped_config_file=eped_config_file,
                 eped_params_override=eped_params_override,
                 teped_guess=teped_guess_eV,
+                m=m, z=z, mi=mi, zi=zi,
                 )
             
             # Before running, copy the files from EPED source, and copy the input file to the expected name, and the config file
@@ -243,8 +247,9 @@ class EPED:
             eped_config_file = 'eped.config1',
             eped_params_override = None,
             teped_guess = -1,
+            m = 2.5, z = 1, mi = 20, zi = 10,  # plasma composition (see run())
             ):
-        
+
         # ----------------------------------------
         # EPED input file
         # ----------------------------------------
@@ -265,14 +270,13 @@ class EPED:
             }
         )
 
-        # Update with fixed parameters that may or not be already set
-        input_params.update(
-            {'m': 2.5,
-             'z': 1,
-             'mi': 20,
-             'zi': 10,
-            }
-        )
+        # Plasma composition: main-ion (m, z) and impurity (mi, zi). Defaults match
+        # the EPED-NN training; the MAESTRO EPED beat passes the actual plasma values.
+        # setdefault (not update) so composition can also be supplied/scanned through
+        # input_params (e.g. a SLURM job-array scan over impurity charge); an explicit
+        # input_params value then wins over the run() default.
+        for _key, _val in (('m', m), ('z', z), ('mi', mi), ('zi', zi)):
+            input_params.setdefault(_key, _val)
 
         eped_input = {'eped_input': input_params}
         nml = f90nml.Namelist(eped_input)

@@ -4,6 +4,8 @@ DESCRIPTION
 
 ### New Features
 
+*   ⚛️ **EPED plasma composition (full EPED)**: the MAESTRO EPED beat and `EPEDtools.EPED.run` now feed EPED the actual plasma's main-ion mass and an effective impurity derived from the state, instead of a hardcoded 50/50 D-T + neon. The effective impurity charge reproduces both Zeff and the fuel dilution (`zi_eff = (Zeff − d)/(1 − d)`). `m`/`z`/`mi`/`zi` default to the old values (preserving EPED-NN consistency) and are overridable via the beat's `corrections_set`; a new `zeff_location` knob (`vol_avg` default, `pedestal`) sets where Zeff and the dilution are taken. The EPED-NN path is unaffected.
+
 *   🔌 **`gacode_state.recompute_targets()`**: re-derives the radiation (qbrem/qsync/qline), fusion alpha-heating (qfuse/qfusi) and electron-ion exchange (qei) power profiles from the kinetic profiles with the analytic target model, evaluated on the full radial grid (no edge points left stale). It is now the single entry point used by the MAESTRO confinement beat and RAPIDS instead of their inline powerstate round-trips; `debug=True` plots each recomputed channel against the profiles that drive it.
 
 *   📊 **MAESTRO summary report** (`Outputs/maestro_summary.md`) now embeds the per-beat "special quantities" evolution and the timing breakdown (`maestro_special.png`, `maestro_timing.png`) next to the existing beat-flow diagram — the same plots produced when plotting a case, now in the standalone report.

@@ -42,6 +42,9 @@ class eped_beat(beat):
             teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
             teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
             minutes_slurm = 240,           # (full EPED) SLURM time limit of each EPED case (the EPEDtools default of 30 min is far too short for full EPED)
+            zeff_location = 'vol_avg',     # Where to evaluate Zeff (and the fuel dilution) fed to EPED: 'vol_avg' (default,
+                                           # recovers old behavior) or 'pedestal' (interpolated at rho=0.95). Both feed the
+                                           # zeffped input and the effective-impurity charge used by full EPED.
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -88,6 +91,7 @@ class eped_beat(beat):
         self.teped_retries = teped_retries
         self.teped_retry_lower_factor = teped_retry_lower_factor
         self.minutes_slurm = minutes_slurm
+        self.zeff_location = zeff_location
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -179,6 +183,55 @@ class eped_beat(beat):
                         break
         return no_stable_solution, execution_failed
 
+    def _eped_composition(self):
+        '''
+        Zeff and the plasma composition (main-ion mass/charge + effective single
+        impurity) handed to EPED, at the location set by self.zeff_location.
+
+        EPED does not receive the fuel fraction: it reconstructs the fuel-vs-impurity
+        split from quasineutrality + Zeff, so the impurity charge zi sets the main-ion
+        (fuel) dilution d = n_main/n_e at fixed Zeff (d = (zi - Zeff)/(zi - 1)). We pick
+        the EFFECTIVE single impurity that reproduces BOTH the plasma's Zeff and its
+        actual main-ion dilution:
+                zi_eff = (Zeff - d) / (1 - d)
+
+        Composition is taken over ALL ion species, thermal AND fast (consistent with
+        how Zeff itself is summed): the main ion is every hydrogenic species (Z=1:
+        D/T/H, incl. fast beam ions), the impurity lumps everything with Z>1 (incl.
+        fast He ash). Masses are density-weighted; the D:T isotope ratio enters EPED
+        only through the main-ion mass, never as a composition input.
+        '''
+        p = self.profiles_current
+        der = p.derived
+        z_sp = np.asarray(p.profiles['z'])      # charge per species
+        A_sp = np.asarray(p.profiles['mass'])   # mass per species
+
+        if self.zeff_location == 'pedestal':
+            rho_ped, rho = 0.95, p.profiles['rho(-)']
+            zeff = float(interpolation_function(rho_ped, rho, der['Zeff']))
+            ne, ni = p.profiles['ne(10^19/m^3)'], p.profiles['ni(10^19/m^3)']
+            fi = np.array([float(interpolation_function(rho_ped, rho, ni[:, i] / ne))
+                           for i in range(ni.shape[1])])     # n_i/n_e per species at the pedestal
+        else:  # 'vol_avg' — recovers the previous behavior
+            zeff = float(der['Zeff_vol'])
+            fi = np.asarray(der['fi_vol'])                   # n_i/n_e per species, volume average
+
+        main = z_sp < 1.5    # hydrogenic main ions (D/T/H), thermal AND fast
+        imp = ~main          # everything with Z>1 (incl. fast He ash), thermal AND fast
+
+        d_main = float(np.sum(fi[main]))
+        m_main, z_main = float(np.sum(fi[main] * A_sp[main]) / np.sum(fi[main])), 1.0
+
+        # Effective impurity. When Zeff ~ 1 (no impurity) the impurity density -> 0, so
+        # its (mi, zi) are irrelevant; keep the neon defaults rather than divide by ~0.
+        if (zeff - 1.0) < 1e-3 or (1.0 - d_main) < 1e-3 or float(np.sum(fi[imp])) < 1e-12:
+            mi_eff, zi_eff = 20.0, 10.0
+        else:
+            zi_eff = (zeff - d_main) / (1.0 - d_main)
+            mi_eff = float(np.sum(fi[imp] * A_sp[imp]) / np.sum(fi[imp]))
+
+        return zeff, m_main, z_main, mi_eff, zi_eff
+
     def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False, nproc_per_run=64, cold_start=True):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
@@ -197,8 +250,9 @@ class eped_beat(beat):
         Bt = self.profiles_current.profiles['bcentr(T)'][0]
         R = self.profiles_current.profiles['rcentr(m)'][0]
         a = self.profiles_current.derived['a']
-        zeff = self.profiles_current.derived['Zeff_vol'] #TODO: Use pedestal Zeff
-        print("[MITIM] Grabbing Zeff from volume average, consider using pedestal Zeff for more accuracy in the future", typeMsg='w')
+        # Zeff and the EPED plasma composition (main-ion mass/charge + effective impurity)
+        # at the location set by self.zeff_location ('vol_avg' default, or 'pedestal').
+        zeff, m_main, z_main, mi_eff, zi_eff = self._eped_composition()
 
         '''
         -----------------------------------------------------------
@@ -305,6 +359,10 @@ class eped_beat(beat):
                 's_three': s_three995,
                 's_four': s_four995
             }
+
+        # Plasma composition fed to full EPED (the EPED-NN ignores m/z/mi/zi). Placed
+        # before the corrections_set loop so the user can override any of them there.
+        self.current_evaluation.update({'m': m_main, 'z': z_main, 'mi': mi_eff, 'zi': zi_eff})
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
@@ -693,6 +751,12 @@ class eped_beat(beat):
             }
             print('_run_full_eped with mxh TOQ configuration. Parameters used:', input_params)
 
+        # Plasma composition (main-ion mass/charge + effective impurity), computed in
+        # _run from the actual profiles and overridable via corrections_set.
+        comp = self.current_evaluation
+        m, z, mi, zi = comp.get('m', 2.5), comp.get('z', 1), comp.get('mi', 20), comp.get('zi', 10)
+        print(f'\t\t- composition: m={m:.2f}, z={z:.0f}, impurity (mi={mi:.1f}, zi={zi:.2f})')
+
         eped.run(
             subfolder = 'case1',
             input_params = input_params,
@@ -700,6 +764,7 @@ class eped_beat(beat):
             minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
             eped_params_override = eped_params_override,
+            m = m, z = z, mi = mi, zi = zi,
         )
 
         eped.read(subfolder='case1')
