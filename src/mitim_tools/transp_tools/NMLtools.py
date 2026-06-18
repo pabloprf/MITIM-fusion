@@ -156,11 +156,15 @@ class transp_nml:
         # (angular frequency, rad/s) so addUFILES emits preomg/extomg/nriomg.
         if self.UFrotation and 'omg' not in self.Ufiles:
             self.Ufiles['omg'] = potential_ufiles['omg']
-        # Compute the NCLASS neoclassical radial electrostatic potential profile (nlvwnc).
-        # ON by default: this is what writes EPOTNC/OMEGA_NC to the CDF, i.e. the
-        # neoclassical Er and toroidal rotation. It is purely diagnostic (does not
-        # feed back into the transport solution) and inexpensive.
-        self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential",True)
+        # Compute the NCLASS neoclassical radial electrostatic potential profile (nlvwnc):
+        # an interpretive "rotation analysis" that infers and writes EPOTNC/OMEGA_NC to
+        # the CDF, i.e. the neoclassical Er and toroidal rotation, from the provided
+        # rotation of one species (TRANSP Rotation/NCLASS nml). Inexpensive. It REQUIRES
+        # a toroidal-rotation input (the 'omg'/VTR U-File) to
+        # close the Er force balance — TRDAT aborts on nlvwnc=T with no rotation data —
+        # so it defaults to UFrotation: ON whenever rotation (real, or an explicit zero
+        # omg U-File) is supplied, OFF when rotation is opted out (write_rotation=False).
+        self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential", self.UFrotation)
 
         self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
@@ -926,7 +930,7 @@ class transp_nml:
             "!===========================================================",
             "",
             f"nlvphi	   = {'T' if self.UFrotation else 'F'}    ! Rotation Moldeing using U-File",
-            "nlomgvtr  = F 	    ! T: Impurity rotation is provided, F: Bulk plasma rotation is provided",
+            f"nlomgvtr  = {'T' if self.UFrotation else 'F'} 	    ! Rotation input units: T=angular velocity (OMG, rad/s), F=toroidal velocity (VTR, cm/s). MITIM ships OMG -> T (required, see TRANSP Rotation nml)",
             "ngvtor    = 0 	    ! 0: Toroidal rotation species given by nvtor_z, xvtor_a",
             f"nvtor_z   = {int(self.rotating_impurity[0])}	! Charge of toroidal rotation species",
             f"xvtor_a   = {self.rotating_impurity[1]}	! Mass of toroidal rotation species",

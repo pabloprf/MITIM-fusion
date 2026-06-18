@@ -22,6 +22,7 @@ class transp_run:
         self.variables, self.geometry = {}, {}
         self.nml = None
         self.namelist_variables = {}
+        self.rotation_species = None   # [Z, A] of the species the 'omg' U-File rotation belongs to (set by to_transp)
 
         # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
@@ -59,9 +60,14 @@ class transp_run:
 
         # If a rotation U-File is being written (w0 present), have TRANSP read it
         # (UFrotation -> nlvphi=T + register the 'omg' U-File). An explicit
-        # UFrotation passed by the caller is respected.
+        # UFrotation passed by the caller is respected. Also declare the species the
+        # rotation belongs to: w0 is the bulk plasma rotation, so to_transp sets
+        # rotation_species to the MAIN ION (NGVTOR=0 + NVTOR_Z/XVTOR_A) rather than the
+        # default lumped impurity.
         if 'w0' in self.quantities:
             transp_params.setdefault('UFrotation', True)
+            if self.rotation_species is not None:
+                transp_params.setdefault('rotating_impurity', self.rotation_species)
 
         self.nml_object = NMLtools.transp_nml(shotnum=self.shot, inputdir=self.folder, timings=timings)
         self.nml_object.define_machine(tokamak_structures)

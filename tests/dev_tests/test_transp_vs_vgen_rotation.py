@@ -91,7 +91,7 @@ folder.mkdir(parents=True, exist_ok=True)
 
 # Tokamak name selects machine-specific TRANSP conventions (SPARC adds df4/vc4
 # UFILEs and nteq_mode=2; see TRANSPhelpers.default_nml:1433).
-tokamak = "SPARC"
+tokamak = "SPRC"
 
 # =====================================================================================
 # PATH A: TRANSP run with NCLASS neoclassical potential output (no anomalous transport)
@@ -116,7 +116,11 @@ time_extraction = 0.5   # s at which to write the averaged AC/output snapshot
 # ---------------------------------------------------------------------------------------------------------------------
 
 # gacode_state.to_transp() (MITIMstate.py:3209) returns a TRANSPhelpers.transp_run
-# already populated with the UFILE-able quantities at the requested times.
+# already populated with the UFILE-able quantities at the requested times. It also
+# ships the toroidal rotation as the 'omg' U-File by default — here a ZERO omg U-File,
+# since w0=0 in this state. That zero rotation is the input NCLASS needs to close the
+# Er force balance (the toroidal-rotation term is not predicted by neoclassical theory),
+# and it puts NCLASS in exactly the weak-rotation limit compared against NEO er=2 below.
 profiles = PROFILEStools.gacode_state(input_gacode)
 
 times = [time_init, time_end + 1.0]  # bracket the flattop (matches TRANSPbeat usage)
@@ -135,8 +139,15 @@ transp = profiles.to_transp(
 # Pich=True keeps the ICRF heating that the SPARC PRD case uses; DTplasma=True for
 # the D-T fuel mix. NO PTsolver, so NO predictive/anomalous momentum machinery is
 # emitted — NCLASS (Houlberg) runs as the neoclassical model only. The NCLASS
-# neoclassical potential (nlvwnc) is on by default (computeNCLASSpotential=True),
-# so EPOTNC/OMEGA_NC are written to the CDF.
+# neoclassical potential (nlvwnc) follows the rotation U-File shipped above (the zero
+# omg U-File -> nlvphi=T, nlvwnc=T), so EPOTNC/OMEGA_NC are written to the CDF.
+#
+# Ufiles: feed the separatrix as RFS/ZFS boundary U-Files (the moments path that
+# write_ufiles(use_mry_file=False, the default) actually produces below), NOT the
+# scrunched MRY file. The default NMLtools list still lists "mry" (+ df4/vc4/gfd
+# He4/gas U-Files that the to_transp/write_ufiles path never writes), so leaving it
+# unset makes TRDAT request a MIT<shot>.MRY that is never written -> "MRY FILE OPEN
+# ERROR". This mirrors the MAESTRO TRANSP beat (TRANSPbeat.py:131).
 transp.write_namelist(
     timings={
         "time_start": time_init,
@@ -144,6 +155,7 @@ transp.write_namelist(
         "time_end": time_end,
         "time_extraction": time_extraction,
     },
+    Ufiles=["qpr", "cur", "vsf", "ter", "ti2", "ner", "rbz", "lim", "zf2", "rfs", "zfs"],
     Pich=True,
     DTplasma=True,
 )

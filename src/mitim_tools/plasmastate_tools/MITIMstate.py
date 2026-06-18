@@ -3245,11 +3245,21 @@ class mitim_state:
 
         # Pass the toroidal rotation into TRANSP as the 'omg' U-File: angular frequency
         # (rad/s), a flux function identical to input.gacode w0(rad/s) — no Vtor=w0*R
-        # conversion. Auto-on when w0 is non-zero (a no-op otherwise, so runs with no
-        # prescribed rotation are unchanged); pass write_rotation=True/False to force.
-        # write_namelist then auto-enables UFrotation so TRANSP reads it (nlvphi=T).
-        if write_rotation or (write_rotation is None and np.any(self.profiles['w0(rad/s)'] != 0.0)):
+        # conversion. Shipped by DEFAULT (real values, or zeros when w0=0) so TRANSP
+        # always has the toroidal rotation it needs both to model rotation (nlvphi=T)
+        # and to close the NCLASS neoclassical Er (nlvwnc=T): the Er force balance
+        # carries a toroidal-rotation term that neoclassical theory does NOT predict,
+        # so TRANSP requires a rotation input even when that rotation is zero (the
+        # weak-rotation limit). write_rotation=False opts out entirely (no omg U-File
+        # -> nlvphi=F and nlvwnc=F, i.e. no E×B shear and no NCLASS Er).
+        if write_rotation is not False:
             transp.quantities['w0'] = ['omg', 'OMG', 'x', 1.0]
+            # w0(rad/s) is the BULK plasma toroidal rotation (GACODE convention), so tell
+            # NCLASS the 'omg' data belongs to the MAIN ION (not the default lumped
+            # impurity). Charge of the hydrogenic main ion and its density-weighted mass.
+            self.DTplasma()
+            main_pos = self.Dion if self.DTplasmaBool else self.Mion
+            transp.rotation_species = [float(self.profiles['z'][main_pos]), float(self.derived['mbg_main'])]
 
         for time in times:
             transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
