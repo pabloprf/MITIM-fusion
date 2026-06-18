@@ -33,6 +33,8 @@ DESCRIPTION
 
 *   🐛 **`mitim_job.run()` retry robustness**: `run()` is now idempotent w.r.t. its input file/folder lists. The "repeat once after a transient error" retry (e.g. a code returning incomplete output) re-ran the in-place relativization on already-relative paths and crashed in `relative_to()` with a misleading `'mitim_bash.src' is not in the subpath…` error; it now re-runs cleanly and surfaces the real failure.
 
+*   🐛 **TRANSP CDF-build retry**: when the singularity finish step's `trlook`/`plotcon` fails to produce `{runid}.CDF` (e.g. a transient "TF.PLN file not found" abort), `TRANSPsingularity.fetch` now falls back to a `look` rebuild (re-stages the `.PLN` files and re-runs `plotcon`, which retries internally) instead of immediately hard-failing downstream on the missing CDF.
+
 ### Changes for developers (internal execution)
 
 *   🤖 **MAESTRO investigation subagent** (`.claude/agents/maestro.md`): a Claude Code agent that forensically compares and debugs MAESTRO runs — it knows the `Beats/` layout, each beat's inputs/outputs, where the logs/timing/namelist artifacts live, and how to load and overlay states headlessly. Shipped in-repo by un-ignoring `.claude/agents/` (the rest of `.claude/` stays local).

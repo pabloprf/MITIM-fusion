@@ -126,6 +126,20 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             self.job_name,
         )
 
+        # The finish step's trlook/plotcon occasionally fails to build {runid}.CDF
+        # (e.g. a transient "TF.PLN file not found" abort), leaving no CDF for
+        # storeCDF to read -> a hard "path does not exist" downstream. Fall back to
+        # the dedicated 'look' rebuild (re-stages the .PLN files from FolderTRANSP and
+        # re-runs plotcon, which retries internally) before giving up.
+        if not (self.FolderTRANSP / f"{self.runid}.CDF").exists():
+            print(f"\t- TRANSP finish produced no {self.runid}.CDF; retrying CDF build via 'look'", typeMsg="w")
+            runSINGULARITY_look(
+                self.FolderTRANSP,
+                self.FolderTRANSP,
+                self.runid,
+                self.job_name + "_look",
+            )
+
         # Get reactor to call for ACs as well
         self.cdfs[label] = TRANSPtools.storeCDF(
             self.FolderTRANSP, self.runid, retrieveAC=False
