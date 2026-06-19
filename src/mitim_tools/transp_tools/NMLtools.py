@@ -166,6 +166,22 @@ class transp_nml:
         # omg U-File) is supplied, OFF when rotation is opted out (write_rotation=False).
         self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential", self.UFrotation)
 
+        # Radial window (r/a) over which the NCLASS rotation/Er analysis (nlvwnc) is solved
+        # — xl1ncvph / xl2ncvph. OUTSIDE this window TRANSP flat-extrapolates the rotation it
+        # ADOPTS (OMEGA, i.e. the w0 written back to input.gacode), so the window controls how
+        # much of the profile follows the neoclassical OMEGA_NC vs a constant extrapolation.
+        # Default spans almost the whole profile (0.0 -> 0.99) so the neoclassical rotation is
+        # followed nearly everywhere with negligible extrapolation.
+        #   WHEN TO NARROW IT (e.g. [0.10, 0.85]): when the edge/core NCLASS rotation is NOT
+        #   trustworthy — the diamagnetic Er ~ grad(p)/(Z e n) diverges in a steep pedestal /
+        #   near the separatrix, and the Er->omega inversion (omega ~ -dPhi/dpsi) is
+        #   ill-conditioned toward the magnetic axis; clipping keeps those spurious edge/core
+        #   values out of the carried rotation. Coarse MAESTRO TRANSP grids / very short
+        #   flattops are the typical "narrow it" case.
+        #   WHEN TO KEEP IT WIDE (0.0 -> 0.99, default): well-resolved, settled profiles where
+        #   you want the true neoclassical rotation right out to the edge instead of a flat tail.
+        self.NCrotation_window = transp_params.get("NCrotation_window", [0.0, 0.99])  # [r/a min, r/a max] -> xl1ncvph, xl2ncvph
+
         self.dtEquilMax_ms = transp_params.get("dtEquilMax_ms",10.0)
         self.dtHeating_ms = transp_params.get("dtHeating_ms",5.0)
         self.dtCurrentDiffusion_ms = transp_params.get("dtCurrentDiffusion_ms",2.0)
@@ -934,8 +950,8 @@ class transp_nml:
             "ngvtor    = 0 	    ! 0: Toroidal rotation species given by nvtor_z, xvtor_a",
             f"nvtor_z   = {int(self.rotating_impurity[0])}	! Charge of toroidal rotation species",
             f"xvtor_a   = {self.rotating_impurity[1]}	! Mass of toroidal rotation species",
-            "xl1ncvph  = 0.10   ! Minimum r/a",
-            "xl2ncvph  = 0.85   ! Maximum r/a",
+            f"xl1ncvph  = {self.NCrotation_window[0]:.2f}   ! Min r/a of the NCLASS rotation/Er analysis (nlvwnc); rotation flat-extrapolated below this (raise toward the axis only if the core OMEGA_NC is well-behaved)",
+            f"xl2ncvph  = {self.NCrotation_window[1]:.2f}   ! Max r/a; ~1 follows the neoclassical edge, lower it (~0.85) if a steep pedestal / separatrix makes the edge OMEGA_NC spike",
             "",
             "nlivpo    = F	    ! Radial electrostatic potential and field from U-File",
             f"nlvwnc    = {'T' if self.computeNCLASSpotential else 'F'}      ! Compute NCLASS radial electrostatic potential profile",
