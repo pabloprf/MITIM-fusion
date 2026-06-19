@@ -222,6 +222,21 @@ class TRANSPgeneric:
 
             self.fn = self.cdfs[label].fn
 
+    def _grab_intermediate_besteffort(self, label, retrieveAC):
+        """Best-effort grab of intermediate ('_mid') TRANSP files for monitoring.
+
+        An intermediate grab is only a progress snapshot, so a failure to build/find the
+        intermediate {runid}.CDF (e.g. a transient singularity 'look' miss) must not be
+        fatal and must not block on an interactive prompt in a batch run. Log and move on,
+        so the periodic monitor never kills a healthy run, and the stopped-run cleanup never
+        masks the real "TRANSP stopped" error behind an InteractiveTerminalError.
+        """
+        try:
+            self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
+        except Exception as e:
+            print(f">> Intermediate grab failed ({type(e).__name__}: {e}); skipping this "
+                  "monitoring snapshot and continuing", typeMsg="w")
+
     def checkUntilFinished(
         self, label="run1", checkMin=5, grabIntermediateEachMin=300.0, retrieveAC=False,
     ):
@@ -273,7 +288,7 @@ class TRANSPgeneric:
             status = info["info"]["status"]
 
             if status == "stopped":
-                self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
+                self._grab_intermediate_besteffort(label, retrieveAC)
                 raise Exception("[MITIM] TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
 
             # ------------------------------------------------------------------------------------------------------------------
@@ -283,7 +298,7 @@ class TRANSPgeneric:
             print(">> Grabbing intermediate files?")
             if time_passed >= 60.0 * grabIntermediateEachMin:
                 print(f"\t- Yes, because {time_passed / 60.0}min passed (even though run has not finished yet)")
-                self.get(fullRequest=True, label=label + "_mid", retrieveAC=retrieveAC)
+                self._grab_intermediate_besteffort(label, retrieveAC)
                 time_passed = 0.0
             else:
                 print(f"\t- No, because not enough time has passed, {time_passed / 60.0}min < {grabIntermediateEachMin}min")
