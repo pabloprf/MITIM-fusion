@@ -33,7 +33,7 @@ DESCRIPTION
 
 *   🐛 **`mitim_job.run()` retry robustness**: `run()` is now idempotent w.r.t. its input file/folder lists. The "repeat once after a transient error" retry (e.g. a code returning incomplete output) re-ran the in-place relativization on already-relative paths and crashed in `relative_to()` with a misleading `'mitim_bash.src' is not in the subpath…` error; it now re-runs cleanly and surfaces the real failure.
 
-*   🐛 **TRANSP CDF-build retry**: when the singularity finish step's `trlook`/`plotcon` fails to produce `{runid}.CDF` (e.g. a transient "TF.PLN file not found" abort), `TRANSPsingularity.fetch` now falls back to a `look` rebuild (re-stages the `.PLN` files and re-runs `plotcon`, which retries internally) instead of immediately hard-failing downstream on the missing CDF.
+*   🐛 **TRANSP run-abort detection & CDF-build retry**: a TRANSP run that aborts during initialization (e.g. a t=0 TEQ equilibrium failure) is now flagged as `stopped` instead of `finished` — the singularity wrapper's unconditional `Finished TRANSP run app.` line no longer outranks a fatal `ABORTR`/`bad_exit`/segfault in the log, so the run fails fast with the real error in the log tail instead of proceeding to a confusing missing-CDF / failed-`look` prompt. When the finish step's `trlook`/`plotcon` does fail to build `{runid}.CDF` for a *completed* run (e.g. a transient "TF.PLN file not found" abort), `TRANSPsingularity.fetch` falls back to a `look` rebuild that re-stages the `.PLN` files from the remote run folder (`job.folderExecution`, not the local run directory where they never live) and re-runs `plotcon`, instead of hard-failing downstream on the missing CDF.
 
 ### Changes for developers (internal execution)
 
