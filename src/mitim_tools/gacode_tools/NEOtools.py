@@ -835,7 +835,7 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             typeMsg="i",
         )
 
-    def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1):
+    def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1, mark_rho=None):
         """
         Plot VGEN results: Er component decomposition, w0 and VEXB_SHEAR before/after,
         and (when smoothing was used) a raw-vs-smoothed comparison per profile.
@@ -844,6 +844,10 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         rho_min : float
             Minimum rho to include in plots (default 0.1).
             Near-axis values can diverge and obscure the physically relevant region.
+        mark_rho : array-like, optional
+            rho_tor positions to highlight with scatter markers on the smoothed (VGEN-used)
+            profiles in the smoothing tab — e.g. the PORTALS predicted radii, which bracket
+            the VGEN rho_range. Default None (no markers).
         """
         apply_theme()
 
@@ -1054,6 +1058,18 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
                 if aLTe_p is not None: ax_aLTe.plot(rho_p[mp], aLTe_p[mp], color=c, lw=lw, ls=ls, label=lbl)
                 if aLTi_p is not None: ax_aLTi.plot(rho_p[mp], aLTi_p[mp], color=c, lw=lw, ls=ls, label=lbl)
                 if aLne_p is not None: ax_aLne.plot(rho_p[mp], aLne_p[mp], color=c, lw=lw, ls=ls, label=lbl)
+
+            # Highlight requested rho positions (e.g. PORTALS predicted radii) on the smoothed curves —
+            # the values VGEN actually uses at each flux-match radius.
+            if mark_rho is not None:
+                rho_s = _get(smoothed, "rho(-)")
+                if rho_s is not None:
+                    for ax, key in [(ax_Te, "te(keV)"), (ax_Ti, "ti(keV)"), (ax_ne, "ne(10^19/m^3)"),
+                                    (ax_aLTe, "aLTe"), (ax_aLTi, "aLTi"), (ax_aLne, "aLne")]:
+                        y = _col0(_get(smoothed, key))
+                        if y is not None:
+                            ax.scatter(mark_rho, np.interp(mark_rho, rho_s, y), s=30, marker="o",
+                                       facecolor="k", edgecolor="w", linewidth=0.6, zorder=5, label="PORTALS radii")
 
             ax_Te.set_title("$T_e$");           ax_Te.set_ylabel("keV")
             ax_Ti.set_title("$T_i$");           ax_Ti.set_ylabel("keV")

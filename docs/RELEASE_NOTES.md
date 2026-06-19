@@ -45,6 +45,8 @@ DESCRIPTION
 
 *   🔧 **SLURM `exclusive` accepts a string**: setting `exclusive: "user"` (or `"mcs"`) now emits `#SBATCH --exclusive=user` instead of plain `--exclusive`, so a scan can keep nodes free of *other* users while still packing the user's own array tasks onto each node — node isolation for large scans without the one-task-per-node core waste. A bare `True` is unchanged (plain `--exclusive`). MAESTRO scan arrays (`_submit_array`) now forward `slurm['exclusive']` (it was hardcoded off), so `exclusive="user"` set in a scan launcher actually takes effect.
 
+*   🌀 **PORTALS neoclassical E×B shear** now has a standalone dev test (`tests/dev_tests/test_portals_exb_shear.py`): it flux-matches the same plasma with `transport.options.neo.vgen_exb_shear` off vs on (the NEO-VGEN neoclassical Er at zero toroidal rotation) to isolate the stabilization, and bundles the comparison, the per-run PORTALS metrics and the VGEN notebook into one figure. Alongside it, `NEO.plot_vgen` (and `mitim_plot_vgen`) gained an optional `mark_rho` to scatter chosen radii — e.g. the PORTALS predicted radii — on the smoothed profiles in the VGEN smoothing tab.
+
 ### Back-compatibility considerations and defaults
 
 *   🔮 **NEW CONSIDERATION**, description
