@@ -720,6 +720,11 @@ def check_flags_mitim_namelist(d, d_check, avoid = [], askQuestions=True):
             print(f"\t- {key} is an unexpected variable, prone to errors or misinterpretation",typeMsg="q" if askQuestions else "w")
         elif not isinstance(d[key], dict):
             continue
+        elif not isinstance(d_check[key], dict):
+            # Template default is a non-dict (e.g. null/false) but the user supplied a
+            # free-form dict override (e.g. transport.options.neo.vgen_exb_shear: {er: 2}).
+            # The key itself is expected; its sub-keys are not validated against the template.
+            continue
         else:
             check_flags_mitim_namelist(d[key], d_check[key], avoid=avoid, askQuestions=askQuestions)
 

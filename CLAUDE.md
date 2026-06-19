@@ -510,3 +510,11 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
   the test accordingly.
 - These files are meant to be verbose, lots of info for users to understand what is 
   going on.
+
+
+## 10. Outside codes
+
+- If you have questions about how TRANSP work, looking into the following websites may help:
+  https://transp.pppl.gov/
+  https://transp.jetdata.eu/docs/Help/HelpFile/body_transp_hlp.html
+  But don't consume them all, search in them what you need
