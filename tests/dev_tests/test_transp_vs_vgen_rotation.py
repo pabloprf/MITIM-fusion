@@ -12,13 +12,33 @@ and radial electric field:
                 potential ON (nlvwnc=T, now the MITIM default) the .CDF carries
                 the neoclassical omega (OMEGA_NC / EPOTNC) and the neoclassical Er
                 decomposition (ERPRESS/ERVTOR/ERVPOL), which CDFtools exposes.
+                The run is deliberately stripped to the bone for speed -- no
+                ICRF/TORIC, no NBI/NUBEAM, coarse timesteps (same spirit as
+                MAESTRO's transp_soft beat) -- since NCLASS only needs the kinetic
+                profiles + the (zero) rotation U-File to close the Er balance.
 
     PATH B  --  VGEN (profiles_gen -vgen) with er=2 = the NEO WEAK-ROTATION
                 neoclassical limit: NEO is solved over the flux surfaces and
                 returns the neoclassical Er and the consistent w0(rad/s).
 
 The two neoclassical rotation profiles are printed as a table and overlaid in a
-matplotlib figure (w0 / omega vs rho, and Er vs rho).
+matplotlib figure with THREE panels: (1) w0/omega vs rho, (2) Er vs rho with TRANSP's
+ERPRESS/ERVTOR/ERVPOL decomposition, and (3) a TERM-BY-TERM Er check vs an independent
+diamagnetic Er = (1/(Z_i e n_i)) dp_i/dr.
+
+*** WHAT THE COMPARISON SHOWS (and a w0-vs-Er caveat) ***
+    Compare Er, NOT w0. The w0 panel mixes two DIFFERENT decompositions: TRANSP's
+    OMEGA_NC = omega_ExB + omega_diamag (the diamagnetic part largely CANCELS -> small
+    intrinsic value), while VGEN's w0 RETAINS the diamagnetic term (diamagnetic-dominated).
+    The frame-independent Er is the clean check, and it shows:
+      - the DIAMAGNETIC term agrees across NCLASS, NEO, and the independent dp/dr/Zen
+        (it is model-independent), and
+      - the neoclassical POLOIDAL-FLOW term (ERVPOL vs NEO's) is the entire residual --
+        opposite sign in the core here -- the expected NCLASS(Houlberg)-vs-NEO model
+        spread (NEO is the higher-fidelity drift-kinetic solver).
+    This does NOT affect MAESTRO's rotation chain: the TRANSP beat writes w0 = OMEGA
+    (cdf.VtorkHz / TGLF_w0, CDFtools.to_profiles), the rotation TRANSP actually used --
+    NOT OMEGA_NC -- so the w0 round-trip stays in the GACODE convention end to end.
 
 *** REQUIREMENTS ***
     - PATH A requires a configured TRANSP machine ("transp" in config_user.json).
@@ -75,23 +95,24 @@ from mitim_tools.transp_tools import CDFtools
 
 # cold_start=True starts from scratch (removing the previous folder); False reuses
 # results already present (so a finished TRANSP CDF / vgen folder is not recomputed)
-cold_start = True
+cold_start = False  # reuse the good (w0=0) CDF/vgen; set True only if inputs change
 
 (__mitimroot__ / "tests" / "scratch").mkdir(parents=True, exist_ok=True)
 
 folder = __mitimroot__ / "tests" / "scratch" / "test_transp_vs_vgen_rotation"
 
-# Bundled DT SPARC PRD plasma state (T,D fuel + F,W,He; w0 = 0 everywhere, so both
-# paths genuinely compute the neoclassical rotation rather than echoing an input).
-input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode_SPARC_PRD"
+# Bundled DT SPARC PRD plasma state (T,D fuel + F,W,He). NOTE: this file carries a
+# finite w0(rad/s) (~-11 krad/s mid-radius) -- it is NOT a zero-rotation state. We zero
+# w0 below (see A.1) so both paths genuinely PREDICT the neoclassical rotation instead
+# of TRANSP echoing the prescribed rotation.
+input_gacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 
 if cold_start and folder.exists():
     IOtools.shutil_rmtree(folder)
 folder.mkdir(parents=True, exist_ok=True)
 
-# Tokamak name selects machine-specific TRANSP conventions (SPARC adds df4/vc4
-# UFILEs and nteq_mode=2; see TRANSPhelpers.default_nml:1433).
-tokamak = "SPRC"
+# Tokamak name selects machine-specific TRANSP conventions
+tokamak = "AUGD"
 
 # =====================================================================================
 # PATH A: TRANSP run with NCLASS neoclassical potential output (no anomalous transport)
@@ -109,7 +130,8 @@ runid = "R01"
 time_init = 0.0
 time_current_diffusion = 0.0
 time_end = 0.5          # s of flattop
-time_extraction = 0.5   # s at which to write the averaged AC/output snapshot
+time_extraction = None  # no AC snapshot: OMEGA_NC/EPOTNC live in the regular CDF, and
+                        # there are no TORIC/NUBEAM AC files to extract in this stripped run
 
 # ---------------------------------------------------------------------------------------------------------------------
 # A.1 Build the TRANSP run from input.gacode (the canonical input.gacode -> TRANSP path)
@@ -123,24 +145,54 @@ time_extraction = 0.5   # s at which to write the averaged AC/output snapshot
 # and it puts NCLASS in exactly the weak-rotation limit compared against NEO er=2 below.
 profiles = PROFILEStools.gacode_state(input_gacode)
 
+# IMPORTANT: the bundled input.gacode actually carries a finite toroidal rotation
+# (w0(rad/s) ~ -11 krad/s at mid-radius, NOT zero). The neoclassical-PREDICTION
+# comparison only works from a NO-rotation state: with a finite w0, to_transp ships it
+# as the omg U-File and NCLASS just ECHOES it (OMEGA_NC ~ input, Er dominated by the
+# v_phi*B_theta term), while VGEN er=2 (weak-rotation) DISCARDS it -> the two are then
+# computing different things (a measured ~3-5x, sign-flipped gap that is NOT a model
+# disagreement; the diamagnetic Er terms actually match). Zero w0 so BOTH genuinely
+# predict the neoclassical rotation from the kinetic profiles, and feed the SAME zeroed
+# state to both paths.
+profiles.profiles["w0(rad/s)"][:] = 0.0
+input_gacode = folder / "input.gacode_w0zero"
+profiles.write_state(file=input_gacode)
+
 times = [time_init, time_end + 1.0]  # bracket the flattop (matches TRANSPbeat usage)
+
+# Separatrix smoothing for the RFS/ZFS boundary U-Files. The bundled state is a
+# single-null DIVERTED plasma (lower X-point: Z in [-0.88, +0.77]); the boundary is
+# MXH-fit and reconstructed for TRANSP. With many harmonics the fit REPRODUCES the
+# X-point cusp (n_coeff=5 keeps the raw ~6 cm turn radius), and TRANSP's fixed-boundary
+# equilibrium then fails its flux-surface Jacobian check at rho=1 (det(J) changes sign).
+# A low n_coeff rounds the X-point (n_coeff=2 -> ~20 cm turn radius) while keeping
+# triangularity + squareness. Drop to 1 if the Jacobian check still trips.
+mxh_coeffs_smooth_sep = 2
+
 transp = profiles.to_transp(
     folder=folderTRANSP,
     shot=shot,
     runid=runid,
     times=times,
     Vsurf=0.0,
+    mxh_coeffs_smooth=mxh_coeffs_smooth_sep,
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
-# A.2 Write a DEFAULT namelist (NCLASS + neoclassical potential both on by default)
+# A.2 Write a MINIMAL namelist: neoclassical rotation only, as cheap as possible
 # ---------------------------------------------------------------------------------------------------------------------
 
-# Pich=True keeps the ICRF heating that the SPARC PRD case uses; DTplasma=True for
-# the D-T fuel mix. NO PTsolver, so NO predictive/anomalous momentum machinery is
-# emitted — NCLASS (Houlberg) runs as the neoclassical model only. The NCLASS
-# neoclassical potential (nlvwnc) follows the rotation U-File shipped above (the zero
-# omg U-File -> nlvphi=T, nlvwnc=T), so EPOTNC/OMEGA_NC are written to the CDF.
+# We want the lightest TRANSP that still closes the NCLASS Er/rotation force balance,
+# so every expensive auxiliary-heating / fast-ion module is switched OFF (same spirit
+# as MAESTRO's transp_soft beat, just inlined here):
+#   - Pich=False               -> no ICRF, so TORIC never runs
+#   - Pnbi=False               -> no NBI, so NUBEAM beams never run (also the default)
+#   - useNUBEAMforAlphas=False -> D-T alphas use the analytic fast model (nalpha=1),
+#                                 NOT the NUBEAM Monte Carlo
+# and all timesteps are coarsened to ~100 ms. NO PTsolver either, so NCLASS (Houlberg)
+# is the ONLY model active. NCLASS still writes EPOTNC/OMEGA_NC because it only needs
+# the rotation U-File shipped above (the zero omg U-File -> nlvphi=T, nlvwnc=T, both on
+# by default).
 #
 # Ufiles: feed the separatrix as RFS/ZFS boundary U-Files (the moments path that
 # write_ufiles(use_mry_file=False, the default) actually produces below), NOT the
@@ -156,27 +208,42 @@ transp.write_namelist(
         "time_extraction": time_extraction,
     },
     Ufiles=["qpr", "cur", "vsf", "ter", "ti2", "ner", "rbz", "lim", "zf2", "rfs", "zfs"],
-    Pich=True,
-    DTplasma=True,
+    # --- Strip auxiliary heating + fast ions: no TORIC, no NUBEAM ---
+    Pich=False,
+    Pnbi=False,
+    useNUBEAMforAlphas=False,
+    DTplasma=True,                 # keep the D-T species mix (cheap; rotation is unaffected)
+    # --- Coarse time resolution for speed (mirrors transp_soft) ---
+    dtEquilMax_ms=100.0,           # MHD equilibrium step (dtmaxg)
+    dtHeating_ms=100.0,            # ICRF/NBI step (unused here, harmless)
+    dtCurrentDiffusion_ms=100.0,   # poloidal-field diffusion step (dtmaxb)
+    dtOut_ms=100.0,                # output cadence (sedit/stedit)
+    dtIn_ms=100.0,                 # input-data cadence (tgrid1/tgrid2)
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
 # A.3 Write UFILEs and submit; wait for completion; fetch the AC/CDF outputs
 # ---------------------------------------------------------------------------------------------------------------------
 
-transp.write_ufiles(mxh_coeffs_smooth=5)
+transp.write_ufiles(mxh_coeffs_smooth=mxh_coeffs_smooth_sep)
 
 # transp_run.run() wraps TRANSPtools.TRANSP + defineRunParameters + run +
-# checkUntilFinished (TRANSPhelpers.run:382). retrieveAC=True pulls the averaged
-# output snapshot written at time_extraction.
+# checkUntilFinished (TRANSPhelpers.run:382). No TORIC/NUBEAM here, so the toric/ptr
+# MPI pools are set to 1 and retrieveAC=False (there are no AC files to pull; the
+# neoclassical rotation lives in the regular CDF).
+#
+# cold_start=False makes run() reuse an existing {shot}{runid}.CDF instead of re-staging
+# and re-submitting to SLURM -- so a cold_start=False rerun just re-reads + re-plots (the
+# cheap local input regen above still runs). cold_start=True forces a fresh TRANSP run.
 transp.run(
     tokamak,
-    mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 32},
+    mpisettings={"trmpi": 32, "toricmpi": 1, "ptrmpi": 1},
     minutesAllocation=30,
     case="neoclassical",
     checkMin=2,
     grabIntermediateEachMin=1e6,
-    retrieveAC=True,
+    retrieveAC=False,
+    cold_start=cold_start,
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -197,10 +264,12 @@ transp_rho_xb   = cdf.xb[it, :]
 transp_w0_nc_chk = cdf.VtorkHz_nc_check[it, :] * (2 * np.pi * 1e3)  # rad/s
 
 # Neoclassical Er and its decomposition (V/m); the sum is the "Neoclassical Er".
-transp_Er       = cdf.Er[it, :]                         # V/m (ERTOT)
-transp_Er_p     = cdf.Er_p[it, :]                       # V/m (diamagnetic / grad-p)
-transp_Er_tor   = cdf.Er_tor[it, :]                     # V/m (toroidal-flow term)
-transp_Er_pol   = cdf.Er_pol[it, :]                     # V/m (poloidal-flow term)
+transp_Er       = cdf.Er_LF[it, :]                      # V/m (ERTOT), LF-mapped onto the x (zone-center) grid
+transp_Er_p     = cdf.Er_p_LF[it, :]                    # V/m (diamagnetic / grad-p)
+transp_Er_tor   = cdf.Er_tor_LF[it, :]                  # V/m (toroidal-flow term)
+transp_Er_pol   = cdf.Er_pol_LF[it, :]                  # V/m (poloidal-flow term)
+# NOTE: raw cdf.Er/Er_p/Er_tor/Er_pol live on the Rmaj midplane grid (LF->HF, ~2x longer),
+# NOT on x/xb — use the _LF variants so they align with transp_rho (the x grid) below.
 
 # =====================================================================================
 # PATH B: VGEN / NEO neoclassical rotation on the SAME input.gacode
@@ -237,11 +306,14 @@ neo.read_vgen()
 vgen_rho   = neo.profiles_vgen.profiles["rho(-)"]
 vgen_w0    = neo.profiles_vgen.profiles["w0(rad/s)"]
 
-# Er used/derived by VGEN, V/m (out.vgen.vel -> vgen_vel["er_exp"], NEOtools.py:822).
+# Er used/derived by VGEN (out.vgen.vel -> vgen_vel["er_exp"], NEOtools.py:822).
+# *** UNITS ***: er_exp is in kV/m, NOT V/m (vgen.f90 builds it in CGS-Gaussian and ends
+# with a /1000; the output values, ~-0.4..-4.5, are kV/m). The NEOtools comment calling it
+# V/m is wrong. Multiply by 1e3 to put it on the V/m axis next to the TRANSP Er.
 # This lives on the (possibly truncated) vgen rho grid, separate from vgen_rho.
 if neo.vgen_vel and "er_exp" in neo.vgen_vel:
     vgen_Er_rho = neo.vgen_vel["rho"]
-    vgen_Er     = neo.vgen_vel["er_exp"]
+    vgen_Er     = neo.vgen_vel["er_exp"] * 1e3   # kV/m -> V/m
 else:
     vgen_Er_rho = None
     vgen_Er     = None
@@ -266,7 +338,23 @@ for r, wv, wt in zip(rho_common, w0_vgen_c, w0_transp_c):
     print(f" {r:6.3f} | {wv:16.4e} | {wt:18.4e}")
 print("=" * 70 + "\n")
 
-fig, axs = plt.subplots(1, 2, figsize=(13, 5))
+# Term-by-term Er verification (V/m). The main-ion diamagnetic Er = (1/(Z_i e n_i)) dp_i/dr
+# is MODEL-INDEPENDENT, so it anchors the pressure term of BOTH codes; the poloidal-flow
+# term is then whatever each code's total Er has beyond it. (profiles still holds n_i/T_i;
+# zeroing w0 does not change them.) This isolates the claim: diamagnetic agrees, the
+# neoclassical poloidal-flow term is where NCLASS (Houlberg) and NEO actually differ.
+_e = 1.602176634e-19
+_rho_p = profiles.profiles["rho(-)"]
+_ni    = profiles.profiles["ni(10^19/m^3)"][:, 0] * 1e19   # main ion (D), matched_ion=1
+_Ti    = profiles.profiles["ti(keV)"][:, 0] * 1e3 * _e
+_Zi    = profiles.profiles["z"][0]
+Er_dia_indep = np.gradient(_ni * _Ti, profiles.derived["r"]) / (_Zi * _e * _ni)  # V/m
+# VGEN poloidal Er: with er=2 (vtor=0) Er = diamagnetic + poloidal, so the poloidal piece
+# is total - diamagnetic. (TRANSP gives ERVPOL directly.)
+if vgen_Er is not None:
+    vgen_Er_pol = vgen_Er - np.interp(vgen_Er_rho, _rho_p, Er_dia_indep)
+
+fig, axs = plt.subplots(1, 3, figsize=(18, 5))
 
 # --- Panel 1: neoclassical toroidal angular rotation w0 / omega ---
 ax = axs[0]
@@ -284,10 +372,10 @@ ax.legend(loc="best", fontsize=8)
 ax = axs[1]
 if vgen_Er is not None:
     ax.plot(vgen_Er_rho, vgen_Er, "-o", color="C0", lw=1.8, ms=3, label=r"$E_r$ VGEN/NEO")
-ax.plot(transp_rho_xb, transp_Er, "-s", color="C1", lw=1.8, ms=3, label=r"$E_r$ TRANSP (total)")
-ax.plot(transp_rho_xb, transp_Er_p, ":", color="C2", lw=1.2, label=r"$E_r$ TRANSP ($\nabla p$)")
-ax.plot(transp_rho_xb, transp_Er_tor, ":", color="C4", lw=1.2, label=r"$E_r$ TRANSP (tor)")
-ax.plot(transp_rho_xb, transp_Er_pol, ":", color="C5", lw=1.2, label=r"$E_r$ TRANSP (pol)")
+ax.plot(transp_rho, transp_Er, "-s", color="C1", lw=1.8, ms=3, label=r"$E_r$ TRANSP (total)")
+ax.plot(transp_rho, transp_Er_p, ":", color="C2", lw=1.2, label=r"$E_r$ TRANSP ($\nabla p$)")
+ax.plot(transp_rho, transp_Er_tor, ":", color="C4", lw=1.2, label=r"$E_r$ TRANSP (tor)")
+ax.plot(transp_rho, transp_Er_pol, ":", color="C5", lw=1.2, label=r"$E_r$ TRANSP (pol)")
 ax.axhline(0, color="k", lw=0.7, ls=":")
 ax.set_xlabel(r"$\rho$  (sqrt norm. tor. flux)")
 ax.set_ylabel(r"$E_r$  (V/m)")
@@ -295,7 +383,28 @@ ax.set_xlim([0.0, 1.0])
 ax.set_title("Neoclassical radial electric field")
 ax.legend(loc="best", fontsize=8)
 
-fig.suptitle("TRANSP/NCLASS vs VGEN/NEO neoclassical rotation (SAME plasma state)")
+# --- Panel 3: TERM-BY-TERM Er verification (diamagnetic agrees; poloidal differs) ---
+# Diamagnetic curves should OVERLAP (model-independent physics); the poloidal-flow curves
+# are where NCLASS and NEO diverge (opposite sign in the core here), which is the entire
+# residual once the spurious input rotation is removed.
+ax = axs[2]
+ax.plot(_rho_p, Er_dia_indep, "--", color="k", lw=1.8,
+        label=r"$E_r^{\nabla p}$ independent ($dp_i/dr/Z_ien_i$)")
+ax.plot(transp_rho, transp_Er_p, "-s", color="C2", lw=1.6, ms=3,
+        label=r"$E_r^{\nabla p}$ TRANSP (ERPRESS)")
+ax.plot(transp_rho, transp_Er_pol, "-^", color="C5", lw=1.6, ms=3,
+        label=r"$E_r^{v_\theta}$ TRANSP (ERVPOL)")
+if vgen_Er is not None:
+    ax.plot(vgen_Er_rho, vgen_Er_pol, "-o", color="C0", lw=1.6, ms=3,
+            label=r"$E_r^{v_\theta}$ VGEN ($E_r-E_r^{\nabla p}$)")
+ax.axhline(0, color="k", lw=0.7, ls=":")
+ax.set_xlabel(r"$\rho$  (sqrt norm. tor. flux)")
+ax.set_ylabel(r"$E_r$ component  (V/m)")
+ax.set_xlim([0.0, 1.0])
+ax.set_title(r"Term-by-term: $\nabla p$ agrees, $v_\theta$ differs")
+ax.legend(loc="best", fontsize=7)
+
+fig.suptitle("TRANSP/NCLASS vs VGEN/NEO neoclassical rotation (SAME plasma state, w0 zeroed)")
 fig.tight_layout()
 
 figure_file = folder / "transp_vs_vgen_rotation.png"

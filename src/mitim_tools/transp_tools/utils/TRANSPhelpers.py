@@ -21,6 +21,7 @@ class transp_run:
         # Initialize variables
         self.variables, self.geometry = {}, {}
         self.nml = None
+        self.nml_object = None   # set by write_namelist; carries Pich (whether ICRF is modeled)
         self.namelist_variables = {}
         self.rotation_species = None   # [Z, A] of the species the 'omg' U-File rotation belongs to (set by to_transp)
 
@@ -301,7 +302,14 @@ class transp_run:
             # Write Antenna in namelist
             # --------------------------------------------------------------------------------------------
 
-            if not is_machine_fixed:
+            # The auto-generated antenna geometry only belongs in the namelist when ICRF is
+            # actually modeled: TRANSP turns the TORIC solver ON from the mere presence of
+            # rmjicha/rmnicha/thicha (DATCKICH "old style ICH antenna geometry converted"),
+            # which then crashes when no TORIC grid exists (addICRF is skipped for Pich=False).
+            # nml_object is None during the to_transp-time call (which writes nothing to the
+            # namelist anyway); the post-write_namelist call carries the real Pich.
+            icrf_on = self.nml_object is not None and self.nml_object.Pich
+            if (not is_machine_fixed) and icrf_on:
 
                 self.namelist_variables['rmjicha'] = 100.0*self.geometry_select['antenna_R']
                 self.namelist_variables['rmnicha'] = 100.0*self.geometry_select['antenna_r']
@@ -391,10 +399,24 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False):
+    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False, cold_start=True):
         '''
         Run TRANSP
+
+        cold_start:
+            True  (default) -> always (re)run, preserving the historical behaviour.
+            False -> if the output CDF ({shot}{runid}.CDF) already exists in the run
+                     folder, reuse it instead of re-staging + re-submitting to SLURM
+                     (so a re-run just reads the existing result). The standalone run
+                     path has no idempotency on its own, hence this guard.
         '''
+
+        # Skip-if-done: reuse an existing finished CDF when a cold start was not requested
+        cdf_file = self.folder / f"{self.shot}{self.runid}.CDF"
+        if (not cold_start) and cdf_file.exists():
+            print(f"\t- Found existing TRANSP output {IOtools.clipstr(cdf_file)}; reusing it (cold_start=False), not submitting", typeMsg="i")
+            return
+
         print("\t- Running TRANSP")
 
         if tokamak_name is None:

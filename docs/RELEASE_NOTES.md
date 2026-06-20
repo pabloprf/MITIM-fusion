@@ -56,7 +56,11 @@ DESCRIPTION
 
 *   🩺 **Informative TRANSP failure message** (`TRANSPdebug`): a stopped TRANSP run now raises with a *best-effort estimate* of the cause parsed from the run log — the signal and a plain-language gloss, the simulation time/step, the physics event at the trap (MHD equilibrium/TEQ vs Porcelli sawtooth), and geometry/underflow breadcrumbs — instead of a bare "TRANSP stopped". It also flags InfiniBand/RDMA container-launch failures (mlx5 UD-QP denied) as infrastructure rather than physics. The message is a heuristic reading of the log, **not** a guaranteed root cause. New `TRANSPdebug` module, usable interactively via `diagnose_transp_logfile`.
 
+*   🐛 **TRANSP no-ICRF runs no longer crash in TORIC**: a `Pich=False` run with auto-generated (non-machine-fixed) structures still wrote the antenna geometry (`rmjicha`/`rmnicha`/`thicha`) to the namelist, and TRANSP turns the TORIC solver ON from the mere presence of those keys — then segfaults (`t4_tofpp_init.jpsedg`, "not enough zones") because no TORIC grid was emitted. The antenna block is now written only when ICRF is actually modeled (`Pich=True`), so lightweight no-heating TRANSP runs (e.g. neoclassical-only) run cleanly.
+
 ### Changes for developers (internal execution)
+
+*   🔧 **`transp_run.run(cold_start=...)`** gained a skip-if-done guard: with `cold_start=False` it reuses an existing `{shot}{runid}.CDF` in the run folder (printing a notice) instead of re-staging and re-submitting to SLURM — the standalone TRANSP path previously had no idempotency of its own (only MAESTRO's beat wrapper did). Default `cold_start=True` preserves the always-(re)run behaviour, so existing callers (MAESTRO included) are unaffected.
 
 *   🤖 **MAESTRO investigation subagent** (`.claude/agents/maestro.md`): a Claude Code agent that forensically compares and debugs MAESTRO runs — it knows the `Beats/` layout, each beat's inputs/outputs, where the logs/timing/namelist artifacts live, and how to load and overlay states headlessly. Shipped in-repo by un-ignoring `.claude/agents/` (the rest of `.claude/` stays local).
 
