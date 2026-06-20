@@ -808,9 +808,11 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             self.vgen_ercomp = {}
 
         # ---- Velocities (out.vgen.vel) ----
-        # vgen.f90 writes 4 + 4*n_ions columns per radius — rho, er_exp (the
-        # experimental/derived Er input, V/m), w0 (rad/s), w0p, then for each
-        # ion j:
+        # vgen.f90 writes 4 + 4*n_ions columns per radius — rho, er_exp (the radial
+        # electric field Er, in kV/m — NEO-derived for er=1/2, the given Er for er=4;
+        # NOT V/m: vgen.f90 builds it in CGS-Gaussian and ends with /1000, and the w0
+        # conversion's /30.0 is the kV/m -> statvolt/cm factor), w0 (rad/s), w0p, then
+        # for each ion j:
         #   vpol_{j}          : poloidal velocity (m/s)
         #   vtor_{j}          : toroidal velocity (m/s)
         #   vpol_over_bp0_{j} : vpol/Bp0
@@ -952,7 +954,7 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             ax.axhline(0, color="k", lw=0.7, ls="--")
             ax.legend(loc="best", fontsize=7)
         ax_dia.set_xlabel(r"$\rho_{tor}$")
-        ax_dia.set_ylabel("$E_r$ (V/m)")
+        ax_dia.set_ylabel("$E_r$ (kV/m)")
         ax_dia.set_xlim(left=rho_min)
         ax_dia.axhline(0, color="k", lw=0.7, ls="--")
         ax_dia.legend(loc="best", fontsize=7)
