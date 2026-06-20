@@ -163,7 +163,7 @@ class transp_nml:
         # a toroidal-rotation input (the 'omg'/VTR U-File) to
         # close the Er force balance — TRDAT aborts on nlvwnc=T with no rotation data —
         # so it defaults to UFrotation: ON whenever rotation (real, or an explicit zero
-        # omg U-File) is supplied, OFF when rotation is opted out (write_rotation=False).
+        # omg U-File) is supplied, OFF when rotation is opted out (rotation_source='off').
         self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential", self.UFrotation)
 
         # Radial window (r/a) over which the NCLASS rotation/Er analysis (nlvwnc) is solved

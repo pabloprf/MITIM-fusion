@@ -108,8 +108,12 @@ class transp_beat(beat):
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
-        write_rotation = None,                      # Pass the incoming w0 into TRANSP (omg U-File): None=auto
-                                                    # (pass if w0!=0), True=force, False=never (zero rotation / no E×B shear)
+        rotation_source = 'echo',                   # How this beat sets w0 (the E×B rotation -c dPhi/dpsi) for the next
+                                                    # input.gacode: 'echo' = feed the seed rotation into TRANSP and write
+                                                    # the resulting E×B rotation (carries the seed via the ERVTOR term);
+                                                    # 'neoclassical' = ship a zero omg U-File and write the weak-rotation
+                                                    # (pure neoclassical) E×B rotation, ignoring any seed; 'off' = no omg
+                                                    # in and zero w0 out, even if the seed carries a rotation.
         **transp_namelist
         ):
         '''
@@ -123,17 +127,26 @@ class transp_beat(beat):
             (mitim_tools/transp_tools/NMLtools.py: _default_params())
         '''
 
+        # Back-compat: the legacy 'write_rotation' (bool/None) namelist key maps to
+        # rotation_source ('echo'/'off'); None/True -> 'echo', False -> 'off'.
+        if 'write_rotation' in transp_namelist:
+            legacy = transp_namelist.pop('write_rotation')
+            rotation_source = 'off' if legacy is False else 'echo'
+            print(f"\t- [deprecation] 'write_rotation' is deprecated; use rotation_source. Mapped to '{rotation_source}'", typeMsg='w')
+        if rotation_source not in ('echo', 'off', 'neoclassical'):
+            raise ValueError(f"[MITIM] rotation_source='{rotation_source}' not recognized (use 'echo', 'off' or 'neoclassical')")
+
         # Grab structures
         tokamak_structures = transp_namelist.get('tokamak_structures', None)
         is_machine_fixed = tokamak_structures is not None
-        
+
         # Define timings
         # Namelist documents "If null, no transition performed" — same effect as 0.0
         # (the > 0.0 guard below then skips the initialization transition)
         if transition_window is None:
             transition_window = 0.0
         self.transition_window     = transition_window
-        self.write_rotation = write_rotation   # whether this beat carries rotation: in (omg U-File) and out (w0)
+        self.rotation_source = rotation_source   # how this beat handles rotation: in (omg U-File) and out (w0)
         self.time_init = 0.0                                                # Start with a TRANSP machine equilibrium
         self.time_transition = self.time_init+ self.transition_window       # Transition to new equilibrium (and profiles), also defined at 100.0
         self.time_diffusion = self.time_transition + currentheating_window  # Current diffusion and ICRF on
@@ -166,7 +179,7 @@ class transp_beat(beat):
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
             mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
-            write_rotation = write_rotation,
+            rotation_source = rotation_source,
             )
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -421,10 +434,15 @@ class transp_beat(beat):
         print(f'\t\t- Extracting profiles at extract_at={self.extract_at} -> t={time_extraction:.4f}s (slice {it_extract} of {len(cdf_results.t)-1})', typeMsg='i')
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
-        # Rotation OUT to the next beat: to_profiles writes w0 = OMEGA (TRANSP's
-        # rotation). With write_rotation=False, keep the chain rotation-free by zeroing
-        # it so the downstream PORTALS beat sees zero rotation / no E×B shear.
-        if getattr(self, 'write_rotation', None) is False:
+        # Rotation OUT to the next beat. to_profiles writes w0 = TGLF_w0_exb, the E×B/potential
+        # rotation (-c dPhi/dpsi, the GACODE w0 convention) -- the SAME quantity for 'echo' and
+        # 'neoclassical', since both just want the E×B rotation. The two modes differ only on the
+        # INPUT (handled in to_transp): 'echo' feeds the seed rotation (so ERTOT, hence the E×B
+        # rotation, includes it via the ERVTOR term), 'neoclassical' ships a zero omg U-File (so it
+        # is the weak-rotation / pure-neoclassical E×B). Only 'off' overrides here, zeroing w0 to
+        # keep the chain rotation-free.
+        _rot = getattr(self, 'rotation_source', 'echo')
+        if _rot == 'off':
             self.profiles_output.profiles['w0(rad/s)'] = self.profiles_output.profiles['w0(rad/s)'] * 0.0
             self.profiles_output.derive_quantities(rederiveGeometry=False)
 

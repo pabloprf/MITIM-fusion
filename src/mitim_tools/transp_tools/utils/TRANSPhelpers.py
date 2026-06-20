@@ -24,6 +24,7 @@ class transp_run:
         self.nml_object = None   # set by write_namelist; carries Pich (whether ICRF is modeled)
         self.namelist_variables = {}
         self.rotation_species = None   # [Z, A] of the species the 'omg' U-File rotation belongs to (set by to_transp)
+        self.omg_zeroed = False        # if True, ship the 'omg' U-File as zeros (neoclassical mode: weak-rotation input)
 
         # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
@@ -876,9 +877,10 @@ class transp_input_time:
             z = self.p.profiles['ne(10^19/m^3)']*1E19*1E-6
         elif var == 'w0':
             # Toroidal angular rotation, rad/s -> 'omg' U-File (rad/sec); same quantity,
-            # factor 1.0. Flux function (no major-radius dependence).
+            # factor 1.0. Flux function (no major-radius dependence). In neoclassical mode
+            # the omg U-File is shipped as zeros (weak-rotation input, V_phi=0).
             x = self.p.profiles['rho(-)']
-            z = self.p.profiles['w0(rad/s)']
+            z = self.p.profiles['w0(rad/s)'] * (0.0 if self.transp_instance.omg_zeroed else 1.0)
         elif var == 'Zeff':
             x = self.p.profiles['rho(-)']
             z = self.p.derived['Zeff']

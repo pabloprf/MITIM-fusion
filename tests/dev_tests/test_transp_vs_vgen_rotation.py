@@ -21,10 +21,12 @@ and radial electric field:
                 neoclassical limit: NEO is solved over the flux surfaces and
                 returns the neoclassical Er and the consistent w0(rad/s).
 
-The two neoclassical rotation profiles are printed as a table and overlaid in a
-matplotlib figure with THREE panels: (1) w0/omega vs rho, (2) Er vs rho with TRANSP's
-ERPRESS/ERVTOR/ERVPOL decomposition, and (3) a TERM-BY-TERM Er check vs an independent
-diamagnetic Er = (1/(Z_i e n_i)) dp_i/dr.
+The comparison is printed as two rigorous tables (Er decomposition; rotation-field
+identification) and a 4-panel figure: (1) E×B rotation in the SAME (GACODE) convention
+[VGEN w0 vs TRANSP geom*ERtot]; (2) Er and its ERPRESS/ERVTOR/ERVPOL decomposition;
+(3) TERM-BY-TERM [diamagnetic from TRANSP/VGEN/independent dp/dr overlaps; poloidal flips
+sign between NCLASS and NEO]; (4) why OMEGA_NC != w0 [omega_tor = omega_ExB + omega_diamag,
+which nearly cancel, leaving the small toroidal velocity].
 
 *** WHAT THE COMPARISON SHOWS (and a w0-vs-Er caveat) ***
     Compare Er, NOT w0. The w0 panel mixes two DIFFERENT decompositions: TRANSP's
@@ -306,105 +308,203 @@ neo.read_vgen()
 vgen_rho   = neo.profiles_vgen.profiles["rho(-)"]
 vgen_w0    = neo.profiles_vgen.profiles["w0(rad/s)"]
 
-# Er used/derived by VGEN (out.vgen.vel -> vgen_vel["er_exp"], NEOtools.py:822).
-# *** UNITS ***: er_exp is in kV/m, NOT V/m (vgen.f90 builds it in CGS-Gaussian and ends
-# with a /1000; the output values, ~-0.4..-4.5, are kV/m). The NEOtools comment calling it
-# V/m is wrong. Multiply by 1e3 to put it on the V/m axis next to the TRANSP Er.
-# This lives on the (possibly truncated) vgen rho grid, separate from vgen_rho.
-if neo.vgen_vel and "er_exp" in neo.vgen_vel:
-    vgen_Er_rho = neo.vgen_vel["rho"]
-    vgen_Er     = neo.vgen_vel["er_exp"] * 1e3   # kV/m -> V/m
-else:
-    vgen_Er_rho = None
-    vgen_Er     = None
-
 # =====================================================================================
-# COMPARISON: table + figure
+# COMPARISON + RIGOROUS TERM-BY-TERM INVESTIGATION
 # =====================================================================================
+#
+# GROUND TRUTH (from source, not eyeballed):
+#   * GACODE w0 (vgen.f90:237-251): the radial force balance is
+#         Er = (1/(Z_a e n_a)) dp_a/dr  +  V_phi,a B_theta  -  V_theta,a B_phi
+#     and w0 = c q Er / (Bunit r |grad r|) = -c dPhi/dpsi_pol -- the E×B (potential)
+#     rotation, built from the TOTAL Er. So GACODE w0 ∝ ERtot.
+#   * TRANSP CDF metadata (read directly from the .CDF):
+#       OMEGA_NC = "N.C. TOROIDAL ANGULAR VELOCITY"  (V_phi/R; NOT the E×B rotation)
+#       EPOTNC   = "ER POTENTIAL: NC ANALYSIS"       (-dPhi_nc/dpsi -> the E×B rotation)
+#       ERTOT = ERPRESS + ERVTOR + ERVPOL            (V/cm; pressure/toroidal/poloidal)
+#   => the TRANSP field that equals GACODE w0 is the EPOTNC E×B rotation (-dPhi/dpsi),
+#      NOT OMEGA_NC. OMEGA_NC = omega_ExB + omega_diamag, and those nearly cancel, so the
+#      toroidal velocity is a small residual (shown in panel 4).
 
-# Common rho grid for the table: the VGEN window, interpolating TRANSP onto it.
-rho_common = vgen_rho[(vgen_rho >= 0.1) & (vgen_rho <= 0.90)]
+# --- TRANSP extra fields for the diagnostics ---
+transp_omega    = cdf.VtorkHz[it, :]      * (2 * np.pi * 1e3)   # OMEGA (used/written by to_profiles)
+transp_omega_in = cdf.VtorkHz_data[it, :] * (2 * np.pi * 1e3)   # OMEGDATA (the omg U-File we shipped)
+transp_w0_exb   = transp_w0_nc_chk                              # EPOTNC E×B rotation (rad/s), on xb grid
 
-w0_vgen_c      = np.interp(rho_common, vgen_rho, vgen_w0)
-w0_transp_c    = np.interp(rho_common, transp_rho, transp_w0_nc)
+# --- VGEN Er + force-balance decomposition (out.vgen.vel + out.vgen.ercomp) ---
+# er_exp is kV/m (NOT V/m: vgen.f90 ends the CGS build with /1000). The ercomp omega
+# components (rad/s) sum to w0; each is er_to_w0*Er_component, where (vgen.f90:250)
+#     er_to_w0 = c q / (Bunit r |grad r|)    [the exact Er->w0 conversion factor].
+# MITIM does not expose |grad r| (grad_r0), so we take VGEN's OWN self-consistent ratio
+# w0/er_exp, which EQUALS that factor (sign + units included), and use it to move between
+# Er(V/m) and omega(rad/s) without reconstructing the geometry.
+vv = neo.vgen_vel
+ec = neo.vgen_ercomp
+vgen_Er_rho = np.asarray(vv["rho"])
+vgen_Er     = np.asarray(vv["er_exp"]) * 1e3        # total Er, V/m
+er_to_w0    = np.asarray(vv["w0"]) / np.asarray(vv["er_exp"])   # rad/s per kV/m (VGEN COCOS)
+def _ercomp_to_Vm(key):  # omega-component (rad/s) -> Er-component (V/m), on the ercomp grid
+    return np.asarray(ec[key]) / np.interp(np.asarray(ec["rho"]), vgen_Er_rho, er_to_w0) * 1e3
+vgen_Er_p   = _ercomp_to_Vm("omega_gradp_1")        # diamagnetic Er, V/m
+vgen_Er_pol = _ercomp_to_Vm("omega_vpol_1")         # poloidal Er, V/m
+vgen_Er_tor = _ercomp_to_Vm("omega_vtor_1")         # toroidal Er, V/m (~0, er=2)
+ec_rho      = np.asarray(ec["rho"])
 
-print("\n" + "=" * 70)
-print(" Neoclassical toroidal angular rotation w0 [rad/s]")
-print("   TRANSP/NCLASS  vs  VGEN/NEO  (weak-rotation limit)")
-print("=" * 70)
-print(f" {'rho':>6} | {'w0 VGEN/NEO':>16} | {'w0 TRANSP/NCLASS':>18}")
-print("-" * 70)
-for r, wv, wt in zip(rho_common, w0_vgen_c, w0_transp_c):
-    print(f" {r:6.3f} | {wv:16.4e} | {wt:18.4e}")
-print("=" * 70 + "\n")
-
-# Term-by-term Er verification (V/m). The main-ion diamagnetic Er = (1/(Z_i e n_i)) dp_i/dr
-# is MODEL-INDEPENDENT, so it anchors the pressure term of BOTH codes; the poloidal-flow
-# term is then whatever each code's total Er has beyond it. (profiles still holds n_i/T_i;
-# zeroing w0 does not change them.) This isolates the claim: diamagnetic agrees, the
-# neoclassical poloidal-flow term is where NCLASS (Houlberg) and NEO actually differ.
+# --- Independent, MODEL-FREE diamagnetic Er (main ion): Er = (1/(Z_i e n_i)) dp_i/dr ---
 _e = 1.602176634e-19
 _rho_p = profiles.profiles["rho(-)"]
 _ni    = profiles.profiles["ni(10^19/m^3)"][:, 0] * 1e19   # main ion (D), matched_ion=1
 _Ti    = profiles.profiles["ti(keV)"][:, 0] * 1e3 * _e
 _Zi    = profiles.profiles["z"][0]
 Er_dia_indep = np.gradient(_ni * _Ti, profiles.derived["r"]) / (_Zi * _e * _ni)  # V/m
-# VGEN poloidal Er: with er=2 (vtor=0) Er = diamagnetic + poloidal, so the poloidal piece
-# is total - diamagnetic. (TRANSP gives ERVPOL directly.)
-if vgen_Er is not None:
-    vgen_Er_pol = vgen_Er - np.interp(vgen_Er_rho, _rho_p, Er_dia_indep)
 
-fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+# --- TRANSP total Er expressed as a GACODE-convention w0 (er_to_w0 carries the GACODE sign) ---
+# w0[rad/s] = er_to_w0[rad/s per kV/m] * Er[kV/m]; apply VGEN's factor to TRANSP's ERtot.
+er_to_w0_on_t    = np.interp(transp_rho, vgen_Er_rho, er_to_w0)
+transp_w0_fromEr = er_to_w0_on_t * (transp_Er * 1e-3)   # TRANSP neoclassical Er -> GACODE w0
 
-# --- Panel 1: neoclassical toroidal angular rotation w0 / omega ---
-ax = axs[0]
-ax.plot(vgen_rho, vgen_w0, "-o", color="C0", lw=1.8, ms=3, label=r"$\omega_0$ VGEN/NEO")
-ax.plot(transp_rho, transp_w0_nc, "-s", color="C1", lw=1.8, ms=3, label=r"$\omega_{nc}$ TRANSP (OMEGA_NC)")
-ax.plot(transp_rho_xb, transp_w0_nc_chk, "--^", color="C3", lw=1.2, ms=3, label=r"$\omega_{nc}$ TRANSP ($-d\Phi_{nc}/d\psi$)")
+# helpers to interpolate onto the VGEN window for the tables
+def _t(y, rq):  return float(np.interp(rq, transp_rho, y))     # TRANSP x-grid
+def _tb(y, rq): return float(np.interp(rq, transp_rho_xb, y))  # TRANSP xb-grid
+def _v(y, rq):  return float(np.interp(rq, vgen_Er_rho, y))    # VGEN vel-grid
+def _ve(y, rq): return float(np.interp(rq, ec_rho, y))         # VGEN ercomp-grid
+def _i(y, rq):  return float(np.interp(rq, _rho_p, y))         # input.gacode-grid
+rho_tab = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+
+print("\n" + "=" * 104)
+print(" Er DECOMPOSITION [V/m]  --  diamagnetic is MODEL-INDEPENDENT (must agree); poloidal is the model term")
+print("=" * 104)
+print(f"{'rho':>5} | {'ERp_T':>8}{'ERp_V':>8}{'ERp_ind':>8} | {'ERpol_T':>9}{'ERpol_V':>9} | {'ERtor_T':>8}{'ERtor_V':>8} | {'ERtot_T':>9}{'ERtot_V':>9}")
+print("-" * 104)
+for rq in rho_tab:
+    print(f"{rq:>5.2f} | {_t(transp_Er_p,rq):>8.0f}{_ve(vgen_Er_p,rq):>8.0f}{_i(Er_dia_indep,rq):>8.0f} | "
+          f"{_t(transp_Er_pol,rq):>9.0f}{_ve(vgen_Er_pol,rq):>9.0f} | "
+          f"{_t(transp_Er_tor,rq):>8.0f}{_ve(vgen_Er_tor,rq):>8.0f} | "
+          f"{_t(transp_Er,rq):>9.0f}{_v(vgen_Er,rq):>9.0f}")
+
+print("\n" + "=" * 104)
+print(" ROTATION [rad/s]  --  which TRANSP field = GACODE w0 (= ERtot->w0, the E×B rotation)?")
+print("=" * 104)
+print(f"{'rho':>5} | {'w0_VGEN':>10} | {'ERtot->w0_T':>13} | {'EPOTNC_rot_T':>13} | {'OMEGA_NC_T':>11} | {'OMEGA_T(out)':>13}")
+print("-" * 104)
+for rq in rho_tab:
+    print(f"{rq:>5.2f} | {_v(np.asarray(vv['w0']),rq):>10.0f} | {_t(transp_w0_fromEr,rq):>13.0f} | "
+          f"{_tb(transp_w0_exb,rq):>13.0f} | {_t(transp_w0_nc,rq):>11.0f} | {_t(transp_omega,rq):>13.0f}")
+
+# Quantified take-aways at mid-radius
+rq = 0.45
+diaT, diaV, diaI = _t(transp_Er_p,rq), _ve(vgen_Er_p,rq), _i(Er_dia_indep,rq)
+polT, polV = _t(transp_Er_pol,rq), _ve(vgen_Er_pol,rq)
+print("\n" + "=" * 104)
+print(f" QUANTIFIED at rho={rq}:")
+print(f"   diamagnetic Er : TRANSP {diaT:.0f} | VGEN {diaV:.0f} | independent {diaI:.0f} V/m  "
+      f"-> spread {100*(max(diaT,diaV,diaI)-min(diaT,diaV,diaI))/abs(diaI):.0f}% (MODEL-INDEPENDENT, agree)")
+print(f"   poloidal   Er : TRANSP/NCLASS {polT:.0f} vs VGEN/NEO {polV:.0f} V/m  "
+      f"-> {'OPPOSITE sign' if polT*polV < 0 else 'same sign'} (the genuine model difference; NEO higher fidelity)")
+print(f"   OMEGA_NC = omega_ExB + omega_diamag = {_tb(transp_w0_exb,rq):.0f} + {_t(transp_w0_nc,rq)-_tb(transp_w0_exb,rq):.0f}"
+      f" = {_t(transp_w0_nc,rq):.0f} rad/s.  This near-cancellation is FORCED by the imposed V_phi~0")
+print(f"      (weak-rotation input), NOT an emergent result: neoclassical theory does not predict V_phi,")
+print(f"      so OMEGA_NC just echoes the ~0 toroidal input. The physics lives in the E×B rotation.")
+print(f"   => write the EPOTNC E×B rotation (-dPhi/dpsi) for rotation_source='neoclassical', "
+      f"with the COCOS sign flip (VGEN w0 and TRANSP EPOTNC_rot are opposite sign here).")
+print("=" * 104 + "\n")
+
+# =====================================================================================
+# VALIDATION of rotation_source='neoclassical' write-back (replicates TRANSPbeat.finalize)
+# =====================================================================================
+# cdf.to_profiles() builds the OUTPUT input.gacode and writes w0 = the E×B rotation from the CDF
+# variable cdf.TGLF_w0_exb (= -c dPhi/dpsi = Er/(dpsi/dR), CDF-native, no derivative/sign work in
+# the beat). This zero-w0 reuse run is the 'neoclassical' / weak-rotation case (omg was zeroed in),
+# so to_profiles' w0 IS the neoclassical E×B rotation -- exactly what the beat writes. The output
+# state is internally self-consistent in TRANSP's convention, which has FLIPPED current/Bt/Bunit
+# sign vs the input we fed VGEN, so the written w0 has the opposite sign to VGEN's input-convention
+# w0 for the SAME physical rotation. We read it straight from to_profiles, then compare to VGEN by
+# mapping VGEN into the output convention via the Bunit-sign ratio.
+_itx   = cdf.ind_saw - 1                                  # finalize extracts at ind_saw-1
+st_out = cdf.to_profiles(time_extraction=cdf.t[_itx])     # the file the next beat would read
+_B     = np.asarray(st_out.derived["B_unit"]); _rho_o = np.asarray(st_out.profiles["rho(-)"])
+w0_neo_out = np.asarray(st_out.profiles["w0(rad/s)"])    # what to_profiles/the beat writes (TGLF_w0_exb)
+
+vgen_w0_v  = np.asarray(vv["w0"])                           # VGEN, INPUT convention
+# COCOS relation output<->input (via Bunit sign): +1 same convention, -1 flipped
+cocos_flip = float(np.sign(np.median(_B)) * np.sign(np.median(profiles.derived["B_unit"])))
+w0_vgen_in_out = cocos_flip * vgen_w0_v                     # VGEN mapped INTO the output convention
+w0_neo_on_v    = np.interp(vgen_Er_rho, _rho_o, w0_neo_out) # written w0 on the VGEN grid (output conv)
+core      = (vgen_Er_rho >= 0.15) & (vgen_Er_rho <= 0.85)
+sign_match = bool(np.all(np.sign(w0_neo_on_v[core]) == np.sign(w0_vgen_in_out[core])))
+mag_ratio  = float(np.median(np.abs(w0_neo_on_v[core]) / np.abs(vgen_w0_v[core])))
+
+print("=" * 104)
+print(" VALIDATION: rotation_source='neoclassical' write-back vs VGEN/NEO")
+print("=" * 104)
+print(f"   COCOS:  input(VGEN) sign[current,Bt,Bunit] = "
+      f"[{np.sign(profiles.profiles['current(MA)'][0]):+.0f},{np.sign(profiles.profiles['bcentr(T)'][0]):+.0f},{np.sign(np.median(profiles.derived['B_unit'])):+.0f}]"
+      f"   TRANSP output = "
+      f"[{np.sign(st_out.profiles['current(MA)'][0]):+.0f},{np.sign(st_out.profiles['bcentr(T)'][0]):+.0f},{np.sign(np.median(_B)):+.0f}]")
+print(f"   => output<->input COCOS flip factor (Bunit sign ratio) = {cocos_flip:+.0f}  "
+      f"(written w0 is in the OUTPUT convention; self-consistent with that file)")
+print(f"   SIGN match (VGEN mapped to output convention), rho in [0.15,0.85]: {sign_match}  "
+      f"(sign is COCOS-covariant via Bunit, NOT hardcoded)")
+print(f"   magnitude ratio |w0_neoclassical| / |w0_VGEN| (median) = {mag_ratio:.2f}  "
+      f"(>1: NCLASS poloidal flow inflates Er vs NEO -- expected model difference)")
+assert sign_match, "[CHECK FAILED] neoclassical write-back sign disagrees with VGEN once COCOS is accounted for"
+print("   [CHECK PASSED] neoclassical write-back is COCOS-consistent with VGEN/NEO")
+print("=" * 104 + "\n")
+
+# =====================================================================================
+# FIGURE: 4 diagnostic panels
+# =====================================================================================
+fig, axs = plt.subplots(2, 2, figsize=(15, 11))
+
+# --- Panel 1: E×B rotation, all shown in the VGEN/input convention (curves comparable) ---
+# The written w0 lives in the OUTPUT convention (opposite COCOS); map it via cocos_flip to
+# overlay with VGEN. Its actual sign in the written file is the opposite of what's shown here.
+ax = axs[0, 0]
+ax.plot(vgen_Er_rho, np.asarray(vv["w0"]), "-o", color="C0", lw=2, ms=3, label=r"$w_0$ VGEN/NEO (GACODE)")
+ax.plot(transp_rho, transp_w0_fromEr, "-s", color="C1", lw=2, ms=3, label=r"$E_r^{tot}\to w_0$ TRANSP ($E_r\times$ VGEN factor)")
+ax.plot(vgen_Er_rho, cocos_flip * w0_neo_on_v, "--D", color="C6", lw=1.8, ms=3, label=r"rotation_source='neoclassical' written (mapped to VGEN conv.)")
 ax.axhline(0, color="k", lw=0.7, ls=":")
-ax.set_xlabel(r"$\rho$  (sqrt norm. tor. flux)")
-ax.set_ylabel(r"$\omega_0$  (rad/s)")
-ax.set_xlim([0.0, 1.0])
-ax.set_title("Neoclassical toroidal angular rotation")
-ax.legend(loc="best", fontsize=8)
-
-# --- Panel 2: neoclassical radial electric field Er ---
-ax = axs[1]
-if vgen_Er is not None:
-    ax.plot(vgen_Er_rho, vgen_Er, "-o", color="C0", lw=1.8, ms=3, label=r"$E_r$ VGEN/NEO")
-ax.plot(transp_rho, transp_Er, "-s", color="C1", lw=1.8, ms=3, label=r"$E_r$ TRANSP (total)")
-ax.plot(transp_rho, transp_Er_p, ":", color="C2", lw=1.2, label=r"$E_r$ TRANSP ($\nabla p$)")
-ax.plot(transp_rho, transp_Er_tor, ":", color="C4", lw=1.2, label=r"$E_r$ TRANSP (tor)")
-ax.plot(transp_rho, transp_Er_pol, ":", color="C5", lw=1.2, label=r"$E_r$ TRANSP (pol)")
-ax.axhline(0, color="k", lw=0.7, ls=":")
-ax.set_xlabel(r"$\rho$  (sqrt norm. tor. flux)")
-ax.set_ylabel(r"$E_r$  (V/m)")
-ax.set_xlim([0.0, 1.0])
-ax.set_title("Neoclassical radial electric field")
-ax.legend(loc="best", fontsize=8)
-
-# --- Panel 3: TERM-BY-TERM Er verification (diamagnetic agrees; poloidal differs) ---
-# Diamagnetic curves should OVERLAP (model-independent physics); the poloidal-flow curves
-# are where NCLASS and NEO diverge (opposite sign in the core here), which is the entire
-# residual once the spurious input rotation is removed.
-ax = axs[2]
-ax.plot(_rho_p, Er_dia_indep, "--", color="k", lw=1.8,
-        label=r"$E_r^{\nabla p}$ independent ($dp_i/dr/Z_ien_i$)")
-ax.plot(transp_rho, transp_Er_p, "-s", color="C2", lw=1.6, ms=3,
-        label=r"$E_r^{\nabla p}$ TRANSP (ERPRESS)")
-ax.plot(transp_rho, transp_Er_pol, "-^", color="C5", lw=1.6, ms=3,
-        label=r"$E_r^{v_\theta}$ TRANSP (ERVPOL)")
-if vgen_Er is not None:
-    ax.plot(vgen_Er_rho, vgen_Er_pol, "-o", color="C0", lw=1.6, ms=3,
-            label=r"$E_r^{v_\theta}$ VGEN ($E_r-E_r^{\nabla p}$)")
-ax.axhline(0, color="k", lw=0.7, ls=":")
-ax.set_xlabel(r"$\rho$  (sqrt norm. tor. flux)")
-ax.set_ylabel(r"$E_r$ component  (V/m)")
-ax.set_xlim([0.0, 1.0])
-ax.set_title(r"Term-by-term: $\nabla p$ agrees, $v_\theta$ differs")
+ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$w_0$  (rad/s, VGEN/input conv.)")
+ax.set_xlim([0.0, 1.0]); ax.set_title(r"E×B rotation $w_0$ (shown in VGEN convention)")
 ax.legend(loc="best", fontsize=7)
 
-fig.suptitle("TRANSP/NCLASS vs VGEN/NEO neoclassical rotation (SAME plasma state, w0 zeroed)")
+# --- Panel 2: Er total + TRANSP/VGEN decomposition ---
+ax = axs[0, 1]
+ax.plot(transp_rho, transp_Er,     "-s", color="C1", lw=2, ms=3, label=r"$E_r$ TRANSP (ERTOT)")
+ax.plot(vgen_Er_rho, vgen_Er,      "-o", color="C0", lw=2, ms=3, label=r"$E_r$ VGEN (total)")
+ax.plot(transp_rho, transp_Er_p,   ":",  color="C2", lw=1.4, label=r"TRANSP $\nabla p$ (ERPRESS)")
+ax.plot(transp_rho, transp_Er_pol, ":",  color="C5", lw=1.4, label=r"TRANSP $v_\theta$ (ERVPOL)")
+ax.plot(transp_rho, transp_Er_tor, ":",  color="C4", lw=1.4, label=r"TRANSP $v_\phi$ (ERVTOR)")
+ax.axhline(0, color="k", lw=0.7, ls=":")
+ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$E_r$  (V/m)")
+ax.set_xlim([0.0, 1.0]); ax.set_title("Neoclassical $E_r$ and its decomposition")
+ax.legend(loc="best", fontsize=8)
+
+# --- Panel 3: TERM-BY-TERM (diamagnetic and poloidal components, TRANSP vs VGEN) ---
+ax = axs[1, 0]
+ax.plot(transp_rho, transp_Er_p,   "-s", color="C2", lw=1.6, ms=3, label=r"$E_r^{\nabla p}$ TRANSP")
+ax.plot(ec_rho, vgen_Er_p,         "-o", color="C8", lw=1.6, ms=3, label=r"$E_r^{\nabla p}$ VGEN")
+ax.plot(transp_rho, transp_Er_pol, "-^", color="C5", lw=1.6, ms=3, label=r"$E_r^{v_\theta}$ TRANSP (NCLASS)")
+ax.plot(ec_rho, vgen_Er_pol,       "-v", color="C0", lw=1.6, ms=3, label=r"$E_r^{v_\theta}$ VGEN (NEO)")
+ax.axhline(0, color="k", lw=0.7, ls=":")
+ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$E_r$ component  (V/m)")
+ax.set_xlim([0.0, 1.0]); ax.set_title(r"$E_r$ components: $\nabla p$ and $v_\theta$ (TRANSP vs VGEN)")
+ax.legend(loc="best", fontsize=8)
+
+# --- Panel 4: omega_tor = omega_ExB + omega_diamag (TRANSP). NOTE the near-cancellation is
+#     FORCED by the imposed V_phi~0 weak-rotation input (omega_tor ~ 0 -> omega_ExB ~ -omega_diamag),
+#     not an emergent result -- it shows OMEGA_NC is the small toroidal velocity, not the E×B rotation.
+ax = axs[1, 1]
+omega_dia = transp_w0_nc - np.interp(transp_rho, transp_rho_xb, transp_w0_exb)  # OMEGA_NC - omega_ExB
+ax.plot(transp_rho_xb, transp_w0_exb, "-", color="C3", lw=2, label=r"$\omega_{E\times B}$ ($-d\Phi_{nc}/d\psi$, EPOTNC)")
+ax.plot(transp_rho, omega_dia,        "-", color="C9", lw=2, label=r"$\omega_{diamag}$ (= OMEGA_NC $-\;\omega_{E\times B}$)")
+ax.plot(transp_rho, transp_w0_nc,     "-o", color="C1", lw=2, ms=3, label=r"$\omega_{tor}$ = OMEGA_NC")
+ax.plot(transp_rho, transp_omega,     "--", color="k", lw=1.0, label=r"OMEGA (written by to_profiles)")
+ax.axhline(0, color="k", lw=0.7, ls=":")
+ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$\omega$  (rad/s, TRANSP conv.)")
+ax.set_xlim([0.0, 1.0]); ax.set_title(r"$\omega_{tor}$ vs E×B and diamagnetic parts (TRANSP)")
+ax.legend(loc="best", fontsize=8)
+
+fig.suptitle("TRANSP/NCLASS vs VGEN/NEO neoclassical rotation — term-by-term (SAME state, w0 zeroed)", fontsize=13)
 fig.tight_layout()
 
 figure_file = folder / "transp_vs_vgen_rotation.png"

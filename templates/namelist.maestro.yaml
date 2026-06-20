@@ -601,12 +601,19 @@ maestro:
       # again) being sampled before heating / current diffusion have settled. null disables.
       min_extraction_flattop_fraction: 0.5
 
-      # Rotation handling for this TRANSP beat, BOTH directions: w0 IN (as the 'omg'
-      # U-File) and TRANSP's rotation OUT to the next beat (w0 in the output input.gacode).
-      # null = auto (pass w0 in when non-zero; carry TRANSP's rotation out), true = force,
-      # false = neither (keeps the chain at zero rotation / zero E×B shear for downstream
-      # PORTALS beats, even if the seed input.gacode carries a w0).
-      write_rotation: null
+      # How this TRANSP beat sets w0 (the GACODE w0 = E×B/potential rotation, -c dPhi/dpsi) for the
+      # next input.gacode. NB: this is the E×B rotation, NOT the toroidal angular velocity, and it
+      # is generally NONZERO even with zero toroidal rotation (the neoclassical Er drives it).
+      #   echo         : feed the seed rotation into TRANSP and write the resulting E×B rotation
+      #                  (carries the seed's contribution via the ERVTOR term + the neoclassical Er).
+      #   neoclassical : ship a ZERO omg U-File and write the weak-rotation (pure neoclassical) E×B
+      #                  rotation, ignoring any seed toroidal rotation. Lower fidelity than the
+      #                  NEO-VGEN path (transport.options.neo.vgen_exb_shear in the PORTALS beat)
+      #                  for the poloidal flow, but free inside the TRANSP beat.
+      #   off          : no omg U-File in and zero w0 out, even if the seed carries a rotation
+      #                  (also disables the NCLASS Er).
+      # (legacy 'write_rotation' still works: null/true -> echo, false -> off.)
+      rotation_source: echo
 
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
