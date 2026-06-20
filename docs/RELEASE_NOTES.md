@@ -38,6 +38,8 @@ DESCRIPTION
 
 *   🐛 **VGEN reuse on `cold_start=False`**: `NEO.run_vgen`'s "results already present" check listed the `out.vgen.*`/`vgen.dat` outputs without the `vgen/` subfolder prefix where VGEN actually writes them, so the check never found them and VGEN re-ran on every `cold_start=False` call. The paths are corrected, so a finished VGEN folder is now reused.
 
+*   🐛 **TRANSP `w0` is the E×B rotation, not the toroidal velocity**: `CDFtools.to_profiles` wrote `w0(rad/s) = OMEGA` (the toroidal angular velocity), but the GACODE `w0` is the E×B/potential rotation `-c dPhi/dpsi` (the same quantity VGEN populates). For a plasma with a neoclassical `Er` but small toroidal rotation this wrote a `w0` ~40x too small (the toroidal velocity nearly vanishes while the E×B rotation does not). A new CDF variable `TGLF_w0_exb = Er/(dpsi/dR)` (CDF-native, no `EPOTNC` derivative) is now written as `w0`, making the TRANSP→input.gacode path consistent with the VGEN/NEO path.
+
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
 *   🐛 **`mitim_check_maestro`** now recognizes the sharpness, confinement and lengyel beats (previously shown as `UNKNOWN`) by their `run_<type>` folder.

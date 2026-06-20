@@ -1011,6 +1011,21 @@ class transp_output:
         # GACODE rotation
 
         self.TGLF_w0 = 2 * np.pi * self.VtorkHz * 1e3  # in rad/s
+
+        # E×B (potential) rotation w0_exb = -c dPhi/dpsi_pol, the GACODE w0 convention (E×B
+        # rotation), in the SAME convention/grid as TGLF_w0. This -- NOT the toroidal angular
+        # velocity OMEGA (=TGLF_w0) -- is the rotation GACODE's w0(rad/s) actually represents
+        # (VGEN populates w0 the same way; cf. vgen.f90). Built from the total neoclassical Er
+        # (ERTOT, CDF-direct, which INCLUDES any prescribed toroidal rotation via its ERVTOR
+        # term) and the SMOOTH poloidal-flux gradient dpsi/dR on the low-field-side midplane:
+        #     w0_exb = Er_LFS / (dpsi_pol/dR_LFS)        [SI: V / (Wb/rad/m) = rad/s]
+        # This is -c dPhi/dpsi rewritten with the radial field, so it does NOT differentiate the
+        # noisy EPOTNC potential (cf. VtorkHz_nc_check); the q and Bunit of the GACODE
+        # force-balance form w0 = c q Er/(Bunit r |grad r|) cancel into dpsi/dR_LFS.
+        dpsidR = np.gradient(self.psi, axis=1) / np.gradient(self.rmaj_LFx, axis=1)
+        self.TGLF_w0_exb = self.Er_LF / dpsidR
+        self.TGLF_w0_exb[:, 0] = self.TGLF_w0_exb[:, 1]   # axis: dpsi/dR -> 0 (0/0), use the neighbor
+
         self.sign_it = -1
 
         vpar = -self.sign_it * (self.TGLF_R0 * self.TGLF_w0) / self.cs
@@ -15374,8 +15389,10 @@ class transp_output:
         profiles['qbeame(MW/m^3)'] = _p(self.Pnbie)
         profiles['qbeami(MW/m^3)'] = _p(self.Pnbii)
 
-        # Rotation  (time-averaged)
-        profiles['w0(rad/s)'] = _p(self.TGLF_w0)
+        # Rotation  (time-averaged). GACODE w0 is the E×B/potential rotation (-c dPhi/dpsi),
+        # NOT the toroidal angular velocity OMEGA (=TGLF_w0). Write the E×B rotation so the
+        # TRANSP path is consistent with the VGEN/NEO path (which populates w0 the same way).
+        profiles['w0(rad/s)'] = _p(self.TGLF_w0_exb)
 
         # Torque — full NBI momentum source: collisional + JxB + thermalization  (time-averaged)
         profiles['qmom(N/m^2)'] = _p(self.Pnbit_coll) + _p(self.Pnbit_jxb) + _p(self.Pnbit_therm)
