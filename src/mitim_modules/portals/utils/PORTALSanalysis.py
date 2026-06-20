@@ -568,9 +568,11 @@ class PORTALSanalyzer:
         #   3  PROFILES Ranges
         #   4  PROFILES - * + PROFILES Comparison + Powerstate (shared, via plotSummary)
         #   5  PORTALS Debugger
-        #   6  Transport models start — plotTransportModels offsets internally
-        #      (for CGYRO this resolves to slot 7 for the per-radius group and
-        #       slot 8 for the per-channel group; each group is single-colored).
+        #   6  PORTALS Rotation (only added when rotation is relevant — non-trivial w0
+        #      or transport.options.neo.vgen_exb_shear active)
+        #   7  Transport models start — plotTransportModels offsets internally
+        #      (for CGYRO this resolves to slot 8 for the per-radius group and
+        #       slot 9 for the per-channel group; each group is single-colored).
         # `tabs_colors_common` overrides this scheme with a single color for every
         # tab — used by callers that embed PORTALS plots inside a larger notebook
         # and want tabs to be visually grouped.
@@ -611,11 +613,18 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=_c(5))
         self.plotDebug(fig=fig)
 
-        # Transport models: CGYRO traces use _c(6) (per-radius, all same)
-        # and _c(7) (per-channel, all same). Other backends (TGLF/NEO)
+        # Rotation / E×B shear / diamagnetic drive — only worth a tab when rotation is
+        # relevant (non-trivial w0 or per-evaluation NEO/VGEN ExB shear); skipped for the
+        # common zero-rotation runs to avoid an empty tab.
+        if self._rotation_is_relevant():
+            fig = self.fn.add_figure(label="PORTALS Rotation", tab_color=_c(6))
+            self.plotRotation(fig=fig)
+
+        # Transport models: CGYRO traces use _c(8) (per-radius, all same)
+        # and _c(9) (per-channel, all same). Other backends (TGLF/NEO)
         # offset internally from fn_color.
         if plot_transport_models and len(self.transport_model_objects) > 0:
-            self.plotTransportModels(fn=self.fn, fn_color=_c(6))
+            self.plotTransportModels(fn=self.fn, fn_color=_c(7))
         
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
@@ -639,6 +648,30 @@ class PORTALSanalyzer:
 
     def plotDebug(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotDebug(self, **kwargs)
+
+    def plotRotation(self, **kwargs):
+        PORTALSplot.PORTALSanalyzer_plotRotation(self, **kwargs)
+
+    def _rotation_is_relevant(self):
+        """Whether the PORTALS Rotation tab is worth showing for this run.
+
+        True if PORTALS recomputed the neoclassical ExB rotation every evaluation
+        (transport.options.neo.vgen_exb_shear) or if any evaluation carries a
+        non-trivial w0; False for the common zero-rotation runs.
+        """
+        try:
+            vgen_exb = self.portals_parameters["transport"]["options"]["neo"]["vgen_exb_shear"]
+            if vgen_exb not in (None, False):
+                return True
+        except (KeyError, TypeError):
+            pass
+        try:
+            for power in self.powerstates:
+                if np.nanmax(np.abs(power.profiles.profiles["w0(rad/s)"])) > 1.0:
+                    return True
+        except (KeyError, TypeError, AttributeError):
+            pass
+        return False
 
     def plotTransportModels(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotTransportModels(self, **kwargs)

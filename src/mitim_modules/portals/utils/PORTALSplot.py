@@ -14,6 +14,12 @@ from IPython import embed
 factor_dw0dr = 1e-5
 label_dw0dr = "$-d\\omega_0/dr$ (krad/s/cm)"
 
+# Smoothing strength VGEN applies to the kinetic profiles before computing Er in the PORTALS
+# vgen_exb_shear path (TRANSPORTtools calls run_vgen(smooth_profiles=True) with the run_vgen
+# default). Used by the Rotation tab to reproduce what VGEN integrated. See
+# gacode_state.smooth_profiles / NEOtools.run_vgen.
+VGEN_RELATIVE_SMOOTHING = 0.005
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Plotting methods for PORTALS class
 # ---------------------------------------------------------------------------------------------------------------------
@@ -2141,6 +2147,180 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         lab = 'Optimization',
     )
     
+def PORTALSanalyzer_plotRotation(self, fig=None):
+    """
+    Per-evaluation evolution of the E×B rotation, the E×B shearing rate and the ion
+    pressure gradient.
+
+    This view is aimed at runs where PORTALS recomputes the neoclassical (+diamagnetic)
+    rotation every evaluation (transport.options.neo.vgen_exb_shear): as the kinetic
+    profiles evolve, the diamagnetic drive (-dp_i/dr) changes, which moves both the E×B
+    rotation w0 and the resulting E×B shearing rate. Overlaying -dp_i/dr against w0 lets
+    one explore visually how much of the rotation change is diamagnetic in origin.
+    """
+    from mitim_tools.gacode_tools import NEOtools
+    from mitim_tools.misc_tools import MATHtools
+
+    if fig is None:
+        plt.ion()
+        fig = plt.figure(figsize=(13, 12))
+
+    # Left column (top->bottom): ion pressure (full radius), its gradient (raw+smoothed),
+    # the E×B rotation w0. Right column: VEXB_SHEAR profile into TGLF (top) and the per-radius
+    # |VEXB_SHEAR| evolution per evaluation (bottom, spanning two rows).
+    axs = fig.subplot_mosaic(
+        [
+            ["pi", "exb"],
+            ["dpi", "exb_evol"],
+            ["w0", "exb_evol"],
+        ]
+    )
+
+    n = len(self.powerstates)
+
+    # Pre-compute, for every evaluation, the radial profiles and the E×B shearing rate
+    # (same formula TGLF uses for VEXB_SHEAR). Reused by the profile panels (subsampled)
+    # and the per-radius evolution panel (all evaluations).
+    roa_all = [self.powerstates[i].profiles.derived["roa"] for i in range(n)]
+    vexb_all = [NEOtools._compute_vexb_shear(self.powerstates[i].profiles) for i in range(n)]
+
+    # Restrict the gradient/rotation/shear panels to the predicted core: beyond the outermost
+    # predicted radius w0/VEXB_SHEAR are just VGEN's flat interpolation, and the numerical
+    # derivative spikes at the VGEN window boundary. The ion pressure itself is meaningful
+    # everywhere, so it is shown over the full radius.
+    roa_hi = float(self.roa.max())
+
+    # Did VGEN smooth the kinetic profiles before computing Er? Only then is overlaying the
+    # smoothed pressure gradient meaningful (it is what VGEN actually integrated). The raw
+    # gradient is piecewise-linear (kinks at the control points from the piecewise-constant a/L).
+    try:
+        _vgen = self.portals_parameters["transport"]["options"]["neo"]["vgen_exb_shear"]
+        vgen_smoothing = _vgen not in (None, False)
+    except (KeyError, TypeError):
+        vgen_smoothing = False
+
+    # Curve set: a manageable number of evaluations, always including the first, the best
+    # and the last, so the start/converged endpoints are visible even when subsampling.
+    step = max(1, n // 8)
+    evals = sorted(set(list(range(0, n, step)) + [0, self.ibest, n - 1]))
+    evals = [i for i in evals if 0 <= i < n]
+
+    colors, _ = GRAPHICStools.colorTableFade(len(evals), startcolor="b", endcolor="r", alphalims=[1.0, 1.0])
+
+    for j, i in enumerate(evals):
+        p = self.powerstates[i].profiles
+        roa = roa_all[i]
+
+        is_best = i == self.ibest
+        lw = 2.5 if is_best else 1.0
+        ms = 5.5 if is_best else 4.0
+        lab = f"#{i}"
+        if is_best:
+            lab += " (best)"
+        elif i == 0:
+            lab += " (first)"
+        elif i == n - 1:
+            lab += " (last)"
+
+        # Line over `mask` + scatter markers at the predicted control points.
+        m_core = roa <= roa_hi
+        m_full = np.ones_like(roa, dtype=bool)
+        def _line_scatter(ax, y, mask, label=None):
+            ax.plot(roa[mask], y[mask], c=colors[j], lw=lw, label=label)
+            ax.plot(self.roa, np.interp(self.roa, roa, y), "o", c=colors[j],
+                    markersize=ms, markeredgecolor="k", markeredgewidth=0.3, zorder=5)
+
+        # Ion pressure (thermal) over the FULL radius
+        pi = p.derived["pi_thr"]
+        _line_scatter(axs["pi"], pi, m_full)
+
+        # Ion pressure gradient -dp_i/dr (thermal ions) over the core -- the diamagnetic drive.
+        # pi_thr in MPa, r in m  ->  -dp_i/dr in MPa/m, x1e3 -> kPa/m
+        dpidr = MATHtools.deriv(p.derived["r"], pi, array=True)
+        _line_scatter(axs["dpi"], -dpidr * 1e3, m_core)
+        # Overlay (dashed) the VGEN-smoothed gradient -- what VGEN actually integrated for Er.
+        # The raw curve above is piecewise-linear (kinks at the control points); VGEN smooths
+        # Te/Ti/ne/ni via gradient-integration first, so reproduce that here (same routine, same
+        # strength) rather than reading the per-evaluation VGEN folder (it may be cleaned up).
+        if vgen_smoothing:
+            ps = copy.deepcopy(p)
+            ps.smooth_profiles(relative_smoothing=VGEN_RELATIVE_SMOOTHING)
+            ps.derive_quantities(rederiveGeometry=False)
+            dpidr_s = MATHtools.deriv(ps.derived["r"], ps.derived["pi_thr"], array=True)
+            axs["dpi"].plot(roa[m_core], (-dpidr_s * 1e3)[m_core], "--", c=colors[j], lw=lw)
+
+        # E×B rotation w0 (GACODE convention: -c dPhi/dpsi_pol), in krad/s, over the core
+        _line_scatter(axs["w0"], p.profiles["w0(rad/s)"] * 1e-3, m_core, label=lab)
+
+        # E×B shearing rate (VEXB_SHEAR in TGLF notation) profile, over the core
+        if vexb_all[i] is not None:
+            _line_scatter(axs["exb"], vexb_all[i], m_core)
+
+    # Mark the PORTALS control points; keep every profile panel's x-axis on the full [0, 1]
+    # radius so the stacked left-column panels line up vertically with the (full-radius) ion
+    # pressure -- even though the gradient / rotation / shear curves are only drawn over the
+    # predicted core (their edge region is just VGEN's flat interpolation / a derivative spike).
+    for ax_name in ("pi", "dpi", "w0", "exb"):
+        ax = axs[ax_name]
+        for roap in self.roa:
+            ax.axvline(roap, color="k", lw=0.5, ls=":", alpha=0.3)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.set_xlim([0, 1.0])
+    # x labels only on the bottom panel of each column (the others share the same r/a axis),
+    # to avoid the title/label collisions of stacked panels.
+    for ax_name in ("pi", "dpi"):
+        axs[ax_name].tick_params(labelbottom=False)
+    axs["w0"].set_xlabel("$r/a$")
+    axs["exb"].set_xlabel("$r/a$")
+
+    axs["pi"].set_ylabel("$p_i$ (MPa)")
+    axs["pi"].set_title("Ion pressure (thermal)")
+    axs["pi"].set_ylim(bottom=0)
+
+    axs["dpi"].set_ylabel("$-dp_i/dr$ (kPa/m)")
+    axs["dpi"].set_title("Ion pressure gradient (diamagnetic drive)")
+    if vgen_smoothing:
+        from matplotlib.lines import Line2D
+        axs["dpi"].legend(handles=[
+            Line2D([0], [0], color="k", lw=1.3, label="raw (piecewise-linear $a/L$)"),
+            Line2D([0], [0], color="k", lw=1.3, ls="--", label="VGEN-smoothed"),
+        ], loc="best", fontsize=7)
+
+    axs["w0"].set_ylabel("$\\omega_0$ (krad/s)")
+    axs["w0"].set_title("E×B rotation $\\omega_0$")
+    axs["w0"].axhline(0, color="k", lw=0.7, ls="--")
+    axs["w0"].legend(loc="best", fontsize=8)
+
+    axs["exb"].set_ylabel("$\\gamma_{E\\times B}\\, a/c_s$")
+    axs["exb"].set_title("E×B shearing rate into TGLF (VEXB_SHEAR)")
+    axs["exb"].axhline(0, color="k", lw=0.7, ls="--")
+
+    # ---------------------------------------------------------------------------------
+    # TGLF local |E×B shear| (|VEXB_SHEAR|) at each predicted radius vs evaluation, on a log
+    # y-axis. One line per control point, all evaluations, so the per-radius convergence is
+    # visible. The value is the VEXB_SHEAR profile interpolated onto the predicted r/a points.
+    # ---------------------------------------------------------------------------------
+    ax = axs["exb_evol"]
+    iters = np.arange(n)
+    colors_r = GRAPHICStools.listColors()
+    for k, roap in enumerate(self.roa):
+        vk = np.array([
+            np.interp(roap, roa_all[i], vexb_all[i]) if vexb_all[i] is not None else np.nan
+            for i in range(n)
+        ])
+        ax.plot(iters, np.abs(vk), "-o", markersize=3, c=colors_r[k % len(colors_r)], label=f"$r/a={roap:.2f}$")
+    ax.axvline(self.ibest, color="k", lw=0.8, ls="--", alpha=0.6, label="best")
+    ax.set_yscale("log")
+    ax.set_xlabel("Evaluation")
+    ax.set_ylabel("$|\\gamma_{E\\times B}|\\, a/c_s$")
+    ax.set_title("TGLF local |E×B shear| (VEXB_SHEAR) — evolution per evaluation")
+    ax.set_xlim([0, max(1, n - 1)])
+    ax.legend(loc="best", fontsize=7, ncol=2)
+    GRAPHICStools.addDenseAxis(ax)
+
+    fig.tight_layout()
+
+
 def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     print("- Plotting PORTALS Simulations - Transport models")
