@@ -82,6 +82,8 @@ DESCRIPTION
 
 *   🪚 **Sawtooth floor defaults**: `min_sawtooth_period_ms` defaults to **1 ms** in `TRANSPbeat.prepare` (and `NMLtools` keeps `c_sawtooth(2)=0.1`), so namelists without the key reproduce the historical ~1 ms behavior; the maestro **template** sets **10 ms**. `null` bypasses the adaptive floor.
 
+*   🔒 **PORTALS `w0` prediction vs `vgen_exb_shear`**: predicting `w0` (`solution.predicted_channels`) together with `transport.options.neo.vgen_exb_shear` now raises in `prep()`. `vgen_exb_shear` recomputes `w0` from the neoclassical Er at every evaluation, which would overwrite the predicted rotation and make its momentum-flux match a no-op — the two are mutually exclusive, so pick one.
+
 ---
 
 *Thanks to everyone who contributed to this release: USER LIST. Portions of this release were developed with AI-assisted coding (Claude Code).*

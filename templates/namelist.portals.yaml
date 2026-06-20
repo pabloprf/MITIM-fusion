@@ -266,6 +266,8 @@ transport:
       #     vel: 1         # Velocity method: 1 = NEO weak rotation limit
       #     nth: "17,39"   # Min,max poloidal theta resolution
       #     matched_ion: 1 # Ion species index to match (1-indexed)
+      # NOTE: mutually exclusive with predicting "w0" (solution.predicted_channels): this recomputes
+      # w0 every evaluation, which would overwrite the predicted rotation. PORTALS raises if both are set.
       vgen_exb_shear: null
 
     # *********************************************************************************************************

@@ -143,6 +143,21 @@ class portals(STRATEGYtools.opt_evaluator):
         # Check that I haven't added a deprecated variable that I expect some behavior from
         IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read", "portals_transformation_variables"], askQuestions=askQuestions)
 
+        # w0 prediction and per-evaluation NEO/VGEN ExB shear are mutually exclusive:
+        # vgen_exb_shear recomputes w0(rad/s) from the neoclassical (+diamagnetic) Er
+        # inside _modify_profiles() on every evaluation (see TRANSPORTtools), which would
+        # overwrite the predicted rotation. The predicted aLw0 design variable would then
+        # have no effect on the transport calculation, making the momentum-flux match
+        # meaningless. Fail loudly rather than silently clobber the prediction.
+        vgen_exb_shear = self.portals_parameters["transport"].get("options", {}).get("neo", {}).get("vgen_exb_shear", None)
+        if ("w0" in self.portals_parameters["solution"]["predicted_channels"]) and (vgen_exb_shear not in (None, False)):
+            raise ValueError(
+                "PORTALS: predicting 'w0' together with transport.options.neo.vgen_exb_shear is not allowed. "
+                "vgen_exb_shear overwrites w0(rad/s) every evaluation, so the predicted rotation (and its "
+                "momentum-flux match) would have no effect. Either remove 'w0' from solution.predicted_channels "
+                "or disable vgen_exb_shear."
+            )
+
         key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
