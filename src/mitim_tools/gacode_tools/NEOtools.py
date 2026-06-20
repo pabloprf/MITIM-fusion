@@ -655,15 +655,19 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         vgenOptions.setdefault("rho_range", rho_range)
 
         # ---- Decide whether to (re)run
+        # NOTE: VGEN writes ALL its outputs under folder_vgen/vgen/ (see read_vgen and
+        # GACODErun.runVGEN), so every entry must carry the "vgen" subfolder prefix.
+        # Previously the out.vgen.* / vgen.dat entries lacked it, so the check never found
+        # them and VGEN re-ran on every cold_start=False call.
         runThisCase = not check_if_files_exist(
             self.folder_vgen,
             [
                 ["vgen", "input.gacode"],
                 ["vgen", "input.neo.gen"],
-                ["out.vgen.neoequil00"],
-                ["out.vgen.neoexpnorm00"],
-                ["out.vgen.neontheta00"],
-                ["vgen.dat"],
+                ["vgen", "out.vgen.neoequil00"],
+                ["vgen", "out.vgen.neoexpnorm00"],
+                ["vgen", "out.vgen.neontheta00"],
+                ["vgen", "vgen.dat"],
             ],
         )
 

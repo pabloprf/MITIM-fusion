@@ -36,6 +36,8 @@ DESCRIPTION
 
 *   🐛 **MAESTRO TRANSP early-extraction floor** (`min_extraction_flattop_fraction`, default 0.5): a plasma whose only sawtooth fired early (then never again) had its profiles extracted too soon — before heating / current diffusion settled. The extraction is now floored at this fraction of the flattop window: if the `extract_at` slice lands earlier, it moves to the first slice at/after the floor. Healthy runs (last sawtooth already past mid-flattop) are unchanged; `null` disables.
 
+*   🐛 **VGEN reuse on `cold_start=False`**: `NEO.run_vgen`'s "results already present" check listed the `out.vgen.*`/`vgen.dat` outputs without the `vgen/` subfolder prefix where VGEN actually writes them, so the check never found them and VGEN re-ran on every `cold_start=False` call. The paths are corrected, so a finished VGEN folder is now reused.
+
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
 *   🐛 **`mitim_check_maestro`** now recognizes the sharpness, confinement and lengyel beats (previously shown as `UNKNOWN`) by their `run_<type>` folder.
