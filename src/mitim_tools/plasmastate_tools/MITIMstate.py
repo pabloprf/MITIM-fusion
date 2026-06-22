@@ -1171,6 +1171,9 @@ class mitim_state:
             Ni[i] = np.interp(rhos[i], self.profiles["rho(-)"], Ni_x)
 
         return We, Wi, Ne, Ni
+    
+    def calcRelativeCosts(self): 
+        self.derived['Pfus_per_volume'] = self.derived['Pfus'] / self.derived['volume']
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
@@ -1178,6 +1181,9 @@ class mitim_state:
         Prad_ratio_brem = self.derived['Prad_brem']/self.derived['Prad'] 
         Prad_ratio_line = self.derived['Prad_line']/self.derived['Prad'] 
         Prad_ratio_sync = self.derived['Prad_sync']/self.derived['Prad'] 
+
+        if 'Pfus_per_volume' not in self.derived:
+            self.calcRelativeCosts()
 
         try:
             print(f"\n{(label + ', summary:') if label != '' else 'Summary:'}")
@@ -1199,6 +1205,8 @@ class mitim_state:
             print(f"|\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
             print(f"|\tPrad  =  {self.derived['Prad']:.1f}MW ({Prad_ratio*100.0:.1f}% of total) ({Prad_ratio_brem*100.0:.1f}% brem, {Prad_ratio_line*100.0:.1f}% line, {Prad_ratio_sync*100.0:.1f}% sync)")
             print("|\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
+            print("| Relative cost:")
+            print("|\tPfus_per_volume = {0:.2f} MW/m^3".format(self.derived["Pfus_per_volume"]))
             print("| Operational point ( [<ne>, <Te>] = [{0:.2f}, {1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("|\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
             print("|\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
