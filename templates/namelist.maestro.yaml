@@ -91,13 +91,19 @@ plasma:
       n_mxh: 5
 
       # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
+      # The non-null options below extract these ONCE at initialization (with the chosen parameterization) and FREEZE them:
+      # every later EPED beat reuses those same fixed values, even though the real internal flux surfaces drift as the
+      # equilibrium evolves (Shafranov shift, beta, ...). This pinning is the purpose of the knob.
       # Options:
       #      analytic:                Use the analytical formulas (not the best fit) to Turnbull-Miller parameters
       #      analytic_interpolation:  Use the analytical formulas (not the best fit) to Turnbull-Miller parameters, but interpolating the coefficients at psiN=0.995
       #      turnbull:                Use Turnbull-Miller parameterization via best-fit methods
       #      mxh:                     Use MXH parameterization via best-fit methods
       #      [miller:                  Use Miller parameterization via best-fit methods] -> NOT AVAILABLE YET
-      #      null:                    No trans_beat parameters will be set
+      #      null:                    Do NOT freeze: store nothing in trans_beat, so each EPED beat instead recomputes the
+      #                               99.5% shaping from its own current equilibrium -> the values evolve beat-to-beat
+      # NOTE: if initialization_type = separatrix, only null vs non-null is honored; the parameterization above is ignored
+      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four)
       freeze_995_from: analytic_interpolation
 
       # If initialization_type = geqdsk or fibe: path to file
