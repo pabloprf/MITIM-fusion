@@ -45,6 +45,7 @@ Caveats (please verify against your setup):
 """
 
 import copy
+import shutil
 from collections import OrderedDict
 from pathlib import Path
 
@@ -377,6 +378,13 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
 
     sign_it = -np.sign(p.profiles["current(MA)"][-1])
 
+    # QuaLiKiz normalises logarithmic gradients by major radius R (R/LT, R/Ln),
+    # whereas MITIM's gacode convention uses minor radius a (a/LT, a/Ln).
+    # Convert: R/L = (R/a) * (a/L), using the local Ro already interpolated above.
+    Ro_over_a = interp_vec(p.profiles["rmaj(m)"]) / p.derived["a"]
+
+    cref = 3.094969e5  # defined in QuaLiKiz as sqrt(1 keV / proton_mass)
+
     # MHD alpha = -(2 mu0 R q^2 / B^2) dp/dr
     dpdr = p._calculate_pressure_gradient_from_aLx(
         p.derived["pe"], p.derived["pi_all"][:, :n_ions],
@@ -398,8 +406,8 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
     # best-effort R*Omega_tor/c_s) and gammaE are passed; QuaLiKizXpoint.set_puretor()
     # derives the rest assuming pure toroidal rotation.
     gamma_eb0 = -p._deriv_gacode(p.profiles["w0(rad/s)"]) * p.derived["r"] / np.abs(p.profiles["q(-)"])
-    vexb_shear = -sign_it * gamma_eb0 * p.derived["a"] / p.derived["c_s"]
-    vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / p.derived["c_s"]
+    vexb_shear = -sign_it * gamma_eb0 * p.profiles["rmaj(m)"] / cref
+    vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / cref
 
     geometry_scan = {
         "x": roa_targets,
@@ -415,8 +423,8 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
     electron_scan = {
         "Te": interp_vec(p.profiles["te(keV)"]),
         "ne": interp_vec(p.profiles["ne(10^19/m^3)"]),
-        "Ate": interp_vec(p.derived["aLTe"]),
-        "Ane": interp_vec(p.derived["aLne"]),
+        "Ate": interp_vec(p.derived["aLTe"]) * Ro_over_a,
+        "Ane": interp_vec(p.derived["aLne"]) * Ro_over_a,
     }
 
     ion_scan = {}
@@ -426,8 +434,8 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         ion_types.append(3 if is_fast else 1)
         ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
         ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
-        ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i])
-        ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i])
+        ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
+        ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i]) * Ro_over_a
 
     # Representative (rho[0]) placeholder values for the xpoint_base -- every
     # scanned key above is overwritten per-point for ALL dimx points by
@@ -546,12 +554,26 @@ def _modify_plan(plan, code_settings=None, extraOptions={}, multipliers={}):
 
 
 def _resolve_binary(start_folder):
+    import os
+    # 1. Explicit override via environment variable
+    env_bin = os.environ.get("QUALIKIZ_BIN")
+    if env_bin:
+        return Path(env_bin)
+
+    # 2. Library search near the run folder
     try:
         return find_qualikiz_binary(startdir=Path(start_folder))
     except FileNotFoundError:
-        # Harmless fallback -- QuaLiKizRun.prepare() only warns (does not fail)
-        # if the binary it tries to symlink to does not exist locally. Actual
-        # remote execution resolves "QuaLiKiz" via PATH (see code_call above),
-        # set the QUALIKIZ_BIN env var to silence this fallback.
-        print("\t- Could not locate a local QuaLiKiz binary (set QUALIKIZ_BIN); using a placeholder name for QuaLiKizRun's bookkeeping symlink", typeMsg="w")
-        return "QuaLiKiz"
+        pass
+
+    # 3. Fall back to PATH lookup.
+    # Do NOT call .resolve() — that follows symlinks and may change the
+    # filename (e.g. QuaLiKiz -> QuaLiKiz-3.0.0), which would break the
+    # symlink name that QuaLiKizRun.prepare() creates from binaryrelpath.name.
+    # shutil.which already returns an absolute path with the correct name.
+    which = shutil.which("QuaLiKiz")
+    if which:
+        return Path(which)
+
+    print("\t- Could not locate a QuaLiKiz binary via QUALIKIZ_BIN, filesystem search, or PATH; symlink will be broken", typeMsg="w")
+    return "QuaLiKiz"

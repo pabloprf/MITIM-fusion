@@ -1,6 +1,7 @@
 import numpy as np
 from mitim_tools.qualikiz_tools import QLKtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
+from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as _interp
 
 
 class qualikiz_model:
@@ -72,13 +73,29 @@ class qualikiz_model:
             Qi[i] = float(out["efi_GB"].values.sum())
             # pfi_GB: ion particle flux, dims [dimx, nions] → pick impurity species
             GZ[i] = float(out["pfi_GB"].values[ion_OI_position_in_ion_list])
-            # vci_GB: ion toroidal angular momentum flux, dims [dimx, nions].
+            # vfi_GB: ion toroidal angular momentum flux, dims [dimx, nions].
             # Only written when phys_meth >= 1 (STANDARD/ROTATION presets); fall
             # back to 0 (momentum not predicted) when absent.
             try:
-                Mt[i] = float(out["vci_GB"].values.sum())
+                Mt[i] = float(out["vfi_GB"].values.sum())
             except KeyError:
                 pass
+
+        # QuaLiKiz normalises its GB outputs with B0 (on-axis field), but MITIM's
+        # internal GB convention uses B_unit.  Since Q_GB ∝ ρ_s² ∝ B⁻², the
+        # conversion factor from QuaLiKiz GB → MITIM GB is (B_unit/B0)² at each
+        # radius.  This applies equally to all flux channels.
+        p = self._profiles_transport_for("turb")
+        B0 = float(np.abs(p.profiles["bcentr(T)"][-1]))
+        B_unit_at_rhos = _interp(
+            np.array(rho_locations), p.profiles["rho(-)"], p.derived["B_unit"]
+        )
+        b_correction = (B_unit_at_rhos / B0) ** 2
+        Qe *= b_correction
+        Qi *= b_correction
+        Ge *= b_correction
+        GZ *= b_correction
+        Mt *= b_correction
 
         Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
         Flux_std  = np.abs(Flux_mean) * percent_error / 100.0
