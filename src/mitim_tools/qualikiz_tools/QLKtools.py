@@ -235,17 +235,23 @@ class QuaLiKiz:
         code_call = self.run_specifications["code_call"]
 
         rundir = qlk_run.rundir
-        tmpFolder = self.FolderGACODE / f"tmp_{code}"
-        IOtools.askNewFolder(tmpFolder, force=True)
 
-        self.simulation_job = FARMINGtools.mitim_job(tmpFolder)
+        # FARMINGtools requires input_folders to be relative to folder_local.
+        # rundir (e.g. .../base_qlk) is a direct child of its parent, so using
+        # rundir.parent as folder_local satisfies that constraint without an
+        # extra copy step.  After retrieval, outputs land at
+        # folder_local/base_qlk/... which is already rundir/..., so no
+        # post-processing move is needed.
+        folder_local = rundir.parent
+
+        self.simulation_job = FARMINGtools.mitim_job(folder_local)
         self.simulation_job.define_machine(
             code,
             f"mitim_{code}_{extra_name}",
             launchSlurm=launchSlurm,
         )
 
-        rundir_red = rundir.relative_to(rundir.parent).as_posix()
+        rundir_red = rundir.name
 
         command = code_call(folder=rundir_red, n=resources_per_call)
 
@@ -256,8 +262,6 @@ class QuaLiKiz:
         )
 
         self.simulation_job.run(removeScratchFolders=True, attempts_execution=attempts_execution)
-
-        self._organize_results(qlk_run, tmpFolder)
 
     def _organize_results(self, qlk_run, tmpFolder):
 
