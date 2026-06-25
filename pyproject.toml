@@ -72,6 +72,9 @@ lengyel = [
   "extended-lengyel",
   "radas",
 ]
+mds = [
+  "mdsthin",
+]
 test = [
   "pytest",
   "coverage",
