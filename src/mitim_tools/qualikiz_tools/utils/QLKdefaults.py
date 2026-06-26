@@ -10,10 +10,10 @@ section.
 # Minimum working set (fast, low-resolution, useful for quick checks)
 _MINIMAL = {
     "phys_meth": 0,
-    "coll_flag": True,
+    "coll_flag": 1,
     "rot_flag": 0,
-    "verbose": True,
-    "separateflux": False,
+    "verbose": 0,
+    "separateflux": 0,
     "numsols": 2,
     "relacc1": 1e-2,
     "relacc2": 5e-2,
@@ -28,16 +28,16 @@ _MINIMAL = {
 # Default/standard set
 _STANDARD = {
     "phys_meth": 2,
-    "coll_flag": True,
+    "coll_flag": 1,
     "rot_flag": 0,
-    "verbose": True,
-    "separateflux": True,
+    "verbose": 0,
+    "separateflux": 1,
     "numsols": 3,
     "relacc1": 1e-3,
-    "relacc2": 2e-2,
+    "relacc2": 1e-2,
     "maxruns": 1,
-    "maxpts": 5e5,
-    "timeout": 80,
+    "maxpts": 1e6,
+    "timeout": 60,
     "ETGmult": 1,
     "collmult": 1,
     "integration_routine": 1,
@@ -77,7 +77,7 @@ _PRESETS = {
         "timeout": 30,
     },
     "ROTATION": {
-        "rot_flag": 1,
+        "rot_flag": 2,
     },
 }
 
