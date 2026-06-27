@@ -414,7 +414,7 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         "rho": rhos,
         "Ro": interp_vec(p.profiles["rmaj(m)"]),
         "q": np.abs(interp_vec(p.profiles["q(-)"])),
-        "smag": interp_vec(p.derived["s_q"]),
+        "smag": interp_vec(p.derived["s_hat"]),
         "alpha": interp_vec(alpha_mhd),
         "Machtor": interp_vec(vpar),
         "gammaE": interp_vec(vexb_shear),
@@ -431,7 +431,7 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
     ion_types = []
     for i in range(n_ions):
         is_fast = p.Species[i].get("S", "therm") == "fast"
-        ion_types.append(4 if is_fast else 1)
+        ion_types.append(3 if is_fast else 1)
         ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
         ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
         ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
@@ -465,9 +465,10 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         for i in range(n_ions)
     ])
 
-    thermal_indices = [i for i in range(n_ions) if ion_types[i] != 4]
+    thermal_indices = [i for i in range(n_ions) if ion_types[i] != 3]
     #qn_ion_index = thermal_indices[-1] if thermal_indices else n_ions - 1
-    qn_ion_index = 0
+    z_indices = [p.Species[i]["Z"] for i in range(n_ions) if ion_types[i] != 3]
+    qn_ion_index = z_indices.index(max(z_indices))
 
     meta_kwargs = QLKdefaults.addQLKcontrol(code_settings)
     kthetarhos = QLKdefaults.default_kthetarhos()
