@@ -54,31 +54,32 @@ common = dict(shots=shots, t_window=(1300, 4600), shade=(3800, 4100),
 with DIIIDConnection(tunnel_host=tunnel_host) as conn:
 
     # --- Tab 1: a broad "overview" set, one signal per panel (auto 3-column grid)
+    #     (units go straight into the ylabel string)
     overview(layout=[
-        Panel(r"$I_p$",       [Trace("ip", scale=1e-6)],            units="MA"),
-        Panel(r"$B_T$",       [Trace("bt")],                        units="T"),
-        Panel(r"$\bar{n}_e$", [Trace("density", scale=1e-14)],      units=r"$10^{20}$m$^{-3}$"),
-        Panel(r"$W_{MHD}$",   [Trace("wmhd", scale=1e-6)],          units="MJ"),
-        Panel(r"$P_{NBI}$",   [Trace("pinj", scale=1e-3, avg=200)], units="MW"),
-        Panel(r"$P_{rad}$",   [Trace("prad_tot", scale=1e-6)],      units="MW"),
-        Panel(r"$\beta_N$",   [Trace("betan")]),
-        Panel(r"$q_{95}$",    [Trace("q95")]),
-        Panel(r"$\tau_E$",    [Trace("taue")],                      units="s"),
+        Panel(r"$I_p$ [MA]",            [Trace("ip", scale=1e-6)]),
+        Panel(r"$B_T$ [T]",             [Trace("bt")]),
+        Panel(r"$\bar{n}_e$ [$10^{20}$m$^{-3}$]", [Trace("density", scale=1e-14)]),
+        Panel(r"$W_{MHD}$ [MJ]",        [Trace("wmhd", scale=1e-6)]),
+        Panel(r"$P_{NBI}$ [MW]",        [Trace("pinj", scale=1e-3, avg=200)]),
+        Panel(r"$P_{rad}$ [MW]",        [Trace("prad_tot", scale=1e-6)]),
+        Panel(r"$\beta_N$",             [Trace("betan")]),
+        Panel(r"$q_{95}$",              [Trace("q95")]),
+        Panel(r"$\tau_E$ [s]",          [Trace("taue")]),
     ], name="overview", connection=conn, fig=fn.add_figure(label="Overview"), **common)
 
     # --- Tab 2: a curated "custom" engineering set in explicit columns + equilibrium
     overview(layout=[
         [   # column 1
-            Panel(r"$I_p$",    [Trace("ip", scale=1e-6)],                 units="MA"),
-            Panel(r"$\kappa$", [Trace("kappa")]),
-            Panel(r"$\delta$", [Trace(["tritop", "tribot"], reduce="mean")]),
-            Panel(r"$q_{95}$", [Trace("q95")]),
+            Panel(r"$I_p$ [MA]", [Trace("ip", scale=1e-6)]),
+            Panel(r"$\kappa$",   [Trace("kappa")]),
+            Panel(r"$\delta$",   [Trace(["tritop", "tribot"], reduce="mean")]),
+            Panel(r"$q_{95}$",   [Trace("q95")]),
         ],
         [   # column 2
-            Panel(r"$\bar{n}_e$", [Trace("density", scale=1e-14)],        units=r"$10^{20}$m$^{-3}$"),
-            Panel(r"$W_{MHD}$",   [Trace("wmhd", scale=1e-6)],            units="MJ"),
-            Panel(r"$Z_{eff}$",   [Trace("zeff")],                        ylim=(1.0, 3.0)),
-            Panel(r"$\tau_E$",    [Trace("taue")],                        units="s"),
+            Panel(r"$\bar{n}_e$ [$10^{20}$m$^{-3}$]", [Trace("density", scale=1e-14)]),
+            Panel(r"$W_{MHD}$ [MJ]", [Trace("wmhd", scale=1e-6)]),
+            Panel(r"$Z_{eff}$",      [Trace("zeff")], ylim=(1.0, 3.0)),
+            Panel(r"$\tau_E$ [s]",   [Trace("taue")]),
         ],
         Equilibrium(),               # time=None -> middle of the shade window
     ], name="custom", connection=conn, fig=fn.add_figure(label="Custom"), **common)
@@ -86,8 +87,8 @@ with DIIIDConnection(tunnel_host=tunnel_host) as conn:
     # --- Tab 3: Te and ne radial profiles (Thomson core+tangential) vs rho_tor
     overview(layout=[
         Profiles([
-            ProfilePanel("thomson", "te", "all", scale=1e-3,  units="keV", ylabel=r"$T_e$"),
-            ProfilePanel("thomson", "ne", "all", scale=1e-20, units=r"$10^{20}$m$^{-3}$", ylabel=r"$n_e$"),
+            ProfilePanel("thomson", "te", "all", scale=1e-3,  ylabel=r"$T_e$ [keV]"),
+            ProfilePanel("thomson", "ne", "all", scale=1e-20, ylabel=r"$n_e$ [$10^{20}$m$^{-3}$]"),
         ], coord="rho"),
         Equilibrium(),               # context: where the diagnostics sit
     ], name="profiles", connection=conn, fig=fn.add_figure(label="Te / ne profiles"), **common)

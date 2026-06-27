@@ -4,7 +4,7 @@ All the "how to draw it" lives here so the analysis scripts only declare
 *what* to plot. Data model — two small dataclasses:
 
     Trace(spec, label, scale, avg, reduce)      one line in a panel
-    Panel(ylabel, traces, units)                one subplot, 1+ traces
+    Panel(ylabel, traces)                        one subplot, 1+ traces
 
 `spec` is usually one signal; pass a list of specs + `reduce` ('mean'|'sum'|
 'diff') for a derived trace (e.g. delta = mean(tritop, tribot)).
@@ -36,12 +36,27 @@ from matplotlib.patches import PathPatch
 from scipy.interpolate import RegularGridInterpolator
 
 from mitim_tools.experiment_tools.diiid.retrieval import DIIIDConnection, DIIIDFetcher
+from IPython import embed
 
 # Default display window [ms]; pass t_window=None to auto-detect from Ip.
 DEFAULT_TWINDOW = (1300.0, 5000.0)
 
 _NCOL = 3
 _TRACE_LS = ["-", "--", ":", "-."]
+# Colours for the several traces WITHIN one single-shot panel (e.g. core/edge in a
+# Thomson/CER panel). A colour-blind-safe (Okabe-Ito) set whose first pair is
+# maximally distinct (bluish-green vs reddish-purple). Kept off the matplotlib default
+# cycle so it doesn't collide with the shot/window colours (which use that cycle).
+_TRACE_PALETTE = ["#009E73", "#CC79A7", "#D55E00", "#000000",
+                  "#F0E442", "#999999"]
+#                  green     magenta    vermilion black  yellow   grey
+
+# CER analysis "flavors" = the `system` prefix on the flat pointnames (cerqtit/
+# ceratit/cerftit/cerntit). On a manually-analysed shot CERAUTO is often the carbon
+# fit and CERFIT the neon fit.
+_CER_FLAVORS = ("cerq", "cera", "cerf", "cern")
+_CER_FLAVOR_LABEL = {"cerq": "CERQUICK", "cera": "CERAUTO", "cerf": "CERFIT", "cern": "CERNEUR"}
+_PROF_MARKERS = ["o", "s", "^", "D", "v", "P"]   # markers to distinguish overlaid scatter series
 
 
 # =============================================================================
@@ -68,16 +83,16 @@ class Trace:
     ls:     str | None = None           # explicit linestyle ('-','--',':'); else auto
     marker: str | None = None           # marker (e.g. 'o') drawn on the points
     reduce: str = "mean"                # 'mean'|'sum'|'diff'|'ratio' (= spec0 / sum(rest))
+    abs:    bool = False                # plot |value| (e.g. B_T is stored < 0 at DIII-D)
 
 
 @dataclass
 class Panel:
-    """One subplot. `units` overrides the MDS units in the y-label if given;
+    """One subplot. Put any units directly in `ylabel` (e.g. r"$I_p$ [MA]").
     `ylim=(lo, hi)` fixes the y-range (otherwise autoscaled);
     `show_source=True` annotates the panel with the signal spec(s) it plots."""
     ylabel: str
     traces: list = field(default_factory=list)
-    units:  str = ""
     ylim:   tuple | None = None
     show_source: bool = False
 
@@ -100,12 +115,34 @@ class ProfilePanel:
     """One radial-profile sub-panel inside a Profiles column."""
     source:   str = "thomson"      # 'thomson' | 'cer'
     quantity: str = "te"           # te|ne (thomson) ; tit|rotct (cer)
-    system:   str = "all"          # thomson view(s): core|tangential|divertor|list|'all'
+    system:   str = "all"          # thomson view(s) core|tangential|divertor|list|'all';
+    #                              # for CER, the flavor: cerq(QUICK)|cera(AUTO)|cerf(FIT)
     scale:    float = 1.0          # raw-unit -> display (e.g. 1e-3 eV->keV)
-    units:    str = ""
-    ylabel:   str = ""
+    ylabel:   str = ""             # y-axis label; put any units here (e.g. r"$T_e$ [keV]")
     ylim:     tuple | None = None
     channels: object = None        # CER channel range (default range(1,49))
+    join:     bool = False         # connect the points with a line (default: scatter only)
+    flavor_labels: dict | None = None  # CER legend overrides, e.g. {"cera":"CERAUTO (Ne)"}
+
+    def __post_init__(self):       # fail fast on a misplaced/typo'd argument
+        if self.source not in ("thomson", "cer"):
+            raise ValueError(
+                f"ProfilePanel source must be 'thomson' or 'cer' (got {self.source!r}). "
+                "A CER flavor goes in `system`, e.g. ProfilePanel('cer', 'tit', system='cera').")
+        if self.source == "cer":           # system = flavor, or a list of flavors to overlay
+            flavs = self.system if isinstance(self.system, (list, tuple)) else [self.system]
+            bad = [s for s in flavs if s not in _CER_FLAVORS + ("all",)]
+            if bad:
+                raise ValueError(
+                    f"CER ProfilePanel `system` is the flavor — one of {_CER_FLAVORS} "
+                    f"('all' = CERQUICK), or a list of them to overlay; got {bad}.")
+        else:                      # thomson: a view, a list of views, or 'all'
+            views = self.system if isinstance(self.system, (list, tuple)) else [self.system]
+            bad = [v for v in views if v not in ("core", "tangential", "divertor", "all")]
+            if bad:
+                raise ValueError(
+                    "Thomson ProfilePanel `system` must be core|tangential|divertor|'all' "
+                    f"(or a list of those); got {bad}.")
 
 
 @dataclass
@@ -113,13 +150,17 @@ class Profiles:
     """Layout marker for a column of radial profiles (value vs ρ) at the analysis
     window, one ProfilePanel per row, overlaying every shot. Points are
     time-averaged over the overview `shade` window (or `time`±`window` if none),
-    mapped to `coord` ('rho'|'rhopol'|'R'|'Z') through each shot's EFIT."""
+    mapped to `coord` ('rho'|'rhopol'|'R'|'Z') through each shot's EFIT.
+    `average=False` instead plots EVERY time sample in the window (a scatter cloud
+    per channel, no error bars) — handy to see the raw spread."""
     panels:    list                # list of ProfilePanel
     tree:      str = "EFIT01"
     coord:     str = "rho"
     time:      float = 4000.0      # used (with window) only if no shade window is given
     window:    float = 100.0
     errorbars: bool = True
+    rho_max:   float | None = None  # drop points past this ρ (e.g. 1.0 to hide the noisy SOL)
+    average:   bool = True          # False -> plot all time samples in the window (no averaging)
 
 
 # =============================================================================
@@ -145,6 +186,17 @@ def _all_specs(panels):
     return sorted(specs)
 
 
+def _parse_windows(shade):
+    """`shade` -> a list of (t0, t1) analysis windows. A single (t0,t1) or a list
+    of them are both accepted; [] when no shade. Several windows => the Equilibrium
+    and Profiles columns draw one snapshot per window (great for one shot in time)."""
+    if not shade:
+        return []
+    if isinstance(shade[0], (int, float)):
+        return [tuple(shade)]
+    return [tuple(w) for w in shade]
+
+
 def overview(shots, layout, name: str = "overview",
              t_window: tuple | None = DEFAULT_TWINDOW, max_points: int = 4000,
              use_cache: bool = True, cache_dir: str | Path | None = None,
@@ -152,6 +204,7 @@ def overview(shots, layout, name: str = "overview",
              connection=None, colors: list | None = None,
              labels: list | None = None, shade: tuple | list | None = None,
              vlines: list | None = None, fig=None,
+             label_scale: float = 1.0, line_scale: float = 1.0, marker_scale: float = 1.0,
              save_dir: str | Path | None = None, show: bool = True):
     """Fetch the layout's signals for each shot (one connection) and plot them.
 
@@ -161,9 +214,18 @@ def overview(shots, layout, name: str = "overview",
     e.g. vlines=[None, 2200, 1800]. Equilibrium columns (see Equilibrium) fetch
     their own EFIT slice per shot and overlay all shots in R,Z.
 
+    `label_scale` multiplies every label/title/tick/legend font size, `line_scale`
+    every line width, and `marker_scale` every marker size — incl. the scatter
+    points in Profiles panels (all default 1.0) — bump them for talk-sized figures.
+
     Pass `fig` to draw into an existing figure (e.g. a `GUItools.FigureNotebook`
     tab) instead of creating one; pass `connection` (a DIIIDConnection) to reuse
     ONE tunnel across several overview()/profiles() calls (polite to the server).
+
+    Returns `(fig, axes)` — the Figure and the list of all its subplot axes (in
+    creation order) — and does NOT close the figure, so you can keep plotting.
+    With `show=False` the figure is neither displayed NOR auto-saved (even if
+    `save_dir` is set), so you can add to it and `fig.savefig(...)` yourself.
     """
     if isinstance(shots, int):
         shots = [shots]
@@ -171,10 +233,12 @@ def overview(shots, layout, name: str = "overview",
     cols = list(layout) if _is_columnar(layout) else []
     eq_cols = [c for c in cols if isinstance(c, Equilibrium)]
     prof_cols = [(ci, c) for ci, c in enumerate(cols) if isinstance(c, Profiles)]
-    # profile time/window: the shade window if given, else each Profiles' own time±window
-    shade_win = (shade if (shade and isinstance(shade[0], (int, float)))
-                 else (list(shade)[0] if shade else None))
-    shade_center = 0.5 * (shade_win[0] + shade_win[1]) if shade_win else None
+    # one equilibrium + profile per analysis (shade) window; falls back to a single
+    # snapshot (each column's own time) when no shade window is given.
+    windows = _parse_windows(shade)
+    centers = [0.5 * (a + b) for a, b in windows]
+
+    results, eq_data, prof_data = {}, {}, {}
 
     def _fetch_eq(fetcher, shot, etime, tree):     # fetch once per (shot,time,tree)
         key = (shot, etime, tree)
@@ -185,7 +249,6 @@ def overview(shots, layout, name: str = "overview",
                 print(f"  ! equilibrium {tree}@{etime:.0f}ms #{shot}: {str(excp)[:45]}")
                 eq_data[key] = None
 
-    results, eq_data, prof_data = {}, {}, {}
     own_conn = connection is None
     conn = connection if connection is not None else \
         DIIIDConnection(server=server, tunnel_host=tunnel_host)
@@ -202,25 +265,39 @@ def overview(shots, layout, name: str = "overview",
                     print(f"  ! {sp} unavailable for #{shot}: {str(excp)[:60]}")
                     res[sp] = None
             results[shot] = res
-            for eq in eq_cols:                        # None -> middle of the shade window
-                etime = eq.time if eq.time is not None else (shade_center or 4000.0)
-                _fetch_eq(fetcher, shot, etime, eq.tree)
-            for ci, pc in prof_cols:                  # radial-profile columns
-                twin = shade_win
-                ptime = shade_center if shade_center is not None else pc.time
-                _fetch_eq(fetcher, shot, ptime, pc.tree)
-                for pi, pp in enumerate(pc.panels):
-                    try:
-                        if pp.source == "thomson":
-                            prof_data[(ci, shot, pi)] = fetcher.fetch_thomson_profile(
-                                ptime, pp.quantity, pp.system, window=pc.window, t_window=twin)
-                        else:
-                            prof_data[(ci, shot, pi)] = fetcher.fetch_cer_profile(
-                                ptime, pp.quantity, channels=pp.channels or range(1, 49),
-                                window=pc.window, t_window=twin)
-                    except Exception as excp:
-                        print(f"  ! profile {pp.source}.{pp.quantity} #{shot}: {str(excp)[:45]}")
-                        prof_data[(ci, shot, pi)] = None
+            for eq in eq_cols:                        # one slice per window (None->middle)
+                for et in (centers or [eq.time if eq.time is not None else 4000.0]):
+                    _fetch_eq(fetcher, shot, et, eq.tree)
+            for ci, pc in prof_cols:                  # radial-profile columns, per window
+                for wi, win in (list(enumerate(windows)) or [(0, None)]):
+                    ptime = 0.5 * (win[0] + win[1]) if win else pc.time
+                    _fetch_eq(fetcher, shot, ptime, pc.tree)
+                    for pi, pp in enumerate(pc.panels):
+                        # store a list of (variant_label, profile): 1 for thomson/single CER
+                        # flavor, several when pp.system is a list of CER flavors to overlay
+                        variants = []
+                        if pp.source == "thomson":     # NB: distinct name from the outer trace `specs`
+                            vspecs = [(None, pp.system)]
+                        else:                        # CER: one entry per flavor (non-flavor -> CERQUICK)
+                            flavs = pp.system if isinstance(pp.system, (list, tuple)) else [pp.system]
+                            flab = pp.flavor_labels or {}     # user overrides for the legend
+                            vspecs = [(flab.get(f, _CER_FLAVOR_LABEL.get(f, f)),
+                                       f if f in _CER_FLAVORS else "cerq") for f in flavs]
+                        for vlabel, sysn in vspecs:
+                            try:
+                                if pp.source == "thomson":
+                                    pr = fetcher.fetch_thomson_profile(
+                                        ptime, pp.quantity, sysn, window=pc.window, t_window=win,
+                                        average=pc.average)
+                                else:
+                                    pr = fetcher.fetch_cer_profile(
+                                        ptime, pp.quantity, channels=pp.channels or range(1, 49),
+                                        window=pc.window, t_window=win, system=sysn, average=pc.average)
+                                variants.append((vlabel, pr))
+                            except Exception as excp:
+                                print(f"  ! profile {pp.source}.{pp.quantity}"
+                                      f"{('/' + sysn) if pp.source == 'cer' else ''} #{shot}: {str(excp)[:45]}")
+                        prof_data[(ci, shot, wi, pi)] = variants
     finally:
         if own_conn:
             conn.close()
@@ -235,10 +312,11 @@ def overview(shots, layout, name: str = "overview",
         ncol = _NCOL
         columns = [[kept[i] for i in range(c, len(kept), ncol)] for c in range(ncol)]
 
-    _render(results, columns, shots, name=name, t_window=t_window, colors=colors,
-            labels=labels, shade=shade, vlines=vlines, eq_data=eq_data,
-            prof_data=prof_data, fig=fig, save_dir=save_dir, show=show)
-    return results
+    fig = _render(results, columns, shots, name=name, t_window=t_window, colors=colors,
+                  labels=labels, shade=shade, vlines=vlines, eq_data=eq_data,
+                  prof_data=prof_data, fig=fig, label_scale=label_scale, line_scale=line_scale,
+                  marker_scale=marker_scale, save_dir=save_dir, show=show)
+    return fig, list(fig.axes)         # the figure + all its axes, so the caller can keep plotting
 
 
 def profiles(shots, time: float = 4000.0, source: str = "cer",
@@ -267,9 +345,15 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
     ITS OWN equilibrium via `EquilibriumData.rho_of`, so a profile comparison is
     on a common flux coordinate. `scale` converts raw units (e.g. 1e-3 eV->keV,
     1e-20 m^-3 -> 1e20); `units`/`ylabel` label the y-axis (defaulted when blank).
+
+    Returns `(fig, (axp, axe))` — the Figure, the profile axis and the equilibrium
+    axis — and does NOT close the figure, so you can keep plotting on either.
     """
     if isinstance(shots, int):
         shots = [shots]
+    if source not in ("thomson", "cer"):
+        raise ValueError(f"profiles() source must be 'thomson' or 'cer' (got {source!r}); "
+                         "to compare CER flavors use profiles_cer(...).")
 
     def fetch_prof(f):
         if source == "thomson":
@@ -313,7 +397,7 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
         return pr.tag if pr.tag is not None else np.array([str(c) for c in pr.channel])
     pref = lambda t: "".join(ch for ch in str(t) if ch.isalpha())   # TS view initial, '' for CER
     subsys = sorted(set(pref(t) for t in tags_of(ref))) if ref is not None else [""]
-    MARK = {"": "o", "C": "o", "T": "s", "D": "^"}
+    MARK = {"": "o", "C": "o", "T": "s", "D": "^", "V": "v"}   # CER/TS views: T=tang(sq), V=vert(tri)
 
     fig = plt.figure(figsize=(13, 5.4))
     gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1.0])
@@ -357,7 +441,9 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
         axp.legend(handles=mh, fontsize=6, frameon=False, loc="lower left")
 
     # ---- right: equilibrium + channel positions (labeled, staggered) ----
-    _draw_equilibrium(axe, eq_data, shots, Equilibrium(time=time, tree=tree), shot_colors)
+    eqseries = [(shot_colors[si % len(shot_colors)], "-", shot_names[si], eq_data[(sh, time, tree)])
+                for si, sh in enumerate(shots) if eq_data.get((sh, time, tree)) is not None]
+    _draw_equilibrium(axe, eqseries, Equilibrium(time=time, tree=tree), title_time=time)
     if ref is not None:
         axe.plot(ref.r, ref.z, "o", ms=3, color="k", zorder=6)
         if label_channels:
@@ -373,15 +459,168 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
 
     fig.suptitle(f"DIII-D — {title} profile  (#{', #'.join(map(str, shots))})", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    if save_dir is not None:                  # None -> just show, don't write a file
+    if save_dir is not None and show:         # show=False -> composing further: save it yourself
         save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)
         out = save_dir / f"{name or f'{source}_{quantity}_profile'}_{'_'.join(map(str, shots))}.png"
         fig.savefig(out, dpi=140, bbox_inches="tight")
         print(f"* Saved figure -> {out}")
     if show:
         plt.show()
-    plt.close(fig)
-    return profs
+    return fig, (axp, axe)        # (profile axis, equilibrium axis); not closed -> keep plotting
+
+
+def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
+                 flavors=("cera", "cerf"), flavor_labels: dict | None = None,
+                 tree: str = "EFIT01", channels=range(1, 49), window: float = 100.0,
+                 t_window=None, scale: float = 1e-3, units: str = "keV",
+                 ylabel: str = r"$T_i$", coord: str = "rho", ylim: tuple | None = None,
+                 rho_max: float | None = None, label_channels: bool = True,
+                 colors: list | None = None, name: str = "cer_flavors",
+                 use_cache: bool = True, cache_dir: str | Path | None = None,
+                 tunnel_host: str = "cybele", server: str | None = None, connection=None,
+                 save_dir: str | Path | None = None, show: bool = True):
+    """Overlay the DIII-D CER analysis FLAVORS for one quantity vs coordinate, plus
+    each flavor's channels on the equilibrium.
+
+    `flavors` are the CER `system` prefixes: 'cerq' (CERQUICK quick-look), 'cera'
+    (CERAUTO), 'cerf' (CERFIT). On a manually-analysed shot, CERAUTO is often the
+    carbon fit and CERFIT the neon fit, so this overlays both. Each (shot, flavor)
+    is a curve: colour = flavor for one shot, else colour = shot + linestyle =
+    flavor. There is ONE equilibrium subplot PER flavor (its channels on the EFIT),
+    so they don't overlap. `coord='rho'` maps to ρ_tor via each shot's EFIT, and
+    `rho_max` (e.g. 1.0) drops points beyond it (the noisy SOL). Points are
+    time-averaged over `t_window=(t0,t1)` if given, else over `time`±`window`;
+    the window is stated in the title. Pass `flavor_labels` to relabel (e.g. ion).
+
+    Returns `(fig, (axp, axes_eq))` — the Figure, the profile axis and the list of
+    per-flavor equilibrium axes — and does NOT close the figure, so you can keep
+    plotting on any of them."""
+    if isinstance(shots, int):
+        shots = [shots]
+    bad = [fl for fl in flavors if fl not in _CER_FLAVORS]
+    if bad:
+        raise ValueError(f"profiles_cer() flavors must be CER prefixes {_CER_FLAVORS}; got {bad}.")
+    flav_lab = {**_CER_FLAVOR_LABEL, **(flavor_labels or {})}
+    rho_kind = {"rho": "tor", "rhotor": "tor", "rhopol": "pol"}.get(coord)
+    eqtime = 0.5 * (t_window[0] + t_window[1]) if t_window else time
+
+    profs, eq_data = {}, {}
+    own_conn = connection is None
+    conn = connection if connection is not None else DIIIDConnection(server=server, tunnel_host=tunnel_host)
+    try:
+        for sh in shots:
+            print(f"* fetching CER flavors {list(flavors)} #{sh} ...")
+            f = DIIIDFetcher(sh, connection=conn, use_cache=use_cache, cache_dir=cache_dir)
+            for fl in flavors:
+                try:
+                    profs[(sh, fl)] = f.fetch_cer_profile(time, quantity=quantity, channels=channels,
+                                                          window=window, t_window=t_window, system=fl)
+                except Exception as e:
+                    print(f"  ! {fl} {quantity} #{sh}: {str(e)[:40]}")
+                    profs[(sh, fl)] = None
+            try:
+                eq_data[sh] = f.fetch_equilibrium(eqtime, tree)
+            except Exception as e:
+                print(f"  ! equilibrium #{sh}: {str(e)[:40]}")
+                eq_data[sh] = None
+    finally:
+        if own_conn:
+            conn.close()
+
+    multishot = len(shots) > 1
+    palette = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
+
+    def style(si, fi):                            # colour=flavor for one shot; else colour=shot, ls=flavor
+        return ((palette[fi % len(palette)], "-") if not multishot
+                else (palette[si % len(palette)], _TRACE_LS[fi % len(_TRACE_LS)]))
+
+    def xof(sh, pr):
+        if rho_kind:
+            ed = eq_data.get(sh)
+            return ed.rho_of(pr.r, pr.z, rho_kind) if ed is not None else np.full(pr.r.size, np.nan)
+        return pr.z if coord == "Z" else pr.r
+    xlabel = {"tor": r"$\rho_{tor}$", "pol": r"$\rho_{pol}$"}.get(rho_kind, f"{coord} [m]")
+
+    # averaging window for the title: explicit t_window, else time +- window
+    avg0, avg1 = t_window if t_window else (time - window, time + window)
+    when = (f"avg {avg0:.0f}-{avg1:.0f} ms" if t_window
+            else f"t={time:.0f} ms  (avg {avg0:.0f}-{avg1:.0f} ms)")
+
+    def masked(sh, pr):                           # (x, value, error, keep-mask), SOL (x>rho_max) dropped
+        x = xof(sh, pr); m = np.isfinite(x)
+        if rho_max is not None:
+            m &= (x <= rho_max)
+        return x[m], pr.value[m], (pr.error[m] if pr.error is not None else None), m
+
+    nf = len(flavors)
+    fig = plt.figure(figsize=(5.8 + 2.6 * nf, 5.4))
+    gs = fig.add_gridspec(1, 1 + nf, width_ratios=[2.4] + [1.0] * nf)
+    axp = fig.add_subplot(gs[0, 0])
+    axes_eq = [fig.add_subplot(gs[0, 1 + i]) for i in range(nf)]
+
+    # ---- left: profiles overlaid (+ channel numbers by the points) ----
+    if rho_kind:
+        for xr, tg in [(0.0, "axis"), (1.0, "sep")]:
+            axp.axvline(xr, color="0.6", ls=":", lw=0.8)
+            axp.text(xr, 0.98, tg, color="0.5", fontsize=6, rotation=90, va="top", ha="right",
+                     transform=axp.get_xaxis_transform())
+    for si, sh in enumerate(shots):
+        for fi, fl in enumerate(flavors):
+            pr = profs.get((sh, fl))
+            if pr is None or not pr.r.size:
+                continue
+            x, val, err, m = masked(sh, pr); o = np.argsort(x); color, ls = style(si, fi)
+            lab = flav_lab.get(fl, fl) if not multishot else f"{sh} {flav_lab.get(fl, fl)}"
+            axp.errorbar(x[o], val[o] * scale, yerr=(err[o] * scale if err is not None else None),
+                         fmt=ls + "o", ms=4, lw=0.9, color=color, elinewidth=0.5, capsize=0,
+                         alpha=0.9, label=lab)
+            if label_channels:
+                lbls = (pr.tag if pr.tag is not None else pr.channel)[m]   # 'T18'/'V14' if tagged
+                for ch, xi, vi in zip(lbls, x, val):
+                    axp.annotate(str(ch), (xi, vi * scale), fontsize=4, color=color,
+                                 xytext=(0, 4), textcoords="offset points", ha="center", alpha=0.8)
+    if rho_kind:
+        axp.set_xlim(0.0, rho_max)
+    if ylim:
+        axp.set_ylim(ylim)
+    axp.set_xlabel(xlabel, fontsize=8)
+    axp.set_ylabel(ylabel + (f"  [{units}]" if units else ""), fontsize=9)
+    axp.set_title(f"CER {quantity} flavors vs {xlabel}   {when}", fontsize=9)
+    axp.grid(alpha=0.3); axp.tick_params(labelsize=7)
+    axp.legend(fontsize=7, frameon=False, loc="best")
+
+    # ---- right: one equilibrium PER flavor, its channels (+ numbers) on the EFIT ----
+    eqseries = [("0.4", "-", str(sh), eq_data[sh]) for sh in shots if eq_data.get(sh) is not None]
+    for fi, fl in enumerate(flavors):
+        ax = axes_eq[fi]
+        _draw_equilibrium(ax, eqseries, Equilibrium(time=eqtime, tree=tree, label=flav_lab.get(fl, fl)),
+                          title_time=eqtime)
+        for si, sh in enumerate(shots):
+            pr = profs.get((sh, fl))
+            if pr is None or not pr.r.size:
+                continue
+            color, _ls = style(si, fi); _x, _v, _e, m = masked(sh, pr)
+            ax.plot(pr.r[m], pr.z[m], "o", ms=3, color=color, zorder=6)
+            if label_channels:
+                lbls = (pr.tag if pr.tag is not None else pr.channel)[m]
+                for k, (ch, r, z) in enumerate(zip(lbls, pr.r[m], pr.z[m])):
+                    ax.annotate(str(ch), (r, z), fontsize=4, color="0.15", zorder=7,
+                                xytext=(0, 7 if k % 2 == 0 else -7), textcoords="offset points",
+                                ha="center", va="bottom" if k % 2 == 0 else "top",
+                                arrowprops=dict(arrowstyle="-", color="0.7", lw=0.3))
+        if fi > 0:
+            ax.set_ylabel("")
+
+    fig.suptitle(f"DIII-D — CER {quantity} flavors  (#{', #'.join(map(str, shots))})", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    if save_dir is not None and show:         # show=False -> composing further: save it yourself
+        save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)
+        out = save_dir / f"{name}_{'_'.join(map(str, shots))}.png"
+        fig.savefig(out, dpi=140, bbox_inches="tight")
+        print(f"* Saved figure -> {out}")
+    if show:
+        plt.show()
+    return fig, (axp, axes_eq)    # (profile axis, list of per-flavor equilibrium axes)
 
 
 # =============================================================================
@@ -421,7 +660,8 @@ def _trace_xy(shot_sigs, trace: Trace):
         y = Y[0] / np.where(denom == 0, np.nan, denom)
     else:
         y = Y.mean(0)
-    return t, y if perspec else y * trace.scale
+    y = y if perspec else y * trace.scale
+    return t, (np.abs(y) if trace.abs else y)
 
 
 def _moving_avg(t, y, window_ms):
@@ -435,12 +675,6 @@ def _moving_avg(t, y, window_ms):
     kern = np.ones(k) / k
     norm = np.convolve(np.ones_like(y), kern, mode="same")   # fractional count at edges
     return np.convolve(y, kern, mode="same") / norm
-
-
-def _trace_units(shot_sigs, trace: Trace):
-    s0 = (trace.spec[0] if isinstance(trace.spec, list) else trace.spec)
-    sig = shot_sigs.get(s0)
-    return sig.units if sig is not None else ""
 
 
 def _decimate(t, y, n_max=4000):
@@ -487,9 +721,9 @@ def _discharge_window(ip_sigs):
 
 
 def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
-                shot_colors, shot_names):
-    """Draw one panel; returns True if anything was plotted."""
-    units = panel.units
+                shot_colors, shot_names, fs=1.0, lw=1.0, msc=1.0):
+    """Draw one panel; returns True if anything was plotted. `fs`/`lw`/`msc` scale the
+    label font sizes, the line widths and the marker sizes."""
     multitrace = len(panel.traces) > 1
     drew = False
     for si, shot in enumerate(shots):
@@ -497,7 +731,6 @@ def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
             xy = _trace_xy(results[shot], tr)
             if xy is None:
                 continue
-            units = units or _trace_units(results[shot], tr)
             t, y = xy
             m = (t >= t0) & (t <= t1)
             t, y = t[m], y[m]
@@ -508,48 +741,48 @@ def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
                 color = shot_colors[si % len(shot_colors)]
                 label = shot_names[si] if ti == 0 else None
             else:
-                color = plt.cm.tab10(ti % 10)
-                label = tr.label or (tr.spec if isinstance(tr.spec, str) else "")
+                color = _TRACE_PALETTE[ti % len(_TRACE_PALETTE)]
+                label = tr.label or _spec_label(tr)   # list-spec -> e.g. 'mean(tritop, tribot)'
             if tr.avg and tr.avg > 0:                 # raw faint, time-average bold
                 td, yd = _decimate(t, y)
                 if tr.raw_alpha > 0:
-                    ax.plot(td, yd, color=color, ls=ls, lw=0.7, alpha=tr.raw_alpha)
+                    ax.plot(td, yd, color=color, ls=ls, lw=0.7 * lw, alpha=tr.raw_alpha)
                 ta, ya = _decimate(t, _moving_avg(t, y, tr.avg))
-                ax.plot(ta, ya, color=color, ls=ls, lw=1.4, label=label,
-                        marker=tr.marker, ms=3)
+                ax.plot(ta, ya, color=color, ls=ls, lw=1.4 * lw, label=label,
+                        marker=tr.marker, ms=3 * msc)
             else:
                 td, yd = _decimate(t, y)
-                ax.plot(td, yd, color=color, ls=ls, lw=0.9, label=label,
-                        marker=tr.marker, ms=3)
+                ax.plot(td, yd, color=color, ls=ls, lw=0.9 * lw, label=label,
+                        marker=tr.marker, ms=3 * msc)
             drew = True
 
-    ax.set_ylabel(panel.ylabel + (f"\n[{units}]" if units else ""), fontsize=8)
-    ax.tick_params(labelsize=6.5)
+    ax.set_ylabel(panel.ylabel, fontsize=8 * fs)
+    ax.tick_params(labelsize=6.5 * fs)
     ax.grid(alpha=0.3)
     if panel.ylim is not None:
         ax.set_ylim(panel.ylim)
     if not drew:
         ax.text(0.5, 0.5, "(no data)", transform=ax.transAxes,
-                ha="center", va="center", fontsize=7, color="0.6")
+                ha="center", va="center", fontsize=7 * fs, color="0.6")
     elif multitrace and not multishot:
-        ax.legend(fontsize=5.5, loc="best", ncol=2, frameon=False)
+        ax.legend(fontsize=5.5 * fs, loc="best", ncol=2, frameon=False)
     elif multitrace and multishot:
         handles = [Line2D([], [], color="0.3", ls=_trace_ls(tr, ti, True),
-                          lw=1, label=(tr.label or ""))
+                          lw=1, label=(tr.label or _spec_label(tr)))   # fall back to the spec name
                    for ti, tr in enumerate(panel.traces)]
-        ax.legend(handles=handles, fontsize=5, loc="best", ncol=2, frameon=False)
+        ax.legend(handles=handles, fontsize=5 * fs, loc="best", ncol=2, frameon=False)
     if panel.show_source:                      # expose the actual MDS spec(s) + operation
         specs = [_spec_label(tr) for tr in panel.traces]
         ax.text(0.99, 0.96, ", ".join(dict.fromkeys(specs)), transform=ax.transAxes,
-                ha="right", va="top", fontsize=5.5, color="0.45",
+                ha="right", va="top", fontsize=5.5 * fs, color="0.45",
                 bbox=dict(fc="white", ec="none", alpha=0.6, pad=0.5))
     return drew
 
 
-def _separatrix_legs(ax, ed, color):
+def _separatrix_legs(ax, ed, color, lw=1.0):
     """Draw the divertor separatrix legs: contour psi_N = 1 on a sub-grid spanning
     the A-file strike points to ~10 cm past the active X-point, and mark the active
-    X-point. No-op for a limited plasma."""
+    X-point. No-op for a limited plasma. `lw` scales the line widths."""
     lower = (1 < ed.rxpt1 < 2) and ed.zvsin < 0 and ed.zvsout < 0
     upper = (1 < ed.rxpt2 < 2) and ed.zvsin > 0 and ed.zvsout > 0
     if lower:
@@ -566,100 +799,131 @@ def _separatrix_legs(ax, ed, color):
     zspln = np.linspace(z0, z1, 200)
     RR, ZZ = np.meshgrid(rspln, zspln)
     sub = interp(np.stack([ZZ.ravel(), RR.ravel()], 1)).reshape(ZZ.shape)
-    ax.contour(rspln, zspln, sub, levels=[1.0], colors=[color], linewidths=1.3)
-    ax.plot(rxpt, zxpt, "x", color=color, ms=5, mew=1.3)
+    ax.contour(rspln, zspln, sub, levels=[1.0], colors=[color], linewidths=1.3 * lw)
+    ax.plot(rxpt, zxpt, "x", color=color, ms=5, mew=1.3 * lw)
 
 
-def _draw_equilibrium(ax, eq_data, shots, eq, shot_colors, time=None):
+def _draw_equilibrium(ax, series, eq, title_time=None, fs=1.0, lw=1.0):
     """R,Z flux-surface panel from a GEQDSK: dashed interior flux surfaces (psi_N
     from axis to boundary), the bold LCFS, and the diverted separatrix legs to the
-    strike points. Reference shot in grey; each shot's LCFS (+ legs) overlaid in
-    its color. `time` overrides eq.time (e.g. the middle of the analysis window)."""
-    t = time if time is not None else eq.time
-    eds = [(si, (eq_data or {}).get((shots[si], t, eq.tree)))
-           for si in range(len(shots))]
-    eds = [(si, ed) for si, ed in eds if ed is not None]
-    ax.set_title(f"{eq.label or f'EFIT {eq.tree}'}  t={t:.0f} ms", fontsize=8)
-    if not eds:
+    strike points. `series` is a list of (color, linestyle, label, EquilibriumData),
+    one per (shot, window). The interior flux surfaces + SOL are drawn for EVERY
+    series (grey when there is a single case, else in each series' colour) so all
+    selected times/shots are visible; the vessel is shared. `fs`/`lw` scale fonts
+    and line widths."""
+    ax.set_title(f"{eq.label or f'EFIT {eq.tree}'}"
+                 + (f"  t={title_time:.0f} ms" if title_time is not None else ""), fontsize=8 * fs)
+    if not series:
         ax.text(0.5, 0.5, "(no equilibrium)", transform=ax.transAxes,
-                ha="center", va="center", fontsize=7, color="0.6")
+                ha="center", va="center", fontsize=7 * fs, color="0.6")
         return
 
-    ref = eds[0][1]
-    interp = RegularGridInterpolator((ref.zgrid, ref.rgrid), ref.psiN,
-                                     bounds_error=False, fill_value=np.nan)
+    ref = series[0][3]
     # clip flux surfaces to the vessel so the SOL contours don't sprawl outside it
     clip = PathPatch(MplPath(np.column_stack([ref.wall_r, ref.wall_z])),
                      transform=ax.transData, fc="none", ec="none")
     ax.add_patch(clip)
-    # interior flux surfaces (dashed), psi_N = levels
-    ci = ax.contour(ref.rgrid, ref.zgrid, ref.psiN, levels=list(eq.levels),
-                    colors="0.55", linewidths=0.35, linestyles="dashed")
-    ci.set_clip_path(clip)
-    # SOL surfaces: sample psi at points stepped outward in R from the outboard-
-    # midplane boundary point by deltascrape (even real-space spacing -> no inboard
-    # bunching), then contour those psi levels.
-    imax = int(np.argmax(ref.rbbbs))
-    r0, z0 = float(ref.rbbbs[imax]), float(ref.zbbbs[imax])
-    rpts = r0 + np.arange(1, eq.nscrape + 1) * eq.deltascrape
-    sol = interp(np.column_stack([np.full(rpts.size, z0), rpts]))
-    sol = np.sort(sol[np.isfinite(sol)])
-    if sol.size:
-        cs = ax.contour(ref.rgrid, ref.zgrid, ref.psiN, levels=list(sol),
-                        colors="0.6", linewidths=0.3)
-        cs.set_clip_path(clip)
-    ax.plot(ref.wall_r, ref.wall_z, "-", color="0.15", lw=0.9)     # vessel
-    for si, ed in eds:                                            # per-shot LCFS + legs + axis
-        color = shot_colors[si % len(shot_colors)]
-        ax.plot(ed.rbbbs, ed.zbbbs, color=color, lw=1.3)
-        _separatrix_legs(ax, ed, color)
-        ax.plot(ed.raxis, ed.zaxis, "+", color=color, ms=7)
+    ax.plot(ref.wall_r, ref.wall_z, "-", color="0.15", lw=0.9 * lw)     # vessel (shared)
+    multi = len(series) > 1
+    for color, ls, _label, ed in series:                          # interior + SOL + LCFS PER case
+        surf = color if multi else "0.55"
+        interp = RegularGridInterpolator((ed.zgrid, ed.rgrid), ed.psiN,
+                                         bounds_error=False, fill_value=np.nan)
+        # interior flux surfaces (dashed), psi_N = levels
+        ci = ax.contour(ed.rgrid, ed.zgrid, ed.psiN, levels=list(eq.levels),
+                        colors=surf, linewidths=0.35 * lw, linestyles="dashed",
+                        alpha=0.55 if multi else 1.0)
+        ci.set_clip_path(clip)
+        # SOL surfaces: sample psi at points stepped outward in R from the outboard-
+        # midplane boundary point by deltascrape (even real-space spacing -> no inboard
+        # bunching), then contour those psi levels.
+        imax = int(np.argmax(ed.rbbbs))
+        r0, z0 = float(ed.rbbbs[imax]), float(ed.zbbbs[imax])
+        rpts = r0 + np.arange(1, eq.nscrape + 1) * eq.deltascrape
+        sol = interp(np.column_stack([np.full(rpts.size, z0), rpts]))
+        sol = np.sort(sol[np.isfinite(sol)])
+        if sol.size:
+            cs = ax.contour(ed.rgrid, ed.zgrid, ed.psiN, levels=list(sol),
+                            colors=surf if multi else "0.6", linewidths=0.3 * lw,
+                            alpha=0.55 if multi else 1.0)
+            cs.set_clip_path(clip)
+        ax.plot(ed.rbbbs, ed.zbbbs, color=color, lw=1.3 * lw, ls=ls)     # LCFS
+        _separatrix_legs(ax, ed, color, lw=lw)
+        ax.plot(ed.raxis, ed.zaxis, "+", color=color, ms=7 * fs)
 
     ax.set_xlim(ref.wall_r.min() - 0.04, ref.wall_r.max() + 0.04)
     ax.set_ylim(ref.wall_z.min() - 0.04, ref.wall_z.max() + 0.04)
     ax.set_aspect("equal")
-    ax.set_xlabel("R [m]", fontsize=7)
-    ax.set_ylabel("Z [m]", fontsize=8)
-    ax.tick_params(labelsize=6.5)
+    ax.set_xlabel("R [m]", fontsize=7 * fs)
+    ax.set_ylabel("Z [m]", fontsize=8 * fs)
+    ax.tick_params(labelsize=6.5 * fs)
 
 
-def _draw_profile_panel(ax, prof_data, eq_data, shots, shot_colors, pc, c, pi, pp, time, window, last):
-    """One radial-profile sub-panel (value vs ρ) in a Profiles column: every shot
-    overlaid with error bars, points time-averaged over `window` [ms]."""
+def _draw_profile_panel(ax, prof_data, eq_data, shots, pc, c, pi, pp, windows, centers,
+                        series_style, last, fs=1.0, lw=1.0, msc=1.0):
+    """One radial-profile sub-panel (value vs ρ) in a Profiles column: one curve per
+    (shot, window), each time-averaged over its window and mapped through that
+    window's equilibrium. `series_style(si, wi)` gives the (color, linestyle).
+    `fs`/`lw`/`msc` scale the label font sizes, the line widths and the marker sizes."""
     coord = pc.coord
     rho_kind = {"rho": "tor", "rhotor": "tor", "rhopol": "pol"}.get(coord)
+    wis = range(len(windows)) if windows else [0]
     drew = False
+    flavor_ls = {}                                # CER flavor label -> linestyle (for the legend)
     for si, sh in enumerate(shots):
-        prof = (prof_data or {}).get((c, sh, pi))
-        if prof is None or not prof.r.size:
-            continue
-        ed = eq_data.get((sh, time, pc.tree))
-        if rho_kind:
-            x = ed.rho_of(prof.r, prof.z, rho_kind) if ed is not None else np.full(prof.r.size, np.nan)
-        else:
-            x = prof.z if coord == "Z" else prof.r
-        o = np.argsort(x); color = shot_colors[si % len(shot_colors)]
-        yerr = prof.error[o] * pp.scale if (pc.errorbars and prof.error is not None) else None
-        ax.errorbar(x[o], prof.value[o] * pp.scale, yerr=yerr, fmt="-o", ms=2.5, lw=0.6,
-                    color=color, elinewidth=0.5, capsize=0, alpha=0.85)
-        drew = True
+        for wi in wis:
+            variants = (prof_data or {}).get((c, sh, wi, pi)) or []      # (label, profile) per flavor
+            for vidx, (vlabel, prof) in enumerate(variants):
+                if prof is None or not prof.r.size:
+                    continue
+                t = centers[wi] if centers else pc.time
+                ed = eq_data.get((sh, t, pc.tree))
+                if rho_kind:
+                    x = ed.rho_of(prof.r, prof.z, rho_kind) if ed is not None else np.full(prof.r.size, np.nan)
+                else:
+                    x = prof.z if coord == "Z" else prof.r
+                m = np.isfinite(x)
+                if rho_kind and pc.rho_max is not None:           # drop SOL points beyond rho_max
+                    m &= (x <= pc.rho_max)
+                xm, vm = x[m], prof.value[m]
+                em = prof.error[m] if (pc.errorbars and prof.error is not None) else None
+                o = np.argsort(xm); color, ls = series_style(si, wi); mk = "o"
+                if len(variants) > 1:                # overlaid flavors -> linestyle (joined) or marker
+                    if pp.join:
+                        ls = _TRACE_LS[vidx % len(_TRACE_LS)]
+                    else:
+                        mk = _PROF_MARKERS[vidx % len(_PROF_MARKERS)]
+                    flavor_ls[vlabel] = (ls if pp.join else "none", mk)
+                fmt = (ls + mk) if pp.join else mk    # join with a line, else scatter only
+                ax.errorbar(xm[o], vm[o] * pp.scale, yerr=(em[o] * pp.scale if em is not None else None),
+                            fmt=fmt, ms=2.5 * msc, lw=0.6 * lw, color=color, elinewidth=0.5 * lw,
+                            capsize=0, alpha=0.85)
+                drew = True
     if rho_kind:
-        ax.axvline(0.0, color="0.8", ls=":", lw=0.6)         # magnetic axis
-        ax.axvline(1.0, color="0.4", ls="--", lw=0.9)        # separatrix (ρ=1)
-        ax.set_xlim(left=0.0)
-    ax.set_ylabel((pp.ylabel or pp.quantity) + (f"\n[{pp.units}]" if pp.units else ""), fontsize=8)
-    ax.grid(alpha=0.3); ax.tick_params(labelsize=6.5)
+        ax.axvline(0.0, color="0.8", ls=":", lw=0.6 * lw)        # magnetic axis
+        ax.axvline(1.0, color="0.4", ls="--", lw=0.9 * lw)       # separatrix (ρ=1)
+        ax.set_xlim(0.0, pc.rho_max)
+    ax.set_ylabel(pp.ylabel or pp.quantity, fontsize=8 * fs)
+    ax.grid(alpha=0.3); ax.tick_params(labelsize=6.5 * fs)
     if pp.ylim is not None:
         ax.set_ylim(pp.ylim)
+    if flavor_ls:                                 # legend: which line/marker is which CER flavor
+        ax.legend(handles=[Line2D([], [], color="0.3", ls=l, marker=mk, lw=1.2 * lw, label=lab)
+                           for lab, (l, mk) in flavor_ls.items()],
+                  fontsize=6 * fs, frameon=False, loc="best")
     if not drew:
         ax.text(0.5, 0.5, "(no data)", transform=ax.transAxes, ha="center", va="center",
-                fontsize=7, color="0.6")
-    if pi == 0:                                   # top of the column: show the averaging window
-        ax.set_title(f"profiles  (avg {window[0]:.0f}-{window[1]:.0f} ms)" if window
-                     else f"profiles  t={time:.0f} ms", fontsize=8)
+                fontsize=7 * fs, color="0.6")
+    if pi == 0:                                   # top of the column: how the points were reduced
+        n_w = len(windows)
+        how = "avg" if pc.average else "all pts"  # time-averaged vs every sample in the window
+        ttl = (f"profiles  ({how} {windows[0][0]:.0f}-{windows[0][1]:.0f} ms)" if n_w == 1
+               else f"profiles  ({how} per window)" if n_w > 1
+               else f"profiles  t={centers[0] if centers else pc.time:.0f} ms")
+        ax.set_title(ttl, fontsize=8 * fs)
     if last:
         ax.set_xlabel({"tor": r"$\rho_{tor}$", "pol": r"$\rho_{pol}$"}.get(rho_kind, f"{coord} [m]"),
-                      fontsize=8)
+                      fontsize=8 * fs)
     else:
         ax.tick_params(labelbottom=False)
 
@@ -668,15 +932,18 @@ def _render(results, columns, shots, name="overview",
             t_window: tuple | None = DEFAULT_TWINDOW, colors: list | None = None,
             labels: list | None = None, shade: tuple | list | None = None,
             vlines: list | None = None, eq_data: dict | None = None,
-            prof_data: dict | None = None, fig=None,
+            prof_data: dict | None = None, fig=None, label_scale: float = 1.0,
+            line_scale: float = 1.0, marker_scale: float = 1.0,
             save_dir: str | Path | None = None, show: bool = True):
     """Place `columns` (Panels, an Equilibrium, or a Profiles column) on a grid.
     `fig` (a Figure, e.g. a FigureNotebook tab) is drawn into if given; else a
-    new figure is created and saved/shown per `save_dir`/`show`."""
+    new figure is created and saved/shown per `save_dir`/`show`. `label_scale`/
+    `line_scale`/`marker_scale` multiply every label font size / line width / marker."""
+    fs, lw, msc = label_scale, line_scale, marker_scale
     eq_data, prof_data = eq_data or {}, prof_data or {}
-    shades = [] if not shade else \
-        ([shade] if isinstance(shade[0], (int, float)) else list(shade))
-    prof_window = shades[0] if shades else None
+    windows = _parse_windows(shade)               # analysis windows (one snapshot each)
+    centers = [0.5 * (a + b) for a, b in windows]
+    n_w = len(windows)
     multishot = len(shots) > 1
     ncol = len(columns)
     nrow = max((len(col.panels) if isinstance(col, Profiles) else len(col)
@@ -684,70 +951,99 @@ def _render(results, columns, shots, name="overview",
     t0, t1 = t_window if t_window is not None else \
         _discharge_window([results[sh].get("ip") for sh in shots])
     shot_colors = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
-    # legend name per shot: "<shot> (<label>)" when a label is given
+    win_palette = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
     shot_names = [f"{sh} ({labels[si]})" if labels and si < len(labels) and labels[si]
                   else str(sh) for si, sh in enumerate(shots)]
+    by_window = (n_w > 1 and not multishot)       # one shot, many windows -> colour by window
+    win_lab = lambda wi: f"{windows[wi][0]:.0f}-{windows[wi][1]:.0f} ms"
+
+    def series_style(si, wi):                     # (color, linestyle) for one (shot, window) curve
+        if by_window:
+            return win_palette[wi % len(win_palette)], "-"
+        return (shot_colors[si % len(shot_colors)],
+                _TRACE_LS[wi % len(_TRACE_LS)] if n_w > 1 else "-")
+
+    def series_label(si, wi):
+        if by_window:
+            return win_lab(wi)
+        return shot_names[si] if n_w <= 1 else f"{shot_names[si]} @ {win_lab(wi)}"
+
+    shade_color = lambda wi: win_palette[wi % len(win_palette)] if by_window else "gold"
 
     own_fig = fig is None
     if own_fig:
-        fig = plt.figure(figsize=(4.6 * ncol, 1.4 * nrow))
-    else:                                         # notebook tab: size to fill it, not a short
-        fig.set_size_inches(max(12.0, 3.6 * ncol), max(8.5, 2.0 * nrow))  # strip at the top
+        fig = plt.figure(figsize=(np.min([17, 3.6 * ncol]), np.min([10, 3.0 * nrow])))
+    elif np.allclose(fig.get_size_inches(), plt.rcParams["figure.figsize"]):
+        # provided fig is UNSIZED (matplotlib default, e.g. a FigureNotebook tab) -> fill it so it
+        # doesn't render as a short strip; an explicitly-sized fig is respected as given.
+        fig.set_size_inches(max(12.0, 3.6 * ncol), max(8.5, 2.0 * nrow))
     gs = fig.add_gridspec(nrow, ncol)
     xref = None
-    shade_center = 0.5 * (prof_window[0] + prof_window[1]) if prof_window else None
     for c, col in enumerate(columns):
-        if isinstance(col, Equilibrium):
-            et = col.time if col.time is not None else (shade_center if shade_center is not None else 4000.0)
-            _draw_equilibrium(fig.add_subplot(gs[:, c]), eq_data, shots, col, shot_colors, time=et)
+        if isinstance(col, Equilibrium):          # one boundary per (shot, window)
+            ts = centers if centers else [col.time if col.time is not None else 4000.0]
+            series = []
+            for si, sh in enumerate(shots):
+                for wi, t in enumerate(ts):
+                    ed = eq_data.get((sh, t, col.tree))
+                    if ed is not None:
+                        color, ls = series_style(si, wi)
+                        series.append((color, ls, series_label(si, wi), ed))
+            _draw_equilibrium(fig.add_subplot(gs[:, c]), series, col,
+                              title_time=(ts[0] if len(ts) == 1 else None), fs=fs, lw=lw)
             continue
         if isinstance(col, Profiles):
-            ptime = shade_center if shade_center is not None else col.time
             sub = gs[:, c].subgridspec(len(col.panels), 1, hspace=0.12)
             paxref = None
             for pi, pp in enumerate(col.panels):
                 pax = fig.add_subplot(sub[pi, 0], sharex=paxref); paxref = paxref or pax
-                _draw_profile_panel(pax, prof_data, eq_data, shots, shot_colors, col, c, pi, pp,
-                                    ptime, prof_window, last=(pi == len(col.panels) - 1))
+                _draw_profile_panel(pax, prof_data, eq_data, shots, col, c, pi, pp,
+                                    windows, centers, series_style,
+                                    last=(pi == len(col.panels) - 1), fs=fs, lw=lw, msc=msc)
             continue
         for r in range(len(col)):
             ax = fig.add_subplot(gs[r, c], sharex=xref)
             xref = xref or ax
             _draw_panel(ax, results, col[r], shots, t0, t1, multishot,
-                        shot_colors, shot_names)
-            for s0, s1 in shades:
-                ax.axvspan(s0, s1, color="gold", alpha=0.18, lw=0, zorder=0)
+                        shot_colors, shot_names, fs=fs, lw=lw, msc=msc)
+            for wi, (s0, s1) in enumerate(windows):
+                ax.axvspan(s0, s1, color=shade_color(wi), alpha=0.16, lw=0, zorder=0)
             for si, vt in enumerate(vlines or []):       # per-shot event markers
                 if vt is not None:
                     ax.axvline(vt, color=shot_colors[si % len(shot_colors)],
-                               ls="--", lw=1.0, alpha=0.8, zorder=1)
+                               ls="--", lw=1.0 * lw, alpha=0.8, zorder=1)
             if r < len(col) - 1:
                 ax.tick_params(labelbottom=False)
             else:
-                ax.set_xlabel("time  [ms]", fontsize=7)
+                ax.set_xlabel("time  [ms]", fontsize=7 * fs)
     if xref is not None:
         xref.set_xlim(t0, t1)
 
     # title on top, legend stacked just below it (centered, single row) so they
     # never collide regardless of how many shots/labels there are.
-    title = f"DIII-D — {name}"
+    title = f"DIII-D — {name}" + ("" if multishot else f"  #{shots[0]}")
     height = fig.get_figheight()
+    leg = []                                       # colour = shot; for >1 window add a window key
     if multishot:
-        handles = [Line2D([], [], color=shot_colors[si % len(shot_colors)], lw=2,
-                          label=shot_names[si]) for si in range(len(shots))]
-        fig.legend(handles=handles, loc="upper center",
-                   bbox_to_anchor=(0.5, 1 - 0.55 / height),
-                   ncol=min(len(shots), 4), fontsize=8, frameon=False)
+        leg += [Line2D([], [], color=shot_colors[si % len(shot_colors)], lw=2 * lw, label=shot_names[si])
+                for si in range(len(shots))]
+    if n_w > 1:
+        leg += [Line2D([], [], lw=2 * lw, label=win_lab(wi),
+                       color=(win_palette[wi % len(win_palette)] if by_window else "0.3"),
+                       ls=("-" if by_window else _TRACE_LS[wi % len(_TRACE_LS)]))
+                for wi in range(n_w)]
+    if leg:
+        fig.legend(handles=leg, loc="upper center", bbox_to_anchor=(0.5, 1 - 0.55 / height),
+                   ncol=min(len(leg), 5), fontsize=8 * fs, frameon=False)
         top_in = 0.85
     else:
-        title += f"  #{shots[0]}"
         top_in = 0.45
-    fig.suptitle(title, fontsize=12, y=1 - 0.26 / height)
+    fig.suptitle(title, fontsize=12 * fs, y=1 - 0.26 / height)
 
     fig.tight_layout(rect=(0, 0, 1, 1 - top_in / height), h_pad=0.15, w_pad=0.4)
     fig.subplots_adjust(hspace=0.12)      # tight vertical packing (panels share x)
     if own_fig:                           # a provided fig (notebook tab) is shown/saved by the caller
-        if save_dir is not None:
+        if save_dir is not None and show:  # show=False -> composing further: save it yourself
             save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)
             save_path = save_dir / f"{name}_{'_'.join(str(s) for s in shots)}.png"
             fig.savefig(save_path, dpi=150)

@@ -175,14 +175,18 @@ def time_average(t, y, t0, t1, axis=-1):
     """Average `y` over the time window [t0, t1] (ms) along `axis`.
 
     Returns (mean, std, n): the NaN-ignoring mean, standard deviation, and count
-    of finite samples in the window. If no sample falls inside, the single nearest
-    time slice is used. General-purpose (profiles, scalars, any windowed mean).
+    of finite samples STRICTLY inside the window. If NO sample falls inside, the
+    mean/std are NaN and n is 0 -- there is deliberately NO out-of-window fallback,
+    so a too-narrow window honestly yields no data rather than a nearby slice.
+    General-purpose (profiles, scalars, any windowed mean).
     """
-    t = np.asarray(t, float)
+    t, y = np.asarray(t, float), np.asarray(y, float)
     idx = np.where((t >= t0) & (t <= t1))[0]
-    if idx.size == 0:
-        idx = np.array([int(np.argmin(np.abs(t - 0.5 * (t0 + t1))))])
-    sl = np.take(np.asarray(y, float), idx, axis=axis)
+    if idx.size == 0:                              # nothing in the window -> NaN, no fallback
+        out = y.shape[:axis % y.ndim] + y.shape[axis % y.ndim + 1:]
+        nan = np.full(out, np.nan) if out else np.float64("nan")
+        return nan, nan, (np.zeros(out, int) if out else 0)
+    sl = np.take(y, idx, axis=axis)
     with np.errstate(invalid="ignore"):
         return (np.nanmean(sl, axis=axis), np.nanstd(sl, axis=axis),
                 np.sum(np.isfinite(sl), axis=axis))
@@ -597,37 +601,58 @@ class DIIIDFetcher:
     # ---- CER channel profile (value vs R,Z at one time) ---------------------
     def fetch_cer_profile(self, time: float, quantity: str = "tit",
                           channels=range(1, 49), window: float = 100.0,
-                          t_window=None, system: str = "cerq") -> ChannelProfile:
-        """CER profile: each channel's `quantity` plus its (R, Z), averaged in time.
+                          t_window=None, system: str = "cerq",
+                          views=("t", "v"), average: bool = True) -> ChannelProfile:
+        """CER profile: each channel's `quantity` plus its (R, Z), averaged in time,
+        across the requested CER VIEWING SYSTEMS.
 
-        `quantity` is the CERQUICK suffix: 'tit' = Ti [eV], 'rotct' = rotation, ...
-        For each channel n it reads cerq<quantity><n> and the geometry cerqrt<n> (R)
-        / cerqzt<n> (Z), and averages over the window [time-window, time+window] —
-        or the explicit `t_window=(t0,t1)` if given (e.g. an overview shade window).
-        The per-channel error bar is the temporal std over the window (CER has no
-        readily-keyed stored error). Missing channels are skipped (and cached as
-        misses by fetch_signal). Sorted by R.
+        DIII-D CER has two views: TANGENTIAL ('t', ~midplane chords) and VERTICAL
+        ('v', looking down, reaching the core). `views` selects which to include
+        (default BOTH — they are physically distinct chords, not duplicates); each
+        channel is tagged 'T<n>'/'V<n>'. The flat pointname is
+        <system><qbase><view><n>, geometry <system>r<view><n> / <system>z<view><n>
+        — e.g. cerqtit3/cerqrt3 (tangential) and cerqtiv3/cerqrv3 (vertical).
+        `quantity` is the suffix INCLUDING the trailing view letter ('tit'=Ti [eV],
+        'rotct'=rotation); its base ('ti') is reused for every view. Averaged over
+        [time-window, time+window], or the explicit `t_window=(t0,t1)`; the error
+        bar is the temporal std over the window (CER has no readily-keyed stored
+        error). With `average=False` every time sample in the window is kept (a
+        scatter cloud at each channel's R, error=None). Missing channels are skipped
+        (cached as misses). Sorted by R.
         """
         t0, t1 = t_window if t_window is not None else (time - window, time + window)
+        qbase = quantity[:-1] if quantity and quantity[-1] in "tv" else quantity
 
-        chs, rs, zs, vals, errs, units = [], [], [], [], [], ""
-        for n in channels:
-            try:                                  # name defaults to spec => cache shared with overview
-                v = self.fetch_signal(f"{system}{quantity}{n}")
-                r = self.fetch_signal(f"{system}rt{n}")
-                z = self.fetch_signal(f"{system}zt{n}")
-            except Exception:
-                continue
-            vm, vs, _ = time_average(v.time, v.data, t0, t1)
-            chs.append(n); vals.append(float(vm)); errs.append(float(vs))
-            rs.append(float(time_average(r.time, r.data, t0, t1)[0]))
-            zs.append(float(time_average(z.time, z.data, t0, t1)[0]))
-            units = v.units
+        chs, tags, rs, zs, vals, errs, units = [], [], [], [], [], [], ""
+        for view in views:                        # 't' tangential, 'v' vertical
+            for n in channels:
+                try:                              # name defaults to spec => cache shared with overview
+                    v = self.fetch_signal(f"{system}{qbase}{view}{n}")
+                    r = self.fetch_signal(f"{system}r{view}{n}")
+                    z = self.fetch_signal(f"{system}z{view}{n}")
+                except Exception:
+                    continue
+                units = v.units
+                R = float(np.nanmedian(r.data)); Z = float(np.nanmedian(z.data))   # geometry ~ steady
+                if average:
+                    vm, vs, _ = time_average(v.time, v.data, t0, t1)
+                    if not np.isfinite(vm):       # no sample inside the window -> drop (no fallback)
+                        continue
+                    chs.append(n); tags.append(f"{view.upper()}{n}")
+                    vals.append(float(vm)); errs.append(float(vs)); rs.append(R); zs.append(Z)
+                else:                             # keep every time sample in the window
+                    tv, yv = np.asarray(v.time, float), np.asarray(v.data, float)
+                    msk = (tv >= t0) & (tv <= t1) & np.isfinite(yv)
+                    for yi in yv[msk]:
+                        chs.append(n); tags.append(f"{view.upper()}{n}")
+                        vals.append(float(yi)); errs.append(np.nan); rs.append(R); zs.append(Z)
         order = np.argsort(rs) if rs else np.array([], int)
         arr = lambda a: np.asarray(a, float)[order]
         return ChannelProfile(self.shot, 0.5 * (t0 + t1), quantity,
                               np.asarray(chs, int)[order], arr(rs), arr(zs), arr(vals),
-                              units, label=f"CER {quantity}", error=arr(errs))
+                              units, label=f"CER {quantity}",
+                              tag=np.asarray(tags)[order],
+                              error=(arr(errs) if average else None))
 
     # ---- Thomson-scattering profile (Te / ne vs R,Z at one time) ------------
     def _value_cached(self, node: str, tree: str | None = None):
@@ -659,7 +684,8 @@ class DIIIDFetcher:
         return data, units
 
     def fetch_thomson_profile(self, time: float, quantity: str = "te", system="core",
-                              window: float = 100.0, t_window=None) -> ChannelProfile:
+                              window: float = 100.0, t_window=None,
+                              average: bool = True) -> ChannelProfile:
         """Thomson-scattering profile: Te or ne vs (R, Z) per channel, time-averaged.
 
         Reads the 2D BLESSED arrays `\\ELECTRONS::TOP.TS.BLESSED.<SYSTEM>:{TEMP|DENSITY}`
@@ -671,7 +697,8 @@ class DIIIDFetcher:
 
         `system` may be one of 'core'|'tangential'|'divertor', a LIST of them, or
         'all' (= core+tangential). Each channel is tagged by view ('C#','T#','D#').
-        `quantity` 'te'->TEMP [eV], 'ne'->DENSITY [m^-3]. Points sorted by R.
+        `quantity` 'te'->TEMP [eV], 'ne'->DENSITY [m^-3]. Points sorted by R. With
+        `average=False` every time sample in the window is kept (scatter, error=None).
         """
         systems = (["core", "tangential"] if system == "all"
                    else [system] if isinstance(system, str) else list(system))
@@ -692,18 +719,32 @@ class DIIIDFetcher:
             R, Z, tarr = np.atleast_1d(R), np.atleast_1d(Z), np.atleast_1d(tarr)
             if val2d.shape[0] == tarr.size and val2d.shape[1] != tarr.size:
                 val2d, err2d = val2d.T, err2d.T    # orient to (nchan, ntime)
-            valid = np.where(val2d > 0, val2d, np.nan)            # 0 = no measurement
-            v, _, _ = time_average(tarr, valid, t0, t1, axis=1)
-            e, _, _ = time_average(tarr, np.where(val2d > 0, err2d, np.nan), t0, t1, axis=1)
-            gd = np.isfinite(v) & (v > 0)
-            Rs.append(R[gd]); Zs.append(Z[gd]); Vs.append(v[gd]); Es.append(e[gd])
-            Tg.append(np.array([f"{sysname[0].upper()}{i}" for i in np.arange(R.size)[gd]]))
+            tag_of = lambda i: f"{sysname[0].upper()}{i}"
+            if average:
+                valid = np.where(val2d > 0, val2d, np.nan)            # 0 = no measurement
+                v, _, _ = time_average(tarr, valid, t0, t1, axis=1)
+                e, _, _ = time_average(tarr, np.where(val2d > 0, err2d, np.nan), t0, t1, axis=1)
+                gd = np.isfinite(v) & (v > 0)
+                Rs.append(R[gd]); Zs.append(Z[gd]); Vs.append(v[gd]); Es.append(e[gd])
+                Tg.append(np.array([tag_of(i) for i in np.arange(R.size)[gd]]))
+            else:                                 # every valid time sample in the window
+                tm = (tarr >= t0) & (tarr <= t1)
+                sub = val2d[:, tm]
+                for i in range(R.size):
+                    yi = sub[i]; good = yi > 0
+                    if not good.any():
+                        continue
+                    nrep = int(good.sum())
+                    Rs.append(np.full(nrep, R[i])); Zs.append(np.full(nrep, Z[i]))
+                    Vs.append(yi[good]); Es.append(np.full(nrep, np.nan))
+                    Tg.append(np.full(nrep, tag_of(i)))
         empty = np.array([])
         R, Z, V, E, Tg = (np.concatenate(a) if a else empty for a in (Rs, Zs, Vs, Es, Tg))
         order = np.argsort(R)
         return ChannelProfile(self.shot, 0.5 * (t0 + t1), f"{'+'.join(systems)}.{node.lower()}",
                               np.arange(R.size)[order], R[order], Z[order], V[order], units,
-                              label=f"TS {'+'.join(systems)} {quantity}", tag=Tg[order], error=E[order])
+                              label=f"TS {'+'.join(systems)} {quantity}", tag=Tg[order],
+                              error=(E[order] if average else None))
 
     def _eq_cache_path(self, tree: str, time: float) -> Path:
         return self.cache_dir / f"{self.shot}_eq_{tree}_{int(round(time))}.npz"
