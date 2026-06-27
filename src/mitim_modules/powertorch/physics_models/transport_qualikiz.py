@@ -1,7 +1,6 @@
 import numpy as np
 from mitim_tools.qualikiz_tools import QLKtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as _interp
 
 
 class qualikiz_model:
@@ -65,37 +64,30 @@ class qualikiz_model:
         S  = np.zeros(nrho)   # Qie turbulent exchange not provided by QuaLiKiz
 
         for i, out in enumerate(qlk.results["base"]["output"]):
-            # efe_GB: electron heat flux, dims [dimx] → scalar after isel
-            Qe[i] = float(out["efe_GB"].values)
-            # pfe_GB: electron particle flux, dims [dimx] → scalar
-            Ge[i] = float(out["pfe_GB"].values)
-            # efi_GB: ion heat flux, dims [dimx, nions] → sum over all ion species
-            Qi[i] = float(out["efi_GB"].values.sum())
-            # pfi_GB: ion particle flux, dims [dimx, nions] → pick impurity species
-            GZ[i] = float(out["pfi_GB"].values[ion_OI_position_in_ion_list])
-            # vfi_GB: ion toroidal angular momentum flux, dims [dimx, nions].
-            # Only written when phys_meth >= 1 (STANDARD/ROTATION presets); fall
-            # back to 0 (momentum not predicted) when absent.
+            # Read physical-unit (SI) outputs; normalise below using the
+            # powerstate's Qgb/Ggb/Pgb (which use B_unit), so no explicit
+            # B0→B_unit correction is needed.
+            Qe[i] = float(out["efe_SI"].values)
+            Ge[i] = float(out["pfe_SI"].values)
+            Qi[i] = float(out["efi_SI"].values.sum())
+            GZ[i] = float(out["pfi_SI"].values[ion_OI_position_in_ion_list])
             try:
-                Mt[i] = float(out["vfi_GB"].values.sum())
+                Mt[i] = float(out["vfi_SI"].values.sum())
             except KeyError:
                 pass
 
-        # QuaLiKiz normalises its GB outputs with B0 (on-axis field), but MITIM's
-        # internal GB convention uses B_unit.  Since Q_GB ∝ ρ_s² ∝ B⁻², the
-        # conversion factor from QuaLiKiz GB → MITIM GB is (B_unit/B0)² at each
-        # radius.  This applies equally to all flux channels.
-        p = self._profiles_transport_for("turb")
-        B0 = float(np.abs(p.profiles["bcentr(T)"][-1]))
-        B_unit_at_rhos = _interp(
-            np.array(rho_locations), p.profiles["rho(-)"], p.derived["B_unit"]
-        )
-        b_correction = (B_unit_at_rhos / B0) ** 2
-        Qe *= b_correction
-        Qi *= b_correction
-        Ge *= b_correction
-        GZ *= b_correction
-        Mt *= b_correction
+        # Normalise SI fluxes to MITIM GB units.
+        # efe/efi_SI [W/m²]  → divide by Qgb [MW/m²] × 1e6
+        # pfe/pfi_SI [m⁻²s⁻¹] → divide by Ggb [1e20 m⁻²s⁻¹] × 1e20
+        # vfi_SI [J/m²]      → divide by Pgb [J/m²]
+        Qgb = self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy()
+        Ggb = self.powerstate.plasma["Ggb"][0, 1:].cpu().numpy()
+        Pgb = self.powerstate.plasma["Pgb"][0, 1:].cpu().numpy()
+        Qe /= Qgb * 1e6
+        Qi /= Qgb * 1e6
+        Ge /= Ggb * 1e20
+        GZ /= Ggb * 1e20
+        Mt /= Pgb
 
         Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
         Flux_std  = np.abs(Flux_mean) * percent_error / 100.0
