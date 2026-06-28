@@ -121,6 +121,12 @@ class beat:
     def grab_output(self, *args, **kwargs):
         pass
 
+    def optional_postprocessing(self):
+        # Hook for beat-specific end-of-run postprocessing (e.g. space-saving cleanup).
+        # Called once per beat by MAESTRO.finalize() after all beats have run. No-op by
+        # default; override in a beat subclass (see portals_beat).
+        pass
+
     def plot(self, *args, **kwargs):
         return ''
 

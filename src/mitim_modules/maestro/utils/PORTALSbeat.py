@@ -181,31 +181,113 @@ class portals_beat(beat):
 
             self._persist(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
-        elif not (self.folder_output / 'Outputs' / 'optimization_object.pkl').exists():
+        # --------------------------------------------------------------------------------------------
+        # Prepare final beat's input.gacode
+        # --------------------------------------------------------------------------------------------
+        # Completion is keyed off beat_results/input.gacode (the merged result, written below /
+        # by merge_parameters), which survives even when optimization_object.pkl was pruned for space
+        # (keep_all_files: false, an intermediate PORTALS beat). The pickle is only needed to
+        # RECONSTRUCT the result; if it is gone but input.gacode is present, the beat is finished and we
+        # load it directly so a re-run of a finished MAESTRO stays idempotent without the pickle.
+        self._finalized_from_pruned = False
+        pkl_present = (self.folder_output / 'Outputs' / 'optimization_object.pkl').exists()
+        final_gacode = self.folder_output / 'input.gacode'
+
+        if pkl_present:
+            portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+            # Standard PORTALS output
+            try:
+                self.profiles_output = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
+            # Converged in training case
+            except AttributeError:
+                print('\t\t- PORTALS probably converged in training, so analyzing a bit differently')
+                self.profiles_output = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
+            self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+
+        elif final_gacode.exists():
+            # Finished PORTALS beat whose pickle was pruned for space: beat_results/input.gacode already
+            # holds the merged result. Load it and let merge_parameters() short-circuit (its full
+            # re-derivation needs the pruned optimization_object/optimization_extra pickles).
+            print('\t\t- PORTALS pickle pruned for space; loading finished beat from beat_results/input.gacode', typeMsg='i')
+            self.profiles_output = PROFILEStools.gacode_state(final_gacode)
+            self.profiles_output.derive_quantities()
+            self._finalized_from_pruned = True
+
+        else:
             # Neither a freshly-completed run (self.folder) nor a prior persisted result (folder_output)
             # exists: the beat genuinely did not finish. Fail loudly and actionably instead of crashing
-            # cryptically in from_folder below (or silently producing an empty beat_results).
+            # cryptically in from_folder (or silently producing an empty beat_results).
             raise RuntimeError(
                 f"[MAESTRO][PORTALSbeat] PORTALS run in '{IOtools.clipstr(self.folder)}' did not complete "
                 f"(no Outputs/optimization_object.pkl) and no prior finalized result exists in "
                 f"'{IOtools.clipstr(self.folder_output)}'. Re-run this beat (cold-start it) before finalizing."
             )
 
-        # --------------------------------------------------------------------------------------------
-        # Prepare final beat's input.gacode
-        # --------------------------------------------------------------------------------------------
+    def optional_postprocessing(self):
+        '''Space-saving (keep_all_files: false), run once per beat at the END of the MAESTRO run
+        (MAESTRO.finalize, AFTER all beats and generate_summary). Safe to slim/drop here because
+        nothing reads a PORTALS beat's GP surrogates any more: the in-run consumers
+        (the next beat's _flux_match_for_first_point, and summary()) have already happened.
+          - LAST portals beat: keep it (so the final core solution still replots) but SLIM it
+            (drop the `steps` GP, the bulk of optimization_object.pkl).
+          - intermediate portals beat: drop everything heavy it no longer needs --
+            optimization_object/optimization_extra pickles, the per-iteration profile snapshots
+            (portals_profiles/), optimization_log.txt, and its MAESTRO per-phase stdout logs
+            (Outputs/Logs/beat_<n>_*.log); chaining keeps surrogate_data.csv and
+            beat_results/input.gacode, and warnings are already in warnings.log.'''
+        if self.maestro_instance.keep_all_files:
+            return
+        out = getattr(self, 'folder_output', None)
+        if out is None:
+            return
+        beats = self.maestro_instance.beats
+        portals_counters = [c for c, b in beats.items() if getattr(b, 'name', None) == 'portals']
+        my_counter = next((c for c, b in beats.items() if b is self), None)
+        pkl = out / 'Outputs' / 'optimization_object.pkl'
 
-        portals_output = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_output)
+        if my_counter is None or my_counter == max(portals_counters):
+            # last (or only) portals beat: slim in place (load full, re-save without steps)
+            if pkl.exists():
+                m = STRATEGYtools.read_from_scratch(pkl)
+                m.folderOutputs = out / 'Outputs'
+                m.save(lean=True)
+                print(f'\t\t- Space-saving: slimmed the final PORTALS beat {my_counter} pickle (dropped GP steps)')
+            return
 
-        # Standard PORTALS output
-        try:
-            self.profiles_output = portals_output.mitim_runs[portals_output.ibest]['powerstate'].profiles
-        # Converged in training case
-        except AttributeError:
-            print('\t\t- PORTALS probably converged in training, so analyzing a bit differently')
-            self.profiles_output = portals_output.profiles[portals_output.opt_fun_full.res.best_absolute_index]
-
-        self.profiles_output.write_state(file=self.folder_output / 'input.gacode')
+        # intermediate portals beat: drop everything heavy that nothing downstream needs --
+        # the pickles, the per-iteration profile snapshots (portals_profiles/) and the log.
+        # Safe because: restart reads the pickle (gone, but an intermediate beat is never the
+        # resume point), plotMetrics uses the powerstates in optimization_extra (this beat is
+        # not replotted), chaining uses surrogate_data.csv + beat_results/input.gacode (both
+        # KEPT). portals_profiles is only read by the initializer-fallback / offline read_portals,
+        # and optimization_log.txt is never read back.
+        removed = 0
+        for fname in ('optimization_object.pkl', 'optimization_extra.pkl', 'optimization_log.txt'):
+            f = out / 'Outputs' / fname
+            if f.exists():
+                try:
+                    f.unlink(); removed += 1
+                except Exception as e:
+                    print(f'\t\t- Could not remove {IOtools.clipstr(f)}: {e}', typeMsg='w')
+        pdir = out / 'Outputs' / 'portals_profiles'
+        if pdir.is_dir():
+            try:
+                IOtools.shutil_rmtree(pdir); removed += 1
+            except Exception as e:
+                print(f'\t\t- Could not remove {IOtools.clipstr(pdir)}: {e}', typeMsg='w')
+        # ...and this beat's MAESTRO per-phase stdout logs (Outputs/Logs/beat_<n>_*.log) -- the
+        # PORTALS run-phase log is the bulk (~7 MB/beat). Safe: interpret() runs after every beat
+        # (before finalize) and has already collected warnings into warnings.log, and nothing reads
+        # these per-beat logs afterwards. Only this (intermediate) beat's logs are removed.
+        logs_dir = getattr(self.maestro_instance, 'folder_logs', None)
+        if logs_dir is not None and logs_dir.is_dir():
+            for lf in logs_dir.glob(f'beat_{my_counter}_*.log'):
+                try:
+                    lf.unlink(); removed += 1
+                except Exception as e:
+                    print(f'\t\t- Could not remove {IOtools.clipstr(lf)}: {e}', typeMsg='w')
+        if removed:
+            print(f'\t\t- Space-saving: pruned {removed} heavy item(s) from intermediate PORTALS beat {my_counter} (pickles + portals_profiles + logs)')
 
     def merge_parameters(self):
         '''
@@ -220,6 +302,14 @@ class portals_beat(beat):
             - Inserts dynamic targets (only those that were evolved)
             - Restore fast ion profiles
         '''
+
+        if getattr(self, '_finalized_from_pruned', False):
+            # Finished PORTALS beat whose pickle was pruned: beat_results/input.gacode already holds the
+            # merged result (loaded into profiles_output by finalize), and the re-derivation below needs
+            # the pruned optimization_object/optimization_extra pickles. Skip it; profiles_output (the
+            # merged state) still feeds the chain via _freeze_parameters.
+            print('\t\t- Skipping PORTALS merge re-derivation (pickle pruned; using saved merged input.gacode)', typeMsg='i')
+            return
 
         # Write the pre-merge input.gacode before modifying it
         self.profiles_output.write_state(file=self.folder_output / 'input.gacode_pre_merge')
@@ -699,6 +789,10 @@ class portals_beat(beat):
         self.maestro_instance.parameters_trans_beat['portals_ymax'] = ymax
         print(f'\t\t* ymin saved for future beats: {ymin}')
         print(f'\t\t* ymax saved for future beats: {ymax}')
+        # NB: do NOT slim the pickle here. A PORTALS beat's surrogates are still consumed
+        # later in the run -- the NEXT PORTALS beat warm-starts from them in
+        # _flux_match_for_first_point (folder_starting_point.step.GP) -- and by summary().
+        # All slimming/pruning happens once at the very end, in optional_postprocessing.
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Defaults to help MAESTRO

@@ -16,6 +16,8 @@ DESCRIPTION
 
 *   ⚙️ **SR acquisition optimizer (`halt_on`)**: new `optimizer_options.sr.halt_on` (`best` | `all`). The batched restarts halt together when the *best* restart meets the tolerance (`best`, default, unchanged) or only once *every* restart does (`all`) — use `all` when more than one `x_best` is consumed, so all returned candidates are comparably converged instead of the slower ones being truncated. The batched-restart behavior of both ROOT and SR (and what `relative_improvement_for_stopping` controls) is now documented in `namelist.optimization.yaml` and the solver docstrings.
 
+*   💾 **MAESTRO disk footprint — lean PORTALS pickles**: under `keep_all_files: false`, PORTALS beats now persist a *lean* `optimization_object.pkl`. The fitted GP surrogates (`steps`), which dominate the file (≈⅔ of each case), are dropped from the saved copy once a beat converges — the per-iteration checkpoints written *during* the run stay full, so a preempted run still resumes normally. At the end of a run only the **last** PORTALS beat keeps its heavy outputs (lean `optimization_object` + `optimization_extra`); intermediate beats are stripped of their pickles **plus** the per-iteration `portals_profiles/` snapshots, `optimization_log.txt`, and their MAESTRO per-beat stdout logs (`Outputs/Logs/beat_<n>_*.log`), since chaining only needs `surrogate_data.csv` and each beat's `input.gacode` (both kept), and warnings were already collected into `warnings.log` at interpret(). Together these roughly halve a finished case (e.g. ~210 MB → ~100 MB for a TGLF predict-density case; the remainder is mostly the last beat's `optimization_extra` + its per-iteration artifacts, and the TRANSP outputs). `mitim_plot_portals`/`mitim_plot_maestro` still replot the convergence/profile metrics from a lean pickle (output is identical; only the GP-posterior "Expected" plots are unavailable). New low-level switch: `MITIM_BO.save(lean=True)`. Standalone PORTALS runs and `keep_all_files: true` are unchanged. Re-running a finished MAESTRO stays idempotent without the pruned pickles: each beat's cross-beat parameters are snapshotted per beat to `Outputs/trans_beat_parameters/` (JSON, paths stored relative to the run root so they survive a folder move) and restored when a beat is skipped, so `finalize`/`merge`/`_inform_save` no longer need the (possibly pruned) pickle.
+
 
 ### Bug Fixes
 
@@ -51,7 +53,7 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   💾 **Lean PORTALS pickles under `keep_all_files: false`**: intermediate PORTALS beats' `optimization_object.pkl`/`optimization_extra.pkl` are pruned, and the retained (last-beat) `optimization_object.pkl` is lean (no GP surrogates). Replotting metrics still works; the GP-posterior ("Expected") plots and a pickle-based surrogate resume of those finished beats are not available. Set `keep_all_files: true` to retain full pickles.
 
 ---
 
