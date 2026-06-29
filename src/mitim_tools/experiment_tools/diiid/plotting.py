@@ -58,6 +58,19 @@ _CER_FLAVORS = ("cerq", "cera", "cerf", "cern")
 _CER_FLAVOR_LABEL = {"cerq": "CERQUICK", "cera": "CERAUTO", "cerf": "CERFIT", "cern": "CERNEUR"}
 _PROF_MARKERS = ["o", "s", "^", "D", "v", "P"]   # markers to distinguish overlaid scatter series
 
+# CER quantities for the profiles_cer "check" plot, keyed by a friendly name ->
+# (CER suffix, scale, units, ylabel). The suffix is the <quantity> in the pointname
+# <flavor><quantity><view><ch>: tit=Ti, rotct=toroidal rotation, nzt=impurity density
+# n_Z, fzt=impurity fraction n_Z/n_e, ampt=line intensity.
+_CER_QTY_DISPLAY = {
+    "ti":  ("tit",   1e-3,  "keV",                 r"$T_i$"),
+    "rot": ("rotct", 1.0,   "km/s",                r"$v_\phi$"),
+    "nz":  ("nzt",   1e-18, r"$10^{18}$ m$^{-3}$", r"$n_Z$"),
+    "fz":  ("fzt",   1.0,   "%",                   r"$n_Z/n_e$"),
+    "amp": ("ampt",  1.0,   "ph/s/m²/sr",          "intensity"),
+}
+_CER_QTY_ALL = ("ti", "rot", "nz", "fz")          # default rows for profiles_cer
+
 
 # =============================================================================
 # Declarative data model
@@ -123,6 +136,7 @@ class ProfilePanel:
     channels: object = None        # CER channel range (default range(1,49))
     join:     bool = False         # connect the points with a line (default: scatter only)
     flavor_labels: dict | None = None  # CER legend overrides, e.g. {"cera":"CERAUTO (Ne)"}
+    alpha:    float = 0.85         # point/line opacity for this panel (e.g. 0.5 to de-emphasize)
 
     def __post_init__(self):       # fail fast on a misplaced/typo'd argument
         if self.source not in ("thomson", "cer"):
@@ -469,55 +483,58 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
     return fig, (axp, axe)        # (profile axis, equilibrium axis); not closed -> keep plotting
 
 
-def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
+def profiles_cer(shots, time: float = 4000.0, quantities=_CER_QTY_ALL,
                  flavors=("cera", "cerf"), flavor_labels: dict | None = None,
                  tree: str = "EFIT01", channels=range(1, 49), window: float = 100.0,
-                 t_window=None, scale: float = 1e-3, units: str = "keV",
-                 ylabel: str = r"$T_i$", coord: str = "rho", ylim: tuple | None = None,
-                 rho_max: float | None = None, label_channels: bool = True,
-                 colors: list | None = None, name: str = "cer_flavors",
-                 use_cache: bool = True, cache_dir: str | Path | None = None,
-                 tunnel_host: str = "cybele", server: str | None = None, connection=None,
+                 t_window=None, coord: str = "rho", rho_max: float | None = None,
+                 label_channels: bool = True, colors: list | None = None,
+                 name: str = "cer_check", use_cache: bool = True,
+                 cache_dir: str | Path | None = None, tunnel_host: str = "cybele",
+                 server: str | None = None, connection=None,
                  save_dir: str | Path | None = None, show: bool = True):
-    """Overlay the DIII-D CER analysis FLAVORS for one quantity vs coordinate, plus
-    each flavor's channels on the equilibrium.
+    """CER "check" plot: each CER `quantity` as a ROW (value vs coordinate), overlaying
+    the analysis FLAVORS, plus one equilibrium per flavor with its channels marked.
 
-    `flavors` are the CER `system` prefixes: 'cerq' (CERQUICK quick-look), 'cera'
-    (CERAUTO), 'cerf' (CERFIT). On a manually-analysed shot, CERAUTO is often the
-    carbon fit and CERFIT the neon fit, so this overlays both. Each (shot, flavor)
-    is a curve: colour = flavor for one shot, else colour = shot + linestyle =
-    flavor. There is ONE equilibrium subplot PER flavor (its channels on the EFIT),
-    so they don't overlap. `coord='rho'` maps to ρ_tor via each shot's EFIT, and
-    `rho_max` (e.g. 1.0) drops points beyond it (the noisy SOL). Points are
-    time-averaged over `t_window=(t0,t1)` if given, else over `time`±`window`;
-    the window is stated in the title. Pass `flavor_labels` to relabel (e.g. ion).
+    This is the diagnostic look-at-everything plot; for publication panels use
+    `overview(Profiles([...]))`. `quantities` picks which rows to show (friendly names,
+    default all): 'ti' (Ti), 'rot' (toroidal rotation), 'nz' (impurity density n_Z),
+    'fz' (impurity fraction n_Z/n_e), 'amp' (line intensity); the CER suffix and
+    display scaling/units come from `_CER_QTY_DISPLAY`. `flavors` are the CER `system`
+    prefixes ('cerq'|'cera'|
+    'cerf'); each (shot, flavor) is a curve: colour=flavor for one shot, else
+    colour=shot + linestyle=flavor. `coord='rho'` maps to ρ_tor via each shot's EFIT;
+    `rho_max` drops the SOL. Points are time-averaged over `t_window=(t0,t1)` if given,
+    else over `time`±`window`. Pass `flavor_labels` to relabel (e.g. the ion).
 
-    Returns `(fig, (axp, axes_eq))` — the Figure, the profile axis and the list of
-    per-flavor equilibrium axes — and does NOT close the figure, so you can keep
-    plotting on any of them."""
+    Returns `(fig, (axes_prof, axes_eq))` — the per-quantity profile axes and the
+    per-flavor equilibrium axes; the figure is left open so you can keep plotting."""
     if isinstance(shots, int):
         shots = [shots]
+    if isinstance(quantities, str):
+        quantities = [quantities]
     bad = [fl for fl in flavors if fl not in _CER_FLAVORS]
     if bad:
         raise ValueError(f"profiles_cer() flavors must be CER prefixes {_CER_FLAVORS}; got {bad}.")
     flav_lab = {**_CER_FLAVOR_LABEL, **(flavor_labels or {})}
     rho_kind = {"rho": "tor", "rhotor": "tor", "rhopol": "pol"}.get(coord)
     eqtime = 0.5 * (t_window[0] + t_window[1]) if t_window else time
+    qdisp = lambda q: _CER_QTY_DISPLAY.get(q, (q, 1.0, "", q))   # -> (suffix, scale, units, ylabel)
 
-    profs, eq_data = {}, {}
+    profs, eq_data = {}, {}                        # profs[(shot, flavor, quantity)]
     own_conn = connection is None
     conn = connection if connection is not None else DIIIDConnection(server=server, tunnel_host=tunnel_host)
     try:
         for sh in shots:
-            print(f"* fetching CER flavors {list(flavors)} #{sh} ...")
+            print(f"* fetching CER {list(quantities)} flavors {list(flavors)} #{sh} ...")
             f = DIIIDFetcher(sh, connection=conn, use_cache=use_cache, cache_dir=cache_dir)
             for fl in flavors:
-                try:
-                    profs[(sh, fl)] = f.fetch_cer_profile(time, quantity=quantity, channels=channels,
-                                                          window=window, t_window=t_window, system=fl)
-                except Exception as e:
-                    print(f"  ! {fl} {quantity} #{sh}: {str(e)[:40]}")
-                    profs[(sh, fl)] = None
+                for q in quantities:
+                    try:
+                        profs[(sh, fl, q)] = f.fetch_cer_profile(time, quantity=qdisp(q)[0], channels=channels,
+                                                                 window=window, t_window=t_window, system=fl)
+                    except Exception as e:
+                        print(f"  ! {fl} {q} #{sh}: {str(e)[:40]}")
+                        profs[(sh, fl, q)] = None
             try:
                 eq_data[sh] = f.fetch_equilibrium(eqtime, tree)
             except Exception as e:
@@ -541,7 +558,6 @@ def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
         return pr.z if coord == "Z" else pr.r
     xlabel = {"tor": r"$\rho_{tor}$", "pol": r"$\rho_{pol}$"}.get(rho_kind, f"{coord} [m]")
 
-    # averaging window for the title: explicit t_window, else time +- window
     avg0, avg1 = t_window if t_window else (time - window, time + window)
     when = (f"avg {avg0:.0f}-{avg1:.0f} ms" if t_window
             else f"t={time:.0f} ms  (avg {avg0:.0f}-{avg1:.0f} ms)")
@@ -552,51 +568,56 @@ def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
             m &= (x <= rho_max)
         return x[m], pr.value[m], (pr.error[m] if pr.error is not None else None), m
 
-    nf = len(flavors)
-    fig = plt.figure(figsize=(5.8 + 2.6 * nf, 5.4))
-    gs = fig.add_gridspec(1, 1 + nf, width_ratios=[2.4] + [1.0] * nf)
-    axp = fig.add_subplot(gs[0, 0])
-    axes_eq = [fig.add_subplot(gs[0, 1 + i]) for i in range(nf)]
+    nq, nf = len(quantities), len(flavors)
+    fig = plt.figure(figsize=(5.8 + 2.6 * nf, 1.7 * nq + 0.6))
+    gs = fig.add_gridspec(nq, 1 + nf, width_ratios=[2.4] + [1.0] * nf)
+    axes_prof = []
+    for qi in range(nq):
+        axes_prof.append(fig.add_subplot(gs[qi, 0], sharex=axes_prof[0] if axes_prof else None))
+    axes_eq = [fig.add_subplot(gs[:, 1 + fi]) for fi in range(nf)]
 
-    # ---- left: profiles overlaid (+ channel numbers by the points) ----
-    if rho_kind:
-        for xr, tg in [(0.0, "axis"), (1.0, "sep")]:
-            axp.axvline(xr, color="0.6", ls=":", lw=0.8)
-            axp.text(xr, 0.98, tg, color="0.5", fontsize=6, rotation=90, va="top", ha="right",
-                     transform=axp.get_xaxis_transform())
-    for si, sh in enumerate(shots):
-        for fi, fl in enumerate(flavors):
-            pr = profs.get((sh, fl))
-            if pr is None or not pr.r.size:
-                continue
-            x, val, err, m = masked(sh, pr); o = np.argsort(x); color, ls = style(si, fi)
-            lab = flav_lab.get(fl, fl) if not multishot else f"{sh} {flav_lab.get(fl, fl)}"
-            axp.errorbar(x[o], val[o] * scale, yerr=(err[o] * scale if err is not None else None),
-                         fmt=ls + "o", ms=4, lw=0.9, color=color, elinewidth=0.5, capsize=0,
-                         alpha=0.9, label=lab)
-            if label_channels:
-                lbls = (pr.tag if pr.tag is not None else pr.channel)[m]   # 'T18'/'V14' if tagged
-                for ch, xi, vi in zip(lbls, x, val):
-                    axp.annotate(str(ch), (xi, vi * scale), fontsize=4, color=color,
-                                 xytext=(0, 4), textcoords="offset points", ha="center", alpha=0.8)
-    if rho_kind:
-        axp.set_xlim(0.0, rho_max)
-    if ylim:
-        axp.set_ylim(ylim)
-    axp.set_xlabel(xlabel, fontsize=8)
-    axp.set_ylabel(ylabel + (f"  [{units}]" if units else ""), fontsize=9)
-    axp.set_title(f"CER {quantity} flavors vs {xlabel}   {when}", fontsize=9)
-    axp.grid(alpha=0.3); axp.tick_params(labelsize=7)
-    axp.legend(fontsize=7, frameon=False, loc="best")
+    # ---- left column: one profile ROW per quantity, flavors overlaid ----
+    for qi, q in enumerate(quantities):
+        ax = axes_prof[qi]; _suffix, scale, units, ylab = qdisp(q)
+        if rho_kind:
+            ax.axvline(0.0, color="0.8", ls=":", lw=0.6)
+            ax.axvline(1.0, color="0.4", ls="--", lw=0.9)
+        for si, sh in enumerate(shots):
+            for fi, fl in enumerate(flavors):
+                pr = profs.get((sh, fl, q))
+                if pr is None or not pr.r.size:
+                    continue
+                x, val, err, m = masked(sh, pr); o = np.argsort(x); color, ls = style(si, fi)
+                lab = flav_lab.get(fl, fl) if not multishot else f"{sh} {flav_lab.get(fl, fl)}"
+                ax.errorbar(x[o], val[o] * scale, yerr=(err[o] * scale if err is not None else None),
+                            fmt=ls + "o", ms=3.5, lw=0.7, color=color, elinewidth=0.4, capsize=0,
+                            alpha=0.9, label=lab)
+                if label_channels:
+                    lbls = (pr.tag if pr.tag is not None else pr.channel)[m]   # 'T18'/'V14' if tagged
+                    for ch, xi, vi in zip(lbls, x, val):
+                        ax.annotate(str(ch), (xi, vi * scale), fontsize=3.5, color=color,
+                                    xytext=(0, 3), textcoords="offset points", ha="center", alpha=0.8)
+        if rho_kind:
+            ax.set_xlim(0.0, rho_max)
+        ax.set_ylabel(ylab + (f"  [{units}]" if units else ""), fontsize=8)
+        ax.grid(alpha=0.3); ax.tick_params(labelsize=6.5)
+        if qi == 0:
+            ax.set_title(f"CER check vs {xlabel}   {when}", fontsize=9)
+            ax.legend(fontsize=6.5, frameon=False, loc="best")
+        if qi == nq - 1:
+            ax.set_xlabel(xlabel, fontsize=8)
+        else:
+            ax.tick_params(labelbottom=False)
 
-    # ---- right: one equilibrium PER flavor, its channels (+ numbers) on the EFIT ----
+    # ---- right: one equilibrium PER flavor, channels (of the first quantity) on the EFIT ----
+    q0 = quantities[0]
     eqseries = [("0.4", "-", str(sh), eq_data[sh]) for sh in shots if eq_data.get(sh) is not None]
     for fi, fl in enumerate(flavors):
         ax = axes_eq[fi]
         _draw_equilibrium(ax, eqseries, Equilibrium(time=eqtime, tree=tree, label=flav_lab.get(fl, fl)),
                           title_time=eqtime)
         for si, sh in enumerate(shots):
-            pr = profs.get((sh, fl))
+            pr = profs.get((sh, fl, q0))
             if pr is None or not pr.r.size:
                 continue
             color, _ls = style(si, fi); _x, _v, _e, m = masked(sh, pr)
@@ -611,8 +632,8 @@ def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
         if fi > 0:
             ax.set_ylabel("")
 
-    fig.suptitle(f"DIII-D — CER {quantity} flavors  (#{', #'.join(map(str, shots))})", fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.suptitle(f"CER check  (#{', #'.join(map(str, shots))})", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     if save_dir is not None and show:         # show=False -> composing further: save it yourself
         save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)
         out = save_dir / f"{name}_{'_'.join(map(str, shots))}.png"
@@ -620,7 +641,7 @@ def profiles_cer(shots, time: float = 4000.0, quantity: str = "tit",
         print(f"* Saved figure -> {out}")
     if show:
         plt.show()
-    return fig, (axp, axes_eq)    # (profile axis, list of per-flavor equilibrium axes)
+    return fig, (axes_prof, axes_eq)    # (per-quantity profile axes, per-flavor equilibrium axes)
 
 
 # =============================================================================
@@ -706,6 +727,15 @@ def _spec_label(tr):
     return "mean(" + ", ".join(s) + ")"       # 'mean'
 
 
+def _trace_legend_label(tr, show_source):
+    """Legend text for a trace. With `show_source`, the MDS spec is folded in as a
+    second line under the user label (one combined legend entry, not a separate note)."""
+    spec = _spec_label(tr)
+    if show_source and tr.label and tr.label != spec:
+        return f"{tr.label}\n{spec}"
+    return tr.label or spec
+
+
 def _discharge_window(ip_sigs):
     """[t0,t1] ms from where |Ip| > 5% of peak (ignoring no-plasma shots)."""
     t0s, t1s = [], []
@@ -742,7 +772,7 @@ def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
                 label = shot_names[si] if ti == 0 else None
             else:
                 color = _TRACE_PALETTE[ti % len(_TRACE_PALETTE)]
-                label = tr.label or _spec_label(tr)   # list-spec -> e.g. 'mean(tritop, tribot)'
+                label = _trace_legend_label(tr, panel.show_source)   # source folds in as a 2nd line
             if tr.avg and tr.avg > 0:                 # raw faint, time-average bold
                 td, yd = _decimate(t, y)
                 if tr.raw_alpha > 0:
@@ -768,11 +798,11 @@ def _draw_panel(ax, results, panel: Panel, shots, t0, t1, multishot,
         ax.legend(fontsize=5.5 * fs, loc="best", ncol=2, frameon=False)
     elif multitrace and multishot:
         handles = [Line2D([], [], color="0.3", ls=_trace_ls(tr, ti, True),
-                          lw=1, label=(tr.label or _spec_label(tr)))   # fall back to the spec name
+                          lw=1, label=_trace_legend_label(tr, panel.show_source))   # label (+ source)
                    for ti, tr in enumerate(panel.traces)]
         ax.legend(handles=handles, fontsize=5 * fs, loc="best", ncol=2, frameon=False)
-    if panel.show_source:                      # expose the actual MDS spec(s) + operation
-        specs = [_spec_label(tr) for tr in panel.traces]
+    if panel.show_source and not multitrace:   # single trace -> source as a note (multitrace folds it
+        specs = [_spec_label(tr) for tr in panel.traces]   # into the legend entries above)
         ax.text(0.99, 0.96, ", ".join(dict.fromkeys(specs)), transform=ax.transAxes,
                 ha="right", va="top", fontsize=5.5 * fs, color="0.45",
                 bbox=dict(fc="white", ec="none", alpha=0.6, pad=0.5))
@@ -893,11 +923,12 @@ def _draw_profile_panel(ax, prof_data, eq_data, shots, pc, c, pi, pp, windows, c
                         ls = _TRACE_LS[vidx % len(_TRACE_LS)]
                     else:
                         mk = _PROF_MARKERS[vidx % len(_PROF_MARKERS)]
+                if vlabel is not None:               # legend the flavor even when there's just one
                     flavor_ls[vlabel] = (ls if pp.join else "none", mk)
                 fmt = (ls + mk) if pp.join else mk    # join with a line, else scatter only
                 ax.errorbar(xm[o], vm[o] * pp.scale, yerr=(em[o] * pp.scale if em is not None else None),
                             fmt=fmt, ms=2.5 * msc, lw=0.6 * lw, color=color, elinewidth=0.5 * lw,
-                            capsize=0, alpha=0.85)
+                            capsize=0, alpha=pp.alpha)
                 drew = True
     if rho_kind:
         ax.axvline(0.0, color="0.8", ls=":", lw=0.6 * lw)        # magnetic axis
@@ -1019,10 +1050,15 @@ def _render(results, columns, shots, name="overview",
     if xref is not None:
         xref.set_xlim(t0, t1)
 
-    # title on top, legend stacked just below it (centered, single row) so they
-    # never collide regardless of how many shots/labels there are.
-    title = f"DIII-D — {name}" + ("" if multishot else f"  #{shots[0]}")
+    # `name` is the title verbatim (no auto prefix); empty -> no title. Legend sits
+    # just below it, wrapping to as many rows as the figure width needs, and the
+    # subplot area top is set right under the legend (no big gap).
+    title = (name or "") + ("" if multishot else f"  #{shots[0]}")
     height = fig.get_figheight()
+    has_title = bool(title.strip())
+    # Profiles / Equilibrium columns draw a title above their TOP panel; reserve a row
+    # for it so it clears the figure legend instead of poking up into the shot labels.
+    title_pad = 0.30 if any(isinstance(col, (Profiles, Equilibrium)) for col in columns) else 0.0
     leg = []                                       # colour = shot; for >1 window add a window key
     if multishot:
         leg += [Line2D([], [], color=shot_colors[si % len(shot_colors)], lw=2 * lw, label=shot_names[si])
@@ -1032,16 +1068,18 @@ def _render(results, columns, shots, name="overview",
                        color=(win_palette[wi % len(win_palette)] if by_window else "0.3"),
                        ls=("-" if by_window else _TRACE_LS[wi % len(_TRACE_LS)]))
                 for wi in range(n_w)]
+    if has_title:
+        fig.suptitle(title, fontsize=12 * fs, y=1 - 0.22 / height)
+    fig.tight_layout(h_pad=0.15, w_pad=0.4)        # sets left/right/bottom; we set the top below
+    sub_top = 1 - ((0.34 if has_title else 0.07) + title_pad) / height
     if leg:
-        fig.legend(handles=leg, loc="upper center", bbox_to_anchor=(0.5, 1 - 0.55 / height),
-                   ncol=min(len(leg), 5), fontsize=8 * fs, frameon=False)
-        top_in = 0.85
-    else:
-        top_in = 0.45
-    fig.suptitle(title, fontsize=12 * fs, y=1 - 0.26 / height)
-
-    fig.tight_layout(rect=(0, 0, 1, 1 - top_in / height), h_pad=0.15, w_pad=0.4)
-    fig.subplots_adjust(hspace=0.12)      # tight vertical packing (panels share x)
+        ncol_leg = max(1, min(len(leg), int(fig.get_figwidth() / 1.6)))   # fit the figure width
+        nrow_leg = -(-len(leg) // ncol_leg)                               # ceil division
+        leg_y = 1 - (0.46 if has_title else 0.20) / height                # legend top, under the title
+        fig.legend(handles=leg, loc="upper center", bbox_to_anchor=(0.5, leg_y),
+                   ncol=ncol_leg, fontsize=8 * fs, frameon=False)
+        sub_top = leg_y - (0.25 * nrow_leg + 0.05 + title_pad) / height   # +room for the column title
+    fig.subplots_adjust(top=sub_top, hspace=0.12)
     if own_fig:                           # a provided fig (notebook tab) is shown/saved by the caller
         if save_dir is not None and show:  # show=False -> composing further: save it yourself
             save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)

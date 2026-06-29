@@ -192,6 +192,37 @@ def time_average(t, y, t0, t1, axis=-1):
                 np.sum(np.isfinite(sl), axis=axis))
 
 
+def _write_geqdsk(path, d):
+    """Write a standard EFIT GEQDSK (g-file) from a dict of SI-unit fields.
+
+    All quantities are SI as stored by EFIT: psi [Wb/rad], R/Z [m], fpol=R*Bt
+    [m*T], pres [Pa], current [A], bcentr [T]. `d['psirz']` is the 2D slice
+    oriented [nz, nr]; it is written row-major, i.e. ((psi(i=R, j=Z), i=1,nw), j=1,nh),
+    the GEQDSK convention. Boundary/limiter are written as interleaved (R, Z)."""
+    nw, nh = d["nw"], d["nh"]
+
+    def block(arr):                                # 5 values per line, Fortran e16.9
+        a = np.asarray(arr, float).ravel()
+        return "\n".join("".join(f"{v: .9E}" for v in a[i:i + 5]) for i in range(0, a.size, 5))
+
+    def row(*v):
+        return "".join(f"{x: .9E}" for x in v)
+
+    lines = [f"{d['case'][:48]:<48s}{3:4d}{nw:4d}{nh:4d}",
+             row(d["rdim"], d["zdim"], d["rcentr"], d["rleft"], d["zmid"]),
+             row(d["rmaxis"], d["zmaxis"], d["simag"], d["sibry"], d["bcentr"]),
+             row(d["current"], d["simag"], 0.0, d["rmaxis"], 0.0),
+             row(d["zmaxis"], 0.0, d["sibry"], 0.0, 0.0),
+             block(d["fpol"]), block(d["pres"]), block(d["ffprime"]), block(d["pprime"]),
+             block(d["psirz"]), block(d["qpsi"]),
+             f"{len(d['rbbbs']):5d}{len(d['rlim']):5d}"]
+    bdry = np.empty(2 * len(d["rbbbs"])); bdry[0::2] = d["rbbbs"]; bdry[1::2] = d["zbbbs"]
+    lim = np.empty(2 * len(d["rlim"])); lim[0::2] = d["rlim"]; lim[1::2] = d["zlim"]
+    lines += [block(bdry), block(lim)]
+    Path(path).write_text("\n".join(lines) + "\n")
+    return Path(path)
+
+
 # =============================================================================
 # SSH -L tunnel to the DIII-D MDSplus server
 # =============================================================================
@@ -597,6 +628,52 @@ class DIIIDFetcher:
             asc("RVSIN"), asc("ZVSIN"), asc("RVSOUT"), asc("ZVSOUT"), qpsi)
         self._eq_cache_save(tree, time, ed)
         return ed
+
+    def fetch_geqdsk(self, time: float, tree: str = "EFIT01", path=None) -> Path:
+        """Write a standard GEQDSK (g-file) for the EFIT slice nearest `time` [ms].
+
+        Reads the full `\\<tree>::TOP.RESULTS.GEQDSK` node group (ψ(R,Z), the 1D
+        fpol/pres/ffprim/pprime/q profiles, the scalars, boundary and limiter) and
+        writes a self-contained g-file in SI units, readable by `gs_tools.GEQtools`
+        / megpy / OMFIT. The time slice is taken with PYTHON full-array indexing
+        (mdsthin reverses the time axis). Returns the output path.
+        """
+        self.conn.openTree(tree, self.shot)
+        G = rf"\{tree}::TOP.RESULTS.GEQDSK"
+        gtime = np.atleast_1d(self._value(f"{G}:GTIME")).astype(float)
+        it = int(np.argmin(np.abs(gtime - time))); t_act = float(gtime[it])
+
+        sc = lambda n: float(np.atleast_1d(self._value(f"{G}:{n}"))[it])    # per-time scalar
+        def prof(n):                                   # per-time 1D profile -> (nw,)
+            a = np.asarray(self._value(f"{G}:{n}"), float)
+            return a[it] if (a.ndim == 2 and a.shape[0] == gtime.size) else (a[:, it] if a.ndim == 2 else a)
+
+        psi = np.asarray(self._value(f"{G}:PSIRZ"), float)[it]
+        d0 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,0)")).astype(float)
+        d1 = np.atleast_1d(self._value(f"dim_of({G}:PSIRZ,1)")).astype(float)
+        rgrid, zgrid = (d0, d1) if d1.min() < d0.min() else (d1, d0)
+        simag, sibry, rax, zax = sc("SSIMAG"), sc("SSIBRY"), sc("RMAXIS"), sc("ZMAXIS")
+        ii, jj = np.unravel_index(int(np.argmin(psi) if simag < sibry else np.argmax(psi)), psi.shape)
+        err_zr = abs(rgrid[jj] - rax) + abs(zgrid[ii] - zax)
+        err_rz = abs(rgrid[ii] - rax) + abs(zgrid[jj] - zax)
+        PSI = psi if err_zr <= err_rz else psi.T       # -> [nz, nr]
+
+        nb = int(np.atleast_1d(self._value(f"{G}:NBBBS"))[it])
+        rb = np.asarray(self._value(f"{G}:RBBBS"), float)[it][:nb]
+        zb = np.asarray(self._value(f"{G}:ZBBBS"), float)[it][:nb]
+        lim = np.asarray(self._value(f"{G}:LIM"), float)
+        rl, zl = (lim[0], lim[1]) if lim.shape[0] == 2 else (lim[:, 0], lim[:, 1])
+
+        data = dict(case=f"EFIT {tree} #{self.shot} {t_act:.0f}ms", nw=rgrid.size, nh=zgrid.size,
+                    rdim=sc("XDIM"), zdim=sc("ZDIM"), rcentr=sc("RZERO"), rleft=float(rgrid.min()),
+                    zmid=sc("ZMID"), rmaxis=rax, zmaxis=zax, simag=simag, sibry=sibry,
+                    bcentr=sc("BCENTR"), current=sc("CPASMA"), psirz=PSI,
+                    fpol=prof("FPOL"), pres=prof("PRES"), ffprime=prof("FFPRIM"),
+                    pprime=prof("PPRIME"), qpsi=prof("QPSI"),
+                    rbbbs=rb, zbbbs=zb, rlim=np.asarray(rl, float), zlim=np.asarray(zl, float))
+        path = Path(path) if path is not None else (self.cache_dir / f"g{self.shot}.{int(round(t_act)):05d}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return _write_geqdsk(path, data)
 
     # ---- CER channel profile (value vs R,Z at one time) ---------------------
     def fetch_cer_profile(self, time: float, quantity: str = "tit",
