@@ -32,15 +32,16 @@ Conventions / units (DIII-D):
 
 Connecting to the server:
     The DIII-D MDSplus server `atlas.gat.com:8000` is only reachable from inside
-    GA. Off-site, pass `tunnel_host=<your jump host>` (a passwordless
-    `~/.ssh/config` entry that can reach atlas:8000) and an SSH tunnel is opened
-    for you (reused across shots):
+    GA. With the default `tunnel_host=None` the client connects to it directly,
+    which works on a GA host or over the GA VPN. Off-site, pass
+    `tunnel_host=<your jump host>` (a passwordless `~/.ssh/config` entry that can
+    reach atlas:8000, e.g. a GA gateway such as `cybele`) and an SSH tunnel is
+    opened for you (reused across shots):
 
         ssh -N -L <localport>:atlas.gat.com:8000 <tunnel_host>
 
-    so nothing has to be installed or running on the GA side. (The MFE-IM group
-    typically uses a GA gateway such as `cybele`.) On a GA host, instead pass
-    `server="host:port"` (or `tunnel_host=None`) to connect directly.
+    so nothing has to be installed or running on the GA side. To target a
+    different server explicitly, pass `server="host:port"`.
 
 `mdsthin` is an optional dependency: ``pip install mitim-fusion[mds]``.
 """
@@ -304,10 +305,10 @@ class DIIIDConnection:
     instances so a multi-shot job uses one tunnel, not one per shot.
     """
 
-    def __init__(self, server: str | None = None, tunnel_host: str = "cybele",
+    def __init__(self, server: str | None = None, tunnel_host: str | None = None,
                  mds_server: str = "atlas.gat.com:8000", tunnel_timeout: float = 25.0):
-        self.server = server               # if set, connect directly (no tunnel)
-        self.tunnel_host = tunnel_host
+        self.server = server               # if set, connect directly to this host:port
+        self.tunnel_host = tunnel_host     # None -> connect straight to mds_server (no tunnel)
         self.mds_host, self.mds_port = mds_server.split(":")
         self.tunnel_timeout = tunnel_timeout
         self._tunnel = None
@@ -321,7 +322,8 @@ class DIIIDConnection:
 
     @property
     def conn(self):
-        """The thin-client connection, established (with tunnel) on first use."""
+        """The thin-client connection, established on first use (directly, or via an
+        SSH tunnel when `tunnel_host` is set)."""
         if self._conn is None:
             if _mds is None:
                 raise ImportError(
@@ -329,10 +331,13 @@ class DIIIDConnection:
                     "Install the MDS extra: `pip install mitim-fusion[mds]` "
                     "(or `pip install mdsthin`).")
             if self.server is None:
-                self._tunnel = SSHTunnel(self.tunnel_host, self.mds_host,
-                                         self.mds_port,
-                                         timeout=self.tunnel_timeout).open()
-                self.server = self._tunnel.server
+                if self.tunnel_host is None:        # no jump host -> connect straight to atlas
+                    self.server = f"{self.mds_host}:{self.mds_port}"   # (on a GA host / over the VPN)
+                else:                               # off-site -> open an SSH -L tunnel for you
+                    self._tunnel = SSHTunnel(self.tunnel_host, self.mds_host,
+                                             self.mds_port,
+                                             timeout=self.tunnel_timeout).open()
+                    self.server = self._tunnel.server
             self._conn = _mds.Connection(self.server)
         return self._conn
 
@@ -366,7 +371,7 @@ class DIIIDFetcher:
                  max_points: int = 4000, use_cache: bool = True,
                  cache_dir: str | Path | None = None,
                  # forwarded to DIIIDConnection when we create our own:
-                 server: str | None = None, tunnel_host: str = "cybele",
+                 server: str | None = None, tunnel_host: str | None = None,
                  mds_server: str = "atlas.gat.com:8000", tunnel_timeout: float = 25.0):
         self.shot = int(shot)
         self.max_points = max_points

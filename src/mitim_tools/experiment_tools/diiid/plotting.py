@@ -214,7 +214,7 @@ def _parse_windows(shade):
 def overview(shots, layout, name: str = "overview",
              t_window: tuple | None = DEFAULT_TWINDOW, max_points: int = 4000,
              use_cache: bool = True, cache_dir: str | Path | None = None,
-             tunnel_host: str = "cybele", server: str | None = None,
+             tunnel_host: str | None = None, server: str | None = None,
              connection=None, colors: list | None = None,
              labels: list | None = None, shade: tuple | list | None = None,
              vlines: list | None = None, fig=None,
@@ -341,7 +341,7 @@ def profiles(shots, time: float = 4000.0, source: str = "cer",
              colors: list | None = None, labels: list | None = None,
              name: str | None = None, use_cache: bool = True,
              cache_dir: str | Path | None = None,
-             tunnel_host: str = "cybele", server: str | None = None,
+             tunnel_host: str | None = None, server: str | None = None,
              save_dir: str | Path | None = None, show: bool = True):
     """Diagnostic channel profile vs its coordinate, plus the channel (R,Z) on the EFIT.
 
@@ -489,7 +489,7 @@ def profiles_cer(shots, time: float = 4000.0, quantities=_CER_QTY_ALL,
                  t_window=None, coord: str = "rho", rho_max: float | None = None,
                  label_channels: bool = True, colors: list | None = None,
                  name: str = "cer_check", use_cache: bool = True,
-                 cache_dir: str | Path | None = None, tunnel_host: str = "cybele",
+                 cache_dir: str | Path | None = None, tunnel_host: str | None = None,
                  server: str | None = None, connection=None,
                  save_dir: str | Path | None = None, show: bool = True):
     """CER "check" plot: each CER `quantity` as a ROW (value vs coordinate), overlaying

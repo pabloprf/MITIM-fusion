@@ -10,8 +10,9 @@ Requires the optional MDS extra (pure-python thin client):
 
 ACCESS / being polite to the server:
     The DIII-D MDSplus server (atlas.gat.com:8000) is only reachable from inside
-    GA. Off-site, set TUNNEL_HOST below to a passwordless SSH jump host in your
-    ~/.ssh/config that can reach atlas:8000 (the MFE-IM group uses 'cybele').
+    GA. On a GA host / VPN leave tunnel_host=None to connect directly; off-site,
+    set tunnel_host below to a passwordless SSH jump host in your ~/.ssh/config
+    that can reach atlas:8000 (e.g. a GA gateway such as 'cybele').
     Here we open ONE `DIIIDConnection` and pass it to every overview() call, so
     a single SSH tunnel is reused across all three tabs; every fetch is cached
     to disk (CACHE_DIR) keyed by shot+spec, so a re-run never hits the server.
@@ -41,7 +42,7 @@ from mitim_tools.experiment_tools.diiid.plotting import (
 # USER SETTINGS — edit these
 # ----------------------------------------------------------------------------
 shots = [207958, 207959]                 # DIII-D shot(s) to overlay
-tunnel_host = "cybele"                    # YOUR ssh jump host that can reach atlas:8000
+tunnel_host = None                        # None = connect directly (GA host/VPN); else YOUR ssh jump host
 cache_dir = __mitimroot__ / "tests" / "scratch" / "diiid_fetcher"   # where to cache fetches
 # ----------------------------------------------------------------------------
 
