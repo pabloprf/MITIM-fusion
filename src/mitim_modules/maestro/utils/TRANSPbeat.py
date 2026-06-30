@@ -44,6 +44,7 @@ class transp_beat(beat):
     def prepare(
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        min_sawtooth_period_ms = 1.0,               # Adaptive Porcelli min-period floor [ms]: sets c_sawtooth(2)=floor/PM_period so crashes are >= this far apart. None disables (raw NMLtools default). Defaults to 1 ms (~historical behavior) so old namelists are unchanged
         ensure_sawtooths    = None,                 # If not None, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
@@ -126,11 +127,25 @@ class transp_beat(beat):
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
-        if is_machine_fixed: 
-            # Remove antenna geometry that may have been written from GACODE 
+        if is_machine_fixed:
+            # Remove antenna geometry that may have been written from GACODE
             for var in ['rmjicha', 'rmnicha', 'thicha']:
                 del self.transp.namelist_variables[var]
-        
+
+        # Adaptive Porcelli sawtooth minimum-period floor. The Porcelli trigger only enforces a
+        # floor relative to the Park-Monticello period (z_period_min = c_sawtooth(2) x tau_PM), and
+        # tau_PM ~ R^2 Te0^1.5 / Zeff is sub-ms for compact, hot plasmas -> crashes every ~timestep
+        # and a multi-GB output CDF. Pick c_sawtooth(2) so the floor lands at min_sawtooth_period_ms
+        # for this plasma; large machines (tau_PM already above the floor) are left effectively
+        # untouched. Set None to bypass and use the raw NMLtools c_sawtooth(2) default.
+        if min_sawtooth_period_ms is not None and 'c_sawtooth_2' not in transp_namelist_mod:
+            p = self.profiles_current
+            tau_PM = PLASMAtools.park_monticello_sawtooth_period(
+                p.profiles["rmaj(m)"][0], p.profiles["te(keV)"][0], p.profiles["z_eff(-)"][0])
+            transp_namelist_mod['c_sawtooth_2'] = (min_sawtooth_period_ms * 1e-3) / tau_PM
+            print(f'\t- Sawtooth floor: min_sawtooth_period_ms={min_sawtooth_period_ms} -> '
+                  f'c_sawtooth(2)={transp_namelist_mod["c_sawtooth_2"]:.3g} (tau_PM={tau_PM*1e3:.3g} ms)', typeMsg='i')
+
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
 
