@@ -14698,10 +14698,14 @@ class transp_output:
                 gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
-                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
-                    break
-        if gf is None:
-            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="i")
+                    try:
+                        self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
+                        break
+                    except Exception as e:
+                        print(f"\t\t- Reference gfile '{gf}' could not be parsed ({type(e).__name__}); "
+                              "likely missing plasma boundary, skipping it", typeMsg="w")
+        if self.gfile_in is None:
+            print("\t\t- Reference g-file associated to this run could not be found/parsed",typeMsg="i")
 
         # Try to read boundary too
         if (self.FolderCDF / "MIT12345.RFS").exists():
