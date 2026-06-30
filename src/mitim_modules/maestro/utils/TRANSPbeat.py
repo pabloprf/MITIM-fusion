@@ -294,11 +294,27 @@ class transp_beat(beat):
         print('\t\t- Checking TRANSP run completeness')
         cdf_results = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
         last_time_simulated = cdf_results.t[-1]
+        cdf_results.close()  # release the (multi-GB) CDF fd immediately; nothing below needs it
         seconds_check = 0.1
         if last_time_simulated < self.time_end - seconds_check:   
             raise RuntimeError(f"[MITIM] TRANSP run did not complete until the expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.")
         else:
             print(f'\t\t- TRANSP run completed until expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.')
+
+        # Release the heavy CDF handle the TRANSP wrapper cached during the run (self.transp.c, set in
+        # transp_run.run -> checkUntilFinished -> storeCDF, plus any self.transp.t.cdfs). It is held for
+        # the WHOLE MAESTRO run and fork-inherited by the downstream PORTALS workers, so the wiped CDF
+        # lingers as a multi-GB NFS silly-rename (.nfsXXXX) until the case ends -- the dominant during-run
+        # scratch hog (NOT the finalize()/completeness-check readers, which are short-lived).
+        self._release_transp_cdf_handles()
+
+    def _release_transp_cdf_handles(self):
+        tr = getattr(self, "transp", None)
+        if tr is None:
+            return
+        for obj in [getattr(tr, "c", None)] + list(getattr(getattr(tr, "t", None), "cdfs", {}).values()):
+            if obj is not None and hasattr(obj, "close"):
+                obj.close()
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
@@ -339,6 +355,11 @@ class transp_beat(beat):
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
         })
+
+        # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
+        # workers -- otherwise the open fd is inherited and the wiped CDF stays pinned on disk
+        # (NFS silly-rename) for the whole run. See transp_output.close().
+        cdf_results.close()
 
     def _locate_cdf(self):
         '''

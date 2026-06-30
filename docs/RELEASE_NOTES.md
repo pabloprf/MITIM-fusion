@@ -21,6 +21,8 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **TRANSP CDF file-descriptor leak (major MAESTRO scratch regression)**: the TRANSP output CDF — often multi-GB — was held open for the **entire** MAESTRO run and fork-inherited by every later PORTALS/TGLF worker, so once the run folder was wiped (`keep_all_files: false`) the deleted CDF stayed pinned on disk as an NFS silly-rename (`.nfsXXXX`) until the case ended — inflating each running case's scratch use by 2–5 GB and overrunning per-user scratch quotas on large scans (confirmed by `lsof`: a 5.46 GB `.nfsXXXX` held by `mitim_run_maestro` and all its inherited children). The dominant culprit was the `transp_output` **cached on the persistent TRANSP wrapper** (`self.transp.c`, set in `transp_run.run` → `checkUntilFinished` → `storeCDF`): the TRANSP beat now releases it (and any `self.transp.t.cdfs`) at the end of `run()`, before the PORTALS beats fork. Supporting closes: `transp_output` gained an idempotent `close()` (also on GC), `read_cdf_transp` returns the closeable Dataset (and closes the leaked `src` in its TIME/TIME3-mismatch copy branch), `getRunMetaInfo` closes its metadata-read handle, and the beat closes its finalize/completeness readers. This is the dominant *during-run* peak; the lean-pickle work above only shrinks the *stored* result.
+
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
 *   🐛 **`mitim_check_maestro`** now recognizes the sharpness, confinement and lengyel beats (previously shown as `UNKNOWN`) by their `run_<type>` folder.
