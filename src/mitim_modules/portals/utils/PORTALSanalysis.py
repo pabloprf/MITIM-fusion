@@ -218,7 +218,13 @@ class PORTALSanalyzer:
 
         self.powerstates = []
         for i in range(self.ilast + 1):
-            self.powerstates.append(self.mitim_runs[i]["powerstate"])
+            power = self.mitim_runs[i]["powerstate"]
+            # Lean-stored powerstates have 'derived' dropped at save (PORTALSmain._dropped_derived);
+            # rebuild it here so all downstream plots/metrics find it.
+            prof = getattr(power, "profiles", None)
+            if prof is not None and not getattr(prof, "derived", None):
+                prof.derive_quantities()
+            self.powerstates.append(power)
 
         # runWithImpurity_transport is stored after powerstate has run transport
         self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.predicted_channels else None

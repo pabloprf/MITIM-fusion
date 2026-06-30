@@ -178,8 +178,12 @@ class gacode_state(MITIMstate.mitim_state):
     # Derivation (different from MITIMstate)
     # ************************************************************************************************************************************************
    
+    def remove_derived(self):
+        """Drop the (recomputable) 'derived' dict to slim stored pickles; rebuild via derive_quantities()."""
+        self.derived = {}
+
     def derive_quantities(self, **kwargs):
- 
+
         if "derived" not in self.__dict__:
             self.derived = {}
  
