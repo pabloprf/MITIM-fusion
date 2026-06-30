@@ -528,13 +528,23 @@ def profiles_cer(shots, time: float = 4000.0, quantities=_CER_QTY_ALL,
             print(f"* fetching CER {list(quantities)} flavors {list(flavors)} #{sh} ...")
             f = DIIIDFetcher(sh, connection=conn, use_cache=use_cache, cache_dir=cache_dir)
             for fl in flavors:
+                n_q_found = 0                          # quantities of this flavor that returned data
                 for q in quantities:
                     try:
-                        profs[(sh, fl, q)] = f.fetch_cer_profile(time, quantity=qdisp(q)[0], channels=channels,
-                                                                 window=window, t_window=t_window, system=fl)
+                        pr = f.fetch_cer_profile(time, quantity=qdisp(q)[0], channels=channels,
+                                                 window=window, t_window=t_window, system=fl)
                     except Exception as e:
-                        print(f"  ! {fl} {q} #{sh}: {str(e)[:40]}")
-                        profs[(sh, fl, q)] = None
+                        pr = None
+                        print(f"  ! #{sh} {fl}: quantity '{q}' fetch error -> {str(e)[:55]}")
+                    profs[(sh, fl, q)] = pr
+                    n = pr.r.size if pr is not None else 0
+                    if n:
+                        n_q_found += 1
+                        print(f"  . #{sh} {fl}: '{q}' -> {n} channels")
+                    elif pr is not None:               # fetched fine but no channel carried data
+                        print(f"  - #{sh} {fl}: quantity '{q}' NOT FOUND (0 channels with data)")
+                if n_q_found == 0:                      # nothing at all -> the flavor isn't on this shot
+                    print(f"  > #{sh} {fl}: FLAVOR NOT FOUND (no data for any of {list(quantities)})")
             try:
                 eq_data[sh] = f.fetch_equilibrium(eqtime, tree)
             except Exception as e:
