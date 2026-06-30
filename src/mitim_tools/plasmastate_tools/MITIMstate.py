@@ -809,6 +809,10 @@ class mitim_state:
             self.profiles["ne(10^19/m^3)"][0] * 0.1 / self.derived["ne_vol20"]
         )
 
+        self.derived["ni_peaking"] = (
+            self.profiles["ni(10^19/m^3)"][0].sum() * 0.1 / self.derived["ni_vol20"].sum()
+        )
+
         xcoord = self.derived[
             "rho_pol"
         ]  # to find the peaking at rho_pol (with square root) as in Angioni PRL 2003
@@ -817,6 +821,12 @@ class mitim_state:
             * 0.1
             / self.derived["ne_vol20"]
         )
+
+        self.derived["ni_peaking0.2"] = (
+            self.profiles["ni(10^19/m^3)"][np.argmin(np.abs(xcoord - 0.2))].sum()
+            * 0.1
+            / self.derived["ni_vol20"].sum()
+        ) 
 
         self.derived["Te_vol"] = (
             CALCtools.volume_integration(self.profiles["te(keV)"], r, volp)[-1]
@@ -898,6 +908,12 @@ class mitim_state:
             self.derived["Rgeo"],
             Zeff=2.0,
         )
+
+        # # this is the Angioni NF 2007 predicted peaking with the physics-based scaling law
+        # # TODO: currently Gstar_NBI is assumed to be zero, to calculate with sources would need to calculate Gstar
+        self.derived['ne_peaking_empirical_source_free'] = PLASMAtools.predictPeaking(nu = self.derived['nu_eff'] * 2/self.derived['Zeff_vol'], p = self.derived['pthr_manual_vol'], Bt = self.derived['B0'], Gstar_NBI = 0.0)[1]
+
+
 
         # Avg mass
         self.calculateMass()
@@ -1174,6 +1190,8 @@ class mitim_state:
     
     def calcRelativeCosts(self): 
         self.derived['Pfus_per_volume'] = self.derived['Pfus'] / self.derived['volume']
+        self.derived['Pfus_per_surface_area'] = self.derived['Pfus'] / self.derived['surf_geo'][-1]
+        
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
@@ -1200,13 +1218,15 @@ class mitim_state:
             print("|\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(self.derived["H89"], self.derived["H97L"]))
             print("|\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(self.derived["ne_peaking"], self.derived["nu_eff"]))
             print("|\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(self.derived["ne_peaking0.2"], self.derived["nu_eff2"]))
+            print("|\tnu_ni = {0:.2f}, nu_ni0.2 = {1:.2f}".format(self.derived["ni_peaking"], self.derived["ni_peaking0.2"]))
+            print("|\tnu_Angioni = {0:.2f}, nu_e,offset = {1:.2f}, nu_i,offset = {2:.2f} (source free)".format(self.derived["ne_peaking_empirical_source_free"], self.derived["ne_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"], self.derived["ni_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"]))            
             print(f"|\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(f"|\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(f"|\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
             print(f"|\tPrad  =  {self.derived['Prad']:.1f}MW ({Prad_ratio*100.0:.1f}% of total) ({Prad_ratio_brem*100.0:.1f}% brem, {Prad_ratio_line*100.0:.1f}% line, {Prad_ratio_sync*100.0:.1f}% sync)")
             print("|\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
             print("| Relative cost:")
-            print("|\tPfus_per_volume = {0:.2f} MW/m^3".format(self.derived["Pfus_per_volume"]))
+            print("|\tPfus_per_volume = {0:.2f} MW/m^3, Pfus_per_surface_area = {1:.2f} MW/m^2".format(self.derived["Pfus_per_volume"], self.derived["Pfus_per_surface_area"]))
             print("| Operational point ( [<ne>, <Te>] = [{0:.2f}, {1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("|\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
             print("|\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
