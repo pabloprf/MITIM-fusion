@@ -7,7 +7,7 @@ import numpy as np
 from mitim_tools.transp_tools import TRANSPtools, NMLtools
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools.utils import TRANSPhelpers
+from mitim_tools.transp_tools.utils import TRANSPhelpers, TRANSPdebug
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -524,9 +524,18 @@ def interpretRun(infoSLURM, log_file):
             or "*** End of error message ***" in log_str
         )
 
+        # InfiniBand/RDMA container-launch failure (mlx5 UD QP denied -> mpirun segfault).
+        # Ordered ahead of hard_failure so it is labelled as the infra failure it is, rather
+        # than swallowed by the generic "*** End of error message ***" that OpenMPI also prints.
+        rdma_failure = any(err in log_str for err in TRANSPdebug.RDMA_LAUNCH_ERRORS)
+
         if normal_exit:
             status = 1
             info["info"]["status"] = "finished"
+        elif rdma_failure:
+            status = -1
+            info["info"]["status"] = "stopped"
+            print("\t- TRANSP's MPI layer failed to bring up the InfiniBand device (mlx5); the container was denied the RDMA queue-pair and mpirun segfaulted. Flagging run as stopped (infrastructure, not physics)",typeMsg="w",)
         elif hard_failure:
             status = -1
             info["info"]["status"] = "stopped"
@@ -553,6 +562,9 @@ def interpretRun(infoSLURM, log_file):
 
         print(f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",typeMsg="i" if status == 1 else "w",)
         if status == -1:
+            # Capture WHY it stopped so the exception raised in checkUntilFinished names the
+            # actual cause instead of a bare "TRANSP stopped".
+            info["info"]["failure_reason"] = TRANSPdebug.diagnose_transp_failure(log_file)["message"]
             pringLogTail(log_file)
 
     return info, status

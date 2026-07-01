@@ -289,7 +289,10 @@ class TRANSPgeneric:
 
             if status == "stopped":
                 self._grab_intermediate_besteffort(label, retrieveAC)
-                raise Exception("[MITIM] TRANSP stopped, check the logs and intermediative files, but I need to kill this run to avoid bad results")
+                # interpretRun attaches a human-readable cause (TRANSPdebug.diagnose_transp_failure);
+                # surface it so the run is killed WITH the reason, not a bare "TRANSP stopped".
+                reason = info["info"].get("failure_reason", "cause not identified in the log; check the tr.log tail")
+                raise Exception(f"[MITIM] TRANSP stopped — {reason}")
 
             # ------------------------------------------------------------------------------------------------------------------
             # Do something
