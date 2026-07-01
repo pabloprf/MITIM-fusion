@@ -237,6 +237,47 @@ transport:
       Qi_includes_fast: false
 
     # *********************************************************************************************************
+    # QuaLiKiz
+    # *********************************************************************************************************
+    qlk:
+
+      # Backend code for this options block.
+      code: qualikiz
+
+      # Per-model override for transport.profiles_postprocessing_fun (QuaLiKiz only).
+      profiles_postprocessing_fun: null
+
+      # Kwargs forwarded verbatim as **run_kwargs to QuaLiKiz.run().
+      run:
+        # QLKdefaults preset: null (STANDARD), "STANDARD", "FAST", or "ROTATION".
+        code_settings: "STANDARD"
+        extraOptions: {}
+        multipliers: {}
+        launchSlurm: true
+
+      # SLURM / execution allocation.
+      #   resources_per_call : MPI ranks (-np); QuaLiKiz parallelises over dimx*dimn.
+      #   minutes            : SLURM --time budget.
+      allocation:
+        resources_per_call: 1
+        minutes: 60
+
+      attempts_execution: 1
+
+      # Kwargs forwarded verbatim to QuaLiKiz.read() → qualikiz_folder_to_xarray.
+      read: {}
+
+      # If not None, run a small N-D gradient scan (±delta) around the base
+      # evaluation point to estimate flux uncertainties, instead of the ad-hoc
+      # percent_error below.  Set to a float (e.g. 0.02 for ±2%) to enable.
+      # Variables scanned: Ate, Ati (co-varied thermal ions), Ane (+ QN Ani),
+      # Ani{impurity}, gammaE, Ti/Te ratio — analogous to TGLF's scan trick.
+      use_scan_trick_for_stds: null
+
+      # (%) Ad-hoc uncertainty when use_scan_trick_for_stds is null.
+      percent_error: 10.0
+
+    # *********************************************************************************************************
     # NEO
     # *********************************************************************************************************
     neo:

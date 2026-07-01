@@ -18,9 +18,10 @@ class qualikiz_model:
         simulation_options = self.transport_evaluator_options[options_key]
         cold_start = self.cold_start
 
-        percent_error = simulation_options.get("percent_error", 10.0)
-        allocation    = simulation_options.get("allocation", {"resources_per_call": 1, "minutes": 60})
-        attempts      = simulation_options.get("attempts_execution", 1)
+        percent_error       = simulation_options.get("percent_error", 10.0)
+        allocation          = simulation_options.get("allocation", {"resources_per_call": 1, "minutes": 60})
+        attempts            = simulation_options.get("attempts_execution", 1)
+        use_qlk_scan_trick  = simulation_options.get("use_scan_trick_for_stds", None)
 
         # Side-aware: postproc may give the turbulence side a different species
         # list than the neoclassical side.
@@ -89,8 +90,28 @@ class qualikiz_model:
         GZ /= Ggb * 1e20
         Mt /= Pgb
 
-        Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
-        Flux_std  = np.abs(Flux_mean) * percent_error / 100.0
+        Flux_base = np.array([Qe, Qi, Ge, GZ, Mt, S])
+
+        if use_qlk_scan_trick is None:
+            Flux_mean = Flux_base
+            Flux_std  = np.abs(Flux_mean) * percent_error / 100.0
+        else:
+            Flux_mean_list, Flux_std_list = _run_qlk_uncertainty_model(
+                qlk,
+                rho_locations,
+                self.powerstate.predicted_channels,
+                Qgb, Ggb, Pgb,
+                Flux_base=Flux_base,
+                ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
+                delta=use_qlk_scan_trick,
+                cold_start=cold_start,
+                extra_name=self.name,
+                allocation=allocation,
+                attempts_execution=attempts,
+                code_settings=simulation_options.get("run", {}).get("code_settings"),
+            )
+            Flux_mean = np.array(Flux_mean_list)
+            Flux_std  = np.array(Flux_std_list)
 
         if pass_info:
             self.QeGB_turb       = Flux_mean[0]
@@ -107,3 +128,267 @@ class qualikiz_model:
             self.QieGB_turb_stds = Flux_std[5]
 
         return qlk
+
+
+# ======================================================================================
+# QuaLiKiz uncertainty quantification via gradient scan
+# ======================================================================================
+
+def _build_qlk_uncertainty_scan_setup(
+    predicted_channels,
+    ion_OI_position_in_ion_list,
+    thermal_ion_indices,
+    minimum_abs_gradient,
+):
+    '''
+    Map each predicted channel to the QuaLiKiz scan_dict key scanned for UQ, and
+    build the co-variation map that ensures physically consistent perturbations.
+
+    QuaLiKiz analog of transport_tglf._build_uncertainty_scan_setup. Key
+    differences from TGLF:
+
+    * QuaLiKiz uses absolute temperatures (Te, Ti) and major-radius-normalised
+      logarithmic gradients (Ate = R/LTe, Ane = R/Lne, Ati{i}, Ani{i}), whereas
+      TGLF uses RLTS_1/RLTS_2 and RLNS_1. The representative scan key and
+      co-variation partners are defined accordingly.
+
+    * The ion/electron temperature ratio scan (TAUS_2 in TGLF) is implemented by
+      uniformly multiplying all thermal-ion Ti values (Ti0, Ti1, …) while keeping
+      Te fixed.
+
+    * There is no direct QuaLiKiz analog for TGLF's XNUE (collisionality) or
+      BETAE (electron beta) scan keys: QuaLiKiz derives these internally from Te,
+      ne and Bo, which are not independently settable in the gradient-only scan.
+
+    Co-variation rules (same multiplier as the representative key):
+        Ati0  -> Ati{i} for every other thermal ion (all thermal ions perturbed equally)
+        Ane   -> Ani{i} for every thermal ion      (quasineutrality)
+        Ti0   -> Ti{i}  for every other thermal ion (ratio scan: all Ti move together)
+
+    The minimum_delta_abs floor prevents effectively zero perturbations when a
+    gradient is near zero (e.g. aLn ≈ 0 at low-gradient locations).
+    '''
+
+    variables_to_scan = []
+
+    for ch in predicted_channels:
+        if ch == 'te':
+            variables_to_scan.append('Ate')
+        if ch == 'ti':
+            variables_to_scan.append('Ati0')
+        if ch == 'ne':
+            variables_to_scan.append('Ane')
+        if ch == 'nZ':
+            variables_to_scan.append(f'Ani{ion_OI_position_in_ion_list}')
+        if ch == 'w0':
+            variables_to_scan.append('gammaE')
+
+    # Ion/electron temperature ratio (TAUS_2 analog in TGLF).
+    if 'te' in predicted_channels or 'ti' in predicted_channels:
+        variables_to_scan.append('Ti0')
+
+    # Co-variation: which additional scan_dict keys to perturb with the same
+    # multiplier as the representative variable.
+    covariation_map = {}
+    for var in variables_to_scan:
+        if var == 'Ati0':
+            covariation_map[var] = [f'Ati{i}' for i in thermal_ion_indices[1:]]
+        elif var == 'Ane':
+            covariation_map[var] = [f'Ani{i}' for i in thermal_ion_indices]
+        elif var == 'Ti0':
+            covariation_map[var] = [f'Ti{i}' for i in thermal_ion_indices[1:]]
+        else:
+            covariation_map[var] = []
+
+    # Absolute minimum perturbation floors (avoid no-op scans near zero).
+    minimum_delta_abs = {}
+    for var in variables_to_scan:
+        if var in ('Ate', 'Ane') or var.startswith('Ati') or var.startswith('Ani'):
+            minimum_delta_abs[var] = minimum_abs_gradient
+        if var == 'gammaE':
+            minimum_delta_abs[var] = minimum_abs_gradient
+
+    return variables_to_scan, covariation_map, minimum_delta_abs
+
+
+def _run_qlk_uncertainty_model(
+    qlk,
+    rho_locations,
+    predicted_channels,
+    Qgb, Ggb, Pgb,
+    Flux_base=None,
+    ion_OI_position_in_ion_list=1,
+    delta=0.02,
+    minimum_abs_gradient=0.005,
+    cold_start=False,
+    extra_name="",
+    subfolder_name='turb_drives',
+    allocation=None,
+    attempts_execution=1,
+    code_settings=None,
+):
+    '''
+    Run QuaLiKiz with small gradient perturbations (±delta) around the base
+    evaluation point to estimate flux uncertainties via a gradient scan.
+
+    QuaLiKiz analog of transport_tglf._run_tglf_uncertainty_model. The key
+    structural difference is that QuaLiKiz covers ALL rho points in a single
+    MPI execution (via its own dimx scan), so this function needs only
+    N_vars × N_deltas total QuaLiKiz calls — compared with TGLF's
+    N_rhos × N_vars × N_deltas. Each call applies a uniform multiplier to the
+    perturbed variable across all rho points simultaneously.
+
+    Each scan case is run as a separate subfolder:
+        {qlk.FolderGACODE}/{subfolder_name}/{variable}/{multiplier}/
+
+    Results are stored in qlk.scans["{subfolder_name}_{variable}"] as
+    (nrho, n_deltas) arrays in MITIM GB units, mirroring the structure that
+    transport_tglf._aggregate_scan_fluxes reads.
+    '''
+
+    print(f"\t- Running QuaLiKiz gradient scans ({delta = }) to determine relative errors")
+
+    n_ions = min(len(qlk.profiles.Species), QLKtools.MAX_QLK_IONS)
+    thermal_ion_indices = [
+        i for i in range(n_ions)
+        if qlk.profiles.Species[i].get("S", "therm") != "fast"
+    ]
+
+    variables_to_scan, covariation_map, _ = _build_qlk_uncertainty_scan_setup(
+        predicted_channels, ion_OI_position_in_ion_list, thermal_ion_indices, minimum_abs_gradient
+    )
+
+    relative_scan = [1 - delta, 1 + delta]
+    nrho = len(rho_locations)
+    n_deltas = len(relative_scan)
+
+    print(
+        f"\n\t- Running QuaLiKiz scans for turbulence drives: "
+        f"{len(variables_to_scan)} variables × {n_deltas} deltas = "
+        f"{len(variables_to_scan) * n_deltas} total runs (each covering {nrho} rho points)\n",
+        typeMsg="i",
+    )
+
+    for i_var, variable in enumerate(variables_to_scan):
+        scan_data = {
+            "Qe_gb": np.zeros((nrho, n_deltas)),
+            "Qi_gb": np.zeros((nrho, n_deltas)),
+            "Ge_gb": np.zeros((nrho, n_deltas)),
+            "Gi_gb": np.zeros((nrho, n_deltas)),
+            "Mt_gb": np.zeros((nrho, n_deltas)),
+            "S_gb":  np.zeros((nrho, n_deltas)),
+        }
+
+        for i_mult, mult in enumerate(relative_scan):
+            mult_r = round(mult, 6)
+            scan_subfolder = f"{subfolder_name}/{variable}/{mult_r}"
+            label = f"{subfolder_name}_{variable}_{mult_r}"
+
+            # Apply the same relative multiplier to the representative variable
+            # and all co-varied partners.
+            multipliers = {variable: mult_r}
+            for cov_key in covariation_map.get(variable, []):
+                multipliers[cov_key] = mult_r
+
+            # Only ask about cold_start on the very first scan case.
+            force = (i_var > 0 or i_mult > 0) or cold_start
+
+            qlk.run(
+                scan_subfolder,
+                multipliers=multipliers,
+                cold_start=cold_start,
+                forceIfcold_start=force,
+                extra_name=f"{extra_name}_{subfolder_name}",
+                allocation=allocation,
+                attempts_execution=attempts_execution,
+                code_settings=code_settings,
+            )
+            qlk.read(label=label)
+
+            for irho, out in enumerate(qlk.results[label]["output"]):
+                Qe_SI = float(out["efe_SI"].values)
+                Ge_SI = float(out["pfe_SI"].values)
+                Qi_SI = float(out["efi_SI"].values.sum())
+                GZ_SI = float(out["pfi_SI"].values[ion_OI_position_in_ion_list])
+                try:
+                    Mt_SI = float(out["vfi_SI"].values.sum())
+                except KeyError:
+                    Mt_SI = 0.0
+
+                scan_data["Qe_gb"][irho, i_mult] = Qe_SI / (Qgb[irho] * 1e6)
+                scan_data["Qi_gb"][irho, i_mult] = Qi_SI / (Qgb[irho] * 1e6)
+                scan_data["Ge_gb"][irho, i_mult] = Ge_SI / (Ggb[irho] * 1e20)
+                scan_data["Gi_gb"][irho, i_mult] = GZ_SI / (Ggb[irho] * 1e20)
+                scan_data["Mt_gb"][irho, i_mult] = Mt_SI / Pgb[irho]
+                scan_data["S_gb"][irho, i_mult]  = 0.0   # QuaLiKiz doesn't output Qie
+
+        qlk.scans[f"{subfolder_name}_{variable}"] = scan_data
+
+    return _aggregate_qlk_scan_fluxes(
+        qlk, subfolder_name, variables_to_scan, relative_scan, rho_locations, Flux_base=Flux_base
+    )
+
+
+def _aggregate_qlk_scan_fluxes(
+    qlk,
+    scan_subfolder_name,
+    variables_to_scan,
+    relative_scan,
+    rho_locations,
+    Flux_base=None,
+):
+    '''
+    Collect per-variable scan results from qlk.scans and compute mean / std
+    across all scan cases.
+
+    QuaLiKiz analog of transport_tglf._aggregate_scan_fluxes. Reads from
+    qlk.scans["{scan_subfolder_name}_{variable}"] dicts (populated by
+    _run_qlk_uncertainty_model), stacks them into (nrho, n_total_cases) arrays,
+    optionally prepends the base flux as an additional column, then returns
+    nanmean and nanstd along the case axis.
+    '''
+
+    nrho = len(rho_locations)
+    n_scan = len(variables_to_scan) * len(relative_scan)
+
+    Qe = np.zeros((nrho, n_scan))
+    Qi = np.zeros((nrho, n_scan))
+    Ge = np.zeros((nrho, n_scan))
+    GZ = np.zeros((nrho, n_scan))
+    Mt = np.zeros((nrho, n_scan))
+    S  = np.zeros((nrho, n_scan))
+
+    cont = 0
+    for vari in variables_to_scan:
+        key  = f"{scan_subfolder_name}_{vari}"
+        jump = qlk.scans[key]["Qe_gb"].shape[-1]
+        Qe[:, cont:cont+jump] = qlk.scans[key]["Qe_gb"]
+        Qi[:, cont:cont+jump] = qlk.scans[key]["Qi_gb"]
+        Ge[:, cont:cont+jump] = qlk.scans[key]["Ge_gb"]
+        GZ[:, cont:cont+jump] = qlk.scans[key]["Gi_gb"]
+        Mt[:, cont:cont+jump] = qlk.scans[key]["Mt_gb"]
+        S[:,  cont:cont+jump] = qlk.scans[key]["S_gb"]
+        cont += jump
+
+    if Flux_base is not None:
+        Qe = np.append(np.atleast_2d(Flux_base[0]).T, Qe, axis=1)
+        Qi = np.append(np.atleast_2d(Flux_base[1]).T, Qi, axis=1)
+        Ge = np.append(np.atleast_2d(Flux_base[2]).T, Ge, axis=1)
+        GZ = np.append(np.atleast_2d(Flux_base[3]).T, GZ, axis=1)
+        Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
+        S  = np.append(np.atleast_2d(Flux_base[5]).T, S,  axis=1)
+
+    def calculate_mean_std(Q):
+        return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
+
+    Qe_m, Qe_s = calculate_mean_std(Qe)
+    Qi_m, Qi_s = calculate_mean_std(Qi)
+    Ge_m, Ge_s = calculate_mean_std(Ge)
+    GZ_m, GZ_s = calculate_mean_std(GZ)
+    Mt_m, Mt_s = calculate_mean_std(Mt)
+    S_m,  S_s  = calculate_mean_std(S)
+
+    Flux_mean = [Qe_m, Qi_m, Ge_m, GZ_m, Mt_m, S_m]
+    Flux_std  = [Qe_s, Qi_s, Ge_s, GZ_s, Mt_s, S_s]
+
+    return Flux_mean, Flux_std
