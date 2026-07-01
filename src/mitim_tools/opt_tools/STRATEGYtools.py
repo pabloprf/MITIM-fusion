@@ -807,7 +807,7 @@ class MITIM_BO:
         print(  "******************************************  *****   *   *   ****    **************************************************")
         print(  "**********************************************************************************************************************\n")
 
-    def prepare_for_save_MITIMBO(self, copyClass):
+    def prepare_for_save_MITIMBO(self, copyClass, lean=False):
         """
         Downselect what elements to store
         """
@@ -831,6 +831,17 @@ class MITIM_BO:
                 del copyClass.steps[i].evaluators
 
         # -------------------------------------------------------------------------------------------------
+        # Lean save: drop the fitted GP surrogates (`steps`), which dominate the pickle size.
+        # Replotting metrics (PORTALSanalyzer) does not need them -- those come from
+        # optimization_extra.pkl; only the GP-posterior plots and a from-pickle resume of the
+        # surrogates become unavailable. MAESTRO uses this under keep_all_files: false to keep
+        # PORTALS beat outputs small (the per-iteration checkpoints during a run stay full).
+        # -------------------------------------------------------------------------------------------------
+
+        if lean:
+            copyClass.steps = []
+
+        # -------------------------------------------------------------------------------------------------
         # Add time stamp
         # -------------------------------------------------------------------------------------------------
 
@@ -852,8 +863,8 @@ class MITIM_BO:
 
         return copyClass
 
-    def save(self, name="optimization_object.pkl"):
-        print("* Proceeding to save new MITIM state pickle file")
+    def save(self, name="optimization_object.pkl", lean=False):
+        print("* Proceeding to save new MITIM state pickle file" + (" (lean: no surrogate steps)" if lean else ""))
         stateFile = self.folderOutputs / f"{name}"
         stateFile_tmp = self.folderOutputs / f"{name}_tmp"
 
@@ -873,7 +884,7 @@ class MITIM_BO:
         # -----------------------------------------------------------------------------------
 
         try:
-            copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
+            copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self), lean=lean)
         finally:
             for i, ev in saved_evaluators.items():
                 self.steps[i].evaluators = ev

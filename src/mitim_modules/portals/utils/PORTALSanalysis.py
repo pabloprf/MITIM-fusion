@@ -71,8 +71,16 @@ class PORTALSanalyzer:
 
         # Preparation
         print("- Grabbing model")
-        self.step = self.opt_fun.mitim_model.steps[-1]
-        self.gp = self.step.GP["combined_model"]
+        # `steps` (the fitted GP surrogate models) may be absent if optimization_object.pkl
+        # was saved slim (to save disk in long MAESTRO chains). The convergence/profile
+        # metrics come from optimization_extra.pkl (powerstates), not from steps; only the
+        # GP-posterior plots (plotExpected / model comparisons / extractModels) need them.
+        # Keep step/gp None in that case so plotMetrics still works.
+        self.steps = getattr(self.opt_fun.mitim_model, "steps", None) or None
+        self.step = self.steps[-1] if self.steps else None
+        self.gp = self.step.GP["combined_model"] if (self.step is not None and getattr(self.step, "GP", None)) else None
+        if self.step is None:
+            print("\t- No surrogate steps stored (slim optimization_object.pkl): metrics will plot, GP-posterior plots are unavailable", typeMsg="w")
 
         self.powerstate = self.opt_fun.mitim_model.optimization_object.surrogate_parameters["powerstate"]
 
@@ -101,7 +109,10 @@ class PORTALSanalyzer:
             try:
 
                 opt_fun.read_optimization_results(analysis_level=4, folderRemote=folderRemote)
-                step = opt_fun.mitim_model.steps[-1]    # To trigger potential exception
+                # Do NOT require steps[-1] here: a slim optimization_object.pkl (no stored
+                # surrogates) still supports the metrics plots. cls() raises on genuinely
+                # unreadable results (missing optimization_extra / powerstates) and the
+                # except below then falls back to the initializer view.
 
                 return cls(opt_fun, folderAnalysis=folderAnalysis)
 
@@ -207,7 +218,13 @@ class PORTALSanalyzer:
 
         self.powerstates = []
         for i in range(self.ilast + 1):
-            self.powerstates.append(self.mitim_runs[i]["powerstate"])
+            power = self.mitim_runs[i]["powerstate"]
+            # Lean-stored powerstates have 'derived' dropped at save (PORTALSmain._dropped_derived);
+            # rebuild it here so all downstream plots/metrics find it.
+            prof = getattr(power, "profiles", None)
+            if prof is not None and not getattr(prof, "derived", None):
+                prof.derive_quantities()
+            self.powerstates.append(power)
 
         # runWithImpurity_transport is stored after powerstate has run transport
         self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.predicted_channels else None
@@ -227,7 +244,9 @@ class PORTALSanalyzer:
             self.iextra = None
 
         self.profiles_next = None
-        x_train_num = self.step.train_X.shape[0]
+        # train_X.shape[0] == number of evaluated points; fall back to ilast+1 when steps
+        # were not stored (slim pkl) so the "next profile" lookup below still resolves.
+        x_train_num = self.step.train_X.shape[0] if self.step is not None else (self.ilast + 1)
         file = self.opt_fun.folder / "Execution" / f"Evaluation.{x_train_num}" / "transport_simulation_folder" / "input.gacode_unmodified"
         if file.exists():
             print("\t\t- Reading next profile to evaluate (from folder)")
@@ -607,6 +626,9 @@ class PORTALSanalyzer:
         PORTALSplot.PORTALSanalyzer_plotMetrics(self, **kwargs)
 
     def plotExpected(self, **kwargs):
+        if self.step is None:
+            print("\t- Skipping PORTALS Expected (GP-posterior) plot: surrogates not stored (slim optimization_object.pkl)", typeMsg="w")
+            return
         PORTALSplot.PORTALSanalyzer_plotExpected(self, **kwargs)
 
     def plotSummary(self, **kwargs):
@@ -676,6 +698,9 @@ class PORTALSanalyzer:
         return p
 
     def extractModels(self, step=-1):
+        if self.step is None:
+            print("\t- extractModels unavailable: surrogates not stored (slim optimization_object.pkl)", typeMsg="w")
+            return {}
         if step < 0:
             step = len(self.opt_fun.mitim_model.steps) - 1
 

@@ -44,6 +44,7 @@ class transp_beat(beat):
     def prepare(
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        min_sawtooth_period_ms = 1.0,               # Adaptive Porcelli min-period floor [ms]: sets c_sawtooth(2)=floor/PM_period so crashes are >= this far apart. None disables (raw NMLtools default). Defaults to 1 ms (~historical behavior) so old namelists are unchanged
         ensure_sawtooths    = None,                 # If not None, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
@@ -126,11 +127,25 @@ class transp_beat(beat):
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
-        if is_machine_fixed: 
-            # Remove antenna geometry that may have been written from GACODE 
+        if is_machine_fixed:
+            # Remove antenna geometry that may have been written from GACODE
             for var in ['rmjicha', 'rmnicha', 'thicha']:
                 del self.transp.namelist_variables[var]
-        
+
+        # Adaptive Porcelli sawtooth minimum-period floor. The Porcelli trigger only enforces a
+        # floor relative to the Park-Monticello period (z_period_min = c_sawtooth(2) x tau_PM), and
+        # tau_PM ~ R^2 Te0^1.5 / Zeff is sub-ms for compact, hot plasmas -> crashes every ~timestep
+        # and a multi-GB output CDF. Pick c_sawtooth(2) so the floor lands at min_sawtooth_period_ms
+        # for this plasma; large machines (tau_PM already above the floor) are left effectively
+        # untouched. Set None to bypass and use the raw NMLtools c_sawtooth(2) default.
+        if min_sawtooth_period_ms is not None and 'c_sawtooth_2' not in transp_namelist_mod:
+            p = self.profiles_current
+            tau_PM = PLASMAtools.park_monticello_sawtooth_period(
+                p.profiles["rmaj(m)"][0], p.profiles["te(keV)"][0], p.profiles["z_eff(-)"][0])
+            transp_namelist_mod['c_sawtooth_2'] = (min_sawtooth_period_ms * 1e-3) / tau_PM
+            print(f'\t- Sawtooth floor: min_sawtooth_period_ms={min_sawtooth_period_ms} -> '
+                  f'c_sawtooth(2)={transp_namelist_mod["c_sawtooth_2"]:.3g} (tau_PM={tau_PM*1e3:.3g} ms)', typeMsg='i')
+
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
 
@@ -294,11 +309,27 @@ class transp_beat(beat):
         print('\t\t- Checking TRANSP run completeness')
         cdf_results = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
         last_time_simulated = cdf_results.t[-1]
+        cdf_results.close()  # release the (multi-GB) CDF fd immediately; nothing below needs it
         seconds_check = 0.1
         if last_time_simulated < self.time_end - seconds_check:   
             raise RuntimeError(f"[MITIM] TRANSP run did not complete until the expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.")
         else:
             print(f'\t\t- TRANSP run completed until expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.')
+
+        # Release the heavy CDF handle the TRANSP wrapper cached during the run (self.transp.c, set in
+        # transp_run.run -> checkUntilFinished -> storeCDF, plus any self.transp.t.cdfs). It is held for
+        # the WHOLE MAESTRO run and fork-inherited by the downstream PORTALS workers, so the wiped CDF
+        # lingers as a multi-GB NFS silly-rename (.nfsXXXX) until the case ends -- the dominant during-run
+        # scratch hog (NOT the finalize()/completeness-check readers, which are short-lived).
+        self._release_transp_cdf_handles()
+
+    def _release_transp_cdf_handles(self):
+        tr = getattr(self, "transp", None)
+        if tr is None:
+            return
+        for obj in [getattr(tr, "c", None)] + list(getattr(getattr(tr, "t", None), "cdfs", {}).values()):
+            if obj is not None and hasattr(obj, "close"):
+                obj.close()
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
@@ -339,6 +370,11 @@ class transp_beat(beat):
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
         })
+
+        # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
+        # workers -- otherwise the open fd is inherited and the wiped CDF stays pinned on disk
+        # (NFS silly-rename) for the whole run. See transp_output.close().
+        cdf_results.close()
 
     def _locate_cdf(self):
         '''

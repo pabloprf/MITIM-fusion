@@ -173,6 +173,10 @@ class transp_nml:
         
         self.coeffsSaw = transp_params.get("coeffsSaw",[1.0,3.0,1.0,0.4])
         self.ReconnectionFraction = transp_params.get("ReconnectionFraction",0.37)
+        # Porcelli minimum-period floor (TRANSP: z_period_min = c_sawtooth(2) x Park-Monticello period).
+        # Default 0.1 is the historical value; raise it (e.g. target_period / tau_PM) to keep crashes
+        # at least a chosen wall-time apart and avoid sub-ms re-triggering on compact, hot plasmas.
+        self.c_sawtooth_2 = transp_params.get("c_sawtooth_2",0.1)
         self.predictRad = transp_params.get("predictRad",True)
         self.useBootstrapSmooth = transp_params.get("useBootstrapSmooth",None)
 
@@ -286,6 +290,10 @@ class transp_nml:
             f"dtbeam = {self.dtHeating_ms*1E-3} ! Timestep step for NBI (default 5.0e-3)",
             "",
             "! * Outputs Resolution",
+            "! NOTE: sedit/stedit (set from dtOut_ms) do NOT reliably reduce the output CDF size:",
+            "! observed MAESTRO transp_soft runs write the CDF at ~the internal timestep (tens of",
+            "! thousands of slices over a ~20 s run) regardless. CDF size tracks run length/timestep,",
+            "! not this knob (mechanism not fully root-caused as of 2026-06).",
             f"sedit  = {self.dtOut_ms*1E-3} ! Control of time resolution of scalar output",
             f"stedit = {self.dtOut_ms*1E-3} ! Control of time resolution of profile output",
             "",
@@ -816,7 +824,7 @@ class transp_nml:
             "",
             "l_sawtooth(1)    = -1     ! 0 = Do not crash if multiple q=1",
             "xi_sawtooth_min  = 0.0    ! Smallest radius that trigger q=1 sawtooth",
-            "c_sawtooth(2)    = 0.1    ! Impose a minimum sawtooth period (as fraction of Park-Monticello model)",
+            f"c_sawtooth(2)    = {self.c_sawtooth_2}    ! Minimum sawtooth period as a fraction of the Park-Monticello period (default 0.1)",
             "c_sawtooth(20)   = 1.0    ! Coefficient for d beta_fast / d r",
             "",
             "l_sawtooth(32)   = 1   	 ! 1 = Use c_sawtooth(25:29) from namelist",

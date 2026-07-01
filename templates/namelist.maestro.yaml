@@ -583,13 +583,19 @@ maestro:
       mxh_coeffs_smooth_sep: null # if null, it will take n_mxh from "separatrix" section of "plasma"
 
       # Simulation length
-      flattop_window: 2.5   
+      flattop_window: 2.5
+      min_sawtooth_period_ms: 10.0 # Approximate floor on the Porcelli sawtooth period [ms]: sets c_sawtooth(2)=floor/Park-Monticello-period per case so compact plasmas stop crashing every ~ms (which bloats the output CDF); machines whose natural period already exceeds it are unaffected. null disables; if absent, defaults to 1 ms.
+      # NOTE: this floor is APPROXIMATE -- c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP applies it with the evolving post-crash central Te, so the realized minimum can differ from the requested value.
       ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
 
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
       Pich: True
       Pnbi: True
+      # NOTE: dtOut_ms -> TRANSP sedit/stedit, but in practice it does NOT reliably reduce the
+      # output CDF size: observed transp_soft CDFs are written at ~the internal timestep (tens of
+      # thousands of slices over a ~20 s run) regardless. CDF size tracks run length/timestep, not
+      # this knob (mechanism not fully root-caused as of 2026-06).
       dtOut_ms : 10.0
       dtIn_ms : 10.0
       nzones : 60
