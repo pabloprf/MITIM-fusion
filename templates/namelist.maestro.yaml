@@ -588,6 +588,19 @@ maestro:
       # NOTE: this floor is APPROXIMATE -- c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP applies it with the evolving post-crash central Te, so the realized minimum can differ from the requested value.
       ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
 
+      # Which CDF time slice is extracted to build the next beat's input.gacode:
+      #   'saw'    -> the last sawtooth (CDFtools ind_saw)
+      #   'saw-N'  -> N coarse slices before the last sawtooth (the coarse MAESTRO time grid can
+      #              otherwise land mid-crash; a small step-back avoids sawtoothing profiles)
+      #   'last'   -> the last simulated slice
+      #   'last-N' -> N coarse slices before the last slice
+      extract_at: saw-1  # historical default
+      # Floor on how early we sample: if the extract_at slice lands before this fraction of the
+      # flattop window (measured from the start of flattop, time_diffusion -> time_end), extract
+      # at the floor instead. Guards against a plasma whose ONLY sawtooth fires early (then never
+      # again) being sampled before heating / current diffusion have settled. null disables.
+      min_extraction_flattop_fraction: 0.5
+
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
       Pich: True

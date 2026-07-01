@@ -23,12 +23,16 @@ DESCRIPTION
 
 *   🪚 **MAESTRO TRANSP adaptive sawtooth-period floor** (`min_sawtooth_period_ms`): on compact, cold-core plasmas the Park-Monticello period `tau_PM ~ R²·Te0^1.5/Zeff` — the floor on the Porcelli trigger's crash interval (`c_sawtooth(2)·tau_PM`) — is sub-ms, so sawteeth crash every ~1 ms, forcing sub-ms timesteps and a multi-GB output CDF. The TRANSP beat now sets `c_sawtooth(2) = min_sawtooth_period_ms / tau_PM` per case (`tau_PM` from new `PLASMAtools.park_monticello_sawtooth_period`), imposing an absolute floor on the crash interval while leaving large machines (whose `tau_PM` already exceeds the floor) untouched. Default **10 ms** in the maestro template; `null` bypasses.
 
+*   🎚️ **MAESTRO TRANSP extraction-slice selector** (`extract_at`): which CDF time slice is handed to the next beat is now configurable in the transp beat's `parameters_prepare` — `saw` / `saw-N` (the last sawtooth, or N coarse slices before it) or `last` / `last-N` (N before the last simulated slice). Default `saw-1` reproduces the historical behavior (`ind_saw-1`, a small step-back that avoids sampling the sawtoothing crash profiles on the coarse MAESTRO grid).
+
 
 ### Bug Fixes
 
 *   🐛 **TRANSP CDF file-descriptor leak (major MAESTRO scratch regression)**: the multi-GB TRANSP output CDF was held open for the **entire** MAESTRO run and fork-inherited by every later PORTALS/TGLF worker, so once the run folder was wiped (`keep_all_files: false`) the deleted CDF stayed pinned on disk as an NFS silly-rename (`.nfsXXXX`) until the case ended — inflating each case's scratch use by 2–5 GB and overrunning per-user quotas on large scans. The TRANSP beat now releases the cached `transp_output` (and any `self.transp.t.cdfs`) at the end of `run()`, before the PORTALS beats fork; `transp_output` gained an idempotent `close()`, and the various metadata/finalize/completeness readers now close their handles.
 
 *   🐛 **MAESTRO TRANSP Porcelli sawtooth triggering**: earlier MAESTRO runs could finish without ever triggering sawteeth through the Porcelli model if the Park-Monticello predicted period was too long (10% of it was taking as the minimum). The TRANSP beat now has the flexibility of using a user-specified sawtooth-period floor (see new features above).
+
+*   🐛 **MAESTRO TRANSP early-extraction floor** (`min_extraction_flattop_fraction`, default 0.5): a plasma whose only sawtooth fired early (then never again) had its profiles extracted too soon — before heating / current diffusion settled. The extraction is now floored at this fraction of the flattop window: if the `extract_at` slice lands earlier, it moves to the first slice at/after the floor. Healthy runs (last sawtooth already past mid-flattop) are unchanged; `null` disables.
 
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 

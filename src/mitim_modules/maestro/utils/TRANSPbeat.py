@@ -12,15 +12,63 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from IPython import embed
 
+
+def _extraction_index(cdf_results, extract_at):
+    """Map an `extract_at` selector to a CDF time-slice index.
+
+        'saw'  / 'saw-N'  -> cdf.ind_saw - N   (the last sawtooth, or N coarse slices before it)
+        'last' / 'last-N' -> last slice,        or N coarse slices before it
+
+    `ind_saw` is CDFtools' last-sawtooth reference (findLastSawtoothIndex). The small step-back
+    matters because MAESTRO's coarse output grid can otherwise land on the sawtoothing (crash)
+    profiles. Out-of-range selections are clamped with a warning.
+    """
+    s = str(extract_at).strip().lower()
+    if s.startswith("saw"):
+        it = cdf_results.ind_saw + int(s[3:] or 0)          # 'saw-2' -> ind_saw - 2
+    elif s.startswith("last"):
+        it = (len(cdf_results.t) - 1) + int(s[4:] or 0)     # 'last-2' -> last - 2
+    else:
+        raise ValueError(f"[MITIM] Unrecognized extract_at '{extract_at}' (use 'saw', 'saw-N', 'last' or 'last-N')")
+    nt = len(cdf_results.t)
+    if not (0 <= it < nt):
+        print(f"\t- extract_at '{extract_at}' -> slice {it} out of range for {nt} time slices; clamping", typeMsg='w')
+        it = min(max(it, 0), nt - 1)
+    return it
+
+
+def _apply_flattop_floor(cdf_results, it_extract, time_diffusion, time_end, min_flattop_fraction):
+    """Do not extract before a minimum fraction of the flattop window.
+
+    A plasma whose ONLY sawtooth fires early (then never crashes again) would otherwise be
+    sampled by 'saw'/'saw-N' before the heating and current diffusion have settled. If the
+    selected slice sits earlier than
+        time_diffusion + min_flattop_fraction * (time_end - time_diffusion)
+    it is moved forward to the first slice at/after that floor. Returns the (possibly updated)
+    index. A None fraction -- or missing timing on a skipped-prepare restart -- is a no-op.
+    """
+    if min_flattop_fraction is None or time_diffusion is None or time_end is None:
+        return it_extract
+    t_floor = time_diffusion + min_flattop_fraction * (time_end - time_diffusion)
+    if cdf_results.t[it_extract] >= t_floor:
+        return it_extract
+    it_floor = min(int(np.searchsorted(cdf_results.t, t_floor)), len(cdf_results.t) - 1)
+    print(f"\t- extraction slice t={cdf_results.t[it_extract]:.4f}s is before the flattop floor "
+          f"({min_flattop_fraction:.0%} of flattop -> t={t_floor:.4f}s; likely only an early sawtooth); "
+          f"extracting at t={cdf_results.t[it_floor]:.4f}s instead", typeMsg='w')
+    return it_floor
+
+
 class transp_beat(beat):
 
     def __init__(
         self,
         maestro_instance,
         letter              = None,
-        shot                = None, 
-        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
-        ):   
+        shot                = None,
+        extract_at          = "saw-1",              # Which CDF time slice feeds the next beat (see prepare()/finalize())
+        min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction of the flattop window (see finalize()); None disables
+        ):
 
         super().__init__(maestro_instance, beat_name = 'transp')
 
@@ -39,7 +87,11 @@ class transp_beat(beat):
         self.shot = shot
         self.runid = letter + str(self.maestro_instance.counter_current).zfill(2)
 
-        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
+        # Which CDF time slice is handed to the next beat (see finalize()); the namelist sets it
+        # via parameters_prepare.extract_at. Set here too so a warm restart (prepare() skipped)
+        # still has the value.
+        self.extract_at = extract_at
+        self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
 
     def prepare(
         self,
@@ -54,6 +106,8 @@ class transp_beat(beat):
         machine_initialization = 'CMOD',
         machine_initialization_match_target = False,
         mxh_coeffs_smooth_sep = None,
+        extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
+        min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
         **transp_namelist
         ):
         '''
@@ -85,6 +139,11 @@ class transp_beat(beat):
         self._inform(ensure_sawtooths=ensure_sawtooths)
         
         self.timeAC = self.time_end - time_before_end if extractAC else None          # Time to extract TORIC and NUBEAM files
+
+        # Which CDF time slice feeds the next beat, and an optional floor on how early we sample
+        # (see finalize()).
+        self.extract_at = extract_at
+        self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
 
         if mxh_coeffs_smooth_sep is None:
             print('\t- No MXH coefficients for smoothing separatrix provided', typeMsg='i')
@@ -347,9 +406,15 @@ class transp_beat(beat):
 
         cdf_results = CDFtools.transp_output(cdf_file)
 
-        # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        it_extract = cdf_results.ind_saw - 1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make sure I'm not extracting with profiles sawtoothing
+        # Which CDF time slice feeds the next beat's input.gacode (grammar in _extraction_index),
+        # floored so an only-early-sawtooth plasma is not sampled before the flattop settles.
+        it_extract = _extraction_index(cdf_results, self.extract_at)
+        it_extract = _apply_flattop_floor(cdf_results, it_extract,
+                                          getattr(self, 'time_diffusion', None),
+                                          getattr(self, 'time_end', None),
+                                          self.min_extraction_flattop_fraction)
         time_extraction = cdf_results.t[it_extract]
+        print(f'\t\t- Extracting profiles at extract_at={self.extract_at} -> t={time_extraction:.4f}s (slice {it_extract} of {len(cdf_results.t)-1})', typeMsg='i')
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
