@@ -126,28 +126,51 @@ class portals_beat(beat):
             ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and \
             self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] is not None:
 
-            # PORTALS just with one point
-            portals_fun.optimization_options['initialization_options']['initial_training'] = 1
+            # Warm-start: seed the run with a single flux-matched point (against the previous beat's
+            # surrogate) plus one training point. If a seed already exists (a restart of THIS beat)
+            # keep it; otherwise try to produce one. _flux_match_for_first_point() returns False when
+            # the anchor surrogate is slim/pruned (keep_all_files: false -- e.g. appending beats onto a
+            # finished MAESTRO, whose last beat was slimmed): then fall back to the normal
+            # initialization (surrogate DATA reuse via extrapointsFile = surrogate_data.csv is
+            # independent and still applies), so an appended beat never crashes on a pruned anchor.
+            have_seed = len(self.mitim_bo.optimization_data.data) > 0
+            if not have_seed:
+                have_seed = self._flux_match_for_first_point()
 
-            # If the point is not evaluated (for example, this was not a restart of this portals beat), then flux-match it
-            if len(self.mitim_bo.optimization_data.data) == 0:
-                self._flux_match_for_first_point()
+            if have_seed:
+                # PORTALS with just one extra training point on top of the flux-matched seed
+                portals_fun.optimization_options['initialization_options']['initial_training'] = 1
 
-            portals_fun.prep(p,askQuestions=False)
+                portals_fun.prep(p,askQuestions=False)
 
-            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
+                self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
         self.mitim_bo.run()
 
     def _flux_match_for_first_point(self):
+        '''Seed this beat's first evaluation by flux-matching against the previous PORTALS beat's
+        converged surrogate (self.folder_starting_point). Returns True if a flux-matched point was
+        produced, False if the anchor surrogate is unavailable.
+
+        This needs the anchor beat's fitted GP (portals.step). Under maestro.keep_all_files: false the
+        anchor pickle can be slim/pruned (no surrogate steps) -- e.g. a re-run that APPENDS beats onto
+        a finished MAESTRO, whose last beat was slimmed to save space. Then there is no GP to
+        flux-match against: warn and return False so the caller keeps the normal initialization.
+        (Surrogate DATA reuse via extrapointsFile = surrogate_data.csv is independent and still applies.)'''
 
         print('\n\t- Running flux match for first point')
+
+        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
+
+        if getattr(portals, 'step', None) is None:
+            print('\t\t- Previous-beat surrogate unavailable (slim/pruned optimization_object.pkl); '
+                  'skipping first-point flux match, keeping the normal initialization', typeMsg='w')
+            return False
 
         # Flux-match first
         folder_fm = self.folder / 'flux_match'
         folder_fm.mkdir(parents=True, exist_ok=True)
 
-        portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder_starting_point)
         p = portals.powerstates[portals.ibest].profiles
         _ = PORTALSoptimization.flux_match_surrogate(
             portals.step,
@@ -159,6 +182,7 @@ class portals_beat(beat):
         # Move files
         (self.folder / 'Outputs').mkdir(parents=True, exist_ok=True)
         shutil.copy2(folder_fm / 'optimization_data.csv', self.folder / 'Outputs')
+        return True
 
     def finalize(self, **kwargs):
 
