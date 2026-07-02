@@ -498,6 +498,12 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
 - The information in the RELEASE document shouldn't be comprehensive, do not necessarily
   explain all the logic that led to that capability or bug fix. Except when it is very
   important, each bullet should not expand more than 5 lines.
+- **A bullet is: what changed + the knob + the new default + back-compat implication, from
+  the user's perspective. Mechanism, physics rationale, tuning advice and internal plumbing
+  belong in the namelist comments, docstrings or the commit message — if a bullet wants to
+  grow past the cap, move the excess there and point to it (e.g. "full per-mode docs in
+  templates/namelist.maestro.yaml"). Re-check bullet length at commit time: bullets drafted
+  during implementation carry too much fresh context and must be cut down before committing.**
 
 
 ## 9. Teaching
