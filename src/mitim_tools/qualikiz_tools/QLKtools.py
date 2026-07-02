@@ -189,6 +189,94 @@ class QuaLiKiz:
 
         plan = _modify_plan(copy.deepcopy(self.plan), code_settings=code_settings, extraOptions=extraOptions, multipliers=multipliers)
 
+        return self._submit_plan(
+            subfolder,
+            plan,
+            cold_start=cold_start,
+            launchSlurm=launchSlurm,
+            allocation=allocation,
+            binaryrelpath=binaryrelpath,
+            attempts_execution=attempts_execution,
+            extra_name=extra_name,
+        )
+
+    def run_cases(
+        self,
+        subfolder,                 # 'turb_drives/'
+        cases,                      # list of dicts {scan_dict_key: multiplier}, one per perturbation case
+        code_settings=None,        # None or a QLKdefaults preset (e.g. "FAST")
+        cold_start=False,
+        forceIfcold_start=False,
+        launchSlurm=True,
+        allocation=None,           # {'resources_per_call': int, 'minutes': int}
+        binaryrelpath=None,
+        attempts_execution=1,
+        extra_name="exe",
+    ):
+        """
+        Run many perturbation cases (e.g. the gradient-scan points used for
+        scan-trick uncertainty estimation) in a SINGLE QuaLiKiz execution, by
+        stacking them onto QuaLiKiz's own "parallel" dimx scan alongside
+        self.rhos, instead of issuing one execution per case.
+
+        Each entry of ``cases`` is a dict of {scan_dict_key: multiplier} (same
+        convention as ``run()``'s ``multipliers`` arg). The resulting plan has
+        dimx = len(cases) * len(self.rhos), laid out case-major / rho-minor:
+        block ``i`` (dimx[i*nrho:(i+1)*nrho]) reuses the base per-rho scan_dict
+        values, with every key in cases[i] multiplied by its given factor
+        across the whole block (i.e. uniformly over all rho points, same as a
+        single-case ``run(multipliers=cases[i])`` would have done).
+
+        Pair with ``read_cases(label, n_cases=len(cases))`` to unstack the
+        resulting dataset back into per-case, per-rho slices.
+
+        Note: since one execution now covers len(cases) times as many dimx
+        points, `allocation['resources_per_call']` may need to be increased
+        relative to a plain ``run()`` call to keep wallclock reasonable.
+        """
+
+        nrho = len(self.rhos)
+
+        base_scan_dict = self.plan["scan_dict"]
+        stacked_scan_dict = OrderedDict()
+        for key, base_vals in base_scan_dict.items():
+            stacked_vals = []
+            for case in cases:
+                mult = case.get(key, 1.0)
+                stacked_vals.extend([v * mult for v in base_vals])
+            stacked_scan_dict[key] = stacked_vals
+
+        plan = copy.deepcopy(self.plan)
+        plan["scan_dict"] = stacked_scan_dict
+        if code_settings is not None:
+            print(f"\t- Using presets code_settings = {code_settings}", typeMsg="i")
+            for ikey, val in QLKdefaults.addQLKcontrol(code_settings).items():
+                plan["xpoint_base"][ikey] = val
+
+        return self._submit_plan(
+            subfolder,
+            plan,
+            cold_start=cold_start,
+            launchSlurm=launchSlurm,
+            allocation=allocation,
+            binaryrelpath=binaryrelpath,
+            attempts_execution=attempts_execution,
+            extra_name=extra_name,
+        )
+
+    def _submit_plan(
+        self,
+        subfolder,
+        plan,
+        cold_start=False,
+        launchSlurm=True,
+        allocation=None,
+        binaryrelpath=None,
+        attempts_execution=1,
+        extra_name="exe",
+    ):
+        """ Shared prepare/generate/run bookkeeping for run() and run_cases(). """
+
         Folder_sim = self.FolderGACODE / subfolder
         binaryrelpath = binaryrelpath or _resolve_binary(Folder_sim)
 
@@ -316,6 +404,54 @@ class QuaLiKiz:
             "x": np.array(self.rhos),
             # Per-rho slices, mirroring TGLFtools' self.results[label]['output'] list-by-rho shape
             "output": [ds.isel(dimx=i) for i in range(len(self.rhos))],
+        }
+
+    def read_cases(
+        self,
+        label,
+        n_cases,                # must match len(cases) passed to the run_cases() call being read
+        folder=None,            # If None, use the last folder run_cases() produced
+        input_gacode=None,
+        **kwargs_to_xarray,
+    ):
+        """
+        Counterpart to read(), for a plan produced by run_cases(): unstacks
+        the combined dimx = n_cases * len(self.rhos) dataset (case-major /
+        rho-minor, matching run_cases()'s layout) back into per-case,
+        per-rho slices.
+        """
+        print("> Reading stacked-case simulation results")
+
+        if folder is None:
+            folder = self.FolderSimLast
+        folder = IOtools.expandPath(folder)
+
+        if self.NormalizationSets.get("SELECTED") is None and input_gacode is not None:
+            print("\t- Getting normalizations from input.gacode provided in the read function")
+            self.NormalizationSets, _ = NORMtools.normalizations(PROFILEStools.gacode_state(input_gacode))
+
+        ds = qualikiz_folder_to_xarray(folder, **kwargs_to_xarray)
+
+        nrho = len(self.rhos)
+        if ds.sizes["dimx"] != n_cases * nrho:
+            raise ValueError(
+                f"read_cases: dimx={ds.sizes['dimx']} does not match "
+                f"n_cases({n_cases}) * len(self.rhos)({nrho}) = {n_cases * nrho}"
+            )
+
+        ds = ds.assign_coords(
+            rho=("dimx", np.tile(np.array(self.rhos), n_cases)),
+            case=("dimx", np.repeat(np.arange(n_cases), nrho)),
+        )
+
+        self.results[label] = {
+            "dataset": ds,
+            "x": np.array(self.rhos),
+            # output[case][rho], mirroring read()'s per-rho 'output' list with an extra outer per-case axis
+            "output": [
+                [ds.isel(dimx=icase * nrho + irho) for irho in range(nrho)]
+                for icase in range(n_cases)
+            ],
         }
 
     # ------------------------------------------------------------------

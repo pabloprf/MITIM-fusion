@@ -272,6 +272,9 @@ transport:
       # percent_error below.  Set to a float (e.g. 0.02 for ±2%) to enable.
       # Variables scanned: Ate, Ati (co-varied thermal ions), Ane (+ QN Ani),
       # Ani{impurity}, gammaE, Ti/Te ratio — analogous to TGLF's scan trick.
+      # All perturbation cases are stacked onto QuaLiKiz's own dimx scan and
+      # run as a SINGLE QuaLiKiz execution (unlike TGLF, which needs one
+      # execution per rho per variable per delta).
       use_scan_trick_for_stds: null
 
       # (%) Ad-hoc uncertainty when use_scan_trick_for_stds is null.

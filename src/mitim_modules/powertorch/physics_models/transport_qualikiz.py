@@ -233,13 +233,16 @@ def _run_qlk_uncertainty_model(
 
     QuaLiKiz analog of transport_tglf._run_tglf_uncertainty_model. The key
     structural difference is that QuaLiKiz covers ALL rho points in a single
-    MPI execution (via its own dimx scan), so this function needs only
-    N_vars × N_deltas total QuaLiKiz calls — compared with TGLF's
-    N_rhos × N_vars × N_deltas. Each call applies a uniform multiplier to the
-    perturbed variable across all rho points simultaneously.
+    MPI execution (via its own dimx scan). This function takes advantage of
+    that by additionally stacking all N_vars × N_deltas perturbation cases
+    onto that same dimx scan, so the entire gradient scan runs as a SINGLE
+    QuaLiKiz execution (via qlk.run_cases()/read_cases()) instead of
+    N_vars × N_deltas separate ones — compared with TGLF's
+    N_rhos × N_vars × N_deltas total executions. Each case applies a uniform
+    multiplier to the perturbed variable across all rho points simultaneously.
 
-    Each scan case is run as a separate subfolder:
-        {qlk.FolderGACODE}/{subfolder_name}/{variable}/{multiplier}/
+    All cases are generated under a single subfolder:
+        {qlk.FolderGACODE}/{subfolder_name}/
 
     Results are stored in qlk.scans["{subfolder_name}_{variable}"] as
     (nrho, n_deltas) arrays in MITIM GB units, mirroring the structure that
@@ -262,15 +265,45 @@ def _run_qlk_uncertainty_model(
     nrho = len(rho_locations)
     n_deltas = len(relative_scan)
 
+    # Build the full list of perturbation cases up front, tracking which
+    # (variable, delta) each case corresponds to so the stacked results can be
+    # unstacked back into per-variable (nrho, n_deltas) arrays below.
+    cases = []
+    case_index_map = []  # (i_var, i_mult) per entry of `cases`, same order
+    for i_var, variable in enumerate(variables_to_scan):
+        for i_mult, mult in enumerate(relative_scan):
+            mult_r = round(mult, 6)
+            # Apply the same relative multiplier to the representative variable
+            # and all co-varied partners.
+            multipliers = {variable: mult_r}
+            for cov_key in covariation_map.get(variable, []):
+                multipliers[cov_key] = mult_r
+            cases.append(multipliers)
+            case_index_map.append((i_var, i_mult))
+
     print(
         f"\n\t- Running QuaLiKiz scans for turbulence drives: "
         f"{len(variables_to_scan)} variables × {n_deltas} deltas = "
-        f"{len(variables_to_scan) * n_deltas} total runs (each covering {nrho} rho points)\n",
+        f"{len(cases)} perturbation cases, stacked into a single QuaLiKiz "
+        f"execution covering {len(cases) * nrho} dimx points ({nrho} rho points each)\n",
         typeMsg="i",
     )
 
-    for i_var, variable in enumerate(variables_to_scan):
-        scan_data = {
+    label = f"{subfolder_name}_all"
+    qlk.run_cases(
+        subfolder_name,
+        cases,
+        cold_start=cold_start,
+        forceIfcold_start=True,
+        extra_name=f"{extra_name}_{subfolder_name}",
+        allocation=allocation,
+        attempts_execution=attempts_execution,
+        code_settings=code_settings,
+    )
+    qlk.read_cases(label, n_cases=len(cases))
+
+    scan_data_by_var = {
+        variable: {
             "Qe_gb": np.zeros((nrho, n_deltas)),
             "Qi_gb": np.zeros((nrho, n_deltas)),
             "Ge_gb": np.zeros((nrho, n_deltas)),
@@ -278,51 +311,32 @@ def _run_qlk_uncertainty_model(
             "Mt_gb": np.zeros((nrho, n_deltas)),
             "S_gb":  np.zeros((nrho, n_deltas)),
         }
+        for variable in variables_to_scan
+    }
 
-        for i_mult, mult in enumerate(relative_scan):
-            mult_r = round(mult, 6)
-            scan_subfolder = f"{subfolder_name}/{variable}/{mult_r}"
-            label = f"{subfolder_name}_{variable}_{mult_r}"
+    for icase, (i_var, i_mult) in enumerate(case_index_map):
+        variable = variables_to_scan[i_var]
+        scan_data = scan_data_by_var[variable]
 
-            # Apply the same relative multiplier to the representative variable
-            # and all co-varied partners.
-            multipliers = {variable: mult_r}
-            for cov_key in covariation_map.get(variable, []):
-                multipliers[cov_key] = mult_r
+        for irho, out in enumerate(qlk.results[label]["output"][icase]):
+            Qe_SI = float(out["efe_SI"].values)
+            Ge_SI = float(out["pfe_SI"].values)
+            Qi_SI = float(out["efi_SI"].values.sum())
+            GZ_SI = float(out["pfi_SI"].values[ion_OI_position_in_ion_list])
+            try:
+                Mt_SI = float(out["vfi_SI"].values.sum())
+            except KeyError:
+                Mt_SI = 0.0
 
-            # Only ask about cold_start on the very first scan case.
-            force = (i_var > 0 or i_mult > 0) or cold_start
+            scan_data["Qe_gb"][irho, i_mult] = Qe_SI / (Qgb[irho] * 1e6)
+            scan_data["Qi_gb"][irho, i_mult] = Qi_SI / (Qgb[irho] * 1e6)
+            scan_data["Ge_gb"][irho, i_mult] = Ge_SI / (Ggb[irho] * 1e20)
+            scan_data["Gi_gb"][irho, i_mult] = GZ_SI / (Ggb[irho] * 1e20)
+            scan_data["Mt_gb"][irho, i_mult] = Mt_SI / Pgb[irho]
+            scan_data["S_gb"][irho, i_mult]  = 0.0   # QuaLiKiz doesn't output Qie
 
-            qlk.run(
-                scan_subfolder,
-                multipliers=multipliers,
-                cold_start=cold_start,
-                forceIfcold_start=force,
-                extra_name=f"{extra_name}_{subfolder_name}",
-                allocation=allocation,
-                attempts_execution=attempts_execution,
-                code_settings=code_settings,
-            )
-            qlk.read(label=label)
-
-            for irho, out in enumerate(qlk.results[label]["output"]):
-                Qe_SI = float(out["efe_SI"].values)
-                Ge_SI = float(out["pfe_SI"].values)
-                Qi_SI = float(out["efi_SI"].values.sum())
-                GZ_SI = float(out["pfi_SI"].values[ion_OI_position_in_ion_list])
-                try:
-                    Mt_SI = float(out["vfi_SI"].values.sum())
-                except KeyError:
-                    Mt_SI = 0.0
-
-                scan_data["Qe_gb"][irho, i_mult] = Qe_SI / (Qgb[irho] * 1e6)
-                scan_data["Qi_gb"][irho, i_mult] = Qi_SI / (Qgb[irho] * 1e6)
-                scan_data["Ge_gb"][irho, i_mult] = Ge_SI / (Ggb[irho] * 1e20)
-                scan_data["Gi_gb"][irho, i_mult] = GZ_SI / (Ggb[irho] * 1e20)
-                scan_data["Mt_gb"][irho, i_mult] = Mt_SI / Pgb[irho]
-                scan_data["S_gb"][irho, i_mult]  = 0.0   # QuaLiKiz doesn't output Qie
-
-        qlk.scans[f"{subfolder_name}_{variable}"] = scan_data
+    for variable in variables_to_scan:
+        qlk.scans[f"{subfolder_name}_{variable}"] = scan_data_by_var[variable]
 
     return _aggregate_qlk_scan_fluxes(
         qlk, subfolder_name, variables_to_scan, relative_scan, rho_locations, Flux_base=Flux_base
