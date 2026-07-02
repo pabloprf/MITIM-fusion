@@ -108,12 +108,15 @@ class transp_beat(beat):
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
-        rotation_source = 'echo',                   # How this beat sets w0 (the E×B rotation -c dPhi/dpsi) for the next
-                                                    # input.gacode: 'echo' = feed the seed rotation into TRANSP and write
-                                                    # the resulting E×B rotation (carries the seed via the ERVTOR term);
-                                                    # 'neoclassical' = ship a zero omg U-File and write the weak-rotation
-                                                    # (pure neoclassical) E×B rotation, ignoring any seed; 'off' = no omg
-                                                    # in and zero w0 out, even if the seed carries a rotation.
+        rotation_source = 'echo',                   # How this beat sets w0 for the next input.gacode:
+                                                    # 'echo' = pass-through (seed w0 into TRANSP for its internal modeling,
+                                                    # SAME w0 out unchanged; zero seed -> zero out);
+                                                    # 'neoclassical_transp' = zero omg U-File in, write back TRANSP/NCLASS's
+                                                    # weak-rotation (pure neoclassical) E×B rotation, ignoring any seed;
+                                                    # 'neoclassical_portals' = pass-through here, and downstream PORTALS
+                                                    # beats default transport.options.neo.vgen_exb_shear ON (NEO-VGEN w0
+                                                    # recomputed at every PORTALS evaluation);
+                                                    # 'off' = no omg in and zero w0 out, even if the seed carries rotation.
         **transp_namelist
         ):
         '''
@@ -133,8 +136,8 @@ class transp_beat(beat):
             legacy = transp_namelist.pop('write_rotation')
             rotation_source = 'off' if legacy is False else 'echo'
             print(f"\t- [deprecation] 'write_rotation' is deprecated; use rotation_source. Mapped to '{rotation_source}'", typeMsg='w')
-        if rotation_source not in ('echo', 'off', 'neoclassical'):
-            raise ValueError(f"[MITIM] rotation_source='{rotation_source}' not recognized (use 'echo', 'off' or 'neoclassical')")
+        if rotation_source not in ('echo', 'off', 'neoclassical_transp', 'neoclassical_portals'):
+            raise ValueError(f"[MITIM] rotation_source='{rotation_source}' not recognized (use 'echo', 'off', 'neoclassical_transp' or 'neoclassical_portals')")
 
         # Grab structures
         tokamak_structures = transp_namelist.get('tokamak_structures', None)
@@ -435,14 +438,27 @@ class transp_beat(beat):
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
         # Rotation OUT to the next beat. to_profiles writes w0 = TGLF_w0_exb, the E×B/potential
-        # rotation (-c dPhi/dpsi, the GACODE w0 convention) -- the SAME quantity for 'echo' and
-        # 'neoclassical', since both just want the E×B rotation. The two modes differ only on the
-        # INPUT (handled in to_transp): 'echo' feeds the seed rotation (so ERTOT, hence the E×B
-        # rotation, includes it via the ERVTOR term), 'neoclassical' ships a zero omg U-File (so it
-        # is the weak-rotation / pure-neoclassical E×B). Only 'off' overrides here, zeroing w0 to
-        # keep the chain rotation-free.
-        _rot = getattr(self, 'rotation_source', 'echo')
-        if _rot == 'off':
+        # rotation (-c dPhi/dpsi, GACODE w0 convention) that TRANSP/NCLASS re-derived from its
+        # force balance. Only 'neoclassical_transp' keeps that re-derivation. The pass-through
+        # modes ('echo', 'neoclassical_portals') restore the SEED w0 unchanged — zero seed ->
+        # zero out; under 'neoclassical_portals' the downstream PORTALS beats recompute w0 with
+        # NEO-VGEN at every evaluation anyway. 'off' zeroes it. On a warm restart where
+        # prepare() was skipped, recover the mode from the transp_results.npy sidecar snapshot
+        # (a pre-rotation sidecar without the key falls back to 'echo' = pass-through, which
+        # reproduces those runs' original w0 untouched).
+        _rot = getattr(self, 'rotation_source', None)
+        if _rot is None:
+            sidecar_prev = self.folder_output / 'transp_results.npy'
+            _rot = np.load(sidecar_prev, allow_pickle=True).item().get('rotation_policy', 'echo') if sidecar_prev.exists() else 'echo'
+            self.rotation_source = _rot
+        if _rot in ('echo', 'neoclassical_portals'):
+            self.profiles_output.profiles['w0(rad/s)'] = np.interp(
+                self.profiles_output.profiles['rho(-)'],
+                self.profiles_current.profiles['rho(-)'],
+                self.profiles_current.profiles['w0(rad/s)'],
+            )
+            self.profiles_output.derive_quantities(rederiveGeometry=False)
+        elif _rot == 'off':
             self.profiles_output.profiles['w0(rad/s)'] = self.profiles_output.profiles['w0(rad/s)'] * 0.0
             self.profiles_output.derive_quantities(rederiveGeometry=False)
 
@@ -463,6 +479,7 @@ class transp_beat(beat):
         np.save(self.folder_output / 'transp_results.npy', {
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
+            'rotation_policy': _rot,   # so warm restarts and _inform_save recover the mode without prepare()
         })
 
         # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
@@ -924,6 +941,7 @@ class transp_beat(beat):
             transp_results = np.load(summary_file, allow_pickle=True).item()
             impurity_order = transp_results['impurity_order']
             sawtooth_times = transp_results['sawtooth_times']
+            rotation_policy = transp_results.get('rotation_policy', 'echo')
         else:
             # Backwards-compat: MAESTRO folders that pre-date the sidecar still have
             # the CDF in folder_output (legacy copy) or in self.folder (keep_all_files: true).
@@ -936,11 +954,15 @@ class transp_beat(beat):
                         impurity_order[spec] = i
                         break
             sawtooth_times = np.array(c.tlastsawU)
+            rotation_policy = getattr(self, 'rotation_source', 'echo')
 
         self.maestro_instance.parameters_trans_beat['impurity_order_transp'] = impurity_order
         # If I have run TRANSP, I cannot reuse surrogate data #TODO: Maybe not always true?
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
         self.maestro_instance.parameters_trans_beat['sawtooth_times'] = sawtooth_times
+        # Chain-wide rotation policy: downstream PORTALS beats read this to default the
+        # per-evaluation NEO-VGEN ExB shear ON under 'neoclassical_portals' (see PORTALSbeat.prepare)
+        self.maestro_instance.parameters_trans_beat['rotation_policy'] = rotation_policy
         
     def _inform(self, ensure_sawtooths=None):
         

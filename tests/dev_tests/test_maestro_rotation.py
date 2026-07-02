@@ -2,22 +2,28 @@
 DEV TEST: MAESTRO rotation flow — TWO chains compared (zero seed vs strong w0 seed)
 -----------------------------------------------------------------------------------
 Both chains are TRANSP -> PORTALS -> TRANSP -> PORTALS with w0 added to PORTALS'
-predicted_channels, so each PORTALS beat evolves the rotation and each TRANSP beat
-ingests w0 as the 'omg' U-File and writes TRANSP's rotation (OMEGA) back out.
+predicted_channels, under the default rotation_source='echo' (PASS-THROUGH): each
+TRANSP beat feeds the incoming w0 to TRANSP as the 'omg' U-File (rotation modeling +
+NCLASS Er diagnostics in the CDF) and carries the SAME w0 out unchanged. The chain's
+rotation therefore changes ONLY across PORTALS beats, which predict it.
 
-  RUN A ("w0=0")  : the original chain — constant-BC init (FreeGS + fixed_bc), so the
-                    rotation is SEEDED AT ZERO. With nlvwnc=T the first TRANSP beat
-                    fills it with the neoclassical OMEGA_NC, which is pressure-dominated
-                    (weak-rotation limit: the toroidal term v_phi*B_theta of Er ~ 0).
+  RUN A ("w0=0")  : constant-BC init (FreeGS + fixed_bc) -> rotation SEEDED AT ZERO.
+                    The first TRANSP beat must hand w0=0 to PORTALS (pass-through of a
+                    zero seed — NCLASS's OMEGA_NC stays in the CDF as a diagnostic, it
+                    is NOT written out under 'echo'). PORTALS then evolves w0 from
+                    zero, and the second TRANSP beat must carry that predicted
+                    rotation through untouched.
 
   RUN B ("w0!=0") : same chain but the initial input.gacode is SEEDED with a strong,
                     artificial rotation (~1e5 rad/s on axis, ~20x the neoclassical
-                    scale and opposite sign). This pushes the toroidal Er term to be
-                    significant, which is the regime where we can actually see whether
-                    TRANSP carries the seed forward or still overwrites it with OMEGA_NC.
+                    scale and opposite sign), so pass-through vs re-derivation is
+                    unambiguous: the first TRANSP beat must hand EXACTLY this seed
+                    to PORTALS.
 
-Point of the comparison: does a real rotation seed PROPAGATE through the chain, or is
-the carried w0 dominated by TRANSP's neoclassical re-inference regardless of the input?
+Point of the comparison: w0 must change ONLY across PORTALS beats (which predict it)
+and NEVER across a TRANSP beat (pass-through contract of 'echo'). The TRANSP tabs also
+show what TRANSP would have written instead — OMEGA, OMEGA_NC, and the E×B rotation
+that rotation_source='neoclassical_transp' writes — for reference.
 
 *** WARNING ***: TRANSP flattop and PORTALS iteration cap are cut to the bone here ONLY
 so the chains finish fast enough to inspect, and Run B's w0 seed is artificial — do NOT
@@ -28,8 +34,9 @@ the PORTALS beats (same dependencies as maestro_01_run.py).
 
 The script ends with a rotation-flow FigureNotebook: a seed-comparison tab (w0 across
 every beat output, side by side) plus, per run, the TRANSP rotation 'versions' (input
-omg / OMEGA written to input.gacode / NCLASS OMEGA_NC) with the neoclassical Er sources,
-and the PORTALS predicted w0 -> VEXB_SHEAR that TGLF receives at the prediction radii.
+omg = what 'echo' carries out / OMEGA / NCLASS OMEGA_NC / the E×B rotation) with the
+neoclassical Er sources, and the PORTALS predicted w0 -> VEXB_SHEAR that TGLF receives
+at the prediction radii.
 (Full per-beat detail is still available via `mitim_plot_maestro <folder> --beats 4`.)
 """
 
@@ -38,7 +45,7 @@ import torch
 
 from mitim_modules.maestro.scripts import run_maestro
 from mitim_modules.maestro.utils import MAESTROplot
-from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
+from mitim_modules.maestro.utils.TRANSPbeat import transp_beat, _extraction_index
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.portals.utils import PORTALSanalysis
 from mitim_tools import __mitimroot__
@@ -100,7 +107,8 @@ def launch(nml, folder):
 
 def transp_beats(maestro):
     '''(label, transp_output, it) per TRANSP beat. `it` is the CDF slice that
-    transp_beat.interpret() extracts and writes to input.gacode (ind_saw-1 by default).'''
+    transp_beat.finalize() extracts (extract_at grammar; the flattop floor is ignored
+    here — close enough for these display tabs).'''
     out = []
     for counter, beat in maestro.beats.items():
         if not isinstance(beat, transp_beat):
@@ -109,7 +117,7 @@ def transp_beats(maestro):
         if cdf is None:
             print(f"\t- [skip] TRANSP beat #{counter}: CDF not on disk", typeMsg="w")
             continue
-        it = -1 if beat.extract_last_instead_of_sawtooth else cdf.ind_saw - 1
+        it = _extraction_index(cdf, getattr(beat, 'extract_at', 'saw-1'))
         out.append((f"TRANSP b#{counter}", cdf, it))
     return out
 
@@ -172,9 +180,10 @@ def add_run_tabs(fn, maestro, objs, tag):
         for row, (label, cdf, it) in enumerate(tb):
             x = cdf.x[it]
             ax = axs[row][0]
-            ax.plot(x, cdf.VtorkHz_data[it] * w0_factor, c="g", lw=2, label=r"$\omega_{input}$ (omg U-File)")
-            ax.plot(x, cdf.VtorkHz[it]      * w0_factor, c="b", lw=2.5, label=r"$\omega_{TRANSP}$ (OMEGA) $\rightarrow$ input.gacode")
+            ax.plot(x, cdf.VtorkHz_data[it] * w0_factor, c="g", lw=2, label=r"$\omega_{input}$ (omg U-File) $\rightarrow$ carried out ('echo')")
+            ax.plot(x, cdf.VtorkHz[it]      * w0_factor, c="b", lw=2.5, label=r"$\omega_{TRANSP}$ (OMEGA, adopted)")
             ax.plot(x, cdf.VtorkHz_nc[it]   * w0_factor, c="r", lw=2, ls="--", label=r"$\omega_{NCLASS}$ (OMEGA_NC)")
+            ax.plot(x, cdf.TGLF_w0_exb[it], c="m", lw=1.5, ls=":", label=r"$\omega_{E\times B}$ ($E_r/(d\psi/dR)$) $\rightarrow$ 'neoclassical_transp'")
             ax.axhline(0, c="k", lw=0.5, ls=":")
             ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$\omega$ (rad/s)")
             ax.set_title(f"{label}: toroidal rotation"); ax.legend(fontsize=7, loc="best")

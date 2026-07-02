@@ -601,17 +601,29 @@ maestro:
       # again) being sampled before heating / current diffusion have settled. null disables.
       min_extraction_flattop_fraction: 0.5
 
-      # How this TRANSP beat sets w0 (the GACODE w0 = E×B/potential rotation, -c dPhi/dpsi) for the
-      # next input.gacode. NB: this is the E×B rotation, NOT the toroidal angular velocity, and it
-      # is generally NONZERO even with zero toroidal rotation (the neoclassical Er drives it).
-      #   echo         : feed the seed rotation into TRANSP and write the resulting E×B rotation
-      #                  (carries the seed's contribution via the ERVTOR term + the neoclassical Er).
-      #   neoclassical : ship a ZERO omg U-File and write the weak-rotation (pure neoclassical) E×B
-      #                  rotation, ignoring any seed toroidal rotation. Lower fidelity than the
-      #                  NEO-VGEN path (transport.options.neo.vgen_exb_shear in the PORTALS beat)
-      #                  for the poloidal flow, but free inside the TRANSP beat.
-      #   off          : no omg U-File in and zero w0 out, even if the seed carries a rotation
-      #                  (also disables the NCLASS Er).
+      # How this TRANSP beat handles the plasma rotation w0 (GACODE w0 = E×B/potential rotation,
+      # -c dPhi/dpsi) — both INTO TRANSP (the 'omg' U-File) and OUT to the next beat's input.gacode:
+      #   echo                : pass-through. The seed w0 goes into TRANSP (rotation modeling +
+      #                         NCLASS Er diagnostics in the CDF) and the SAME w0 is carried to the
+      #                         next beat unchanged (zero seed -> zero out). The chain's w0 is
+      #                         whatever the seed / a w0-predicting PORTALS beat put there.
+      #   neoclassical_transp : ship a ZERO omg U-File and write back TRANSP/NCLASS's weak-rotation
+      #                         (pure neoclassical: diamagnetic + poloidal-flow) E×B rotation,
+      #                         ignoring any seed toroidal rotation. NB: generally NONZERO even for
+      #                         a zero seed (the neoclassical Er drives it). Computed ONCE per
+      #                         TRANSP beat, so it stays FROZEN while the next PORTALS beat evolves
+      #                         the profiles (the E×B shear drifts out of consistency with grad p_i
+      #                         during the flux match). Free inside the beat; lower fidelity than
+      #                         NEO for the poloidal flow.
+      #   neoclassical_portals: w0 passes through this TRANSP beat unchanged, and downstream PORTALS
+      #                         beats default transport.options.neo.vgen_exb_shear ON, so NEO-VGEN
+      #                         recomputes the neoclassical w0 at EVERY PORTALS evaluation —
+      #                         self-consistent E×B shear during the flux match, at the cost of one
+      #                         VGEN call per evaluation. Incompatible with predicting 'w0' (PORTALS
+      #                         raises). An explicit vgen_exb_shear in the PORTALS beat overlay
+      #                         overrides the auto-default.
+      #   off                 : no omg U-File in and zero w0 out, even if the seed carries a
+      #                         rotation (also disables the NCLASS Er).
       # (legacy 'write_rotation' still works: null/true -> echo, false -> off.)
       rotation_source: echo
 

@@ -78,6 +78,15 @@ class portals_beat(beat):
         self.portals_namelist_location = portals_namelist_location
         self.initialization_parameters = initialization_parameters
 
+        # Chain rotation policy from the upstream TRANSP beat (rotation_source='neoclassical_portals'):
+        # default the per-evaluation NEO-VGEN neoclassical ExB shear ON. An explicit
+        # transport.options.neo.vgen_exb_shear in this beat's overlay wins over the default.
+        if self.maestro_instance.parameters_trans_beat.get('rotation_policy', None) == 'neoclassical_portals':
+            neo_options = self.portals_parameters.setdefault('transport', {}).setdefault('options', {}).setdefault('neo', {})
+            if 'vgen_exb_shear' not in neo_options:
+                neo_options['vgen_exb_shear'] = True
+                print("\t- rotation_source='neoclassical_portals' (TRANSP beat): enabling transport.options.neo.vgen_exb_shear for this PORTALS beat", typeMsg='i')
+
         self.use_previous_residual = use_previous_residual
         self.use_previous_surrogate_data = use_previous_surrogate_data
         self.change_last_radial_call = change_last_radial_call

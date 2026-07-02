@@ -3245,26 +3245,29 @@ class mitim_state:
         if write_rotation != '__unset__':
             rotation_source = 'off' if write_rotation is False else 'echo'
             print(f"\t- [deprecation] to_transp(write_rotation=...) is deprecated; use rotation_source='{rotation_source}'", typeMsg='w')
-        if rotation_source not in ('echo', 'off', 'neoclassical'):
-            raise ValueError(f"[MITIM] rotation_source='{rotation_source}' not recognized (use 'echo', 'off' or 'neoclassical')")
+        if rotation_source not in ('echo', 'off', 'neoclassical_transp', 'neoclassical_portals'):
+            raise ValueError(f"[MITIM] rotation_source='{rotation_source}' not recognized (use 'echo', 'off', 'neoclassical_transp' or 'neoclassical_portals')")
 
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
 
         # Pass the toroidal rotation into TRANSP as the 'omg' U-File: angular frequency
         # (rad/s), a flux function identical to input.gacode w0(rad/s) — no Vtor=w0*R
-        # conversion. rotation_source='echo' (default) ships it (real values, or zeros when
+        # conversion. This controls only what goes INTO TRANSP; what is written back out to
+        # input.gacode is decided by the caller (see TRANSPbeat.finalize).
+        # 'echo' / 'neoclassical_portals' ship the state's w0 (real values, or zeros when
         # w0=0) so TRANSP always has the toroidal rotation it needs both to model rotation
         # (nlvphi=T) and to close the NCLASS neoclassical Er (nlvwnc=T): the Er force balance
         # carries a toroidal-rotation term that neoclassical theory does NOT predict, so
         # TRANSP requires a rotation input even when that rotation is zero (the weak-rotation
-        # limit). rotation_source='off' opts out entirely (no omg U-File -> nlvphi=F and
-        # nlvwnc=F, i.e. no E×B shear and no NCLASS Er).
-        # rotation_source='neoclassical' ships a ZERO omg U-File regardless of the state's w0
-        # (forces NCLASS's weak-rotation Er, V_phi=0) so the neoclassical E×B rotation TRANSP
-        # writes back (see TRANSPbeat.finalize) is the pure diamagnetic + neoclassical-poloidal
-        # rotation, not contaminated by any seed toroidal rotation.
-        if rotation_source in ('echo', 'neoclassical'):
+        # limit).
+        # 'neoclassical_transp' ships a ZERO omg U-File regardless of the state's w0 (forces
+        # NCLASS's weak-rotation Er, V_phi=0) so the neoclassical E×B rotation TRANSP writes
+        # back is the pure diamagnetic + neoclassical-poloidal rotation, not contaminated by
+        # any seed toroidal rotation.
+        # 'off' opts out entirely (no omg U-File -> nlvphi=F and nlvwnc=F, i.e. no rotation
+        # modeling and no NCLASS Er).
+        if rotation_source in ('echo', 'neoclassical_transp', 'neoclassical_portals'):
             transp.quantities['w0'] = ['omg', 'OMG', 'x', 1.0]
             # w0(rad/s) is the BULK plasma toroidal rotation (GACODE convention), so tell
             # NCLASS the 'omg' data belongs to the MAIN ION (not the default lumped
@@ -3272,8 +3275,8 @@ class mitim_state:
             self.DTplasma()
             main_pos = self.Dion if self.DTplasmaBool else self.Mion
             transp.rotation_species = [float(self.profiles['z'][main_pos]), float(self.derived['mbg_main'])]
-            # neoclassical: ship the omg U-File as ZEROS (weak-rotation input), ignoring any seed w0
-            transp.omg_zeroed = (rotation_source == 'neoclassical')
+            # neoclassical_transp: ship the omg U-File as ZEROS (weak-rotation input), ignoring any seed w0
+            transp.omg_zeroed = (rotation_source == 'neoclassical_transp')
 
         for time in times:
             transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)

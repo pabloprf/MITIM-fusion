@@ -178,6 +178,7 @@ transp = profiles.to_transp(
     times=times,
     Vsurf=0.0,
     mxh_coeffs_smooth=mxh_coeffs_smooth_sep,
+    rotation_source='neoclassical_transp',   # zero omg U-File in -> NCLASS weak-rotation Er (w0 is zeroed above anyway; this states the intent)
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -404,16 +405,16 @@ print(f"   OMEGA_NC = omega_ExB + omega_diamag = {_tb(transp_w0_exb,rq):.0f} + {
       f" = {_t(transp_w0_nc,rq):.0f} rad/s.  This near-cancellation is FORCED by the imposed V_phi~0")
 print(f"      (weak-rotation input), NOT an emergent result: neoclassical theory does not predict V_phi,")
 print(f"      so OMEGA_NC just echoes the ~0 toroidal input. The physics lives in the E×B rotation.")
-print(f"   => write the EPOTNC E×B rotation (-dPhi/dpsi) for rotation_source='neoclassical', "
+print(f"   => write the EPOTNC E×B rotation (-dPhi/dpsi) for rotation_source='neoclassical_transp', "
       f"with the COCOS sign flip (VGEN w0 and TRANSP EPOTNC_rot are opposite sign here).")
 print("=" * 104 + "\n")
 
 # =====================================================================================
-# VALIDATION of rotation_source='neoclassical' write-back (replicates TRANSPbeat.finalize)
+# VALIDATION of rotation_source='neoclassical_transp' write-back (replicates TRANSPbeat.finalize)
 # =====================================================================================
 # cdf.to_profiles() builds the OUTPUT input.gacode and writes w0 = the E×B rotation from the CDF
 # variable cdf.TGLF_w0_exb (= -c dPhi/dpsi = Er/(dpsi/dR), CDF-native, no derivative/sign work in
-# the beat). This zero-w0 reuse run is the 'neoclassical' / weak-rotation case (omg was zeroed in),
+# the beat). This zero-w0 reuse run is the 'neoclassical_transp' / weak-rotation case (omg was zeroed in),
 # so to_profiles' w0 IS the neoclassical E×B rotation -- exactly what the beat writes. The output
 # state is internally self-consistent in TRANSP's convention, which has FLIPPED current/Bt/Bunit
 # sign vs the input we fed VGEN, so the written w0 has the opposite sign to VGEN's input-convention
@@ -434,7 +435,7 @@ sign_match = bool(np.all(np.sign(w0_neo_on_v[core]) == np.sign(w0_vgen_in_out[co
 mag_ratio  = float(np.median(np.abs(w0_neo_on_v[core]) / np.abs(vgen_w0_v[core])))
 
 print("=" * 104)
-print(" VALIDATION: rotation_source='neoclassical' write-back vs VGEN/NEO")
+print(" VALIDATION: rotation_source='neoclassical_transp' write-back vs VGEN/NEO")
 print("=" * 104)
 print(f"   COCOS:  input(VGEN) sign[current,Bt,Bunit] = "
       f"[{np.sign(profiles.profiles['current(MA)'][0]):+.0f},{np.sign(profiles.profiles['bcentr(T)'][0]):+.0f},{np.sign(np.median(profiles.derived['B_unit'])):+.0f}]"
@@ -461,7 +462,7 @@ fig, axs = plt.subplots(2, 2, figsize=(15, 11))
 ax = axs[0, 0]
 ax.plot(vgen_Er_rho, np.asarray(vv["w0"]), "-o", color="C0", lw=2, ms=3, label=r"$w_0$ VGEN/NEO (GACODE)")
 ax.plot(transp_rho, transp_w0_fromEr, "-s", color="C1", lw=2, ms=3, label=r"$E_r^{tot}\to w_0$ TRANSP ($E_r\times$ VGEN factor)")
-ax.plot(vgen_Er_rho, cocos_flip * w0_neo_on_v, "--D", color="C6", lw=1.8, ms=3, label=r"rotation_source='neoclassical' written (mapped to VGEN conv.)")
+ax.plot(vgen_Er_rho, cocos_flip * w0_neo_on_v, "--D", color="C6", lw=1.8, ms=3, label=r"rotation_source='neoclassical_transp' written (mapped to VGEN conv.)")
 ax.axhline(0, color="k", lw=0.7, ls=":")
 ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$w_0$  (rad/s, VGEN/input conv.)")
 ax.set_xlim([0.0, 1.0]); ax.set_title(r"E×B rotation $w_0$ (shown in VGEN convention)")
