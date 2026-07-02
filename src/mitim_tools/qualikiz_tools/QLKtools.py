@@ -39,8 +39,11 @@ Caveats (please verify against your setup):
       string of that machine's entry in ``config_user.json``, exactly like
       `tglf`/`cgyro`/etc.) -- adjust if your build is invoked differently.
     * The mapping from a MITIM ``gacode_state`` to QuaLiKiz's circular/
-      s-alpha-like geometry (``_xpoint_base_from_gacode``) is a best-effort
-      analogue of ``MITIMstate.to_tglf`` / ``to_neo``; QuaLiKiz does not support
+      s-alpha-like geometry is split across two layers: ``MITIMstate.gacode_state.to_qualikiz``
+      (a best-effort analogue of ``to_tglf`` / ``to_neo`` that has no dependency
+      on ``qualikiz_tools`` and returns a plain dict) and this module's
+      ``_build_plan_from_gacode`` (which turns that dict into the actual
+      ``QuaLiKizXpoint`` / ``QuaLiKizPlan`` objects). QuaLiKiz does not support
       Miller/MXH shaping, so shaped-equilibrium information is dropped.
 """
 
@@ -69,12 +72,6 @@ from qualikiz_tools.qualikiz_io.qualikizrun import QuaLiKizRun, find_qualikiz_bi
 from qualikiz_tools.qualikiz_io.outputfiles import qualikiz_folder_to_xarray
 
 MAX_QLK_IONS = 9  # Soft cap on the number of ion species sent to QuaLiKiz
-
-# Geometry/species keys that vary radius-to-radius and are therefore scanned
-# (scan_type='parallel') across self.rhos. Rmin and Bo are left constant
-# (single equilibrium minor radius / on-axis field for the whole profile).
-_SCANNED_GEOMETRY_KEYS = ["x", "rho", "Ro", "q", "smag", "alpha", "Machtor", "gammaE"]
-_SCANNED_ELECTRON_KEYS = ["Te", "ne", "Ate", "Ane"]
 
 
 # ======================================================================================
@@ -486,95 +483,27 @@ class QuaLiKiz:
 
 def _build_plan_from_gacode(profiles, rhos, code_settings=None):
     """
-    Best-effort mapping from a MITIM ``gacode_state`` (post
-    ``derive_quantities``) onto QuaLiKiz's circular/s-alpha-like geometry,
-    scanned in parallel across ``rhos``. QuaLiKiz has no Miller/MXH shaping,
-    so elongation/triangularity/squareness are dropped -- only the
-    circular-geometry equivalents (Ro, Rmin, Bo, q, smag, alpha,
-    rotation/shear) are kept. Modeled on ``MITIMstate.to_tglf`` / ``to_neo``.
+    Turns the physics/geometry mapping computed by
+    ``MITIMstate.gacode_state.to_qualikiz`` (a plain dict of arrays/scalars,
+    with no dependency on the external ``qualikiz_tools`` package) into an
+    actual ``QuaLiKizPlan``, scanned in parallel across ``rhos``.
 
-    Quasineutrality and the pure-toroidal-rotation decomposition (Machtor +
-    gammaE -> Autor/Machpar/Aupar) are left to QuaLiKiz's own
-    QuaLiKizXpoint.set_qn_normni_ion_n() / set_puretor() (invoked
-    automatically by QuaLiKizPlan.setup(), i.e. at QuaLiKizRun.generate_input()
-    time) rather than approximated here.
+    The ``qualikiz_tools`` (QuaLiKiz-pythontools) object construction is kept
+    here rather than in ``to_qualikiz`` so that optional external dependency
+    stays confined to this QuaLiKiz-specific interface -- MITIMstate.py itself
+    never needs to import it.
     """
 
-    from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+    m = profiles.to_qualikiz(rhos, max_ions=MAX_QLK_IONS)
 
-    p = profiles
-    rhos = np.atleast_1d(np.array(rhos, dtype=float))
-    roa_targets = interpolation_function(rhos, p.profiles["rho(-)"], p.derived["roa"])
-    r_interpolation = p.derived["roa"]
-
-    def interp_vec(y):
-        return np.atleast_1d(interpolation_function(roa_targets, r_interpolation, y))
-
-    n_ions = min(len(p.Species), MAX_QLK_IONS)
-
-    sign_it = -np.sign(p.profiles["current(MA)"][-1])
-
-    # QuaLiKiz normalises logarithmic gradients by major radius R (R/LT, R/Ln),
-    # whereas MITIM's gacode convention uses minor radius a (a/LT, a/Ln).
-    # Convert: R/L = (R/a) * (a/L), using the local Ro already interpolated above.
-    Ro_over_a = interp_vec(p.profiles["rmaj(m)"]) / p.derived["a"]
-
-    cref = 3.094969e5  # defined in QuaLiKiz as sqrt(1 keV / proton_mass)
-
-    # MHD alpha = -(2 mu0 R q^2 / B^2) dp/dr
-    dpdr = p._calculate_pressure_gradient_from_aLx(
-        p.derived["pe"], p.derived["pi_all"][:, :n_ions],
-        p.derived["aLTe"], p.derived["aLTi"][:, :n_ions],
-        p.derived["aLne"], p.derived["aLni"][:, :n_ions],
-        p.derived["a"],
-    )
-    alpha_mhd = (
-        2.0 * 4 * np.pi * 1e-7
-        * p.profiles["q(-)"] ** 2
-        * p.profiles["rmaj(m)"]
-        / np.abs(p.profiles["bcentr(T)"][-1]) ** 2
-        * dpdr
-    )
-    alpha_mhd[0] = 0.0
-
-    # ExB shearing rate (gammaE), same construction as MITIMstate.to_tglf's VEXB_SHEAR.
-    # Machtor/Autor/Machpar/Aupar are NOT computed here -- only Machtor (a
-    # best-effort R*Omega_tor/c_s) and gammaE are passed; QuaLiKizXpoint.set_puretor()
-    # derives the rest assuming pure toroidal rotation.
-    gamma_eb0 = -p._deriv_gacode(p.profiles["w0(rad/s)"]) * p.derived["r"] / np.abs(p.profiles["q(-)"])
-    vexb_shear = -sign_it * gamma_eb0 * p.profiles["rmaj(m)"] / cref
-    vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / cref
-
-    geometry_scan = {
-        "x": roa_targets,
-        "rho": rhos,
-        "Ro": interp_vec(p.profiles["rmaj(m)"]),
-        "q": np.abs(interp_vec(p.profiles["q(-)"])),
-        "smag": interp_vec(p.derived["s_hat"]),
-        "alpha": interp_vec(alpha_mhd),
-        "Machtor": interp_vec(vpar),
-        "gammaE": interp_vec(vexb_shear),
-    }
-
-    electron_scan = {
-        "Te": interp_vec(p.profiles["te(keV)"]),
-        "ne": interp_vec(p.profiles["ne(10^19/m^3)"]),
-        "Ate": interp_vec(p.derived["aLTe"]) * Ro_over_a,
-        "Ane": interp_vec(p.derived["aLne"]) * Ro_over_a,
-    }
-
-    ion_scan = {}
-    ion_types = []
-    for i in range(n_ions):
-        is_fast = p.Species[i].get("S", "therm") == "fast"
-        ion_types.append(4 if is_fast else 1)
-        ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
-        ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
-        ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
-        ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i]) * Ro_over_a
+    n_ions = m["n_ions"]
+    geometry_scan = m["geometry_scan"]
+    electron_scan = m["electron_scan"]
+    ion_scan = m["ion_scan"]
+    ion_species = m["ion_species"]
 
     # Representative (rho[0]) placeholder values for the xpoint_base -- every
-    # scanned key above is overwritten per-point for ALL dimx points by
+    # scanned key below is overwritten per-point for ALL dimx points by
     # QuaLiKizPlan's "parallel" scan, so these never reach the binaries.
     elec = Electron(
         T=float(electron_scan["Te"][0]),
@@ -588,23 +517,18 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
 
     ions = IonList(*[
         Ion(
-            A=float(p.Species[i]["A"]),
-            Z=float(p.Species[i]["Z"]),
+            A=float(ion_species[i]["A"]),
+            Z=float(ion_species[i]["Z"]),
             T=float(ion_scan[f"Ti{i}"][0]),
             n=float(ion_scan[f"ni{i}"][0]),
             At=float(ion_scan[f"Ati{i}"][0]),
             An=float(ion_scan[f"Ani{i}"][0]),
-            type=ion_types[i],
+            type=ion_species[i]["type"],
             anis=1.0,
             danisdr=0.0,
         )
         for i in range(n_ions)
     ])
-
-    thermal_indices = [i for i in range(n_ions) if p.Species[i].get("S", "therm") != "fast"]
-    #qn_ion_index = thermal_indices[-1] if thermal_indices else n_ions - 1
-    z_indices = [p.Species[i]["Z"] for i in range(n_ions) if ion_types[i] not in [3, 4]]
-    qn_ion_index = z_indices.index(max(z_indices))
 
     meta_kwargs = QLKdefaults.addQLKcontrol(code_settings)
     kthetarhos = QLKdefaults.default_kthetarhos()
@@ -617,8 +541,8 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         x=float(geometry_scan["x"][0]),
         rho=float(geometry_scan["rho"][0]),
         Ro=float(geometry_scan["Ro"][0]),
-        Rmin=float(p.derived["a"]),
-        Bo=float(abs(p.profiles["bcentr(T)"][-1])),
+        Rmin=m["a"],
+        Bo=m["Bo"],
         q=float(geometry_scan["q"][0]),
         smag=float(geometry_scan["smag"][0]),
         alpha=float(geometry_scan["alpha"][0]),
@@ -631,9 +555,9 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         **meta_kwargs,
         # Options: quasineutrality + rotation handled by the library, not here.
         set_qn_normni=True,
-        set_qn_normni_ion=qn_ion_index,
+        set_qn_normni_ion=m["qn_ion_index"],
         set_qn_An=True,
-        set_qn_An_ion=qn_ion_index,
+        set_qn_An_ion=m["qn_ion_index"],
         check_qn=True,
         x_eq_rho=False,
         recalc_Nustar=False,       # We supply Te (and hence Nustar) per radius ourselves
@@ -645,11 +569,13 @@ def _build_plan_from_gacode(profiles, rhos, code_settings=None):
         recalc_Ati=False,
     )
 
+    # geometry_scan / electron_scan dict order already matches the desired
+    # scan-key order (see MITIMstate.to_qualikiz).
     scan_dict = OrderedDict()
-    for key in _SCANNED_GEOMETRY_KEYS:
-        scan_dict[key] = list(geometry_scan[key])
-    for key in _SCANNED_ELECTRON_KEYS:
-        scan_dict[key] = list(electron_scan[key])
+    for key, vals in geometry_scan.items():
+        scan_dict[key] = list(vals)
+    for key, vals in electron_scan.items():
+        scan_dict[key] = list(vals)
     for i in range(n_ions):
         for prefix in ["Ti", "ni", "Ati", "Ani"]:
             scan_dict[f"{prefix}{i}"] = list(ion_scan[f"{prefix}{i}"])
