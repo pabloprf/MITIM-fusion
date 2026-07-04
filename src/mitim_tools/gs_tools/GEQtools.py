@@ -439,7 +439,7 @@ class MITIMgeqdsk:
 
         rhotor = self.g.derived['rho_tor']
         psi = self.g.derived['psi']                          # Wb/rad
-        torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
+        torfluxa = self.g.derived['phi'][-1]                 # Wb/rad (megpy 'phi' is already per-radian: int q dpsi == phi)
         q = self.g.derived['qpsi']
         pressure = self.g.derived['pres']       # Pa
         Ip = self.g.derived['current']*1E-6     # MA
