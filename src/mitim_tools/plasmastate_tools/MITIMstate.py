@@ -396,6 +396,19 @@ class mitim_state:
         self.derived["rho_s"] = PLASMAtools.rho_s(self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"])
         self.derived["rho_sa"] = self.derived["rho_s"] / self.derived["a"]
 
+        # E×B and parallel-velocity shear (TGLF VEXB_SHEAR / VPAR_SHEAR normalization, c_s/a units).
+        # Single source of truth, consumed by to_tglf: gamma_eb0 = -(dw0/dr) r/|q|; then -sign_It * a/c_s.
+        if "w0(rad/s)" in self.profiles:
+            sign_it = -np.sign(self.profiles["current(MA)"][-1])
+            w0p = self._deriv_gacode(self.profiles["w0(rad/s)"])
+            gamma_eb0 = -w0p * self.derived["r"] / np.abs(self.profiles["q(-)"])
+            gamma_p0 = -self.profiles["rmaj(m)"] * w0p
+            self.derived["gamma_exb"] = -sign_it * gamma_eb0 * self.derived["a"] / self.derived["c_s"]
+            self.derived["gamma_p"] = -sign_it * gamma_p0 * self.derived["a"] / self.derived["c_s"]
+        else:
+            self.derived["gamma_exb"] = np.zeros_like(self.derived["r"])
+            self.derived["gamma_p"] = np.zeros_like(self.derived["r"])
+
         self.derived["q_gb"], self.derived["g_gb"], self.derived["pi_gb"], self.derived["s_gb"], _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
             self.profiles["ne(10^19/m^3)"] * 1e-1,
@@ -2645,19 +2658,13 @@ class mitim_state:
         '''
         Rotations
         --------------------------------------------------------
-            From TGYRO/TGLF definitions
-                  w0p = expro_w0p(:)/100.0
-                  f_rot(:) = w0p(:)/w0_norm
-                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
-                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
+            E×B and parallel-velocity shear are derived once in derive_quantities
+            (self.derived['gamma_exb'] / ['gamma_p'], TGLF VEXB_SHEAR / VPAR_SHEAR normalization).
+            VPAR (parallel velocity, not a shear) stays local.
         '''
 
-        w0p         = self._deriv_gacode(self.profiles["w0(rad/s)"])
-        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
-
-        vexb_shear  = -sign_it * gamma_eb0 * self.derived["a"]/self.derived['c_s']
-        vpar_shear  = -sign_it * gamma_p0  * self.derived["a"]/self.derived['c_s']
+        vexb_shear  = self.derived["gamma_exb"]
+        vpar_shear  = self.derived["gamma_p"]
         vpar        = -sign_it * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------

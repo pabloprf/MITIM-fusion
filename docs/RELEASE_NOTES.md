@@ -68,6 +68,8 @@ DESCRIPTION
 
 *   🌀 **PORTALS neoclassical E×B shear** now has a standalone dev test (`tests/dev_tests/test_portals_exb_shear.py`): it flux-matches the same plasma with `transport.options.neo.vgen_exb_shear` off vs on (the NEO-VGEN neoclassical Er at zero toroidal rotation) to isolate the stabilization, and bundles the comparison, the per-run PORTALS metrics and the VGEN notebook into one figure. Alongside it, `NEO.plot_vgen` (and `mitim_plot_vgen`) gained an optional `mark_rho` to scatter chosen radii — e.g. the PORTALS predicted radii — on the smoothed profiles in the VGEN smoothing tab.
 
+*   🧮 **E×B / parallel-velocity shear as state quantities**: `mitim_state.derive_quantities` now exposes `derived['gamma_exb']` and `derived['gamma_p']` — the E×B and parallel-velocity shearing rates in TGLF's `VEXB_SHEAR`/`VPAR_SHEAR` normalization (`c_s/a`), computed once from `w0`, `q`, `r`, `a`, `c_s`. `to_tglf` now consumes them instead of recomputing the rotation-shear formula inline (behavior-preserving), so the E×B shearing-rate profile is available directly on any state (`p.derive_quantities(); p.derived['gamma_exb']`) without a TGLF prep.
+
 ### Back-compatibility considerations and defaults
 
 *   💾 **Lean PORTALS pickles under `keep_all_files: false`**: intermediate PORTALS beats' `optimization_object.pkl`/`optimization_extra.pkl` are pruned, and the retained (last-beat) `optimization_object.pkl` is lean (no GP surrogates). Replotting metrics still works; the GP-posterior ("Expected") plots and a pickle-based surrogate resume of those finished beats are not available. Set `keep_all_files: true` to retain full pickles.
