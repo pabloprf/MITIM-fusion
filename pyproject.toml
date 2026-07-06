@@ -75,6 +75,10 @@ lengyel = [
 mds = [
   "mdsthin",
 ]
+quickfit = [   # DIII-D profile fitting via Tomas Odstrcil's map2grid; clone https://github.com/odstrcilt/quickfit next to MITIM-fusion (../quickfit) or set $QUICKFIT_PATH
+  # NOTE: quickfit itself is NOT pip-installable (no build metadata upstream) -> download/clone it yourself; this extra only pins its PyPI dependency
+  "scikit-sparse<0.5",
+]
 test = [
   "pytest",
   "coverage",

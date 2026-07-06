@@ -654,6 +654,116 @@ def profiles_cer(shots, time: float = 4000.0, quantities=_CER_QTY_ALL,
     return fig, (axes_prof, axes_eq)    # (per-quantity profile axes, per-flavor equilibrium axes)
 
 
+def cer_coverage(shots, quantity: str = "tit", flavors=("cera", "cerf"), views=("t", "v"),
+                 channels=range(1, 49), t_window=None, tree: str = "EFIT01", efit_dt: float = 200.0,
+                 coord: str = "rho", flavor_labels: dict | None = None, colors: list | None = None,
+                 bin_ms: float = 50.0, name: str = "cer_coverage", use_cache: bool = True,
+                 cache_dir: str | Path | None = None, tunnel_host: str | None = None,
+                 server: str | None = None, connection=None,
+                 save_dir: str | Path | None = None, show: bool = True):
+    """WHEN (and at what `coord`) does CER `quantity` have measurements — per shot.
+
+    Per shot: a `coord`-vs-time scatter (colour = analysis flavor, symbol = view) over every valid
+    CER sample, plus a measurement-rate histogram below it — revealing the CER BURST cadence (CER
+    reports in ~periodic bursts, not continuously) and each viewing system's on-time. `coord` =
+    'rho'/'rhopol' maps each chord through EFIT slices spaced `efit_dt` ms and interpolated to the
+    sample time (the equilibrium evolves across the window), or 'R'/'Z' for raw chord geometry (no
+    EFIT). `flavors` are the CER prefixes (cerq|cera|cerf|cern); pass `flavor_labels` to relabel
+    the legend (e.g. impurity names). Several shots -> one scatter+histogram row per shot, stacked
+    and sharing the time axis. `t_window=(t0,t1)` restricts the samples kept.
+
+    Returns `(fig, axes)` — all subplot axes (scatter, histogram interleaved per shot)."""
+    if isinstance(shots, int):
+        shots = [shots]
+    bad = [fl for fl in flavors if fl not in _CER_FLAVORS]
+    if bad:
+        raise ValueError(f"cer_coverage() flavors must be CER prefixes {_CER_FLAVORS}; got {bad}.")
+    flav_lab = {**_CER_FLAVOR_LABEL, **(flavor_labels or {})}
+    rho_kind = {"rho": "tor", "rhotor": "tor", "rhopol": "pol"}.get(coord)
+    palette = list(colors) if colors else [plt.cm.tab10(i) for i in range(10)]
+    fcol = {fl: palette[i % len(palette)] for i, fl in enumerate(flavors)}
+    vmark = {"t": "o", "v": "^"}
+    vname = {"t": "tangential", "v": "vertical"}
+
+    cover = {}                          # cover[(shot, flavor)] = list of channel dicts (+ 'y')
+    own_conn = connection is None
+    conn = connection if connection is not None else DIIIDConnection(server=server, tunnel_host=tunnel_host)
+    try:
+        for sh in shots:
+            f = DIIIDFetcher(sh, connection=conn, use_cache=use_cache, cache_dir=cache_dir)
+            allc = []
+            for fl in flavors:
+                cc = f.fetch_cer_coverage(quantity=quantity, channels=channels, system=fl,
+                                          views=views, t_window=t_window)
+                cover[(sh, fl)] = cc
+                allc += cc
+                print(f"* #{sh} {flav_lab.get(fl, fl)}: {len(cc)} channel-traces "
+                      f"({sum(c['t'].size for c in cc)} samples)")
+            if rho_kind and allc:         # one EFIT grid per shot, map each chord -> rho(t)
+                tt = np.concatenate([c["t"] for c in allc])
+                ets = np.arange(tt.min(), tt.max() + efit_dt, efit_dt)
+                eqs = []
+                for et in ets:
+                    try:
+                        eqs.append(f.fetch_equilibrium(et, tree))
+                    except Exception:
+                        eqs.append(None)
+                for c in allc:
+                    re = np.array([eq.rho_of(np.array([c["R"]]), np.array([c["Z"]]), rho_kind)[0]
+                                   if eq is not None else np.nan for eq in eqs])
+                    ok = np.isfinite(re)
+                    c["y"] = (np.interp(c["t"], ets[ok], re[ok]) if ok.sum() >= 2
+                              else np.full(c["t"].shape, np.nan))
+            else:                         # raw geometry (R or Z), no EFIT
+                for c in allc:
+                    c["y"] = np.full(c["t"].shape, c["Z"] if coord == "Z" else c["R"])
+    finally:
+        if own_conn:
+            conn.close()
+
+    ylab = {"tor": r"$\rho_{tor}$", "pol": r"$\rho_{pol}$"}.get(rho_kind, f"{coord} [m]")
+    nsh = len(shots)
+    fig = plt.figure(figsize=(11, 2.6 * nsh + 1.2))
+    gs = fig.add_gridspec(2 * nsh, 1, height_ratios=[3, 1] * nsh, hspace=0.12)
+    axes, ax_sc0 = [], None
+    for si, sh in enumerate(shots):
+        ax_sc = fig.add_subplot(gs[2 * si, 0], sharex=ax_sc0); ax_sc0 = ax_sc0 or ax_sc
+        ax_h = fig.add_subplot(gs[2 * si + 1, 0], sharex=ax_sc)
+        axes += [ax_sc, ax_h]
+        allt = []
+        for fl in flavors:
+            for c in cover[(sh, fl)]:
+                ax_sc.plot(c["t"], c["y"], vmark.get(c["view"], "o"), ms=2.5,
+                           color=fcol[fl], alpha=0.5, lw=0)
+                allt.append(c["t"])
+        if rho_kind:
+            ax_sc.axhline(1.0, color="0.5", ls="--", lw=0.7); ax_sc.set_ylim(0, 1.1)
+        ax_sc.set_ylabel(ylab, fontsize=8); ax_sc.grid(alpha=0.3); ax_sc.tick_params(labelsize=6.5)
+        ax_sc.set_title(f"#{sh}", fontsize=9, loc="left")
+        if allt:
+            allt = np.concatenate(allt)
+            ax_h.hist(allt, bins=np.arange(allt.min(), allt.max() + bin_ms, bin_ms), color="0.5")
+        ax_h.set_ylabel(f"/{bin_ms:.0f}ms", fontsize=7); ax_h.grid(alpha=0.3); ax_h.tick_params(labelsize=6.5)
+        if si < nsh - 1:
+            ax_h.tick_params(labelbottom=False)
+    axes[-1].set_xlabel("time  [ms]", fontsize=8)
+
+    handles = [Line2D([], [], color=fcol[fl], marker="s", ls="", label=flav_lab.get(fl, fl)) for fl in flavors]
+    handles += [Line2D([], [], color="0.35", marker=vmark[v], ls="", label=vname.get(v, v))
+                for v in views if v in vmark]
+    axes[0].legend(handles=handles, fontsize=7, frameon=False, loc="upper right", ncol=len(handles))
+    fig.suptitle(f"CER {quantity} temporal coverage  (#{', #'.join(map(str, shots))})", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    if save_dir is not None and show:
+        save_dir = Path(save_dir); save_dir.mkdir(parents=True, exist_ok=True)
+        out = save_dir / f"{name}_{'_'.join(map(str, shots))}.png"
+        fig.savefig(out, dpi=140, bbox_inches="tight")
+        print(f"* Saved figure -> {out}")
+    if show:
+        plt.show()
+    return fig, axes
+
+
 # =============================================================================
 # Plotting
 # =============================================================================
