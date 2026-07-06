@@ -4,6 +4,7 @@ import shutil
 import copy
 import numpy as np
 from typing import OrderedDict
+from mitim_tools import __mitimroot__
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
@@ -92,6 +93,75 @@ class transp_beat(beat):
         # still has the value.
         self.extract_at = extract_at
         self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
+
+    def _portals_outer_roa(self):
+        """Outermost PORTALS prediction radius (r/a) in the MAESTRO chain, or None.
+
+        Preference order:
+          1) parameters_trans_beat['predicted_roa'/'predicted_rho'] — set by a PORTALS
+             beat that already ran, so it reflects a moved last radial point.
+          2) the static grid in the maestro namelist, scanning every portals-family beat
+             (beat_type containing 'portals'); an overlay that omits the grid falls back
+             to the PORTALS template default.
+        predicted_roa wins over predicted_rho (PORTALS convention); predicted_rho is
+        mapped to r/a on the current profiles (rho -> roa is monotonic).
+        """
+        def _outer_roa(predicted_roa, predicted_rho):
+            if predicted_roa is not None and len(predicted_roa) > 0:
+                return float(max(predicted_roa))
+            if predicted_rho is not None and len(predicted_rho) > 0:
+                return float(np.interp(
+                    max(predicted_rho),
+                    self.profiles_current.profiles['rho(-)'],
+                    self.profiles_current.derived['roa']))
+            return None
+
+        # 1) authoritative once a PORTALS beat has run (tracks a moved boundary)
+        tb = self.maestro_instance.parameters_trans_beat
+        roa = _outer_roa(tb.get('predicted_roa'), tb.get('predicted_rho'))
+        if roa is not None:
+            return roa
+
+        # 2) static namelist scan (the first TRANSP beat has no prior PORTALS beat)
+        _template = None
+        candidates = []
+        for beat_cfg in self.maestro_instance.maestro_namelist.get('maestro', {}).values():
+            if not isinstance(beat_cfg, dict) or 'portals' not in str(beat_cfg.get('beat_type', '')):
+                continue
+            solution = ((beat_cfg.get('parameters_prepare') or {})
+                        .get('portals_parameters', {})
+                        .get('solution', {}) or {})
+            roa = _outer_roa(solution.get('predicted_roa'), solution.get('predicted_rho'))
+            if roa is None:
+                # lean overlay (no grid of its own) -> PORTALS template default
+                if _template is None:
+                    _template = IOtools.read_mitim_yaml(
+                        __mitimroot__ / "templates" / "namelist.portals.yaml")['solution']
+                roa = _outer_roa(_template.get('predicted_roa'), _template.get('predicted_rho'))
+            if roa is not None:
+                candidates.append(roa)
+        return max(candidates) if candidates else None
+
+    def _nclass_rotation_window_from_portals(self, buffer=0.02, guard=0.95):
+        """[xl1ncvph, xl2ncvph] (r/a) for the NCLASS Er/rotation analysis (nlvwnc),
+        sized from the PORTALS grid: outer edge = outermost PORTALS point + `buffer`,
+        so the neoclassical Er is trusted exactly over the region PORTALS uses it for
+        E×B shear.
+
+        The buffer is REQUIRED, not cosmetic: TRANSP flat-extrapolates the ADOPTED
+        rotation outside the window, so a window ending AT the last PORTALS point gives
+        that point a one-sided (flat) outboard gradient and biases its E×B shear low.
+        The buffer also keeps the analysis off the pedestal/separatrix, where the
+        diamagnetic Er ~ grad(p)/(Z e n) diverges and — at r/a~1 — the LCFS RZ-surface
+        load can hard-abort TRANSP on a marginally shaped boundary. `guard` caps the
+        outer edge so it can never reach that separatrix surface.
+
+        Returns None if no PORTALS beat is in the chain (leave the NMLtools default).
+        """
+        roa_outer = self._portals_outer_roa()
+        if roa_outer is None:
+            return None
+        return [0.0, round(min(roa_outer + buffer, guard), 3)]
 
     def prepare(
         self,
@@ -224,6 +294,22 @@ class transp_beat(beat):
             transp_namelist_mod['c_sawtooth_2'] = (min_sawtooth_period_ms * 1e-3) / tau_PM
             print(f'\t- Sawtooth floor: min_sawtooth_period_ms={min_sawtooth_period_ms} -> '
                   f'c_sawtooth(2)={transp_namelist_mod["c_sawtooth_2"]:.3g} (tau_PM={tau_PM*1e3:.3g} ms)', typeMsg='i')
+
+        # Tie the NCLASS Er/rotation window (xl1ncvph/xl2ncvph) to the PORTALS prediction
+        # grid whenever rotation is active (nlvwnc=T). Case-dependent: keeps the neoclassical
+        # Er trusted exactly where PORTALS uses it for E×B shear, and off the untrustworthy
+        # pedestal/separatrix (which also avoids the r/a~1 LCFS-surface-load abort on
+        # marginally shaped boundaries). An explicit NCrotation_window in the namelist wins.
+        if rotation_source != 'off' and 'NCrotation_window' not in transp_namelist_mod:
+            nc_window = self._nclass_rotation_window_from_portals()
+            if nc_window is not None:
+                transp_namelist_mod['NCrotation_window'] = nc_window
+                print(f"\t- NCLASS rotation window tied to PORTALS grid: "
+                      f"[xl1ncvph, xl2ncvph] = [{nc_window[0]:.2f}, {nc_window[1]:.2f}] (r/a)", typeMsg='i')
+            else:
+                print("\t- rotation active (nlvwnc=T) but no PORTALS beat found to size the "
+                      "NCLASS window; using the NMLtools default (may reach the separatrix on "
+                      "shaped boundaries)", typeMsg='w')
 
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
