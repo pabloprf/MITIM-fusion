@@ -25,6 +25,7 @@ class transp_run:
         self.namelist_variables = {}
         self.rotation_species = None   # [Z, A] of the species the 'omg' U-File rotation belongs to (set by to_transp)
         self.omg_zeroed = False        # if True, ship the 'omg' U-File as zeros (neoclassical_transp mode: weak-rotation input)
+        self.compute_nclass_er = False # if True, compute the NCLASS neoclassical Er (nlvwnc=T); only neoclassical_transp keeps it (set by to_transp)
 
         # Describe the time populator --------------
         self.populate_time = transp_input_time(self)
@@ -68,6 +69,10 @@ class transp_run:
         # default lumped impurity.
         if 'w0' in self.quantities:
             transp_params.setdefault('UFrotation', True)
+            # nlvwnc (NCLASS Er) is decoupled from rotation modeling (nlvphi): computed only
+            # when the caller keeps it (neoclassical_transp). echo / neoclassical_portals
+            # model the rotation but skip the (discarded) NCLASS Er.
+            transp_params.setdefault('computeNCLASSpotential', self.compute_nclass_er)
             if self.rotation_species is not None:
                 transp_params.setdefault('rotating_impurity', self.rotation_species)
 

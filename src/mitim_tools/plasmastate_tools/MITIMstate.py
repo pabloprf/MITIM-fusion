@@ -3255,19 +3255,30 @@ class mitim_state:
         # (rad/s), a flux function identical to input.gacode w0(rad/s) — no Vtor=w0*R
         # conversion. This controls only what goes INTO TRANSP; what is written back out to
         # input.gacode is decided by the caller (see TRANSPbeat.finalize).
-        # 'echo' / 'neoclassical_portals' ship the state's w0 (real values, or zeros when
-        # w0=0) so TRANSP always has the toroidal rotation it needs both to model rotation
-        # (nlvphi=T) and to close the NCLASS neoclassical Er (nlvwnc=T): the Er force balance
-        # carries a toroidal-rotation term that neoclassical theory does NOT predict, so
-        # TRANSP requires a rotation input even when that rotation is zero (the weak-rotation
-        # limit).
-        # 'neoclassical_transp' ships a ZERO omg U-File regardless of the state's w0 (forces
-        # NCLASS's weak-rotation Er, V_phi=0) so the neoclassical E×B rotation TRANSP writes
-        # back is the pure diamagnetic + neoclassical-poloidal rotation, not contaminated by
-        # any seed toroidal rotation.
-        # 'off' opts out entirely (no omg U-File -> nlvphi=F and nlvwnc=F, i.e. no rotation
-        # modeling and no NCLASS Er).
-        if rotation_source in ('echo', 'neoclassical_transp', 'neoclassical_portals'):
+        # Two independent switches, decided per mode:
+        #   MODEL rotation (nlvphi=T + ship the 'omg' U-File): only when there is rotation
+        #     to model.
+        #   COMPUTE the NCLASS neoclassical Er (nlvwnc=T): only 'neoclassical_transp' KEEPS
+        #     it (it writes the neoclassical E×B rotation back), so only that mode asks for
+        #     it. 'echo' restores the seed w0 and 'neoclassical_portals' lets PORTALS
+        #     recompute it — both DISCARD any NCLASS Er, so computing it there only costs
+        #     time and can destabilize the TEQ edge on a shaped separatrix.
+        # Hence:
+        #   'neoclassical_transp' — always set up rotation (ship a ZERO omg U-File: NCLASS's
+        #     weak-rotation Er, V_phi=0, i.e. pure diamagnetic + neoclassical-poloidal,
+        #     uncontaminated by any seed) AND compute nlvwnc.
+        #   'echo' / 'neoclassical_portals' — model rotation ONLY if the seed carries some;
+        #     never compute nlvwnc. A zero-rotation pass-through then reproduces the no-
+        #     rotation case exactly (nlvphi=F, nlvwnc=F, no 'omg' U-File).
+        #   'off' — nothing (falls through).
+        setup_rotation = (rotation_source == 'neoclassical_transp')
+        if rotation_source in ('echo', 'neoclassical_portals'):
+            # Convention: rotation is "present" when max|w0| > 1 rad/s (below that the E×B
+            # rotation is negligible), so a zero seed opts out of rotation modeling entirely.
+            setup_rotation = float(np.max(np.abs(self.profiles['w0(rad/s)']))) > 1.0
+        transp.compute_nclass_er = (rotation_source == 'neoclassical_transp')
+
+        if setup_rotation:
             transp.quantities['w0'] = ['omg', 'OMG', 'x', 1.0]
             # w0(rad/s) is the BULK plasma toroidal rotation (GACODE convention), so tell
             # NCLASS the 'omg' data belongs to the MAIN ION (not the default lumped

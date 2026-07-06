@@ -7,9 +7,10 @@ NO predictive momentum equation is involved on either side — both codes solve
 the neoclassical force balance and report the implied toroidal angular rotation
 and radial electric field:
 
-    PATH A  --  TRANSP / NCLASS (Houlberg 2004): NCLASS is on by default in the
-                MITIM namelist (NMLtools.addNCLASS). With the NCLASS neoclassical
-                potential ON (nlvwnc=T, now the MITIM default) the .CDF carries
+    PATH A  --  TRANSP / NCLASS (Houlberg 2004): this run uses
+                rotation_source='neoclassical_transp', the only mode that computes
+                and keeps the NCLASS Er. With the NCLASS neoclassical
+                potential ON (nlvwnc=T) the .CDF carries
                 the neoclassical omega (OMEGA_NC / EPOTNC) and the neoclassical Er
                 decomposition (ERPRESS/ERVTOR/ERVPOL), which CDFtools exposes.
                 The run is deliberately stripped to the bone for speed -- no

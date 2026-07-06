@@ -295,21 +295,21 @@ class transp_beat(beat):
             print(f'\t- Sawtooth floor: min_sawtooth_period_ms={min_sawtooth_period_ms} -> '
                   f'c_sawtooth(2)={transp_namelist_mod["c_sawtooth_2"]:.3g} (tau_PM={tau_PM*1e3:.3g} ms)', typeMsg='i')
 
-        # Tie the NCLASS Er/rotation window (xl1ncvph/xl2ncvph) to the PORTALS prediction
-        # grid whenever rotation is active (nlvwnc=T). Case-dependent: keeps the neoclassical
-        # Er trusted exactly where PORTALS uses it for E×B shear, and off the untrustworthy
-        # pedestal/separatrix (which also avoids the r/a~1 LCFS-surface-load abort on
-        # marginally shaped boundaries). An explicit NCrotation_window in the namelist wins.
-        if rotation_source != 'off' and 'NCrotation_window' not in transp_namelist_mod:
+        # NCLASS Er is computed only under rotation_source='neoclassical_transp' (see
+        # MITIMstate.to_transp), so that is the only mode where the NCLASS window matters.
+        # Tie [xl1ncvph, xl2ncvph] to the PORTALS prediction grid so the Er stays over the
+        # region PORTALS uses it for E×B shear and off the untrustworthy pedestal/separatrix
+        # (which also avoids the r/a~1 LCFS-surface-load abort). Explicit NCrotation_window wins.
+        if rotation_source == 'neoclassical_transp' and 'NCrotation_window' not in transp_namelist_mod:
             nc_window = self._nclass_rotation_window_from_portals()
             if nc_window is not None:
                 transp_namelist_mod['NCrotation_window'] = nc_window
                 print(f"\t- NCLASS rotation window tied to PORTALS grid: "
                       f"[xl1ncvph, xl2ncvph] = [{nc_window[0]:.2f}, {nc_window[1]:.2f}] (r/a)", typeMsg='i')
             else:
-                print("\t- rotation active (nlvwnc=T) but no PORTALS beat found to size the "
-                      "NCLASS window; using the NMLtools default (may reach the separatrix on "
-                      "shaped boundaries)", typeMsg='w')
+                print("\t- neoclassical_transp: no PORTALS beat found to size the NCLASS "
+                      "window; using the NMLtools default (may reach the separatrix on shaped "
+                      "boundaries)", typeMsg='w')
 
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)

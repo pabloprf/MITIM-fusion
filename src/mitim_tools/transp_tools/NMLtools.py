@@ -160,10 +160,11 @@ class transp_nml:
         # an interpretive "rotation analysis" that infers and writes EPOTNC/OMEGA_NC to
         # the CDF, i.e. the neoclassical Er and toroidal rotation, from the provided
         # rotation of one species (TRANSP Rotation/NCLASS nml). Inexpensive. It REQUIRES
-        # a toroidal-rotation input (the 'omg'/VTR U-File) to
-        # close the Er force balance — TRDAT aborts on nlvwnc=T with no rotation data —
-        # so it defaults to UFrotation: ON whenever rotation (real, or an explicit zero
-        # omg U-File) is supplied, OFF when rotation is opted out (rotation_source='off').
+        # a toroidal-rotation input (the 'omg'/VTR U-File) to close the Er force balance —
+        # TRDAT aborts on nlvwnc=T with no rotation data. Compute it only when something
+        # downstream consumes it: the MAESTRO layer (to_transp/TRANSPhelpers) asks for it
+        # ONLY under rotation_source='neoclassical_transp' (the mode that keeps the Er).
+        # For direct NMLtools use the default falls back to UFrotation.
         self.computeNCLASSpotential = transp_params.get("computeNCLASSpotential", self.UFrotation)
 
         # Radial window (r/a) over which the NCLASS rotation/Er analysis (nlvwnc) is solved
