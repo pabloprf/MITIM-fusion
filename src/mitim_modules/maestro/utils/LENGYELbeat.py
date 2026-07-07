@@ -196,15 +196,15 @@ def _modify_temperatures(p, Tesep, rhotop):
     print(f'\t\t* Setting electron and ion temperature at separatrix to {Tesep*1E3:.1f} eV')
     
     if rhotop is None:
-        print('\t\t\t- No rhotop available at this beat, scaling the entire profile uniformly')
-        p.profiles['te(keV)'] *= Tesep / p.profiles['te(keV)'][-1]
-        p.profiles['ti(keV)'] *= Tesep / p.profiles['ti(keV)'][-1, :]
+        print('\t\t\t- No rhotop available at this beat, shifting the entire profile by a constant offset to the new separatrix value')
+        p.profiles['te(keV)'] += Tesep - p.profiles['te(keV)'][-1]
+        p.profiles['ti(keV)'] += Tesep - p.profiles['ti(keV)'][-1, :]
     else:
-        print(f'\t\t\t- Using rhotop = {rhotop:.3f} to scale temperature profiles only from rhotop to the new separatrix value')
-        
-        _scale_quadratic(p, p.profiles['te(keV)'], rhotop, Tesep)
+        print(f'\t\t\t- Using rhotop = {rhotop:.3f} to blend temperature profiles only from rhotop to the new separatrix value')
+
+        _offset_quadratic(p, p.profiles['te(keV)'], rhotop, Tesep)
         for ion in range(len(p.profiles['ti(keV)'][0, :])):
-            _scale_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
+            _offset_quadratic(p, p.profiles['ti(keV)'][:,ion], rhotop, Tesep)
 
 
 def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, fZ_top, rhotop, i_Z, plotYN=False, edge_profile="flat"):
@@ -252,32 +252,48 @@ def _modify_impurity_density(p, impurity_name, impurity_Z, impurity_A, fZ_sep, f
         
         embed()
         
-def _scale_quadratic(p, var, rhotop, val_sep, plotYN=False):
+def _offset_quadratic(p, var, rhotop, val_sep, plotYN=False):
     '''
-    I use a quadratic scaling from rhotop to separatrix instead of a linear one, to have a smoother transition.
+    Additive quadratic blend from rhotop to the separatrix: the value at rhotop
+    (pedestal top) is held fixed and a bounded offset, growing as t^2 from 0 at
+    rhotop to (val_sep - var_sep) at the separatrix, is ADDED so the foot lands on
+    val_sep with a smooth (zero-slope) join at rhotop.
+
+    Additive rather than multiplicative on purpose: the correction is bounded by the
+    separatrix change |val_sep - var_sep|, not proportional to the local value, so it
+    cannot lift the mid-pedestal above the pedestal top and create a spurious
+    temperature bump when the Lengyel separatrix temperature greatly exceeds the
+    incoming one (val_sep >> var_sep). The previous multiplicative form
+    (var *= 1 + (val_sep/var_sep - 1) t^2) bumped for val_sep/var_sep >~ 2.
+
+    The additive offset never rises above the pedestal-top value. On a perfectly
+    flat top (zero incoming slope at rhotop) it could leave a sub-top wiggle, but
+    realistic pedestals have finite gradient at rhotop and stay monotone.
     '''
 
     var_orig = copy.deepcopy(var)
 
     ix = np.argmin(np.abs(p.profiles['rho(-)'] - rhotop))
-    factor_array = np.ones_like( p.profiles['rho(-)'] )
+    offset_array = np.zeros_like( p.profiles['rho(-)'] )
 
-    # Create a non-linear scaling that starts,io9slowly and accelerates
+    # Quadratic offset: 0 at rhotop, growing to (val_sep - var_sep) at the separatrix
     n_points = len(p.profiles['rho(-)']) - ix
     t = np.linspace(0, 1, n_points)  # Normalized parameter from 0 to 1
-    factor_array[ix:] = 1.0 + (val_sep / var_orig[-1] - 1.0) * t**2  # Quadratic profile
-    
-    var *= factor_array
-    
+    offset_array[ix:] = (val_sep - var_orig[-1]) * t**2
+
+    var += offset_array
+
     if plotYN:
         import matplotlib.pyplot as plt
         fig, axs= plt.subplots(nrows=2)
         ax = axs[0]
         ax.plot( p.profiles['rho(-)'], var_orig, 'o-', label='Original' )
         ax.plot( p.profiles['rho(-)'], var, 'o-', label='Modified' )
+        ax.legend()
         ax = axs[1]
-        ax.plot( p.profiles['rho(-)'], var/var_orig, 'o-', label='Scaling factor' )
+        ax.plot( p.profiles['rho(-)'], var - var_orig, 'o-', label='Added offset' )
+        ax.legend()
         plt.show()
-        
+
         embed()
         

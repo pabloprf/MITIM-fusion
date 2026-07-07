@@ -42,6 +42,8 @@ DESCRIPTION
 
 *   🐛 **`mitim_check_maestro`** now recognizes the sharpness, confinement and lengyel beats (previously shown as `UNKNOWN`) by their `run_<type>` folder.
 
+*   🐛 **MAESTRO Lengyel beat edge-temperature bump**: when the Lengyel separatrix temperature far exceeded the incoming one (a factor of ~2 or more), the `rhotop`→separatrix pedestal rescaling lifted the mid-pedestal above the pedestal top, leaving a spurious local Te/Ti maximum in the beat output (e.g. a 7.7 keV bump on a 5 keV pedestal top). The blend is now an additive quadratic offset (bounded by the separatrix change) instead of multiplicative, so the edge never rises above its top; the `rhotop is None` fallback likewise shifts the profile by a constant offset instead of rescaling the whole profile (which had scaled the core by the same large factor).
+
 *   🐛 **TRANSP (singularity) finish** no longer leaves a duplicate copy of the retrieved `results/` tree (notably the heavy `.CDF`): its contents are surfaced into the run folder and the redundant `results/` is removed.
 
 *   🐛 **`mitim_plot_cgyro` timing panels** no longer clip later cases: the per-output and cumulative-cost y-axes now expand to fit every overlaid case instead of freezing to the first case's range (`set_ylim(bottom=0)` was disabling y-autoscale).
