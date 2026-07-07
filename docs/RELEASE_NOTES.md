@@ -36,6 +36,8 @@ DESCRIPTION
 
 *   🐛 **MAESTRO TRANSP early-extraction floor** (`min_extraction_flattop_fraction`, default 0.5): a plasma whose only sawtooth fired early (then never again) had its profiles extracted too soon — before heating / current diffusion settled. The extraction is now floored at this fraction of the flattop window: if the `extract_at` slice lands earlier, it moves to the first slice at/after the floor. Healthy runs (last sawtooth already past mid-flattop) are unchanged; `null` disables.
 
+*   🐛 **MAESTRO EPED cold-start on preemption+requeue** (`forceifcold_start`): a preempted MAESTRO job that auto-requeued while beat 1 was still running re-cold-started the beat, and its EPED run/creator found the leftover `output_run1.nc` from the killed attempt. `EPED.run` then hit an interactive "rerun from scratch?" prompt (`typeMsg='q'`) which, in a batch job, raised `InteractiveTerminalError` — misreported upstream as "EPED failed to run". New `forceifcold_start` arg: when a cold-start finds an existing output it now warns (`'w'`) and reruns from scratch instead of asking. `eped_beat.prepare` defaults it to `True` (MAESTRO is non-interactive); standalone `EPEDtools.EPED.run` keeps the interactive prompt (`False`).
+
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
 *   🐛 **`mitim_check_maestro`** now recognizes the sharpness, confinement and lengyel beats (previously shown as `UNKNOWN`) by their `run_<type>` folder.
