@@ -103,7 +103,11 @@ plasma:
       #      null:                    Do NOT freeze: store nothing in trans_beat, so each EPED beat instead recomputes the
       #                               99.5% shaping from its own current equilibrium -> the values evolve beat-to-beat
       # NOTE: if initialization_type = separatrix, only null vs non-null is honored; the parameterization above is ignored
-      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four)
+      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four).
+      #       A runtime warning is printed in this case. Since separatrix internal flux surfaces are a parametric guess,
+      #       consider `maestro.refreeze_995_after_beat: N` to re-extract the 99.5% shaping from an evolved (e.g. TRANSP) beat.
+      # This knob controls only HOW the surface is extracted and whether it is frozen at init; WHEN it is (re)frozen for
+      # later EPED beats is controlled by `maestro.refreeze_995_after_beat` (see below).
       freeze_995_from: analytic_interpolation
 
       # If initialization_type = geqdsk or fibe: path to file
@@ -203,6 +207,18 @@ maestro:
   #     travels forward. Sufficient for chain inheritance, not for full CDF plotting.
   # PORTALS plot tabs are unaffected (their inputs are persisted in beat_results/Outputs/).
   keep_all_files: true
+
+  # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) that is fed to every EPED beat.
+  # This is orthogonal to `plasma.parameters.separatrix.freeze_995_from` (which sets HOW the surface
+  # is extracted); this knob sets WHEN it is fixed:
+  #   0    : freeze at initialization and reuse for the whole run (default; the old behavior).
+  #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. N=2 -> after the first real TRANSP
+  #          beat), overwrite the frozen values, and reuse those for every later EPED beat. Use this to
+  #          feed EPED a real equilibrium instead of the initialization guess (relevant for separatrix
+  #          init, whose internal flux surfaces are a parametric guess).
+  #   null : never freeze -- each EPED beat recomputes the 99.5% shaping from its own current
+  #          equilibrium, so the values evolve beat-to-beat.
+  refreeze_995_after_beat: 0
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters

@@ -111,6 +111,14 @@ class maestro:
         '''
         self.parameters_trans_beat = {}
 
+        # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) fed to EPED
+        # (see templates/namelist.maestro.yaml -> maestro.refreeze_995_after_beat):
+        #   0    : keep the value extracted at initialization (default, old behavior)
+        #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. after TRANSP)
+        #   null : never freeze -- each EPED beat recomputes from its own current equilibrium
+        #          (the null case is enforced in the EPED beat's _inform)
+        self.refreeze_995_after_beat = self.maestro_namelist.get('maestro', {}).get('refreeze_995_after_beat', 0)
+
         # Whether this instance has already stashed a previous run's finalization
         # artifacts (done automatically at the first beat run())
         self._unfinalize_done = False
@@ -340,6 +348,10 @@ class maestro:
             elif not self._restore_trans_beat_parameters():
                 self.beat._inform_save()
 
+        # Optionally re-freeze the 99.5% shaping from this beat's evolved equilibrium (runs on both the
+        # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
+        self._maybe_refreeze_995()
+
         # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
         if not self.keep_all_files:
             for item in self.beat.folder .iterdir():
@@ -352,6 +364,30 @@ class maestro:
     # a re-run (and the keep_all_files: false pickle prune) restore the cross-beat state of a finished
     # beat without recomputing it from the heavy PORTALS/TRANSP artifacts (which may be pruned). Path
     # values are stored relative to the MAESTRO root so a snapshot survives the run folder being moved.
+
+    def _maybe_refreeze_995(self):
+        '''
+        If maestro.refreeze_995_after_beat == N (a positive int) and this is beat N, overwrite the
+        frozen 99.5% shaping (kappa995/delta995/zeta995) in parameters_trans_beat with the values
+        derived from THIS beat's evolved equilibrium, so later EPED beats use a real (e.g.
+        post-TRANSP) equilibrium instead of the initialization guess. The snapshot is re-saved so a
+        restart restores the updated values. (0 = keep the init value; null = never freeze, which is
+        handled in the EPED beat's _inform by simply not reusing the stored value.)
+        '''
+        target = self.refreeze_995_after_beat
+        if not (isinstance(target, int) and not isinstance(target, bool) and target > 0 and self.counter_current == target):
+            return
+
+        p = PROFILEStools.gacode_state(self.beat.folder_output / 'input.gacode')
+        p.derive_quantities()
+        for key in ('kappa995', 'delta995', 'zeta995'):
+            if key in p.derived:
+                self.parameters_trans_beat[key] = float(p.derived[key])
+        self._save_trans_beat_parameters()
+        print(f'\t\t- Re-froze 99.5% shaping from beat {target} equilibrium -> '
+              f'kappa995={self.parameters_trans_beat["kappa995"]:.3f}, '
+              f'delta995={self.parameters_trans_beat["delta995"]:.3f}, '
+              f'zeta995={self.parameters_trans_beat["zeta995"]:.3f}', typeMsg='i')
 
     def _trans_beat_parameters_file(self, counter):
         return self.folder_output / 'trans_beat_parameters' / f'beat_{counter}.json'
