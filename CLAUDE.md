@@ -20,7 +20,7 @@ Public docs: https://mitim-fusion.readthedocs.io
 
 ---
 
-## 1. Repository layout
+## 0. Repository layout
 
 ```
 src/
@@ -63,6 +63,12 @@ ones you will use most:
 | `mitim_compare_nml` | Diff two namelists |
 
 ---
+
+## 1. Capability tests
+
+You can learn about how to run the different MITIM capabilities by exploring and
+reproducing what's in `tests/capability_tests/`, a subfolder that contains tons of
+well-explained examples of the main capabilities.
 
 ## 2. User config (`config_user.json`) — required for any non-local run
 
