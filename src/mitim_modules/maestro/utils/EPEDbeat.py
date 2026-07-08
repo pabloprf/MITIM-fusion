@@ -42,6 +42,9 @@ class eped_beat(beat):
             teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
             teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
             minutes_slurm = 240,           # (full EPED) SLURM time limit of each EPED case (the EPEDtools default of 30 min is far too short for full EPED)
+            forceifcold_start = True,      # MAESTRO is non-interactive: on a cold_start EPED run/creator that finds a
+                                           # leftover output (e.g. after a preemption+requeue), warn ('w') and rerun from
+                                           # scratch instead of asking ('q') and dying on InteractiveTerminalError.
             zeff_location = 'vol_avg',     # Where to evaluate Zeff (and the fuel dilution) fed to EPED: 'vol_avg' (default,
                                            # recovers old behavior) or 'pedestal' (interpolated at rho=0.95). Both feed the
                                            # zeffped input and the effective-impurity charge used by full EPED.
@@ -91,6 +94,7 @@ class eped_beat(beat):
         self.teped_retries = teped_retries
         self.teped_retry_lower_factor = teped_retry_lower_factor
         self.minutes_slurm = minutes_slurm
+        self.forceifcold_start = forceifcold_start
         self.zeff_location = zeff_location
 
         self.ptop_multiplier = ptop_multiplier
@@ -763,6 +767,7 @@ class eped_beat(beat):
             nproc_per_run = nproc_per_run,
             minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
+            forceifcold_start = getattr(self, 'forceifcold_start', True),
             eped_params_override = eped_params_override,
             m = m, z = z, mi = mi, zi = zi,
         )
@@ -1113,20 +1118,23 @@ class eped_beat(beat):
             self.neped_20 = self.maestro_instance.parameters_trans_beat['neped_20']
             print(f"\t\t- Using previous neped_20: {self.neped_20}")
 
-        # From a geqdsk initialization
-        if 'kappa995' in self.maestro_instance.parameters_trans_beat:
-            self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
-            print(f"\t\t- Using previous kappa995: {self.kappa995}")
-        
-        # From a geqdsk initialization
-        if 'delta995' in self.maestro_instance.parameters_trans_beat:
-            self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
-            print(f"\t\t- Using previous delta995: {self.delta995}")
+        # Frozen 99.5% shaping from a previous beat (initialization, or a re-freeze after beat N).
+        # If maestro.refreeze_995_after_beat is null the shaping is NEVER frozen: skip the reuse so
+        # this EPED beat recomputes kappa995/delta995/zeta995 from its own current equilibrium.
+        if getattr(self.maestro_instance, 'refreeze_995_after_beat', 0) is not None:
+            if 'kappa995' in self.maestro_instance.parameters_trans_beat:
+                self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
+                print(f"\t\t- Using previous kappa995: {self.kappa995}")
 
-        # From a geqdsk initialization
-        if 'zeta995' in self.maestro_instance.parameters_trans_beat:
-            self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
-            print(f"\t\t- Using previous zeta995: {self.zeta995}")
+            if 'delta995' in self.maestro_instance.parameters_trans_beat:
+                self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
+                print(f"\t\t- Using previous delta995: {self.delta995}")
+
+            if 'zeta995' in self.maestro_instance.parameters_trans_beat:
+                self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
+                print(f"\t\t- Using previous zeta995: {self.zeta995}")
+        else:
+            print("\t\t- refreeze_995_after_beat is null: recomputing 99.5% shaping from the current equilibrium", typeMsg='i')
 
         # From a previous EPED beat, grab the rhotop
         if 'rhotop' in self.maestro_instance.parameters_trans_beat:
