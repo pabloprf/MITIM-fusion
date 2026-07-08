@@ -2,17 +2,19 @@
 DEV TEST: MAESTRO rotation flow — TWO chains compared (zero seed vs strong w0 seed)
 -----------------------------------------------------------------------------------
 Both chains are TRANSP -> PORTALS -> TRANSP -> PORTALS with w0 added to PORTALS'
-predicted_channels, under the default rotation_source='echo' (PASS-THROUGH): each
-TRANSP beat feeds the incoming w0 to TRANSP as the 'omg' U-File (rotation modeling +
-NCLASS Er diagnostics in the CDF) and carries the SAME w0 out unchanged. The chain's
+predicted_channels, under the default rotation_source='echo' (PASS-THROUGH): a TRANSP
+beat ships the incoming w0 to TRANSP as the 'omg' U-File ONLY when the seed actually
+carries rotation (max|w0| > 1 rad/s; a zero seed runs TRANSP rotation-free, nlvphi=F),
+and carries the SAME w0 out unchanged. 'echo' NEVER computes the NCLASS Er (nlvwnc=F;
+that is exclusive to rotation_source='neoclassical_transp', see 07194ef7). The chain's
 rotation therefore changes ONLY across PORTALS beats, which predict it.
 
   RUN A ("w0=0")  : constant-BC init (FreeGS + fixed_bc) -> rotation SEEDED AT ZERO.
-                    The first TRANSP beat must hand w0=0 to PORTALS (pass-through of a
-                    zero seed — NCLASS's OMEGA_NC stays in the CDF as a diagnostic, it
-                    is NOT written out under 'echo'). PORTALS then evolves w0 from
-                    zero, and the second TRANSP beat must carry that predicted
-                    rotation through untouched.
+                    The first TRANSP beat must hand w0=0 to PORTALS: the zero seed opts
+                    out of rotation modeling entirely (no omg U-File, nlvphi=F,
+                    nlvwnc=F), reproducing the pre-rotation TRANSP setup exactly.
+                    PORTALS then evolves w0 from zero, and the second TRANSP beat must
+                    carry that predicted rotation through untouched.
 
   RUN B ("w0!=0") : same chain but the initial input.gacode is SEEDED with a strong,
                     artificial rotation (~1e5 rad/s on axis, ~20x the neoclassical
@@ -22,8 +24,10 @@ rotation therefore changes ONLY across PORTALS beats, which predict it.
 
 Point of the comparison: w0 must change ONLY across PORTALS beats (which predict it)
 and NEVER across a TRANSP beat (pass-through contract of 'echo'). The TRANSP tabs also
-show what TRANSP would have written instead — OMEGA, OMEGA_NC, and the E×B rotation
-that rotation_source='neoclassical_transp' writes — for reference.
+show, for reference, the rotation fields in the CDF: OMEGA (the rotation TRANSP
+adopted), the ERTOT-based E×B rotation (TGLF_w0_exb, what 'neoclassical_transp' would
+write back), and OMEGA_NC — which under 'echo' is simply ABSENT from the CDF and plots
+as zeros (nlvwnc=F; only 'neoclassical_transp' computes the NCLASS Er).
 
 *** WARNING ***: TRANSP flattop and PORTALS iteration cap are cut to the bone here ONLY
 so the chains finish fast enough to inspect, and Run B's w0 seed is artificial — do NOT
@@ -34,9 +38,10 @@ the PORTALS beats (same dependencies as maestro_01_run.py).
 
 The script ends with a rotation-flow FigureNotebook: a seed-comparison tab (w0 across
 every beat output, side by side) plus, per run, the TRANSP rotation 'versions' (input
-omg = what 'echo' carries out / OMEGA / NCLASS OMEGA_NC / the E×B rotation) with the
-neoclassical Er sources, and the PORTALS predicted w0 -> VEXB_SHEAR that TGLF receives
-at the prediction radii.
+omg = what 'echo' carries out / OMEGA / OMEGA_NC [zeros under 'echo'] / the ERTOT-based
+E×B rotation) with the force-balance Er decomposition (ERTOT/ERPRESS/ERVTOR/ERVPOL,
+standard CDF outputs present regardless of nlvwnc), and the PORTALS predicted
+w0 -> VEXB_SHEAR that TGLF receives at the prediction radii.
 (Full per-beat detail is still available via `mitim_plot_maestro <folder> --beats 4`.)
 """
 
@@ -180,10 +185,10 @@ def add_run_tabs(fn, maestro, objs, tag):
         for row, (label, cdf, it) in enumerate(tb):
             x = cdf.x[it]
             ax = axs[row][0]
-            ax.plot(x, cdf.VtorkHz_data[it] * w0_factor, c="g", lw=2, label=r"$\omega_{input}$ (omg U-File) $\rightarrow$ carried out ('echo')")
+            ax.plot(x, cdf.VtorkHz_data[it] * w0_factor, c="g", lw=2, label=r"$\omega_{input}$ (omg U-File; none shipped for a zero seed) $\rightarrow$ carried out ('echo')")
             ax.plot(x, cdf.VtorkHz[it]      * w0_factor, c="b", lw=2.5, label=r"$\omega_{TRANSP}$ (OMEGA, adopted)")
-            ax.plot(x, cdf.VtorkHz_nc[it]   * w0_factor, c="r", lw=2, ls="--", label=r"$\omega_{NCLASS}$ (OMEGA_NC)")
-            ax.plot(x, cdf.TGLF_w0_exb[it], c="m", lw=1.5, ls=":", label=r"$\omega_{E\times B}$ ($E_r/(d\psi/dR)$) $\rightarrow$ 'neoclassical_transp'")
+            ax.plot(x, cdf.VtorkHz_nc[it]   * w0_factor, c="r", lw=2, ls="--", label=r"$\omega_{NCLASS}$ (OMEGA_NC; zeros under 'echo': nlvwnc=F)")
+            ax.plot(x, cdf.TGLF_w0_exb[it], c="m", lw=1.5, ls=":", label=r"$\omega_{E\times B}$ ($E_r/(d\psi/dR)$, ERTOT-based) $\rightarrow$ what 'neoclassical_transp' writes")
             ax.axhline(0, c="k", lw=0.5, ls=":")
             ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$\omega$ (rad/s)")
             ax.set_title(f"{label}: toroidal rotation"); ax.legend(fontsize=7, loc="best")
@@ -195,9 +200,9 @@ def add_run_tabs(fn, maestro, objs, tag):
             ax.plot(x, cdf.Er_pol_LF[it] * 1e-3, c="C3", lw=1.5, ls="--", label=r"$E_r$ poloidal ($v_\theta B_\phi$)")
             ax.axhline(0, c="k", lw=0.5, ls=":")
             ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$E_r$ (kV/m)")
-            ax.set_title(f"{label}: neoclassical $E_r$ sources"); ax.legend(fontsize=7, loc="best")
+            ax.set_title(f"{label}: force-balance $E_r$ decomposition"); ax.legend(fontsize=7, loc="best")
             GRAPHICStools.addDenseAxis(ax)
-        fig.suptitle(f"TRANSP rotation 'versions' & neoclassical $E_r$ sources — {tag} seed")
+        fig.suptitle(f"TRANSP rotation 'versions' & force-balance $E_r$ decomposition — {tag} seed")
         fig.tight_layout()
 
     pb = portals_beats(maestro)
