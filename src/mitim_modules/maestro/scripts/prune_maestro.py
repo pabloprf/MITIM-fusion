@@ -29,6 +29,10 @@ the live cleanup). Dry-run by default; pass --apply to actually delete.
 
     mitim_prune_maestro FOLDER1 FOLDER2 ...          # dry-run: report what would be freed
     mitim_prune_maestro FOLDER1 --apply              # actually prune
+    mitim_prune_maestro scan_dir/case_* --apply      # every matching run (shell-expanded glob)
+
+Multiple folders are summed into a grand total at the end. A shell glob (scan_dir/case_*)
+is expanded by the shell into one argument per match before this script sees it.
 
 Keep the pruned/slimmed set in sync with PORTALSbeat.optional_postprocessing and the
 run-folder wipe in MAESTROmain._run_beat if those ever change.
@@ -192,9 +196,10 @@ class MaestroPruner:
 
     # -------------------------------------------------------------------------
     def run(self):
+        '''Prune (or dry-run) this folder. Returns True if it was a MAESTRO run, False if skipped.'''
         if not self.beats_dir.is_dir():
             print(f'- {IOtools.clipstr(self.root)}: no Beats/ folder -- not a MAESTRO run, skipping', typeMsg='w')
-            return
+            return False
         print(f"\n- {'Pruning' if self.apply else 'Dry-run for'} {IOtools.clipstr(self.root)}")
         beats = self.discover_beats()
         self.wipe_run_folders(beats)
@@ -204,6 +209,7 @@ class MaestroPruner:
         if self.slim_before:
             msg += f" (+ slim ~{_human(self.slim_before)} of last-beat pickle)"
         print(msg, typeMsg='i')
+        return True
 
 
 def main():
@@ -217,8 +223,21 @@ def main():
     if not args.apply:
         print('\n[DRY-RUN] Nothing will be deleted. Re-run with --apply to prune.', typeMsg='w')
 
+    total_freed, total_slim, n = 0, 0, 0
     for folder in args.folders:
-        MaestroPruner(folder, apply=args.apply).run()
+        pruner = MaestroPruner(folder, apply=args.apply)
+        if pruner.run():
+            n += 1
+            total_freed += pruner.freed
+            total_slim += pruner.slim_before
+
+    # Grand total across every folder specified on the command line.
+    if n > 1:
+        verb = 'Freed' if args.apply else 'Would free'
+        msg = f"\n=== {verb} {_human(total_freed)} across {n} run(s)"
+        if total_slim:
+            msg += f" (+ slim ~{_human(total_slim)} of last-beat pickles)"
+        print(msg, typeMsg='i')
 
 
 if __name__ == '__main__':
