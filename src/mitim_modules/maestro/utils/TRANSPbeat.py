@@ -101,8 +101,10 @@ class transp_beat(beat):
           1) parameters_trans_beat['predicted_roa'/'predicted_rho'] — set by a PORTALS
              beat that already ran, so it reflects a moved last radial point.
           2) the static grid in the maestro namelist, scanning every portals-family beat
-             (beat_type containing 'portals'); an overlay that omits the grid falls back
-             to the PORTALS template default.
+             (beat_type containing 'portals'). A lean overlay without a grid of its own
+             first inherits its base_module's grid (single-hop, mirroring run_maestro's
+             deep_dict_update — e.g. portals_soft picks up the real 'portals' grid), and
+             only then falls back to the PORTALS template default.
         predicted_roa wins over predicted_rho (PORTALS convention); predicted_rho is
         mapped to r/a on the current profiles (rho -> roa is monotonic).
         """
@@ -125,15 +127,26 @@ class transp_beat(beat):
         # 2) static namelist scan (the first TRANSP beat has no prior PORTALS beat)
         _template = None
         candidates = []
-        for beat_cfg in self.maestro_instance.maestro_namelist.get('maestro', {}).values():
+        maestro_cfg = self.maestro_instance.maestro_namelist.get('maestro', {})
+        for beat_cfg in maestro_cfg.values():
             if not isinstance(beat_cfg, dict) or 'portals' not in str(beat_cfg.get('beat_type', '')):
                 continue
             solution = ((beat_cfg.get('parameters_prepare') or {})
                         .get('portals_parameters', {})
                         .get('solution', {}) or {})
+            # Single-hop base_module inheritance, as run_maestro resolves it (the base
+            # beat's parameters_prepare deep-merged under the overlay): a lean overlay
+            # like portals_soft must size the window from its base's REAL grid, not the
+            # template default (which can overshoot, e.g. 0.95 instead of 0.92).
+            base_cfg = maestro_cfg.get(beat_cfg.get('base_module') or '')
+            if isinstance(base_cfg, dict):
+                base_solution = ((base_cfg.get('parameters_prepare') or {})
+                                 .get('portals_parameters', {})
+                                 .get('solution', {}) or {})
+                solution = {**base_solution, **solution}
             roa = _outer_roa(solution.get('predicted_roa'), solution.get('predicted_rho'))
             if roa is None:
-                # lean overlay (no grid of its own) -> PORTALS template default
+                # no grid of its own or via base_module -> PORTALS template default
                 if _template is None:
                     _template = IOtools.read_mitim_yaml(
                         __mitimroot__ / "templates" / "namelist.portals.yaml")['solution']
