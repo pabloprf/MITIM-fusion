@@ -26,22 +26,24 @@ The comparison is printed as two rigorous tables (Er decomposition; rotation-fie
 identification) and a 4-panel figure: (1) E×B rotation in the SAME (GACODE) convention
 [VGEN w0 vs TRANSP geom*ERtot]; (2) Er and its ERPRESS/ERVTOR/ERVPOL decomposition;
 (3) TERM-BY-TERM [diamagnetic from TRANSP/VGEN/independent dp/dr overlaps; poloidal flips
-sign between NCLASS and NEO]; (4) why OMEGA_NC != w0 [omega_tor = omega_ExB + omega_diamag,
-which nearly cancel, leaving the small toroidal velocity].
+sign between NCLASS and NEO]; (4) why OMEGA_NC != w0 [omega_tor = omega_ExB + omega_dia+pol
+(the force-balance remainder), which nearly cancel, leaving the small toroidal velocity].
 
 *** WHAT THE COMPARISON SHOWS (and a w0-vs-Er caveat) ***
-    Compare Er, NOT w0. The w0 panel mixes two DIFFERENT decompositions: TRANSP's
-    OMEGA_NC = omega_ExB + omega_diamag (the diamagnetic part largely CANCELS -> small
-    intrinsic value), while VGEN's w0 RETAINS the diamagnetic term (diamagnetic-dominated).
-    The frame-independent Er is the clean check, and it shows:
+    Compare Er, NOT the omega-like fields. OMEGA_NC and w0 are DIFFERENT quantities:
+    OMEGA_NC = omega_ExB + omega_dia+pol (force-balance remainder; the two nearly CANCEL
+    when V_phi~0 is imposed -> small residual), while GACODE w0 IS omega_ExB itself
+    (diamagnetic-dominated here). The frame-independent Er is the clean check, and it shows:
       - the DIAMAGNETIC term agrees across NCLASS, NEO, and the independent dp/dr/Zen
         (it is model-independent), and
       - the neoclassical POLOIDAL-FLOW term (ERVPOL vs NEO's) is the entire residual --
         opposite sign in the core here -- the expected NCLASS(Houlberg)-vs-NEO model
         spread (NEO is the higher-fidelity drift-kinetic solver).
-    This does NOT affect MAESTRO's rotation chain: the TRANSP beat writes w0 = OMEGA
-    (cdf.VtorkHz / TGLF_w0, CDFtools.to_profiles), the rotation TRANSP actually used --
-    NOT OMEGA_NC -- so the w0 round-trip stays in the GACODE convention end to end.
+    MAESTRO's rotation chain is consistent with this: CDFtools.to_profiles writes
+    w0 = TGLF_w0_exb (the ERTOT-based E×B rotation; NOT OMEGA, NOT OMEGA_NC), and
+    TRANSPbeat.finalize keeps that re-derivation only under
+    rotation_source='neoclassical_transp' -- 'echo'/'neoclassical_portals' restore the
+    SEED w0 unchanged (see the VALIDATION block below, which reads to_profiles directly).
 
 *** REQUIREMENTS ***
     - PATH A requires a configured TRANSP machine ("transp" in config_user.json).
@@ -65,8 +67,8 @@ which nearly cancel, leaving the small toroidal velocity].
       - GACODE/VGEN convention: w0(rad/s), the field 'w0(rad/s)' in input.gacode.
         VGEN populates it from the NEO neoclassical Er. Starts at 0 in this file.
       - TRANSP/CDFtools NEOCLASSICAL angular frequency, two equivalent reads:
-          * transp_output.VtorkHz_nc   (kHz; CDFtools.py:3309, from CDF 'OMEGA_NC')
-          * transp_output.VtorkHz_nc_check (kHz; CDFtools.py:3381, = -dPhi_nc/dpsi
+          * transp_output.VtorkHz_nc   (kHz; CDFtools.py:3350, from CDF 'OMEGA_NC')
+          * transp_output.VtorkHz_nc_check (kHz; CDFtools.py:3422, = -dPhi_nc/dpsi
             / 2pi, from the neoclassical potential EPOTNC -> Epot_nc)
         Both -> rad/s by multiplying by 2*pi*1e3. We compare against VtorkHz_nc.
       - SIGN: GACODE w0 follows the input.gacode COCOS; TRANSP follows nlbccw/
@@ -74,15 +76,15 @@ which nearly cancel, leaving the small toroidal velocity].
         priori. Compare magnitude and shape; reconcile the overall sign against
         the field/current directions of YOUR case before drawing conclusions.
     Radial electric field Er (V/m):
-      - VGEN: er_exp in out.vgen.vel -> NEO.vgen_vel["er_exp"] (NEOtools.py:822).
-      - TRANSP/CDFtools NEOCLASSICAL Er: transp_output.Er (CDFtools.py:3345, from
+      - VGEN: er_exp in out.vgen.vel -> NEO.vgen_vel["er_exp"] (NEOtools.py:828).
+      - TRANSP/CDFtools NEOCLASSICAL Er: transp_output.Er (CDFtools.py:3386, from
         CDF 'ERTOT', *1e2 cm->m) with the additive neoclassical decomposition
-        Er = Er_p + Er_tor + Er_pol  (ERPRESS/ERVTOR/ERVPOL, CDFtools.py:3348-3355),
+        Er = Er_p + Er_tor + Er_pol  (ERPRESS/ERVTOR/ERVPOL, CDFtools.py:3389-3395),
         the quantity CDFtools itself titles "Neoclassical Er". Same sign caution.
     Radial coordinate:
       - input.gacode / VGEN: 'rho(-)' = sqrt(normalized toroidal flux).
       - CDFtools: x (zone center) and xb (zone boundary) are ALSO sqrt normalized
-        toroidal flux (CDFtools.py:684-685), directly comparable to gacode rho.
+        toroidal flux (CDFtools.py:711), directly comparable to gacode rho.
         VtorkHz_nc lives on x; Er on the xb-derived grid. We interpolate TRANSP
         onto the VGEN rho grid for the table.
 """
@@ -140,7 +142,7 @@ time_extraction = None  # no AC snapshot: OMEGA_NC/EPOTNC live in the regular CD
 # A.1 Build the TRANSP run from input.gacode (the canonical input.gacode -> TRANSP path)
 # ---------------------------------------------------------------------------------------------------------------------
 
-# gacode_state.to_transp() (MITIMstate.py:3209) returns a TRANSPhelpers.transp_run
+# gacode_state.to_transp() (MITIMstate.py:3244) returns a TRANSPhelpers.transp_run
 # already populated with the UFILE-able quantities at the requested times. It also
 # ships the toroidal rotation as the 'omg' U-File by default — here a ZERO omg U-File,
 # since w0=0 in this state. That zero rotation is the input NCLASS needs to close the
@@ -203,7 +205,7 @@ transp = profiles.to_transp(
 # scrunched MRY file. The default NMLtools list still lists "mry" (+ df4/vc4/gfd
 # He4/gas U-Files that the to_transp/write_ufiles path never writes), so leaving it
 # unset makes TRDAT request a MIT<shot>.MRY that is never written -> "MRY FILE OPEN
-# ERROR". This mirrors the MAESTRO TRANSP beat (TRANSPbeat.py:131).
+# ERROR". This mirrors the MAESTRO TRANSP beat (TRANSPbeat.py:277).
 transp.write_namelist(
     timings={
         "time_start": time_init,
@@ -328,7 +330,7 @@ vgen_w0    = neo.profiles_vgen.profiles["w0(rad/s)"]
 #      toroidal velocity is a small residual (shown in panel 4).
 
 # --- TRANSP extra fields for the diagnostics ---
-transp_omega    = cdf.VtorkHz[it, :]      * (2 * np.pi * 1e3)   # OMEGA (used/written by to_profiles)
+transp_omega    = cdf.VtorkHz[it, :]      * (2 * np.pi * 1e3)   # OMEGA (the rotation TRANSP itself used; NOT what to_profiles writes -- that is TGLF_w0_exb)
 transp_omega_in = cdf.VtorkHz_data[it, :] * (2 * np.pi * 1e3)   # OMEGDATA (the omg U-File we shipped)
 transp_w0_exb   = transp_w0_nc_chk                              # EPOTNC E×B rotation (rad/s), on xb grid
 
@@ -402,7 +404,7 @@ print(f"   diamagnetic Er : TRANSP {diaT:.0f} | VGEN {diaV:.0f} | independent {d
       f"-> spread {100*(max(diaT,diaV,diaI)-min(diaT,diaV,diaI))/abs(diaI):.0f}% (MODEL-INDEPENDENT, agree)")
 print(f"   poloidal   Er : TRANSP/NCLASS {polT:.0f} vs VGEN/NEO {polV:.0f} V/m  "
       f"-> {'OPPOSITE sign' if polT*polV < 0 else 'same sign'} (the genuine model difference; NEO higher fidelity)")
-print(f"   OMEGA_NC = omega_ExB + omega_diamag = {_tb(transp_w0_exb,rq):.0f} + {_t(transp_w0_nc,rq)-_tb(transp_w0_exb,rq):.0f}"
+print(f"   OMEGA_NC = omega_ExB + omega_dia+pol = {_tb(transp_w0_exb,rq):.0f} + {_t(transp_w0_nc,rq)-_tb(transp_w0_exb,rq):.0f}"
       f" = {_t(transp_w0_nc,rq):.0f} rad/s.  This near-cancellation is FORCED by the imposed V_phi~0")
 print(f"      (weak-rotation input), NOT an emergent result: neoclassical theory does not predict V_phi,")
 print(f"      so OMEGA_NC just echoes the ~0 toroidal input. The physics lives in the E×B rotation.")
@@ -492,15 +494,18 @@ ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$E_r$ component  (V/m)")
 ax.set_xlim([0.0, 1.0]); ax.set_title(r"$E_r$ components: $\nabla p$ and $v_\theta$ (TRANSP vs VGEN)")
 ax.legend(loc="best", fontsize=8)
 
-# --- Panel 4: omega_tor = omega_ExB + omega_diamag (TRANSP). NOTE the near-cancellation is
-#     FORCED by the imposed V_phi~0 weak-rotation input (omega_tor ~ 0 -> omega_ExB ~ -omega_diamag),
+# --- Panel 4: omega_tor = omega_ExB + omega_dia+pol (TRANSP). NOTE the near-cancellation is
+#     FORCED by the imposed V_phi~0 weak-rotation input (omega_tor ~ 0 -> omega_ExB ~ -omega_dia+pol),
 #     not an emergent result -- it shows OMEGA_NC is the small toroidal velocity, not the E×B rotation.
+#     NONE of the near-zero curves here is what MITIM writes back: to_profiles writes TGLF_w0_exb
+#     (the E×B rotation -- panel 1's 'written' curve); OMEGA is only the rotation TRANSP ran with
+#     (the zero omg U-File input), shown to confirm the weak-rotation setup.
 ax = axs[1, 1]
-omega_dia = transp_w0_nc - np.interp(transp_rho, transp_rho_xb, transp_w0_exb)  # OMEGA_NC - omega_ExB
-ax.plot(transp_rho_xb, transp_w0_exb, "-", color="C3", lw=2, label=r"$\omega_{E\times B}$ ($-d\Phi_{nc}/d\psi$, EPOTNC)")
-ax.plot(transp_rho, omega_dia,        "-", color="C9", lw=2, label=r"$\omega_{diamag}$ (= OMEGA_NC $-\;\omega_{E\times B}$)")
-ax.plot(transp_rho, transp_w0_nc,     "-o", color="C1", lw=2, ms=3, label=r"$\omega_{tor}$ = OMEGA_NC")
-ax.plot(transp_rho, transp_omega,     "--", color="k", lw=1.0, label=r"OMEGA (written by to_profiles)")
+omega_diapol = transp_w0_nc - np.interp(transp_rho, transp_rho_xb, transp_w0_exb)  # OMEGA_NC - omega_ExB (diamagnetic + poloidal-flow remainder)
+ax.plot(transp_rho_xb, transp_w0_exb, "-", color="C3", lw=2, label=r"$\omega_{E\times B}$ ($-d\Phi_{nc}/d\psi$, EPOTNC)  [= GACODE $w_0$, TRANSP conv.]")
+ax.plot(transp_rho, omega_diapol,     "-", color="C9", lw=2, label=r"$\omega_{dia+pol}$ (= OMEGA_NC $-\;\omega_{E\times B}$)")
+ax.plot(transp_rho, transp_w0_nc,     "-o", color="C1", lw=2, ms=3, label=r"$\omega_{tor}$ = OMEGA_NC ($V_\phi/R$, NOT $w_0$)")
+ax.plot(transp_rho, transp_omega,     "--", color="k", lw=1.0, label=r"OMEGA (rotation TRANSP used = zero omg input; NOT the write-back)")
 ax.axhline(0, color="k", lw=0.7, ls=":")
 ax.set_xlabel(r"$\rho$"); ax.set_ylabel(r"$\omega$  (rad/s, TRANSP conv.)")
 ax.set_xlim([0.0, 1.0]); ax.set_title(r"$\omega_{tor}$ vs E×B and diamagnetic parts (TRANSP)")
