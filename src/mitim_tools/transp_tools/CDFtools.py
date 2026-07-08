@@ -1028,8 +1028,14 @@ class transp_output:
 
         self.sign_it = -1
 
-        vpar = -self.sign_it * (self.TGLF_R0 * self.TGLF_w0) / self.cs
-        w0p = derivativeVar(self, self.TGLF_w0)
+        # GACODE convention: the SAME w0 -- the E×B/potential rotation (TGLF_w0_exb), NOT the
+        # toroidal angular velocity OMEGA (=TGLF_w0) -- feeds VPAR, VPAR_SHEAR and VEXB_SHEAR,
+        # exactly as MITIMstate.to_tglf builds them from the w0(rad/s) that to_profiles writes.
+        # This keeps the CDF-direct TGLF parameters consistent with a TGLF run prepared from
+        # the written input.gacode (before, VEXB_SHEAR/VPAR came from OMEGA, which for a
+        # low-torque plasma with a neoclassical Er is a large underestimate of the E×B shear).
+        vpar = -self.sign_it * (self.TGLF_R0 * self.TGLF_w0_exb) / self.cs
+        w0p = derivativeVar(self, self.TGLF_w0_exb)
         w0_norm = self.cs[:, 0] / self.TGLF_R0[:, 0]
         w0_norm = constant_radius(w0_norm, lenX=len(self.x_lw))
 
