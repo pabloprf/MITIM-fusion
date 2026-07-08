@@ -1095,8 +1095,13 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
 
 def _compute_vexb_shear(profiles_obj):
     """
-    Compute the normalised E×B shearing rate (VEXB_SHEAR in TGLF notation) from a
-    gacode_state object using the same formula as MITIMstate.to_tglf():
+    Return the normalised E×B shearing rate (VEXB_SHEAR in TGLF notation) for a
+    gacode_state object.
+
+    Single source of truth: this is MITIMstate.derive_quantities' derived['gamma_exb']
+    (the exact value to_tglf feeds TGLF), so we read it directly when present. The
+    fallback recomputes it with the identical formula for a state that has not been
+    through derive_quantities:
 
         gamma_eb0   = -(dw0/dr) * r / |q|
         vexb_shear  = -sign_It * gamma_eb0 * a / c_s
@@ -1105,6 +1110,13 @@ def _compute_vexb_shear(profiles_obj):
     quantity is missing.
     """
     try:
+        if "w0(rad/s)" not in profiles_obj.profiles:
+            return None
+        gamma_exb = profiles_obj.derived.get("gamma_exb", None)
+        if gamma_exb is not None:
+            return gamma_exb
+        # Fallback (state not passed through derive_quantities): same formula, same
+        # derivative helper (MITIMstate.grad == MATHtools.deriv), so bit-identical.
         from mitim_tools.misc_tools import MATHtools
         w0  = profiles_obj.profiles["w0(rad/s)"]
         r   = profiles_obj.derived["r"]
