@@ -65,6 +65,14 @@ _RE_IPERR  = re.compile(r"Plasma Current:.*error:\s*([0-9.eE+-]+)%")
 _RE_NODE   = re.compile(r"Local host:\s*(\S+)")
 _RE_NODE2  = re.compile(r"(node\d+):rank")
 
+# TRANSP's OWN fatal-exit wrapper (ERRSET -> bad_exit) is a controlled quit, not a
+# hardware trap, so it prints NO "Program received signal" line. Its real cause is the
+# `??<reason>` line printed just before it (e.g. `??curvature ratio too small.`), with
+# `?<routine> error: <msg>` warnings above as breadcrumbs.
+_ERRSET_MARKERS = ("%bad_exit:  generic f77 error exit call", "ERRSET called")
+_RE_ERRSET_REASON = re.compile(r"\?\?\s*(.+)")
+_RE_ROUTINE_ERR   = re.compile(r"\?(\w+)\s+error:\s*(.+)")
+
 # Lines that are pure boilerplate and carry no diagnostic value (skipped when
 # picking a "last meaningful line" as fallback context).
 _BOILERPLATE = (
@@ -115,6 +123,26 @@ def _signal_line_index(lines):
     return None
 
 
+def _errset_line_index(lines):
+    """Index of the first TRANSP controlled-exit marker (bad_exit / ERRSET), or None."""
+    for i, ln in enumerate(lines):
+        if any(mk in ln for mk in _ERRSET_MARKERS):
+            return i
+    return None
+
+
+def _routine_errors(pre_lines):
+    """Deduplicated `?<routine> error: <msg>` warnings printed before the abort."""
+    seen = []
+    for ln in pre_lines:
+        m = _RE_ROUTINE_ERR.search(ln)
+        if m:
+            entry = f"{m.group(1)}: {m.group(2).strip()}"
+            if entry not in seen:
+                seen.append(entry)
+    return "; ".join(f"'{e}'" for e in seen)
+
+
 # ---------------------------------------------------------------------------
 # Physics-context classification (what was TRANSP doing at the trap)
 # ---------------------------------------------------------------------------
@@ -127,7 +155,9 @@ def _classify_context(pre_lines):
         if "INVALID INTERPOLATION" in text:
             ctx += ", with an invalid field interpolation flagged just before the trap"
         return ctx
-    if any(s in text for s in ("MHD EQUILIBRIUM CALCULATED", "*** TEQ ***", "EQBDY_CHECK")):
+    if any(s in text for s in ("PRGCHK", "curvature ratio", "EQBDY_CHECK")):
+        return "the plasma-boundary geometry check (PRGCHK)"
+    if any(s in text for s in ("MHD EQUILIBRIUM CALCULATED", "*** TEQ ***")):
         return "the MHD equilibrium / geometry update (TEQ)"
     if "NEUTRAL SOURCE" in text:
         return "the neutral-source / recycling calculation"
@@ -146,9 +176,13 @@ def _breadcrumbs(pre_lines, context):
     parts = []
     curv = _last_match(pre_lines, _RE_CURV)
     if curv is not None:
+        cv = float(curv)
+        # PRGCHK trips on curvature that is too SMALL (boundary too flat/spiky) or too
+        # large; describe the direction relative to the ~0.06 of typical healthy runs.
+        rel, qual = ("collapsed to", "well below") if cv < 0.06 else ("climbed to", "elevated vs")
         parts.append(
-            f"boundary (separatrix) curvature ratio had climbed to {float(curv):.3g} "
-            "(elevated vs typical healthy runs, ~0.06)"
+            f"boundary (separatrix) curvature ratio had {rel} {cv:.3g} "
+            f"({qual} the ~0.06 of typical healthy runs)"
         )
     n_reset = sum("RESET TO ZERO" in ln for ln in pre_lines)
     if n_reset:
@@ -185,9 +219,9 @@ def diagnose_transp_failure(log, logname=None):
     -------
     dict with keys:
         category : one of 'container_rdma_launch', 'container_namespace_launch',
-                   'physics_signal', 'hard_abort', 'unclassified'
+                   'physics_signal', 'controlled_abort', 'hard_abort', 'unclassified'
         message  : the human-readable diagnosis (single paragraph)
-        plus category-specific fields (signal, sim_time, nstep, context, node).
+        plus category-specific fields (signal, reason, sim_time, nstep, context, node).
     """
     lines = _as_lines(log)
     text = "\n".join(lines)
@@ -233,13 +267,39 @@ def diagnose_transp_failure(log, logname=None):
         return {"category": "physics_signal", "message": msg, "signal": signal,
                 "sim_time": sim_time, "nstep": nstep, "context": context}
 
-    # 4) Other fatal TRANSP aborts -------------------------------------------
+    # 4) Controlled TRANSP abort via ERRSET / bad_exit -----------------------
+    # TRANSP's own fatal-exit wrapper (not a hardware trap), so branch 3 never fires.
+    # The cause is the `??<reason>` line just above the marker; the `?<routine> error:`
+    # lines above that are breadcrumbs. Parse them so the abort is named, not echoed.
+    idx = _errset_line_index(lines)
+    if idx is not None:
+        pre = lines[max(0, idx - _PRE_TRAP_WINDOW):idx]
+        reason = _last_match(pre, _RE_ERRSET_REASON)
+        sim_time = _last_match(pre, _RE_TA)
+        nstep = _last_match(pre, _RE_NSTEP)
+        context = _classify_context(pre)
+        named = f"'{reason.strip().rstrip('.')}'" if reason else "generic f77 error exit"
+        when = f" at t≈{float(sim_time):.4g}s" if sim_time else ""
+        step = f" (NSTEP {nstep})" if nstep else ""
+        msg = f"TRANSP aborted via ERRSET ({named}){when}{step}, during {context}."
+        crumbs = _breadcrumbs(pre, context)
+        if crumbs:
+            msg += " " + crumbs
+        warns = _routine_errors(pre)
+        if warns:
+            msg += f" Preceded by routine warnings: {warns}."
+        msg += (" A controlled fatal exit driven by the physics inputs (not the node), "
+                "so a requeue almost certainly reproduces it." + tag)
+        return {"category": "controlled_abort", "message": msg, "reason": reason,
+                "sim_time": sim_time, "nstep": nstep, "context": context}
+
+    # 5) Other fatal TRANSP aborts -------------------------------------------
     for sig in HARD_ABORT_SIGNATURES:
         if sig in text:
             msg = f"TRANSP aborted ('{sig.strip()}'); see the log tail." + tag
             return {"category": "hard_abort", "message": msg, "signature": sig}
 
-    # 5) Unclassified --------------------------------------------------------
+    # 6) Unclassified --------------------------------------------------------
     tail = "\n".join(lines[-15:]).strip()
     msg = ("terminated without a NORMAL EXIT and with no recognized error signature. "
            f"Last log lines below.{tag}\n{tail}")
