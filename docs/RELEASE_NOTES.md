@@ -31,6 +31,8 @@ DESCRIPTION
 
 *   🩹 **MAESTRO TRANSP q-seed sanitization** (`sanitize_q_input`): an over-peaked equilibrium seed (very low on-axis q0 → q=1 surface far toward the boundary) can make TRANSP's Kadomtsev sawtooth model hard-exit on its first crash ("q=1 too close to boundary"), before current diffusion relaxes q. If set (e.g. `0.95`), the transp beat rescales the initial q-profile seed so q0 hits this value, anchored on q95 (q at psiN=0.95 held fixed, edge/shape preserved); current diffusion then relaxes q to self-consistency over the flattop. Applied to the TRANSP seed only (downstream state untouched); `null` (default) is a no-op.
 
+*   🧩 **MAESTRO TRANSP boundary-surface backoff** (`plasma.parameters.separatrix.boundary_surface_psin`): the fixed TRANSP boundary can now be extracted at a flux surface just inside the separatrix (psiN < 1, e.g. `0.995`) rather than the separatrix itself. A sharp / near-X-point separatrix can trip TRANSP's boundary curvature-ratio abort; a surface a hair inside is rounder (higher curvature ratio) and clears it, while preserving the true plasma shape (unlike lowering `n_mxh`). Interpolated at the requested psiN from the state's flux surfaces and applied to every TRANSP beat. Default `1.0` = separatrix (unchanged behavior).
+
 
 ### Bug Fixes
 

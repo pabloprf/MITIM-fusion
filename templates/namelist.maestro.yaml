@@ -90,6 +90,13 @@ plasma:
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary, once created
       n_mxh: 5
 
+      # Normalized poloidal flux (psi_N) of the flux surface used as the FIXED TRANSP boundary.
+      # 1.0 (default) = the separatrix (old behavior). A value < 1 (e.g. 0.995) backs the boundary off
+      # to a surface just inside the separatrix: it is rounder (higher curvature ratio) so it avoids
+      # TRANSP's boundary curvature-ratio abort on sharp/near-X-point separatrices, while keeping the
+      # true plasma shape (unlike lowering n_mxh). Applies to every TRANSP beat.
+      boundary_surface_psin: 1.0
+
       # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
       # The non-null options below extract these ONCE at initialization (with the chosen parameterization) and FREEZE them:
       # every later EPED beat reuses those same fixed values, even though the real internal flux surfaces drift as the

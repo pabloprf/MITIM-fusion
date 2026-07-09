@@ -792,7 +792,7 @@ class transp_input_time:
         
         self._populate(time)
 
-    def from_profiles(self, time, profiles_file, Vsurf = 0.0):
+    def from_profiles(self, time, profiles_file, Vsurf = 0.0, boundary_surface_psin = 1.0):
 
         self.time = time
 
@@ -817,7 +817,7 @@ class transp_input_time:
                 self.variables[self.transp_instance.quantities[var][1]]['x'] = None
                 self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
 
-        self._produce_geometry_profiles()
+        self._produce_geometry_profiles(boundary_surface_psin = boundary_surface_psin)
         self._populate(time)
 
     def _produce_quantity_profiles(self, var = 'Te', Vsurf = None):
@@ -852,15 +852,27 @@ class transp_input_time:
 
         return x,z
 
-    def _produce_geometry_profiles(self):
+    def _produce_geometry_profiles(self, boundary_surface_psin = 1.0):
 
         self.geometry = {}
 
         # --------------------------------------------------------------
-        # Separatrix
+        # Boundary: the separatrix (last surface) by default, or -- when boundary_surface_psin < 1 --
+        # a flux surface just inside it, interpolated at that normalized poloidal flux. Backing the
+        # TRANSP fixed boundary off a sharp separatrix (rounder interior surface) avoids TRANSP's
+        # boundary curvature-ratio abort while preserving the true shape.
         # --------------------------------------------------------------
 
-        self.geometry['R_sep'], self.geometry['Z_sep'] = self.p.derived["R_surface"][0,-1,:], self.p.derived["Z_surface"][0,-1,:]
+        Rsurf, Zsurf = self.p.derived["R_surface"][0], self.p.derived["Z_surface"][0]   # [nrad, ntheta]
+        if boundary_surface_psin is None or boundary_surface_psin >= 1.0:
+            R_sep, Z_sep = Rsurf[-1, :], Zsurf[-1, :]
+        else:
+            psi = self.p.profiles['polflux(Wb/radian)']
+            psin = (psi - psi[0]) / (psi[-1] - psi[0])     # 0 at axis, 1 at separatrix
+            R_sep = np.array([np.interp(boundary_surface_psin, psin, Rsurf[:, j]) for j in range(Rsurf.shape[1])])
+            Z_sep = np.array([np.interp(boundary_surface_psin, psin, Zsurf[:, j]) for j in range(Zsurf.shape[1])])
+
+        self.geometry['R_sep'], self.geometry['Z_sep'] = R_sep, Z_sep
 
         # --------------------------------------------------------------
         # VV

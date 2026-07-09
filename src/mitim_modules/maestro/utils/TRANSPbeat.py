@@ -177,7 +177,19 @@ class transp_beat(beat):
                 pass
         else:
             print(f'\t- Using provided MXH coefficients for smoothing separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
-        
+
+        # Optional boundary-surface backoff: extract the TRANSP boundary at a flux surface just INSIDE
+        # the separatrix (psi_N < 1) instead of the separatrix itself. A sharp / near-X-point separatrix
+        # can trip TRANSP's boundary curvature check; a surface a hair inside is rounder (higher curvature
+        # ratio) while keeping the true shape (unlike lowering n_mxh). Read from the same separatrix block
+        # as n_mxh; default 1.0 = separatrix (old behavior).
+        try:
+            boundary_surface_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('boundary_surface_psin', 1.0)
+        except (KeyError, AttributeError):
+            boundary_surface_psin = 1.0
+        if boundary_surface_psin is not None and boundary_surface_psin < 1.0:
+            print(f'\t- TRANSP boundary extracted at psi_N = {boundary_surface_psin} (backed off inside the separatrix)', typeMsg='i')
+
         # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
         # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's
         # Kadomtsev sawtooth model fail on its first crash ("q=1 too close to boundary") and hard-exit
@@ -207,7 +219,8 @@ class transp_beat(beat):
             folder = self.folder,
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
-            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
+            boundary_surface_psin = boundary_surface_psin
             )
 
         if q_restore is not None:
