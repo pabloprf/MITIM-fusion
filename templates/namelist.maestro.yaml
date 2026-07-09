@@ -108,7 +108,7 @@ plasma:
       #       consider `maestro.refreeze_995_after_beat: N` to re-extract the 99.5% shaping from an evolved (e.g. TRANSP) beat.
       # This knob controls only HOW the surface is extracted and whether it is frozen at init; WHEN it is (re)frozen for
       # later EPED beats is controlled by `maestro.refreeze_995_after_beat` (see below).
-      freeze_995_from: analytic_interpolation
+      freeze_995_from: analytic
 
       # If initialization_type = geqdsk or fibe: path to file
       geqdsk_file: ""
