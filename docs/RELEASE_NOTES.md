@@ -29,6 +29,8 @@ DESCRIPTION
 
 *   🎚️ **MAESTRO TRANSP extraction-slice selector** (`extract_at`): which CDF time slice is handed to the next beat is now configurable in the transp beat's `parameters_prepare` — `saw` / `saw-N` (the last sawtooth, or N coarse slices before it) or `last` / `last-N` (N before the last simulated slice). Default `saw-1` reproduces the historical behavior (`ind_saw-1`, a small step-back that avoids sampling the sawtoothing crash profiles on the coarse MAESTRO grid).
 
+*   🩹 **MAESTRO TRANSP q-seed sanitization** (`sanitize_q_input`): an over-peaked equilibrium seed (very low on-axis q0 → q=1 surface far toward the boundary) can make TRANSP's Kadomtsev sawtooth model hard-exit on its first crash ("q=1 too close to boundary"), before current diffusion relaxes q. If set (e.g. `0.95`), the transp beat rescales the initial q-profile seed so q0 hits this value, anchored on q95 (q at psiN=0.95 held fixed, edge/shape preserved); current diffusion then relaxes q to self-consistency over the flattop. Applied to the TRANSP seed only (downstream state untouched); `null` (default) is a no-op.
+
 
 ### Bug Fixes
 
