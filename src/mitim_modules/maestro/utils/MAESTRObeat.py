@@ -511,7 +511,16 @@ class initializer_from_separatrix(beat_initializer):
         
         for i in ['rcentr(m)']:
             self.p.profiles[i] = p_old.profiles[i]
-        
+
+        # When a real equilibrium was supplied via internal_flux_file, preserve ITS poloidal-flux
+        # mapping too -- not just the shaping. Otherwise the freegs psi (less edge-compressed than a
+        # real equilibrium) is kept, so boundary_surface_psin extracts a too-near-separatrix (over-
+        # squared) surface and the realistic radial decay is partly wasted. Without a file, keep
+        # freegs's self-consistent psi (still better than the linear-ramp guess).
+        if kwargs.get('internal_flux_file') is not None:
+            self.p.profiles['polflux(Wb/radian)'] = np.interp(
+                self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles['polflux(Wb/radian)'])
+
         for i in range(coeffs_MXH):
             self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
         for i in range(coeffs_MXH-3):
