@@ -1,0 +1,47 @@
+"MINIMAL":
+  controls:
+    phys_meth: 0
+    coll_flag: 1
+    rot_flag: 0
+    verbose: 0
+    separateflux: 0
+    numsols: 2
+    relacc1: 1.0e-2
+    relacc2: 5.0e-2
+    maxruns: 1
+    maxpts: 5.0e+4
+    timeout: 30
+    ETGmult: 1
+    collmult: 1
+    integration_routine: 1
+
+"STANDARD":
+  controls:
+    phys_meth: 2
+    coll_flag: 1
+    rot_flag: 0
+    verbose: 0
+    separateflux: 1
+    numsols: 3
+    relacc1: 1.0e-3
+    relacc2: 1.0e-2
+    maxruns: 1
+    maxpts: 1.0e+6
+    timeout: 60
+    ETGmult: 1
+    collmult: 1
+    integration_routine: 1
+
+"FAST":
+  base: "STANDARD"
+  controls:
+    numsols: 2
+    relacc1: 1.0e-2
+    relacc2: 5.0e-2
+    maxpts: 5.0e+4
+    timeout: 30
+
+"ROTATION":
+  base: "STANDARD"
+  controls:
+    rot_flag: 2

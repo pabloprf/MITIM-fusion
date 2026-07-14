@@ -1,49 +1,25 @@
 """
-Default "meta" (numerical/physics control) blocks for QuaLiKiz, and a small
-set of named presets, analogous in spirit to GACODEdefaults.addTGLFcontrol()
-but self-contained (no dependency on templates/ files outside this package).
+Default "meta" (numerical/physics control) presets for QuaLiKiz, loaded from
+``templates/input.qualikiz.models.yaml`` -- format and resolution (labels,
+``base:`` inheritance) mirror ``templates/input.tglf.models.yaml`` and are
+resolved through the same machinery as ``GACODEdefaults.addTGLFcontrol()``.
 
 The "meta" block corresponds to QuaLiKiz's JSON parameters.json "meta"
 section.
 """
 
-# Minimum working set (fast, low-resolution, useful for quick checks)
-_MINIMAL = {
-    "phys_meth": 0,
-    "coll_flag": 1,
-    "rot_flag": 0,
-    "verbose": 0,
-    "separateflux": 0,
-    "numsols": 2,
-    "relacc1": 1e-2,
-    "relacc2": 5e-2,
-    "maxruns": 1,
-    "maxpts": 5e4,
-    "timeout": 30,
-    "ETGmult": 1,
-    "collmult": 1,
-    "integration_routine": 1,
-}
+from mitim_tools.gacode_tools.utils import GACODEdefaults
+from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-# Default/standard set
-_STANDARD = {
-    "phys_meth": 2,
-    "coll_flag": 1,
-    "rot_flag": 0,
-    "verbose": 0,
-    "separateflux": 1,
-    "numsols": 3,
-    "relacc1": 1e-3,
-    "relacc2": 1e-2,
-    "maxruns": 1,
-    "maxpts": 1e6,
-    "timeout": 60,
-    "ETGmult": 1,
-    "collmult": 1,
-    "integration_routine": 1,
-}
+# Passed to GACODEdefaults.resolve_preset() only so it derives the models
+# file name (input.qualikiz.controls -> input.qualikiz.models.yaml); QuaLiKiz
+# has no separate full-namelist ".controls" file of its own, unlike TGLF/NEO/CGYRO.
+_CONTROLS_FILE = "input.qualikiz.controls"
+_MODELS_FILE = "input.qualikiz.models.yaml"
 
-# Default kthetarhos grid (binormal wavenumber spectrum, k_y*rho_s)
+# Default kthetarhos grid (binormal wavenumber spectrum, k_y*rho_s). Not part
+# of the models.yaml presets since it is orthogonal to the "meta" block and
+# passed to QuaLiKizXpoint separately (see QLKtools._build_plan_from_gacode).
 _KTHETARHOS_STANDARD = [
     0.1,
     0.175,
@@ -63,48 +39,31 @@ _KTHETARHOS_STANDARD = [
     45.0,
 ]
 
-# Named presets layered on top of _STANDARD. Mirrors the spirit of
-# GACODEdefaults.addTGLFcontrol()'s code_settings presets, but there is no
-# external *.models.yaml file here -- everything is a literal dict so this
-# module has no dependency outside qualikiz_tools.
-_PRESETS = {
-    "STANDARD": {},
-    "FAST": {
-        "numsols": 2,
-        "relacc1": 1e-2,
-        "relacc2": 5e-2,
-        "maxpts": 5e4,
-        "timeout": 30,
-    },
-    "ROTATION": {
-        "rot_flag": 2,
-    },
-}
-
 
 def addQLKcontrol(code_settings=None, minimal=False, **kwargs):
     """
-    Build the "meta" control dictionary for a QuaLiKiz run.
+    Build the "meta" control dictionary for a QuaLiKiz run, resolved from
+    ``templates/input.qualikiz.models.yaml`` (honors ``base:`` inheritance,
+    label matched case-insensitively).
 
-    code_settings : None or a key in _PRESETS (case-insensitive), e.g. "FAST".
-    minimal       : if True, ignore code_settings and use the bare minimum set.
+    code_settings : None or a preset label in that file, e.g. "FAST". Falls
+                    back to "STANDARD" if None or not found.
+    minimal       : if True, ignore code_settings and use the "MINIMAL" preset.
     """
 
     if minimal or code_settings == 0:
-        options = dict(_MINIMAL)
-        return options
+        preset = "MINIMAL"
+    elif code_settings is None:
+        preset = "STANDARD"
+    else:
+        preset = code_settings
 
-    options = dict(_STANDARD)
+    sett = GACODEdefaults.resolve_preset(preset, controls_file=_CONTROLS_FILE)
+    if not sett or "controls" not in sett:
+        print(f"\t- code_settings = {code_settings} not found in {_MODELS_FILE}, using STANDARD", typeMsg="w")
+        sett = GACODEdefaults.resolve_preset("STANDARD", controls_file=_CONTROLS_FILE)
 
-    if code_settings is not None:
-        preset_key = str(code_settings).upper()
-        if preset_key in _PRESETS:
-            options.update(_PRESETS[preset_key])
-        else:
-            from mitim_tools.misc_tools.LOGtools import printMsg as print
-            print(f"\t- code_settings = {code_settings} not found in QLKdefaults presets, using STANDARD", typeMsg="w")
-
-    return options
+    return dict(sett["controls"])
 
 
 def default_kthetarhos():
