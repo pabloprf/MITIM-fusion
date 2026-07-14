@@ -3318,9 +3318,32 @@ class mitim_state:
 
         # Same "which ion absorbs quasineutrality" choice as the QuaLiKizXpoint
         # options QLKtools passes downstream (set_qn_normni/set_qn_An): highest-Z
-        # non-fast species.
-        z_indices = [ion_species[i]["Z"] for i in range(n_ions) if ion_species[i]["type"] not in [3, 4]]
-        qn_ion_index = z_indices.index(max(z_indices))
+        # non-fast species. Index is into the FULL ion_species list (not the
+        # filtered candidate list), since it is used downstream to index
+        # QuaLiKizXpoint's full ion array.
+        non_fast_indices = [i for i in range(n_ions) if ion_species[i]["type"] not in [3, 4]]
+        qn_ion_index = max(non_fast_indices, key=lambda i: ion_species[i]["Z"])
+
+        # The highest-Z candidate can be a near-trace species (tiny baseline
+        # density): absorbing even a small charge-neutrality residual from the
+        # other species can then require an unphysical (negative or >1)
+        # density correction, which QuaLiKiz's own set_qn_normni_ion_n()
+        # rejects outright. Detect that here (same formula, summed over all
+        # non-target species since QuaLiKiz only excludes type==3 "trace"
+        # ions from that sum, not fast ions) and fall back to ion 0 (the main
+        # species, always well-conditioned) rather than trying progressively
+        # lower-Z candidates, so the choice stays predictable.
+        Z_all = np.array([ion_species[i]["Z"] for i in range(n_ions)])
+        n_all = np.array([ion_scan[f"ni{i}"] for i in range(n_ions)])  # (n_ions, n_r)
+        others = [i for i in range(n_ions) if i != qn_ion_index]
+        var_normni = (1.0 - (Z_all[others, None] * n_all[others, :]).sum(axis=0)) / Z_all[qn_ion_index]
+        if np.any(var_normni < 0.0) or np.any(var_normni > 1.0):
+            print(
+                f"\t- Highest-Z quasineutrality species (ion {qn_ion_index}, Z={Z_all[qn_ion_index]:.1f}) "
+                "would require an unphysical density correction at some radius; falling back to ion 0",
+                typeMsg="w",
+            )
+            qn_ion_index = 0
 
         return {
             "n_ions": n_ions,
