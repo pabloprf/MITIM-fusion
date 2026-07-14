@@ -1,7 +1,10 @@
 import numpy as np
-from mitim_tools.qualikiz_tools import QLKtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
+try:
+    from mitim_tools.qualikiz_tools import QLKtools
+except (ImportError, ModuleNotFoundError):
+    QLKtools = None
 
 class qualikiz_model:
 
