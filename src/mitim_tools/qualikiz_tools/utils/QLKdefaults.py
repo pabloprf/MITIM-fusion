@@ -1,19 +1,24 @@
 """
-Default "meta" (numerical/physics control) presets for QuaLiKiz, loaded from
-``templates/input.qualikiz.models.yaml`` -- format and resolution (labels,
-``base:`` inheritance) mirror ``templates/input.tglf.models.yaml`` and are
-resolved through the same machinery as ``GACODEdefaults.addTGLFcontrol()``.
+Default "meta" (numerical/physics control) presets for QuaLiKiz, following the
+same two-file convention as NEO/TGLF (``GACODEdefaults.addNEOcontrol`` /
+``addTGLFcontrol``):
+
+  * ``templates/input.qualikiz.controls``    -- full baseline "meta" namelist
+    (the STANDARD values), parsed like any other ``*.controls`` file via
+    ``IOtools.generateMITIMNamelist``.
+  * ``templates/input.qualikiz.models.yaml`` -- named presets ("STANDARD",
+    "MINIMAL", "FAST", "ROTATION", ...) layered as deltas on top of that
+    baseline via ``GACODEdefaults.add_code_settings`` (same ``base:``
+    inheritance machinery as ``input.tglf.models.yaml``).
 
 The "meta" block corresponds to QuaLiKiz's JSON parameters.json "meta"
 section.
 """
 
+from mitim_tools import __mitimroot__
+from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
-from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-# Passed to GACODEdefaults.resolve_preset() only so it derives the models
-# file name (input.qualikiz.controls -> input.qualikiz.models.yaml); QuaLiKiz
-# has no separate full-namelist ".controls" file of its own, unlike TGLF/NEO/CGYRO.
 _CONTROLS_FILE = "input.qualikiz.controls"
 _MODELS_FILE = "input.qualikiz.models.yaml"
 
@@ -42,28 +47,25 @@ _KTHETARHOS_STANDARD = [
 
 def addQLKcontrol(code_settings=None, minimal=False, **kwargs):
     """
-    Build the "meta" control dictionary for a QuaLiKiz run, resolved from
-    ``templates/input.qualikiz.models.yaml`` (honors ``base:`` inheritance,
-    label matched case-insensitively).
+    Build the "meta" control dictionary for a QuaLiKiz run: the baseline
+    parsed from ``templates/input.qualikiz.controls``, with the named preset
+    from ``templates/input.qualikiz.models.yaml`` layered on top (honors
+    ``base:`` inheritance, label matched case-insensitively).
 
     code_settings : None or a preset label in that file, e.g. "FAST". Falls
-                    back to "STANDARD" if None or not found.
+                    back to "STANDARD" (the bare baseline) if None.
     minimal       : if True, ignore code_settings and use the "MINIMAL" preset.
     """
 
     if minimal or code_settings == 0:
-        preset = "MINIMAL"
+        code_settings = "MINIMAL"
     elif code_settings is None:
-        preset = "STANDARD"
-    else:
-        preset = code_settings
+        code_settings = "STANDARD"
 
-    sett = GACODEdefaults.resolve_preset(preset, controls_file=_CONTROLS_FILE)
-    if not sett or "controls" not in sett:
-        print(f"\t- code_settings = {code_settings} not found in {_MODELS_FILE}, using STANDARD", typeMsg="w")
-        sett = GACODEdefaults.resolve_preset("STANDARD", controls_file=_CONTROLS_FILE)
+    options = IOtools.generateMITIMNamelist(__mitimroot__ / "templates" / _CONTROLS_FILE, caseInsensitive=False)
+    options = GACODEdefaults.add_code_settings(options, code_settings, models_file=_MODELS_FILE)
 
-    return dict(sett["controls"])
+    return options
 
 
 def default_kthetarhos():
