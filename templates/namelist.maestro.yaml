@@ -117,6 +117,11 @@ plasma:
       # later EPED beats is controlled by `maestro.refreeze_995_after_beat` (see below).
       freeze_995_from: analytic
 
+      # psi_N at which the "995" shaping (kappa995/delta995/zeta995/s_three995/s_four995) is sampled.
+      # The dict keys/labels stay named "995"; only the extraction surface moves. Default 0.995 =
+      # current behavior. Raising it toward the separatrix (e.g. 0.998) yields a higher kappa/delta.
+      shaping_extraction_psin: 0.995
+
       # If initialization_type = geqdsk or fibe: path to file
       geqdsk_file: ""
 

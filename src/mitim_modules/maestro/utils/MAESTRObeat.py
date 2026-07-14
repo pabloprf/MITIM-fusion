@@ -339,8 +339,12 @@ class initializer_from_geqdsk(beat_initializer):
         
         if self.extract_995_from is None:
             return
-        
-        f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk')
+
+        try:
+            shaping_psin = self.beat_instance.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
+        f = GEQtools.MITIMgeqdsk(self.folder / 'input.geqdsk', shaping_psin=shaping_psin)
 
         if self.extract_995_from == "analytic_interpolation":
             print('\t- Extracting 0.995 flux surface parameters from "analytic_interpolation"')
@@ -531,9 +535,15 @@ class initializer_from_separatrix(beat_initializer):
         if self.extract_995_from is None:
             return
         
+        try:
+            shaping_psin = self.beat_instance.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
         if "p" not in dir(self):
             self.p = PROFILEStools.gacode_state(self.folder / 'input.separatrix.gacode')
-        
+        # __call__ overwrites the shaping profiles after their last derive-at-0.995, so re-derive
+        # here to freeze the shaping at the chosen extraction surface (default 0.995).
+        self.p.derive_quantities(shaping_psin=shaping_psin)
         kappa995, delta995, zeta995 = self.p.derived["kappa995"], self.p.derived["delta995"], self.p.derived["zeta995"]
 
         self.beat_instance.maestro_instance.parameters_trans_beat['kappa995'] = kappa995
