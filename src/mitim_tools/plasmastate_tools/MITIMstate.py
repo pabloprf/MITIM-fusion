@@ -396,6 +396,19 @@ class mitim_state:
         self.derived["rho_s"] = PLASMAtools.rho_s(self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"])
         self.derived["rho_sa"] = self.derived["rho_s"] / self.derived["a"]
 
+        # E×B and parallel-velocity shear (TGLF VEXB_SHEAR / VPAR_SHEAR normalization, c_s/a units).
+        # Single source of truth, consumed by to_tglf: gamma_eb0 = -(dw0/dr) r/|q|; then -sign_It * a/c_s.
+        if "w0(rad/s)" in self.profiles:
+            sign_it = -np.sign(self.profiles["current(MA)"][-1])
+            w0p = self._deriv_gacode(self.profiles["w0(rad/s)"])
+            gamma_eb0 = -w0p * self.derived["r"] / np.abs(self.profiles["q(-)"])
+            gamma_p0 = -self.profiles["rmaj(m)"] * w0p
+            self.derived["gamma_exb"] = -sign_it * gamma_eb0 * self.derived["a"] / self.derived["c_s"]
+            self.derived["gamma_p"] = -sign_it * gamma_p0 * self.derived["a"] / self.derived["c_s"]
+        else:
+            self.derived["gamma_exb"] = np.zeros_like(self.derived["r"])
+            self.derived["gamma_p"] = np.zeros_like(self.derived["r"])
+
         self.derived["q_gb"], self.derived["g_gb"], self.derived["pi_gb"], self.derived["s_gb"], _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
             self.profiles["ne(10^19/m^3)"] * 1e-1,
@@ -809,6 +822,10 @@ class mitim_state:
             self.profiles["ne(10^19/m^3)"][0] * 0.1 / self.derived["ne_vol20"]
         )
 
+        self.derived["ni_peaking"] = (
+            self.profiles["ni(10^19/m^3)"][0].sum() * 0.1 / self.derived["ni_vol20"].sum()
+        )
+
         xcoord = self.derived[
             "rho_pol"
         ]  # to find the peaking at rho_pol (with square root) as in Angioni PRL 2003
@@ -817,6 +834,12 @@ class mitim_state:
             * 0.1
             / self.derived["ne_vol20"]
         )
+
+        self.derived["ni_peaking0.2"] = (
+            self.profiles["ni(10^19/m^3)"][np.argmin(np.abs(xcoord - 0.2))].sum()
+            * 0.1
+            / self.derived["ni_vol20"].sum()
+        ) 
 
         self.derived["Te_vol"] = (
             CALCtools.volume_integration(self.profiles["te(keV)"], r, volp)[-1]
@@ -898,6 +921,12 @@ class mitim_state:
             self.derived["Rgeo"],
             Zeff=2.0,
         )
+
+        # # this is the Angioni NF 2007 predicted peaking with the physics-based scaling law
+        # # TODO: currently Gstar_NBI is assumed to be zero, to calculate with sources would need to calculate Gstar
+        self.derived['ne_peaking_empirical_source_free'] = PLASMAtools.predictPeaking(nu = self.derived['nu_eff'] * 2/self.derived['Zeff_vol'], p = self.derived['pthr_manual_vol'], Bt = self.derived['B0'], Gstar_NBI = 0.0)[1]
+
+
 
         # Avg mass
         self.calculateMass()
@@ -1174,6 +1203,8 @@ class mitim_state:
     
     def calcRelativeCosts(self): 
         self.derived['Pfus_per_volume'] = self.derived['Pfus'] / self.derived['volume']
+        self.derived['Pfus_per_surface_area'] = self.derived['Pfus'] / self.derived['surf_geo'][-1]
+        
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
@@ -1200,13 +1231,15 @@ class mitim_state:
             print("|\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(self.derived["H89"], self.derived["H97L"]))
             print("|\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(self.derived["ne_peaking"], self.derived["nu_eff"]))
             print("|\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(self.derived["ne_peaking0.2"], self.derived["nu_eff2"]))
+            print("|\tnu_ni = {0:.2f}, nu_ni0.2 = {1:.2f}".format(self.derived["ni_peaking"], self.derived["ni_peaking0.2"]))
+            print("|\tnu_Angioni = {0:.2f}, nu_e,offset = {1:.2f}, nu_i,offset = {2:.2f} (source free)".format(self.derived["ne_peaking_empirical_source_free"], self.derived["ne_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"], self.derived["ni_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"]))            
             print(f"|\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(f"|\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(f"|\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
             print(f"|\tPrad  =  {self.derived['Prad']:.1f}MW ({Prad_ratio*100.0:.1f}% of total) ({Prad_ratio_brem*100.0:.1f}% brem, {Prad_ratio_line*100.0:.1f}% line, {Prad_ratio_sync*100.0:.1f}% sync)")
             print("|\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
             print("| Relative cost:")
-            print("|\tPfus_per_volume = {0:.2f} MW/m^3".format(self.derived["Pfus_per_volume"]))
+            print("|\tPfus_per_volume = {0:.2f} MW/m^3, Pfus_per_surface_area = {1:.2f} MW/m^2".format(self.derived["Pfus_per_volume"], self.derived["Pfus_per_surface_area"]))
             print("| Operational point ( [<ne>, <Te>] = [{0:.2f}, {1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("|\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
             print("|\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
@@ -2625,19 +2658,13 @@ class mitim_state:
         '''
         Rotations
         --------------------------------------------------------
-            From TGYRO/TGLF definitions
-                  w0p = expro_w0p(:)/100.0
-                  f_rot(:) = w0p(:)/w0_norm
-                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
-                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
+            E×B and parallel-velocity shear are derived once in derive_quantities
+            (self.derived['gamma_exb'] / ['gamma_p'], TGLF VEXB_SHEAR / VPAR_SHEAR normalization).
+            VPAR (parallel velocity, not a shear) stays local.
         '''
 
-        w0p         = self._deriv_gacode(self.profiles["w0(rad/s)"])
-        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
-
-        vexb_shear  = -sign_it * gamma_eb0 * self.derived["a"]/self.derived['c_s']
-        vpar_shear  = -sign_it * gamma_p0  * self.derived["a"]/self.derived['c_s']
+        vexb_shear  = self.derived["gamma_exb"]
+        vpar_shear  = self.derived["gamma_p"]
         vpar        = -sign_it * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -3356,7 +3383,7 @@ class mitim_state:
             "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
         }
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3365,7 +3392,7 @@ class mitim_state:
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin)
 
         transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth)
 

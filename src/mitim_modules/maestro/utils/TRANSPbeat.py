@@ -12,15 +12,63 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from IPython import embed
 
+
+def _extraction_index(cdf_results, extract_at):
+    """Map an `extract_at` selector to a CDF time-slice index.
+
+        'saw'  / 'saw-N'  -> cdf.ind_saw - N   (the last sawtooth, or N coarse slices before it)
+        'last' / 'last-N' -> last slice,        or N coarse slices before it
+
+    `ind_saw` is CDFtools' last-sawtooth reference (findLastSawtoothIndex). The small step-back
+    matters because MAESTRO's coarse output grid can otherwise land on the sawtoothing (crash)
+    profiles. Out-of-range selections are clamped with a warning.
+    """
+    s = str(extract_at).strip().lower()
+    if s.startswith("saw"):
+        it = cdf_results.ind_saw + int(s[3:] or 0)          # 'saw-2' -> ind_saw - 2
+    elif s.startswith("last"):
+        it = (len(cdf_results.t) - 1) + int(s[4:] or 0)     # 'last-2' -> last - 2
+    else:
+        raise ValueError(f"[MITIM] Unrecognized extract_at '{extract_at}' (use 'saw', 'saw-N', 'last' or 'last-N')")
+    nt = len(cdf_results.t)
+    if not (0 <= it < nt):
+        print(f"\t- extract_at '{extract_at}' -> slice {it} out of range for {nt} time slices; clamping", typeMsg='w')
+        it = min(max(it, 0), nt - 1)
+    return it
+
+
+def _apply_flattop_floor(cdf_results, it_extract, time_diffusion, time_end, min_flattop_fraction):
+    """Do not extract before a minimum fraction of the flattop window.
+
+    A plasma whose ONLY sawtooth fires early (then never crashes again) would otherwise be
+    sampled by 'saw'/'saw-N' before the heating and current diffusion have settled. If the
+    selected slice sits earlier than
+        time_diffusion + min_flattop_fraction * (time_end - time_diffusion)
+    it is moved forward to the first slice at/after that floor. Returns the (possibly updated)
+    index. A None fraction -- or missing timing on a skipped-prepare restart -- is a no-op.
+    """
+    if min_flattop_fraction is None or time_diffusion is None or time_end is None:
+        return it_extract
+    t_floor = time_diffusion + min_flattop_fraction * (time_end - time_diffusion)
+    if cdf_results.t[it_extract] >= t_floor:
+        return it_extract
+    it_floor = min(int(np.searchsorted(cdf_results.t, t_floor)), len(cdf_results.t) - 1)
+    print(f"\t- extraction slice t={cdf_results.t[it_extract]:.4f}s is before the flattop floor "
+          f"({min_flattop_fraction:.0%} of flattop -> t={t_floor:.4f}s; likely only an early sawtooth); "
+          f"extracting at t={cdf_results.t[it_floor]:.4f}s instead", typeMsg='w')
+    return it_floor
+
+
 class transp_beat(beat):
 
     def __init__(
         self,
         maestro_instance,
         letter              = None,
-        shot                = None, 
-        extract_last_instead_of_sawtooth = False,   # To extract last time instead of sawtooth
-        ):   
+        shot                = None,
+        extract_at          = "saw-1",              # Which CDF time slice feeds the next beat (see prepare()/finalize())
+        min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction of the flattop window (see finalize()); None disables
+        ):
 
         super().__init__(maestro_instance, beat_name = 'transp')
 
@@ -39,11 +87,37 @@ class transp_beat(beat):
         self.shot = shot
         self.runid = letter + str(self.maestro_instance.counter_current).zfill(2)
 
-        self.extract_last_instead_of_sawtooth = extract_last_instead_of_sawtooth
+        # Which CDF time slice is handed to the next beat (see finalize()); the namelist sets it
+        # via parameters_prepare.extract_at. Set here too so a warm restart (prepare() skipped)
+        # still has the value.
+        self.extract_at = extract_at
+        self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
+
+    @staticmethod
+    def _rescale_q_anchored(q, psin, q0_target):
+        '''Vertically rescale a q-profile so q(axis)=q0_target while holding q at psiN=0.95 fixed.
+
+        Pivots on (psiN=0.95, q95): q_new = q95 + (q - q95) * scale, with
+        scale = (q0_target - q95) / (q0 - q95). This is grid-agnostic (a linear map in q-value),
+        anchors q95 exactly, sends q0 -> q0_target, and scales the rest of the profile (edge included)
+        about q95. Monotonicity is preserved whenever scale > 0, which holds for a peaked core-below-edge
+        seed (q0 < q95) and a target q0_target < q95. Only meaningful for such seeds; returns the input
+        unchanged (applied=False) otherwise. Returns (q_new, info).'''
+        q = np.asarray(q, dtype=float)
+        q95 = float(np.interp(0.95, psin, q))
+        q0 = float(q[0])
+        denom = q0 - q95
+        if denom >= -1e-3:                    # not a peaked core-below-edge profile -> nothing sane to do
+            return q, {'applied': False, 'q0': q0, 'q95': q95}
+        scale = (q0_target - q95) / denom
+        if scale <= 0.0:                      # target above the anchor -> would break monotonicity
+            return q, {'applied': False, 'q0': q0, 'q95': q95, 'scale': scale}
+        return q95 + (q - q95) * scale, {'applied': True, 'q0': q0, 'q95': q95, 'scale': scale}
 
     def prepare(
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
+        min_sawtooth_period_ms = 1.0,               # Adaptive Porcelli min-period floor [ms]: sets c_sawtooth(2)=floor/PM_period so crashes are >= this far apart. None disables (raw NMLtools default). Defaults to 1 ms (~historical behavior) so old namelists are unchanged
         ensure_sawtooths    = None,                 # If not None, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
@@ -53,6 +127,9 @@ class transp_beat(beat):
         machine_initialization = 'CMOD',
         machine_initialization_match_target = False,
         mxh_coeffs_smooth_sep = None,
+        extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
+        min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
+        sanitize_q_input    = None,                 # If not None, the target on-axis q0 to rescale the INITIAL q-profile seed fed to TRANSP to (e.g. 0.95), anchored on q95 (q at psiN=0.95 held fixed). Guards a pathological over-peaked equilibrium seed (deep q0 -> q=1 surface far toward the boundary) from crashing the Kadomtsev sawtooth model at startup; current diffusion relaxes q over the flattop regardless, so only the seed needs to start benign. null (default) leaves the seed q untouched
         **transp_namelist
         ):
         '''
@@ -85,6 +162,11 @@ class transp_beat(beat):
         
         self.timeAC = self.time_end - time_before_end if extractAC else None          # Time to extract TORIC and NUBEAM files
 
+        # Which CDF time slice feeds the next beat, and an optional floor on how early we sample
+        # (see finalize()).
+        self.extract_at = extract_at
+        self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
+
         if mxh_coeffs_smooth_sep is None:
             print('\t- No MXH coefficients for smoothing separatrix provided', typeMsg='i')
             try:
@@ -95,15 +177,55 @@ class transp_beat(beat):
                 pass
         else:
             print(f'\t- Using provided MXH coefficients for smoothing separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
-        
+
+        # Optional boundary-surface backoff: extract the TRANSP boundary at a flux surface just INSIDE
+        # the separatrix (psi_N < 1) instead of the separatrix itself. A sharp / near-X-point separatrix
+        # can trip TRANSP's boundary curvature check; a surface a hair inside is rounder (higher curvature
+        # ratio) while keeping the true shape (unlike lowering n_mxh). Read from the same separatrix block
+        # as n_mxh; default 1.0 = separatrix (old behavior).
+        try:
+            boundary_surface_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('boundary_surface_psin', 1.0)
+        except (KeyError, AttributeError):
+            boundary_surface_psin = 1.0
+        if boundary_surface_psin is not None and boundary_surface_psin < 1.0:
+            print(f'\t- TRANSP boundary extracted at psi_N = {boundary_surface_psin} (backed off inside the separatrix)', typeMsg='i')
+
+        # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
+        # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's
+        # Kadomtsev sawtooth model fail on its first crash ("q=1 too close to boundary") and hard-exit
+        # before current diffusion has moved anything. Since current diffusion relaxes q to
+        # self-consistency over the whole flattop, only the seed needs to start benign: rescale it so
+        # q0 -> sanitize_q_input, anchored on q95 (edge safety factor held fixed) so the shape and edge
+        # are preserved. Applied ONLY to the TRANSP seed -- profiles_current is restored right after
+        # to_transp so the state passed downstream is untouched.
+        q_restore = None
+        if sanitize_q_input is not None:
+            psi = self.profiles_current.profiles['polflux(Wb/radian)']
+            psin = (psi - psi[0]) / (psi[-1] - psi[0])
+            q_restore = self.profiles_current.profiles['q(-)'].copy()
+            q_new, info = self._rescale_q_anchored(q_restore, psin, sanitize_q_input)
+            if info['applied']:
+                self.profiles_current.profiles['q(-)'] = q_new
+                print(f"\t- sanitize_q_input: rescaled seed q0 {info['q0']:.3f} -> {sanitize_q_input:.3f} "
+                      f"anchored on q95={info['q95']:.3f} (scale={info['scale']:.3f})", typeMsg='i')
+            else:
+                q_restore = None  # nothing changed; nothing to restore
+                print(f"\t- sanitize_q_input={sanitize_q_input}: seed q left untouched "
+                      f"(q0={info['q0']:.3f} not below q95={info['q95']:.3f} -> not an over-peaked seed)", typeMsg='w')
+
         # Initialize TRANSP object and profiles from input.gacode
         times = [self.time_transition,self.time_end+1.0]
         self.transp = self.profiles_current.to_transp(
             folder = self.folder,
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
-            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
+            boundary_surface_psin = boundary_surface_psin
             )
+
+        if q_restore is not None:
+            # Restore the pristine seed q: the rescale is a TRANSP-startup aid only, not a state change.
+            self.profiles_current.profiles['q(-)'] = q_restore
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Generic TRANSP operation
@@ -126,11 +248,25 @@ class transp_beat(beat):
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
 
-        if is_machine_fixed: 
-            # Remove antenna geometry that may have been written from GACODE 
+        if is_machine_fixed:
+            # Remove antenna geometry that may have been written from GACODE
             for var in ['rmjicha', 'rmnicha', 'thicha']:
                 del self.transp.namelist_variables[var]
-        
+
+        # Adaptive Porcelli sawtooth minimum-period floor. The Porcelli trigger only enforces a
+        # floor relative to the Park-Monticello period (z_period_min = c_sawtooth(2) x tau_PM), and
+        # tau_PM ~ R^2 Te0^1.5 / Zeff is sub-ms for compact, hot plasmas -> crashes every ~timestep
+        # and a multi-GB output CDF. Pick c_sawtooth(2) so the floor lands at min_sawtooth_period_ms
+        # for this plasma; large machines (tau_PM already above the floor) are left effectively
+        # untouched. Set None to bypass and use the raw NMLtools c_sawtooth(2) default.
+        if min_sawtooth_period_ms is not None and 'c_sawtooth_2' not in transp_namelist_mod:
+            p = self.profiles_current
+            tau_PM = PLASMAtools.park_monticello_sawtooth_period(
+                p.profiles["rmaj(m)"][0], p.profiles["te(keV)"][0], p.profiles["z_eff(-)"][0])
+            transp_namelist_mod['c_sawtooth_2'] = (min_sawtooth_period_ms * 1e-3) / tau_PM
+            print(f'\t- Sawtooth floor: min_sawtooth_period_ms={min_sawtooth_period_ms} -> '
+                  f'c_sawtooth(2)={transp_namelist_mod["c_sawtooth_2"]:.3g} (tau_PM={tau_PM*1e3:.3g} ms)', typeMsg='i')
+
         # Write namelist
         self.transp.write_namelist(**transp_namelist_mod)
 
@@ -294,11 +430,27 @@ class transp_beat(beat):
         print('\t\t- Checking TRANSP run completeness')
         cdf_results = CDFtools.transp_output(self.folder / f"{self.shot}{self.runid}.CDF")
         last_time_simulated = cdf_results.t[-1]
+        cdf_results.close()  # release the (multi-GB) CDF fd immediately; nothing below needs it
         seconds_check = 0.1
         if last_time_simulated < self.time_end - seconds_check:   
             raise RuntimeError(f"[MITIM] TRANSP run did not complete until the expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.")
         else:
             print(f'\t\t- TRANSP run completed until expected time_end = {self.time_end:.4f} s. Last time simulated was {last_time_simulated:.4f} s.')
+
+        # Release the heavy CDF handle the TRANSP wrapper cached during the run (self.transp.c, set in
+        # transp_run.run -> checkUntilFinished -> storeCDF, plus any self.transp.t.cdfs). It is held for
+        # the WHOLE MAESTRO run and fork-inherited by the downstream PORTALS workers, so the wiped CDF
+        # lingers as a multi-GB NFS silly-rename (.nfsXXXX) until the case ends -- the dominant during-run
+        # scratch hog (NOT the finalize()/completeness-check readers, which are short-lived).
+        self._release_transp_cdf_handles()
+
+    def _release_transp_cdf_handles(self):
+        tr = getattr(self, "transp", None)
+        if tr is None:
+            return
+        for obj in [getattr(tr, "c", None)] + list(getattr(getattr(tr, "t", None), "cdfs", {}).values()):
+            if obj is not None and hasattr(obj, "close"):
+                obj.close()
 
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
@@ -316,9 +468,15 @@ class transp_beat(beat):
 
         cdf_results = CDFtools.transp_output(cdf_file)
 
-        # Prepare final beat's input.gacode, extracting profiles at time_extraction
-        it_extract = cdf_results.ind_saw - 1 if not self.extract_last_instead_of_sawtooth else -1 # Since the time is coarse in MAESTRO TRANSP runs, make sure I'm not extracting with profiles sawtoothing
+        # Which CDF time slice feeds the next beat's input.gacode (grammar in _extraction_index),
+        # floored so an only-early-sawtooth plasma is not sampled before the flattop settles.
+        it_extract = _extraction_index(cdf_results, self.extract_at)
+        it_extract = _apply_flattop_floor(cdf_results, it_extract,
+                                          getattr(self, 'time_diffusion', None),
+                                          getattr(self, 'time_end', None),
+                                          self.min_extraction_flattop_fraction)
         time_extraction = cdf_results.t[it_extract]
+        print(f'\t\t- Extracting profiles at extract_at={self.extract_at} -> t={time_extraction:.4f}s (slice {it_extract} of {len(cdf_results.t)-1})', typeMsg='i')
         self.profiles_output = cdf_results.to_profiles(time_extraction=time_extraction)
 
         # Potentially force auxiliary
@@ -339,6 +497,11 @@ class transp_beat(beat):
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
         })
+
+        # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
+        # workers -- otherwise the open fd is inherited and the wiped CDF stays pinned on disk
+        # (NFS silly-rename) for the whole run. See transp_output.close().
+        cdf_results.close()
 
     def _locate_cdf(self):
         '''

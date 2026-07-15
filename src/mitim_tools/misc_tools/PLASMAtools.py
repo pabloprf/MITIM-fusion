@@ -62,6 +62,22 @@ def magneticshear(q, rmin, R0):
     return shat, Ls
 
 
+def park_monticello_sawtooth_period(R0, Te0_keV, Zeff):
+    """
+    Park-Monticello sawtooth period [s] (Park & Monticello, PPPL-2601, 1989):
+
+        tau_saw = 0.009 * R0**2 * Te0_keV**1.5 / Zeff
+
+    with R0 the magnetic-axis major radius [m], Te0_keV the central electron temperature [keV],
+    and Zeff the central effective charge. TRANSP's Porcelli sawtooth trigger uses this as the base
+    period for its minimum-period floor (which scales as c_sawtooth(2) * tau_saw), so setting
+    c_sawtooth(2) = target_period / tau_saw imposes an (approximate) absolute floor of target_period
+    on the time between crashes, while leaving large machines -- whose tau_saw already exceeds the
+    target -- effectively untouched.
+    """
+    return 0.009 * R0**2 * Te0_keV**1.5 / Zeff
+
+
 def parabolicProfile(Tbar=5, nu=2.5, rho=None, Tedge=0):
     return FunctionalForms.parabolic(Tbar=Tbar, nu=nu, rho=rho, Tedge=Tedge)
 

@@ -152,6 +152,10 @@ def run_maestro_local(
         zeta_sep    = maestro_namelist["plasma"]["parameters"]["separatrix"]["zeta_sep"]
         n_mxh       = maestro_namelist["plasma"]["parameters"]["separatrix"]["n_mxh"]
         extract_995_from = maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"]
+        if initialization_type == "separatrix" and extract_995_from is not None:
+            print(f'[MAESTRO] Warning: freeze_995_from="{extract_995_from}" parameterization is only truly applied '
+                  'for initialization_type=geqdsk. With separatrix init it is ignored: the 99.5% surface is obtained '
+                  'by interpolating the built (guessed) profiles to psiN=0.995. Only null vs non-null is honored here.', typeMsg='w')
         rz_boundary_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["rz_boundary_file"]
         internal_flux_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["internal_flux_file"]
         geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file, 'extract_995_from': extract_995_from, 'internal_flux_file': internal_flux_file}

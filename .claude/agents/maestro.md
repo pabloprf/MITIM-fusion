@@ -11,8 +11,13 @@ description: >-
   (2) "Beat 5 (PORTALS) in this run never converged, dig into it" → delegate.
   (3) "Compare the EPED pedestal between these two MAESTRO folders" → delegate.
   (4) "This MAESTRO died — figure out which beat broke and why" → delegate.
-  Read-only/diagnostic by default; it does not launch runs or long jobs.
-model: inherit
+  (5) "Is this run's lower fusion a pedestal or a core-transport effect?" → delegate.
+  (6) "Survey this parameter scan and classify why cases failed" → delegate.
+  It also does pedestal/EPED/shaping forensics (what EPED actually used vs final-state
+  geometry, peeling-vs-ballooning, EPED-NN sensitivity scans, geqdsk shaping) and
+  whole-scan surveys. Read-only/diagnostic by default; it does not launch runs or long jobs.
+model: sonnet
+effort: xhigh
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
@@ -123,8 +128,10 @@ A re-run in the same folder is idempotent: each beat skips if its output exists.
 - **TRANSP beat** output: `run_transp/*.CDF` (+ `*TR.DAT`, `*tr.log`) and a
   merged `beat_results/input.gacode` (note `input.gacode_pre_merge` shows the
   pre-merge state — useful to see what TRANSP changed vs. what was carried over).
-- **EPED beat**: `run_eped/` + `eped_results.npy`; output pedestal folded into
-  `beat_results/input.gacode`.
+- **EPED beat**: `run_eped/` + `eped_results.npy`; `beat_results/eped.input` (the EXACT
+  EPED engineering inputs); output pedestal folded into `beat_results/input.gacode`. See
+  "Pedestal / EPED / shaping forensics" — the 99.5% shaping EPED *used* is NOT the
+  `delta995` you derive from the final/beat `input.gacode`.
 - Other beats: `run_confinement/`, `run_lengyel/`, `run_sharpness/` + their logs and
   `beat_results/input.gacode`.
 
@@ -149,6 +156,18 @@ deep dives only where the runs actually diverge.
    engineering setup* matches (if it doesn't, that explains a lot by itself).
    If `maestro.namelist.actual.yaml` is absent (older run), reconstruct intent
    from `beat_*_prep.log`.
+   - **Map old↔new namelist formats before flagging a diff.** Pre-v5 runs carry
+     a JSON namelist (`namelist.json`: `MODELparameters`/`PORTALSparameters`,
+     `TGLFsettings` as an int, `RoaLocations`, `mix:{ZW,fW}`) instead of the yaml
+     (`code_settings` as a str, `predicted_roa`, `plasma.species.mix`). Many
+     "differences" between an old and a new run are pure format/version, not
+     physics. Notably **`TGLFsettings: 100` is the SAME preset as
+     `code_settings: SAT2astra`** — resolve such aliases in
+     `templates/input.tglf.models.yaml` (each preset's `deprecated_descriptor`
+     is its old integer) before calling it a transport-model change. Likewise a
+     different `geqdsk_file` name/date does NOT imply different geometry:
+     **compare R/a/kappa/delta/volume in the two final states** first — distinct
+     geqdsk inputs can converge to the same shaping and volume.
 
 3. **Map the chains.** List `Beats/Beat_*/run_*` for each run. The beat
    *sequences* can differ (length, types, order). Align them before comparing
@@ -162,6 +181,20 @@ deep dives only where the runs actually diverge.
    `ptot_manual_vol`. Find the *first* beat where the runs diverge — that's
    usually where the explanation lives; everything after it is downstream of
    that.
+   - **Under-convergence masquerades as a worse operating point.** When two runs
+     share the setup but differ in *chain length* (number of EPED↔PORTALS
+     self-consistency cycles), the final-state diff alone is misleading — they
+     may not diverge at a *beat* at all; one simply stopped iterating sooner. The
+     pedestal↔core loop typically **starts high, decays for a few cycles,
+     overshoots, then recovers into a tight limit cycle** around the
+     self-consistent fixed point. A run with too few cycles freezes **mid-decay
+     on the downslope**, below where a longer run transiently dips before
+     climbing back — so it reads as "lower-performance" when it is merely
+     under-converged. So before blaming physics, inspect the *last few* PORTALS
+     beats of EACH run (Q/BetaN/Pfus per beat): still-monotonic decay with a
+     large cycle-to-cycle ΔQ ⇒ NOT converged; small oscillation (e.g. ΔQ ≲ 1
+     about a mean) ⇒ converged limit cycle. The fix is to extend the short run's
+     chain, not to call it a worse design point.
 
 5. **Drill the diverging beat.**
    - PORTALS beat → `PORTALSanalysis.PORTALSanalyzer.from_folder(run_portals)`;
@@ -188,6 +221,128 @@ deep dives only where the runs actually diverge.
 
 Always converge on: **the first point of divergence, the file that proves it,
 and the magnitude (with units).**
+
+---
+
+## Pedestal / EPED / shaping forensics
+
+The pedestal is the most common driver of MAESTRO performance differences: it sets the
+boundary condition that **stiff** core transport multiplies inward (PORTALS flux-matches to
+~invariant `a/LT`, so at matched density the core T scales with the pedestal).
+
+- **The 99.5% shaping (kappa995/delta995) is a first-order performance lever — establish where AND
+  when it comes from.** It sets the EPED pedestal, so via stiff core transport a ~0.1 shift in
+  kappa995/delta995 moves Pfus/Q by tens of percent. **Where** (initializer): geqdsk-init reads it
+  from the geqdsk equilibrium (method-dependent — see `freeze_995_from` below, ~0.1 spread across
+  methods); separatrix/miller-init KEEPS the analytic Miller/MXH shaping it was given
+  (`separatrix_to_equilibrium`→`equilibrium_to_profiles`) — it runs freegs only to make the 1-D
+  profiles self-consistent, then OVERWRITES kappa/delta/zeta+MXH coeffs back to the analytic values
+  (`MAESTRObeat.py:509-518`, "copy all but the shapings"). So the `freegs.geqdsk.helper` it saves
+  has its SHAPING DISCARDED — its boundary shows an X-point that is NOT the shape used; reconstruct
+  the real smooth-MXH boundary from the state's MXH moments via `gacode_state.derive_geometry()` →
+  `derived['R_surface'][0,-1,:]` (LCFS) / at `argmin|psi_pol_n-0.995|` (99.5%). The analytic
+  near-edge shaping barely tapers from the separatrix (near-separatrix, often-optimistic;
+  frequently pinned via `corrections_set`). **When** (`maestro.refreeze_995_after_beat`): `0`
+  (default) freezes the init value for the whole run; `N>0` re-extracts it once from beat N's
+  evolved, solved equilibrium (replacing a near-separatrix init guess with a self-consistent value);
+  `null` recomputes it every EPED beat. Establish initializer, method, AND freeze-timing before
+  trusting a pedestal-driven performance number.
+
+Two more non-obvious rules that will burn you if ignored:
+
+- **What EPED ACTUALLY used ≠ the final-state geometry.** The 99.5% shaping (kappa995,
+  delta995) the EPED beat was *fed* is NOT the `delta995` you derive from the final/beat
+  `input.gacode` (that is the OUTPUT equilibrium geometry, which drifts — a lot for
+  separatrix/miller-init runs). Read what EPED truly consumed from:
+  - `Beats/Beat_<N>/beat_results/eped.input` — Fortran `&eped_input` namelist with the exact
+    inputs: `a, r, ip, bt, kappa, delta, neped, nesep, betan, zeffped, tesep` (`kappa`/`delta`
+    here ARE kappa995/delta995). Frozen across iterations within a run; `betan` evolves.
+  - prep log `- Using previous kappa995/delta995: ...` (authoritative source for the analytic
+    value MAESTRO computed) and run log `- kappa995: ... / - delta995: ...` (what EPED ran).
+  - REFREEZE caveat: `refreeze_995_after_beat=N` stores `derived['kappa995']` — a plain
+    `np.interp(0.995, psi_pol_n, kappa(-))` (`PROFILEStools:271`) from beat N's TRANSP state — which
+    can differ from the `analytic_interpolation` value EPED actually consumes in `eped.input`
+    (matched to ~3 dp usually; ~0.006 gap seen on a squared boundary). `eped.input` is ground truth.
+- **How the 99.5% is set** — `maestro.<eped-beat>.parameters_prepare`:
+  - `freeze_995_from: analytic_interpolation` (default) derives the 99.5% from the frozen
+    equilibrium by analytic interpolation. This is the *most optimistic* fit — an MXH fit of the
+    same surface gives a noticeably lower delta995.
+  - `corrections_set: {kappa995, delta995}` OVERRIDES it (pins the EPED 99.5%). Common on
+    separatrix/miller-init runs: a freegs-millerized equilibrium barely loses triangularity from
+    separatrix→99.5% (an unphysically near-separatrix delta995), so it's pinned to a realistic
+    (geqdsk) value. ⇒ geqdsk-init and miller-init generally feed EPED *different* 99.5% shaping;
+    always check which.
+- **`run_eped/eped_results.npy`** (`np.load(p, allow_pickle=True).item()`): the EPED OUTPUT —
+  `ptop_kPa` (ground-truth pedestal-top pressure), `wtop_psipol`, `Tetop_keV`, `netop_20`,
+  `neped_20`, `nesep_20`, `rhotop`, **`limiting_mode` ('peeling'/'ballooning' — answers "did the
+  pedestal go ballooning?")**, `inputs_to_eped`, `scan_results`. This peeling/ballooning
+  pedestal-stability constraint is available directly in the EPED output — read it, don't recompute
+  it. In practice 'ballooning' concentrates in the high-density collapse corner (suppressed ptop),
+  so it often flags a near-collapse operating point rather than a healthy one.
+- **Read the geqdsk shaping directly** when you need separatrix-vs-99.5% truth:
+  ```python
+  from mitim_tools.gs_tools.GEQtools import MITIMgeqdsk
+  g = MITIMgeqdsk(path); g.derive()
+  g.kappa, g.delta, g.zeta                                  # analytic separatrix (LCFS)
+  g.geometric_parameters["analytic_interpolation"]["psin995"]["kappa"/"delta"]  # 99.5% (freeze uses this)
+  # methods also: "analytic","mxh","turnbull","miller","actual" — delta995 is METHOD-DEPENDENT (~0.1 spread)
+  ```
+  A separatrix/miller-init run saves its built equilibrium at
+  `Beats/Beat_1/initializer_separatrix/freegs.geqdsk.helper` (but a standalone recompute of its
+  995 may not match MAESTRO's internal pathway — trust eped.input / "Using previous").
+- **EPED-NN as a sensitivity probe** (when the EPED beat config provides `nn_location` +
+  `norm_location`):
+  ```python
+  from mitim_tools.surrogate_tools.NNtools import eped_nn
+  nn = eped_nn(type="tf"); nn.load(nn_location, norm=norm_location)
+  ptop_kPa, width = nn(Ip, Bt, R, a, kappa995, delta995, neped, betan, zeff, tesep, nesep_ratio)
+  ```
+  Seed it with a run's actual eped.input values, then morph ONE knob at a time toward another
+  run's value to ATTRIBUTE a pedestal gap (e.g. how much of Δp_ped is Bt vs shaping vs density).
+  The norm file lists trained input ranges (`nn.ranges`) — **stay inside them**; out-of-range
+  inputs are unreliable and can show spurious rollovers (note when a comparison case is outside).
+- **Density rollover:** EPED p_ped rises with neped then ROLLS OVER (declines) past a critical
+  density — that *is* the high-fGped collapse (pedestal→core→Pfus all fall; `Te,ped = p_ped/2neped`
+  craters on the far side). The rollover moves to LOWER neped as the separatrix-density ratio
+  `nsep/nped` rises. An EPED-NN neped scan at the operating point locates it.
+- **"Is it pedestal or core?"** Overlay the profiles: if the normalized core gradients (`aLTe`,
+  `aLTi[:,0]`, `aLne`) OVERLAP while Te/Ti/ptot and the pedestal shift together, the core is just
+  following the pedestal (boundary effect). If `a/LT` themselves differ, it's core transport.
+
+---
+
+## Scan / campaign analysis
+
+For a parameter scan (many runs under one parent) rather than a 2-run diff:
+
+- **Survey**: glob `*/Outputs/input.gacode_final`, load each with `gacode_state` +
+  `derive_quantities()`, pull scalars into a DataFrame/CSV (one row per run), parse the scan knobs
+  from the run-folder name. Seed is usually the only *stochastic* axis — put the deliberate inputs
+  (density, nsep ratio, shaping) on x/colour and let seed be the spread, not a pooled violin.
+- **Seeds at one operating point can diverge** (sometimes 1.5–2×, occasionally to collapse), often
+  starting in the **early PORTALS beats**. Suspected contributors — the **Ricci convergence
+  metric**, **TGLF discontinuities**, and possibly a **duality of solutions** — are still **under
+  investigation**, so treat a large seed spread as run-to-run sensitivity to be characterized, not a
+  settled result.
+- **Failure classification** = SLURM state + log text:
+  - status via `mitim_check_maestro` / `sacct` → TIMEOUT vs FAILED vs CANCELLED.
+  - "produced no output files" / "failed to return valid results" in an EPED beat log → EPED found
+    no valid pedestal — usually density-collapse (check `BetaN_engineering` against the EPED
+    validity window ≈ [1.36, 2.04]) or out-of-window beta.
+  - "TRANSP stopped" + `Segmentation fault` / `mlx5` in `run_transp/*.log` → transient MPI/IB crash
+    (infra, not physics).
+  - "TRANSP aborted … 'curvature ratio too small'" / PRGCHK / EQBDY_CHECK in beat_1 → fixed-boundary
+    curvature abort from an over-squared / negative-squareness (`zeta_sep`<0) or over-peaked
+    boundary. Dimensionless/shape-driven, so it hits ALL machines/sizes identically (not a size
+    effect). Upstream tell: "Geometric factors calculation failed … very extreme shaping" at r/a≈1
+    in `beat_1_ini.log`. Mitigations (features — PROPOSE, don't apply):
+    `separatrix.boundary_surface_psin`<1.0 backs the TRANSP boundary off to a rounder interior
+    surface (diminishing returns — 1.0→0.998 moved curvature only 0.015→0.017 for zeta=-0.33; ~0.995
+    is the practical floor before the 99.5% refreeze extraction degrades), and `sanitize_q_input`
+    rescales an over-peaked q-seed.
+  - highest `Beats/Beat_*` reached + that beat's log = where/why it died.
+- **Matched comparison across different machines**: control for density — pick runs with the same
+  volume-averaged `ne_vol20` (not the same nominal knob); absolute Pfus scales ~ n².
 
 ---
 
@@ -223,6 +378,15 @@ for k in ["Q","Pfus","BetaN_engineering","fG","tauE","H98","q95"]:
     print(f"{k:24s}  A={pA.derived[k]:.4g}  B={pB.derived[k]:.4g}  Δ={pB.derived[k]-pA.derived[k]:+.4g}")
 ```
 (`p.printInfo(label=...)` dumps the full annotated scalar summary for one state.)
+
+**Useful derived keys & gotchas:** scalars `ne_vol20, Te_vol, Ti_vol, BetaN, BetaN_engineering,
+Pfus, Q, Wthr, Prad, Psol, H98, fG, q95, kappa95/995, delta95/995, ne_peaking0.2, pthr_manual_vol,
+ptot_manual_vol, eps, Rgeo, a, B0, volp_geo`; gradients `aLTe, aLne`, and **2-D** `aLTi` & profile
+`ti(keV)` (index `[:,0]` for main ions). Profiles: `rho(-), te(keV), ne(10^19/m^3), ptot(Pa),
+kappa(-), delta(-), q(-), current(MA), qfuse/qfusi(MW/m^3)`. Plasma volume =
+`Wthr/(1.5*pthr_manual_vol)` or `∫ volp_geo dρ`. Quick physics checks: beta-limited pressure
+`<p> ∝ BetaN_eng·Ip·B/a`; `Pfus ∝ n²·<σv(Ti)>·V` (Bosch-Hale DT reactivity, valid 0.2–100 keV).
+numpy ≥2.0: `np.trapz` → `np.trapezoid`. Always `matplotlib.use("Agg")` before importing pyplot.
 
 **The cross-beat "special" evolution** (BetaN/Pfus/Q/fG/q/tauE/H vs beat) is
 `MAESTROplot.plot_special_quantities(ps, ps_lab, axs)` — call it per run onto a
