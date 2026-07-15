@@ -1,6 +1,8 @@
 #### this requires you to have CFSPOPCON in your environment, if you have Lengyel installed this requirement is satisfied 
 
 
+from logging import warning
+
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
@@ -9,6 +11,8 @@ import cfspopcon
 from cfspopcon import named_options
 from cfspopcon.algorithm_class import Algorithm, CompositeAlgorithm
 from cfspopcon.unit_handling import Quantity, magnitude_in_units, ureg
+
+from IPython import embed
 
 
 class Machine:
@@ -21,32 +25,61 @@ class Machine:
         p.areal_elongation       = Quantity(kappa, ureg.dimensionless)
         p.plasma_current         = Quantity(Ip, ureg.MA)
 
-def calc_cs_flux(p, 
-            assumed_VV_thickness = 1.0, # meters, 
+def calc_cs_flux(R, 
+            a, 
+            cs_change_in_field,
+            inboard_to_CS_distance = 2.0 * ureg.meters, 
             double_flux_swing = False): 
-    ''' assumed_VV_thickness includes the VV, blanket, and TF on the inboard side (everything between the inboard plasma edge and the CS)'''
-    R_cs = p.derived['Rgeo'] - p.derived['a'] - assumed_VV_thickness
+    ''' inboard_to_CS_distance includes the VV, blanket, and TF on the inboard side (everything between the inboard plasma edge and the CS)'''
+    if inboard_to_CS_distance.units != ureg.meters:
+        raise ValueError(f"inboard_to_CS_distance must be in meters ( * ureg.meters), got {inboard_to_CS_distance.units}")
+    if cs_change_in_field.units != ureg.T:
+        raise ValueError(f"cs_change_in_field must be in tesla ( * ureg.T), got {cs_change_in_field.units}")
+
+    R_cs = R - a - inboard_to_CS_distance
+
     if double_flux_swing:
-        return 2 * (np.pi * R_cs**2 * p.derived['B0']) * ureg.Wb
+        return 2 * (np.pi * R_cs**2 * cs_change_in_field) 
     else:
-        return np.pi * R_cs**2 * p.derived['B0'] * ureg.Wb
+        return np.pi * R_cs**2 * cs_change_in_field 
 
 
 
 
 def calc_flattop_time(p, 
+                      overwrite_flux = None, #input unitless for ease and then convert to ureg.Wb in the function
+                      cs_change_in_field = None, #input unitless for ease and then convert to ureg.T in the function
+                      inboard_to_CS_distance = None, #input unitless for ease and then convert to ureg.meters in the function
                       ejima_coefficient = 0.6, 
-                      assumed_VV_thickness = 1.0, # meters
                       double_flux_swing = False): 
+    if cs_change_in_field is not None:
+        if type(cs_change_in_field) is not Quantity:
+            cs_change_in_field = cs_change_in_field * ureg.T
+        elif cs_change_in_field.units != ureg.T:
+            cs_change_in_field = cs_change_in_field.to(ureg.T)
+    if overwrite_flux is not None: 
+        if type(overwrite_flux) is not Quantity:
+            overwrite_flux = overwrite_flux * ureg.Wb
+        elif overwrite_flux.units != ureg.Wb:
+            overwrite_flux = overwrite_flux.to(ureg.Wb)
+    if inboard_to_CS_distance is not None: 
+        if type(inboard_to_CS_distance) is not Quantity:
+            inboard_to_CS_distance = inboard_to_CS_distance * ureg.meters
+        elif inboard_to_CS_distance.units != ureg.meters:
+            inboard_to_CS_distance = inboard_to_CS_distance.to(ureg.meters)
+    
+    if (cs_change_in_field is None or inboard_to_CS_distance is None) and overwrite_flux is None:
+        raise ValueError("Either cs_change_in_field and inboard_to_CS_distance must be provided, or overwrite_flux must be provided. If overwrite_flux is provided, the other two parameters will be ignored.")
+
+    irho_95 = np.argmin(np.abs(p.profiles['rho(-)'] - 0.95))
 
     machine = Machine(B0 = p.derived['B0'],
                        R0 = p.derived['Rgeo'],
                        a = p.derived['a'], 
-                       delta = p.profiles['delta(-)'][-1], 
-                       kappa = p.profiles['kappa(-)'][-1],
-                       Ip = float(p.profiles['current(MA)'][0])
+                       delta = p.profiles['delta(-)'][irho_95], # 95% flux surface triangularity
+                       kappa = p.profiles['kappa(-)'][-1], # areal elongation, equivalent to separatrix
+                       Ip = float(p.profiles['current(MA)'][0]),
     ) 
-
     algorithms = [
     "calc_minor_radius_from_inverse_aspect_ratio",
     "calc_plasma_poloidal_circumference",
@@ -89,6 +122,13 @@ def calc_flattop_time(p,
 
     calc_flux_and_inductance_dependencies = CompositeAlgorithm(algs)
 
+    if overwrite_flux is not None:
+        total_flux_available_from_CS = overwrite_flux
+        warning(f"Overwriting total flux available from CS with {overwrite_flux:.2f} Wb. The cs_change_in_field and inboard_to_CS_distance parameters will be ignored.")
+    else:
+        if cs_change_in_field is None or inboard_to_CS_distance is None:
+            raise ValueError("Either cs_change_in_field and inboard_to_CS_distance must be provided, or overwrite_flux must be provided. If overwrite_flux is provided, the other two parameters will be ignored.")
+        total_flux_available_from_CS = calc_cs_flux(R=machine.major_radius, a=machine.minor_radius, cs_change_in_field=cs_change_in_field, inboard_to_CS_distance=inboard_to_CS_distance, double_flux_swing=double_flux_swing)
 
     dataset = calc_flux_and_inductance_dependencies.run(
         major_radius = machine.major_radius,
@@ -102,7 +142,7 @@ def calc_flattop_time(p,
         average_electron_temp = p.derived["Te_vol"] * ureg.keV, 
         ion_to_electron_temp_ratio = p.derived["tite_vol"],
         surface_inductance_coefficients = named_options.SurfaceInductanceCoeffs.Barr,
-        total_flux_available_from_CS = calc_cs_flux(p, assumed_VV_thickness = assumed_VV_thickness, double_flux_swing = double_flux_swing),
+        total_flux_available_from_CS = total_flux_available_from_CS,
         ejima_coefficient = ejima_coefficient,
         z_effective = p.derived["Zeff_vol"],
         electron_density_peaking_offset = p.derived["ne_peaking0.2"] - p.derived["ne_peaking_empirical_source_free"],
@@ -131,7 +171,7 @@ def calc_flattop_time(p,
         f"Poloidal field flux = {dataset['poloidal_field_flux'].data.to(ureg.Wb):.2f}",
         f"Flux needed from CS over rampup = Total flux for ramp up - Poloidal field flux = {dataset['flux_needed_from_CS_over_rampup'].data.to(ureg.Wb):.2f}",
         "-------------------------------------------------------------------------------------",
-        f"Total flux available from CS = {calc_cs_flux(p, assumed_VV_thickness=assumed_VV_thickness, double_flux_swing=double_flux_swing):.2f} Wb",
+        f"Total flux available from CS = {total_flux_available_from_CS:.2f} Wb",
         f"Max flux for flattop = Total flux available from CS - Flux needed from CS over rampup = {dataset['max_flux_for_flattop'].data.to(ureg.Wb):.2f}",
         "-------------------------------------------------------------------------------------",
         f"Spitzer resistivity = {dataset['spitzer_resistivity'].data.to(ureg.ohm * ureg.m):.2e}",
