@@ -173,7 +173,7 @@ mitim_run_portals myrun --batch          # non-interactive (CI / SLURM)
 mitim_run_portals myrun --no-log-file    # don't redirect stdout to Outputs/optimization_log.txt
 ```
 
-Programmatic (`tests/capability_tests/portals_01_standard.py` is the canonical example):
+Programmatic (`tests/capability_tests/portals_01_tglf_standard.py` is the canonical example):
 
 ```python
 from mitim_modules.portals import PORTALSmain

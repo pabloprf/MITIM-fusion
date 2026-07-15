@@ -249,7 +249,7 @@ transport:
 
       # Kwargs forwarded verbatim as **run_kwargs to QuaLiKiz.run().
       run:
-        # QLKdefaults preset: null (STANDARD), "STANDARD", "FAST", or "ROTATION".
+        # QLKdefaults preset: null (STANDARD), "STANDARD", "FAST", "MINIMAL" or "ROTATION".
         code_settings: "STANDARD"
         extraOptions: {}
         multipliers: {}

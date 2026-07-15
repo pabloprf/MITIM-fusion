@@ -44,7 +44,7 @@ so the two flux matches finish quickly. They are enough to see the direction of
 the effect but are NOT converged physics — do not read the numbers as results.
 
 *** REQUIREMENTS ***: subprocess TGLF/NEO/profiles_gen(-vgen) configured in
-config_user.json (same dependencies as portals_01_standard.py). Execution is
+config_user.json (same dependencies as portals_01_tglf_standard.py). Execution is
 NOT in-process here, so every TGLF/NEO/VGEN call leaves its run tree on disk
 under <run>/Execution/Evaluation.<i>/transport_simulation_folder/ for later
 inspection.
