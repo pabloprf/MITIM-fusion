@@ -378,8 +378,12 @@ class maestro:
         if not (isinstance(target, int) and not isinstance(target, bool) and target > 0 and self.counter_current == target):
             return
 
+        try:
+            shaping_psin = self.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
         p = PROFILEStools.gacode_state(self.beat.folder_output / 'input.gacode')
-        p.derive_quantities()
+        p.derive_quantities(shaping_psin=shaping_psin)
         for key in ('kappa995', 'delta995', 'zeta995'):
             if key in p.derived:
                 self.parameters_trans_beat[key] = float(p.derived[key])

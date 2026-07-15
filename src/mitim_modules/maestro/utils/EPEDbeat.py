@@ -277,6 +277,11 @@ class eped_beat(beat):
         neped_20 = self.neped_20
 
 
+        try:
+            shaping_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
+        self.profiles_current.derive_quantities(shaping_psin=shaping_psin)   # honor extraction-location knob (null-freeze path)
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
         if (self.toq_eq_choice == 'full_turnbull_miller' or self.toq_eq_choice == 'mxh'): 
@@ -866,7 +871,11 @@ class eped_beat(beat):
             if gacode_file.exists():
                 try:
                     p = PROFILEStools.gacode_state(gacode_file)
-                    p.derive_quantities()
+                    try:
+                        shaping_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+                    except (KeyError, AttributeError):
+                        shaping_psin = 0.995
+                    p.derive_quantities(shaping_psin=shaping_psin)
                     inputs['Ip']       = abs(float(p.profiles['current(MA)'][0]))
                     inputs['Bt']       = abs(float(p.profiles['bcentr(T)'][0]))
                     inputs['R']        = abs(float(p.profiles['rcentr(m)'][0]))

@@ -1,0 +1,27 @@
+#-------------------------------------------------------------------------
+# Template input.qualikiz file (controls-only)
+#-------------------------------------------------------------------------
+# Baseline "meta" (numerical/physics control) block, corresponding to
+# QuaLiKiz's JSON parameters.json "meta" section (STANDARD values). Named
+# presets layered as deltas on top of this baseline live in
+# input.qualikiz.models.yaml (e.g. "MINIMAL", "FAST", "ROTATION").
+
+# Physics
+phys_meth=2           # 0: no saturation rule / 1: quasilinear / 2: full ITG+TEM+ETG fluxes
+coll_flag=1           # 1: include pitch-angle collisions
+rot_flag=0            # 0/1/2: rotation treatment (0: none, 2: full, see recalc_rot_var in QLKtools)
+separateflux=1        # 1: output ITG/TEM/ETG fluxes separated by mode
+
+# Numerics
+verbose=0             # 0: quiet stdout from the QuaLiKiz binary
+numsols=3             # Number of requested eigenvalue solutions per (kthetarhos, radius)
+relacc1=1.0e-3        # Relative accuracy, integration over ky/eigenvalue solver
+relacc2=1.0e-2        # Relative accuracy, QL flux integration
+maxruns=1             # Number of Newton solver restarts allowed
+maxpts=1.0e6          # Maximum number of integrand evaluations
+timeout=60            # Wall-clock timeout (seconds) per point
+integration_routine=1 # 1: baseline QuaLiKiz quadrature routine
+
+# Multipliers
+ETGmult=1             # ETG flux multiplier
+collmult=1            # Collisionality multiplier

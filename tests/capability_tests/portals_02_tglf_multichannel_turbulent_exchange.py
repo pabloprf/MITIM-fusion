@@ -1,8 +1,8 @@
 """
-CAPABILITY: PORTALS predicting te, ti, ne, nZ and w0 with turbulent exchange
-----------------------------------------------------------------------------
+CAPABILITY: PORTALS with TGLF predicting te, ti, ne, nZ and w0 with turbulent exchange
+--------------------------------------------------------------------------------------
 This script teaches how to run PORTALS beyond the standard temperature
-prediction (see portals_01_standard.py first): predicting also the electron
+prediction (see portals_01_tglf_standard.py first): predicting also the electron
 density, the density of a trace impurity and the rotation, and treating the
 turbulent energy exchange as an additional surrogate.
 
@@ -49,7 +49,7 @@ if cold_start and folderWork.exists():
 
 portals_fun = PORTALSmain.portals(folderWork)
 
-# --- Optimization controls (see portals_01_standard.py) ------------------------------------------------------------------
+# --- Optimization controls (see portals_01_tglf_standard.py) ------------------------------------------------------------------
 portals_fun.optimization_options["initialization_options"]["initial_training"] = 5
 portals_fun.optimization_options["convergence_options"]["maximum_iterations"] = 2
 
@@ -66,7 +66,7 @@ portals_fun.portals_parameters["solution"]["trace_impurity"] = "N"
 # Fit the turbulent energy exchange as an extra surrogate (see docstring)
 portals_fun.portals_parameters["solution"]["turbulent_exchange_as_surrogate"] = True
 
-# --- Transport models (see portals_01_standard.py for the settings hierarchy) --------------------------------------------
+# --- Transport models (see portals_01_tglf_standard.py for the settings hierarchy) --------------------------------------------
 portals_fun.portals_parameters["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
 
 # ---------------------------------------------------------------------------------------------------------------------
