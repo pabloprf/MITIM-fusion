@@ -207,6 +207,10 @@ class transp_nml:
         self.c_sawtooth_2 = transp_params.get("c_sawtooth_2",0.1)
         self.predictRad = transp_params.get("predictRad",True)
         self.useBootstrapSmooth = transp_params.get("useBootstrapSmooth",None)
+        # Bootstrap current model: 'hager' (historical default; Sauter modified at
+        # high collisionality), 'sauter', 'nclass' or 'neo'. Ignored if
+        # useBootstrapSmooth is set (that forces the smoothed-NCLASS branch).
+        self.bootstrap_model = transp_params.get("bootstrap_model","hager")
 
         # -----------------------------------------------------------------------------------
         # Default values: Predictive
@@ -715,12 +719,20 @@ class transp_nml:
         self.contents += "\n".join(lines) + "\n"
 
         if self.useBootstrapSmooth is None:
+            model = self.bootstrap_model.lower()
+            flag_of = {"nclass": "nlbootw", "sauter": "nlboot_sau",
+                       "hager": "nlboothager", "neo": "nlbootneo"}
+            if model not in flag_of:
+                raise ValueError(f"[MITIM] bootstrap_model = {self.bootstrap_model} not "
+                                 f"recognized (options: {list(flag_of)})")
+            tf = {flag: ("T" if flag == flag_of[model] else "F")
+                  for flag in flag_of.values()}
             lines = [
                 "",
-                "nlbootw     = F    ! Use NCLASS bootstrap current",
-                "nlboot_sau  = F    ! Use Sauter bootstrap current",
-                "nlboothager = T    ! Use Hager bootstrap current (modification to Sauter)",
-                "nlbootneo   = F    ! Use NEO bootstrap current",
+                f"nlbootw     = {tf['nlbootw']}    ! Use NCLASS bootstrap current",
+                f"nlboot_sau  = {tf['nlboot_sau']}    ! Use Sauter bootstrap current",
+                f"nlboothager = {tf['nlboothager']}    ! Use Hager bootstrap current (modification to Sauter)",
+                f"nlbootneo   = {tf['nlbootneo']}    ! Use NEO bootstrap current",
                 "",
                 "xbstrap     = 1.0   ! Anomaly factor",
                 "!xl1ncjbs   = 0.3   ! Do not trust inside this r/a (extrapolate to 0)",

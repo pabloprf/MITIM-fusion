@@ -125,6 +125,7 @@ class transp_beat(beat):
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
         min_sawtooth_period_ms = 1.0,               # Adaptive Porcelli min-period floor [ms]: sets c_sawtooth(2)=floor/PM_period so crashes are >= this far apart. None disables (raw NMLtools default). Defaults to 1 ms (~historical behavior) so old namelists are unchanged
+        sawteeth            = True,                 # False -> NO sawtooth crashes: t_sawtooth_on is parked beyond time_end (nlsaw stays T, the trigger just never arms). For clean current-diffusion-only studies/benchmarks; pair with extract_at='last'
         ensure_sawtooths    = None,                 # If not None, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
         freq_ICH            = None,                 # Frequency of ICRF heating (if None, find optimal)
         extractAC           = False,                # To extract AC quantities
@@ -294,6 +295,8 @@ class transp_beat(beat):
                 "time_current_diffusion": self.time_diffusion,
                 "time_end": self.time_end,
                 "time_extraction": self.timeAC,
+                # sawteeth=False parks t_sawtooth_on far beyond the simulation
+                "time_sawtooth": self.time_diffusion if sawteeth else self.time_end + 1000.0,
             }
 
         if 'Ufiles' in transp_namelist_mod:
