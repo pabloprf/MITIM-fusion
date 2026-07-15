@@ -59,6 +59,8 @@ class EPED:
             nproc_per_run = 64,
             minutes_slurm = 30,
             cold_start = False,
+            forceifcold_start = False,  # If True, when cold_start=True and an output already exists, warn ('w') and
+                                        # rerun from scratch instead of asking ('q'). For non-interactive callers.
             job_array_limit = 5,
             removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
             eped_params_override = None,
@@ -146,7 +148,15 @@ class EPED:
             force_res = False
             if (self.folder_run / f'output_{subfolder}.nc').exists():
                 if cold_start:
-                    res = print(f'\t> Run {subfolder} already exists but cold_start is set to True. Running from scratch.', typeMsg='i' if force_res else 'q')
+                    if forceifcold_start:
+                        # Non-interactive callers (e.g. MAESTRO, especially a preempted+requeued run
+                        # re-running a cold_start beat/creator on top of a leftover output) cannot
+                        # answer a prompt: warn and rerun from scratch, since cold_start=True already
+                        # means "run fresh". Avoids an InteractiveTerminalError killing the run.
+                        print(f'\t> Run {subfolder} already exists but cold_start is set to True: removing and running from scratch (forceifcold_start).', typeMsg='w')
+                        res = True
+                    else:
+                        res = print(f'\t> Run {subfolder} already exists but cold_start is set to True. Running from scratch?', typeMsg='q')
                     if res:
                         IOtools.shutil_rmtree(folder_case)
                         (self.folder_run / f'output_{subfolder}.nc').unlink(missing_ok=True)

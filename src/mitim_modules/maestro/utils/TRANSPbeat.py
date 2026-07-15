@@ -93,6 +93,27 @@ class transp_beat(beat):
         self.extract_at = extract_at
         self.min_extraction_flattop_fraction = min_extraction_flattop_fraction
 
+    @staticmethod
+    def _rescale_q_anchored(q, psin, q0_target):
+        '''Vertically rescale a q-profile so q(axis)=q0_target while holding q at psiN=0.95 fixed.
+
+        Pivots on (psiN=0.95, q95): q_new = q95 + (q - q95) * scale, with
+        scale = (q0_target - q95) / (q0 - q95). This is grid-agnostic (a linear map in q-value),
+        anchors q95 exactly, sends q0 -> q0_target, and scales the rest of the profile (edge included)
+        about q95. Monotonicity is preserved whenever scale > 0, which holds for a peaked core-below-edge
+        seed (q0 < q95) and a target q0_target < q95. Only meaningful for such seeds; returns the input
+        unchanged (applied=False) otherwise. Returns (q_new, info).'''
+        q = np.asarray(q, dtype=float)
+        q95 = float(np.interp(0.95, psin, q))
+        q0 = float(q[0])
+        denom = q0 - q95
+        if denom >= -1e-3:                    # not a peaked core-below-edge profile -> nothing sane to do
+            return q, {'applied': False, 'q0': q0, 'q95': q95}
+        scale = (q0_target - q95) / denom
+        if scale <= 0.0:                      # target above the anchor -> would break monotonicity
+            return q, {'applied': False, 'q0': q0, 'q95': q95, 'scale': scale}
+        return q95 + (q - q95) * scale, {'applied': True, 'q0': q0, 'q95': q95, 'scale': scale}
+
     def prepare(
         self,
         flattop_window      = 0.20,                 # To allow for steady-state in heating and current diffusion
@@ -108,6 +129,7 @@ class transp_beat(beat):
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
+        sanitize_q_input    = None,                 # If not None, the target on-axis q0 to rescale the INITIAL q-profile seed fed to TRANSP to (e.g. 0.95), anchored on q95 (q at psiN=0.95 held fixed). Guards a pathological over-peaked equilibrium seed (deep q0 -> q=1 surface far toward the boundary) from crashing the Kadomtsev sawtooth model at startup; current diffusion relaxes q over the flattop regardless, so only the seed needs to start benign. null (default) leaves the seed q untouched
         **transp_namelist
         ):
         '''
@@ -155,15 +177,55 @@ class transp_beat(beat):
                 pass
         else:
             print(f'\t- Using provided MXH coefficients for smoothing separatrix: n = {mxh_coeffs_smooth_sep}', typeMsg='i')
-        
+
+        # Optional boundary-surface backoff: extract the TRANSP boundary at a flux surface just INSIDE
+        # the separatrix (psi_N < 1) instead of the separatrix itself. A sharp / near-X-point separatrix
+        # can trip TRANSP's boundary curvature check; a surface a hair inside is rounder (higher curvature
+        # ratio) while keeping the true shape (unlike lowering n_mxh). Read from the same separatrix block
+        # as n_mxh; default 1.0 = separatrix (old behavior).
+        try:
+            boundary_surface_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('boundary_surface_psin', 1.0)
+        except (KeyError, AttributeError):
+            boundary_surface_psin = 1.0
+        if boundary_surface_psin is not None and boundary_surface_psin < 1.0:
+            print(f'\t- TRANSP boundary extracted at psi_N = {boundary_surface_psin} (backed off inside the separatrix)', typeMsg='i')
+
+        # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
+        # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's
+        # Kadomtsev sawtooth model fail on its first crash ("q=1 too close to boundary") and hard-exit
+        # before current diffusion has moved anything. Since current diffusion relaxes q to
+        # self-consistency over the whole flattop, only the seed needs to start benign: rescale it so
+        # q0 -> sanitize_q_input, anchored on q95 (edge safety factor held fixed) so the shape and edge
+        # are preserved. Applied ONLY to the TRANSP seed -- profiles_current is restored right after
+        # to_transp so the state passed downstream is untouched.
+        q_restore = None
+        if sanitize_q_input is not None:
+            psi = self.profiles_current.profiles['polflux(Wb/radian)']
+            psin = (psi - psi[0]) / (psi[-1] - psi[0])
+            q_restore = self.profiles_current.profiles['q(-)'].copy()
+            q_new, info = self._rescale_q_anchored(q_restore, psin, sanitize_q_input)
+            if info['applied']:
+                self.profiles_current.profiles['q(-)'] = q_new
+                print(f"\t- sanitize_q_input: rescaled seed q0 {info['q0']:.3f} -> {sanitize_q_input:.3f} "
+                      f"anchored on q95={info['q95']:.3f} (scale={info['scale']:.3f})", typeMsg='i')
+            else:
+                q_restore = None  # nothing changed; nothing to restore
+                print(f"\t- sanitize_q_input={sanitize_q_input}: seed q left untouched "
+                      f"(q0={info['q0']:.3f} not below q95={info['q95']:.3f} -> not an over-peaked seed)", typeMsg='w')
+
         # Initialize TRANSP object and profiles from input.gacode
         times = [self.time_transition,self.time_end+1.0]
         self.transp = self.profiles_current.to_transp(
             folder = self.folder,
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
-            mxh_coeffs_smooth = mxh_coeffs_smooth_sep
+            mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
+            boundary_surface_psin = boundary_surface_psin
             )
+
+        if q_restore is not None:
+            # Restore the pristine seed q: the rescale is a TRANSP-startup aid only, not a state change.
+            self.profiles_current.profiles['q(-)'] = q_restore
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Generic TRANSP operation

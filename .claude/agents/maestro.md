@@ -16,7 +16,8 @@ description: >-
   It also does pedestal/EPED/shaping forensics (what EPED actually used vs final-state
   geometry, peeling-vs-ballooning, EPED-NN sensitivity scans, geqdsk shaping) and
   whole-scan surveys. Read-only/diagnostic by default; it does not launch runs or long jobs.
-model: inherit
+model: sonnet
+effort: xhigh
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
@@ -227,8 +228,27 @@ and the magnitude (with units).**
 
 The pedestal is the most common driver of MAESTRO performance differences: it sets the
 boundary condition that **stiff** core transport multiplies inward (PORTALS flux-matches to
-~invariant `a/LT`, so at matched density the core T scales with the pedestal). Two non-obvious
-rules that will burn you if ignored:
+~invariant `a/LT`, so at matched density the core T scales with the pedestal).
+
+- **The 99.5% shaping (kappa995/delta995) is a first-order performance lever — establish where AND
+  when it comes from.** It sets the EPED pedestal, so via stiff core transport a ~0.1 shift in
+  kappa995/delta995 moves Pfus/Q by tens of percent. **Where** (initializer): geqdsk-init reads it
+  from the geqdsk equilibrium (method-dependent — see `freeze_995_from` below, ~0.1 spread across
+  methods); separatrix/miller-init KEEPS the analytic Miller/MXH shaping it was given
+  (`separatrix_to_equilibrium`→`equilibrium_to_profiles`) — it runs freegs only to make the 1-D
+  profiles self-consistent, then OVERWRITES kappa/delta/zeta+MXH coeffs back to the analytic values
+  (`MAESTRObeat.py:509-518`, "copy all but the shapings"). So the `freegs.geqdsk.helper` it saves
+  has its SHAPING DISCARDED — its boundary shows an X-point that is NOT the shape used; reconstruct
+  the real smooth-MXH boundary from the state's MXH moments via `gacode_state.derive_geometry()` →
+  `derived['R_surface'][0,-1,:]` (LCFS) / at `argmin|psi_pol_n-0.995|` (99.5%). The analytic
+  near-edge shaping barely tapers from the separatrix (near-separatrix, often-optimistic;
+  frequently pinned via `corrections_set`). **When** (`maestro.refreeze_995_after_beat`): `0`
+  (default) freezes the init value for the whole run; `N>0` re-extracts it once from beat N's
+  evolved, solved equilibrium (replacing a near-separatrix init guess with a self-consistent value);
+  `null` recomputes it every EPED beat. Establish initializer, method, AND freeze-timing before
+  trusting a pedestal-driven performance number.
+
+Two more non-obvious rules that will burn you if ignored:
 
 - **What EPED ACTUALLY used ≠ the final-state geometry.** The 99.5% shaping (kappa995,
   delta995) the EPED beat was *fed* is NOT the `delta995` you derive from the final/beat
@@ -239,6 +259,10 @@ rules that will burn you if ignored:
     here ARE kappa995/delta995). Frozen across iterations within a run; `betan` evolves.
   - prep log `- Using previous kappa995/delta995: ...` (authoritative source for the analytic
     value MAESTRO computed) and run log `- kappa995: ... / - delta995: ...` (what EPED ran).
+  - REFREEZE caveat: `refreeze_995_after_beat=N` stores `derived['kappa995']` — a plain
+    `np.interp(0.995, psi_pol_n, kappa(-))` (`PROFILEStools:271`) from beat N's TRANSP state — which
+    can differ from the `analytic_interpolation` value EPED actually consumes in `eped.input`
+    (matched to ~3 dp usually; ~0.006 gap seen on a squared boundary). `eped.input` is ground truth.
 - **How the 99.5% is set** — `maestro.<eped-beat>.parameters_prepare`:
   - `freeze_995_from: analytic_interpolation` (default) derives the 99.5% from the frozen
     equilibrium by analytic interpolation. This is the *most optimistic* fit — an MXH fit of the
@@ -251,7 +275,10 @@ rules that will burn you if ignored:
 - **`run_eped/eped_results.npy`** (`np.load(p, allow_pickle=True).item()`): the EPED OUTPUT —
   `ptop_kPa` (ground-truth pedestal-top pressure), `wtop_psipol`, `Tetop_keV`, `netop_20`,
   `neped_20`, `nesep_20`, `rhotop`, **`limiting_mode` ('peeling'/'ballooning' — answers "did the
-  pedestal go ballooning?")**, `inputs_to_eped`, `scan_results`.
+  pedestal go ballooning?")**, `inputs_to_eped`, `scan_results`. This peeling/ballooning
+  pedestal-stability constraint is available directly in the EPED output — read it, don't recompute
+  it. In practice 'ballooning' concentrates in the high-density collapse corner (suppressed ptop),
+  so it often flags a near-collapse operating point rather than a healthy one.
 - **Read the geqdsk shaping directly** when you need separatrix-vs-99.5% truth:
   ```python
   from mitim_tools.gs_tools.GEQtools import MITIMgeqdsk
@@ -292,6 +319,11 @@ For a parameter scan (many runs under one parent) rather than a 2-run diff:
   `derive_quantities()`, pull scalars into a DataFrame/CSV (one row per run), parse the scan knobs
   from the run-folder name. Seed is usually the only *stochastic* axis — put the deliberate inputs
   (density, nsep ratio, shaping) on x/colour and let seed be the spread, not a pooled violin.
+- **Seeds at one operating point can diverge** (sometimes 1.5–2×, occasionally to collapse), often
+  starting in the **early PORTALS beats**. Suspected contributors — the **Ricci convergence
+  metric**, **TGLF discontinuities**, and possibly a **duality of solutions** — are still **under
+  investigation**, so treat a large seed spread as run-to-run sensitivity to be characterized, not a
+  settled result.
 - **Failure classification** = SLURM state + log text:
   - status via `mitim_check_maestro` / `sacct` → TIMEOUT vs FAILED vs CANCELLED.
   - "produced no output files" / "failed to return valid results" in an EPED beat log → EPED found
@@ -299,6 +331,15 @@ For a parameter scan (many runs under one parent) rather than a 2-run diff:
     validity window ≈ [1.36, 2.04]) or out-of-window beta.
   - "TRANSP stopped" + `Segmentation fault` / `mlx5` in `run_transp/*.log` → transient MPI/IB crash
     (infra, not physics).
+  - "TRANSP aborted … 'curvature ratio too small'" / PRGCHK / EQBDY_CHECK in beat_1 → fixed-boundary
+    curvature abort from an over-squared / negative-squareness (`zeta_sep`<0) or over-peaked
+    boundary. Dimensionless/shape-driven, so it hits ALL machines/sizes identically (not a size
+    effect). Upstream tell: "Geometric factors calculation failed … very extreme shaping" at r/a≈1
+    in `beat_1_ini.log`. Mitigations (features — PROPOSE, don't apply):
+    `separatrix.boundary_surface_psin`<1.0 backs the TRANSP boundary off to a rounder interior
+    surface (diminishing returns — 1.0→0.998 moved curvature only 0.015→0.017 for zeta=-0.33; ~0.995
+    is the practical floor before the 99.5% refreeze extraction degrades), and `sanitize_q_input`
+    rescales an over-peaked q-seed.
   - highest `Beats/Beat_*` reached + that beat's log = where/why it died.
 - **Matched comparison across different machines**: control for density — pick runs with the same
   volume-averaged `ne_vol20` (not the same nominal knob); absolute Pfus scales ~ n².

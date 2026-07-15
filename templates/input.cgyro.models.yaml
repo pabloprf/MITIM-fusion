@@ -25,7 +25,7 @@
     N_XI: 24  
     N_THETA: 24
   preprocess_options:
-    ky_min: 0.08
+    ky_min: 0.053
     L_x: 120
     N_radial: 512
     min_box_size: 85
@@ -46,6 +46,7 @@
     ROTATION_MODEL: 1
     N_TOROIDAL: 16
   preprocess_options:
+    ky_min: 0.08
     L_x: 90
 
 "Nonlinear_reduced3":

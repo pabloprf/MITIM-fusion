@@ -226,6 +226,14 @@ class PORTALSanalyzer:
                 prof.derive_quantities()
             self.powerstates.append(power)
 
+        # The string-keyed standalone states ('profiles_original'/'profiles_modified') are also
+        # reached and stripped by PORTALSmain._dropped_derived, but sit outside the integer loop
+        # above -- rebuild them too so plotSummary's plot_gradients(useRoa=True) finds derived['roa'].
+        for ikey in ("profiles_original", "profiles_modified"):
+            prof = self.mitim_runs.get(ikey, None)
+            if prof is not None and not getattr(prof, "derived", None):
+                prof.derive_quantities()
+
         # runWithImpurity_transport is stored after powerstate has run transport
         self.runWithImpurity_transport = self.powerstates[0].impurityPosition_transport if "nZ" in self.predicted_channels else None
 

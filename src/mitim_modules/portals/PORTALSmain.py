@@ -26,7 +26,12 @@ def _dropped_derived(root, max_depth=12):
     """Temporarily strip every reachable gacode_state.derived so a pickle written inside this block
     is lean; restore on exit so the live objects are untouched. The dropped 'derived' dicts (~80% of
     extra.pkl's arrays: geometry/gradients) are recomputable and rebuilt lazily on read in
-    PORTALSanalysis via derive_quantities()."""
+    PORTALSanalysis via derive_quantities().
+
+    NOTE: this strip walks *every* reachable gacode_state; the rebuild-on-read in
+    PORTALSanalysis.prep_metrics is a whitelist (integer-keyed powerstate.profiles + the
+    'profiles_original'/'profiles_modified' string keys). If a new standalone gacode_state is
+    added to the stored dict, extend that rebuild too or it will read back with derived={}."""
     saved, seen = [], set()
     def walk(o, d=0):
         if d > max_depth or id(o) in seen:

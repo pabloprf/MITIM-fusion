@@ -90,6 +90,13 @@ plasma:
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients to parametrize the boundary, once created
       n_mxh: 5
 
+      # Normalized poloidal flux (psi_N) of the flux surface used as the FIXED TRANSP boundary.
+      # 1.0 (default) = the separatrix (old behavior). A value < 1 (e.g. 0.995) backs the boundary off
+      # to a surface just inside the separatrix: it is rounder (higher curvature ratio) so it avoids
+      # TRANSP's boundary curvature-ratio abort on sharp/near-X-point separatrices, while keeping the
+      # true plasma shape (unlike lowering n_mxh). Applies to every TRANSP beat.
+      boundary_surface_psin: 1.0
+
       # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
       # The non-null options below extract these ONCE at initialization (with the chosen parameterization) and FREEZE them:
       # every later EPED beat reuses those same fixed values, even though the real internal flux surfaces drift as the
@@ -103,8 +110,17 @@ plasma:
       #      null:                    Do NOT freeze: store nothing in trans_beat, so each EPED beat instead recomputes the
       #                               99.5% shaping from its own current equilibrium -> the values evolve beat-to-beat
       # NOTE: if initialization_type = separatrix, only null vs non-null is honored; the parameterization above is ignored
-      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four)
-      freeze_995_from: analytic_interpolation
+      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four).
+      #       A runtime warning is printed in this case. Since separatrix internal flux surfaces are a parametric guess,
+      #       consider `maestro.refreeze_995_after_beat: N` to re-extract the 99.5% shaping from an evolved (e.g. TRANSP) beat.
+      # This knob controls only HOW the surface is extracted and whether it is frozen at init; WHEN it is (re)frozen for
+      # later EPED beats is controlled by `maestro.refreeze_995_after_beat` (see below).
+      freeze_995_from: analytic
+
+      # psi_N at which the "995" shaping (kappa995/delta995/zeta995/s_three995/s_four995) is sampled.
+      # The dict keys/labels stay named "995"; only the extraction surface moves. Default 0.995 =
+      # current behavior. Raising it toward the separatrix (e.g. 0.998) yields a higher kappa/delta.
+      shaping_extraction_psin: 0.995
 
       # If initialization_type = geqdsk or fibe: path to file
       geqdsk_file: ""
@@ -203,6 +219,18 @@ maestro:
   #     travels forward. Sufficient for chain inheritance, not for full CDF plotting.
   # PORTALS plot tabs are unaffected (their inputs are persisted in beat_results/Outputs/).
   keep_all_files: true
+
+  # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) that is fed to every EPED beat.
+  # This is orthogonal to `plasma.parameters.separatrix.freeze_995_from` (which sets HOW the surface
+  # is extracted); this knob sets WHEN it is fixed:
+  #   0    : freeze at initialization and reuse for the whole run (default; the old behavior).
+  #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. N=2 -> after the first real TRANSP
+  #          beat), overwrite the frozen values, and reuse those for every later EPED beat. Use this to
+  #          feed EPED a real equilibrium instead of the initialization guess (relevant for separatrix
+  #          init, whose internal flux surfaces are a parametric guess).
+  #   null : never freeze -- each EPED beat recomputes the 99.5% shaping from its own current
+  #          equilibrium, so the values evolve beat-to-beat.
+  refreeze_995_after_beat: 0
 
   # ---------------------------------------------------------------------------
   # Each individual beat parameters
@@ -433,6 +461,17 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
+      # Relaxation factor w in [0, 1] for the Zeff update. The Zeff profile actually realized is
+      # w * <Zeff this Lengyel beat would fully impose> + (1-w) * <Zeff of the profiles input into this
+      # beat>. w = 1.0 (default) applies the full update every time (old behavior). Lower values slow down
+      # how fast Zeff/impurity content changes beat-to-beat -- useful since a higher core Zeff (e.g. 2.0-2.3)
+      # than strictly required for divertor protection can be beneficial, and letting it swing every beat can
+      # make the workflow oscillate/degrade instead of converging. The "profile input into this beat" is
+      # whatever input.gacode this beat received from the immediately preceding beat (PORTALS, EPED, TRANSP,
+      # or a previous Lengyel beat), so this applies identically on the first Lengyel beat of a sequence as
+      # on every subsequent one.
+      zeff_relaxation_factor: 1.0 
+
       # Overrides applied to the Lengyel namelist's `input` block (see templates/input.lengyel.controls.yaml).
       # Any key from that file can be set here verbatim and it will replace the default (or input.gacode-derived)
       # value for this beat, e.g. override_namelist_params: {parallel_connection_length: '40 m', target_angle_of_incidence: '5 degree'}
@@ -587,6 +626,14 @@ maestro:
       min_sawtooth_period_ms: 10.0 # Approximate floor on the Porcelli sawtooth period [ms]: sets c_sawtooth(2)=floor/Park-Monticello-period per case so compact plasmas stop crashing every ~ms (which bloats the output CDF); machines whose natural period already exceeds it are unaffected. null disables; if absent, defaults to 1 ms.
       # NOTE: this floor is APPROXIMATE -- c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP applies it with the evolving post-crash central Te, so the realized minimum can differ from the requested value.
       ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
+      # Sanitize a pathological over-peaked q seed so TRANSP starts cleanly. Some equilibria (e.g. certain
+      # FREEGS geqdsks) carry a very low on-axis q0 -> the q=1 surface sits far toward the boundary, and the
+      # Kadomtsev sawtooth model fails on its first crash ("q=1 too close to boundary") and hard-exits before
+      # current diffusion moves anything. Since current diffusion relaxes q to self-consistency over the whole
+      # flattop, only the SEED needs to start benign. If set (e.g. 0.95), rescale the initial q-profile so q0
+      # hits this value, anchored on q95 (q at psiN=0.95 held fixed) so shape/edge are preserved. Applied to
+      # the TRANSP seed only (state passed downstream is untouched). null (default) leaves the seed q as-is.
+      sanitize_q_input: null
 
       # Which CDF time slice is extracted to build the next beat's input.gacode:
       #   'saw'    -> the last sawtooth (CDFtools ind_saw)
