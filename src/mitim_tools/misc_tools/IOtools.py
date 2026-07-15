@@ -2097,7 +2097,7 @@ def print_machine_info(output_file=None):
         info_lines.append(f"CUDA available:  True  (version {torch.version.cuda})")
         for i in range(torch.cuda.device_count()):
             props = torch.cuda.get_device_properties(i)
-            mem_total = props.total_mem / 2**30
+            mem_total = getattr(props, "total_memory", getattr(props, "total_mem", 0)) / 2**30
             mem_alloc = torch.cuda.memory_allocated(i) / 2**30
             mem_reserved = torch.cuda.memory_reserved(i) / 2**30
             info_lines.append(f"  GPU {i}: {props.name}  ({mem_total:.1f} GB total, {mem_alloc:.2f} GB allocated, {mem_reserved:.2f} GB reserved)")

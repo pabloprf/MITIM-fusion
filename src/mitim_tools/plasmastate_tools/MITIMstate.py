@@ -3240,6 +3240,148 @@ class mitim_state:
 
         return input_parameters
 
+    def to_qualikiz(self, r=[0.4, 0.6], r_is_rho=True, max_ions=9):
+        """
+        Best-effort mapping from this MITIM ``gacode_state`` (post
+        ``derive_quantities``) onto QuaLiKiz's circular/s-alpha-like geometry
+        variables, scanned across ``r``. QuaLiKiz has no Miller/MXH shaping,
+        so elongation/triangularity/squareness are dropped -- only the
+        circular-geometry equivalents (Ro, Rmin, Bo, q, smag, alpha,
+        rotation/shear) are kept. Counterpart of ``to_tglf`` / ``to_neo``.
+
+        Unlike those methods, this returns a plain dict of arrays/scalars
+        rather than QuaLiKiz objects -- it has no dependency on the external
+        ``qualikiz_tools`` (QuaLiKiz-pythontools) package. ``QLKtools.py``'s
+        ``_build_plan_from_gacode`` turns this dict into the actual
+        ``QuaLiKizXpoint`` / ``QuaLiKizPlan`` objects (and performs the
+        quasineutrality / pure-toroidal-rotation decomposition, via
+        ``QuaLiKizXpoint.set_qn_normni_ion_n()`` / ``set_puretor()``), keeping
+        that optional dependency confined to the QuaLiKiz-specific interface.
+        """
+
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        p = self
+
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r = np.atleast_1d(np.array(r, dtype=float))
+        if r_is_rho:
+            rhos = r
+            roa_targets = interpolation_function(rhos, p.profiles['rho(-)'], p.derived['roa'])
+        else:
+            roa_targets = r
+            rhos = interpolation_function(roa_targets, p.derived['roa'], p.profiles['rho(-)'])
+        r_interpolation = p.derived["roa"]
+
+        def interp_vec(y):
+            return np.atleast_1d(interpolation_function(roa_targets, r_interpolation, y))
+
+        n_ions = min(len(p.Species), max_ions)
+
+        sign_it = -np.sign(p.profiles["current(MA)"][-1])
+
+        # QuaLiKiz normalises logarithmic gradients by major radius R (R/LT, R/Ln),
+        # whereas MITIM's gacode convention uses minor radius a (a/LT, a/Ln).
+        # Convert: R/L = (R/a) * (a/L), using the local Ro already interpolated above.
+        Ro_over_a = interp_vec(p.profiles["rmaj(m)"]) / p.derived["a"]
+
+        cref = 3.094969e5  # defined in QuaLiKiz as sqrt(1 keV / proton_mass)
+
+        # MHD alpha = -(2 mu0 R q^2 / B^2) dp/dr
+        dpdr = p._calculate_pressure_gradient_from_aLx(
+            p.derived["pe"], p.derived["pi_all"][:, :n_ions],
+            p.derived["aLTe"], p.derived["aLTi"][:, :n_ions],
+            p.derived["aLne"], p.derived["aLni"][:, :n_ions],
+            p.derived["a"],
+        )
+        alpha_mhd = (
+            2.0 * 4 * np.pi * 1e-7
+            * p.profiles["q(-)"] ** 2
+            * p.profiles["rmaj(m)"]
+            / np.abs(p.profiles["bcentr(T)"][-1]) ** 2
+            * dpdr
+        )
+        alpha_mhd[0] = 0.0
+
+        # ExB shearing rate (gammaE), same construction as to_tglf's VEXB_SHEAR.
+        # Machtor/Autor/Machpar/Aupar are NOT computed here -- only Machtor (a
+        # best-effort R*Omega_tor/c_s) and gammaE are returned; QuaLiKizXpoint.set_puretor()
+        # derives the rest assuming pure toroidal rotation.
+        gamma_eb0 = -p._deriv_gacode(p.profiles["w0(rad/s)"]) * p.derived["r"] / np.abs(p.profiles["q(-)"])
+        vexb_shear = -sign_it * gamma_eb0 * p.profiles["rmaj(m)"] / cref
+        vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / cref
+
+        geometry_scan = {
+            "x": roa_targets,
+            "rho": rhos,
+            "Ro": interp_vec(p.profiles["rmaj(m)"]),
+            "q": np.abs(interp_vec(p.profiles["q(-)"])),
+            "smag": interp_vec(p.derived["s_hat"]),
+            "alpha": interp_vec(alpha_mhd),
+            "Machtor": interp_vec(vpar),
+            "gammaE": interp_vec(vexb_shear),
+        }
+
+        electron_scan = {
+            "Te": interp_vec(p.profiles["te(keV)"]),
+            "ne": interp_vec(p.profiles["ne(10^19/m^3)"]),
+            "Ate": interp_vec(p.derived["aLTe"]) * Ro_over_a,
+            "Ane": interp_vec(p.derived["aLne"]) * Ro_over_a,
+        }
+
+        ion_scan = {}
+        ion_species = []
+        for i in range(n_ions):
+            is_fast = p.Species[i].get("S", "therm") == "fast"
+            ion_species.append({
+                "A": p.Species[i]["A"],
+                "Z": p.Species[i]["Z"],
+                "type": 4 if is_fast else 1,
+            })
+            ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
+            ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
+            ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
+            ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i]) * Ro_over_a
+
+        # Same "which ion absorbs quasineutrality" choice as the QuaLiKizXpoint
+        # options QLKtools passes downstream (set_qn_normni/set_qn_An): highest-Z
+        # non-fast species. Index is into the FULL ion_species list (not the
+        # filtered candidate list), since it is used downstream to index
+        # QuaLiKizXpoint's full ion array.
+        non_fast_indices = [i for i in range(n_ions) if ion_species[i]["type"] not in [3, 4]]
+        qn_ion_index = max(non_fast_indices, key=lambda i: ion_species[i]["Z"])
+
+        # The highest-Z candidate can be a near-trace species (tiny baseline
+        # density): absorbing even a small charge-neutrality residual from the
+        # other species can then require an unphysical (negative or >1)
+        # density correction, which QuaLiKiz's own set_qn_normni_ion_n()
+        # rejects outright. Detect that here (same formula, summed over all
+        # non-target species since QuaLiKiz only excludes type==3 "trace"
+        # ions from that sum, not fast ions) and fall back to ion 0 (the main
+        # species, always well-conditioned) rather than trying progressively
+        # lower-Z candidates, so the choice stays predictable.
+        Z_all = np.array([ion_species[i]["Z"] for i in range(n_ions)])
+        n_all = np.array([ion_scan[f"ni{i}"] for i in range(n_ions)])  # (n_ions, n_r)
+        others = [i for i in range(n_ions) if i != qn_ion_index]
+        var_normni = (1.0 - (Z_all[others, None] * n_all[others, :]).sum(axis=0)) / Z_all[qn_ion_index]
+        if np.any(var_normni < 0.0) or np.any(var_normni > 1.0):
+            print(
+                f"\t- Highest-Z quasineutrality species (ion {qn_ion_index}, Z={Z_all[qn_ion_index]:.1f}) "
+                "would require an unphysical density correction at some radius; falling back to ion 0",
+                typeMsg="w",
+            )
+            qn_ion_index = 0
+
+        return {
+            "n_ions": n_ions,
+            "geometry_scan": geometry_scan,
+            "electron_scan": electron_scan,
+            "ion_scan": ion_scan,
+            "ion_species": ion_species,
+            "qn_ion_index": qn_ion_index,
+            "a": float(p.derived["a"]),
+            "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
+        }
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0):
 

@@ -302,7 +302,7 @@ def initialization_simple_relax(self):
             if (ff / "transport_simulation_folder").exists():
                 IOtools.shutil_rmtree(ff / "transport_simulation_folder")
 
-            shutil.copytree(source, ff / "transport_simulation_folder")
+            shutil.copytree(source, ff / "transport_simulation_folder", symlinks=True)
 
             # For n_traj > 1 the copy above carries only the per-plasma JSON fan-out;
             # restart binaries (bin.cgyro.restart_<rho>) live in the per-plasma SIMtools

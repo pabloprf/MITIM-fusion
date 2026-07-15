@@ -482,6 +482,11 @@ def improve_resolution_profiles(profiles, rhoMODEL, smooth_around_coarsing=True)
     - Also, avoid adding too points near axis. (NOT NOW?)
     """
 
+    # rhoMODEL may arrive as a CUDA tensor from the powerstate initialisation path;
+    # all operations below are numpy-based, so coerce to a plain numpy array first.
+    if isinstance(rhoMODEL, torch.Tensor):
+        rhoMODEL = rhoMODEL.detach().cpu().numpy()
+
     # ----------------------------------------
     # Parameters
     # ----------------------------------------

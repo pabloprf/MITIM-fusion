@@ -4,6 +4,8 @@ DESCRIPTION
 
 ### New Features
 
+*   🌀 **QuaLiKiz interface**: new `mitim_tools.qualikiz_tools` (`QLKtools.QuaLiKiz`) runs and reads QuaLiKiz standalone from an `input.gacode`, and a matching PORTALS turbulence backend is selected with `transport.evaluator_instance_attributes.turbulence_model: "qlk"` (the neoclassical side is independent and keeps NEO). Settings follow the usual controls → `code_settings` preset (`templates/input.qualikiz.models.yaml`: `STANDARD`/`FAST`/`MINIMAL`/`ROTATION`) → `extraOptions`/`multipliers` hierarchy. All radii are packed into a *single* execution via QuaLiKiz's own `dimx` scan (one job per PORTALS iteration, not one folder per rho), and `use_scan_trick_for_stds` stacks every gradient-perturbation case onto that same execution, so flux-uncertainty estimation stays one job (TGLF needs N_rho × N_var × N_delta). Requires the external `qualikiz_tools` (QuaLiKiz-pythontools) package and a `qualikiz` entry in `config_user.json`; the import is caught, so workflows are unaffected when it is absent. **NOTE: QuaLiKiz uses a circular / s-alpha-like geometry and does not support Miller/MXH shaping, so shaped-equilibrium information is dropped in the `gacode_state.to_qualikiz` mapping — fluxes are not directly comparable to TGLF on a strongly shaped plasma. QuaLiKiz also provides no turbulent electron-ion energy exchange Qie (it is zero-filled), so `turbulent_exchange_as_surrogate` must stay `False` and the exchange is left to the analytical target model. Both are properties of QuaLiKiz itself, not of this interface.** Teaching scripts: `tests/capability_tests/qualikiz_01_run_from_inputgacode.py` (standalone) and `portals_03_qualikiz_standard.py` (PORTALS).
+
 *   ⚛️ **EPED plasma composition (full EPED)**: the MAESTRO EPED beat and `EPEDtools.EPED.run` now feed EPED the actual plasma's main-ion mass and an effective impurity derived from the state (reproducing both Zeff and fuel dilution, `zi_eff = (Zeff − d)/(1 − d)`), instead of a hardcoded 50/50 D-T + neon. `m`/`z`/`mi`/`zi` default to the old values and are overridable via the beat's `corrections_set`; a new `zeff_location` knob (`vol_avg` default, `pedestal`) sets where Zeff and the dilution are taken; the EPED-NN path is unaffected. **NOTE:** in EPED1 the only composition quantity that enters the solve is `Zeff` (via TOQ / bootstrap-collisionality); `m`/`z`/`mi`/`zi` are recorded but inert, so scanning them at fixed `Zeff` leaves the predicted pedestal unchanged.
 
 *   🔌 **`gacode_state.recompute_targets()`**: re-derives the radiation (qbrem/qsync/qline), fusion alpha-heating (qfuse/qfusi) and electron-ion exchange (qei) power profiles from the kinetic profiles with the analytic target model, evaluated on the full radial grid (no edge points left stale). It is now the single entry point used by the MAESTRO confinement beat and RAPIDS instead of their inline powerstate round-trips; `debug=True` plots each recomputed channel against the profiles that drive it.
@@ -37,6 +39,10 @@ DESCRIPTION
 
 
 ### Bug Fixes
+
+*   🐛 **PORTALS on GPU**: a few numpy operations were being applied to PyTorch CUDA tensors — these silently work on CPU tensors but raise on GPU. The `yminymax_atleast` bounds in `PORTALSinit` now use `torch.minimum`/`torch.maximum` instead of `np.min`/`np.max`, and `improve_resolution_profiles` coerces a CUDA `rhoMODEL` to numpy before its numpy-based work. Separately, `print_machine_info` no longer crashes on newer PyTorch (`props.total_mem` → `total_memory`). **NOTE: this is not an exhaustive sweep — other numpy-on-CUDA-tensor instances may well remain.**
+
+*   🐛 **`initialization_simple_relax` folder copy** now preserves symlinks (`shutil.copytree(..., symlinks=True)`), so a transport folder containing one (e.g. a QuaLiKiz run folder) no longer breaks the copy. The link is copied as a link (dangling in the copy), which is harmless since it is never re-run from there.
 
 *   🐛 **TRANSP CDF file-descriptor leak (major MAESTRO scratch regression)**: the multi-GB TRANSP output CDF was held open for the **entire** MAESTRO run and fork-inherited by every later PORTALS/TGLF worker, so once the run folder was wiped (`keep_all_files: false`) the deleted CDF stayed pinned on disk as an NFS silly-rename (`.nfsXXXX`) until the case ended — inflating each case's scratch use by 2–5 GB and overrunning per-user quotas on large scans. The TRANSP beat now releases the cached `transp_output` (and any `self.transp.t.cdfs`) at the end of `run()`, before the PORTALS beats fork; `transp_output` gained an idempotent `close()`, and the various metadata/finalize/completeness readers now close their handles.
 
@@ -86,6 +92,8 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
+*   🔮 **PORTALS capability tests renamed** to name their turbulence model, now that it is a real choice: `portals_01_standard.py` → `portals_01_tglf_standard.py` and `portals_02_multichannel_turbulent_exchange.py` → `portals_02_tglf_multichannel_turbulent_exchange.py`, joined by the new `portals_03_qualikiz_standard.py`. Only the teaching scripts moved (no API change), but any bookmark or doc link pointing at the old paths needs updating.
+
 *   💾 **Lean PORTALS pickles under `keep_all_files: false`**: intermediate PORTALS beats' `optimization_object.pkl`/`optimization_extra.pkl` are pruned, and the retained (last-beat) `optimization_object.pkl` is lean (no GP surrogates). Replotting metrics still works; the GP-posterior ("Expected") plots and a pickle-based surrogate resume of those finished beats are not available. Set `keep_all_files: true` to retain full pickles.
 
 *   🪚 **Sawtooth floor defaults**: `min_sawtooth_period_ms` defaults to **1 ms** in `TRANSPbeat.prepare` (and `NMLtools` keeps `c_sawtooth(2)=0.1`), so namelists without the key reproduce the historical ~1 ms behavior; the maestro **template** sets **10 ms**. `null` bypasses the adaptive floor.
@@ -94,4 +102,4 @@ DESCRIPTION
 
 ---
 
-*Thanks to everyone who contributed to this release: USER LIST. Portions of this release were developed with AI-assisted coding (Claude Code).*
+*Thanks to everyone who contributed to this release: Aaron Ho. Portions of this release were developed with AI-assisted coding (Claude Code).*

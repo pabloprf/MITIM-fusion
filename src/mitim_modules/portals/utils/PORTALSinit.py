@@ -218,9 +218,9 @@ def initializeProblem(
 
             if yminymax_atleast is not None:
                 if yminymax_atleast[0] is not None:
-                    y1 = torch.tensor(np.min([y1, yminymax_atleast[0]]))
+                    y1 = torch.minimum(y1, torch.tensor(yminymax_atleast[0]).to(y1))
                 if yminymax_atleast[1] is not None:
-                    y2 = torch.tensor(np.max([y2, yminymax_atleast[1]]))
+                    y2 = torch.maximum(y2, torch.tensor(yminymax_atleast[1]).to(y2))
 
             # Check that makes sense
             if y2-y1 < thr:

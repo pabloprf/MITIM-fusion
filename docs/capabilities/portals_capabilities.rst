@@ -7,7 +7,7 @@ Once setup has been successful, the following regression test should run smoothl
 
 .. code-block:: console
 
-   python3 MITIM-fusion/tests/capability_tests/portals_01_standard.py
+   python3 MITIM-fusion/tests/capability_tests/portals_01_tglf_standard.py
 
 .. warning::
 
@@ -27,7 +27,7 @@ Run a standard profile prediction with PORTALS-TGLF
 
 *Under Development*
 
-*(In the meantime, please checkout* `tests/capability_tests/portals_01_standard.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tests/capability_tests/portals_01_standard.py>`_ *)*
+*(In the meantime, please checkout* `tests/capability_tests/portals_01_tglf_standard.py <https://github.com/pabloprf/MITIM-fusion/blob/main/tests/capability_tests/portals_01_tglf_standard.py>`_ *)*
 
 Run a standard profile prediction with PORTALS-CGYRO
 ----------------------------------------------------
