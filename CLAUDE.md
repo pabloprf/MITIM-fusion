@@ -493,7 +493,7 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
   https://github.com/pabloprf/MITIM-fusion/releases (see also as an example:
   "docs/RELEASE_NOTES_template.md"). Once a release has happened, you will clear up
   that RELEASE document and start again.
-- Do not add trivial stuff, only add items to the document that are worth pointing
+- *Do not add trivial stuff!*, only add items to the document that are worth pointing
   to users and developers. Keep all the changes for a specific capability inside
   that bullet point as much as possible. For example, if improvements to a MAESTRO
   beat, do not populate the document with more than one bullet, unless needed.
