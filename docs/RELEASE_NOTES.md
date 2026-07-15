@@ -101,6 +101,8 @@ DESCRIPTION
 
 *   🪚 **Sawtooth floor defaults**: `min_sawtooth_period_ms` defaults to **1 ms** in `TRANSPbeat.prepare` (and `NMLtools` keeps `c_sawtooth(2)=0.1`), so namelists without the key reproduce the historical ~1 ms behavior; the maestro **template** sets **10 ms**. `null` bypasses the adaptive floor.
 
+*   🧹 **Removed `derived['ptop(Pa)']`** from `mitim_state.derive_quantities`: it interpolated `ptot` at a hardcoded rho=0.90 under a "pedestal top" name -- confusing, and not consumed anywhere in the codebase. The EPED pedestal quantities (`ptop_kPa`) are unaffected.
+
 *   🧊 **MAESTRO `freeze_995_from` default → `analytic`**: the maestro template now extracts the 99.5% pedestal shaping by tracing the actual psiN=0.995 flux surface and fitting the Miller-analytic shape to it (megpy tracer), instead of `analytic_interpolation` (interpolating the per-surface Miller-coefficient profiles to psiN=0.995). Both target the same surface; the traced fit is the more direct measure. Set `freeze_995_from: analytic_interpolation` to restore the old default.
 
 ---

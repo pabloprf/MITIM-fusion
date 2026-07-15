@@ -892,9 +892,6 @@ class mitim_state:
         ])  # keV, one per ion species
         self.derived["tite_vol_all"] = self.derived["Ti_vol_all"] / self.derived["Te_vol"]
 
-        #approximate pedestal top density
-        self.derived['ptop(Pa)'] = np.interp(0.90, self.profiles['rho(-)'], self.profiles['ptot(Pa)'])
-
         # Quasineutrality
         self.derived["QN_Error"] = np.abs(
             1 - np.sum(self.derived["fi_vol"] * self.profiles["z"])
