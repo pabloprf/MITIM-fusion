@@ -4,6 +4,8 @@ DESCRIPTION
 
 ### New Features
 
+*   🌀 **QuaLiKiz interface**: new `mitim_tools.qualikiz_tools` (`QLKtools.QuaLiKiz`) runs and reads QuaLiKiz standalone from an `input.gacode`, and a matching PORTALS turbulence backend is selected with `transport.evaluator_instance_attributes.turbulence_model: "qlk"` (the neoclassical side is independent and keeps NEO). Settings follow the usual controls → `code_settings` preset (`templates/input.qualikiz.models.yaml`: `STANDARD`/`FAST`/`MINIMAL`/`ROTATION`) → `extraOptions`/`multipliers` hierarchy. All radii are packed into a *single* execution via QuaLiKiz's own `dimx` scan (one job per PORTALS iteration, not one folder per rho), and `use_scan_trick_for_stds` stacks every gradient-perturbation case onto that same execution, so flux-uncertainty estimation stays one job (TGLF needs N_rho × N_var × N_delta). Requires the external `qualikiz_tools` (QuaLiKiz-pythontools) package and a `qualikiz` entry in `config_user.json`; the import is caught, so workflows are unaffected when it is absent. **NOTE: QuaLiKiz uses a circular / s-alpha-like geometry and does not support Miller/MXH shaping, so shaped-equilibrium information is dropped in the `gacode_state.to_qualikiz` mapping — fluxes are not directly comparable to TGLF on a strongly shaped plasma. QuaLiKiz also provides no turbulent electron-ion energy exchange Qie (it is zero-filled), so `turbulent_exchange_as_surrogate` must stay `False` and the exchange is left to the analytical target model. Both are properties of QuaLiKiz itself, not of this interface.** Teaching scripts: `tests/capability_tests/qualikiz_01_run_from_inputgacode.py` (standalone) and `portals_03_qualikiz_standard.py` (PORTALS).
+
 *   ⚛️ **EPED plasma composition (full EPED)**: the MAESTRO EPED beat and `EPEDtools.EPED.run` now feed EPED the actual plasma's main-ion mass and an effective impurity derived from the state, instead of a hardcoded 50/50 D-T + neon. The effective impurity charge reproduces both Zeff and the fuel dilution (`zi_eff = (Zeff − d)/(1 − d)`). `m`/`z`/`mi`/`zi` default to the old values (preserving EPED-NN consistency) and are overridable via the beat's `corrections_set`; a new `zeff_location` knob (`vol_avg` default, `pedestal`) sets where Zeff and the dilution are taken. The EPED-NN path is unaffected. **NOTE: in the current EPED1 build the *only* composition quantity that enters the pedestal solve is `Zeff` (via the TOQ equilibrium / bootstrap-collisionality); the `m`/`z`/`mi`/`zi` fields are passed in and recorded in the output state but are inert in the model — the KBM-width and peeling-ballooning stages carry no ion-mass or impurity-charge dependence. Scanning them at fixed `Zeff` therefore leaves the predicted pedestal unchanged (verified in `tests/dev_tests/test_eped_fuel_impurity.py`: every physics output is bit-identical across the scan, only the echoed input differs). So this change makes EPED record the true composition and honor it through `Zeff`, but it does not add an isotope/charge sensitivity that EPED1 itself does not model.**
 
 *   🔌 **`gacode_state.recompute_targets()`**: re-derives the radiation (qbrem/qsync/qline), fusion alpha-heating (qfuse/qfusi) and electron-ion exchange (qei) power profiles from the kinetic profiles with the analytic target model, evaluated on the full radial grid (no edge points left stale). It is now the single entry point used by the MAESTRO confinement beat and RAPIDS instead of their inline powerstate round-trips; `debug=True` plots each recomputed channel against the profiles that drive it.
@@ -18,6 +20,10 @@ DESCRIPTION
 
 
 ### Bug Fixes
+
+*   🐛 **PORTALS on GPU**: a few numpy operations were being applied to PyTorch CUDA tensors — these silently work on CPU tensors but raise on GPU. The `yminymax_atleast` bounds in `PORTALSinit` now use `torch.minimum`/`torch.maximum` instead of `np.min`/`np.max`, and `improve_resolution_profiles` coerces a CUDA `rhoMODEL` to numpy before its numpy-based work. Separately, `print_machine_info` no longer crashes on newer PyTorch (`props.total_mem` → `total_memory`). **NOTE: this is not an exhaustive sweep — other numpy-on-CUDA-tensor instances may well remain.**
+
+*   🐛 **`initialization_simple_relax` folder copy** now preserves symlinks (`shutil.copytree(..., symlinks=True)`), so a transport folder containing one (e.g. a QuaLiKiz run folder) no longer breaks the copy. The link is copied as a link (dangling in the copy), which is harmless since it is never re-run from there.
 
 *   🐛 **MAESTRO engineering scans** (`launch_scan`): the `exclude` and `qos` SLURM allocation settings were silently dropped and are now forwarded to the array submission, so node exclusions actually take effect.
 
@@ -49,8 +55,8 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **PORTALS capability tests renamed** to name their turbulence model, now that it is a real choice: `portals_01_standard.py` → `portals_01_tglf_standard.py` and `portals_02_multichannel_turbulent_exchange.py` → `portals_02_tglf_multichannel_turbulent_exchange.py`, joined by the new `portals_03_qualikiz_standard.py`. Only the teaching scripts moved (no API change), but any bookmark or doc link pointing at the old paths needs updating.
 
 ---
 
-*Thanks to everyone who contributed to this release: USER LIST. Portions of this release were developed with AI-assisted coding (Claude Code).*
+*Thanks to everyone who contributed to this release: Aaron Ho. Portions of this release were developed with AI-assisted coding (Claude Code).*
