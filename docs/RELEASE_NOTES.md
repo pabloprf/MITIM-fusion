@@ -37,6 +37,8 @@ DESCRIPTION
 
 *   🎯 **MAESTRO configurable 99.5% shaping surface** (`plasma.parameters.separatrix.shaping_extraction_psin`): the psiN surface at which the pedestal shaping (kappa995/delta995/zeta995 and the higher-order s_three995/s_four995) is sampled is now a knob, orthogonal to `freeze_995_from` (HOW it is parameterized) and `refreeze_995_after_beat` (WHEN it is frozen). Default `0.995` reproduces current behavior bit-for-bit and the dict keys/labels stay named "995"; only the extraction location moves. Raising it toward the separatrix (e.g. `0.998`) yields a higher kappa/delta (elongation rises toward the edge). Threaded to both extraction paths — the geqdsk flux-surface tracer (`GEQtools.MITIMgeqdsk`) and the profile interpolation (`PROFILEStools.derive_geometry`) — so every init mode (geqdsk / separatrix), the `refreeze_995_after_beat` re-extraction, and the null-freeze EPED recompute all honor it.
 
+*   ⚖️ **MAESTRO Lengyel beat Zeff relaxation** (`zeff_relaxation_factor`): the Lengyel beat's core-Zeff update can now be damped toward the state input into the beat instead of always jumping straight to whatever the divertor needs in one shot. New `parameters_prepare.zeff_relaxation_factor` (`[0,1]`, default `1.0` = old unrelaxed behavior) blends the full Zeff profile the beat would impose with the Zeff of the profiles it received from the immediately preceding beat (PORTALS, EPED, TRANSP, or a prior Lengyel beat), then re-solves the seed-impurity density that reproduces the blended Zeff. Operates at the aggregate Zeff level rather than matching species identity, so it applies identically on the first Lengyel beat of a sequence as on later ones.
+
 
 ### Bug Fixes
 

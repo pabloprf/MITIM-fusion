@@ -461,6 +461,17 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
+      # Relaxation factor w in [0, 1] for the Zeff update. The Zeff profile actually realized is
+      # w * <Zeff this Lengyel beat would fully impose> + (1-w) * <Zeff of the profiles input into this
+      # beat>. w = 1.0 (default) applies the full update every time (old behavior). Lower values slow down
+      # how fast Zeff/impurity content changes beat-to-beat -- useful since a higher core Zeff (e.g. 2.0-2.3)
+      # than strictly required for divertor protection can be beneficial, and letting it swing every beat can
+      # make the workflow oscillate/degrade instead of converging. The "profile input into this beat" is
+      # whatever input.gacode this beat received from the immediately preceding beat (PORTALS, EPED, TRANSP,
+      # or a previous Lengyel beat), so this applies identically on the first Lengyel beat of a sequence as
+      # on every subsequent one.
+      zeff_relaxation_factor: 1.0 
+
       # Overrides applied to the Lengyel namelist's `input` block (see templates/input.lengyel.controls.yaml).
       # Any key from that file can be set here verbatim and it will replace the default (or input.gacode-derived)
       # value for this beat, e.g. override_namelist_params: {parallel_connection_length: '40 m', target_angle_of_incidence: '5 degree'}

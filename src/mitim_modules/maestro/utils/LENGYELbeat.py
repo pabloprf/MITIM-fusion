@@ -23,13 +23,28 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, **kwargs):
+    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, **kwargs):
 
         self.rhotop = rhotop
 
         # User overrides for the Lengyel namelist `input` block (keys as in input.lengyel.controls.yaml),
         # applied at run() time on top of the defaults and input.gacode-derived values
         self.override_namelist_params = override_namelist_params if override_namelist_params is not None else {}
+
+        # Relaxation factor w in [0, 1] applied (in run(), below) to the Zeff update: the Zeff profile
+        # actually realized is
+        #     w * <Zeff this Lengyel beat would fully impose> + (1 - w) * <Zeff of the profiles input into
+        #                                                                  this Lengyel beat>
+        # w = 1.0 (default) reproduces the previous unrelaxed behavior (Zeff jumps straight to whatever the
+        # divertor needs). Lower values slow down how fast Zeff/impurity content changes beat-to-beat, which
+        # is useful because a higher core Zeff (e.g. 2.0-2.3) than strictly required for divertor protection
+        # can be beneficial, and letting it swing every beat can make the workflow oscillate/degrade instead
+        # of converging. The "profile input into this beat" is whatever input.gacode this beat received from
+        # the immediately preceding beat (PORTALS, EPED, TRANSP, or a previous Lengyel beat), so this applies
+        # identically on the first Lengyel beat of a sequence as on every subsequent one (see run(), below).
+        if not (0.0 <= zeff_relaxation_factor <= 1.0):
+            raise ValueError(f"[MAESTRO][LENGYELbeat] zeff_relaxation_factor must be in [0, 1], got {zeff_relaxation_factor}")
+        self.zeff_relaxation_factor = zeff_relaxation_factor
 
         if radas_dir is not None:
             radas_dir_env = radas_dir
@@ -142,9 +157,38 @@ class lengyel_beat(beat):
         else:
             i_Z = 3
             print(f"\t\t- No impurity order from TRANSP beat found, assuming impurity '{impurity_symbol}' is in position #{i_Z} in input.gacode", typeMsg='w')
-        
+
+        # Capture the FULL Zeff profile of the incoming plasma state (i.e. whatever the beat immediately
+        # before this one -- PORTALS, EPED, TRANSP, or a previous Lengyel beat -- wrote to its input.gacode),
+        # BEFORE this Lengyel beat touches anything. This is done at the Zeff level (not the seed-impurity
+        # density level) so it works identically regardless of what species/charge previously occupied slot
+        # i_Z, including on the very first Lengyel beat of a sequence (there is no special-casing needed).
+        ne = p.profiles['ne(10^19/m^3)']
+        Zeff_before = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
+
         _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
-        
+
+        # Relax the Zeff update: the Zeff profile actually realized is a weighted average of the profile
+        # this Lengyel beat would fully impose (Zeff_after, computed from the just-applied unrelaxed update)
+        # and the profile that was input into this beat (Zeff_before). w=1.0 (default) reproduces the
+        # previous unrelaxed behavior exactly. See zeff_relaxation_factor in prepare().
+        w = self.zeff_relaxation_factor
+        if w < 1.0:
+            # Contribution to Zeff from every species except the seed impurity (unaffected by this beat, so
+            # identical before/after the call above)
+            other = np.arange(p.profiles['z'].shape[0]) != i_Z
+            z2ni_other = np.sum(p.profiles['ni(10^19/m^3)'][:, other] * p.profiles['z'][other] ** 2, axis=1)
+
+            Zeff_after = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
+            Zeff_relaxed = w * Zeff_after + (1 - w) * Zeff_before
+
+            # Solve for the seed-impurity density that reproduces Zeff_relaxed exactly, holding every other
+            # species fixed at its current (pre-quasineutrality) value
+            p.profiles['ni(10^19/m^3)'][:, i_Z] = (Zeff_relaxed * ne - z2ni_other) / (impurity_Z ** 2)
+
+            fZ_top = float(p.profiles['ni(10^19/m^3)'][0, i_Z] / ne[0])
+            print(f"\t\t* Applying Zeff relaxation factor {w:.2f}: Zeff profile is {w:.2f}*<full Lengyel update> + {1-w:.2f}*<profile input into this beat> (resulting core '{impurity_symbol}' concentration: {fZ_top:.1e})")
+
         # Enforce quasineutrality
         p.enforce_quasineutrality()
         
