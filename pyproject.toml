@@ -47,7 +47,6 @@ dependencies = [
   "tqdm",
   "shapely",
   "freegs @ git+https://github.com/freegs-plasma/freegs.git@9fbec2056b4322ea253bb5614896d549365163f3",  # PyPI 0.8.2 has a bug in critical.find_critical that fails under numpy>=2; pin to upstream master until a fixed release is cut
-  "minuet @ git+https://github.com/pabloprf/minuet.git",  # current diffusion + fixed-boundary GS
   "botorch",
   "psutil",
   "tensorflow", 
@@ -72,6 +71,11 @@ vmec = [
 lengyel = [
   "extended-lengyel",
   "radas",
+]
+minuet = [
+  # current diffusion + fixed-boundary GS (private repo for now: resolving
+  # this extra needs GitHub credentials until it goes public)
+  "minuet @ git+https://github.com/pabloprf/minuet.git",
 ]
 test = [
   "pytest",
