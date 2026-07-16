@@ -16,8 +16,8 @@ description: >-
   It also does pedestal/EPED/shaping forensics (what EPED actually used vs final-state
   geometry, peeling-vs-ballooning, EPED-NN sensitivity scans, geqdsk shaping) and
   whole-scan surveys. Read-only/diagnostic by default; it does not launch runs or long jobs.
-model: sonnet
-effort: xhigh
+model: opus
+effort: high
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 

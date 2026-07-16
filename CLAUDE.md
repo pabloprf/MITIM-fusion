@@ -497,6 +497,17 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
   to users and developers. Keep all the changes for a specific capability inside
   that bullet point as much as possible. For example, if improvements to a MAESTRO
   beat, do not populate the document with more than one bullet, unless needed.
+- **This bar is HIGH and I mean it. RELEASE_NOTES is for changes that alter what users
+  or developers can DO or OBSERVE — new capabilities, changed behavior/defaults/APIs,
+  or bug fixes with a real user-visible symptom. It is NOT a changelog of every commit.
+  When in doubt, DO NOT add an entry, and do not edit an existing bullet either — ask me
+  first if you think a small change might deserve one.**
+- **Concretely, DO NOT add (or amend a bullet for) tiny changes such as: reworded error
+  messages / log strings / comments / docstrings, typo or wording fixes, internal
+  refactors with no behavior change, test-only edits, or agent/config/tooling tweaks.
+  A change that only makes an existing message read more accurately (like correcting an
+  error message's wording) is exactly the kind of thing that should NOT touch
+  RELEASE_NOTES at all.**
 - Contributors should not be added per item, but at the end of the document. Don't
   add the github repo main author.
 - Do not add to RELEASE_NOTES at the moment of implementation, add stuff at the moment
