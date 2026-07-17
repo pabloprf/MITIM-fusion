@@ -631,13 +631,14 @@ def run_benchmark(sawteeth, cold_start=False, flattop_window=10.0, show=True,
     ax_m = fig.add_subplot(gs_[0, 2])
     ax_p = fig.add_subplot(gs_[1, 2])
 
-    # MINUET stored surfaces: an even subsample of the traced levels;
-    # reconstruct which x each stored surface corresponds to (same
-    # round-linspace rule the geometry uses when storing them)
+    # x of each stored surface, from the geometry's authoritative per-surface
+    # psi_N (surfaces_psin) mapped onto (psin, x). Do NOT re-derive the storage
+    # subsample rule: the geometry now also stores the outermost traced level,
+    # so the stored set is no longer a plain round-linspace and reconstructing
+    # it mislabeled every surface's x (TRANSP fetched at the wrong x -> the
+    # "same x" surfaces looked spuriously shifted inward).
     geomL = m.geom_last
-    keepL = np.unique(np.round(np.linspace(0, geomL.x.size - 1,
-                                           len(geomL.surfaces))).astype(int))
-    x_surfL = geomL.x[keepL]
+    x_surfL = np.interp(geomL.surfaces_psin, geomL.psin, geomL.x)
 
     ax = ax_b
     Rb0, Zb0 = getFluxSurface(c.f, TIME_DIFFUSION, 1.0)
