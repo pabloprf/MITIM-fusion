@@ -1006,9 +1006,11 @@ class optimization_data:
         df, coincidentPoint = self.find_point(x)
 
         if len(df) > 0:
-
-            y               = df.iloc[0][self.outputs].to_numpy()
-            ystd            = df.iloc[0][[i + "_std" for i in self.outputs]].to_numpy()
+            try:
+                y = df[self.outputs].iloc[0].to_numpy(dtype=np.float64, copy=True)
+                ystd = df[[i + "_std" for i in self.outputs]].iloc[0].to_numpy(dtype=np.float64, copy=True)
+            except KeyError:
+                raise
 
         else:
 
