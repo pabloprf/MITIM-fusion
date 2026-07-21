@@ -3380,7 +3380,7 @@ class mitim_state:
             "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
         }
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0):
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0, boundary_override = None):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3389,7 +3389,7 @@ class mitim_state:
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin)
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override)
 
         transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth)
 

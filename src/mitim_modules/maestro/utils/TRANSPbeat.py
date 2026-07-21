@@ -183,12 +183,21 @@ class transp_beat(beat):
         # can trip TRANSP's boundary curvature check; a surface a hair inside is rounder (higher curvature
         # ratio) while keeping the true shape (unlike lowering n_mxh). Read from the same separatrix block
         # as n_mxh; default 1.0 = separatrix (old behavior).
+        #
+        # BOTH this and the MXH smoothing are applied ONLY on the FIRST TRANSP beat: the resulting curve
+        # is frozen in parameters_trans_beat and reused verbatim by every later TRANSP beat. See
+        # _fixed_boundary_for_transp for why re-deriving per beat compounds.
         try:
             boundary_surface_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('boundary_surface_psin', 1.0)
         except (KeyError, AttributeError):
             boundary_surface_psin = 1.0
         if boundary_surface_psin is not None and boundary_surface_psin < 1.0:
             print(f'\t- TRANSP boundary extracted at psi_N = {boundary_surface_psin} (backed off inside the separatrix)', typeMsg='i')
+
+        boundary_override = self._fixed_boundary_for_transp()
+        if boundary_override is not None:
+            # Reusing the frozen curve: the backoff and the MXH smoothing are already baked into it.
+            boundary_surface_psin, mxh_coeffs_smooth_sep = 1.0, None
 
         # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
         # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's
@@ -220,7 +229,8 @@ class transp_beat(beat):
             shot = self.shot, runid = self.runid, times = times,
             Vsurf = self.profiles_current.Vsurf,
             mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
-            boundary_surface_psin = boundary_surface_psin
+            boundary_surface_psin = boundary_surface_psin,
+            boundary_override = boundary_override
             )
 
         if q_restore is not None:
@@ -372,6 +382,52 @@ class transp_beat(beat):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed)
+
+        # Freeze the boundary this beat actually handed TRANSP (after the final write_ufiles above)
+        self._freeze_boundary_for_transp()
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Fixed boundary: built once, reused by every later TRANSP beat
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # The separatrix is a FROZEN engineering parameter and TRANSP is fixed-boundary, so the boundary
+    # handed to TRANSP must be identical on every beat. Re-deriving it per beat drifts two ways, both
+    # one-directional:
+    #   - boundary_surface_psin: TRANSP's output psi_N=1 surface IS the boundary it was given, so
+    #     taking psi_N=0.995 of it again gives 0.995^2 of the original flux, then 0.995^3, ...
+    #   - n_mxh: the MXH round-trip (prepare_RZsep_for_TRANSP) is a projection, not idempotent; it
+    #     shrinks 'a' by ~0.02%/pass (decaying, so self-limiting near ~0.1%, but never zero).
+    # Neither is visible in any log, and MAESTRO re-snapshots profiles_with_engineering_parameters
+    # after every beat, so the "frozen" minor radius silently tracks the drift.
+
+    def _fixed_boundary_for_transp(self):
+        '''
+        The (R,Z) curve frozen by the first TRANSP beat, or None if this IS the first one.
+        '''
+        boundary = self.maestro_instance.parameters_trans_beat.get('transp_fixed_boundary', None)
+        if boundary is None:
+            return None
+
+        # JSON round-trip (trans_beat_parameters snapshot) returns lists
+        R, Z = np.array(boundary['R']), np.array(boundary['Z'])
+        print(f'\t- Reusing the fixed boundary frozen by the first TRANSP beat ({R.size} points, '
+              f'a = {(R.max()-R.min())/2:.5f} m): boundary_surface_psin and n_mxh are NOT re-applied', typeMsg='i')
+        return R, Z
+
+    def _freeze_boundary_for_transp(self):
+        '''
+        Store the boundary handed to TRANSP so later TRANSP beats reuse it verbatim. No-op if a
+        previous beat already froze one.
+        '''
+        if 'transp_fixed_boundary' in self.maestro_instance.parameters_trans_beat:
+            return
+
+        time = sorted(self.transp.geometry.keys())[0]
+        geo = self.transp.geometry[time]
+        R, Z = geo['R_sep_transp'], geo['Z_sep_transp']
+        self.maestro_instance.parameters_trans_beat['transp_fixed_boundary'] = {
+            'R': np.array(R).tolist(), 'Z': np.array(Z).tolist()}
+        print(f'\t- Froze the TRANSP fixed boundary ({np.array(R).size} points, '
+              f'a = {(np.max(R)-np.min(R))/2:.5f} m) for all later TRANSP beats', typeMsg='i')
 
     def _number_of_antennas(self, tokamak_structures):
         # Determine the number of antennas
