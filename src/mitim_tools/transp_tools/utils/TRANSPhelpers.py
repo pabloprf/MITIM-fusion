@@ -217,6 +217,7 @@ class transp_run:
                     # -----------------------------------------------
 
                     writeBoundary(self.folder / f'BOUNDARY_123456_{t}.DAT', R, Z)
+                    self.geometry[time]['R_sep_transp'], self.geometry[time]['Z_sep_transp'] = R, Z
                     tt.append(t)
 
             generateMRY(
@@ -248,6 +249,10 @@ class transp_run:
                         R, Z = self.geometry[time]['R_sep'], self.geometry[time]['Z_sep']
 
                     r0, z0 = (R.max()+R.min())/2, (Z.max()+Z.min())/2
+
+                    # The exact curve handed to TRANSP (post-MXH-smoothing). Stored so a caller can
+                    # freeze and reuse it verbatim instead of re-deriving (and re-smoothing) it.
+                    self.geometry[time]['R_sep_transp'], self.geometry[time]['Z_sep_transp'] = R, Z
 
                     ts.append(time)
                     Rs.append(R)
@@ -832,7 +837,7 @@ class transp_input_time:
         
         self._populate(time)
 
-    def from_profiles(self, time, profiles_file, Vsurf = 0.0, boundary_surface_psin = 1.0):
+    def from_profiles(self, time, profiles_file, Vsurf = 0.0, boundary_surface_psin = 1.0, boundary_override = None):
 
         self.time = time
 
@@ -857,7 +862,7 @@ class transp_input_time:
                 self.variables[self.transp_instance.quantities[var][1]]['x'] = None
                 self.variables[self.transp_instance.quantities[var][1]]['z'] = Vsurf
 
-        self._produce_geometry_profiles(boundary_surface_psin = boundary_surface_psin)
+        self._produce_geometry_profiles(boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override)
         self._populate(time)
 
     def _produce_quantity_profiles(self, var = 'Te', Vsurf = None):
@@ -898,7 +903,7 @@ class transp_input_time:
 
         return x,z
 
-    def _produce_geometry_profiles(self, boundary_surface_psin = 1.0):
+    def _produce_geometry_profiles(self, boundary_surface_psin = 1.0, boundary_override = None):
 
         self.geometry = {}
 
@@ -907,7 +912,27 @@ class transp_input_time:
         # a flux surface just inside it, interpolated at that normalized poloidal flux. Backing the
         # TRANSP fixed boundary off a sharp separatrix (rounder interior surface) avoids TRANSP's
         # boundary curvature-ratio abort while preserving the true shape.
+        #
+        # boundary_override, when given, is an explicit (R,Z) curve used verbatim: no psi_N
+        # interpolation at all. MAESTRO uses it to hand every TRANSP beat after the first the SAME
+        # fixed boundary that beat 1 built (see TRANSPbeat._fixed_boundary_for_transp). Re-deriving it
+        # per beat would compound: TRANSP is fixed-boundary, so its output psi_N=1 surface IS the
+        # boundary it was given, and taking psi_N=boundary_surface_psin of that again shrinks the
+        # plasma by that factor every beat (0.995 -> 0.995^2 -> ...).
         # --------------------------------------------------------------
+
+        if boundary_override is not None:
+            self.geometry['R_sep'] = np.array(boundary_override[0])
+            self.geometry['Z_sep'] = np.array(boundary_override[1])
+            self._produce_structures_from_variables(
+                self.p.profiles['rcentr(m)'][0],
+                self.p.derived['a'],
+                self.p.profiles['kappa(-)'][-1],
+                self.p.profiles['zmag(m)'][0],
+                self.p.profiles['delta(-)'][-1],
+                self.p.profiles['zeta(-)'][-1],
+                )
+            return
 
         Rsurf, Zsurf = self.p.derived["R_surface"][0], self.p.derived["Z_surface"][0]   # [nrad, ntheta]
         if boundary_surface_psin is None or boundary_surface_psin >= 1.0:

@@ -920,6 +920,7 @@ class optimization_data:
             self.data_point_dictionary[i] = np.nan
             self.data_point_dictionary[i + "_std"] = np.nan
         self.data_point_dictionary['maximization_objective'] = np.nan
+        self.data_point_dictionary['source'] = ''  # 'training', 'acquisition', or 'local_optima'
 
         if forceNew or not self.file.exists():
             # Create empty csv
@@ -936,6 +937,18 @@ class optimization_data:
         '''
         
         done_something = False
+
+        # Backward compatibility: ensure source column exists and has object dtype.
+        # In pandas 2.x, assigning '' scalar yields StringDtype, not object; empty cells
+        # read from CSV become NaN/float64. Use np.full to guarantee object dtype,
+        # and is_string_dtype() to skip coercion when column is already writable.
+        if 'source' not in self.data.columns:
+            self.data['source'] = np.full(len(self.data), '', dtype=object)
+            done_something = True
+        elif not pd.api.types.is_string_dtype(self.data['source']):
+            # float64 from NaN roundtrip (old pandas, empty source cells) → coerce
+            self.data['source'] = self.data['source'].fillna('').astype(object)
+            done_something = True
         
         if len(self.data) > 0:
             
@@ -993,9 +1006,11 @@ class optimization_data:
         df, coincidentPoint = self.find_point(x)
 
         if len(df) > 0:
-
-            y               = df.iloc[0][self.outputs].to_numpy()
-            ystd            = df.iloc[0][[i + "_std" for i in self.outputs]].to_numpy()
+            try:
+                y = df[self.outputs].iloc[0].to_numpy(dtype=np.float64, copy=True)
+                ystd = df[[i + "_std" for i in self.outputs]].iloc[0].to_numpy(dtype=np.float64, copy=True)
+            except KeyError:
+                raise
 
         else:
 
@@ -1084,6 +1099,27 @@ class optimization_data:
                         data_new = pd.DataFrame([data_point])  # Initialize if data_new is all-NA
 
         self.data = data_new
+        self.data.to_csv(self.file, index=False)
+
+    def set_point_source(self, indices, source_str):
+        """Tag rows at the given Iteration indices with a source label.
+
+        Parameters
+        ----------
+        indices : iterable of int
+            Row ``Iteration`` values to tag.
+        source_str : str
+            One of ``'training'``, ``'acquisition'``, ``'local_optima'``.
+        """
+        self.data = pd.read_csv(self.file)
+        # Ensure source column exists and has object dtype so string assignment works.
+        # Empty cells in CSV round-trip as NaN/float64; astype(object) handles all cases.
+        if 'source' not in self.data.columns:
+            self.data['source'] = np.full(len(self.data), '', dtype=object)
+        else:
+            self.data['source'] = self.data['source'].fillna('').astype(object)
+        mask = self.data['Iteration'].isin(list(indices))
+        self.data.loc[mask, 'source'] = source_str
         self.data.to_csv(self.file, index=False)
 
     def removePointsAfter(self, fromPoint):
