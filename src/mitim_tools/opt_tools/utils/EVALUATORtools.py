@@ -159,6 +159,9 @@ def mitimRun(
             # print(error)
             y, yE = np.array([np.nan]), np.array([np.nan])
 
+        y = np.asarray(y, dtype=np.float64)
+        yE = np.asarray(yE, dtype=np.float64)
+
     # Write results into Tabular Data, but make sure it is only one process at a time
 
     inputs = list(bounds)

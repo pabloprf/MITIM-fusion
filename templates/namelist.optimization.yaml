@@ -175,3 +175,25 @@ strategy_options:
     points: 32              # Number of candidate points sampled inside the trust region
     bounds: [0.75, 1.33]    # Trust region shrink / expand factors
     metrics: [3, 3]         # [success_tol, failure_tol]: consecutive successes/failures before adjusting the trust region
+
+# -----------------------------------------------------------------
+# Local optima mining: periodically scan the GP surrogate for diverse
+# local maxima, evaluate them with the physics model, and inject the
+# results back into the training set. Disabled by default.
+# -----------------------------------------------------------------
+
+local_optima_options:
+  apply: false                        # Master switch — set to true to enable local optima mining (default: off)
+  n_optima: 10                        # Number of diverse local optima to mine and evaluate per round
+  n_acq_batches_per_cycle: 2          # Trigger a mining round after this many acquisition batches
+  min_iteration: 2                    # Do not run the first mining round before this BO iteration number
+  n_restarts: 256                     # Number of independent gradient-ascent restarts on the surrogate posterior mean
+                                      # Each restart converges (via L-BFGS-B) to its own local maximum; larger = broader coverage
+  n_from_training: 32                 # Number of best-observed training points to include as warm starts (in addition to Sobol samples)
+  min_distance: 0.1                   # Minimum pairwise distance (in normalized [0,1] DV space) between selected optima;
+                                      # prevents the diversity selection from returning clustered solutions
+  diversity_algorithm: "greedy_max_min_distance"
+                                      # Algorithm used to select n_optima diverse candidates from the full set of restart solutions.
+                                      # "greedy_max_min_distance": sort restarts by objective value, then iteratively pick the
+                                      #   next-best candidate that is at least min_distance from all already-selected points.
+                                      # Future options (not yet implemented): "k_medoids", "determinantal_point_process"
