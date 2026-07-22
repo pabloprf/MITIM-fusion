@@ -37,6 +37,7 @@ _COLORS = {
     "SHARPNESS":      "\033[95m",  # bright magenta
     "CONFINEMENT":    "\033[94m",  # bright blue
     "LENGYEL":        "\033[96m",  # bright cyan
+    "MINUET":         "\033[93m",  # bright yellow
     "PENDING":        "\033[36m",  # cyan
     "UNKNOWN":        "\033[34m",  # blue
     "FINISHED":       "\033[32m",  # green
@@ -343,6 +344,8 @@ def _classify_folder(folder, squeue_by_jobid, chars_folder_clip, show_full_path)
             beat = 'TRANSP'
         elif 'run_lengyel' in run_names:
             beat = 'LENGYEL'
+        elif 'run_minuet' in run_names:
+            beat = 'MINUET'
         elif 'run_sharpness' in run_names:   # legacy pre-'bc' folder naming
             beat = 'SHARPNESS'
         elif 'run_confinement' in run_names:  # legacy pre-'bc' folder naming

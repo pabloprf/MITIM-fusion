@@ -197,6 +197,8 @@ maestro:
   #   2 : 1 + wipe each beat's `run_<name>/` entirely (two plot tabs degrade gracefully)
   #   3 : 2 + prune persisted outputs and initializers (the old `keep_all_files: false`)
   # Use `mitim_prune_maestro <folder> --level N` to apply a level to an ALREADY-FINISHED run.
+  # MINUET beats persist run.minuet + minuet_results.npy into beat_results/, so their
+  # plot tabs and mitim_plot_minuet survive pruning of `run_minuet/`.
   prune_level: 0
 
   # Per-beat override: any beat section below may set its own `prune_level`, which wins over
@@ -693,5 +695,69 @@ maestro:
 
         extractAC: True
         time_before_end: 0.001
+
+  minuet:
+
+    beat_type: minuet
+
+    base_module: null
+
+    # In-process substitute for the transp_soft beat: current diffusion + sawteeth at FIXED
+    # kinetic profiles and fixed-boundary equilibrium, via the standalone MINUET package
+    # (pip install "mitim-fusion[minuet]"). Runs locally in seconds-to-minutes (no TRANSP
+    # machine needed). The kinetics, species and source columns of the incoming state pass
+    # through VERBATIM; only the equilibrium blocks and q/johm/jbs are evolved. The saved
+    # discharge object (beat_results/run.minuet) can be inspected with mitim_plot_minuet.
+    parameters_prepare:
+
+      # Simulation length [s] (the transp_soft flattop_window analog): long enough for the
+      # current profile to relax to (near) steady state
+      t_end: 20.0
+
+      # true: coupled current diffusion + fixed-boundary Grad-Shafranov, with the equilibrium
+      #       metrics refreshed as li drifts (the transp_soft-equivalent behavior).
+      # false: pure current diffusion on the frozen input geometry (cheaper; note that only
+      #        fixed-period sawteeth are meaningful in this mode -- the Porcelli trigger is inert)
+      evolve_equilibrium: true
+
+      # Sawteeth on/off and trigger model. porcelli: self-consistent Porcelli trigger
+      # (recommended; needs evolve_equilibrium). fixed_period: imposed clock with
+      # sawtooth_period [s]
+      sawteeth: true
+      sawtooth_model: porcelli
+      sawtooth_period: null
+
+      # Post-crash current redistribution: kadomtsev (full reconnection, MINUET default),
+      # porcelli (partial reconnection, closest to TRANSP's Porcelli model), partial
+      reconnection_model: kadomtsev
+
+      # If not null, extend t_end so at least this many sawtooth crashes are expected,
+      # estimated from the previous beat's sawtooth_times (same contract as the transp
+      # beat's ensure_sawtooths). Caveat: TRANSP-produced sawtooth_times carry TRANSP's
+      # ~0.1 s pre-flattop offset while MINUET's clock starts at 0 (conservative over-estimate)
+      ensure_sawtooths: null
+
+      # Physics models (MINUET keeps its physical defaults; TRANSP-parity tweaks live in
+      # tests/dev_tests/minuet_vs_transp.py, not here)
+      resistivity_model: sauter   # sauter | spitzer
+      bootstrap_model: sauter     # sauter | null (purely ohmic)
+
+      # true: command Ip to the frozen engineering current(MA) (the CUR-ufile analog;
+      #       recommended -- MINUET distributes the initial mismatch over its edge buffer).
+      # false: use the flux content of the incoming state as-is
+      Ip_from_frozen: true
+
+      # Resolution / numerics (MINUET defaults; raise gs_ns/gs_ntheta for shaping studies)
+      gs_ns: 128        # Grad-Shafranov radial grid
+      gs_ntheta: 256    # Grad-Shafranov poloidal grid
+      n_cells: 200      # current-diffusion radial cells
+      rtol: null        # BDF relative tolerance (null -> MINUET default)
+      n_save: 201       # saved time frames (plot granularity of run.minuet)
+
+    preprocess_prepare: null
+    preprocess_prepare_parameters: null
+    # Injects the gaussian_sources Pe/Pi at beat output (MINUET runs no heating model);
+    # no-op for ICRH/NBI (the incoming state's sources pass through verbatim)
+    preprocess_run: import::mitim_modules.maestro.utils.MINUETbeat.preprocess_run_minuet
 
         

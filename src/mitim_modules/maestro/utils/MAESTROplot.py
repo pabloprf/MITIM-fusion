@@ -13,6 +13,7 @@ from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 from mitim_modules.maestro.utils.BCbeat import bc_beat, BC_METHODS
+from mitim_modules.maestro.utils.MINUETbeat import minuet_beat
 from IPython import embed
 
 MARKERSIZE = 1
@@ -37,6 +38,8 @@ def grabMAESTRO(folder):
             beat_types.append('eped')
         elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
             beat_types.append('lengyel')
+        elif (folder_beats / f'{beats[beat]}' / 'run_minuet').exists():
+            beat_types.append('minuet')
         else:
             for _method in BC_METHODS:
                 if (folder_beats / f'{beats[beat]}' / f'run_bc_{_method}').exists():
@@ -90,7 +93,7 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
 
 _BEAT_TYPE_LABELS = [
     (transp_beat, 'TRANSP'), (portals_beat, 'PORTALS'), (eped_beat, 'EPED'),
-    (lengyel_beat, 'Lengyel'),
+    (lengyel_beat, 'Lengyel'), (minuet_beat, 'MINUET'),
 ]
 
 

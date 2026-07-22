@@ -20,6 +20,7 @@ from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
 from mitim_modules.maestro.utils.BCbeat import bc_beat
+from mitim_modules.maestro.utils.MINUETbeat import minuet_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 from mitim_modules.maestro.utils.MAESTRObeat import PRUNE_NOTHING, PRUNE_OUTPUTS, PRUNE_LEVELS
@@ -182,6 +183,9 @@ class maestro:
                 f"[MITIM] beat_type '{beat}' has been removed: use beat_type 'bc' with "
                 f"parameters_prepare 'method: {beat}' instead"
             )
+        elif beat == 'minuet':
+            print(f'\n- Beat {self.counter_current}: MINUET ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            self.beats[self.counter_current] = minuet_beat(self)
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
@@ -641,7 +645,7 @@ class maestro:
         Build Outputs/maestro_summary.md at end of run.
         - Rendered (PNG) flowchart of all beats with type + wall-time labels.
         - printInfo() dump of the final plasma state (input.gacode_final).
-        - One detailed section per beat type {portals, transp, eped},
+        - One detailed section per beat type {portals, transp, eped, minuet},
           using only the last beat of each type.
         - Exceptions inside any beat.summary() are caught and recorded;
           summary generation itself never raises.
@@ -654,7 +658,7 @@ class maestro:
         beat_wall_times = _parse_beat_wall_times(self.folder_performance / 'timing.jsonl')
 
         # Find the last beat of each tracked type (insertion order in self.beats)
-        TRACKED_TYPES = ['transp', 'portals', 'eped']
+        TRACKED_TYPES = ['transp', 'portals', 'eped', 'minuet']
         last_by_type = {}
         for counter, beat_obj in self.beats.items():
             if beat_obj.name in TRACKED_TYPES:
@@ -942,6 +946,7 @@ def _render_beat_flow_png(beats, wall_times, out_path):
         'bc_betap':  '#ffd6e0',  # light pink
         'sharpness': '#e0c3fc',    # legacy pre-'bc' folder naming
         'confinement': '#a8dadc',  # legacy pre-'bc' folder naming
+        'minuet':    '#f9d5a7',  # light amber
     }
     DEFAULT_COLOR = '#d0d0d0'
 

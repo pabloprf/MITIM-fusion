@@ -10,6 +10,8 @@ DESCRIPTION
     from the thermal deuterium population. Validated against interpretive-TRANSP THNTX_DD on
     DIII-D runs (agreement 0.94-1.04). MITIM's fusion power remains DT-only.
 
+*   🎵 **MAESTRO `minuet` beat**: new in-process substitute for `transp_soft` — current diffusion + sawteeth on a fixed-boundary equilibrium (coupled CD+GS) via the standalone MINUET package (`pip install "mitim-fusion[minuet]"`), running in seconds instead of a TRANSP dispatch. Kinetics/species/sources pass through verbatim; only the equilibrium blocks and q/johm/jbs evolve. Fully namelist-driven (`beat_type: minuet`; commented block in `templates/namelist.maestro.yaml`) with gaussian-source heating injection, the sawtooth-times / `ensure_sawtooths` handoff, `mitim_plot_maestro` / `mitim_check_maestro` integration (the full MINUET notebook is appended when `run.minuet` is present), and robustness to FreeGS/engineering-parameter starts (folded-LCFS trim on ingest, trusted-span restore on merge). Dev-test: `tests/dev_tests/test_maestro_minuet_beat.py` (chain `["minuet", "portals"]` with in-process TGLF).
+
 *   💥 **Separatrix initializer from `rz_boundary_file` now shape-faithful**: the boundary fitted
     from the R,Z file carries its FULL MXH moments into the initial state (`shape_cos0+`/`shape_sin3+`,
     previously zeroed), and the `delta`/`zeta` scalars are written in the GACODE-MXH convention
