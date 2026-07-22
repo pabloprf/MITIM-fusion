@@ -371,13 +371,9 @@ def rapids_evaluator(nn, core, p_base_orig,
             print(f"\t\t- Evaluating {optional_flag} required {i+1} iterations for parameters: {eped_evaluation}")
 
         # Calculate targets
-        power = STATEtools.powerstate(p,evolution_options={"rhoPredicted": np.linspace(0.0, 0.9, 20)[1:]}, increase_profile_resol=False)
-        power.calculateProfileFunctions()
-        power.calculateTargets()
         profiles_new = copy.deepcopy(p)
-        TRANSFORMtools.powerstate_to_gacode_powers(power, profiles_new, rederive_at_high_res=False)
-        
-        profiles_new.derive_quantities(rederiveGeometry=False)
+        profiles_new.recompute_targets()
+
         profiles_new.selfconsistentPTOT()
 
         neped_transition_estimate = None

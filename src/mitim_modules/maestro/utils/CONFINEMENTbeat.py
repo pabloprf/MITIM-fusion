@@ -33,30 +33,11 @@ def _recompute_alpha_power(profiles):
     swap the upstream beat's radiation model in the passed-forward state.
     """
     from mitim_tools.misc_tools import LOGtools
-    from mitim_modules.powertorch import STATEtools
-    from mitim_modules.powertorch.physics_models import targets_analytic
 
-    extra_points = 2   # same grid trick as powerstate_to_gacode_powers
-    rhoy = profiles.profiles["rho(-)"][1:-extra_points]
-
+    # Only qfus: refreshing radiation/exchange here would swap the upstream beat's
+    # radiation model and they do not enter qHeat (see the note above).
     with LOGtools.HiddenPrints():
-        state = STATEtools.powerstate(
-            profiles,
-            evolution_options={"rhoPredicted": rhoy},
-            target_options={
-                "evaluator": targets_analytic.analytical_model,
-                "options": {"targets_evolve": ["qfus"], "target_evaluator_method": "powerstate"},
-            },
-            transport_options={"evaluator": None, "options": {}},
-            increase_profile_resol=False,
-        )
-        state.calculateProfileFunctions()
-        state.calculateTargets()
-
-    for key, gkey in (("qfuse", "qfuse(MW/m^3)"), ("qfusi", "qfusi(MW/m^3)")):
-        profiles.profiles[gkey][:-extra_points] = state.plasma[key][0, :].cpu().numpy()
-
-    profiles.derive_quantities(rederiveGeometry=False)
+        profiles.recompute_targets(targets=["qfus"])
 
     return profiles
 

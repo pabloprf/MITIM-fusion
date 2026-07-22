@@ -94,7 +94,7 @@ class opt_class(STRATEGYtools.opt_evaluator):
 
 # templates/namelist.optimization.yaml carries all the optimizer defaults (acquisition,
 # surrogate options, convergence criteria, ...); read it and modify in-situ, exactly as
-# the PORTALS namelist is modified in portals_01_standard.py
+# the PORTALS namelist is modified in portals_01_tglf_standard.py
 namelist = __mitimroot__ / "templates" / "namelist.optimization.yaml"
 opt_fun1D = opt_class(folderWork, namelist)
 

@@ -1,4 +1,5 @@
 import shutil
+import contextlib
 import torch
 import datetime
 import copy
@@ -18,6 +19,37 @@ from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from IPython import embed
+
+
+@contextlib.contextmanager
+def _dropped_derived(root, max_depth=12):
+    """Temporarily strip every reachable gacode_state.derived so a pickle written inside this block
+    is lean; restore on exit so the live objects are untouched. The dropped 'derived' dicts (~80% of
+    extra.pkl's arrays: geometry/gradients) are recomputable and rebuilt lazily on read in
+    PORTALSanalysis via derive_quantities().
+
+    NOTE: this strip walks *every* reachable gacode_state; the rebuild-on-read in
+    PORTALSanalysis.prep_metrics is a whitelist (integer-keyed powerstate.profiles + the
+    'profiles_original'/'profiles_modified' string keys). If a new standalone gacode_state is
+    added to the stored dict, extend that rebuild too or it will read back with derived={}."""
+    saved, seen = [], set()
+    def walk(o, d=0):
+        if d > max_depth or id(o) in seen:
+            return
+        seen.add(id(o))
+        if isinstance(o, PROFILEStools.gacode_state) and getattr(o, "derived", None):
+            saved.append((o, o.derived)); o.derived = {}
+        children = (o.values() if isinstance(o, dict)
+                    else o if isinstance(o, (list, tuple))
+                    else getattr(o, "__dict__", {}).values())
+        for v in children:
+            walk(v, d + 1)
+    walk(root)
+    try:
+        yield
+    finally:
+        for o, dd in saved:
+            o.derived = dd
 
 
 class portals(STRATEGYtools.opt_evaluator):
@@ -243,11 +275,15 @@ class portals(STRATEGYtools.opt_evaluator):
         # Extra operations: Store data that will be useful to store and interpret in a machine were this was not run
 
         if self.optimization_extra is not None:
+            # Drop the (recomputable) 'derived' dicts before pickling -- ~80% of extra.pkl's array
+            # bytes are derived geometry/gradients, rebuilt on read. Set drop_derived=False to keep.
+            drop_derived = getattr(self, "store_lean_powerstates", True)
             dictStore = IOtools.unpickle_mitim(self.optimization_extra)  #TODO: This will fail in future versions of torch
             dictStore[int(numPORTALS)] = {"powerstate": powerstate}
             dictStore["profiles_modified"] = PROFILEStools.gacode_state(self.folder / "Initialization" / "input.gacode_modified")
             dictStore["profiles_original"] = PROFILEStools.gacode_state( self.folder / "Initialization" / "input.gacode_original")
-            with open(self.optimization_extra, "wb") as handle:
+            cm = _dropped_derived(dictStore) if drop_derived else contextlib.nullcontext()
+            with cm, open(self.optimization_extra, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
 
     def scalarized_objective(self, Y):

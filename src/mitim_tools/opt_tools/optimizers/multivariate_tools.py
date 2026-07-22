@@ -28,6 +28,15 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     Notes:
         - tol in root is the same as xtol for LM
         - ftol in LM will define the relative reduction in the sum of squares of the residuals between one iteration and another
+        - BATCHING: the [batches,dimX] guesses are flattened into ONE scipy.optimize.root
+          solve of size batches*dimX (see x_initial0.view(-1) and the single root() call
+          below). The Jacobian is block-diagonal (off-blocks zeroed via jacobian_numerical_filter),
+          so the Newton/LM direction decouples per batch member, BUT LM shares a single
+          global damping, a single convergence test on the TOTAL residual sum-of-squares
+          (ftol), and global MINPACK scaling. A batched ("parallel") solve is therefore NOT
+          identical to solving each guess alone: slow members can be stopped early and, on
+          multi-root landscapes, a member can land in a different basin than it would reach
+          independently. (See tests/dev_tests/test_root_batching.py.)
     """
 
     # --------------------------------------------------------------------------------------------------------
@@ -130,6 +139,9 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
     # --------------------------------------------------------------------------------------------------------
 
     with IOtools.timer(name="SCIPY.ROOT multi-variate root finding method"):
+        # Single LM solve over ALL batch members at once (x_initial0 is the flattened
+        # batches*dimX vector). The batch couples only through LM's global damping /
+        # convergence / scaling -- see the BATCHING note in the docstring.
         sol = root(function_for_optimizer, x_initial0, jac=jac_ad, method=solver, tol=tol, options=algorithm_options)
 
     # --------------------------------------------------------------------------------------------------------
@@ -179,7 +191,17 @@ def scipy_root(flux_residual_evaluator, x_initial, bounds=None, solver_options=N
 
 def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_options=None, debug=False ):
     """
-    See scipy_root for the inputs and outputs
+    See scipy_root for the inputs and outputs.
+
+    BATCHING: the step (_sr_step: dx = relax*(QT-Q)/sqrt(Q^2+QT^2), capped, x += dx*|x|)
+    and the dynamic relaxation (_dynamic_relax / _check_oscillation) are ENTIRELY
+    per-batch-member, per-channel -- there is no cross-member term, so each start's
+    trajectory is independent (the per-channel relative normalization also keeps small
+    flux channels well balanced). The ONLY batch coupling is the stop below: the whole
+    batch halts when the BEST member's metric meets `tol` (tol = tol_rel * best STARTING
+    residual). So a batched ("parallel") solve TRUNCATES the slower members at the
+    iteration the fastest converges -> they come back under-relaxed vs running them alone;
+    there is no basin jumping. (See tests/dev_tests/test_root_batching.py.)
     """
 
     # ********************************************************************************************
@@ -201,7 +223,16 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
 
     print_each = solver_options.get("print_each", 1e2)
     write_trajectory = solver_options.get("write_trajectory", True)
-    
+
+    # Halting criterion across the batch of restarts (see the BATCHING note in the docstring):
+    #   "best": stop as soon as the BEST restart meets tol (default; the slower restarts are
+    #           truncated at that iteration -- fine when only the single best x_best is used).
+    #   "all":  keep relaxing until EVERY restart meets tol (or maxiter) -- so all returned
+    #           x_best are comparably converged, for callers that consume more than one.
+    halt_on = solver_options.get("halt_on", "best")
+    if halt_on not in ("best", "all"):
+        raise ValueError(f"simple_relaxation: halt_on must be 'best' or 'all', got {halt_on!r}")
+
     thr_bounds = 1e-4 # To avoid being exactly in the bounds (relative -> 0.01%)
 
     # ********************************************************************************************
@@ -277,10 +308,17 @@ def simple_relaxation( flux_residual_evaluator, x_initial, bounds=None, solver_o
         if (i + 1) % int(print_each) == 0:
             print(f"\t\t- Best metric (to maximize) @{i+1}: {metric_best:.2e}")
 
-        # Stopping based on the best of the batch based on the metric
-        if (tol is not None) and (M.max().item() > tol):
-            print(f"\t* Converged in {i+1} iterations with metric of {metric_best:.2e} > {tol:.2e}",typeMsg="i")
-            break
+        # Stopping. `halt_on` selects whether the batch stops when the BEST restart meets
+        # tol (default) or when EVERY restart does. This is the ONLY place the batch members
+        # couple -- with "best", the slower restarts are truncated at this iteration; with
+        # "all", they keep relaxing (their per-member trajectories are otherwise independent).
+        # See the BATCHING note in the docstring.
+        if tol is not None:
+            metric_check = M.min().item() if halt_on == "all" else M.max().item()
+            if metric_check > tol:
+                print(f"\t* Converged ({halt_on}) in {i+1} iterations: best metric {metric_best:.2e}, "
+                      f"worst {M.min().item():.2e}, tol {tol:.2e}", typeMsg="i")
+                break
 
         # Update the dynamic relax if needed
         if relax_dyn:

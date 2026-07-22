@@ -7,7 +7,7 @@ import numpy as np
 from mitim_tools.transp_tools import TRANSPtools, NMLtools
 from mitim_tools.misc_tools import IOtools, FARMINGtools
 from mitim_tools.misc_tools import CONFIGread
-from mitim_tools.transp_tools.utils import TRANSPhelpers
+from mitim_tools.transp_tools.utils import TRANSPhelpers, TRANSPdebug
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -125,6 +125,22 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             self.tok,
             self.job_name,
         )
+
+        # The finish step's trlook/plotcon occasionally fails to build {runid}.CDF
+        # (e.g. a transient "TF.PLN file not found" abort), leaving no CDF for
+        # storeCDF to read -> a hard "path does not exist" downstream. Fall back to
+        # the dedicated 'look' rebuild (re-stages the .PLN files from the remote run
+        # folder self.job.folderExecution -- NOT the local FolderTRANSP, where the
+        # intermediate files never live -- and re-runs plotcon, which retries
+        # internally) before giving up.
+        if not (self.FolderTRANSP / f"{self.runid}.CDF").exists():
+            print(f"\t- TRANSP finish produced no {self.runid}.CDF; retrying CDF build via 'look'", typeMsg="w")
+            runSINGULARITY_look(
+                self.FolderTRANSP,
+                self.job.folderExecution,
+                self.runid,
+                self.job_name + "_look",
+            )
 
         # Get reactor to call for ACs as well
         self.cdfs[label] = TRANSPtools.storeCDF(
@@ -487,25 +503,49 @@ def interpretRun(infoSLURM, log_file):
         """
         Case is not running (finished or failed)
         """
-        if "TERMINATE THE RUN (NORMAL EXIT)" in "\n".join(log_file) or "Finished TRANSP run app." in "\n".join(log_file):
+        log_str = "\n".join(log_file)
+
+        # A genuine TRANSP normal exit wins even if scary-looking text also appears in
+        # the log (recoverable backtraces, etc.) -- see the back-and-forth in git history.
+        normal_exit = "TERMINATE THE RUN (NORMAL EXIT)" in log_str
+
+        # Unambiguous fatal aborts. These must take precedence over the singularity
+        # wrapper's "Finished TRANSP run app." line below, which is printed
+        # unconditionally at the end of every run -- including after an MPI_ABORT (e.g. a
+        # t=0 TEQ failure such as a missing fixed-boundary savefile). Without ordering
+        # these ahead of that line, such an aborted run is misread as "finished" and MITIM
+        # goes hunting for a CDF that was never built.
+        hard_failure = (
+            "Error termination" in log_str
+            or "Backtrace for this error:" in log_str
+            or "TRANSP ABORTR SUBROUTINE CALLED" in log_str
+            or "%bad_exit:  generic f77 error exit call" in log_str
+            or "Segmentation fault - invalid memory reference" in log_str
+            or "*** End of error message ***" in log_str
+        )
+
+        # InfiniBand/RDMA container-launch failure (mlx5 UD QP denied -> mpirun segfault).
+        # Ordered ahead of hard_failure so it is labelled as the infra failure it is, rather
+        # than swallowed by the generic "*** End of error message ***" that OpenMPI also prints.
+        rdma_failure = any(err in log_str for err in TRANSPdebug.RDMA_LAUNCH_ERRORS)
+
+        if normal_exit:
             status = 1
             info["info"]["status"] = "finished"
-        elif (
-            "Error termination" in "\n".join(log_file)
-            ) or (
-            "Backtrace for this error:" in "\n".join(log_file)
-            ) or (
-            "TRANSP ABORTR SUBROUTINE CALLED" in "\n".join(log_file)
-            ) or (
-            "%bad_exit:  generic f77 error exit call" in "\n".join(log_file)
-            ) or (
-            "Segmentation fault - invalid memory reference" in "\n".join(log_file)
-            ) or (
-            "*** End of error message ***" in "\n".join(log_file)
-            ):
+        elif rdma_failure:
             status = -1
             info["info"]["status"] = "stopped"
-        elif any(err in "\n".join(log_file) for err in TRANSPhelpers.CONTAINER_LAUNCH_ERRORS):
+            print("\t- TRANSP's MPI layer failed to bring up the InfiniBand device (mlx5); the container was denied the RDMA queue-pair and mpirun segfaulted. Flagging run as stopped (infrastructure, not physics)",typeMsg="w",)
+        elif hard_failure:
+            status = -1
+            info["info"]["status"] = "stopped"
+            print("\t- TRANSP aborted before completing (fatal error / ABORTR in the log, no NORMAL EXIT); flagging run as stopped",typeMsg="w",)
+        elif "Finished TRANSP run app." in log_str:
+            # The singularity wrapper's final line. Trust it as success only once the fatal
+            # signals above have been ruled out.
+            status = 1
+            info["info"]["status"] = "finished"
+        elif any(err in log_str for err in TRANSPhelpers.CONTAINER_LAUNCH_ERRORS):
             # The container never started, so TRANSP never ran. Without this catch, the log
             # matches nothing below and MITIM waits until the job time limit.
             status = -1
@@ -522,6 +562,9 @@ def interpretRun(infoSLURM, log_file):
 
         print(f"\t- Run is not currently in the SLURM grid ({info['info']['status']})",typeMsg="i" if status == 1 else "w",)
         if status == -1:
+            # Capture WHY it stopped so the exception raised in checkUntilFinished names the
+            # actual cause instead of a bare "TRANSP stopped".
+            info["info"]["failure_reason"] = TRANSPdebug.diagnose_transp_failure(log_file)["message"]
             pringLogTail(log_file)
 
     return info, status
@@ -584,12 +627,18 @@ cd {transp_job.machineSettings['folderWork']} && singularity run {txt_bind}--app
         removeScratchFolders=False
     )  # Because it needs to read what it was there from run()
 
+    # Surface the finish outputs (the heavy {runid}.CDF, logs, AC files, ...) from
+    # results/{tok}.00/ up into folderWork, where storeCDF / the rest of MITIM read them.
     odir = folderWork / "results" / f"{tok}.00"
     for item in odir.glob('*'):
         if item.is_file():
             shutil.copy2(item, folderWork)
         elif item.is_dir():
             shutil.copytree(item, folderWork / item.name, dirs_exist_ok=True)
+
+    # Drop the retrieved results/ tree: it's an identical copy of what we just surfaced
+    # (notably the heavy .CDF) and nothing reads it locally — storeCDF reads folderWork.
+    shutil.rmtree(folderWork / "results", ignore_errors=True)
 
 def runSINGULARITY_look(folderWork, folderTRANSP, runid, job_name, times_retry_look = 3):
 

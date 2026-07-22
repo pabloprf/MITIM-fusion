@@ -1511,22 +1511,27 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         ax.set_xlabel("Data output #")
         ax.set_ylabel("Wall time per output (s)")
         ax.set_title("Cost per data output (dashed: mean)")
-        ax.set_ylim(bottom=0)
+        # Pin bottom at 0 but keep the top growing to fit every overlaid case: set_ylim
+        # disables y-autoscale, so a plain set_ylim(bottom=0) on the first case would
+        # freeze the top to that case's range and clip the others.
+        ax.set_ylim(bottom=0, top=max(ax.get_ylim()[1], float(np.nanmax(data.timing_total)) * 1.05))
         GRAPHICStools.addDenseAxis(ax)
         ax.legend(loc="best", prop={"size": 8})
 
         # B: cumulative cost
         ax = axs["B"]
+        cumulative = (setup_time + np.cumsum(data.timing_total)) / 60.0
         ax.plot(
             steps,
-            (setup_time + np.cumsum(data.timing_total)) / 60.0,
+            cumulative,
             "-o", c=c, lw=1.0, markersize=3,
             label=f"{label} (setup {setup_time:.1f}s, total {total_time/60.0:.1f}min)",
         )
         ax.set_xlabel("Data output #")
         ax.set_ylabel("Cumulative wall time (min)")
         ax.set_title("Cumulative cost (setup included)")
-        ax.set_ylim(bottom=0)
+        # Same as A: expand the top across cases (cumulative is monotonic, so [-1] is the max)
+        ax.set_ylim(bottom=0, top=max(ax.get_ylim()[1], float(cumulative[-1]) * 1.05))
         GRAPHICStools.addDenseAxis(ax)
         ax.legend(loc="best", prop={"size": 8})
 

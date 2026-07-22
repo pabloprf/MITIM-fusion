@@ -9,4 +9,8 @@ docs/build/
 *.bat
 _build/
 *.claude/
+# ...but DO track shared Claude Code subagents (everything else in .claude/ stays local)
+!.claude/
+.claude/*
+!.claude/agents/
 build/

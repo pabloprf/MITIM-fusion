@@ -101,6 +101,48 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             return self.read_inprocess(label=label, folder=folder)
         return super().read(label=label, folder=folder, **kwargs)
 
+    def prep_from_file(
+        self,
+        FolderGACODE,  # Main folder where the run lives
+        input_neo_file,  # input.neo file to start with
+        input_gacode=None,
+    ):
+        """Prepare a NEO class to read an already-run folder directly from its
+        input.neo (no mitim_state needed). Mirrors TGLF.prep_from_file: sets the
+        normalizations from input.gacode (if given) and the radial location from
+        the input file's RMIN_OVER_A, so read() can be called on the outputs."""
+        print("> Preparation of NEO class directly from input.neo")
+
+        from mitim_tools.gacode_tools import PROFILEStools
+        from mitim_tools.gacode_tools.utils import NORMtools
+
+        self.FolderGACODE = IOtools.expandPath(FolderGACODE)
+
+        self.NormalizationSets, _ = NORMtools.normalizations(
+            PROFILEStools.gacode_state(input_gacode) if input_gacode is not None else None)
+
+        inputclass = NEOinput(file=input_neo_file)
+
+        roa = inputclass.plasma["RMIN_OVER_A"]
+        print(f"\t- This file correspond to r/a={roa} according to RMIN_OVER_A")
+
+        if self.NormalizationSets["input_gacode"] is not None:
+            rho = np.interp(
+                roa,
+                self.NormalizationSets["input_gacode"].derived["roa"],
+                self.NormalizationSets["input_gacode"].profiles["rho(-)"],
+            )
+            print(f"\t\t- rho={rho:.4f}, using input.gacode for conversion")
+        else:
+            print(
+                "\t\t- No input.gacode for conversion, assuming rho=r/a, EXTREME CAUTION PLEASE",
+                typeMsg="w",
+            )
+            rho = roa
+
+        self.rhos = [rho]
+        self.inputs_files = {self.rhos[0]: inputclass}
+
     def plot(
         self,
         fn=None,
@@ -793,7 +835,7 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             typeMsg="i",
         )
 
-    def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1):
+    def plot_vgen(self, fn=None, fn_color=None, label="vgen", rho_min=0.1, mark_rho=None):
         """
         Plot VGEN results: Er component decomposition, w0 and VEXB_SHEAR before/after,
         and (when smoothing was used) a raw-vs-smoothed comparison per profile.
@@ -802,6 +844,10 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         rho_min : float
             Minimum rho to include in plots (default 0.1).
             Near-axis values can diverge and obscure the physically relevant region.
+        mark_rho : array-like, optional
+            rho_tor positions to highlight with scatter markers on the smoothed (VGEN-used)
+            profiles in the smoothing tab — e.g. the PORTALS predicted radii, which bracket
+            the VGEN rho_range. Default None (no markers).
         """
         apply_theme()
 
@@ -1012,6 +1058,18 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
                 if aLTe_p is not None: ax_aLTe.plot(rho_p[mp], aLTe_p[mp], color=c, lw=lw, ls=ls, label=lbl)
                 if aLTi_p is not None: ax_aLTi.plot(rho_p[mp], aLTi_p[mp], color=c, lw=lw, ls=ls, label=lbl)
                 if aLne_p is not None: ax_aLne.plot(rho_p[mp], aLne_p[mp], color=c, lw=lw, ls=ls, label=lbl)
+
+            # Highlight requested rho positions (e.g. PORTALS predicted radii) on the smoothed curves —
+            # the values VGEN actually uses at each flux-match radius.
+            if mark_rho is not None:
+                rho_s = _get(smoothed, "rho(-)")
+                if rho_s is not None:
+                    for ax, key in [(ax_Te, "te(keV)"), (ax_Ti, "ti(keV)"), (ax_ne, "ne(10^19/m^3)"),
+                                    (ax_aLTe, "aLTe"), (ax_aLTi, "aLTi"), (ax_aLne, "aLne")]:
+                        y = _col0(_get(smoothed, key))
+                        if y is not None:
+                            ax.scatter(mark_rho, np.interp(mark_rho, rho_s, y), s=30, marker="o",
+                                       facecolor="k", edgecolor="w", linewidth=0.6, zorder=5, label="PORTALS radii")
 
             ax_Te.set_title("$T_e$");           ax_Te.set_ylabel("keV")
             ax_Ti.set_title("$T_i$");           ax_Ti.set_ylabel("keV")

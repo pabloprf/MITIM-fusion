@@ -1,0 +1,24 @@
+"STANDARD":
+  controls: {}
+
+"MINIMAL":
+  controls:
+    phys_meth: 0
+    separateflux: 0
+    numsols: 2
+    relacc1: 1.0e-2
+    relacc2: 5.0e-2
+    maxpts: 5.0e+4
+    timeout: 30
+
+"FAST":
+  controls:
+    numsols: 2
+    relacc1: 1.0e-2
+    relacc2: 5.0e-2
+    maxpts: 5.0e+4
+    timeout: 30
+
+"ROTATION":
+  controls:
+    rot_flag: 2

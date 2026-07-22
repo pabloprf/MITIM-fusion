@@ -396,6 +396,19 @@ class mitim_state:
         self.derived["rho_s"] = PLASMAtools.rho_s(self.profiles["te(keV)"], self.derived["mi_ref"], self.derived["B_unit"])
         self.derived["rho_sa"] = self.derived["rho_s"] / self.derived["a"]
 
+        # E×B and parallel-velocity shear (TGLF VEXB_SHEAR / VPAR_SHEAR normalization, c_s/a units).
+        # Single source of truth, consumed by to_tglf: gamma_eb0 = -(dw0/dr) r/|q|; then -sign_It * a/c_s.
+        if "w0(rad/s)" in self.profiles:
+            sign_it = -np.sign(self.profiles["current(MA)"][-1])
+            w0p = self._deriv_gacode(self.profiles["w0(rad/s)"])
+            gamma_eb0 = -w0p * self.derived["r"] / np.abs(self.profiles["q(-)"])
+            gamma_p0 = -self.profiles["rmaj(m)"] * w0p
+            self.derived["gamma_exb"] = -sign_it * gamma_eb0 * self.derived["a"] / self.derived["c_s"]
+            self.derived["gamma_p"] = -sign_it * gamma_p0 * self.derived["a"] / self.derived["c_s"]
+        else:
+            self.derived["gamma_exb"] = np.zeros_like(self.derived["r"])
+            self.derived["gamma_p"] = np.zeros_like(self.derived["r"])
+
         self.derived["q_gb"], self.derived["g_gb"], self.derived["pi_gb"], self.derived["s_gb"], _ = PLASMAtools.gyrobohmUnits(
             self.profiles["te(keV)"],
             self.profiles["ne(10^19/m^3)"] * 1e-1,
@@ -809,6 +822,10 @@ class mitim_state:
             self.profiles["ne(10^19/m^3)"][0] * 0.1 / self.derived["ne_vol20"]
         )
 
+        self.derived["ni_peaking"] = (
+            self.profiles["ni(10^19/m^3)"][0].sum() * 0.1 / self.derived["ni_vol20"].sum()
+        )
+
         xcoord = self.derived[
             "rho_pol"
         ]  # to find the peaking at rho_pol (with square root) as in Angioni PRL 2003
@@ -817,6 +834,12 @@ class mitim_state:
             * 0.1
             / self.derived["ne_vol20"]
         )
+
+        self.derived["ni_peaking0.2"] = (
+            self.profiles["ni(10^19/m^3)"][np.argmin(np.abs(xcoord - 0.2))].sum()
+            * 0.1
+            / self.derived["ni_vol20"].sum()
+        ) 
 
         self.derived["Te_vol"] = (
             CALCtools.volume_integration(self.profiles["te(keV)"], r, volp)[-1]
@@ -869,9 +892,6 @@ class mitim_state:
         ])  # keV, one per ion species
         self.derived["tite_vol_all"] = self.derived["Ti_vol_all"] / self.derived["Te_vol"]
 
-        #approximate pedestal top density
-        self.derived['ptop(Pa)'] = np.interp(0.90, self.profiles['rho(-)'], self.profiles['ptot(Pa)'])
-
         # Quasineutrality
         self.derived["QN_Error"] = np.abs(
             1 - np.sum(self.derived["fi_vol"] * self.profiles["z"])
@@ -898,6 +918,12 @@ class mitim_state:
             self.derived["Rgeo"],
             Zeff=2.0,
         )
+
+        # # this is the Angioni NF 2007 predicted peaking with the physics-based scaling law
+        # # TODO: currently Gstar_NBI is assumed to be zero, to calculate with sources would need to calculate Gstar
+        self.derived['ne_peaking_empirical_source_free'] = PLASMAtools.predictPeaking(nu = self.derived['nu_eff'] * 2/self.derived['Zeff_vol'], p = self.derived['pthr_manual_vol'], Bt = self.derived['B0'], Gstar_NBI = 0.0)[1]
+
+
 
         # Avg mass
         self.calculateMass()
@@ -1171,6 +1197,11 @@ class mitim_state:
             Ni[i] = np.interp(rhos[i], self.profiles["rho(-)"], Ni_x)
 
         return We, Wi, Ne, Ni
+    
+    def calcRelativeCosts(self): 
+        self.derived['Pfus_per_volume'] = self.derived['Pfus'] / self.derived['volume']
+        self.derived['Pfus_per_surface_area'] = self.derived['Pfus'] / self.derived['surf_geo'][-1]
+        
 
     def printInfo(self, label="", reDeriveIfNotFound=True):
 
@@ -1178,6 +1209,9 @@ class mitim_state:
         Prad_ratio_brem = self.derived['Prad_brem']/self.derived['Prad'] 
         Prad_ratio_line = self.derived['Prad_line']/self.derived['Prad'] 
         Prad_ratio_sync = self.derived['Prad_sync']/self.derived['Prad'] 
+
+        if 'Pfus_per_volume' not in self.derived:
+            self.calcRelativeCosts()
 
         try:
             print(f"\n{(label + ', summary:') if label != '' else 'Summary:'}")
@@ -1194,11 +1228,15 @@ class mitim_state:
             print("|\tH89p  =  {0:.2f}   (H97L  = {1:.2f})".format(self.derived["H89"], self.derived["H97L"]))
             print("|\tnu_ne =  {0:.2f}   (nu_eff = {1:.2f})".format(self.derived["ne_peaking"], self.derived["nu_eff"]))
             print("|\tnu_ne0.2 =  {0:.2f}   (nu_eff w/Zeff2 = {1:.2f})".format(self.derived["ne_peaking0.2"], self.derived["nu_eff2"]))
+            print("|\tnu_ni = {0:.2f}, nu_ni0.2 = {1:.2f}".format(self.derived["ni_peaking"], self.derived["ni_peaking0.2"]))
+            print("|\tnu_Angioni = {0:.2f}, nu_e,offset = {1:.2f}, nu_i,offset = {2:.2f} (source free)".format(self.derived["ne_peaking_empirical_source_free"], self.derived["ne_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"], self.derived["ni_peaking0.2"] - self.derived["ne_peaking_empirical_source_free"]))            
             print(f"|\tnu_Ti =  {self.derived['Ti_peaking']:.2f}")
             print(f"|\tp_vol =  {self.derived['ptot_manual_vol']:.2f} MPa ({self.derived['pfast_fraction']*100.0:.1f}% fast)")
             print(f"|\tBetaN =  {self.derived['BetaN']:.3f} (BetaN w/B0 = {self.derived['BetaN_engineering']:.3f})")
             print(f"|\tPrad  =  {self.derived['Prad']:.1f}MW ({Prad_ratio*100.0:.1f}% of total) ({Prad_ratio_brem*100.0:.1f}% brem, {Prad_ratio_line*100.0:.1f}% line, {Prad_ratio_sync*100.0:.1f}% sync)")
             print("|\tPsol  =  {0:.1f}MW (fLH = {1:.2f})".format(self.derived["Psol"], self.derived["LHratio"]))
+            print("| Relative cost:")
+            print("|\tPfus_per_volume = {0:.2f} MW/m^3, Pfus_per_surface_area = {1:.2f} MW/m^2".format(self.derived["Pfus_per_volume"], self.derived["Pfus_per_surface_area"]))
             print("| Operational point ( [<ne>, <Te>] = [{0:.2f}, {1:.2f}] ) and species:".format(self.derived["ne_vol20"], self.derived["Te_vol"]))
             print("|\t<Ti>  = {0:.2f} keV   (<Ti>/<Te> = {1:.2f}, Ti0/Te0 = {2:.2f})".format(self.derived["Ti_vol"],self.derived["tite_vol"],self.derived["tite"][0],))
             print("|\tfG    = {0:.2f}   (<ne> = {1:.2f} * 10^20 m^-3)".format(self.derived["fG"], self.derived["ne_vol20"]))
@@ -1852,6 +1890,135 @@ class mitim_state:
             self.write_state(file=new_file)
             self.printInfo()
         
+    def recompute_targets(self, targets=["qie", "qrad", "qfus"], debug=False):
+        """
+        Re-derive the source target profiles — radiation (``qrad`` -> qbrem/qsync/qline),
+        fusion alpha heating (``qfus`` -> qfuse/qfusi) and electron-ion energy exchange
+        (``qie`` -> qei) — from the current kinetic profiles (Te, Ti, ne, ni, geometry)
+        with the analytic target model, writing them back into this state's gacode
+        columns IN PLACE (returns self).
+
+        The analytic targets depend only on the LOCAL profiles + geometry, never on
+        gradients, so they are evaluated directly on this state's FULL native rho grid
+        (every point, axis to separatrix): no gradient / gyro-Bohm machinery is run
+        (``calculateProfileFunctions`` is skipped), and no edge points are left stale.
+        Single entry point used by the MAESTRO confinement beat and RAPIDS.
+
+        Args:
+            targets: subset of ["qie", "qrad", "qfus"] to recompute. Channels not listed
+                are left untouched — e.g. pass ["qfus"] to refresh only alpha heating
+                without swapping an upstream beat's radiation model.
+            debug: if True, pop debug plots (recomputed channels before/after, the
+                kinetic profiles sampled, and their a/Lx gradients); best effort,
+                never affects the result.
+
+        No-op physics where a channel is identically zero (e.g. fusion in a non-DT or
+        cold plasma — the analytic model returns zero without thermal D+T).
+        """
+        from mitim_modules.powertorch import STATEtools
+        from mitim_modules.powertorch.physics_models import targets_analytic
+
+        # channel -> [(powerstate plasma key, gacode column)]
+        target_columns = {
+            "qie":  [("qie", "qei(MW/m^3)")],
+            "qrad": [("qrad_bremms", "qbrem(MW/m^3)"), ("qrad_sync", "qsync(MW/m^3)"), ("qrad_line", "qline(MW/m^3)")],
+            "qfus": [("qfuse", "qfuse(MW/m^3)"), ("qfusi", "qfusi(MW/m^3)")],
+        }
+
+        if debug:
+            before = {col: copy.deepcopy(self.profiles[col])
+                      for t in targets for _, col in target_columns[t] if col in self.profiles}
+
+        # Powerstate on the FULL native grid (the axis is prepended internally). The
+        # targets read only local profiles + geometry, so we call the evaluator's
+        # evaluate() directly and skip calculateProfileFunctions / flux_integrate /
+        # postprocessing — no gradient or gyro-Bohm machinery, every grid point covered.
+        power = STATEtools.powerstate(
+            self,
+            evolution_options={"rhoPredicted": self.profiles["rho(-)"][1:]},
+            target_options={
+                "evaluator": targets_analytic.analytical_model,
+                "options": {"targets_evolve": targets, "target_evaluator_method": "powerstate"},
+            },
+            transport_options={"evaluator": None, "options": {}},
+            increase_profile_resol=False,
+        )
+        power.target_options["evaluator"](power).evaluate()
+
+        # plasma grid == native gacode grid, so write every point back directly
+        for t in targets:
+            for plasma_key, col in target_columns[t]:
+                if col in self.profiles:
+                    self.profiles[col] = power.plasma[plasma_key][0].cpu().numpy()
+
+        self.derive_quantities(rederiveGeometry=False)
+
+        if debug:
+            # One figure: each recomputed target (bottom row) above its driving
+            # profiles (top row), so it's clear what each channel is computed from.
+            import matplotlib.pyplot as plt
+
+            rho = self.profiles["rho(-)"]
+            Te = self.profiles["te(keV)"]
+            Ti = self.profiles["ti(keV)"][:, 0]
+            ne = self.profiles["ne(10^19/m^3)"]
+            Zeff = self.derived["Zeff"]
+            fuel = [(nm, self.profiles["ni(10^19/m^3)"][:, i])
+                    for i, nm in enumerate(self.profiles["name"]) if nm in ("D", "T")]
+
+            fig, axs = plt.subplots(2, len(targets), figsize=(4.8 * len(targets), 7), squeeze=False)
+            fig.suptitle("recompute_targets — drivers (top) and recomputed targets (bottom)")
+
+            for j, t in enumerate(targets):
+                # Top: the profiles that set this channel (temperatures on the left
+                # axis, densities/Zeff on a right twin axis)
+                axd, axn = axs[0, j], None
+                if t == "qie":
+                    axd.plot(rho, Te, "r-", label="Te (keV)")
+                    axd.plot(rho, Ti, "b-", label="Ti (keV)")
+                    axd.set_ylabel("keV")
+                elif t == "qrad":
+                    axd.plot(rho, Te, "r-", label="Te (keV)"); axd.set_ylabel("keV")
+                    axn = axd.twinx()
+                    axn.plot(rho, ne, "g-", label=r"ne (1e19/m$^3$)")
+                    axn.plot(rho, Zeff, "m--", label="Zeff")
+                    axn.set_ylabel(r"ne (1e19/m$^3$) · Zeff")
+                elif t == "qfus":
+                    axd.plot(rho, Ti, "b-", label="Ti (keV)"); axd.set_ylabel("keV")
+                    axn = axd.twinx()
+                    for k, (nm, nd) in enumerate(fuel):
+                        ls = "--" if k == len(fuel) - 1 else "-"   # last dashed: nD/nT usually overlap
+                        axn.plot(rho, nd, ls, label=f"n{nm} (1e19/m$^3$)")
+                    axn.set_ylabel(r"1e19/m$^3$")
+                axd.set_title(t); axd.grid(alpha=0.3)
+                if axn is None:
+                    axd.legend(fontsize=8)
+                else:
+                    h, l = axd.get_legend_handles_labels()
+                    h2, l2 = axn.get_legend_handles_labels()
+                    axd.legend(h + h2, l + l2, fontsize=8)
+
+                # Bottom: the recomputed target, before vs after (markers mark grid points)
+                axt = axs[1, j]
+                cols = [col for _, col in target_columns[t] if col in self.profiles]
+                axt.plot(rho, sum(before[col] for col in cols), "k.-", ms=3, lw=1.0, label="before")
+                axt.plot(rho, sum(self.profiles[col] for col in cols), "r.-", ms=3, lw=1.0, label="recomputed")
+                if t == "qrad":   # break the total into its brem / sync / line components
+                    for _, col in target_columns[t]:
+                        if col in self.profiles:
+                            axt.plot(rho, self.profiles[col], lw=0.9, label=col.split("(")[0][1:])
+                axt.set_xlabel(r"$\rho$"); axt.set_ylabel(f"{t}  (MW/m$^3$)")
+                axt.legend(fontsize=8); axt.grid(alpha=0.3)
+                if t == "qie":
+                    axt.axhline(0, color="k", lw=0.8, ls="--")   # exchange changes sign
+                else:
+                    axt.set_ylim(bottom=0)                        # radiation/fusion are non-negative
+
+            fig.tight_layout()
+            plt.show()
+
+        return self
+
     def enforce_same_density_gradients(self, onlyThermal=False):
         txt = ""
         for sp in range(len(self.Species)):
@@ -2488,19 +2655,13 @@ class mitim_state:
         '''
         Rotations
         --------------------------------------------------------
-            From TGYRO/TGLF definitions
-                  w0p = expro_w0p(:)/100.0
-                  f_rot(:) = w0p(:)/w0_norm
-                  gamma_p0  = -r_maj(i_r)*f_rot(i_r)*w0_norm
-                  gamma_eb0 = gamma_p0*r(i_r)/(q_abs*r_maj(i_r)) 
+            E×B and parallel-velocity shear are derived once in derive_quantities
+            (self.derived['gamma_exb'] / ['gamma_p'], TGLF VEXB_SHEAR / VPAR_SHEAR normalization).
+            VPAR (parallel velocity, not a shear) stays local.
         '''
 
-        w0p         = self._deriv_gacode(self.profiles["w0(rad/s)"])
-        gamma_p0    = -self.profiles["rmaj(m)"]*w0p
-        gamma_eb0   = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * self.derived["r"]/ np.abs(self.profiles["q(-)"])
-
-        vexb_shear  = -sign_it * gamma_eb0 * self.derived["a"]/self.derived['c_s']
-        vpar_shear  = -sign_it * gamma_p0  * self.derived["a"]/self.derived['c_s']
+        vexb_shear  = self.derived["gamma_exb"]
+        vpar_shear  = self.derived["gamma_p"]
         vpar        = -sign_it * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
@@ -3076,8 +3237,150 @@ class mitim_state:
 
         return input_parameters
 
+    def to_qualikiz(self, r=[0.4, 0.6], r_is_rho=True, max_ions=9):
+        """
+        Best-effort mapping from this MITIM ``gacode_state`` (post
+        ``derive_quantities``) onto QuaLiKiz's circular/s-alpha-like geometry
+        variables, scanned across ``r``. QuaLiKiz has no Miller/MXH shaping,
+        so elongation/triangularity/squareness are dropped -- only the
+        circular-geometry equivalents (Ro, Rmin, Bo, q, smag, alpha,
+        rotation/shear) are kept. Counterpart of ``to_tglf`` / ``to_neo``.
 
-    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5):
+        Unlike those methods, this returns a plain dict of arrays/scalars
+        rather than QuaLiKiz objects -- it has no dependency on the external
+        ``qualikiz_tools`` (QuaLiKiz-pythontools) package. ``QLKtools.py``'s
+        ``_build_plan_from_gacode`` turns this dict into the actual
+        ``QuaLiKizXpoint`` / ``QuaLiKizPlan`` objects (and performs the
+        quasineutrality / pure-toroidal-rotation decomposition, via
+        ``QuaLiKizXpoint.set_qn_normni_ion_n()`` / ``set_puretor()``), keeping
+        that optional dependency confined to the QuaLiKiz-specific interface.
+        """
+
+        from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+        p = self
+
+        # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
+        r = np.atleast_1d(np.array(r, dtype=float))
+        if r_is_rho:
+            rhos = r
+            roa_targets = interpolation_function(rhos, p.profiles['rho(-)'], p.derived['roa'])
+        else:
+            roa_targets = r
+            rhos = interpolation_function(roa_targets, p.derived['roa'], p.profiles['rho(-)'])
+        r_interpolation = p.derived["roa"]
+
+        def interp_vec(y):
+            return np.atleast_1d(interpolation_function(roa_targets, r_interpolation, y))
+
+        n_ions = min(len(p.Species), max_ions)
+
+        sign_it = -np.sign(p.profiles["current(MA)"][-1])
+
+        # QuaLiKiz normalises logarithmic gradients by major radius R (R/LT, R/Ln),
+        # whereas MITIM's gacode convention uses minor radius a (a/LT, a/Ln).
+        # Convert: R/L = (R/a) * (a/L), using the local Ro already interpolated above.
+        Ro_over_a = interp_vec(p.profiles["rmaj(m)"]) / p.derived["a"]
+
+        cref = 3.094969e5  # defined in QuaLiKiz as sqrt(1 keV / proton_mass)
+
+        # MHD alpha = -(2 mu0 R q^2 / B^2) dp/dr
+        dpdr = p._calculate_pressure_gradient_from_aLx(
+            p.derived["pe"], p.derived["pi_all"][:, :n_ions],
+            p.derived["aLTe"], p.derived["aLTi"][:, :n_ions],
+            p.derived["aLne"], p.derived["aLni"][:, :n_ions],
+            p.derived["a"],
+        )
+        alpha_mhd = (
+            2.0 * 4 * np.pi * 1e-7
+            * p.profiles["q(-)"] ** 2
+            * p.profiles["rmaj(m)"]
+            / np.abs(p.profiles["bcentr(T)"][-1]) ** 2
+            * dpdr
+        )
+        alpha_mhd[0] = 0.0
+
+        # ExB shearing rate (gammaE), same construction as to_tglf's VEXB_SHEAR.
+        # Machtor/Autor/Machpar/Aupar are NOT computed here -- only Machtor (a
+        # best-effort R*Omega_tor/c_s) and gammaE are returned; QuaLiKizXpoint.set_puretor()
+        # derives the rest assuming pure toroidal rotation.
+        gamma_eb0 = -p._deriv_gacode(p.profiles["w0(rad/s)"]) * p.derived["r"] / np.abs(p.profiles["q(-)"])
+        vexb_shear = -sign_it * gamma_eb0 * p.profiles["rmaj(m)"] / cref
+        vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / cref
+
+        geometry_scan = {
+            "x": roa_targets,
+            "rho": rhos,
+            "Ro": interp_vec(p.profiles["rmaj(m)"]),
+            "q": np.abs(interp_vec(p.profiles["q(-)"])),
+            "smag": interp_vec(p.derived["s_hat"]),
+            "alpha": interp_vec(alpha_mhd),
+            "Machtor": interp_vec(vpar),
+            "gammaE": interp_vec(vexb_shear),
+        }
+
+        electron_scan = {
+            "Te": interp_vec(p.profiles["te(keV)"]),
+            "ne": interp_vec(p.profiles["ne(10^19/m^3)"]),
+            "Ate": interp_vec(p.derived["aLTe"]) * Ro_over_a,
+            "Ane": interp_vec(p.derived["aLne"]) * Ro_over_a,
+        }
+
+        ion_scan = {}
+        ion_species = []
+        for i in range(n_ions):
+            is_fast = p.Species[i].get("S", "therm") == "fast"
+            ion_species.append({
+                "A": p.Species[i]["A"],
+                "Z": p.Species[i]["Z"],
+                "type": 4 if is_fast else 1,
+            })
+            ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
+            ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
+            ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
+            ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i]) * Ro_over_a
+
+        # Same "which ion absorbs quasineutrality" choice as the QuaLiKizXpoint
+        # options QLKtools passes downstream (set_qn_normni/set_qn_An): highest-Z
+        # non-fast species. Index is into the FULL ion_species list (not the
+        # filtered candidate list), since it is used downstream to index
+        # QuaLiKizXpoint's full ion array.
+        non_fast_indices = [i for i in range(n_ions) if ion_species[i]["type"] not in [3, 4]]
+        qn_ion_index = max(non_fast_indices, key=lambda i: ion_species[i]["Z"])
+
+        # The highest-Z candidate can be a near-trace species (tiny baseline
+        # density): absorbing even a small charge-neutrality residual from the
+        # other species can then require an unphysical (negative or >1)
+        # density correction, which QuaLiKiz's own set_qn_normni_ion_n()
+        # rejects outright. Detect that here (same formula, summed over all
+        # non-target species since QuaLiKiz only excludes type==3 "trace"
+        # ions from that sum, not fast ions) and fall back to ion 0 (the main
+        # species, always well-conditioned) rather than trying progressively
+        # lower-Z candidates, so the choice stays predictable.
+        Z_all = np.array([ion_species[i]["Z"] for i in range(n_ions)])
+        n_all = np.array([ion_scan[f"ni{i}"] for i in range(n_ions)])  # (n_ions, n_r)
+        others = [i for i in range(n_ions) if i != qn_ion_index]
+        var_normni = (1.0 - (Z_all[others, None] * n_all[others, :]).sum(axis=0)) / Z_all[qn_ion_index]
+        if np.any(var_normni < 0.0) or np.any(var_normni > 1.0):
+            print(
+                f"\t- Highest-Z quasineutrality species (ion {qn_ion_index}, Z={Z_all[qn_ion_index]:.1f}) "
+                "would require an unphysical density correction at some radius; falling back to ion 0",
+                typeMsg="w",
+            )
+            qn_ion_index = 0
+
+        return {
+            "n_ions": n_ions,
+            "geometry_scan": geometry_scan,
+            "electron_scan": electron_scan,
+            "ion_scan": ion_scan,
+            "ion_species": ion_species,
+            "qn_ion_index": qn_ion_index,
+            "a": float(p.derived["a"]),
+            "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
+        }
+
+    def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0, boundary_override = None):
 
         print("\t- Converting to TRANSP")
         folder = IOtools.expandPath(folder)
@@ -3086,7 +3389,7 @@ class mitim_state:
         from mitim_tools.transp_tools.utils import TRANSPhelpers
         transp = TRANSPhelpers.transp_run(folder, shot, runid)
         for time in times:
-            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf)
+            transp.populate_time.from_profiles(time,self, Vsurf = Vsurf, boundary_surface_psin = boundary_surface_psin, boundary_override = boundary_override)
 
         transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth)
 

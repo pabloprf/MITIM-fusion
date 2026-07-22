@@ -40,8 +40,9 @@ def optimize_function(fun, optimization_params = {}, writeTrajectory=False, meth
         solver_options = {
             "tol_rel": optimization_params.get("relative_improvement_for_stopping",1e-4),
             "maxiter": optimization_params.get("maxiter",1000),
-            "relax": optimization_params.get("relax",0.1),     
+            "relax": optimization_params.get("relax",0.1),
             "relax_dyn": optimization_params.get("relax_dyn",True),
+            "halt_on": optimization_params.get("halt_on","best"),  # "best" (stop at best restart) or "all" (every restart)
             "print_each": optimization_params.get("maxiter",1000)//20,
         }
         solver_fun = multivariate_tools.simple_relaxation

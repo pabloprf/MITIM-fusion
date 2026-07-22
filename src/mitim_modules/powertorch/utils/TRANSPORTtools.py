@@ -820,8 +820,9 @@ from mitim_modules.powertorch.physics_models.transport_neo import neo_model
 from mitim_modules.powertorch.physics_models.transport_cgyro import cgyro_model
 from mitim_modules.powertorch.physics_models.transport_gx import gx_model
 from mitim_modules.powertorch.physics_models.transport_gknn import gknn_model
+from mitim_modules.powertorch.physics_models.transport_qualikiz import qualikiz_model
 
-class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model, gknn_model):
+class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_model, gx_model, gknn_model, qualikiz_model):
 
     def __init__(self, powerstate, **kwargs):
         super().__init__(powerstate, **kwargs)
@@ -973,6 +974,8 @@ class portals_transport_model(power_transport, tglf_model, neo_model, cgyro_mode
             return gx_model.evaluate_turbulence(self)
         elif code == 'gknn':
             return gknn_model.evaluate_turbulence(self)
+        elif code == 'qualikiz':
+            return qualikiz_model.evaluate_turbulence(self)
         else:
             raise Exception(f"Unknown turbulence code {code!r} (instance {active_name!r})")
 

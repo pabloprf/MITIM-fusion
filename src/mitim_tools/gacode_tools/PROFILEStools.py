@@ -178,8 +178,12 @@ class gacode_state(MITIMstate.mitim_state):
     # Derivation (different from MITIMstate)
     # ************************************************************************************************************************************************
    
+    def remove_derived(self):
+        """Drop the (recomputable) 'derived' dict to slim stored pickles; rebuild via derive_quantities()."""
+        self.derived = {}
+
     def derive_quantities(self, **kwargs):
- 
+
         if "derived" not in self.__dict__:
             self.derived = {}
  
@@ -213,7 +217,7 @@ class gacode_state(MITIMstate.mitim_state):
             self.profiles["shape_sin6(-)"],
         ]
 
-    def derive_geometry(self, n_theta_geo=1001, **kwargs):
+    def derive_geometry(self, n_theta_geo=1001, shaping_psin=0.995, **kwargs):
 
         self._produce_shape_lists()
 
@@ -264,19 +268,19 @@ class gacode_state(MITIMstate.mitim_state):
 
         self.derived["kappa95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
-        self.derived["kappa995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
+        self.derived["kappa995"] = np.interp(shaping_psin, self.derived["psi_pol_n"], self.profiles["kappa(-)"])
 
         self.derived["delta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
-        self.derived["delta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["delta(-)"])
+        self.derived["delta995"] = np.interp(shaping_psin, self.derived["psi_pol_n"], self.profiles["delta(-)"])
 
         self.derived["zeta95"] = np.interp(0.95, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
 
-        self.derived["zeta995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
+        self.derived["zeta995"] = np.interp(shaping_psin, self.derived["psi_pol_n"], self.profiles["zeta(-)"])
         
         # Higher-order MXH shaping at 0.995 (used by EPED when toq_eq_choice == 'mxh')
-        self.derived["s_three995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin3(-)"])
-        self.derived["s_four995"] = np.interp(0.995, self.derived["psi_pol_n"], self.profiles["shape_sin4(-)"])
+        self.derived["s_three995"] = np.interp(shaping_psin, self.derived["psi_pol_n"], self.profiles["shape_sin3(-)"])
+        self.derived["s_four995"] = np.interp(shaping_psin, self.derived["psi_pol_n"], self.profiles["shape_sin4(-)"])
         
         self.derived["kappa_a"] = self.derived["surfXS"][-1] / np.pi / self.derived["a"] ** 2
 

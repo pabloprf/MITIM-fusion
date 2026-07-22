@@ -76,6 +76,15 @@ from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.opt_tools.scripts.slurm import run_slurm
 
 
+# Default separatrix->95% shape ratios (kappa95/kappa_sep, delta95/delta_sep) used to map the
+# scanned SEPARATRIX kappa/delta onto the 95%-flux-surface values that q*_ITER is defined on.
+# Without them the inversion would use the separatrix shaping directly and OVERSTATE it, so the
+# achieved (derived) q*_ITER lands ~0.4 below the requested target. The defaults are the medians
+# from the v1 FREEGS equilibria (kappa95~1.64/1.735=0.94, delta95~0.29/0.37=0.78); pass
+# baseline_gacode=<input.gacode> to use case-specific ratios from a real equilibrium instead.
+DEFAULT_SHAPE95_RATIOS = (0.94, 0.78)
+
+
 def launch_scan(
     base_namelist,
     main_folder,
@@ -98,12 +107,12 @@ def launch_scan(
         - separatrix.R = R, separatrix.a = R*eps, params.Bt = Bt
         - separatrix.kappa_sep / delta_sep set when scanned (else base kept)
         - Ip set by one of, in precedence order: an explicit ``Ip`` [MA]; else a
-          target ``q95`` (taken as the q*_ITER target); else rescaled to preserve
-          the baseline q*_ITER. q*_ITER is the Uckan-1990 (kappa/delta) + ITER eps
-          correction cylindrical safety factor (PLASMAtools.evaluate_qstar), using
-          95%-surface kappa95/delta95 obtained by scaling the separatrix kappa/delta
-          with fixed ratios from ``baseline_gacode`` (or used directly, with a
-          warning, when none is given); an engineering proxy, NOT a true q95 solve
+          target ``qstar`` (the q*_ITER target); else rescaled to preserve the
+          baseline q*_ITER. q*_ITER is the Uckan-1990
+          (kappa/delta) + ITER eps correction cylindrical safety factor
+          (PLASMAtools.evaluate_qstar), using 95%-surface kappa95/delta95 obtained by
+          scaling the separatrix kappa/delta with ratios from ``baseline_gacode`` (else
+          DEFAULT_SHAPE95_RATIOS); an engineering proxy, NOT a true q95 solve
         - nu_ne -> plasma.profiles_initialization.parameters.nu_ne
         - fGped = fG * ped_vol_G   (neped_20 nulled so the YAML stays self-consistent;
                                      fGped takes precedence inside MAESTRO regardless)
@@ -134,12 +143,13 @@ def launch_scan(
         and may also carry the optional knobs nu_ne (EPED-initializer density
         peaking, plasma.profiles_initialization.parameters.nu_ne), kappa_sep and
         delta_sep (separatrix elongation/triangularity,
-        plasma.parameters.separatrix.{kappa_sep,delta_sep}), and q95 or Ip [MA]
-        for the plasma current (explicit Ip wins; else q95 is used as the q*_ITER
+        plasma.parameters.separatrix.{kappa_sep,delta_sep}), and qstar or Ip [MA]
+        for the plasma current (explicit Ip wins; else qstar is used as the q*_ITER
         target; else Ip is rescaled to preserve the baseline q*_ITER -- give at
-        most one of q95/Ip). Each optional knob may be None or omitted to leave
-        the base value untouched, in which case its folder-name suffix (``_nune`` /
-        ``_ksep`` / ``_dsep`` / ``_q95`` / ``_Ip``) is dropped. These are the same
+        most one of qstar/Ip).
+        Each optional knob may be None or omitted to leave the base value untouched,
+        in which case its folder-name suffix (``_nune`` /
+        ``_ksep`` / ``_dsep`` / ``_qstar`` / ``_Ip``) is dropped. These are the same
         keys ``label_fmt`` formats with. A reserved ``label`` key, if present, is
         used verbatim as that point's folder name (overriding label_fmt / the
         default), which is handy for named scenarios (e.g. one point per machine).
@@ -174,18 +184,19 @@ def launch_scan(
     main_folder = Path(main_folder).expanduser().resolve()
     main_folder.mkdir(parents=True, exist_ok=True)
 
-    # Separatrix -> 95% kappa/delta ratios for the q*_ITER current rescale, read once from
-    # the baseline equilibrium (None -> fall back to separatrix shaping, warned below).
-    shape95_ratios = _shape95_ratios_from_gacode(baseline_gacode)
-    if shape95_ratios is not None:
+    # Separatrix -> 95% kappa/delta ratios for the q*_ITER inversion: from the baseline
+    # equilibrium if given, else the reasonable DEFAULT_SHAPE95_RATIOS so the achieved
+    # (derived) q*_ITER tracks the requested target instead of landing ~0.4 low.
+    shape95_ratios = _shape95_ratios_from_gacode(baseline_gacode) or DEFAULT_SHAPE95_RATIOS
+    if baseline_gacode is not None:
         print(f"\t- Separatrix->95% shape mapping from {Path(baseline_gacode).name}: "
               f"kappa95/kappa_sep={shape95_ratios[0]:.3f}, delta95/delta_sep={shape95_ratios[1]:.3f}")
-    elif any(p.get('Ip') is None and p.get('q95') is None for p in combinations):
+    elif any(p.get('Ip') is None and p.get('qstar') is None for p in combinations):
         # Only relevant when some point falls back to the q*_ITER rescale; points that set
-        # Ip or q95 explicitly don't use the separatrix->95% shape mapping.
-        print("\t- Warning: no baseline_gacode given; the q*_ITER current rescale will use "
-              "the separatrix kappa/delta directly (kappa95/delta95 ~ kappa_sep/delta_sep), "
-              "which overstates shaping. Pass baseline_gacode=<input.gacode> to map them.")
+        # Ip or qstar explicitly still use shape95_ratios for the inversion itself.
+        print(f"\t- No baseline_gacode: q*_ITER inversion uses DEFAULT_SHAPE95_RATIOS "
+              f"(kappa95/kappa_sep={shape95_ratios[0]:.2f}, delta95/delta_sep={shape95_ratios[1]:.2f}). "
+              f"Pass baseline_gacode=<input.gacode> for case-specific ratios.")
 
     default_fmt = "case_R{R:.3f}_eps{eps:.3f}_Bt{Bt:.3f}_fLH{fLH:.3f}_fG{fG:.3f}"
 
@@ -202,7 +213,7 @@ def launch_scan(
                 # appended only when the value is actually set.
                 label = default_fmt.format(**point)
                 for key, tag in (('nu_ne', 'nune'), ('kappa_sep', 'ksep'), ('delta_sep', 'dsep'),
-                                 ('q95', 'q95'), ('Ip', 'Ip')):
+                                 ('qstar', 'qstar'), ('Ip', 'Ip')):
                     if point.get(key) is not None:
                         label += f"_{tag}{point[key]:.3f}"
         folder = main_folder / label
@@ -224,44 +235,52 @@ def launch_scan_cartesian(
     main_folder,
     *,
     R, eps, Bt, fG, fLH, nu_ne,
-    kappa_sep=None, delta_sep=None, q95=None, Ip=None,
+    kappa_sep=None, delta_sep=None, qstar=None, Ip=None,
     **kwargs,
 ):
     """Cartesian-product convenience wrapper around ``launch_scan``.
 
     Builds every combination of the per-axis scan lists (R, eps, Bt, fG, fLH,
     nu_ne, plus the optional separatrix-shape axes kappa_sep, delta_sep and the
-    optional current axes q95 or Ip [MA] -- at most one of q95/Ip) and forwards
-    them to ``launch_scan`` as an explicit list of points. All other
-    keyword arguments (slurm, apply_overrides, ped_vol_G, baseline_gacode, save,
-    label_fmt, per_case_logs) are passed straight through.
+    optional current axes qstar or Ip [MA] -- at most one of qstar/Ip) and forwards
+    them to ``launch_scan`` as an explicit
+    list of points. All other keyword arguments (slurm, apply_overrides, ped_vol_G,
+    baseline_gacode, save, label_fmt, per_case_logs) are passed straight through.
 
     Submits the product over all axes. The required axes (R, eps, Bt, fG, fLH,
     nu_ne) must be lists (pass ``[value]`` for a single value). ``nu_ne``,
-    ``kappa_sep``, ``delta_sep``, ``q95`` and ``Ip`` may also be ``None`` (or
+    ``kappa_sep``, ``delta_sep``, ``qstar`` and ``Ip`` may also be ``None`` (or
     ``[None]``) to leave that base-namelist behaviour untouched and drop the
-    suffix from folder names; kappa_sep/delta_sep/q95/Ip default to None.
+    suffix from folder names; kappa_sep/delta_sep/qstar/Ip default to None.
     """
-    if q95 is not None and Ip is not None:
-        raise ValueError("launch_scan_cartesian: provide only one of q95 or Ip, not both")
+    if qstar is not None and Ip is not None:
+        raise ValueError("launch_scan_cartesian: provide only one of qstar or Ip, not both")
     nu_ne_axis = [None] if nu_ne is None else nu_ne
     kappa_axis = [None] if kappa_sep is None else kappa_sep
     delta_axis = [None] if delta_sep is None else delta_sep
-    q95_axis   = [None] if q95 is None else q95
+    qstar_axis = [None] if qstar is None else qstar
     Ip_axis    = [None] if Ip is None else Ip
     combinations = [
         dict(R=R_i, eps=eps_i, Bt=Bt_i, fG=fG_i, fLH=fLH_i,
-             nu_ne=nu_i, kappa_sep=k_i, delta_sep=d_i, q95=q_i, Ip=ip_i)
+             nu_ne=nu_i, kappa_sep=k_i, delta_sep=d_i, qstar=q_i, Ip=ip_i)
         for R_i, eps_i, Bt_i, fLH_i, fG_i, nu_i, k_i, d_i, q_i, ip_i in itertools.product(
-            R, eps, Bt, fLH, fG, nu_ne_axis, kappa_axis, delta_axis, q95_axis, Ip_axis)
+            R, eps, Bt, fLH, fG, nu_ne_axis, kappa_axis, delta_axis, qstar_axis, Ip_axis)
     ]
     launch_scan(base_namelist, main_folder, combinations=combinations, **kwargs)
 
 
 def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G,
                              nu_ne=None, kappa_sep=None, delta_sep=None,
-                             q95=None, Ip=None, shape95_ratios=None):
-    """Mutate a maestro namelist dict in-place for one engineering point."""
+                             qstar=None, Ip=None, shape95_ratios=DEFAULT_SHAPE95_RATIOS):
+    """Mutate a maestro namelist dict in-place for one engineering point.
+
+    ``qstar`` is the q*_ITER target inverted for Ip. ``shape95_ratios``
+    (kappa95/kappa_sep, delta95/delta_sep) maps the separatrix shaping to the 95%
+    surface q*_ITER is defined on; it defaults to DEFAULT_SHAPE95_RATIOS so the
+    achieved q*_ITER tracks the requested target.
+    """
+    if shape95_ratios is None:
+        shape95_ratios = DEFAULT_SHAPE95_RATIOS
     # nu_ne / kappa_sep / delta_sep = None (or absent) -> leave the base value untouched.
     if nu_ne is not None:
         nm['plasma']['profiles_initialization']['parameters']['nu_ne'] = nu_ne
@@ -285,26 +304,25 @@ def _apply_engineering_point(nm, *, R, eps, Bt, fG, fLH, ped_vol_G,
     # --- Plasma current ---
     # Three ways to set Ip, in precedence order:
     #   1. explicit `Ip` (MA)                -> used directly.
-    #   2. target `q95`                      -> Ip from the q*_ITER inversion below
-    #                                           (q95 is taken AS the q*_ITER target: the
+    #   2. target `qstar`                    -> Ip from the q*_ITER inversion below
+    #                                           (qstar is taken AS the q*_ITER target: the
     #                                           shaping-aware cylindrical safety factor,
-    #                                           an engineering proxy for q95, not a flux
-    #                                           solve).
+    #                                           an engineering proxy for q95, not a flux solve).
     #   3. neither (default)                 -> rescale to preserve the baseline q*_ITER.
     #
     # q*_ITER is the Uckan-1990 (kappa/delta) + ITER aspect-ratio correction safety factor
     # (PLASMAtools.evaluate_qstar, same as MITIMstate's derived['qstar_ITER']). It depends
     # on the 95%-surface kappa95/delta95, obtained here by scaling the separatrix kappa/delta
-    # with the fixed kappa95/kappa_sep, delta95/delta_sep ratios from baseline_gacode
-    # (shape95_ratios; default 1.0 = separatrix used directly, caller warned).
-    if q95 is not None and Ip is not None:
-        raise ValueError("_apply_engineering_point: provide only one of q95 or Ip, not both")
-    rk, rd = shape95_ratios if shape95_ratios is not None else (1.0, 1.0)
+    # with the kappa95/kappa_sep, delta95/delta_sep ratios in shape95_ratios (from
+    # baseline_gacode, else DEFAULT_SHAPE95_RATIOS).
+    if qstar is not None and Ip is not None:
+        raise ValueError("_apply_engineering_point: provide only one of qstar or Ip, not both")
+    rk, rd = shape95_ratios
     if Ip is not None:
         Ip_final = Ip
-    elif q95 is not None:
+    elif qstar is not None:
         Ip_final = PLASMAtools.evaluate_qstar(
-            q95, R, kappa_n * rk, Bt, eps, delta_n * rd,
+            qstar, R, kappa_n * rk, Bt, eps, delta_n * rd,
             isInputIp=False, ITERcorrection=True, includeShaping=True)
     else:
         # When eps/kappa/delta are unchanged this reduces exactly to the old
@@ -357,7 +375,7 @@ def _shape95_ratios_from_gacode(baseline_gacode):
     These fixed ratios convert the (scanned) separatrix kappa/delta into the
     95%-flux-surface values that q*_ITER depends on, so the current rescale matches
     MITIMstate's qstar_ITER convention. Returns None when no baseline is given (caller
-    then falls back to the separatrix values directly).
+    then falls back to DEFAULT_SHAPE95_RATIOS).
     """
     if baseline_gacode is None:
         return None
@@ -372,11 +390,19 @@ def _shape95_ratios_from_gacode(baseline_gacode):
 def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
     """Write scan_folders.txt and submit one sbatch array of len(folders) tasks.
 
-    When ``per_case_logs`` is True, the per-task command's stdout/stderr are
-    redirected into the case folder ($F) as slurm.out/slurm.err. This is done
-    inside the script (not via #SBATCH --output) because the case folder name
-    is only known at run time, after sed-reading scan_folders.txt; SLURM
-    resolves --output at submit time and can only key it by %A_%a.
+    When ``per_case_logs`` is True, each case folder gets slurm.out/slurm.err as
+    symlinks into SLURM's live array logs (slurm_output/slurm_error_<%A>_<%a>.dat in
+    the main folder). The case folder name is only known at run time (after
+    sed-reading scan_folders.txt), so the link is created inside the script. We
+    symlink rather than redirect so the logs (a) stream live and (b) are reachable
+    from BOTH the case folder and the main folder; a redirect would move them out of
+    the array logs, and a tee child can be reaped before flushing on a fast-exit
+    traceback. mitim stays the last command, so its exit code propagates to SLURM.
+    Caveat: the links point up into the main folder -- they dangle if a single case
+    folder is copied away on its own.
+
+    `slurm['exclude']`, `slurm['qos']` and `slurm['exclusive']` are forwarded to run_slurm
+    when present (`exclusive` may be a bool or the string "user"/"mcs").
     """
     listing = main_folder / 'scan_folders.txt'
     listing.write_text('\n'.join(str(f) for f in folders) + '\n')
@@ -387,17 +413,21 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
 
     cpus = slurm['cpus']
     save_flag = '--save' if save else ''
-    redirect = ' > "$F/slurm.out" 2> "$F/slurm.err"' if per_case_logs else ''
-    script = (
-        f'F=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" {listing}) && '
-        f'mitim_run_maestro $F --namelist $F/namelist.yaml --cpus {cpus} {save_flag}'
-        f'{redirect}'
-    ).rstrip()
+    mitim_cmd = f'mitim_run_maestro $F --namelist $F/namelist.yaml --cpus {cpus} {save_flag}'.rstrip()
+    if per_case_logs:
+        suffix = '${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}'  # %A_%a, expanded at run time
+        link_out = f'ln -sf "{main_folder}/slurm_output_{suffix}.dat" "$F/slurm.out"'
+        link_err = f'ln -sf "{main_folder}/slurm_error_{suffix}.dat" "$F/slurm.err"'
+        run_cmd = f'{link_out} && {link_err} && {mitim_cmd}'
+    else:
+        run_cmd = mitim_cmd
+    script = f'F=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" {listing}) && {run_cmd}'
 
     run_slurm(script, main_folder, slurm['partition'], slurm['environment'],
               hours=slurm['hours'], n=cpus, mem=slurm['memory'],
+              exclude=slurm.get('exclude'), qos=slurm.get('qos'),
               max_hours=slurm.get('max_hours', 8),
-              exclusive=False, are_n_threads=False, ntasks_per_node=cpus,
+              exclusive=slurm.get('exclusive', False), are_n_threads=False, ntasks_per_node=cpus,
               job_array=job_array)
 
     _write_per_case_sbatch_stubs(main_folder, folders)

@@ -83,12 +83,34 @@ def read_cdf_transp(cdf_file):
                 else:
                     new_var[:] = variable[:]
 
+        # src is fully copied into dst now; close it so this (often multi-GB) CDF file
+        # descriptor is not leaked and then fork-inherited by later child processes.
+        src.close()
+
     else:
         dst = src
 
-    return dst.variables
+    return dst
 
 class transp_output:
+    def close(self):
+        """Close the underlying netCDF4 Dataset and release its file descriptor.
+
+        Idempotent. Important in long-lived / forking workflows (e.g. MAESTRO): an
+        unclosed TRANSP CDF (often multi-GB) is fork-inherited by every later child
+        process and, once the run folder is wiped, stays pinned on disk as an NFS
+        silly-rename (.nfsXXXX) until every holder exits. Call once done reading.
+        """
+        if getattr(self, "_nc", None) is not None:
+            self._nc.close()
+            self._nc = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def __init__(
         self,
         netCDFfile,
@@ -138,7 +160,11 @@ class transp_output:
                 raise ValueError(f"[MITIM] Could not find a CDF file in {self.LocationCDF}")
         # ----------------------------
 
-        self.f = read_cdf_transp(self.LocationCDF) 
+        # Keep a handle to the underlying netCDF4 Dataset so it can be closed (see close()):
+        # leaving it open leaks a (multi-GB for TRANSP) fd. self.f keeps its variables-dict
+        # contract for all downstream readers.
+        self._nc = read_cdf_transp(self.LocationCDF)
+        self.f = self._nc.variables
 
         self.info = getRunMetaInfo(self.LocationCDF)
 
@@ -14698,10 +14724,14 @@ class transp_output:
                 gf = IOtools.findFileByExtension(self.FolderCDF / folder, extension, ForceFirst=True)
                 if gf is not None:
                     print("\t\t- Reference gfile found in folder")
-                    self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
-                    break
-        if gf is None:
-            print("\t\t- Reference g-file associated to this run could not be found",typeMsg="i")
+                    try:
+                        self.gfile_in = GEQtools.MITIMgeqdsk(self.FolderCDF / folder / gf)
+                        break
+                    except Exception as e:
+                        print(f"\t\t- Reference gfile '{gf}' could not be parsed ({type(e).__name__}); "
+                              "likely missing plasma boundary, skipping it", typeMsg="w")
+        if self.gfile_in is None:
+            print("\t\t- Reference g-file associated to this run could not be found/parsed",typeMsg="i")
 
         # Try to read boundary too
         if (self.FolderCDF / "MIT12345.RFS").exists():
@@ -16403,6 +16433,8 @@ def getRunMetaInfo(cdf):
     except:
         print("\t ! Could not parse meta data", typeMsg="w")
         dictVar = {}
+    finally:
+        net.close()  # don't leak this metadata-read handle on the (multi-GB) CDF
 
     return dictVar
 

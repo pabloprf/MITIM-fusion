@@ -20,6 +20,7 @@ from mitim_tools.opt_tools.utils import (
     TESTtools,
     EVALUATORtools,
     SAMPLINGtools,
+    LocalOptimaTools,
 )
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
@@ -635,6 +636,22 @@ class MITIM_BO:
 
             self.optimization_results.initialize(self)
 
+            # ------------------------------------------------------------------
+            # Local optima mining options (deep-copy defaults then merge user values)
+            # ------------------------------------------------------------------
+            _lo_defaults = {
+                "apply": False,
+                "n_optima": 10,
+                "n_acq_batches_per_cycle": 2,
+                "min_iteration": 2,
+                "n_restarts": 256,
+                "n_from_training": 32,
+                "min_distance": 0.1,
+                "diversity_algorithm": "greedy_max_min_distance",
+            }
+            user_lo = self.optimization_options.get("local_optima_options", {})
+            self.local_optima_options = {**_lo_defaults, **(user_lo if user_lo else {})}
+
     def run(self):
         """
         Notes:
@@ -696,6 +713,41 @@ class MITIM_BO:
                 if self.currentIteration > self.numIterations - 1:
                     print("- Last iteration has been reached",typeMsg="i")
                     self.hard_finish = True
+
+                # ------------------------------------------------------------------
+                # Local optima mining round (if enabled and on the right cycle)
+                # ------------------------------------------------------------------
+                lo = self.local_optima_options
+                if (
+                    lo["apply"]
+                    and not self.hard_finish
+                    and self.currentIteration >= lo["min_iteration"]
+                    and self.currentIteration % lo["n_acq_batches_per_cycle"] == 0
+                ):
+                    print(
+                        f"\n--- Local optima mining round at iteration {self.currentIteration} ---",
+                        typeMsg="i",
+                    )
+                    try:
+                        x_extra = LocalOptimaTools.mine_local_optima(
+                            step=self.steps[-1],
+                            bounds=self.bounds,
+                            scalarized_objective=self.optimization_object.scalarized_objective,
+                            train_X=self.train_X,
+                            train_Y=self.train_Y,
+                            dfT=self.dfT,
+                            n_optima=lo["n_optima"],
+                            n_restarts=lo["n_restarts"],
+                            n_from_training=lo["n_from_training"],
+                            min_distance=lo["min_distance"],
+                            diversity_algorithm=lo["diversity_algorithm"],
+                        )
+                        self._inject_and_evaluate_extra(x_extra)
+                    except Exception as _exc:
+                        print(
+                            f"\t[LocalOptima] Mining round failed: {_exc}",
+                            typeMsg="w",
+                        )
 
             # After evaluating metrics inside updateSet, I may have requested a hard finish
             if self.hard_finish:
@@ -807,7 +859,7 @@ class MITIM_BO:
         print(  "******************************************  *****   *   *   ****    **************************************************")
         print(  "**********************************************************************************************************************\n")
 
-    def prepare_for_save_MITIMBO(self, copyClass):
+    def prepare_for_save_MITIMBO(self, copyClass, lean=False):
         """
         Downselect what elements to store
         """
@@ -831,6 +883,17 @@ class MITIM_BO:
                 del copyClass.steps[i].evaluators
 
         # -------------------------------------------------------------------------------------------------
+        # Lean save: drop the fitted GP surrogates (`steps`), which dominate the pickle size.
+        # Replotting metrics (PORTALSanalyzer) does not need them -- those come from
+        # optimization_extra.pkl; only the GP-posterior plots and a from-pickle resume of the
+        # surrogates become unavailable. MAESTRO uses this under keep_all_files: false to keep
+        # PORTALS beat outputs small (the per-iteration checkpoints during a run stay full).
+        # -------------------------------------------------------------------------------------------------
+
+        if lean:
+            copyClass.steps = []
+
+        # -------------------------------------------------------------------------------------------------
         # Add time stamp
         # -------------------------------------------------------------------------------------------------
 
@@ -852,8 +915,8 @@ class MITIM_BO:
 
         return copyClass
 
-    def save(self, name="optimization_object.pkl"):
-        print("* Proceeding to save new MITIM state pickle file")
+    def save(self, name="optimization_object.pkl", lean=False):
+        print("* Proceeding to save new MITIM state pickle file" + (" (lean: no surrogate steps)" if lean else ""))
         stateFile = self.folderOutputs / f"{name}"
         stateFile_tmp = self.folderOutputs / f"{name}_tmp"
 
@@ -873,7 +936,7 @@ class MITIM_BO:
         # -----------------------------------------------------------------------------------
 
         try:
-            copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self))
+            copyClass = self.prepare_for_save_MITIMBO(copy.deepcopy(self), lean=lean)
         finally:
             for i, ev in saved_evaluators.items():
                 self.steps[i].evaluators = ev
@@ -927,6 +990,32 @@ class MITIM_BO:
         return aux if provideFullClass else step
 
     # Convenient helper methods to track timings of components
+
+    def _inject_and_evaluate_extra(self, X_torch):
+        """Evaluate X_torch points and inject their results into the training set.
+
+        Used for local optima mining rounds.  Points are evaluated exactly like
+        acquisition-chosen candidates (via EVALUATORtools / MAESTRO) and are
+        tagged ``'local_optima'`` in optimization_data.csv.
+
+        The current x_next (acquisition candidates) is preserved and restored
+        after injection so the BO loop can continue normally.
+        """
+        _saved_x_next = self.x_next
+        self.x_next = X_torch
+        try:
+            self.updateSet(
+                self.strategy_options_use,
+                isThisCorrected=True,
+                ForceNotApplyCorrections=True,
+                results_label=(
+                    f"Local optima mining round at iteration {self.currentIteration}, "
+                    f"comprised of {len(X_torch)} points"
+                ),
+                source="local_optima",
+            )
+        finally:
+            self.x_next = _saved_x_next
 
     @mitim_timer(lambda self: f'Eval @ {self.currentIteration}', log_file=lambda self: self.timings_file)
     def _evaluate(self):
@@ -994,8 +1083,17 @@ class MITIM_BO:
 
 
     def updateSet(
-        self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False
+        self, strategy_options_use, isThisCorrected=False, ForceNotApplyCorrections=False,
+        results_label=None, source=None
     ):
+        # No new points to insert -- e.g. a resumed step whose pkl checkpoint lagged behind
+        # optimization_data.csv leaves x_next empty. There is nothing to evaluate, record or
+        # print, so skip rather than letting the results writer index one past the end of
+        # train_X (addPoints' includePoints=[N-len(x_next), N-len(x_next)+1] -> [N, N+1]).
+        if len(self.x_next) == 0:
+            print("\t- x_next is empty: no new points to update the set with, skipping this update", typeMsg="w")
+            return self.train_Y[:0], self.train_Ystd[:0]
+
         # ~~~~~~~~~~~~~~~~~~
         # What's the expected value of the next points?
         # ~~~~~~~~~~~~~~~~~~
@@ -1060,10 +1158,10 @@ class MITIM_BO:
 
         # Update optimization_results with the actual evaluations
         if not isThisCorrected:
-            txt = f"Evaluating points from iteration {self.currentIteration}, comprised of {len(self.x_next)} points"
+            txt = results_label or f"Evaluating points from iteration {self.currentIteration}, comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = True, True, True
         else:
-            txt = f"Evaluating further points after trust region operation... batch comprised of {len(self.x_next)} points"
+            txt = results_label or f"Evaluating further points after trust region operation... batch comprised of {len(self.x_next)} points"
             predicted, forceWrite, addheader = False, False, False
         self.optimization_results.addPoints(
             includePoints=[len(self.train_X) - len(self.x_next), len(self.train_X)],
@@ -1074,6 +1172,12 @@ class MITIM_BO:
             addheader=addheader,
             timingString=txt_time,
         )
+
+        # Tag the source of these newly evaluated points in optimization_data.csv
+        effective_source = source if source is not None else "acquisition"
+        n_new = len(self.x_next)
+        start_idx = len(self.train_X) - n_new
+        self.optimization_data.set_point_source(range(start_idx, start_idx + n_new), effective_source)
 
         """
 		~~~~~~~~~~~~~~~~~~
@@ -1364,6 +1468,9 @@ class MITIM_BO:
             timingString=txt_time,
             Name=f"Initial trust region, comprised of {self.Originalinitial_training} points",
         )
+
+        # Tag all initial training points as 'training' in optimization_data.csv
+        self.optimization_data.set_point_source(range(0, self.Originalinitial_training), "training")
 
         # Get some metrics about this iteration
         SBOcorrections.updateMetrics(

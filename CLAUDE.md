@@ -20,7 +20,7 @@ Public docs: https://mitim-fusion.readthedocs.io
 
 ---
 
-## 1. Repository layout
+## 0. Repository layout
 
 ```
 src/
@@ -63,6 +63,12 @@ ones you will use most:
 | `mitim_compare_nml` | Diff two namelists |
 
 ---
+
+## 1. Capability tests
+
+You can learn about how to run the different MITIM capabilities by exploring and
+reproducing what's in `tests/capability_tests/`, a subfolder that contains tons of
+well-explained examples of the main capabilities.
 
 ## 2. User config (`config_user.json`) — required for any non-local run
 
@@ -173,7 +179,7 @@ mitim_run_portals myrun --batch          # non-interactive (CI / SLURM)
 mitim_run_portals myrun --no-log-file    # don't redirect stdout to Outputs/optimization_log.txt
 ```
 
-Programmatic (`tests/capability_tests/portals_01_standard.py` is the canonical example):
+Programmatic (`tests/capability_tests/portals_01_tglf_standard.py` is the canonical example):
 
 ```python
 from mitim_modules.portals import PORTALSmain
@@ -487,10 +493,21 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
   https://github.com/pabloprf/MITIM-fusion/releases (see also as an example:
   "docs/RELEASE_NOTES_template.md"). Once a release has happened, you will clear up
   that RELEASE document and start again.
-- Do not add trivial stuff, only add items to the document that are worth pointing
+- *Do not add trivial stuff!*, only add items to the document that are worth pointing
   to users and developers. Keep all the changes for a specific capability inside
   that bullet point as much as possible. For example, if improvements to a MAESTRO
   beat, do not populate the document with more than one bullet, unless needed.
+- **This bar is HIGH and I mean it. RELEASE_NOTES is for changes that alter what users
+  or developers can DO or OBSERVE — new capabilities, changed behavior/defaults/APIs,
+  or bug fixes with a real user-visible symptom. It is NOT a changelog of every commit.
+  When in doubt, DO NOT add an entry, and do not edit an existing bullet either — ask me
+  first if you think a small change might deserve one.**
+- **Concretely, DO NOT add (or amend a bullet for) tiny changes such as: reworded error
+  messages / log strings / comments / docstrings, typo or wording fixes, internal
+  refactors with no behavior change, test-only edits, or agent/config/tooling tweaks.
+  A change that only makes an existing message read more accurately (like correcting an
+  error message's wording) is exactly the kind of thing that should NOT touch
+  RELEASE_NOTES at all.**
 - Contributors should not be added per item, but at the end of the document. Don't
   add the github repo main author.
 - Do not add to RELEASE_NOTES at the moment of implementation, add stuff at the moment
@@ -510,3 +527,11 @@ interface, run the relevant `tests/capability_tests/` script (or at minimum
   the test accordingly.
 - These files are meant to be verbose, lots of info for users to understand what is 
   going on.
+
+
+## 10. Outside codes
+
+- If you have questions about how TRANSP work, looking into the following websites may help:
+  https://transp.pppl.gov/
+  https://transp.jetdata.eu/docs/Help/HelpFile/body_transp_hlp.html
+  But don't consume them all, search in them what you need

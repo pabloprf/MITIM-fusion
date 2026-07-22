@@ -17,6 +17,21 @@ def _fmt_minutes(minutes):
         return f"{h:02d}:{m:02d}:00"
     return f"{minutes:02d}:00"
 
+
+def _throttled_wait_snippet(jobid_ref, wait_poll_minutes):
+    """Return a shell snippet that polls job completion at a fixed interval."""
+    poll_minutes = float(wait_poll_minutes)
+    if poll_minutes <= 0:
+        raise ValueError("wait_poll_minutes must be positive when provided")
+    poll_seconds = max(1, int(math.ceil(poll_minutes * 60)))
+    return (
+        f'echo "* Waiting for job {jobid_ref} with a {poll_seconds}s polling interval..." && '
+        f'until ! squeue -h -j {jobid_ref} >/dev/null 2>&1; do '
+        f'echo "* Job {jobid_ref} still active; sleeping {poll_seconds}s"; '
+        f'sleep {poll_seconds}; '
+        f'done'
+    )
+
 def run_slurm(
         script,
         folder,
@@ -39,6 +54,8 @@ def run_slurm(
         seed_specific = 0,
     # Interaction settings:
         wait = False,
+        # If wait_poll_minutes is None, keep the original sbatch --wait behavior.
+        wait_poll_minutes = None,
         nameJob = None,
     # For job arrays:
         job_array = None,
@@ -87,6 +104,12 @@ def run_slurm(
         if max_hours <= 0:
             raise ValueError("max_hours must be positive")
 
+        if wait_poll_minutes is not None and wait_poll_minutes <= 0:
+            raise ValueError("wait_poll_minutes must be positive when provided")
+
+        # The throttled polling path only applies when wait=True; otherwise the
+        # launcher returns immediately after submission.
+
         n_chunks = max(1, math.ceil(hours / max_hours))
         chunk_hours = [min(max_hours, hours - i * max_hours) for i in range(n_chunks)]
 
@@ -123,7 +146,7 @@ def run_slurm(
                 lock_file=lock_file,
                 lock_file_timeout_hours=lock_file_timeout_hours,
                 append_mode=append_mode,
-                wait_until_sbatch=wait,
+                wait_until_sbatch=wait and (wait_poll_minutes is None),
             )
             sbatch_files.append(fileSBATCH_i)
 
@@ -135,19 +158,30 @@ def run_slurm(
         # blocks until the full chain finishes.
 
         if n_chunks == 1:
-            wait_flag = "--wait " if wait else ""
-            if wait:
+            if wait and wait_poll_minutes is None:
                 print('* Waiting for job to complete...')
-            command_execution = f"sbatch {wait_flag}{sbatch_files[0]}"
+                command_execution = f"sbatch --wait {sbatch_files[0]}"
+            elif wait:
+                print(f"* Waiting for job to complete with a {wait_poll_minutes} minute poll interval...")
+                command_execution = (
+                    f'JOBID=$(sbatch --parsable {sbatch_files[0]}) && '
+                    f'echo "Submitted job $JOBID" && '
+                    f'{_throttled_wait_snippet("$JOBID", wait_poll_minutes)}'
+                )
+            else:
+                command_execution = f"sbatch {sbatch_files[0]}"
         else:
             parts = []
             for i, f in enumerate(sbatch_files):
                 dep = f"--dependency=afterany:$JOBID{i-1} " if i > 0 else ""
-                wait_flag = "--wait " if (wait and i == n_chunks - 1) else ""
+                wait_flag = "--wait " if (wait and wait_poll_minutes is None and i == n_chunks - 1) else ""
                 parts.append(f"JOBID{i}=$(sbatch --parsable {dep}{wait_flag}{f})")
                 parts.append(f"echo \"Submitted chunk {i+1}/{n_chunks} as job $JOBID{i}\"")
-            if wait:
+            if wait and wait_poll_minutes is None:
                 print('* Waiting for dependent job chain to complete...')
+            elif wait:
+                print(f"* Waiting for dependent job chain to complete with a {wait_poll_minutes} minute poll interval...")
+                parts.append(_throttled_wait_snippet(f"$JOBID{n_chunks - 1}", wait_poll_minutes))
             command_execution = " && ".join(parts)
 
         if machine == "local":
@@ -188,6 +222,8 @@ def run_slurm_array(
         seed_specific = 0,
     # Interaction settings:
         wait = False,
+        # If wait_poll_minutes is None, keep the original sbatch --wait behavior. If wait = False, wait_poll is ignored.
+        wait_poll_minutes = None,
         nameJob = None,
     # Lock file settings (to avoid multiple concurrent runs of the same array)
         lock_file = None,
@@ -197,6 +233,12 @@ def run_slurm_array(
 ):
 
     folder = IOtools.expandPath(folder)
+
+    if wait_poll_minutes is not None and wait_poll_minutes <= 0:
+        raise ValueError("wait_poll_minutes must be positive when provided")
+
+    # The throttled polling path only applies when wait=True; otherwise the
+    # array submission returns immediately after submission.
 
     # Set seeds_explore variable
     if seeds is not None:
@@ -258,12 +300,19 @@ def run_slurm_array(
             slurm_settings = slurm_settings,
             if_array_relabel=False,
             append_mode=append_mode,
-            wait_until_sbatch=wait,
+            wait_until_sbatch=wait and (wait_poll_minutes is None),
         )
 
-        if wait:
+        if wait and wait_poll_minutes is None:
             print('* Waiting for job to complete...')
             command_execution = f"sbatch --wait {fileSBATCH}"
+        elif wait:
+            print(f"* Waiting for job to complete with a {wait_poll_minutes} minute poll interval...")
+            command_execution = (
+                f'JOBID=$(sbatch --parsable {fileSBATCH}) && '
+                f'echo "Submitted job $JOBID" && '
+                f'{_throttled_wait_snippet("$JOBID", wait_poll_minutes)}'
+            )
         else:
             command_execution = f"sbatch {fileSBATCH}"
 
@@ -314,6 +363,8 @@ def main():
     parser.add_argument("--seeds", type=int, default=None, help="Farm N seeded copies (script must accept --seed #)")
     parser.add_argument("--name", type=str, default=None, help="SLURM job name (default: mitim_<folder>)")
     parser.add_argument("--wait", action="store_true", help="Wait for completion instead of returning after submission")
+    parser.add_argument("--wait_poll_minutes", type=float, default=None,
+                        help="If set with --wait, poll job status at this interval instead of using sbatch --wait")
     args = parser.parse_args()
 
     run_slurm(
@@ -333,5 +384,6 @@ def main():
         ntasks_per_node=args.ntasks_per_node,
         seeds=args.seeds,
         wait=args.wait,
+        wait_poll_minutes=args.wait_poll_minutes,
         nameJob=args.name,
     )

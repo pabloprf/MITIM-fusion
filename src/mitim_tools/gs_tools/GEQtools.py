@@ -21,7 +21,7 @@ Modifications are made in MITIM for visualizations and a few extra derivations.
 """
 
 class MITIMgeqdsk:
-    def __init__(self, filename, refine=1):
+    def __init__(self, filename, refine=1, shaping_psin=0.995):
 
         self.g = megpy.Equilibrium()
         try:
@@ -35,6 +35,7 @@ class MITIMgeqdsk:
             self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
 
         # Extra derivations in MITIM
+        self.shaping_psin = shaping_psin
         self.derive()
 
     @classmethod
@@ -107,7 +108,7 @@ class MITIMgeqdsk:
         self.cx_area = abs(cumulative_trapezoid(vp * ir, self.g.derived["psi"], initial=0.0))
         self.kappa_a = self.cx_area[-1] / (np.pi * self.a**2)
 
-        self.grab_geo_parameters()
+        self.grab_geo_parameters(shaping_psin=getattr(self, 'shaping_psin', 0.995))
 
         """
         --------------------------------------------------------------------------------------------------------------------------------------
@@ -151,7 +152,7 @@ class MITIMgeqdsk:
 
             plt.show()
 
-    def grab_geo_parameters(self):
+    def grab_geo_parameters(self, shaping_psin=0.995):
 
         self.geometric_parameters = {}
         
@@ -164,7 +165,7 @@ class MITIMgeqdsk:
         fs95.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.95, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
         
         fs995 = megpy.fluxsurface.FluxSurface()
-        fs995.from_tracer(Rgrid, Zgrid, psigrid, np.interp(0.995, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
+        fs995.from_tracer(Rgrid, Zgrid, psigrid, np.interp(shaping_psin, self.psi_pol_norm, self.g.derived['psi']), analytic_shape=True)
         
         # ------------------------------------------------------------------------------------------------------
         # Actual flux surfaces
@@ -210,7 +211,7 @@ class MITIMgeqdsk:
         self.geometric_parameters["analytic_interpolation"] = {'psin95':{}, 'psin995':{}}
         
         for var in ['kappa', 'delta', 'zeta']:
-            for flux,psin in [("psin95", 0.95), ("psin995", 0.995)]:
+            for flux,psin in [("psin95", 0.95), ("psin995", shaping_psin)]:
                 self.geometric_parameters["analytic_interpolation"][flux][var] = np.interp(
                     psin,
                     self.psi_pol_norm,
@@ -439,7 +440,7 @@ class MITIMgeqdsk:
 
         rhotor = self.g.derived['rho_tor']
         psi = self.g.derived['psi']                          # Wb/rad
-        torfluxa = self.g.derived['phi'][-1] / (2*np.pi)     # Wb/rad
+        torfluxa = self.g.derived['phi'][-1]                 # Wb/rad (megpy 'phi' is already per-radian: int q dpsi == phi)
         q = self.g.derived['qpsi']
         pressure = self.g.derived['pres']       # Pa
         Ip = self.g.derived['current']*1E-6     # MA

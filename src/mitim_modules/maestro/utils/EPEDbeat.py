@@ -42,6 +42,12 @@ class eped_beat(beat):
             teped_retries = 2,             # (full EPED) Retries with a lowered teped exploration floor when no stable solution is found (0: fail immediately)
             teped_retry_lower_factor = 0.7, # (full EPED) Relative lowering of the TEPED_BOUND floor per retry (floor_n = floor_0 * factor^n)
             minutes_slurm = 240,           # (full EPED) SLURM time limit of each EPED case (the EPEDtools default of 30 min is far too short for full EPED)
+            forceifcold_start = True,      # MAESTRO is non-interactive: on a cold_start EPED run/creator that finds a
+                                           # leftover output (e.g. after a preemption+requeue), warn ('w') and rerun from
+                                           # scratch instead of asking ('q') and dying on InteractiveTerminalError.
+            zeff_location = 'vol_avg',     # Where to evaluate Zeff (and the fuel dilution) fed to EPED: 'vol_avg' (default,
+                                           # recovers old behavior) or 'pedestal' (interpolated at rho=0.95). Both feed the
+                                           # zeffped input and the effective-impurity charge used by full EPED.
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -88,6 +94,8 @@ class eped_beat(beat):
         self.teped_retries = teped_retries
         self.teped_retry_lower_factor = teped_retry_lower_factor
         self.minutes_slurm = minutes_slurm
+        self.forceifcold_start = forceifcold_start
+        self.zeff_location = zeff_location
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -135,6 +143,101 @@ class eped_beat(beat):
 
         self.rhotop = eped_results['rhotop']
 
+    # Per-key display format (unit + precision) for the EPED inputs, used to report the
+    # inputs that led to a failure. Keys not listed (e.g. from corrections_set) fall back to '{:.3g}'.
+    _EPED_INPUT_FMT = {
+        'Ip': '{:.2f} MA', 'Bt': '{:.2f} T', 'R': '{:.2f} m', 'a': '{:.2f} m',
+        'kappa995': '{:.3f}', 'delta995': '{:.3f}', 'neped_20': '{:.2f} 1E20', 'BetaN': '{:.2f}',
+        'zeff': '{:.2f}', 'Tesep_keV': '{:.3f} keV', 'nesep_ratio': '{:.2f}',
+        'zeta995': '{:.3f}', 's_three': '{:.3f}', 's_four': '{:.3f}',
+    }
+
+    def _eped_inputs_summary(self):
+        '''One-line "key=value unit, ..." summary of the EPED inputs of the current
+        evaluation (self.current_evaluation), to report what led to a failure.'''
+        return ', '.join(
+            f"{key}={self._EPED_INPUT_FMT.get(key, '{:.3g}').format(float(value))}"
+            for key, value in self.current_evaluation.items()
+        )
+
+    def _classify_eped_failure(self, mitim_out):
+        '''Classify why an EPED run returned no results, by scanning its mitim.out.
+
+        Returns (no_stable_solution, execution_failed):
+          - no_stable_solution: EPED actually ran but found no unstable mode within the
+            explored teped window -- a genuine physics outcome, worth a teped-lowering retry.
+          - execution_failed: the TOQ/ELITE binaries produced no output files at all (the
+            "collect ... : not completed" / FileNotFoundError signature). This tells us the
+            stability binaries did not run to completion, but NOT why -- it may be an
+            infeasible/extreme input combination (equilibrium could not be built) or an
+            infrastructure problem (bad/incompatible compute node). With no growth-rate
+            files the spectrum array is empty, so EPED *also* prints "all stable or fail to
+            find solution" -- but this is not a physics no-solution, and retrying (lowering
+            the teped floor) cannot fix it either way.
+        '''
+        no_stable_solution = execution_failed = False
+        if mitim_out.exists():
+            with open(mitim_out, 'r') as f:
+                for line in f:
+                    if "all stable or fail to find solution" in line:
+                        no_stable_solution = True
+                    # TOQ wrote no equilibrium, or zero ELITE .gamma files were collected:
+                    # the stability binaries never produced output (not a physics result).
+                    if ("collect toq.time : not completed" in line) or (".gamma file" in line and "not completed" in line):
+                        execution_failed = True
+                    if no_stable_solution and execution_failed:
+                        break
+        return no_stable_solution, execution_failed
+
+    def _eped_composition(self):
+        '''
+        Zeff and the plasma composition (main-ion mass/charge + effective single
+        impurity) handed to EPED, at the location set by self.zeff_location.
+
+        EPED does not receive the fuel fraction: it reconstructs the fuel-vs-impurity
+        split from quasineutrality + Zeff, so the impurity charge zi sets the main-ion
+        (fuel) dilution d = n_main/n_e at fixed Zeff (d = (zi - Zeff)/(zi - 1)). We pick
+        the EFFECTIVE single impurity that reproduces BOTH the plasma's Zeff and its
+        actual main-ion dilution:
+                zi_eff = (Zeff - d) / (1 - d)
+
+        Composition is taken over ALL ion species, thermal AND fast (consistent with
+        how Zeff itself is summed): the main ion is every hydrogenic species (Z=1:
+        D/T/H, incl. fast beam ions), the impurity lumps everything with Z>1 (incl.
+        fast He ash). Masses are density-weighted; the D:T isotope ratio enters EPED
+        only through the main-ion mass, never as a composition input.
+        '''
+        p = self.profiles_current
+        der = p.derived
+        z_sp = np.asarray(p.profiles['z'])      # charge per species
+        A_sp = np.asarray(p.profiles['mass'])   # mass per species
+
+        if self.zeff_location == 'pedestal':
+            rho_ped, rho = 0.95, p.profiles['rho(-)']
+            zeff = float(interpolation_function(rho_ped, rho, der['Zeff']))
+            ne, ni = p.profiles['ne(10^19/m^3)'], p.profiles['ni(10^19/m^3)']
+            fi = np.array([float(interpolation_function(rho_ped, rho, ni[:, i] / ne))
+                           for i in range(ni.shape[1])])     # n_i/n_e per species at the pedestal
+        else:  # 'vol_avg' — recovers the previous behavior
+            zeff = float(der['Zeff_vol'])
+            fi = np.asarray(der['fi_vol'])                   # n_i/n_e per species, volume average
+
+        main = z_sp < 1.5    # hydrogenic main ions (D/T/H), thermal AND fast
+        imp = ~main          # everything with Z>1 (incl. fast He ash), thermal AND fast
+
+        d_main = float(np.sum(fi[main]))
+        m_main, z_main = float(np.sum(fi[main] * A_sp[main]) / np.sum(fi[main])), 1.0
+
+        # Effective impurity. When Zeff ~ 1 (no impurity) the impurity density -> 0, so
+        # its (mi, zi) are irrelevant; keep the neon defaults rather than divide by ~0.
+        if (zeff - 1.0) < 1e-3 or (1.0 - d_main) < 1e-3 or float(np.sum(fi[imp])) < 1e-12:
+            mi_eff, zi_eff = 20.0, 10.0
+        else:
+            zi_eff = (zeff - d_main) / (1.0 - d_main)
+            mi_eff = float(np.sum(fi[imp] * A_sp[imp]) / np.sum(fi[imp]))
+
+        return zeff, m_main, z_main, mi_eff, zi_eff
+
     def _run(self, loopBetaN = 1, minimum_relative_change_in_x=0.005, store_scan = False, nproc_per_run=64, cold_start=True):
         '''
             minimum_relative_change_in_x: minimum relative change in x to streach the core, otherwise it will keep the old core
@@ -153,8 +256,9 @@ class eped_beat(beat):
         Bt = self.profiles_current.profiles['bcentr(T)'][0]
         R = self.profiles_current.profiles['rcentr(m)'][0]
         a = self.profiles_current.derived['a']
-        zeff = self.profiles_current.derived['Zeff_vol'] #TODO: Use pedestal Zeff
-        print("[MITIM] Grabbing Zeff from volume average, consider using pedestal Zeff for more accuracy in the future", typeMsg='w')
+        # Zeff and the EPED plasma composition (main-ion mass/charge + effective impurity)
+        # at the location set by self.zeff_location ('vol_avg' default, or 'pedestal').
+        zeff, m_main, z_main, mi_eff, zi_eff = self._eped_composition()
 
         '''
         -----------------------------------------------------------
@@ -175,6 +279,11 @@ class eped_beat(beat):
         neped_20 = self.neped_20
 
 
+        try:
+            shaping_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
+        self.profiles_current.derive_quantities(shaping_psin=shaping_psin)   # honor extraction-location knob (null-freeze path)
         kappa995 = self.profiles_current.derived['kappa995']
         delta995 = self.profiles_current.derived['delta995']
         if (self.toq_eq_choice == 'full_turnbull_miller' or self.toq_eq_choice == 'mxh'): 
@@ -261,6 +370,10 @@ class eped_beat(beat):
                 's_three': s_three995,
                 's_four': s_four995
             }
+
+        # Plasma composition fed to full EPED (the EPED-NN ignores m/z/mi/zi). Placed
+        # before the corrections_set loop so the user can override any of them there.
+        self.current_evaluation.update({'m': m_main, 'z': z_main, 'mi': mi_eff, 'zi': zi_eff})
 
         # --- Sometimes we may need specific EPED inputs
         for key, value in self.corrections_set.items():
@@ -407,21 +520,22 @@ class eped_beat(beat):
                             ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=eped_params_override if eped_params_override else None, nproc_per_run=nproc_per_run, cold_start=cold_start)
                             break
                         except LOGtools.InteractiveTerminalError:
-                            # Possibility that EPED could not find any stable solution
-                            no_stable_solution = False
-                            if (self.folder / 'case1' / 'mitim.out').exists():
-                                error_line = "all stable or fail to find solution"
-                                # Read file to find line
-                                with open(self.folder / 'case1' / 'mitim.out', 'r') as f:
-                                    for line in f.readlines():
-                                        if error_line in line:
-                                            no_stable_solution = True
-                                            break
+                            # EPED returned no results. Distinguish a genuine physics
+                            # no-solution (retry by lowering the teped floor) from the case
+                            # where TOQ/ELITE produced no output files at all -- the latter
+                            # cannot be fixed by lowering the teped window, so surface it
+                            # immediately. Note we can only tell that the stability binaries
+                            # did not complete, NOT why: it may be an infeasible/extreme
+                            # input combination (equilibrium could not be built) or an
+                            # infrastructure problem (bad/incompatible compute node).
+                            no_stable_solution, execution_failed = self._classify_eped_failure(self.folder / 'case1' / 'mitim.out')
+                            if execution_failed:
+                                raise Exception(f'[MITIM] EPED produced no output files -- the TOQ/ELITE stability binaries did not run to completion, so this is not a physics no-solution and cannot be fixed by lowering the teped window. Likely either an infeasible/extreme input combination (equilibrium could not be built) or an infrastructure problem (bad/incompatible compute node). Inputs: [{self._eped_inputs_summary()}]')
                             if not no_stable_solution:
                                 raise Exception('[MITIM] EPED failed to run (but I cannot determine why), cannot continue this simulation')
                             if attempt == self.teped_retries:
-                                raise Exception(f'[MITIM] EPED failed to find any stable solution (after {self.teped_retries} teped-lowering retries), cannot continue this simulation')
-                            print('\t- EPED found no stable solution within the explored teped window', typeMsg='w')
+                                raise Exception(f'[MITIM] EPED failed to find any stable solution (after {self.teped_retries} teped-lowering retries) with inputs [{self._eped_inputs_summary()}], cannot continue this simulation')
+                            print(f'\t- EPED found no stable solution within the explored teped window, with inputs [{self._eped_inputs_summary()}]', typeMsg='w')
 
                     if store_scan and self.nn==None:
                         store_scan = False
@@ -651,13 +765,21 @@ class eped_beat(beat):
             }
             print('_run_full_eped with mxh TOQ configuration. Parameters used:', input_params)
 
+        # Plasma composition (main-ion mass/charge + effective impurity), computed in
+        # _run from the actual profiles and overridable via corrections_set.
+        comp = self.current_evaluation
+        m, z, mi, zi = comp.get('m', 2.5), comp.get('z', 1), comp.get('mi', 20), comp.get('zi', 10)
+        print(f'\t\t- composition: m={m:.2f}, z={z:.0f}, impurity (mi={mi:.1f}, zi={zi:.2f})')
+
         eped.run(
             subfolder = 'case1',
             input_params = input_params,
             nproc_per_run = nproc_per_run,
             minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
+            forceifcold_start = getattr(self, 'forceifcold_start', True),
             eped_params_override = eped_params_override,
+            m = m, z = z, mi = mi, zi = zi,
         )
 
         eped.read(subfolder='case1')
@@ -754,7 +876,11 @@ class eped_beat(beat):
             if gacode_file.exists():
                 try:
                     p = PROFILEStools.gacode_state(gacode_file)
-                    p.derive_quantities()
+                    try:
+                        shaping_psin = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+                    except (KeyError, AttributeError):
+                        shaping_psin = 0.995
+                    p.derive_quantities(shaping_psin=shaping_psin)
                     inputs['Ip']       = abs(float(p.profiles['current(MA)'][0]))
                     inputs['Bt']       = abs(float(p.profiles['bcentr(T)'][0]))
                     inputs['R']        = abs(float(p.profiles['rcentr(m)'][0]))
@@ -1006,20 +1132,23 @@ class eped_beat(beat):
             self.neped_20 = self.maestro_instance.parameters_trans_beat['neped_20']
             print(f"\t\t- Using previous neped_20: {self.neped_20}")
 
-        # From a geqdsk initialization
-        if 'kappa995' in self.maestro_instance.parameters_trans_beat:
-            self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
-            print(f"\t\t- Using previous kappa995: {self.kappa995}")
-        
-        # From a geqdsk initialization
-        if 'delta995' in self.maestro_instance.parameters_trans_beat:
-            self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
-            print(f"\t\t- Using previous delta995: {self.delta995}")
+        # Frozen 99.5% shaping from a previous beat (initialization, or a re-freeze after beat N).
+        # If maestro.refreeze_995_after_beat is null the shaping is NEVER frozen: skip the reuse so
+        # this EPED beat recomputes kappa995/delta995/zeta995 from its own current equilibrium.
+        if getattr(self.maestro_instance, 'refreeze_995_after_beat', 0) is not None:
+            if 'kappa995' in self.maestro_instance.parameters_trans_beat:
+                self.kappa995 = self.maestro_instance.parameters_trans_beat['kappa995']
+                print(f"\t\t- Using previous kappa995: {self.kappa995}")
 
-        # From a geqdsk initialization
-        if 'zeta995' in self.maestro_instance.parameters_trans_beat:
-            self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
-            print(f"\t\t- Using previous zeta995: {self.zeta995}")
+            if 'delta995' in self.maestro_instance.parameters_trans_beat:
+                self.delta995 = self.maestro_instance.parameters_trans_beat['delta995']
+                print(f"\t\t- Using previous delta995: {self.delta995}")
+
+            if 'zeta995' in self.maestro_instance.parameters_trans_beat:
+                self.zeta995 = self.maestro_instance.parameters_trans_beat['zeta995']
+                print(f"\t\t- Using previous zeta995: {self.zeta995}")
+        else:
+            print("\t\t- refreeze_995_after_beat is null: recomputing 99.5% shaping from the current equilibrium", typeMsg='i')
 
         # From a previous EPED beat, grab the rhotop
         if 'rhotop' in self.maestro_instance.parameters_trans_beat:

@@ -58,18 +58,71 @@ acquisition_options:
       maxiter: 1000                             # Max L-BFGS-B iterations per restart
       sequential_q: true                        # Optimize q-batch candidates sequentially (greedy)
       keep_best: 1                              # Return the top-K candidates from all restarts
+    # ROOT: scipy.optimize.root (Levenberg-Marquardt). Treats the acquisition step as a
+    # multivariate ROOT-FIND on the GP surrogate: drive the residual (target - transport)
+    # to zero per channel and per radius. Requires len(DVs) == len(residuals) (auto-handled;
+    # the multi-fidelity fidelity_level DV is stripped for this solver).
+    #
+    # BATCHED RESTARTS (important): the `num_restarts` starting points are NOT solved
+    # independently -- they are flattened into ONE LM solve of size num_restarts*nDV. The
+    # Jacobian is block-diagonal (each start couples only to itself, off-blocks zeroed), so
+    # the Newton direction decouples, BUT MINPACK shares a single global damping, a single
+    # convergence test on the TOTAL residual sum-of-squares, and global scaling. So a
+    # batched (parallel) solve is NOT identical to running each start alone: slow starts can
+    # be stopped early, and on multi-basin landscapes a start can be routed to a different
+    # solution than it would reach independently. Differences grow at loose
+    # relative_improvement_for_stopping and on ill-conditioned cases.
     root:
-      num_restarts: 5
+      num_restarts: 5                           # Starting points, solved as ONE batched LM (see note above)
       solver: lm                                # Scipy root solver ('lm' = Levenberg-Marquardt)
       maxiter: 1000
+      # ftol handed to MINPACK: stop when the RELATIVE reduction of the total residual
+      # sum-of-squares between iterations drops below this -- a stagnation detector, NOT an
+      # absolute residual floor (scipy's xtol ~1.5e-8 also applies and is tighter). This
+      # solves the GP-surrogate residual, so there is little value tightening it below the
+      # turbulent+neoclassical flux uncertainty (model error / statistical noise, typically
+      # several %) that the surrogate encodes -- the BO loop re-anchors with real evaluations.
+      # NOTE: the residual is a single L2 over raw, mixed-unit physical fluxes (heat MW/m^2,
+      # particle, impurity, momentum), so this global tolerance under-resolves the small /
+      # neoclassical channels relative to the dominant energy channels. Rebalance via
+      # solution.scalar_multipliers (namelist.portals.yaml) rather than tightening ftol.
       relative_improvement_for_stopping: 0.0001
       keep_best: 1
+    # SR: simple relaxation -- the cheap, robust "first PORTALS technique". Moves each gradient
+    # proportionally to its own flux residual: dx = relax*(target-transport)/
+    # sqrt(target^2+transport^2), capped, x += dx*|x|. The per-channel RELATIVE
+    # normalization makes it well balanced across heat / particle / impurity / momentum
+    # channels (unlike ROOT's raw-L2 step), so the small turbulent / trace-impurity /
+    # neoclassical channels still get a fair step. Assumes transport increases with the
+    # gradient (the physical flux-matching picture).
+    #
+    # BATCHED RESTARTS: the step and the dynamic relaxation are ENTIRELY per-start,
+    # per-channel (no cross-start term), so each start's trajectory is independent. The ONLY
+    # coupling is the STOP: the whole batch halts when the BEST start meets the relative
+    # tolerance (= relative_improvement_for_stopping x the best STARTING residual). So a
+    # parallel solve TRUNCATES the slower starts at the iteration the fastest one converges
+    # -- they come back under-relaxed vs running them alone (most visible at the loose
+    # default below). No basin jumping (identical starts give identical results). Benign if
+    # only the single best candidate is used; if several restarts are consumed (or you rely
+    # on SR's random restarts for exploration), tighten the tolerance or raise maxiter.
     sr:
-      num_restarts: 5                           # How many points to initialize with (parallel optimization)
-      maxiter: 1000                             # Maximum number of iterations in acquisition optimization
-      relative_improvement_for_stopping: 0.001  # Threshold (relative improvement) to stop the acquisition optimization
-      relax: 0.1                                # Initial relaxation parameter (updated during dynamic adjustments if relax_dyn: true)
-      relax_dyn: true                           # Use Dynamic Simple Relaxation
+      num_restarts: 5                           # Starting points; each relaxes independently but the batch stops together (see note)
+      maxiter: 1000                             # Maximum relaxation iterations
+      # Stop when the residual L2 has dropped to this fraction of the BEST start's INITIAL
+      # residual. As with ROOT, little value below the turbulent+neoclassical flux uncertainty;
+      # the stop metric is the same heat-dominated L2 (rebalance via solution.scalar_multipliers),
+      # and at this loose default the non-fastest parallel restarts are truncated (see note).
+      relative_improvement_for_stopping: 0.001
+      relax: 0.1                                # Initial flux-gradient relaxation; reduced per-channel if relax_dyn detects oscillation
+      relax_dyn: true                           # Dynamic per-channel relaxation (decrease relax where oscillation is detected)
+      # Batch halting criterion (see note above):
+      #   best -> stop as soon as the BEST restart meets the tolerance (default; the slower
+      #           restarts are truncated at that iteration -- fine when only the single best
+      #           x_best is consumed).
+      #   all  -> keep relaxing until EVERY restart meets the tolerance (or maxiter), so all
+      #           returned x_best are comparably converged. Use this when more than one
+      #           restart is consumed downstream (e.g. multiple candidates kept via keep_best).
+      halt_on: best
       keep_best: 1                              # How many best points to keep
     ga:
       num_restarts: 1
@@ -122,3 +175,25 @@ strategy_options:
     points: 32              # Number of candidate points sampled inside the trust region
     bounds: [0.75, 1.33]    # Trust region shrink / expand factors
     metrics: [3, 3]         # [success_tol, failure_tol]: consecutive successes/failures before adjusting the trust region
+
+# -----------------------------------------------------------------
+# Local optima mining: periodically scan the GP surrogate for diverse
+# local maxima, evaluate them with the physics model, and inject the
+# results back into the training set. Disabled by default.
+# -----------------------------------------------------------------
+
+local_optima_options:
+  apply: false                        # Master switch — set to true to enable local optima mining (default: off)
+  n_optima: 10                        # Number of diverse local optima to mine and evaluate per round
+  n_acq_batches_per_cycle: 2          # Trigger a mining round after this many acquisition batches
+  min_iteration: 2                    # Do not run the first mining round before this BO iteration number
+  n_restarts: 256                     # Number of independent gradient-ascent restarts on the surrogate posterior mean
+                                      # Each restart converges (via L-BFGS-B) to its own local maximum; larger = broader coverage
+  n_from_training: 32                 # Number of best-observed training points to include as warm starts (in addition to Sobol samples)
+  min_distance: 0.1                   # Minimum pairwise distance (in normalized [0,1] DV space) between selected optima;
+                                      # prevents the diversity selection from returning clustered solutions
+  diversity_algorithm: "greedy_max_min_distance"
+                                      # Algorithm used to select n_optima diverse candidates from the full set of restart solutions.
+                                      # "greedy_max_min_distance": sort restarts by objective value, then iteratively pick the
+                                      #   next-best candidate that is at least min_distance from all already-selected points.
+                                      # Future options (not yet implemented): "k_medoids", "determinantal_point_process"

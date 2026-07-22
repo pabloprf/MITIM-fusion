@@ -1,5 +1,7 @@
 import copy
 import shutil
+import json
+import numpy as np
 from pathlib import Path
 import sys
 import re
@@ -108,6 +110,14 @@ class maestro:
         --------------------------------------------------------------------------------------------------------------------
         '''
         self.parameters_trans_beat = {}
+
+        # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) fed to EPED
+        # (see templates/namelist.maestro.yaml -> maestro.refreeze_995_after_beat):
+        #   0    : keep the value extracted at initialization (default, old behavior)
+        #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. after TRANSP)
+        #   null : never freeze -- each EPED beat recomputes from its own current equilibrium
+        #          (the null case is enforced in the EPED beat's _inform)
+        self.refreeze_995_after_beat = self.maestro_namelist.get('maestro', {}).get('refreeze_995_after_beat', 0)
 
         # Whether this instance has already stashed a previous run's finalization
         # artifacts (done automatically at the first beat run())
@@ -326,15 +336,108 @@ class maestro:
             # Produce a new self.profiles_with_engineering_parameters from this merged object
             self._freeze_parameters()
 
-        # Inform next beats
+        # Inform next beats. Persist a JSON snapshot of parameters_trans_beat per beat so a re-run
+        # of a finished MAESTRO (and the space-saving pickle prune) can restore the cross-beat state
+        # without recomputing it from the heavy PORTALS/TRANSP artifacts. A skipped beat restores its
+        # snapshot instead of calling _inform_save(); a run without a snapshot (legacy) recomputes.
         log_file = self.folder_logs / f'beat_{self.counter_current}_inform.log' if (not self.terminal_outputs) else None
         with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
-            self.beat._inform_save()
+            if self.beat.run_flag:
+                self.beat._inform_save()
+                self._save_trans_beat_parameters()
+            elif not self._restore_trans_beat_parameters():
+                self.beat._inform_save()
+
+        # Optionally re-freeze the 99.5% shaping from this beat's evolved equilibrium (runs on both the
+        # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
+        self._maybe_refreeze_995()
 
         # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
         if not self.keep_all_files:
             for item in self.beat.folder .iterdir():
                 IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
+
+    # --------------------------------------------------------------------------------------------
+    # Cross-beat parameters (parameters_trans_beat) persistence
+    # --------------------------------------------------------------------------------------------
+    # A per-beat JSON snapshot of parameters_trans_beat under Outputs/trans_beat_parameters/. It lets
+    # a re-run (and the keep_all_files: false pickle prune) restore the cross-beat state of a finished
+    # beat without recomputing it from the heavy PORTALS/TRANSP artifacts (which may be pruned). Path
+    # values are stored relative to the MAESTRO root so a snapshot survives the run folder being moved.
+
+    def _maybe_refreeze_995(self):
+        '''
+        If maestro.refreeze_995_after_beat == N (a positive int) and this is beat N, overwrite the
+        frozen 99.5% shaping (kappa995/delta995/zeta995) in parameters_trans_beat with the values
+        derived from THIS beat's evolved equilibrium, so later EPED beats use a real (e.g.
+        post-TRANSP) equilibrium instead of the initialization guess. The snapshot is re-saved so a
+        restart restores the updated values. (0 = keep the init value; null = never freeze, which is
+        handled in the EPED beat's _inform by simply not reusing the stored value.)
+        '''
+        target = self.refreeze_995_after_beat
+        if not (isinstance(target, int) and not isinstance(target, bool) and target > 0 and self.counter_current == target):
+            return
+
+        try:
+            shaping_psin = self.maestro_namelist['plasma']['parameters']['separatrix'].get('shaping_extraction_psin', 0.995)
+        except (KeyError, AttributeError):
+            shaping_psin = 0.995
+        p = PROFILEStools.gacode_state(self.beat.folder_output / 'input.gacode')
+        p.derive_quantities(shaping_psin=shaping_psin)
+        for key in ('kappa995', 'delta995', 'zeta995'):
+            if key in p.derived:
+                self.parameters_trans_beat[key] = float(p.derived[key])
+        self._save_trans_beat_parameters()
+        print(f'\t\t- Re-froze 99.5% shaping from beat {target} equilibrium -> '
+              f'kappa995={self.parameters_trans_beat["kappa995"]:.3f}, '
+              f'delta995={self.parameters_trans_beat["delta995"]:.3f}, '
+              f'zeta995={self.parameters_trans_beat["zeta995"]:.3f}', typeMsg='i')
+
+    def _trans_beat_parameters_file(self, counter):
+        return self.folder_output / 'trans_beat_parameters' / f'beat_{counter}.json'
+
+    def _encode_trans_beat_value(self, v):
+        if isinstance(v, Path):
+            try:
+                return {'__maestro_relpath__': str(v.relative_to(self.folder))}
+            except ValueError:
+                return {'__abspath__': str(v)}
+        if isinstance(v, dict):
+            return {k: self._encode_trans_beat_value(x) for k, x in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [self._encode_trans_beat_value(x) for x in v]
+        if isinstance(v, np.generic):
+            return v.item()
+        if isinstance(v, np.ndarray):
+            return v.tolist()
+        return v
+
+    def _decode_trans_beat_value(self, v):
+        if isinstance(v, dict):
+            if '__maestro_relpath__' in v:
+                return self.folder / v['__maestro_relpath__']
+            if '__abspath__' in v:
+                return Path(v['__abspath__'])
+            return {k: self._decode_trans_beat_value(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [self._decode_trans_beat_value(x) for x in v]
+        return v
+
+    def _save_trans_beat_parameters(self):
+        f = self._trans_beat_parameters_file(self.counter_current)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, 'w') as fh:
+            json.dump(self._encode_trans_beat_value(self.parameters_trans_beat), fh, indent=2)
+        print(f'\t\t- Saved cross-beat parameters snapshot to {IOtools.clipstr(f)}', typeMsg='i')
+
+    def _restore_trans_beat_parameters(self):
+        f = self._trans_beat_parameters_file(self.counter_current)
+        if not f.exists():
+            return False
+        with open(f, 'r') as fh:
+            self.parameters_trans_beat = self._decode_trans_beat_value(json.load(fh))
+        print(f'\t\t- Restored cross-beat parameters from {IOtools.clipstr(f)} (skipped beat; artifacts not needed)', typeMsg='i')
+        return True
 
 
     def interpret(self):
@@ -440,6 +543,8 @@ class maestro:
             self.folder_output / 'input.gacode_final',
             self.folder_output / 'maestro_summary.md',
             self.folder_output / 'beat_flow.png',
+            self.folder_output / 'maestro_special.png',
+            self.folder_output / 'maestro_timing.png',
             self.folder_output / 'beat_final',      # log file of the finalize step
             self.folder / 'maestro_plots',          # figures from mitim_run_maestro --save
         ]
@@ -471,11 +576,20 @@ class maestro:
 
             print(f'\t\t- Final input.gacode saved to {IOtools.clipstr(final_file)}')
 
-            # End-of-run human-readable summary report
+            # End-of-run human-readable summary report. MUST run BEFORE optional_postprocessing:
+            # the summary reads the last PORTALS beat's full surrogates (step.GP / BOmetrics), which
+            # postprocessing then slims.
             try:
                 self.generate_summary()
             except Exception as e:
                 print(f'\t\t- Could not generate maestro_summary.md: {e}', typeMsg='w')
+
+            # Beat-specific end-of-run postprocessing (PORTALS space-saving: slim the last beat,
+            # drop intermediates). Runs LAST -- after every beat's run (so all next-beat flux-match
+            # warm-starts already consumed the prior beats' surrogates) and after the summary -- so
+            # nothing still needs the full GP surrogates. No-op for beats that don't override it.
+            for beat_obj in self.beats.values():
+                beat_obj.optional_postprocessing()
 
     # --------------------------------------------------------------------------------------------
     # Summary report
@@ -528,6 +642,29 @@ class maestro:
         except Exception as e:
             md.append(f'*(beat-flow diagram unavailable: {e})*')
         md.append('')
+
+        # Special-quantities figure: per-beat evolution of the key 0D quantities
+        # (the same 'MAESTRO special' view produced when plotting the case).
+        md.append('## Special quantities')
+        md.append('')
+        try:
+            special_png = _render_special_png(self, self.folder_output / 'maestro_special.png')
+            md.append(f'![Special quantities]({special_png.name})')
+        except Exception as e:
+            md.append(f'*(special-quantities figure unavailable: {e})*')
+        md.append('')
+
+        # Timing figure: per-beat cumulative wall-time (the 'MAESTRO timings' view)
+        timing_jsonl = self.folder_performance / 'timing.jsonl'
+        if timing_jsonl.exists():
+            md.append('## Timing')
+            md.append('')
+            try:
+                timing_png = _render_timing_png(timing_jsonl, self.folder_output / 'maestro_timing.png')
+                md.append(f'![Timing]({timing_png.name})')
+            except Exception as e:
+                md.append(f'*(timing figure unavailable: {e})*')
+            md.append('')
 
         # Final plasma state: printInfo() output for input.gacode_final
         final_file = self.folder_output / 'input.gacode_final'
@@ -582,7 +719,7 @@ class maestro:
     # --------------------------------------------------------------------------------------------
     
     @mitim_timer(lambda self: f'Beat #{self.counter_current} ({self.beat.name}) - Plotting')
-    def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True):
+    def plot(self, fn = None, num_beats = 2, only_beats = None, full_plot = True, summary_only = False):
 
         print('*** Plotting MAESTRO ******************************************************************** ')
 
@@ -593,13 +730,14 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
-        if num_beats>0:
+        # summary_only -> only the cross-beat 'special' + 'timings' tabs (no per-beat tabs)
+        if num_beats>0 and not summary_only:
             self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        ps, ps_lab = self._plot_results(self.fn)
+        ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
 
         if not wasProvided:
             self.fn.show()
-            
+
         return ps, ps_lab
 
     def _plot_beats(self, fn, num_beats = 2, only_beats = None, full_plot = True):
@@ -620,11 +758,11 @@ class maestro:
                 except Exception as e:
                     print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
 
-    def _plot_results(self, fn):
+    def _plot_results(self, fn, summary_only = False):
 
         print('\t- Plotting MAESTRO results...')
 
-        return MAESTROplot.plot_results(self, fn)
+        return MAESTROplot.plot_results(self, fn, summary_only = summary_only)
 
 
 def read_warning(file, d, label):
@@ -666,6 +804,59 @@ def _capture_print_info(gacode_file):
         CONFIGread.read_verbose_level = original
 
     return _ANSI_RE.sub('', buf.getvalue())
+
+
+def _render_special_png(maestro, out_path):
+    '''
+    Render the per-beat "special quantities" evolution (BetaN, Pfus, Q, density,
+    current, confinement, ...) to a PNG, reusing the exact same figure mosaic and
+    MAESTROplot.plot_special_quantities used by the interactive 'MAESTRO special'
+    tab. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+    from mitim_modules.maestro.utils import MAESTROplot
+
+    _, ps, ps_lab = MAESTROplot.collect_beat_states(maestro)
+    for p in ps:
+        p.derive_quantities()
+
+    fig = plt.figure(figsize=(16, 9))
+    axs = fig.subplot_mosaic(
+        """
+        ABGIK
+        ABGIK
+        AEGIK
+        DEHJL
+        DFHJL
+        DFHJL
+        """,
+        gridspec_kw={"wspace": 0.55},
+    )
+    MAESTROplot.plot_special_quantities(ps, ps_lab, axs)
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
+
+
+def _render_timing_png(timing_jsonl, out_path):
+    '''
+    Render the per-beat cumulative wall-time (the 'MAESTRO timings' view) to a PNG,
+    reusing IOtools.plot_timings. Returns the output Path.
+    '''
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(14, 7))
+    gs = fig.add_gridspec(2, 2, width_ratios=[2, 1], hspace=0.35, wspace=0.35)
+    ax_A = fig.add_subplot(gs[0, 0])
+    ax_B = fig.add_subplot(gs[1, 0], sharex=ax_A)
+    ax_C = fig.add_subplot(gs[0, 1])
+    ax_D = fig.add_subplot(gs[1, 1])
+    IOtools.plot_timings(timing_jsonl, axs=[ax_A, ax_B], ax_summary=ax_C, ax_total=ax_D, log=False)
+    ax_C.set_title("Time per Beat", fontsize=9)
+    ax_D.set_title("Total by type", fontsize=9)
+    fig.savefig(out_path, dpi=120, bbox_inches='tight')
+    plt.close(fig)
+    return out_path
 
 
 def _render_beat_flow_png(beats, wall_times, out_path):
