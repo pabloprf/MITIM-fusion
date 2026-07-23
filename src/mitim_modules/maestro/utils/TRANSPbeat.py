@@ -196,8 +196,11 @@ class transp_beat(beat):
 
         boundary_override = self._fixed_boundary_for_transp()
         if boundary_override is not None:
-            # Reusing the frozen curve: the backoff and the MXH smoothing are already baked into it.
-            boundary_surface_psin, mxh_coeffs_smooth_sep = 1.0, None
+            # Reusing the frozen curve: the backoff and the MXH smoothing are already baked into it,
+            # and write_ufiles takes it verbatim (boundary_frozen tag). mxh_coeffs_smooth_sep is KEPT:
+            # it is still needed to project the NON-frozen time slices (e.g. the machine-initialization
+            # equilibrium added when transition_window > 0) onto the same fixed theta grid.
+            boundary_surface_psin = 1.0
 
         # Optional sanitization of the INITIAL q-profile seed handed to TRANSP. A pathological,
         # over-peaked equilibrium (very low q0 -> q=1 surface far toward the boundary) makes TRANSP's

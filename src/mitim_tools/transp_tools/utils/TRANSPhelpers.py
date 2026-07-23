@@ -220,7 +220,11 @@ class transp_run:
             for time in self.times:
                 if (time in self.geometry) and ('R_sep' in self.geometry[time]):
 
-                    if mxh_coeffs_smooth is not None:
+                    # A frozen boundary (boundary_override) is used VERBATIM -- never re-projected
+                    # through the MXH smoothing (the round-trip is not idempotent). Non-frozen time
+                    # slices (e.g. the machine-initialization equilibrium) still get the projection,
+                    # which also lands every slice on the same fixed theta grid.
+                    if (mxh_coeffs_smooth is not None) and (not self.geometry[time].get('boundary_frozen', False)):
                         thetas, R, Z = prepare_RZsep_for_TRANSP(
                             self.geometry[time]['R_sep'],
                             self.geometry[time]['Z_sep'],
@@ -240,6 +244,17 @@ class transp_run:
                     Zs.append(Z)
                     R0.append(  r0 * np.ones(R.shape) )
                     Z0.append(  z0 * np.ones(R.shape) )
+
+            # The RFS/ZFS UFILE is a dense (time, theta, rho) array: every time slice must carry the
+            # same number of boundary points. Fail loudly here (mixed sources, e.g. a frozen boundary
+            # alongside an unprojected machine-initialization curve) instead of numpy's cryptic
+            # "inhomogeneous shape" error.
+            npoints = [len(R) for R in Rs]
+            if len(set(npoints)) > 1:
+                raise ValueError(
+                    f"[MITIM] Boundary curves have inconsistent point counts across times "
+                    f"{ts} -> {npoints}; all time slices must share one theta grid."
+                )
 
             Rs, Zs, R0, Z0 = np.array(Rs), np.array(Zs), np.array(R0), np.array(Z0)
 
@@ -878,13 +893,17 @@ class transp_input_time:
         if boundary_override is not None:
             self.geometry['R_sep'] = np.array(boundary_override[0])
             self.geometry['Z_sep'] = np.array(boundary_override[1])
+            # Mark this time slice so write_ufiles hands the curve to TRANSP VERBATIM: the MXH
+            # round-trip is a projection (not idempotent), and re-projecting the frozen boundary
+            # would defeat the whole point of freezing it.
+            self.geometry['boundary_frozen'] = True
             self._produce_structures_from_variables(
                 self.p.profiles['rcentr(m)'][0],
                 self.p.derived['a'],
                 self.p.profiles['kappa(-)'][-1],
-                self.p.profiles['zmag(m)'][0],
                 self.p.profiles['delta(-)'][-1],
                 self.p.profiles['zeta(-)'][-1],
+                self.p.profiles['zmag(m)'][0],
                 )
             return
 
