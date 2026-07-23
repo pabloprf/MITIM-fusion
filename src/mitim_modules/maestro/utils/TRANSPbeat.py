@@ -424,9 +424,23 @@ class transp_beat(beat):
         if 'transp_fixed_boundary' in self.maestro_instance.parameters_trans_beat:
             return
 
-        time = sorted(self.transp.geometry.keys())[0]
+        # Freeze the PLASMA boundary, i.e. a from_profiles time slice -- NOT the machine-initialization
+        # equilibrium that occupies the EARLIEST time when transition_window > 0 (freezing that would
+        # hand every later TRANSP beat the startup machine's boundary, e.g. CMOD a=0.22 m). The last
+        # time slice is always a profile one.
+        time = sorted(self.transp.geometry.keys())[-1]
         geo = self.transp.geometry[time]
         R, Z = geo['R_sep_transp'], geo['Z_sep_transp']
+
+        # Loud sanity guard: the frozen curve must describe THIS plasma (the psi_N backoff and MXH
+        # smoothing only change the minor radius at the % level).
+        a_frozen = (np.max(R) - np.min(R)) / 2
+        a_state = self.profiles_current.derived['a']
+        if abs(a_frozen - a_state) / a_state > 0.10:
+            raise ValueError(
+                f"[MITIM] Refusing to freeze TRANSP boundary with a = {a_frozen:.3f} m: inconsistent "
+                f"with the plasma minor radius a = {a_state:.3f} m (wrong time slice selected?)"
+            )
         self.maestro_instance.parameters_trans_beat['transp_fixed_boundary'] = {
             'R': np.array(R).tolist(), 'Z': np.array(Z).tolist()}
         print(f'\t- Froze the TRANSP fixed boundary ({np.array(R).size} points, '
