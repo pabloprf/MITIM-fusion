@@ -312,22 +312,42 @@ class minuet_beat(beat):
         # exactly; real work when the incoming state was trimmed (folded-surface backoff)
         self.profiles_output.changeResolution(rho_new = p_frozen.profiles['rho(-)'])
 
-        # Restore the frozen equilibrium VERBATIM wherever MINUET's output is not
-        # trustworthy: beyond the trimmed boundary (the equilibrium there was NOT evolved --
-        # MINUET ran with a backed-off boundary) and below the near-axis clamp of the
-        # export. Extrapolated/clamped MXH surfaces produce NaN volume integrals that would
-        # poison the frozen state for every later beat. The small q/polflux seams are the
-        # price of the backoff; kinetics/sources/engineering are frozen-inserted anyway.
+        # Below the near-axis clamp of the export, CONTINUE MINUET's own first healthy
+        # row inward instead of restoring frozen rows: MXH shape moments are EVEN in rho
+        # (zero axis slope), so a flat continuation is the correct limit, rmin goes
+        # linearly through zero and polflux quadratically. A frozen-row restore here
+        # created a shape DISCONTINUITY at the seam between frozen and minuet rows --
+        # on ~mm-radius surfaces even a small jump flips the family Jacobian and the
+        # fold guard would refuse the file on a later minuet ingest (seen once the
+        # export fitter became accurate, 2026-07-22).
         rho = p_frozen.profiles['rho(-)']
+        if rho_lo is not None:
+            h = int(np.searchsorted(rho, rho_lo))
+            if h > 0:
+                print(f'\t\t\t* Continuing MINUET axis rows inward through the export clamp '
+                      f'(rho < {rho[h]:.4f}: flat shapes, linear rmin, quadratic polflux)')
+                prof = self.profiles_output.profiles
+                for key in ('rmaj(m)', 'zmag(m)', 'kappa(-)', 'delta(-)', 'zeta(-)'):
+                    prof[key][:h] = prof[key][h]
+                for key in list(prof.keys()):
+                    if key.startswith('shape_'):
+                        prof[key][:h] = prof[key][h]
+                prof['rmin(m)'][:h] = prof['rmin(m)'][h] * rho[:h] / rho[h]
+                prof['polflux(Wb/radian)'][:h] = (
+                    prof['polflux(Wb/radian)'][h] * (rho[:h] / rho[h]) ** 2)
+
+        # Restore the frozen equilibrium VERBATIM beyond the trimmed boundary (the
+        # equilibrium there was NOT evolved -- MINUET ran with a backed-off boundary).
+        # Extrapolated MXH surfaces there would produce NaN volume integrals that
+        # poison the frozen state for every later beat. The small q/polflux seam is
+        # the price of the backoff; kinetics/sources/engineering are frozen-inserted
+        # anyway.
         mask = np.zeros(len(rho), dtype=bool)
         if getattr(self, '_trim_rho', None) is not None:
             mask |= rho > self._trim_rho
-        if rho_lo is not None:
-            mask |= rho < rho_lo
         if mask.any():
-            print(f'\t\t\t* Restoring frozen equilibrium outside MINUET\'s trusted span ({int(mask.sum())} points: '
-                  f'axis clamp {"rho < %.4f" % rho_lo if rho_lo is not None else "none"}, '
-                  f'boundary trim {"rho > %.4f" % self._trim_rho if getattr(self, "_trim_rho", None) is not None else "none"})')
+            print(f'\t\t\t* Restoring frozen equilibrium beyond MINUET\'s trimmed boundary '
+                  f'({int(mask.sum())} points: rho > {self._trim_rho:.4f})')
             for key, arr in self.profiles_output.profiles.items():
                 if key in p_frozen.profiles and isinstance(arr, np.ndarray) and arr.ndim >= 1 \
                         and arr.shape == p_frozen.profiles[key].shape and len(arr) == len(mask):
