@@ -17,7 +17,7 @@ description: >-
   geometry, peeling-vs-ballooning, EPED-NN sensitivity scans, geqdsk shaping) and
   whole-scan surveys. Read-only/diagnostic by default; it does not launch runs or long jobs.
 model: opus
-effort: high
+effort: xhigh
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
