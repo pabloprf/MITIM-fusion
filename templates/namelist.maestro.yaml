@@ -68,7 +68,11 @@ plasma:
     # Profile boundary conditions
     neped_20: 2.5           # Density at "ped" location as defined by EPED
     fGped: null             # [Optional] if not null, use this pedestal Greenwald fraction (overrides neped_20).
-                            #            NOTE: Ip and a must be provided for this to work
+                            #            NOTE: needs Ip and a. With initialization_type=geqdsk, any of the two
+                            #            left null is read from the geqdsk itself (|CURRENT| in MA; a = separatrix
+                            #            half-width), avoiding entries redundant with (or inconsistent with) the
+                            #            file; explicit values still take precedence. For all other initialization
+                            #            types both must be provided in this namelist.
     ne_ratio_sep_ped: 0.3   # Ratio nsep/nped 
     Tesep_eV: 75.0          # Temperature at separatrix (to potentially change if beat provides physics for this, e.g. Lengyel)
 
