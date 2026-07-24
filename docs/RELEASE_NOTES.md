@@ -4,7 +4,12 @@ DESCRIPTION
 
 ### New Features
 
-*   💥 **NEW FEATURE**, descriptions
+*   💥 **MAESTRO scan interpretation** (`mitim_modules.maestro.utils.MAESTROscan` + new
+    `mitim_plot_maestro_scan` CLI): scan-level analysis of a folder of `case_*` MAESTRO runs —
+    seed-spread violin panels of performance scalars (seed-only spread; deterministic scan inputs
+    split into x-axis/color series, benchmark runs overlaid at interpolated positions), per-seed
+    profile-spread figures with per-seed Pfus readouts, per-beat evolution traces, cumulative
+    beat timing (wall time or CPU-hours) with a reference run's chain, and a per-case PDF report.
 
 
 ### Bug Fixes
