@@ -519,6 +519,13 @@ maestro:
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
+          # Wider exploration than the PORTALS defaults (ymax 3.0, yminymax_atleast [0,2]):
+          # validated across the ARC V3A / V4C case7 MAESTRO scans (2026), where the narrower
+          # defaults could clip the flux-matched gradients at high-performance points.
+          exploration_ranges:
+            ymin: 1.0
+            ymax: 4.0
+            yminymax_atleast: [null, 4]
         transport:
           options:
             tglf:

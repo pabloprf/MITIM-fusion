@@ -37,7 +37,11 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
+    exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
+    `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
+    matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
+    (`namelist.portals.yaml`) is unchanged.
 
 ---
 
