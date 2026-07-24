@@ -35,3 +35,11 @@ Documentation
 -------------
 
 Full documentation, including detailed installation instructions, FAQ and examples: [Documentation](https://mitim-fusion.readthedocs.io).
+
+
+License and third-party code
+----------------------------
+
+MITIM-fusion is distributed under the MIT License (see [LICENSE](LICENSE)).
+
+MITIM wraps external physics codes but does not redistribute them — you supply your own installation of each. Some MITIM source files are derived from, or built against, third-party software under its own terms; these are listed in [NOTICE](NOTICE). In particular, `src/mitim_tools/simulation_tools/interfaces/vgen_c_api.f90` is a derivative work of [GACODE](https://github.com/gafusion/gacode) (Copyright General Atomics) and remains under the Apache License 2.0.

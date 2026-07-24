@@ -1,6 +1,26 @@
 !---------------------------------------------------------------------------
 ! vgen_c_api.f90
 !
+! Derived from gacode/vgen/src/vgen.f90
+!   Copyright (c) 2003-2024 General Atomics
+!   Licensed under the Apache License, Version 2.0 (the "License"); you may
+!   not use this file except in compliance with the License. You may obtain
+!   a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+!
+!   Unless required by applicable law or agreed to in writing, software
+!   distributed under the License is distributed on an "AS IS" BASIS,
+!   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+!
+! THIS FILE HAS BEEN MODIFIED by the MITIM-fusion project. Changes relative
+! to the original vgen.f90:
+!   * MPI parallelisation removed — the per-surface loop runs sequentially on
+!     a single rank and vgen_reduce is not called.
+!   * Restricted to er_method=2 (NEO weak-rotation limit) and vel_method=1;
+!     the force-balance and strong-rotation branches are not ported.
+!   * neo_read_input is bypassed — NEO interface variables are set directly.
+!   * Repackaged as a C-bindable module (iso_c_binding) rather than a program.
+! See the NOTICE file at the root of this repository.
+!
 ! PURPOSE:
 !   Thin Fortran C-binding wrapper that runs the gacode "vgen" velocity-
 !   generation workflow in-process.  Built into libvgen_serial.so and
