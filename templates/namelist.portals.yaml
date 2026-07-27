@@ -218,6 +218,15 @@ transport:
       # If not None, use TGLF scan trick to calculate TGLF errors with this maximum delta
       use_scan_trick_for_stds: 0.02
 
+      # Statistics used to reduce the scan-trick samples into the (value, std) consumed downstream (GP fixed noise, Ricci metric):
+      #     gaussian:   value = mean, std = nanstd over the ~13 samples (legacy behavior)
+      #     asymmetric: value = median, std = sqrt((sigma_minus^2+sigma_plus^2)/2), with RMS semi-deviations about the
+      #                 median per side. Robust to the one-sided outliers produced when a scan member crosses a
+      #                 critical-gradient discontinuity (the symmetric summary places probability mass where no sample
+      #                 landed, inflating the GP noise and over-crediting Ricci convergence on the empty side).
+      #                 In both modes the per-side semi-deviations and raw samples are kept internally.
+      uncertainty_statistics: "gaussian"
+
       # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
       reuse_scan_ball: false
 

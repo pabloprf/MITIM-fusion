@@ -32,6 +32,7 @@ class tglf_model:
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
         percent_error = simulation_options["percent_error"]
+        uncertainty_statistics = simulation_options.get("uncertainty_statistics", "gaussian")
         in_process = self.powerstate.transport_options.get("in_process", False)
 
         # Side-aware (turbulence): see evaluate_turbulence() comment.
@@ -126,6 +127,7 @@ class tglf_model:
         if use_tglf_scan_trick is None:
             Flux_mean = Flux_base
             Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+            Flux_extras = None
         else:
             # All N plasmas' scan work is accumulated into one code_executor and dispatched
             # in a single _run call, so N × ~65 scan jobs run concurrently.
@@ -135,7 +137,7 @@ class tglf_model:
                 for p in plasma_labels
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k != "code_settings"}
-            Flux_mean, Flux_std = _run_tglf_uncertainty_model_batched(
+            Flux_mean, Flux_std, Flux_extras = _run_tglf_uncertainty_model_batched(
                 tglf,
                 rho_locations,
                 self.powerstate.predicted_channels,
@@ -150,6 +152,7 @@ class tglf_model:
                 only_minimal_files=keep_tglf_files in ["none", "base"],
                 reuse_scan_ball_file=reuse_scan_ball_file,
                 code_settings=simulation_options["run"].get("code_settings"),
+                statistics=uncertainty_statistics,
                 **run_kwargs,
             )
 
@@ -172,6 +175,13 @@ class tglf_model:
             self.QieGB_turb      = Flux_mean[5]
             self.QieGB_turb_stds = Flux_std[5]
 
+            # Asymmetric-statistics sidecar (semi-deviations symmetric to the std, and no
+            # samples, when the scan trick is off)
+            for i, var in enumerate(["Qe", "Qi", "Ge", "GZ", "Mt", "Qie"]):
+                setattr(self, f"{var}GB_turb_stds_minus", Flux_extras["stds_minus"][i] if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_stds_plus",  Flux_extras["stds_plus"][i]  if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_samples",    Flux_extras["samples"][i]    if Flux_extras is not None else None)
+
         return tglf
 
     # Have it separate such that I can call it from the CGYRO class but without the decorator
@@ -193,6 +203,7 @@ class tglf_model:
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
         percent_error = simulation_options["percent_error"]
+        uncertainty_statistics = simulation_options.get("uncertainty_statistics", "gaussian")
         # If True, TGLF runs in-process via ctypes (libtglf_serial.so) — no
         # subprocess fork, no folder / file I/O.  See namelist.portals.yaml.
         in_process = self.powerstate.transport_options.get("in_process", False)
@@ -275,14 +286,15 @@ class tglf_model:
             
             Flux_mean = Flux_base
             Flux_std = abs(Flux_mean)*percent_error/100.0
+            Flux_extras = None
 
         else:
-            
+
             # *******************************************************************
             # Run TGLF with scans to estimate the uncertainty
             # *******************************************************************
-            
-            Flux_mean, Flux_std = _run_tglf_uncertainty_model(
+
+            Flux_mean, Flux_std, Flux_extras = _run_tglf_uncertainty_model(
                 tglf,
                 rho_locations, 
                 self.powerstate.predicted_channels, 
@@ -295,6 +307,7 @@ class tglf_model:
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ['none', 'base'],
                 reuse_scan_ball_file=reuse_scan_ball_file,
+                statistics=uncertainty_statistics,
                 **simulation_options["run"]
                 )
 
@@ -319,10 +332,17 @@ class tglf_model:
             self.GZGB_turb_stds = Flux_std[3]       
 
             self.MtGB_turb = Flux_mean[4]
-            self.MtGB_turb_stds = Flux_std[4] 
+            self.MtGB_turb_stds = Flux_std[4]
 
             self.QieGB_turb = Flux_mean[5]
             self.QieGB_turb_stds = Flux_std[5]
+
+            # Asymmetric-statistics sidecar (semi-deviations symmetric to the std, and no
+            # samples, when the scan trick is off)
+            for i, var in enumerate(["Qe", "Qi", "Ge", "GZ", "Mt", "Qie"]):
+                setattr(self, f"{var}GB_turb_stds_minus", Flux_extras["stds_minus"][i] if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_stds_plus",  Flux_extras["stds_plus"][i]  if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_samples",    Flux_extras["samples"][i]    if Flux_extras is not None else None)
 
         return tglf
 
@@ -422,6 +442,7 @@ def _run_tglf_uncertainty_model(
     reuse_scan_ball_file=None,      # If not None, it will reuse previous evaluations within the delta ball (to capture combinations)
     print_logs = False,
     subfolder_name = 'turb_drives',  # Base subfolder for the scan; per-plasma callers override to avoid collisions
+    statistics="gaussian",          # Reduction of scan samples to (value, std): 'gaussian' or 'asymmetric' (see _aggregate_scan_fluxes)
     ):
 
     print(f"\t- Running TGLF standalone scans ({delta = }) to determine relative errors")
@@ -489,7 +510,28 @@ def _run_tglf_uncertainty_model(
         Qi_includes_fast=Qi_includes_fast,
         reuse_scan_ball_file=reuse_scan_ball_file,
         delta=delta,
+        statistics=statistics,
     )
+
+
+def calculate_median_semistds(Q):
+    '''
+    Median and RMS semi-deviations per side about the median, over axis=1 of Q (nrho, n_samples).
+    Exact ties with the median are excluded from both sides; an empty side (e.g. all samples
+    equal) returns 0. This is THE semi-deviation convention of the 'asymmetric'
+    uncertainty_statistics — plotting and any other consumer must use this function
+    rather than reimplementing it.
+    '''
+    med = np.nanmedian(Q, axis=1)
+    dev = Q - med[:, np.newaxis]
+
+    def semi_deviation(mask):
+        cnt = mask.sum(axis=1)
+        s2 = np.where(mask, dev**2, 0.0).sum(axis=1) / np.maximum(cnt, 1)
+        return np.sqrt(np.where(cnt > 0, s2, 0.0))
+
+    finite = ~np.isnan(dev)
+    return med, semi_deviation((dev < 0) & finite), semi_deviation((dev > 0) & finite)
 
 
 def _aggregate_scan_fluxes(
@@ -499,12 +541,21 @@ def _aggregate_scan_fluxes(
     Qi_includes_fast=False,
     reuse_scan_ball_file=None,
     delta=0.02,
+    statistics="gaussian",
 ):
     '''
     Shared aggregation logic: collect per-variable scan results from tglf.scans[...]
     into (nrho, n_scan_cases) flux arrays, optionally prepend the base flux, then
-    compute nanmean / nanstd across the scan axis. Used by both the single-plasma
+    reduce across the scan axis. Used by both the single-plasma
     _run_tglf_uncertainty_model and the batched _run_tglf_uncertainty_model_batched.
+
+    statistics selects what feeds the (value, std) consumed downstream (GP noise, Ricci):
+        gaussian:   value = nanmean, std = nanstd (legacy behavior, bit-for-bit)
+        asymmetric: value = nanmedian, std = sqrt((sigma_minus^2 + sigma_plus^2)/2), with
+                    RMS semi-deviations about the median per side — robust to the one-sided
+                    outliers produced when a scan member crosses a critical-gradient jump.
+    In BOTH modes the per-side semi-deviations and the raw samples are returned in
+    Flux_extras, so the asymmetric information is available regardless of the trunk choice.
     '''
 
     Qe = np.zeros((len(rho_locations), len(variables_to_scan)*len(relative_scan) ))
@@ -544,17 +595,27 @@ def _aggregate_scan_fluxes(
     def calculate_mean_std(Q):
         return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
 
-    Qe_point, Qe_std = calculate_mean_std(Qe)
-    Qi_point, Qi_std = calculate_mean_std(Qi)
-    Ge_point, Ge_std = calculate_mean_std(Ge)
-    GZ_point, GZ_std = calculate_mean_std(GZ)
-    Mt_point, Mt_std = calculate_mean_std(Mt)
-    S_point, S_std = calculate_mean_std(S)
+    Flux_mean, Flux_std, Flux_std_minus, Flux_std_plus, Flux_samples = [], [], [], [], []
+    for Q in [Qe, Qi, Ge, GZ, Mt, S]:
+        med, s_minus, s_plus = calculate_median_semistds(Q)
+        if statistics == "asymmetric":
+            point, std = med, np.sqrt(0.5 * (s_minus**2 + s_plus**2))
+        else:
+            point, std = calculate_mean_std(Q)
+        Flux_mean.append(point)
+        Flux_std.append(std)
+        Flux_std_minus.append(s_minus)
+        Flux_std_plus.append(s_plus)
+        Flux_samples.append(Q)
 
-    Flux_mean = [Qe_point, Qi_point, Ge_point, GZ_point, Mt_point, S_point]
-    Flux_std  = [Qe_std, Qi_std, Ge_std, GZ_std, Mt_std, S_std]
+    Flux_extras = {
+        "statistics": statistics,
+        "stds_minus": Flux_std_minus,
+        "stds_plus": Flux_std_plus,
+        "samples": Flux_samples,
+    }
 
-    return Flux_mean, Flux_std
+    return Flux_mean, Flux_std, Flux_extras
 
 
 def _run_tglf_uncertainty_model_batched(
@@ -575,6 +636,7 @@ def _run_tglf_uncertainty_model_batched(
     print_logs=False,
     code_settings=None,
     extraOptions=None,
+    statistics="gaussian",
     **kwargs_run,
 ):
     '''
@@ -659,7 +721,7 @@ def _run_tglf_uncertainty_model_batched(
         )
 
     # ---- Phase 3: Read results per plasma and aggregate ----
-    Flux_mean_list, Flux_std_list = [], []
+    Flux_mean_list, Flux_std_list, Flux_extras_list = [], [], []
     for p, label in plasma_labels.items():
         tglf.read_plasma(p, label=label, require_all_files=False)
 
@@ -682,7 +744,7 @@ def _run_tglf_uncertainty_model_batched(
                 ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
             )
 
-        Fmean_p, Fstd_p = _aggregate_scan_fluxes(
+        Fmean_p, Fstd_p, Fextras_p = _aggregate_scan_fluxes(
             tglf,
             f"turb_drives_plasma{p}",
             variables_to_scan,
@@ -693,15 +755,23 @@ def _run_tglf_uncertainty_model_batched(
             Qi_includes_fast=Qi_includes_fast,
             reuse_scan_ball_file=reuse_scan_ball_file,
             delta=delta,
+            statistics=statistics,
         )
         Flux_mean_list.append(np.array(Fmean_p))
         Flux_std_list.append(np.array(Fstd_p))
+        Flux_extras_list.append(Fextras_p)
 
-    # Stack: list of (6, nrho) -> (6, N, nrho)
+    # Stack: list of (6, nrho) -> (6, N, nrho); samples (6, nrho, n_samples) -> (6, N, nrho, n_samples)
     Flux_mean = np.stack(Flux_mean_list, axis=1)
     Flux_std  = np.stack(Flux_std_list,  axis=1)
+    Flux_extras = {
+        "statistics": statistics,
+        "stds_minus": np.stack([np.array(e["stds_minus"]) for e in Flux_extras_list], axis=1),
+        "stds_plus":  np.stack([np.array(e["stds_plus"])  for e in Flux_extras_list], axis=1),
+        "samples":    np.stack([np.array(e["samples"])    for e in Flux_extras_list], axis=1),
+    }
 
-    return Flux_mean, Flux_std
+    return Flux_mean, Flux_std, Flux_extras
 
 
 def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):
