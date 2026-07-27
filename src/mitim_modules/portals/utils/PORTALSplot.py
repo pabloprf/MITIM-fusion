@@ -3342,7 +3342,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        sigma = np.sqrt(power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['QeMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
 
         m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
             power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
@@ -3366,7 +3366,7 @@ def plotFluxComparison(
         )
 
         sigma = (
-            power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+            np.sqrt(power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['QiMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
         )
 
         m_Qi, M_Qi = (
@@ -3395,7 +3395,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['Ge1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['Ge1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        sigma = np.sqrt(power.plasma['Ge1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['Ge1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
 
 
         m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
@@ -3419,7 +3419,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['GZ1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['GZ1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        sigma = np.sqrt(power.plasma['GZ1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['GZ1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
 
         m_Gi, M_Gi = (
             GZ[0][ixF:] - stds * sigma,
@@ -3443,7 +3443,7 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        sigma = np.sqrt(power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['MtJm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
 
         m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
             power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]
