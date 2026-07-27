@@ -758,7 +758,7 @@ class portals_optimization_data(BOgraphics.optimization_data):
             for suffix, value in zip(SIDE_SUFFIXES, extras[o]):
                 if o + suffix not in self.data.columns:
                     self.data[o + suffix] = np.nan
-                self.data.loc[point, o + suffix] = value
+                self.data.loc[point, o + suffix] = float(value)
 
     def read_side_stds(self, outputs):
         '''

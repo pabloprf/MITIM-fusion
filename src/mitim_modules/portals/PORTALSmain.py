@@ -598,8 +598,9 @@ def _add_side_errors(of, powerstate, base_key, index):
     '''
     minus, plus = powerstate.plasma.get(f"{base_key}_stds_minus"), powerstate.plasma.get(f"{base_key}_stds_plus")
     if minus is not None and plus is not None:
-        of["error_minus"] = minus[0, index]
-        of["error_plus"] = plus[0, index]
+        # Plain floats: these land in the pandas data record, which cannot set a torch scalar
+        of["error_minus"] = float(minus[0, index])
+        of["error_plus"] = float(plus[0, index])
 
 def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
     if plotYN:
