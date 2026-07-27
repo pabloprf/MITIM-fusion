@@ -602,7 +602,7 @@ def _add_side_errors(of, powerstate, base_key, index):
         of["error_minus"] = float(minus[0, index])
         of["error_plus"] = float(plus[0, index])
 
-def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
+def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=None,):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")

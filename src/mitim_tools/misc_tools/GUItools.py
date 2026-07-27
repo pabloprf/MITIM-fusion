@@ -96,6 +96,13 @@ class FigureNotebook:
         self.tab_titles = []
         self.current_window = -1
 
+        # Notebook-wide decorations applied by addPlot(). Callers that fill one
+        # notebook from several independent plotting passes (e.g. mitim_plot_opt
+        # with several run folders) set these around each pass so every tab of
+        # that pass is prefixed with the run name and painted with one color.
+        self.label_prefix = ""
+        self.tab_color_forced = None
+
         # Headless: do not touch Qt at all.
         if self._headless:
             self.app = None
@@ -208,7 +215,14 @@ class FigureNotebook:
     def addPlot(self, title, figure, tab_color=None, tab_alpha=0.55):
         """
         tab_color can be a color name or an integer to grab colors in order
+
+        `self.label_prefix` and `self.tab_color_forced` (if set) override the
+        per-call title and color, so a caller can tag a whole plotting pass.
         """
+
+        title = f"{self.label_prefix}{title}"
+        if self.tab_color_forced is not None:
+            tab_color = self.tab_color_forced
 
         if self._headless:
             self.figure_handles.append(figure)
@@ -289,23 +303,25 @@ class FigureNotebook:
                 tab_bar.tab_colors[i] = c
         tab_bar.update()
 
-    def move_tabs_block_to_front(self, block_start, block_count):
+    def move_tabs_block_to_front(self, block_start, block_count, destination=0):
         '''
         Move a consecutive block of tabs `[block_start, block_start+block_count)`
-        to the front of the notebook, preserving the block's internal order.
+        to position `destination`, preserving the block's internal order.
         Useful when two plotting passes build the notebook in one order but
         the desired visual order is the reverse (e.g. the OPT generic pass
         runs first for state-hygiene reasons but should appear after the
-        module-specific block on screen).
+        module-specific block on screen). `destination` > 0 keeps the block
+        inside its own group when several passes share one notebook (e.g. one
+        run folder per group).
         '''
-        if block_count <= 0:
+        if block_count <= 0 or block_start <= destination:
             return
         # Because moveTab(src, dst) only shifts indices in [min, max]
         # between src and dst, tabs at src+1, src+2, ... still sit at
         # those same indices after each move — so we can do the moves in
         # ascending k with a static from-formula.
         for k in range(block_count):
-            self._move_tab(block_start + k, k)
+            self._move_tab(block_start + k, destination + k)
 
     def show(self):
         if self._headless:
