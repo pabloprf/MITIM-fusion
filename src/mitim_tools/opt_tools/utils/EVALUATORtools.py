@@ -172,7 +172,14 @@ def mitimRun(
         if lock is not None:
             lock.acquire()
         _,_,objective = optimization_object.scalarized_objective(torch.from_numpy(y))
-        optimization_data.update_data_point(x,y,yE,objective=objective.detach().cpu().numpy())
+        # Extra per-evaluation information the optimization object may have recorded during
+        # its run() call just above (same process, so no pickling concerns). Only a data-record
+        # subclass declaring extra columns consumes it; the standard class ignores it.
+        optimization_data.update_data_point(
+            x,y,yE,
+            objective=objective.detach().cpu().numpy(),
+            extras=getattr(optimization_object, "tabular_extras", None),
+        )
         
         # Release lock so that other processes can write
         if lock is not None:

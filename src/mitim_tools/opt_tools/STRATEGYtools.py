@@ -595,7 +595,13 @@ class MITIM_BO:
 
             self.scalarized_objective = self.optimization_object.scalarized_objective
 
-            self.optimization_data = BOgraphics.optimization_data(
+            # The optimization object may supply its own data-record class (same signature as
+            # BOgraphics.optimization_data) when it needs to persist more per-evaluation
+            # information than the single (value, std) pair — e.g. asymmetric uncertainties.
+            # Objects that don't define it get the standard class and an identical file.
+            optimization_data_class = getattr(self.optimization_object, "optimization_data_class", BOgraphics.optimization_data)
+
+            self.optimization_data = optimization_data_class(
                 inputs,
                 self.outputs,
                 file=self.folderOutputs / "optimization_data.csv",
@@ -605,7 +611,7 @@ class MITIM_BO:
             # If the file turned out to be empty, I will force it to be new
             if forceNewTabulars and (len(self.optimization_data.data) == 0):
                 print("\t* Tabular file is empty, forcing new, to avoid radii/channel specifications from dummy sims",typeMsg="w")
-                self.optimization_data = BOgraphics.optimization_data(
+                self.optimization_data = optimization_data_class(
                     inputs,
                     self.outputs,
                     file=self.folderOutputs / "optimization_data.csv",

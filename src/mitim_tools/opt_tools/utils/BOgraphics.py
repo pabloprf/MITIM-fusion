@@ -920,6 +920,10 @@ class optimization_data:
             self.data_point_dictionary[i] = np.nan
             self.data_point_dictionary[i + "_std"] = np.nan
         self.data_point_dictionary['maximization_objective'] = np.nan
+
+        # Hook for subclasses that persist more than (value, std) per output
+        self._declare_columns()
+
         self.data_point_dictionary['source'] = ''  # 'training', 'acquisition', or 'local_optima'
 
         if forceNew or not self.file.exists():
@@ -1038,7 +1042,12 @@ class optimization_data:
 
         return X, Y, Ystd
 
-    def update_data_point(self,x,y,ystd,objective=np.nan):
+    def update_data_point(self,x,y,ystd,objective=np.nan,extras=None):
+        '''
+        extras: optional dict of extra per-evaluation information supplied by the
+        optimization object (see EVALUATORtools.mitimRun). Ignored by this base class;
+        subclasses that declare extra columns use it to fill them.
+        '''
 
         # Read again?
         self.data = pd.read_csv(self.file)
@@ -1054,8 +1063,18 @@ class optimization_data:
 
             self.data.loc[point, "maximization_objective"] = objective
 
+            self._update_extra_columns(point, extras)
+
             # Update file
             self.data.to_csv(self.file, index=False)
+
+    def _declare_columns(self):
+        '''Hook for subclasses to append extra columns to data_point_dictionary.'''
+        pass
+
+    def _update_extra_columns(self, point, extras):
+        '''Hook for subclasses that declare columns beyond <output> / <output>_std.'''
+        pass
 
     def update_points(self, X, Y=np.array([]), Ystd=np.array([]),objective=None):
 

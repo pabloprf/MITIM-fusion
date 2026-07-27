@@ -245,6 +245,29 @@ class portals(STRATEGYtools.opt_evaluator):
             if add_key:
                 self.optimization_options['surrogate_options']['extrapointsModels'].append(key)
 
+    @property
+    def optimization_data_class(self):
+        '''
+        Data-record class used by MITIM_BO (see STRATEGYtools). With asymmetric statistics
+        active, PORTALS records the per-side deviations next to the symmetric std so that a
+        run restarted from optimization_data.csv keeps them — the Ricci metric reads
+        train_Ystd, which is repopulated from that file. Otherwise: the standard class, and a
+        byte-identical file.
+        '''
+        if not PORTALStools.asymmetric_statistics_active(self.portals_parameters):
+            return BOgraphics.optimization_data
+
+        def _factory(inputs, outputs, file=None, forceNew=False):
+            return PORTALStools.portals_optimization_data(
+                inputs,
+                outputs,
+                file=file,
+                forceNew=forceNew,
+                asymmetric_outputs=PORTALStools.asymmetric_capable_outputs(outputs),
+            )
+
+        return _factory
+
     def run(self, paramsfile, resultsfile):
         # Read what PORTALS sends
         FolderEvaluation, numPORTALS, dictDVs, dictOFs = self.read(paramsfile, resultsfile)
@@ -265,6 +288,15 @@ class portals(STRATEGYtools.opt_evaluator):
 
         # Write results
         self.write(dictOFs, resultsfile)
+
+        # Per-side deviations of the asymmetric scan statistics, for the data record to persist
+        # alongside the symmetric std (results.out carries only value+error). Read immediately
+        # after this run() returns, in the same process — see EVALUATORtools.mitimRun.
+        self.tabular_extras = {
+            key: (of["error_minus"], of["error_plus"])
+            for key, of in dictOFs.items()
+            if "error_minus" in of
+        }
 
         """
 		************************************************************************************************************************************
@@ -530,6 +562,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
 
             dictOFs[f"{var0}_tr_turb_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_turb"][0, i+1]
             dictOFs[f"{var0}_tr_turb_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_turb_stds"][0, i+1]
+            _add_side_errors(dictOFs[f"{var0}_tr_turb_{i+1}"], powerstate, f"{var1}_tr_turb", i+1)
 
             dictOFs[f"{var0}_tr_neoc_{i+1}"]["value"] = powerstate.plasma[f"{var1}_tr_neoc"][0, i+1]
             dictOFs[f"{var0}_tr_neoc_{i+1}"]["error"] = powerstate.plasma[f"{var1}_tr_neoc_stds"][0, i+1]
@@ -551,8 +584,22 @@ def map_powerstate_to_portals(powerstate, dictOFs):
         for i in range(powerstate.plasma["rho"].shape[1] - 1):
             dictOFs[f"Qie_tr_turb_{i+1}"]["value"] = powerstate.plasma["QieMWm3_tr_turb"][0, i+1]
             dictOFs[f"Qie_tr_turb_{i+1}"]["error"] = powerstate.plasma["QieMWm3_tr_turb_stds"][0, i+1]
+            _add_side_errors(dictOFs[f"Qie_tr_turb_{i+1}"], powerstate, "QieMWm3_tr_turb", i+1)
 
     return dictOFs
+
+
+def _add_side_errors(of, powerstate, base_key, index):
+    '''
+    Attach the per-side deviations of the asymmetric scan statistics to an OF entry, when the
+    transport model produced them (TGLF with uncertainty_statistics: asymmetric). Absent for
+    every other model, in which case the entry keeps only the symmetric 'error' and the data
+    record falls back to it.
+    '''
+    minus, plus = powerstate.plasma.get(f"{base_key}_stds_minus"), powerstate.plasma.get(f"{base_key}_stds_plus")
+    if minus is not None and plus is not None:
+        of["error_minus"] = minus[0, index]
+        of["error_plus"] = plus[0, index]
 
 def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
     if plotYN:

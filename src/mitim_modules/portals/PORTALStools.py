@@ -4,6 +4,7 @@ import copy
 import numpy as np
 from collections import OrderedDict
 from mitim_tools.opt_tools import STRATEGYtools
+from mitim_tools.opt_tools.utils import BOgraphics
 from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -625,3 +626,84 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
     ofE_plus  = torch.cat(ofE_plus_parts,  dim=-1).to(dfT)
 
     return of, cal, ofE, calE, ofE_minus, ofE_plus
+
+
+# ---------------------------------------------------------------------------------------------
+# Asymmetric-statistics data record
+# ---------------------------------------------------------------------------------------------
+
+SIDE_SUFFIXES = ("_std_minus", "_std_plus")
+
+
+def asymmetric_statistics_active(portals_parameters):
+    '''
+    True when any turbulence backend reduces its scan with asymmetric statistics, i.e. when
+    per-side deviations exist to be recorded. Multi-fidelity setups (tglf + cgyro) count as
+    active as soon as ONE backend provides them; the rows of the backend that doesn't simply
+    stay NaN and fall back to the symmetric std at read time.
+    '''
+    options = portals_parameters.get("transport", {}).get("options", {})
+    return any(
+        isinstance(opts, dict) and opts.get("uncertainty_statistics", "gaussian") == "asymmetric"
+        for opts in options.values()
+    )
+
+
+def asymmetric_capable_outputs(outputs):
+    '''Outputs that can carry per-side deviations: the turbulence side only (the neoclassical
+    model and the analytical targets produce a single symmetric std).'''
+    return [o for o in outputs if "_tr_turb_" in o]
+
+
+class portals_optimization_data(BOgraphics.optimization_data):
+    '''
+    PORTALS data record: the standard optimization_data plus, for every turbulence output,
+    a pair of columns holding the per-side deviations of the asymmetric scan statistics.
+
+    Why the columns live HERE and not in a side file: the Ricci metric reads
+    mitim_bo.train_Ystd, which is repopulated from optimization_data.csv on restart. A record
+    that keeps only the symmetric std silently downgrades a restarted run to the legacy metric.
+
+    Missing/NaN entries are the normal case (CGYRO rows, gaussian mode, files written before
+    this existed); consumers fall back to the symmetric std PER ROW via read_side_stds, which
+    is what makes multi-fidelity runs — TGLF rows with per-side info, CGYRO rows without —
+    behave correctly within a single table.
+    '''
+
+    def __init__(self, inputs, outputs, file=None, forceNew=False, asymmetric_outputs=None):
+        self.asymmetric_outputs = asymmetric_outputs if asymmetric_outputs is not None else []
+        super().__init__(inputs, outputs, file=file, forceNew=forceNew)
+
+    def _declare_columns(self):
+        # Called by the base __init__ after the standard columns are in place
+        for o in self.asymmetric_outputs:
+            for suffix in SIDE_SUFFIXES:
+                self.data_point_dictionary[o + suffix] = np.nan
+
+    def _update_extra_columns(self, point, extras):
+        '''extras: {output_name: (std_minus, std_plus)} recorded by the evaluation.'''
+        if not extras:
+            return
+        for o in self.asymmetric_outputs:
+            if o not in extras:
+                continue
+            for suffix, value in zip(SIDE_SUFFIXES, extras[o]):
+                if o + suffix not in self.data.columns:
+                    self.data[o + suffix] = np.nan
+                self.data.loc[point, o + suffix] = value
+
+    def read_side_stds(self, outputs):
+        '''
+        (std_minus, std_plus) arrays of shape (n_points, len(outputs)), falling back
+        ELEMENTWISE to the symmetric <output>_std wherever the per-side entry is absent or NaN.
+        '''
+        sym = self.data[[o + "_std" for o in outputs]].to_numpy(dtype=float)
+        sides = []
+        for suffix in SIDE_SUFFIXES:
+            cols = [o + suffix for o in outputs]
+            present = np.column_stack([
+                self.data[c].to_numpy(dtype=float) if c in self.data.columns else np.full(len(self.data), np.nan)
+                for c in cols
+            ]) if cols else np.zeros((len(self.data), 0))
+            sides.append(np.where(np.isnan(present), sym, present))
+        return sides[0], sides[1]
