@@ -554,7 +554,7 @@ def map_powerstate_to_portals(powerstate, dictOFs):
 
     return dictOFs
 
-def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=0,):
+def analyze_results(self, plotYN=True, fn=None, cold_start=False, analysis_level=2, onlyBest=False, tabs_colors=None,):
     if plotYN:
         print("\n *****************************************************")
         print("* MITIM plotting module - PORTALS")

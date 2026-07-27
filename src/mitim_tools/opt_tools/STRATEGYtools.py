@@ -265,9 +265,16 @@ class opt_evaluator:
         pointsEvaluateEachGPdimension=50,
         rangesPlot=None,
         save_folder=None,
-        tabs_colors=0,
+        tabs_colors=None,
         noshow=False,
     ):
+        '''
+        tabs_colors: if not None, paint EVERY tab produced by this call with that
+        single color (index into GRAPHICStools color list, or a color name),
+        instead of the per-plot color scheme of each plotting routine. Used when
+        several runs/beats share one notebook and tabs need to be grouped visually.
+        '''
+
         time1 = datetime.datetime.now()
 
         if analysis_level < 0:
@@ -286,6 +293,15 @@ class opt_evaluator:
         if plotYN and (analysis_level >= 0):
             if "fn" not in self.__dict__:
                 self.fn = GUItools.FigureNotebook("MITIM Optimization Results", show=not noshow)
+
+            # Force one color for all tabs of this call (see docstring). The
+            # notebook may be shared, so this is restored at the end.
+            if tabs_colors is not None:
+                self.fn.tab_color_forced = tabs_colors
+
+        # Tabs already in the (possibly shared) notebook when this call started:
+        # this call's tabs must stay together after them
+        _n_tabs_at_entry = self.fn.tabs.count() if (plotYN and (analysis_level >= 0) and not getattr(self.fn, "_headless", False)) else 0
 
         self.read_optimization_results(
             plotFN=self.fn if (plotYN and (analysis_level >= 0)) else None,
@@ -341,7 +357,9 @@ class opt_evaluator:
             if not getattr(self.fn, "_headless", False):
                 _n_portals = self.fn.tabs.count() - _n_tabs_before_analyze
                 if _n_portals > 0:
-                    self.fn.move_tabs_block_to_front(_n_tabs_before_analyze, _n_portals)
+                    self.fn.move_tabs_block_to_front(_n_tabs_before_analyze, _n_portals, destination=_n_tabs_at_entry)
+
+            self.fn.tab_color_forced = None
 
             print(f"\n- Plotting took {IOtools.getTimeDifference(time1)}")
 
