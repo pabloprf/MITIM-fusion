@@ -125,8 +125,8 @@ class tglf_model:
         # ------------------------------------------------------------------------------------------------------------------------
 
         if use_tglf_scan_trick is None:
-            Flux_mean = Flux_base
-            Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+            Flux_value = Flux_base
+            Flux_std = np.abs(Flux_value) * percent_error / 100.0
             Flux_extras = None
         else:
             # All N plasmas' scan work is accumulated into one code_executor and dispatched
@@ -137,7 +137,7 @@ class tglf_model:
                 for p in plasma_labels
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k != "code_settings"}
-            Flux_mean, Flux_std, Flux_extras = _run_tglf_uncertainty_model_batched(
+            Flux_value, Flux_std, Flux_extras = _run_tglf_uncertainty_model_batched(
                 tglf,
                 rho_locations,
                 self.powerstate.predicted_channels,
@@ -157,22 +157,22 @@ class tglf_model:
             )
 
         if pass_info:
-            self.QeGB_turb      = Flux_mean[0]
+            self.QeGB_turb      = Flux_value[0]
             self.QeGB_turb_stds = Flux_std[0]
 
-            self.QiGB_turb      = Flux_mean[1]
+            self.QiGB_turb      = Flux_value[1]
             self.QiGB_turb_stds = Flux_std[1]
 
-            self.GeGB_turb      = Flux_mean[2]
+            self.GeGB_turb      = Flux_value[2]
             self.GeGB_turb_stds = Flux_std[2]
 
-            self.GZGB_turb      = Flux_mean[3]
+            self.GZGB_turb      = Flux_value[3]
             self.GZGB_turb_stds = Flux_std[3]
 
-            self.MtGB_turb      = Flux_mean[4]
+            self.MtGB_turb      = Flux_value[4]
             self.MtGB_turb_stds = Flux_std[4]
 
-            self.QieGB_turb      = Flux_mean[5]
+            self.QieGB_turb      = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]
 
             # Asymmetric-statistics sidecar (semi-deviations symmetric to the std, and no
@@ -284,8 +284,8 @@ class tglf_model:
             # Just apply an ad-hoc percent error to the results
             # *******************************************************************
             
-            Flux_mean = Flux_base
-            Flux_std = abs(Flux_mean)*percent_error/100.0
+            Flux_value = Flux_base
+            Flux_std = abs(Flux_value)*percent_error/100.0
             Flux_extras = None
 
         else:
@@ -294,7 +294,7 @@ class tglf_model:
             # Run TGLF with scans to estimate the uncertainty
             # *******************************************************************
 
-            Flux_mean, Flux_std, Flux_extras = _run_tglf_uncertainty_model(
+            Flux_value, Flux_std, Flux_extras = _run_tglf_uncertainty_model(
                 tglf,
                 rho_locations, 
                 self.powerstate.predicted_channels, 
@@ -319,22 +319,22 @@ class tglf_model:
         
         if pass_info:
             
-            self.QeGB_turb = Flux_mean[0]
+            self.QeGB_turb = Flux_value[0]
             self.QeGB_turb_stds = Flux_std[0]
                     
-            self.QiGB_turb = Flux_mean[1]
+            self.QiGB_turb = Flux_value[1]
             self.QiGB_turb_stds = Flux_std[1]
                     
-            self.GeGB_turb = Flux_mean[2]
+            self.GeGB_turb = Flux_value[2]
             self.GeGB_turb_stds = Flux_std[2]        
             
-            self.GZGB_turb = Flux_mean[3]           
+            self.GZGB_turb = Flux_value[3]           
             self.GZGB_turb_stds = Flux_std[3]       
 
-            self.MtGB_turb = Flux_mean[4]
+            self.MtGB_turb = Flux_value[4]
             self.MtGB_turb_stds = Flux_std[4]
 
-            self.QieGB_turb = Flux_mean[5]
+            self.QieGB_turb = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]
 
             # Asymmetric-statistics sidecar (semi-deviations symmetric to the std, and no
@@ -595,14 +595,14 @@ def _aggregate_scan_fluxes(
     def calculate_mean_std(Q):
         return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
 
-    Flux_mean, Flux_std, Flux_std_minus, Flux_std_plus, Flux_samples = [], [], [], [], []
+    Flux_value, Flux_std, Flux_std_minus, Flux_std_plus, Flux_samples = [], [], [], [], []
     for Q in [Qe, Qi, Ge, GZ, Mt, S]:
         med, s_minus, s_plus = calculate_median_semistds(Q)
         if statistics == "asymmetric":
             point, std = med, np.sqrt(0.5 * (s_minus**2 + s_plus**2))
         else:
             point, std = calculate_mean_std(Q)
-        Flux_mean.append(point)
+        Flux_value.append(point)
         Flux_std.append(std)
         Flux_std_minus.append(s_minus)
         Flux_std_plus.append(s_plus)
@@ -615,7 +615,7 @@ def _aggregate_scan_fluxes(
         "samples": Flux_samples,
     }
 
-    return Flux_mean, Flux_std, Flux_extras
+    return Flux_value, Flux_std, Flux_extras
 
 
 def _run_tglf_uncertainty_model_batched(
@@ -721,7 +721,7 @@ def _run_tglf_uncertainty_model_batched(
         )
 
     # ---- Phase 3: Read results per plasma and aggregate ----
-    Flux_mean_list, Flux_std_list, Flux_extras_list = [], [], []
+    Flux_value_list, Flux_std_list, Flux_extras_list = [], [], []
     for p, label in plasma_labels.items():
         tglf.read_plasma(p, label=label, require_all_files=False)
 
@@ -744,7 +744,7 @@ def _run_tglf_uncertainty_model_batched(
                 ion_OI_position_in_total_padded_list=ion_OI_position_in_total_padded_list,
             )
 
-        Fmean_p, Fstd_p, Fextras_p = _aggregate_scan_fluxes(
+        Fvalue_p, Fstd_p, Fextras_p = _aggregate_scan_fluxes(
             tglf,
             f"turb_drives_plasma{p}",
             variables_to_scan,
@@ -757,12 +757,12 @@ def _run_tglf_uncertainty_model_batched(
             delta=delta,
             statistics=statistics,
         )
-        Flux_mean_list.append(np.array(Fmean_p))
+        Flux_value_list.append(np.array(Fvalue_p))
         Flux_std_list.append(np.array(Fstd_p))
         Flux_extras_list.append(Fextras_p)
 
     # Stack: list of (6, nrho) -> (6, N, nrho); samples (6, nrho, n_samples) -> (6, N, nrho, n_samples)
-    Flux_mean = np.stack(Flux_mean_list, axis=1)
+    Flux_value = np.stack(Flux_value_list, axis=1)
     Flux_std  = np.stack(Flux_std_list,  axis=1)
     Flux_extras = {
         "statistics": statistics,
@@ -771,7 +771,7 @@ def _run_tglf_uncertainty_model_batched(
         "samples":    np.stack([np.array(e["samples"])    for e in Flux_extras_list], axis=1),
     }
 
-    return Flux_mean, Flux_std, Flux_extras
+    return Flux_value, Flux_std, Flux_extras
 
 
 def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):

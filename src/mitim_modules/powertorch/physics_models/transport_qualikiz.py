@@ -96,10 +96,10 @@ class qualikiz_model:
         Flux_base = np.array([Qe, Qi, Ge, GZ, Mt, S])
 
         if use_qlk_scan_trick is None:
-            Flux_mean = Flux_base
-            Flux_std  = np.abs(Flux_mean) * percent_error / 100.0
+            Flux_value = Flux_base
+            Flux_std  = np.abs(Flux_value) * percent_error / 100.0
         else:
-            Flux_mean_list, Flux_std_list = _run_qlk_uncertainty_model(
+            Flux_value_list, Flux_std_list = _run_qlk_uncertainty_model(
                 qlk,
                 rho_locations,
                 self.powerstate.predicted_channels,
@@ -113,21 +113,21 @@ class qualikiz_model:
                 attempts_execution=attempts,
                 code_settings=simulation_options.get("run", {}).get("code_settings"),
             )
-            Flux_mean = np.array(Flux_mean_list)
+            Flux_value = np.array(Flux_value_list)
             Flux_std  = np.array(Flux_std_list)
 
         if pass_info:
-            self.QeGB_turb       = Flux_mean[0]
+            self.QeGB_turb       = Flux_value[0]
             self.QeGB_turb_stds  = Flux_std[0]
-            self.QiGB_turb       = Flux_mean[1]
+            self.QiGB_turb       = Flux_value[1]
             self.QiGB_turb_stds  = Flux_std[1]
-            self.GeGB_turb       = Flux_mean[2]
+            self.GeGB_turb       = Flux_value[2]
             self.GeGB_turb_stds  = Flux_std[2]
-            self.GZGB_turb       = Flux_mean[3]
+            self.GZGB_turb       = Flux_value[3]
             self.GZGB_turb_stds  = Flux_std[3]
-            self.MtGB_turb       = Flux_mean[4]
+            self.MtGB_turb       = Flux_value[4]
             self.MtGB_turb_stds  = Flux_std[4]
-            self.QieGB_turb      = Flux_mean[5]
+            self.QieGB_turb      = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]
 
         return qlk
@@ -405,7 +405,7 @@ def _aggregate_qlk_scan_fluxes(
     Mt_m, Mt_s = calculate_mean_std(Mt)
     S_m,  S_s  = calculate_mean_std(S)
 
-    Flux_mean = [Qe_m, Qi_m, Ge_m, GZ_m, Mt_m, S_m]
+    Flux_value = [Qe_m, Qi_m, Ge_m, GZ_m, Mt_m, S_m]
     Flux_std  = [Qe_s, Qi_s, Ge_s, GZ_s, Mt_s, S_s]
 
-    return Flux_mean, Flux_std
+    return Flux_value, Flux_std

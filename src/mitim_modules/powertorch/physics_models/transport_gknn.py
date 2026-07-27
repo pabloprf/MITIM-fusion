@@ -133,21 +133,21 @@ class gknn_model:
         GZ = np.zeros_like(Qe)
         S  = np.zeros_like(Qe)
 
-        Flux_mean = np.array([Qe, Qi, Ge, GZ, Mt, S])
-        Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+        Flux_value = np.array([Qe, Qi, Ge, GZ, Mt, S])
+        Flux_std = np.abs(Flux_value) * percent_error / 100.0
 
         if pass_info:
-            self.QeGB_turb      = Flux_mean[0]
+            self.QeGB_turb      = Flux_value[0]
             self.QeGB_turb_stds = Flux_std[0]
-            self.QiGB_turb      = Flux_mean[1]
+            self.QiGB_turb      = Flux_value[1]
             self.QiGB_turb_stds = Flux_std[1]
-            self.GeGB_turb      = Flux_mean[2]
+            self.GeGB_turb      = Flux_value[2]
             self.GeGB_turb_stds = Flux_std[2]
-            self.GZGB_turb      = Flux_mean[3]
+            self.GZGB_turb      = Flux_value[3]
             self.GZGB_turb_stds = Flux_std[3]
-            self.MtGB_turb      = Flux_mean[4]
+            self.MtGB_turb      = Flux_value[4]
             self.MtGB_turb_stds = Flux_std[4]
-            self.QieGB_turb      = Flux_mean[5]
+            self.QieGB_turb      = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]
 
     def _evaluate_gknn_batched(self, list_of_states, pass_info=True):
@@ -184,19 +184,19 @@ class gknn_model:
         GZ = np.zeros((N, nrho))
         S  = np.zeros((N, nrho))
 
-        Flux_mean = np.stack([Qe, Qi, Ge, GZ, Mt, S], axis=0)
-        Flux_std = np.abs(Flux_mean) * percent_error / 100.0
+        Flux_value = np.stack([Qe, Qi, Ge, GZ, Mt, S], axis=0)
+        Flux_std = np.abs(Flux_value) * percent_error / 100.0
 
         if pass_info:
-            self.QeGB_turb      = Flux_mean[0]
+            self.QeGB_turb      = Flux_value[0]
             self.QeGB_turb_stds = Flux_std[0]
-            self.QiGB_turb      = Flux_mean[1]
+            self.QiGB_turb      = Flux_value[1]
             self.QiGB_turb_stds = Flux_std[1]
-            self.GeGB_turb      = Flux_mean[2]
+            self.GeGB_turb      = Flux_value[2]
             self.GeGB_turb_stds = Flux_std[2]
-            self.GZGB_turb      = Flux_mean[3]
+            self.GZGB_turb      = Flux_value[3]
             self.GZGB_turb_stds = Flux_std[3]
-            self.MtGB_turb      = Flux_mean[4]
+            self.MtGB_turb      = Flux_value[4]
             self.MtGB_turb_stds = Flux_std[4]
-            self.QieGB_turb      = Flux_mean[5]
+            self.QieGB_turb      = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]

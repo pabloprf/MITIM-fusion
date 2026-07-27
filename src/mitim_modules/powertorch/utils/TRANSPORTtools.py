@@ -16,7 +16,10 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
     containing the simulation results. JSON should look like:
     
     {
-        'fluxes_mean': 
+        # NOTE: 'fluxes_mean' holds the reported VALUE, which is the mean of the scan samples
+        # only under the default uncertainty_statistics; with 'asymmetric' it is the median.
+        # The key name is kept for backward compatibility with the run folders already on disk.
+        'fluxes_mean':
             {
                 'QeGB': ...
                 'QiGB': ...
