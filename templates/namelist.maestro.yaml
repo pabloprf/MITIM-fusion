@@ -490,10 +490,15 @@ maestro:
       # on every subsequent one.
       zeff_relaxation_factor: 1.0 
 
+      # Zeff floor will enforce that the Zeff after the Lengyel beat has to stay about this value. Since impurities can help improvement performance, 
+      # this prevents cycles of decreasing performance, decreasing the amount of impurities, etc. Null will not enforce any floor. 
+      zeff_floor: Null 
+
       # Overrides applied to the Lengyel namelist's `input` block (see templates/input.lengyel.controls.yaml).
       # Any key from that file can be set here verbatim and it will replace the default (or input.gacode-derived)
       # value for this beat, e.g. override_namelist_params: {parallel_connection_length: '40 m', target_angle_of_incidence: '5 degree'}
       override_namelist_params: {}
+
 
     preprocess_prepare: null
     preprocess_prepare_parameters: {}
