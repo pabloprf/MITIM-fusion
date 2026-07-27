@@ -4,6 +4,23 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 from mitim_tools.plasmastate_tools.utils import state_plotting
 
+def _uncertainty_statistics_mode(powerstate):
+    '''Uncertainty-statistics mode of a run, from the powerstate's transport options.
+    Asymmetric band rendering activates only when the run was set up with
+    uncertainty_statistics: 'asymmetric'; multi-fidelity dict-valued turbulence_model or
+    a missing tglf block resolve to 'gaussian' (exact legacy rendering).'''
+    try:
+        turb = powerstate.transport_options['evaluator_instance_attributes']['turbulence_model']
+        if isinstance(turb, dict):
+            return 'gaussian'
+    except (KeyError, TypeError, AttributeError):
+        pass
+    try:
+        return powerstate.transport_options['options']['tglf'].get('uncertainty_statistics', 'gaussian')
+    except (KeyError, TypeError, AttributeError):
+        return 'gaussian'
+
+
 def plot(self, axs, axsRes, figs=None, c="r", label="powerstate", batch_num=0, compare_to_state=None, c_orig="b", show_stds=False):
     
     # -----------------------------------------------------------------------------------------------------------
@@ -82,7 +99,8 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate", batch_num=0, c
                 self.plasma,
                 axs[cont], axs[cont+1], axs[cont+2], axs[cont+3],
                 *set_plot,
-                c, label, batch_num=batch_num, show_stds=show_stds)
+                c, label, batch_num=batch_num, show_stds=show_stds,
+                asymmetric_stds=_uncertainty_statistics_mode(self) == 'asymmetric')
 
             if  cont == 0:
                 axs[cont].legend()
@@ -184,7 +202,7 @@ def plot(self, axs, axsRes, figs=None, c="r", label="powerstate", batch_num=0, c
             ax.set_xlim(left=0)
             #GRAPHICStools.addDenseAxis(ax)
         
-def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile, labelGB, c, label, batch_num=0, show_stds=False):
+def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, title, ylabel, ylabel_aL, ylabel_Fgb, ylabel_F, multiplier_profile, labelGB, c, label, batch_num=0, show_stds=False, asymmetric_stds=False):
 
     ax.set_title(title)
     ax.plot(
@@ -267,23 +285,39 @@ def plot_kp(plasma, ax, ax_aL, ax_Fgb, ax_F, key, key_aL, key_Ftr, key_Ftar, tit
         neoc_std = plasma.get(f"{key_Ftr}_neoc_stds")
         if turb_std is not None and neoc_std is not None:
             import torch
-            if isinstance(turb_std, torch.Tensor) or isinstance(neoc_std, torch.Tensor):
-                std_all = (turb_std**2 + neoc_std**2).sqrt()
+            import numpy as _np
+            # Asymmetric sidecar (TGLF turbulence only): per-side quadrature with the
+            # symmetric neoclassical std. Rendered only when the run's
+            # uncertainty_statistics is 'asymmetric' (the sidecar is persisted in both
+            # modes for diagnostics); gaussian runs and old runs collapse both sides to
+            # the symmetric turb std — exact legacy errorbars.
+            if asymmetric_stds:
+                turb_minus = plasma.get(f"{key_Ftr}_turb_stds_minus", turb_std)
+                turb_plus  = plasma.get(f"{key_Ftr}_turb_stds_plus",  turb_std)
             else:
-                import numpy as _np
-                std_all = _np.sqrt(turb_std**2 + neoc_std**2)
+                turb_minus = turb_plus = turb_std
+            if isinstance(turb_std, torch.Tensor) or isinstance(neoc_std, torch.Tensor):
+                std_minus = (turb_minus**2 + neoc_std**2).sqrt()
+                std_plus  = (turb_plus**2  + neoc_std**2).sqrt()
+            else:
+                std_minus = _np.sqrt(turb_minus**2 + neoc_std**2)
+                std_plus  = _np.sqrt(turb_plus**2  + neoc_std**2)
             rho = plasma["rho"][batch_num, 1:]
-            std_row = std_all[batch_num, 1:]
+            yerr_rows = _np.stack([
+                _np.asarray(std_minus[batch_num, 1:]),
+                _np.asarray(std_plus[batch_num, 1:]),
+            ])
+            gb_row = _np.asarray(plasma[labelGB][batch_num, 1:])
             ax_Fgb.errorbar(
                 rho,
                 plasma[key_Ftr][batch_num, 1:] / plasma[labelGB][batch_num, 1:],
-                yerr=2.0 * std_row / plasma[labelGB][batch_num, 1:],
+                yerr=2.0 * yerr_rows / gb_row,
                 fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
             )
             ax_F.errorbar(
                 rho,
                 plasma[key_Ftr][batch_num, 1:],
-                yerr=2.0 * std_row,
+                yerr=2.0 * yerr_rows,
                 fmt='none', ecolor=c, elinewidth=0.6, capsize=2, alpha=0.7, zorder=2,
             )
 

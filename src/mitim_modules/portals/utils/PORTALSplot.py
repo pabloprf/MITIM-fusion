@@ -387,6 +387,7 @@ def PORTALSanalyzer_plotMetrics(
             decor=self.ibest == indexUse,
             plotFlows=plotFlows and (self.ibest == indexUse),
             addFlowLegend=cont == len(indeces_plot) - 1,
+            uncertainty_statistics=getattr(self, 'uncertainty_statistics', 'gaussian'),
         )
     
     if axTe is not None:
@@ -2167,56 +2168,108 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
             continue
         turb.plot(fn=fn, fn_color=fn_color+k, labels = ['base'], extratitle=f"Turb (#{it}) - ")
 
-        if "distributions" in turb.__dict__:
+        # Only the channels actually being predicted get a panel: distributions
+        # carries Qe/Qi/Ge unconditionally, but a te+ti run has no flux-matching
+        # constraint on Ge and showing it is misleading.
+        varss = [
+            (channel, var, label)
+            for channel, var, label in [
+                ('te', 'Qe', '$Q_e$ (MW/m$^2$)'),
+                ('ti', 'Qi', '$Q_i$ (MW/m$^2$)'),
+                ('ne', 'Ge', '$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)'),
+            ]
+            if channel in self.predicted_channels
+        ]
+
+        if "distributions" in turb.__dict__ and len(varss) > 0:
             distributions = turb.distributions
             k += 1
             fig = fn.add_figure(label=f"Turb (#{it}) - Distributions", tab_color=fn_color+k)
-            axs = fig.subplots(ncols=3)
-            
-            varss = [('Qe', '$Q_e$ (MW/m$^2$)'), ('Qi', '$Q_i$ (MW/m$^2$)'), ('Ge', '$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)')]
-            for i, (var, label) in enumerate(varss):
-                ax = axs[i]
-                y = np.array(distributions['y'][var])
-                # Plot each distribution case as a light profile
-                for jj in range(y.shape[0]):
-                    ax.plot(
-                        turb.rhos,
-                        y[jj, :],
-                        marker='o',
-                        ms=3,
-                        lw=0.8,
-                        alpha=0.4,
-                        color=colors[jj % len(colors)],
-                        label=distributions['x'][jj],
-                        zorder=2,
-                    )
+            axs = np.atleast_1d(fig.subplots(ncols=len(varss)))
 
-                # Overlay mean ± 2std with a clear point+errorbar style
-                y_mean = y.mean(axis=0)
-                y_std = y.std(axis=0)
-                ax.errorbar(
-                    turb.rhos,
-                    y_mean,
-                    yerr=2*y_std,
-                    fmt='o-',
-                    color='k',
-                    ms=6,
-                    lw=2.0,
-                    elinewidth=1.5,
-                    capsize=5,
-                    capthick=1.5,
-                    markerfacecolor='white',
-                    markeredgewidth=1.1,
-                    label='mean ± 2std',
-                    zorder=5,
-                )
-                        
+            # Lazy import — the plot must share the exact semi-deviation convention of the
+            # 'asymmetric' uncertainty_statistics reduction
+            from mitim_modules.powertorch.physics_models.transport_tglf import calculate_median_semistds
+            from matplotlib.lines import Line2D
+
+            case_labels = distributions['x']
+            i_base = next(j for j, l in enumerate(case_labels) if l.startswith('base'))
+
+            rhos = np.array(turb.rhos)
+            colors_rho = plt.cm.viridis(np.linspace(0.0, 0.9, len(rhos)))
+            amp = 0.35 * (np.diff(np.sort(rhos)).min() if len(rhos) > 1 else 0.1)
+
+            # Target minus neoclassical at the predicted radii, in the SAME real units as the
+            # turbulence-only clouds (distributions['y'] holds the *_unn values: Qe/Qi in
+            # MW/m^2, Ge in 1e20 m^-2 s^-1 — verified against QeMWm2_tr_turb etc. of the
+            # same powerstate). Falls back to the raw target if the neoc profile is absent.
+            power_it = self.powerstates[it] if it < len(self.powerstates) else None
+            tar_map = {'Qe': ('QeMWm2', 'QeMWm2_tr_neoc'), 'Qi': ('QiMWm2', 'QiMWm2_tr_neoc'), 'Ge': ('Ge1E20m2', 'Ge1E20m2_tr_neoc')}
+            lab_target = 'target - neoc' if (power_it is not None and 'QeMWm2_tr_neoc' in power_it.plasma) else 'target (incl. neoc)'
+
+            for i, (_, var, label) in enumerate(varss):
+                ax = axs[i]
+                y = np.array(distributions['y'][var])   # (n_cases, n_rho)
+
+                if power_it is not None:
+                    tar_key, neoc_key = tar_map[var]
+                    y_target = power_it.plasma[tar_key].cpu().numpy()[0, 1:]
+                    if var == 'Ge':
+                        y_target = y_target * (1 - int(self.force_zero_particle_flux))
+                    neoc = power_it.plasma.get(neoc_key)
+                    if neoc is not None:
+                        y_target = y_target - neoc.cpu().numpy()[0, 1:]
+                    ax.plot(rhos, y_target, '--v', color='k', lw=1.0, ms=3, alpha=0.8, zorder=6)
+
+                # Per radius: raw sample cloud + base, with the two competing summaries drawn as
+                # sideways distributions — Gaussian(mean, std) to the left (solid), split-normal
+                # (median, sigma-, sigma+) to the right (dashed). No radial joining of members:
+                # the scan samples of different radii are unrelated stencils.
+                for ir in range(len(rhos)):
+                    samples, c = y[:, ir], colors_rho[ir]
+
+                    ax.plot(np.full(samples.shape, rhos[ir]), samples, 'o', ms=3, alpha=0.5, color=c, zorder=3)
+                    ax.plot(rhos[ir], samples[i_base], 'x', color='k', ms=7, zorder=6)
+
+                    mu, sd = np.nanmean(samples), np.nanstd(samples)
+                    med, s_minus, s_plus = (v[0] for v in calculate_median_semistds(samples[np.newaxis, :]))
+
+                    if sd > 0:
+                        yg = np.linspace(mu - 2.5 * sd, mu + 2.5 * sd, 121)
+                        xg = rhos[ir] - amp * np.exp(-((yg - mu) ** 2) / (2 * sd**2))
+                        ax.plot(xg, yg, '-', color=c, lw=1.0, alpha=0.8, zorder=4)
+                        ax.fill_betweenx(yg, xg, rhos[ir], color=c, alpha=0.08, lw=0)
+
+                    if s_minus > 0 or s_plus > 0:
+                        s_lo, s_hi = max(s_minus, 1e-10), max(s_plus, 1e-10)
+                        y_lo = np.linspace(med - 2.5 * s_lo, med, 61)
+                        y_hi = np.linspace(med, med + 2.5 * s_hi, 61)[1:]
+                        ys = np.concatenate([y_lo, y_hi])
+                        ss = np.concatenate([np.full(y_lo.shape, s_lo), np.full(y_hi.shape, s_hi)])
+                        xs = rhos[ir] + amp * np.exp(-((ys - med) ** 2) / (2 * ss**2))
+                        ax.plot(xs, ys, '--', color=c, lw=1.0, alpha=0.9, zorder=4)
+                        ax.fill_betweenx(ys, rhos[ir], xs, color=c, alpha=0.08, lw=0)
+
+                    ax.plot(rhos[ir], mu, 's', color=c, ms=4, markeredgecolor='k', markeredgewidth=0.5, zorder=5)
+                    ax.plot(rhos[ir], med, '^', color=c, ms=4, markeredgecolor='k', markeredgewidth=0.5, zorder=5)
+
+                if i == 0:
+                    handles = [
+                        Line2D([], [], marker='o', ls='', color='gray', ms=3, alpha=0.7, label='scan members'),
+                        Line2D([], [], marker='x', ls='', color='k', ms=7, label='base evaluation'),
+                        Line2D([], [], ls='-', color='gray', label='Gaussian(mean, $\\sigma$); mean $\\blacksquare$'),
+                        Line2D([], [], ls='--', color='gray', label='split-normal(median, $\\sigma_-$, $\\sigma_+$); median $\\blacktriangle$'),
+                    ]
+                    if power_it is not None:
+                        handles.append(Line2D([], [], ls='--', marker='v', color='k', ms=3, label=lab_target))
+                    ax.legend(handles=handles, loc='best', prop={'size': 7})
+
                 ax.set_xlabel("$\\rho_N$")
                 ax.set_ylabel(label)
-                ax.legend(loc="best",prop={'size': 6})
+                ax.set_xlim(rhos.min() - 3 * amp, rhos.max() + 3 * amp)
+                # No bottom=0 clip: sub-zero Gaussian tails at cliff points are exactly
+                # what this tab is meant to expose
                 GRAPHICStools.addDenseAxis(ax)
-                if var in ["Qe", "Qi"]:
-                    ax.set_ylim(bottom=0)
         
         neo.plot(fn=fn, fn_color=fn_color+k+1, labels = ['base'], extratitle=f"Neoc (#{it}) - ")
         k += 2
@@ -3297,11 +3350,37 @@ def plotFluxComparison(
     fontsize_leg=12,
     useRoa=False,
     locLeg="upper left",
+    uncertainty_statistics="gaussian",
 ):
 
     r = power.plasma['rho'].cpu().numpy() if not useRoa else power.plasma['roa'].cpu().numpy()
 
     ixF = 0 if includeFirst else 1
+
+    # Asymmetric band rendering follows the run's uncertainty_statistics mode: the
+    # sidecar keys are persisted in BOTH modes (diagnostics), but only an 'asymmetric'
+    # run shades per-side — gaussian and old runs keep the exact legacy symmetric band
+    asymmetric_band = uncertainty_statistics == 'asymmetric' and any(
+        f'{base}_tr_turb_stds_minus' in power.plasma
+        for base in ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2']
+    )
+
+    def _band_sigmas(base):
+        '''Per-side band sigmas: turbulent (semi-)deviations combined with the symmetric
+        neoclassical std IN QUADRATURE, since the two are independent error sources. This
+        is the same combination used by the residual/Ricci path
+        (PORTALStools.calculate_residuals_distributions) and by POWERplot.plot_kp, so the
+        shaded band here now means the same thing as the metric that declares convergence.
+        When asymmetric_band is off (gaussian/old runs) both sides collapse to the
+        symmetric sqrt(turb_stds^2 + neoc_stds^2).'''
+        turb_stds = power.plasma[f'{base}_tr_turb_stds']
+        neoc = power.plasma[f'{base}_tr_neoc_stds'].cpu().numpy()[0][ixF:]
+        if asymmetric_band:
+            minus = power.plasma.get(f'{base}_tr_turb_stds_minus', turb_stds).cpu().numpy()[0][ixF:]
+            plus  = power.plasma.get(f'{base}_tr_turb_stds_plus',  turb_stds).cpu().numpy()[0][ixF:]
+        else:
+            minus = plus = turb_stds.cpu().numpy()[0][ixF:]
+        return np.sqrt(minus**2 + neoc**2), np.sqrt(plus**2 + neoc**2)
 
     # Prep
 
@@ -3342,11 +3421,11 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = np.sqrt(power.plasma['QeMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['QeMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
+        sigma_minus, sigma_plus = _band_sigmas('QeMWm2')
 
-        m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+        m_Qe, M_Qe = (power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma_minus, (
             power.plasma['QeMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QeMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
-        ) + stds * sigma
+        ) + stds * sigma_plus
         axTe_f.fill_between(r[0][ixF:], m_Qe, M_Qe, facecolor=col, alpha=alpha / 3)
 
     # -----------------------------------------------------------------------------------------------
@@ -3365,15 +3444,13 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = (
-            np.sqrt(power.plasma['QiMWm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['QiMWm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
-        )
+        sigma_minus, sigma_plus = _band_sigmas('QiMWm2')
 
         m_Qi, M_Qi = (
             power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
-        ) - stds * sigma, (
+        ) - stds * sigma_minus, (
             power.plasma['QiMWm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['QiMWm2_tr_neoc'].cpu().numpy()[0][ixF:]
-        ) + stds * sigma
+        ) + stds * sigma_plus
         axTi_f.fill_between(r[0][ixF:], m_Qi, M_Qi, facecolor=col, alpha=alpha / 3)
 
     # -----------------------------------------------------------------------------------------------
@@ -3395,10 +3472,9 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = np.sqrt(power.plasma['Ge1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['Ge1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
+        sigma_minus, sigma_plus = _band_sigmas('Ge1E20m2')
 
-
-        m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma, Ge[0][ixF:] + stds * sigma
+        m_Ge, M_Ge = Ge[0][ixF:] - stds * sigma_minus, Ge[0][ixF:] + stds * sigma_plus
         axne_f.fill_between(r[0][ixF:], m_Ge, M_Ge, facecolor=col, alpha=alpha / 3)
 
     # -----------------------------------------------------------------------------------------------
@@ -3419,11 +3495,11 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = np.sqrt(power.plasma['GZ1E20m2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['GZ1E20m2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
+        sigma_minus, sigma_plus = _band_sigmas('GZ1E20m2')
 
         m_Gi, M_Gi = (
-            GZ[0][ixF:] - stds * sigma,
-            GZ[0][ixF:] + stds * sigma,
+            GZ[0][ixF:] - stds * sigma_minus,
+            GZ[0][ixF:] + stds * sigma_plus,
         )
         axnZ_f.fill_between(r[0][ixF:], m_Gi, M_Gi, facecolor=col, alpha=alpha / 3)
 
@@ -3443,11 +3519,11 @@ def plotFluxComparison(
             alpha=alpha,
         )
 
-        sigma = np.sqrt(power.plasma['MtJm2_tr_turb_stds'].cpu().numpy()[0][ixF:]**2 + power.plasma['MtJm2_tr_neoc_stds'].cpu().numpy()[0][ixF:]**2)
+        sigma_minus, sigma_plus = _band_sigmas('MtJm2')
 
-        m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma, (
+        m_Mt, M_Mt = (power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]) - stds * sigma_minus, (
             power.plasma['MtJm2_tr_turb'].cpu().numpy()[0][ixF:] + power.plasma['MtJm2_tr_neoc'].cpu().numpy()[0][ixF:]
-        ) + stds * sigma
+        ) + stds * sigma_plus
         axw0_f.fill_between(r[0][ixF:], m_Mt, M_Mt, facecolor=col, alpha=alpha / 3)
 
     # -----------------------------------------------------------------------------------------------
@@ -3596,7 +3672,10 @@ def plotFluxComparison(
         )
 
         setl = [l1, l3, l2]
-        setlab = ["Transport", f"$\\pm{stds}\\sigma$", "Target"]
+        lab_sigma = (
+            f"$+{stds}\\sigma_+ / -{stds}\\sigma_-$" if asymmetric_band else f"$\\pm{stds}\\sigma$"
+        )
+        setlab = ["Transport", lab_sigma, "Target"]
 
         if addFlowLegend:
             (l4,) = axTe_f.plot(

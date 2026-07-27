@@ -48,6 +48,36 @@ def _resolve_code_from_options(transport_options, instance_name):
         opts = {}
     return str(opts.get('code', instance_name)).lower()
 
+
+def _read_uncertainty_statistics(portals_parameters, folder):
+    """Uncertainty-statistics mode of a run ('gaussian' | 'asymmetric'). Primary source
+    is the snapshotted portals_parameters carried by the pickled optimization object
+    (same content as the run folder's namelist.portals.yaml); the on-disk YAML snapshots
+    are the fallback for pickles predating the key structure. Missing keys/files or a
+    multi-fidelity dict-valued turbulence_model resolve to 'gaussian' (legacy rendering)."""
+    try:
+        turb = portals_parameters['transport']['evaluator_instance_attributes']['turbulence_model']
+        if isinstance(turb, dict):
+            return 'gaussian'
+    except (KeyError, TypeError):
+        pass
+    try:
+        return portals_parameters['transport']['options']['tglf'].get('uncertainty_statistics', 'gaussian')
+    except (KeyError, TypeError, AttributeError):
+        pass
+    import yaml
+    for name in ('namelist.portals.yaml', 'portals.namelist_original.yaml'):
+        file = folder / name
+        if file.exists():
+            try:
+                with open(file) as f:
+                    nml = yaml.safe_load(f)
+                return nml['transport']['options']['tglf'].get('uncertainty_statistics', 'gaussian')
+            except Exception:
+                continue
+    return 'gaussian'
+
+
 class PORTALSanalyzer:
     # ****************************************************************************
     # INITIALIZATION
@@ -205,6 +235,11 @@ class PORTALSanalyzer:
 
         self.portals_parameters = self.opt_fun.mitim_model.optimization_object.portals_parameters
 
+        # Uncertainty-statistics mode of this run — gates the asymmetric band rendering
+        # in the Metrics figure (gaussian runs keep the exact legacy symmetric bands
+        # even though the sidecar is persisted in both modes)
+        self.uncertainty_statistics = _read_uncertainty_statistics(self.portals_parameters, self.opt_fun.folder)
+
         # Useful flags
         self.predicted_channels = self.portals_parameters["solution"]["predicted_channels"]
 
@@ -347,6 +382,8 @@ class PORTALSanalyzer:
                         y2,
                         y1_std,
                         y2_std,
+                        y1_std_minus,
+                        y1_std_plus,
                     ) = PORTALStools.calculate_residuals_distributions(
                         power,
                         self.portals_parameters,
@@ -363,12 +400,16 @@ class PORTALSanalyzer:
 
                     self.qR_Ricci.append(QR[0])
                     self.chiR_Ricci.append(chiR[0])
+                    # Entries 4-5 are the per-side transport semi-deviations (equal to
+                    # entry 2 for runs without the asymmetric sidecar)
                     self.points_Ricci.append(
                         [
                             y1.cpu().numpy()[0, :],
                             y2.cpu().numpy()[0, :],
                             y1_std.cpu().numpy()[0, :],
                             y2_std.cpu().numpy()[0, :],
+                            y1_std_minus.cpu().numpy()[0, :],
+                            y1_std_plus.cpu().numpy()[0, :],
                         ]
                     )
                 except:
