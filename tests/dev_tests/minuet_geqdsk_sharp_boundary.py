@@ -359,6 +359,9 @@ m = minuet.cached(
         gs_boundary_interp=BKW_HI.get("boundary_interp", "spline"),
         n_surfaces=100, n_theta_trace=1024,
         bootstrap=SauterBootstrap(),
+        # boundary-resolution study: keep sawteeth out of it (minuet defaults
+        # them ON) so the only thing varying is the boundary ingestion
+        sawtooth=None,
         diffusion=DiffusionSettings(n_save=51),
     ),
 )

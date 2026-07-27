@@ -120,6 +120,11 @@ def _build_bench_source():
     m0 = minuet(gq, profiles=kin,
                 settings=Settings(t_end=0.02, evolve_equilibrium=True,
                                   geqdsk_boundary_psin=BOUNDARY_PSIN,
+                                  # minuet defaults bootstrap+sawteeth ON; this is a
+                                  # 0.02 s GS-CONSISTENCY solve whose only job is to
+                                  # emit a clean source file, so no redistribution
+                                  # and no bootstrap should touch it
+                                  bootstrap=None, sawtooth=None,
                                   diffusion=DiffusionSettings(n_save=3)))
     m0.run(verbose=False)
     m0.export_input_gacode(str(bench), keep_kinetics=str(GACODE))
