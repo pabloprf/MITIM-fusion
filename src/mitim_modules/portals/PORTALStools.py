@@ -308,37 +308,91 @@ def constructEvaluationProfiles(X, surrogate_parameters, recalculateTargets=Fals
 
     return powerstate
 
-def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0):
+def _propagate_std_to_objective(mitim_bo, Y, of, cal, Ystd):
+    '''
+    Push a per-output std through the scalarized objective, one independent source at a time,
+    and combine in quadrature. Perturbing all outputs simultaneously (Y+Ystd) would give an
+    arithmetic sum of turb_std + neoc_std through the linear "of = turb + neoc" combination,
+    i.e. assume perfect correlation between independent sources; the correct combination is
+    sqrt(turb_std^2 + neoc_std^2), matching calculate_residuals_distributions.
+    '''
+    ofs_names = np.array(mitim_bo.optimization_options["problem_options"]["ofs"])
+    of_var  = torch.zeros_like(of)
+    cal_var = torch.zeros_like(cal)
+    for tag in ("_tr_turb_", "_tr_neoc_", "_tar_", "Qie_tr_turb_"):
+        mask = torch.tensor([tag in n for n in ofs_names], dtype=Y.dtype, device=Y.device)
+        Ystd_k = Ystd * mask                                     # zero out all other columns
+        of_k, cal_k, _ = mitim_bo.scalarized_objective(Y + Ystd_k)
+        of_var  += (of_k  - of )**2
+        cal_var += (cal_k - cal)**2
+
+    return of_var**0.5, cal_var**0.5
+
+
+def _side_stds_for_ricci(mitim_bo, Ystd):
+    '''
+    Per-side training stds (minus, plus) aligned with train_Y, or None when this run has no
+    asymmetric record. The data record is the source (not the powerstate) because it is what
+    survives a restart from optimization_data.csv, and it falls back ELEMENTWISE to the
+    symmetric std for any evaluation that did not provide per-side information.
+    '''
+    record = getattr(mitim_bo, "optimization_data", None)
+    if not hasattr(record, "read_side_stds"):
+        return None
+
+    minus, plus = record.read_side_stds(mitim_bo.outputs)
+
+    n = Ystd.shape[0]
+    if minus.shape[0] < n:
+        print(f"\t\t* Asymmetric record has {minus.shape[0]} rows for {n} training points; using symmetric stds", typeMsg="w")
+        return None
+
+    to_t = lambda a: torch.from_numpy(a[:n, :]).to(Ystd)
+    return to_t(minus), to_t(plus)
+
+
+_CHANNEL_FLUX_LABEL = {"te": "Qe", "ti": "Qi", "ne": "Ge", "nZ": "GZ", "w0": "Mt"}
+
+
+def _residual_column_labels(mitim_bo, ncols):
+    '''
+    Labels for the columns of the scalarized objective, which are the RESIDUAL columns
+    (channel-major, radius-minor: see calculate_residuals_distributions) and NOT the entries
+    of optimization_options['problem_options']['ofs'] -- those list turb/neoc/target
+    separately and would mislabel every column.
+    '''
+    channels = mitim_bo.optimization_object.portals_parameters["solution"]["predicted_channels"]
+    nradii = ncols // max(len(channels), 1)
+    labels = [f"{_CHANNEL_FLUX_LABEL.get(c, c)}_{i+1}" for c in channels for i in range(nradii)]
+    return labels if len(labels) == ncols else [f"column_{j}" for j in range(ncols)]
+
+
+def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0, asymmetric=True):
+    '''
+    Returns (chiR, d) with d the per-column distance, or (chiR, None) on the symmetric path.
+    '''
 
     Y = torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT)
     of, cal, _ = mitim_bo.scalarized_objective(Y)
 
     Ystd = torch.from_numpy(mitim_bo.train_Ystd).to(mitim_bo.dfT)
 
-    # Perturb each independent uncertainty source separately and combine in quadrature.
-    # Perturbing all outputs simultaneously (Y+Ystd) gives an arithmetic sum of
-    # turb_std + neoc_std through the linear "of = turb + neoc" combination, which
-    # assumes perfect correlation between independent sources.  The correct combination
-    # for independent sources is quadrature: sqrt(turb_std^2 + neoc_std^2), matching
-    # what calculate_residuals_distributions uses in post-processing.
-    ofs_names = np.array(mitim_bo.optimization_options["problem_options"]["ofs"])
-    of_var  = torch.zeros_like(of)
-    cal_var = torch.zeros_like(cal)
-    for tag in ("_tr_turb_", "_tr_neoc_", "_tar_", "Qie_tr_turb_"):
-        mask = torch.tensor(
-            [tag in n for n in ofs_names], dtype=Y.dtype, device=Y.device
-        )
-        Ystd_k = Ystd * mask                                     # zero out all other columns
-        of_k, cal_k, _ = mitim_bo.scalarized_objective(Y + Ystd_k)
-        of_var  += (of_k  - of )**2
-        cal_var += (cal_k - cal)**2
+    sides = _side_stds_for_ricci(mitim_bo, Ystd) if asymmetric else None
 
-    of_std  = of_var **0.5
-    cal_std = cal_var**0.5
+    if sides is None:
+        of_std, cal_std = _propagate_std_to_objective(mitim_bo, Y, of, cal, Ystd)
+        _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
+        return chiR, None
 
-    _, chiR = PLASMAtools.RicciMetric(of, cal, of_std, cal_std, d0=d0, l=la)
+    # Each side propagated separately: the target (cal) side is symmetric either way, so it is
+    # taken from the minus pass, where it is identical to the plus pass by construction.
+    of_std_minus, cal_std = _propagate_std_to_objective(mitim_bo, Y, of, cal, sides[0])
+    of_std_plus,  _       = _propagate_std_to_objective(mitim_bo, Y, of, cal, sides[1])
 
-    return chiR
+    _, chiR, d = PLASMAtools.RicciMetric_asymmetric(of, cal, of_std_minus, of_std_plus, cal_std, d0=d0, l=la)
+
+    return chiR, d
+
 
 def stopping_criteria_portals(mitim_bo, parameters = {}):
 
@@ -349,14 +403,28 @@ def stopping_criteria_portals(mitim_bo, parameters = {}):
     ricci_value = parameters["ricci_value"]
     d0 = parameters.get("ricci_d0", 2.0)
     la = parameters.get("ricci_lambda", 0.5)  # Fallback matches the template default (namelist.portals.yaml)
+    asymmetric = parameters.get("ricci_asymmetric", True)
+    worst_channel = parameters.get("ricci_worst_channel", True)
 
     print(f"\t- Checking Ricci metric (d0 = {d0}, lamdba = {la})...")
 
-    chiR = calculate_Ricci_portals_step(mitim_bo, d0=d0, la=la)
+    chiR, d = calculate_Ricci_portals_step(mitim_bo, d0=d0, la=la, asymmetric=asymmetric)
 
-    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f})")
+    ibest = int(np.argmin(chiR))
+    print(f"\t\t* Best Ricci metric: {chiR.min():.3f} (threshold: {ricci_value:.3f}){' [asymmetric, side-facing]' if d is not None else ''}")
 
     converged_by_ricci = chiR.min() < ricci_value
+
+    # chiR is a weighted MEAN over (channel, radius) columns, so a single fully-disagreeing
+    # column is diluted to ~1/M and can pass the threshold outright once M is large enough
+    # (5 channels x 5 radii already gives 0.04 < 0.05). Require every column to agree too.
+    if converged_by_ricci and worst_channel and (d is not None):
+        d_worst = d[ibest, :].max()
+        if d_worst > d0:
+            names = _residual_column_labels(mitim_bo, d.shape[1])
+            blocking = [f"{names[j]} (d={d[ibest, j]:.2f})" for j in np.argsort(-d[ibest, :])[:3] if d[ibest, j] > d0]
+            print(f"\t\t* Ricci metric passed but {len(blocking)} column(s) exceed d0={d0}: {', '.join(blocking)}", typeMsg="i")
+            converged_by_ricci = False
 
     if converged_by_default:
         print("\t- Default stopping criteria converged, providing as iteration values the scalarized objective")

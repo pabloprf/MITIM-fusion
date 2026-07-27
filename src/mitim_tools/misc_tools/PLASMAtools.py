@@ -129,6 +129,56 @@ def RicciMetric(y1, y2, y1_std, y2_std, h=None, d0=2.0, l=1.0):
     return QR, chiR
 
 
+def RicciMetric_asymmetric(y1, y2, y1_std_minus, y1_std_plus, y2_std, h=None, d0=2.0, l=1.0):
+    """
+    Ricci metric for a simulated quantity whose uncertainty is asymmetric, i.e. described by
+    two deviations about a central value rather than a single standard deviation.
+
+    Identical to RicciMetric() except for which deviation enters the distance: the side of y1
+    that FACES y2, since only that side says anything about whether the two can be reconciled.
+    y2 below y1 is compared against y1_std_minus, y2 above against y1_std_plus. With
+    y1_std_minus == y1_std_plus this reduces exactly to RicciMetric().
+
+    Motivation: with a single symmetric std, a strongly one-sided uncertainty (a transport
+    model near a stiffness cliff, where one perturbation of the evaluation stencil jumps far
+    in one direction) reports a wide band on BOTH sides, and a target sitting in the
+    fabricated side is declared to be in agreement.
+
+    S (the precision weight) uses the mean of the two deviations, so a channel with a genuine
+    one-sided disagreement is not down-weighted merely because its spread is large.
+
+    Returns QR, chiR and the per-column distance d; the last lets callers apply a per-column
+    criterion in addition to the aggregate chiR, which is a weighted MEAN and therefore
+    dilutes a single fully-disagreeing column as the number of columns grows.
+    """
+
+    if h is None:
+        h = np.ones(y1.shape[1])
+    H = 1 / h
+
+    d = np.zeros((y1.shape[0], y1.shape[1]))
+    R = np.zeros((y1.shape[0], y1.shape[1]))
+    S = np.zeros((y1.shape[0], y1.shape[1]))
+
+    for i in range(d.shape[1]):
+        a1, a2 = y1.cpu()[:, i], y2.cpu()[:, i]
+        s_minus, s_plus = y1_std_minus.cpu()[:, i], y1_std_plus.cpu()[:, i]
+
+        # torch.where (not np.where): these are tensors, and the numpy version returns an
+        # object array that then fails to broadcast against the remaining tensor operands
+        s_facing = torch.where(a2 < a1, s_minus, s_plus)
+        s_mean = 0.5 * (s_minus + s_plus)
+
+        d[:, i] = ((a1 - a2) ** 2 / (s_facing**2 + y2_std.cpu()[:, i] ** 2)) ** 0.5
+        R[:, i] = 0.5 * (np.tanh((d[:, i] - d0) / l) + 1)
+        S[:, i] = np.exp(-(s_mean + y2_std.cpu()[:, i]) / (abs(a1) + abs(a2)))
+
+    QR = (H * S).sum(axis=1)
+    chiR = (R * H * S).sum(axis=1) / QR
+
+    return QR, chiR, d
+
+
 def LHthreshold_nmin(Ip, Bt, a, Rmajor):
     nLH_min = (
         0.07 * Ip**0.34 * Bt**0.62 * a ** (-0.95) * (Rmajor / a) ** 0.4

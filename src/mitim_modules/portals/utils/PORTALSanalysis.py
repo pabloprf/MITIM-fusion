@@ -389,14 +389,27 @@ class PORTALSanalyzer:
                         self.portals_parameters,
                     )
 
-                    QR, chiR = PLASMAtools.RicciMetric(
-                        y1,
-                        y2,
-                        y1_std,
-                        y2_std,
-                        d0=calculateRicci["d0"],
-                        l=calculateRicci["l"],
-                    )
+                    # Match the metric the run itself used to decide convergence, otherwise
+                    # the plotted Ricci trace would contradict the stopping decision in the log
+                    if self.uncertainty_statistics == 'asymmetric':
+                        QR, chiR, _ = PLASMAtools.RicciMetric_asymmetric(
+                            y1,
+                            y2,
+                            y1_std_minus,
+                            y1_std_plus,
+                            y2_std,
+                            d0=calculateRicci["d0"],
+                            l=calculateRicci["l"],
+                        )
+                    else:
+                        QR, chiR = PLASMAtools.RicciMetric(
+                            y1,
+                            y2,
+                            y1_std,
+                            y2_std,
+                            d0=calculateRicci["d0"],
+                            l=calculateRicci["l"],
+                        )
 
                     self.qR_Ricci.append(QR[0])
                     self.chiR_Ricci.append(chiR[0])

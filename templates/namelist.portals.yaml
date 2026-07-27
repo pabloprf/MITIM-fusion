@@ -688,6 +688,18 @@ optimization_options:
       ricci_value: 0.05
       ricci_d0: 2.0
       ricci_lambda: 0.5
+      # Use the side-facing distance when the evaluation recorded asymmetric uncertainties
+      # (transport.options.<code>.uncertainty_statistics: asymmetric). The distance then divides by
+      # the deviation on the side of the prediction that FACES the target, instead of by a symmetric
+      # std that a one-sided cliff excursion has widened on BOTH sides. Automatically inert without
+      # per-side information: those evaluations fall back to the symmetric std, so gaussian runs and
+      # the CGYRO rows of a multi-fidelity table behave exactly as before.
+      ricci_asymmetric: true
+      # chiR is a weighted MEAN over (channel, radius) columns, so one fully-disagreeing column is
+      # diluted to ~1/M and passes on its own once M is large enough (5 channels x 5 radii = 0.04
+      # < ricci_value). With this on, convergence additionally requires every column to sit within
+      # ricci_d0 of its target. Only active on the asymmetric path.
+      ricci_worst_channel: true
 
   acquisition_options:
 
