@@ -19,7 +19,7 @@ description = "MIT Integrated Modeling Suite for Fusion Applications"
 readme = "README.md"
 requires-python = ">=3.10, <3.13" # Notes: 3.9 has issues with the latest botorch, 3.13 has issues with tensorflow
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 authors = [
   {name = "P. Rodriguez-Fernandez", email = "pablorf@mit.edu"},
 ]

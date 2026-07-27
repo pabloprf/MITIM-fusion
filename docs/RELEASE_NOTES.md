@@ -11,6 +11,12 @@ DESCRIPTION
     profile-spread figures with per-seed Pfus readouts, per-beat evolution traces, cumulative
     beat timing (wall time or CPU-hours) with a reference run's chain, and a per-case PDF report.
 
+*   💥 **fGped with geqdsk initialization no longer requires explicit Ip/a**: when
+    `initialization_type: geqdsk`, any of the two left `null` is read from the equilibrium file
+    itself (|CURRENT| in MA; a = separatrix half-width) for the fGped -> neped conversion —
+    removing namelist entries that were redundant with (and could silently disagree with) the
+    geqdsk. Explicit values still take precedence; other initialization types are unchanged.
+
 
 ### Bug Fixes
 
@@ -31,7 +37,11 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
-*   🔮 **NEW CONSIDERATION**, description
+*   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
+    exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
+    `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
+    matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
+    (`namelist.portals.yaml`) is unchanged.
 
 ---
 

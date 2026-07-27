@@ -111,11 +111,24 @@ def run_maestro_local(
 
     if "fGped" in maestro_namelist["plasma"]["parameters"] and maestro_namelist["plasma"]["parameters"]["fGped"] is not None:
         print('[MAESTRO] Using fGped to determine neped_20. This will override the neped_20 value provided in the namelist', typeMsg='i')
-        try:
-            Ip = maestro_namelist["plasma"]["parameters"]["Ip"]
-            a = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
-        except:
-            raise Exception("To use fGped, you must provide both Ip and a in the namelist")
+        Ip = maestro_namelist["plasma"]["parameters"].get("Ip", None)
+        a = maestro_namelist["plasma"]["parameters"]["separatrix"].get("a", None)
+        # geqdsk initialization: whatever is not explicitly given is read from the equilibrium
+        # file itself, so fGped does not force redundant (and potentially inconsistent with the
+        # geqdsk) Ip/a namelist entries. Explicit values still take precedence.
+        if (Ip is None or a is None) and maestro_namelist["plasma"]["profiles_initialization"]["initialization_type"] == "geqdsk":
+            from mitim_tools.gs_tools import GEQtools
+            g_eq = GEQtools.MITIMgeqdsk(maestro_namelist["plasma"]["parameters"]["separatrix"]["geqdsk_file"])
+            if Ip is None:
+                Ip = abs(float(g_eq.g.raw["current"])) * 1E-6
+            if a is None:
+                Rb = np.array(g_eq.g.raw["rbbbs"])
+                a = (np.nanmax(Rb) - np.nanmin(Rb)) / 2
+            print(f'\t- fGped conversion sourced from the geqdsk: Ip = {Ip:.3f} MA, '
+                  f'a = {a:.4f} m (separatrix half-width)', typeMsg='i')
+        if Ip is None or a is None:
+            raise Exception("To use fGped, you must provide both Ip and a in the namelist "
+                            "(only initialization_type=geqdsk can source them from the equilibrium file)")
         neped_20 = maestro_namelist["plasma"]["parameters"]["fGped"] * PLASMAtools.Greenwald_density(Ip, a)
         print(f'\t- Calculated neped_20 from fGped: {neped_20 = :.2f}')
     else:
