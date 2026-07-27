@@ -38,6 +38,11 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                 'rho': rho.tolist(),
             }
     }
+
+    When the evaluator carries the asymmetric-statistics sidecar (TGLF turbulence with the
+    scan trick), the file also gets 'fluxes_stds_minus' / 'fluxes_stds_plus' (same structure
+    as 'fluxes_stds') and 'fluxes_samples' (per channel: nrho lists of raw scan samples).
+    Readers must .get() these with fallback to 'fluxes_stds' — old files simply lack them.
     '''
     
     write_json_from_variables = self._write_json_from_variables_turb if suffix == 'turb' else self._write_json_from_variables_neoc
@@ -61,6 +66,18 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                 # NEO file may not have it
                 pass
 
+            # Asymmetric-statistics sidecar — only the TGLF turbulence evaluator sets the
+            # *_stds_minus / *_stds_plus / *_samples attributes (neoclassical stays symmetric),
+            # so gate on attribute presence and omit the keys entirely otherwise
+            fluxes_stds_minus, fluxes_stds_plus, fluxes_samples = {}, {}, {}
+            for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
+                if f"{var}_{suffix}_stds_minus" in self.__dict__:
+                    fluxes_stds_minus[var] = self.__dict__[f"{var}_{suffix}_stds_minus"].tolist()
+                    fluxes_stds_plus[var]  = self.__dict__[f"{var}_{suffix}_stds_plus"].tolist()
+                    samples = self.__dict__.get(f"{var}_{suffix}_samples", None)
+                    if samples is not None:
+                        fluxes_samples[var] = np.asarray(samples).tolist()
+
             # Targets (GB) as populated by calculateTargets() before the transport
             # call — consumed by the CGYRO trace plotter to mark the turbulence-only
             # target (target - neoc) at the end of each time trace.
@@ -82,6 +99,12 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                     'targets_GB': targets_GB,
                 }
             }
+
+            if fluxes_stds_minus:
+                json_dict['fluxes_stds_minus'] = fluxes_stds_minus
+                json_dict['fluxes_stds_plus'] = fluxes_stds_plus
+            if fluxes_samples:
+                json_dict['fluxes_samples'] = fluxes_samples
 
             json.dump(json_dict, f, indent=4)
 
@@ -388,6 +411,7 @@ class power_transport:
             arr = np.asarray(arr) if not isinstance(arr, np.ndarray) else arr
             return arr[b, :] if arr.ndim >= 2 else arr
 
+        fluxes_stds_minus, fluxes_stds_plus, fluxes_samples = {}, {}, {}
         for var in ['QeGB', 'QiGB', 'GeGB', 'GZGB', 'MtGB', 'QieGB']:
             key_mean = f"{var}_{suffix}"
             key_std  = f"{var}_{suffix}_stds"
@@ -398,6 +422,15 @@ class power_transport:
                 fluxes_stds[var] = _slice_batch(self.__dict__[key_std],  batch_index).tolist()
             except (KeyError, IndexError, TypeError):
                 pass
+
+            # Asymmetric-statistics sidecar (TGLF turbulence only) — samples arrive as
+            # (N, nrho, n_samples) so _slice_batch's [b, :] carves the per-plasma block
+            if f"{var}_{suffix}_stds_minus" in self.__dict__:
+                fluxes_stds_minus[var] = _slice_batch(self.__dict__[f"{var}_{suffix}_stds_minus"], batch_index).tolist()
+                fluxes_stds_plus[var]  = _slice_batch(self.__dict__[f"{var}_{suffix}_stds_plus"],  batch_index).tolist()
+                samples = self.__dict__.get(f"{var}_{suffix}_samples", None)
+                if samples is not None:
+                    fluxes_samples[var] = _slice_batch(np.asarray(samples), batch_index).tolist()
 
         json_dict = {
             'fluxes_mean': fluxes_mean,
@@ -411,6 +444,12 @@ class power_transport:
                 'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
             },
         }
+
+        if fluxes_stds_minus:
+            json_dict['fluxes_stds_minus'] = fluxes_stds_minus
+            json_dict['fluxes_stds_plus'] = fluxes_stds_plus
+        if fluxes_samples:
+            json_dict['fluxes_samples'] = fluxes_samples
 
         with open(sub_folder / file_name, 'w') as f:
             json.dump(json_dict, f, indent=4)
@@ -431,7 +470,11 @@ class power_transport:
         variables = ['QeMWm2', 'QiMWm2', 'Ge1E20m2', 'GZ1E20m2', 'MtJm2', 'QieMWm3']
 
         for variable in variables:
-            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_neoc', '_tr_neoc_stds']:
+            for suffix in ['_tr_turb', '_tr_turb_stds', '_tr_turb_stds_minus', '_tr_turb_stds_plus', '_tr_neoc', '_tr_neoc_stds']:
+
+                # The asymmetric sidecar is optional (only the TGLF turbulence side writes it)
+                if f"{variable}{suffix}" not in self.powerstate.plasma:
+                    continue
 
                 arr = self.powerstate.plasma[f"{variable}{suffix}"]
                 # _populate_from_json hands us either a numpy ndarray (single plasma fallback)
@@ -473,10 +516,13 @@ class power_transport:
         }
         
         for key in mapper_convective.keys():
-            for tt in ['','_turb', '_turb_stds', '_neoc', '_neoc_stds']:
-                
+            for tt in ['','_turb', '_turb_stds', '_turb_stds_minus', '_turb_stds_plus', '_neoc', '_neoc_stds']:
+
+                if f"{mapper_convective[key]}_tr{tt}" not in self.powerstate.plasma:
+                    continue
+
                 mult = 1/self.powerstate.fImp_orig if key == 'CZ' else 1.0
-                
+
                 self.powerstate.plasma[f"{key}_tr{tt}"] = PLASMAtools.convective_flux(
                     self.powerstate.plasma["te"],
                     self.powerstate.plasma[f"{mapper_convective[key]}_tr{tt}"]
@@ -717,6 +763,11 @@ class power_transport:
                 self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}"] = self.__dict__[f"{var}_{suffix}"] * gb
                 self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds"] = self.__dict__[f"{var}_{suffix}_stds"] * gb
 
+                # Asymmetric-statistics sidecar (TGLF turbulence only)
+                if f"{var}_{suffix}_stds_minus" in self.__dict__:
+                    self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds_minus"] = self.__dict__[f"{var}_{suffix}_stds_minus"] * gb
+                    self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds_plus"]  = self.__dict__[f"{var}_{suffix}_stds_plus"]  * gb
+
             return
         
         '''
@@ -776,6 +827,17 @@ class power_transport:
 
         else:
             raise ValueError("[MITIM] Unknown units in JSON file")
+
+        # Asymmetric-statistics sidecar (GB units, written by the TGLF turbulence side only).
+        # Old files simply lack these keys, so pre-sidecar runs load exactly as before —
+        # downstream consumers .get() the plasma keys with fallback to the symmetric _stds
+        if units in ('GB', 'both') and 'fluxes_stds_minus' in json_dict:
+            for var in mapper:
+                if var not in json_dict['fluxes_stds_minus']:
+                    continue
+                gb = self.powerstate.plasma[f"{mapper[var][0]}"][0,1:].cpu().numpy()
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds_minus"] = np.array(json_dict['fluxes_stds_minus'][var]) * gb
+                self.powerstate.plasma[f"{mapper[var][1]}_tr_{suffix}_stds_plus"]  = np.array(json_dict['fluxes_stds_plus'][var])  * gb
 
     # ----------------------------------------------------------------------------------------------------
     # EVALUATE (custom part)

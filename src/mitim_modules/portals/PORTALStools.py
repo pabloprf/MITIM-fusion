@@ -543,6 +543,14 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
         else:
             var_dict[ikey + "_stds"] = None
 
+        # Asymmetric-statistics sidecar (only the TGLF turbulence side writes _stds_minus /
+        # _stds_plus into plasma); fall back to the symmetric _stds so old runs behave as before
+        for side in ("_stds_minus", "_stds_plus"):
+            if mapper[ikey] + side in powerstate.plasma:
+                var_dict[ikey + side] = powerstate.plasma[mapper[ikey] + side][:, 1:]
+            else:
+                var_dict[ikey + side] = var_dict[ikey + "_stds"]
+
     dfT = var_dict["Qe_tr_turb"]  # as a reference for sizes
 
     # -------------------------------------------------------------------------
@@ -561,6 +569,7 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
     # ------------------------------------------------------------------------
 
     of_parts, cal_parts, ofE_parts, calE_parts = [], [], [], []
+    ofE_minus_parts, ofE_plus_parts = [], []
     for prof in powerstate.predicted_channels:
         if prof == "te":
             var = "Qe"
@@ -581,6 +590,11 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
         of0 = var_dict[f"{var}_tr_turb"] + var_dict[f"{var}_tr_neoc"]
         of0E = (var_dict[f"{var}_tr_turb_stds"] ** 2 + var_dict[f"{var}_tr_neoc_stds"] ** 2) ** 0.5
 
+        # Per-side quadrature with the (symmetric) neoclassical std; identical to of0E
+        # when the sidecar is absent because the semi-deviations then alias _stds
+        of0E_minus = (var_dict[f"{var}_tr_turb_stds_minus"] ** 2 + var_dict[f"{var}_tr_neoc_stds"] ** 2) ** 0.5
+        of0E_plus  = (var_dict[f"{var}_tr_turb_stds_plus"]  ** 2 + var_dict[f"{var}_tr_neoc_stds"] ** 2) ** 0.5
+
         """
 		-----------------------------------------------------------------------------------
 		Target (Sum here the turbulent exchange power)
@@ -600,10 +614,14 @@ def calculate_residuals_distributions(powerstate, portals_parameters):
         cal_parts.append(cal0)
         ofE_parts.append(of0E)
         calE_parts.append(cal0E)
+        ofE_minus_parts.append(of0E_minus)
+        ofE_plus_parts.append(of0E_plus)
 
     of  = torch.cat(of_parts,   dim=-1).to(dfT)
     cal = torch.cat(cal_parts,  dim=-1).to(dfT)
     ofE  = torch.cat(ofE_parts,  dim=-1).to(dfT)
     calE = torch.cat(calE_parts, dim=-1).to(dfT)
+    ofE_minus = torch.cat(ofE_minus_parts, dim=-1).to(dfT)
+    ofE_plus  = torch.cat(ofE_plus_parts,  dim=-1).to(dfT)
 
-    return of, cal, ofE, calE
+    return of, cal, ofE, calE, ofE_minus, ofE_plus
