@@ -61,8 +61,15 @@ def _read_uncertainty_statistics(portals_parameters, folder):
             return 'gaussian'
     except (KeyError, TypeError):
         pass
+    # Any turbulence backend may carry the knob (tglf, qlk, ...), so scan them all rather
+    # than hardcoding one; 'asymmetric' anywhere means the run recorded per-side deviations
+    def _from(parameters):
+        options = parameters['transport']['options']
+        modes = [o.get('uncertainty_statistics', 'gaussian') for o in options.values() if isinstance(o, dict)]
+        return 'asymmetric' if 'asymmetric' in modes else 'gaussian'
+
     try:
-        return portals_parameters['transport']['options']['tglf'].get('uncertainty_statistics', 'gaussian')
+        return _from(portals_parameters)
     except (KeyError, TypeError, AttributeError):
         pass
     import yaml
@@ -72,7 +79,7 @@ def _read_uncertainty_statistics(portals_parameters, folder):
             try:
                 with open(file) as f:
                     nml = yaml.safe_load(f)
-                return nml['transport']['options']['tglf'].get('uncertainty_statistics', 'gaussian')
+                return _from(nml)
             except Exception:
                 continue
     return 'gaussian'

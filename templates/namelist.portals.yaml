@@ -286,6 +286,12 @@ transport:
       # execution per rho per variable per delta).
       use_scan_trick_for_stds: null
 
+      # Statistics used to reduce the scan samples into the (value, std) consumed downstream, exactly as
+      # documented for TGLF above (gaussian = mean/nanstd, asymmetric = median + RMS semi-deviations).
+      # Only read when use_scan_trick_for_stds is not null; with the ad-hoc percent_error there is no
+      # sample cloud to be skewed and both modes are identical.
+      uncertainty_statistics: "gaussian"
+
       # (%) Ad-hoc uncertainty when use_scan_trick_for_stds is null.
       percent_error: 10.0
 

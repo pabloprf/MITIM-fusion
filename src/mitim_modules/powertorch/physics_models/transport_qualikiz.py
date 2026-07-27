@@ -25,6 +25,7 @@ class qualikiz_model:
         allocation          = simulation_options.get("allocation", {"resources_per_call": 1, "minutes": 60})
         attempts            = simulation_options.get("attempts_execution", 1)
         use_qlk_scan_trick  = simulation_options.get("use_scan_trick_for_stds", None)
+        uncertainty_statistics = simulation_options.get("uncertainty_statistics", "gaussian")
 
         # Side-aware: postproc may give the turbulence side a different species
         # list than the neoclassical side.
@@ -98,8 +99,9 @@ class qualikiz_model:
         if use_qlk_scan_trick is None:
             Flux_value = Flux_base
             Flux_std  = np.abs(Flux_value) * percent_error / 100.0
+            Flux_extras = None
         else:
-            Flux_value_list, Flux_std_list = _run_qlk_uncertainty_model(
+            Flux_value_list, Flux_std_list, Flux_extras = _run_qlk_uncertainty_model(
                 qlk,
                 rho_locations,
                 self.powerstate.predicted_channels,
@@ -112,6 +114,7 @@ class qualikiz_model:
                 allocation=allocation,
                 attempts_execution=attempts,
                 code_settings=simulation_options.get("run", {}).get("code_settings"),
+                statistics=uncertainty_statistics,
             )
             Flux_value = np.array(Flux_value_list)
             Flux_std  = np.array(Flux_std_list)
@@ -129,6 +132,13 @@ class qualikiz_model:
             self.MtGB_turb_stds  = Flux_std[4]
             self.QieGB_turb      = Flux_value[5]
             self.QieGB_turb_stds = Flux_std[5]
+
+            # Asymmetric-statistics sidecar (semi-deviations symmetric to the std, and no
+            # samples, when the scan trick is off) -- same contract as transport_tglf
+            for i, var in enumerate(["Qe", "Qi", "Ge", "GZ", "Mt", "Qie"]):
+                setattr(self, f"{var}GB_turb_stds_minus", Flux_extras["stds_minus"][i] if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_stds_plus",  Flux_extras["stds_plus"][i]  if Flux_extras is not None else Flux_std[i])
+                setattr(self, f"{var}GB_turb_samples",    Flux_extras["samples"][i]    if Flux_extras is not None else None)
 
         return qlk
 
@@ -229,6 +239,7 @@ def _run_qlk_uncertainty_model(
     allocation=None,
     attempts_execution=1,
     code_settings=None,
+    statistics="gaussian",
 ):
     '''
     Run QuaLiKiz with small gradient perturbations (±delta) around the base
@@ -395,17 +406,34 @@ def _aggregate_qlk_scan_fluxes(
         Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
         S  = np.append(np.atleast_2d(Flux_base[5]).T, S,  axis=1)
 
+    # Same reduction contract as transport_tglf._aggregate_scan_fluxes: the per-side
+    # semi-deviations and the raw samples are computed in BOTH modes (so the diagnostics and
+    # the persisted sidecar are always available) and only the reported (value, std) changes.
+    # calculate_median_semistds is imported rather than reimplemented so the two evaluators
+    # cannot drift apart on the tie-handling convention.
+    from mitim_modules.powertorch.physics_models.transport_tglf import calculate_median_semistds
+
     def calculate_mean_std(Q):
         return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
 
-    Qe_m, Qe_s = calculate_mean_std(Qe)
-    Qi_m, Qi_s = calculate_mean_std(Qi)
-    Ge_m, Ge_s = calculate_mean_std(Ge)
-    GZ_m, GZ_s = calculate_mean_std(GZ)
-    Mt_m, Mt_s = calculate_mean_std(Mt)
-    S_m,  S_s  = calculate_mean_std(S)
+    Flux_value, Flux_std, Flux_std_minus, Flux_std_plus, Flux_samples = [], [], [], [], []
+    for Q in [Qe, Qi, Ge, GZ, Mt, S]:
+        med, s_minus, s_plus = calculate_median_semistds(Q)
+        if statistics == "asymmetric":
+            point, std = med, np.sqrt(0.5 * (s_minus**2 + s_plus**2))
+        else:
+            point, std = calculate_mean_std(Q)
+        Flux_value.append(point)
+        Flux_std.append(std)
+        Flux_std_minus.append(s_minus)
+        Flux_std_plus.append(s_plus)
+        Flux_samples.append(Q)
 
-    Flux_value = [Qe_m, Qi_m, Ge_m, GZ_m, Mt_m, S_m]
-    Flux_std  = [Qe_s, Qi_s, Ge_s, GZ_s, Mt_s, S_s]
+    Flux_extras = {
+        "statistics": statistics,
+        "stds_minus": Flux_std_minus,
+        "stds_plus": Flux_std_plus,
+        "samples": Flux_samples,
+    }
 
-    return Flux_value, Flux_std
+    return Flux_value, Flux_std, Flux_extras
