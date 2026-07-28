@@ -399,7 +399,7 @@ class PORTALSanalyzer:
                     # Match the metric the run itself used to decide convergence, otherwise
                     # the plotted Ricci trace would contradict the stopping decision in the log
                     if self.uncertainty_statistics == 'asymmetric':
-                        QR, chiR, _ = PLASMAtools.RicciMetric_asymmetric(
+                        QR, chiR = PLASMAtools.RicciMetric_asymmetric(
                             y1,
                             y2,
                             y1_std_minus,

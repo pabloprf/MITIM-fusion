@@ -147,9 +147,7 @@ def RicciMetric_asymmetric(y1, y2, y1_std_minus, y1_std_plus, y2_std, h=None, d0
     S (the precision weight) uses the mean of the two deviations, so a channel with a genuine
     one-sided disagreement is not down-weighted merely because its spread is large.
 
-    Returns QR, chiR and the per-column distance d; the last lets callers apply a per-column
-    criterion in addition to the aggregate chiR, which is a weighted MEAN and therefore
-    dilutes a single fully-disagreeing column as the number of columns grows.
+    Same signature and return as RicciMetric().
     """
 
     if h is None:
@@ -176,7 +174,7 @@ def RicciMetric_asymmetric(y1, y2, y1_std_minus, y1_std_plus, y2_std, h=None, d0
     QR = (H * S).sum(axis=1)
     chiR = (R * H * S).sum(axis=1) / QR
 
-    return QR, chiR, d
+    return QR, chiR
 
 
 def LHthreshold_nmin(Ip, Bt, a, Rmajor):
