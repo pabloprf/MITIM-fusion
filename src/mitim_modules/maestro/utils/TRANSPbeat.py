@@ -707,7 +707,7 @@ class transp_beat(beat):
             else:
                 print(f'\t\t- Keeping auxiliary power from TRANSP output')
 
-    def _rescale_aux_to_frozen(self, p_frozen, ekey, ikey, totkey, prescribed_at_output=False):
+    def _rescale_aux_to_frozen(self, p_frozen, key, totkey, prescribed_at_output=False):
         '''
         Renormalize an auxiliary-power channel pair (electron ekey + ion ikey) so its volume
         integral equals the frozen engineering total (totkey). This preserves the SHAPE that
@@ -737,26 +737,22 @@ class transp_beat(beat):
         if out_total < 0 or abs(out_total) <= 5e-6:
             if prescribed_at_output:
                 # gaussian_sources: ~0 genuinely means no prescribed power in this channel -> zero it.
-                self.profiles_output.profiles[ekey] = np.zeros_like(self.profiles_output.profiles[ekey])
-                self.profiles_output.profiles[ikey] = np.zeros_like(self.profiles_output.profiles[ikey])
+                self.profiles_output.profiles[key] = np.zeros_like(self.profiles_output.profiles[key])
             else:
                 # ICRH/NBI: a zero output cannot be scaled up, but the frozen engineering power must
                 # survive. Insert the frozen deposition shape, then renormalize it to the frozen total
                 # over THIS beat's geometry, so the engineering power is preserved exactly and does not
                 # drift across repeated soft beats. The frozen shape is nonzero, so this divide is safe.
-                self.profiles_output.profiles[ekey] = p_frozen.profiles[ekey].copy()
-                self.profiles_output.profiles[ikey] = p_frozen.profiles[ikey].copy()
+                self.profiles_output.profiles[key] = p_frozen.profiles[key].copy()
                 self.profiles_output.derive_quantities()
                 inserted_total = self.profiles_output.derived[totkey][-1]
                 if abs(inserted_total) > 5e-6:
                     r = p_frozen.derived[totkey][-1] / inserted_total
-                    self.profiles_output.profiles[ekey] *= r
-                    self.profiles_output.profiles[ikey] *= r
+                    self.profiles_output.profiles[key] *= r
             return
 
         ratio = p_frozen.derived[totkey][-1] / out_total
-        self.profiles_output.profiles[ekey] *= ratio
-        self.profiles_output.profiles[ikey] *= ratio
+        self.profiles_output.profiles[key] *= ratio
 
     def merge_parameters(self):
         '''
@@ -840,13 +836,17 @@ class transp_beat(beat):
                 print('\t\t\t* gaussian_sources, first beat: NOT rescaling auxiliary power to frozen (it defines the reference)')
             else:
                 print('\t\t\t* gaussian_sources: rescaling auxiliary power to frozen')
-                self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
-                self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qrfi(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
         else:
             # ICRH / NBI
             print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
-            self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qrfi(MW/m^3)',   'qRF_MW')
-            self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'qBEAM_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qRF_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qrfi(MW/m^3)',   'qRF_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW')
 
         # --------------------------------------------------------------------------------------------
 

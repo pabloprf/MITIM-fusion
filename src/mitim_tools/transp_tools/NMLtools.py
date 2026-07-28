@@ -170,13 +170,6 @@ class transp_nml:
         self.gridsMHD = transp_params.get("gridsMHD",[151,127])
         self.MCparticles = transp_params.get("MCparticles",1e6)
         self.useNUBEAMforAlphas = transp_params.get("useNUBEAMforAlphas",True)
-        # Source-power threshold [W] to engage the fusion-product MC (TRANSP plfhe4).
-        # The TRANSP default (100 W) engages the MC on a negligible alpha population;
-        # raising it (e.g. 1e6) postpones alpha tracking until the source is significant --
-        # guards startup transitions, where MC on a tiny alpha source atop morphing
-        # profiles can produce a fast-ion energy runaway (?btfusn_intrp floods -> MPI_ABORT).
-        # float() guards YAML's unsigned-exponent gotcha ("1.0e2" parses as a string)
-        self.plfhe4 = float(transp_params.get("plfhe4", 1.0e2))
         self.toric_ntheta = transp_params.get("toric_ntheta",128)  # 128 int(2**7), default: 64
         self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
 
