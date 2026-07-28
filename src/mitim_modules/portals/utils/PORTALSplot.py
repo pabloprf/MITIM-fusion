@@ -2168,6 +2168,8 @@ def _read_pooled_samples(folder_execution, power_it, tar_map):
         return {}
 
     out = {}
+    from_ball = payload.get("fluxes_samples_from_ball")
+    out["_from_ball"] = np.array(from_ball, dtype=bool) if from_ball is not None else None
     for var, (tar_key, _) in tar_map.items():
         gb_key = f"{var}GB"
         real = power_it.plasma.get(f"{tar_key}_tr_turb")
@@ -2256,6 +2258,7 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
             # whole branches of a bimodal cloud and makes the plotted sigma disagree with the
             # sigma the Ricci metric and the flux bands used.
             pooled = _read_pooled_samples(self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder", power_it, tar_map)
+            from_ball = pooled.pop("_from_ball", None)
 
             for i, (_, var, label) in enumerate(varss):
                 ax = axs[i]
@@ -2280,10 +2283,18 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
                 # the scan samples of different radii are unrelated stencils.
                 for ir in range(len(rhos)):
                     c = colors_rho[ir]
-                    samples = y_cloud[ir, :]
-                    samples = samples[~np.isnan(samples)]   # pooled arrays are NaN-padded
+                    row = y_cloud[ir, :]
+                    finite = ~np.isnan(row)                # pooled arrays are NaN-padded
+                    samples = row[finite]
 
-                    ax.plot(np.full(samples.shape, rhos[ir]), samples, 'o', ms=3, alpha=0.5, color=c, zorder=3)
+                    # Split the cloud by provenance: filled = this evaluation's one-at-a-time
+                    # scan, open = reused from the delta ball. The statistics use both (ball
+                    # points are inside the same delta ball), but seeing which is which matters:
+                    # a branch populated ONLY by ball points is a multi-dimensional combination
+                    # that a one-at-a-time stencil cannot reach.
+                    ball = from_ball[finite] if (from_ball is not None and from_ball.shape[0] == row.shape[0]) else np.zeros(samples.shape, bool)
+                    ax.plot(np.full(samples[~ball].shape, rhos[ir]), samples[~ball], 'o', ms=3, alpha=0.55, color=c, zorder=3)
+                    ax.plot(np.full(samples[ball].shape, rhos[ir]), samples[ball], 'o', ms=4, mfc='none', mew=0.9, alpha=0.85, color=c, zorder=3)
                     ax.plot(rhos[ir], y[i_base, ir], 'x', color='k', ms=7, zorder=6)
 
                     mu, sd = np.nanmean(samples), np.nanstd(samples)
@@ -2310,7 +2321,8 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
 
                 if i == 0:
                     handles = [
-                        Line2D([], [], marker='o', ls='', color='gray', ms=3, alpha=0.7, label='scan members'),
+                        Line2D([], [], marker='o', ls='', color='gray', ms=3, alpha=0.7, label='scan members (this evaluation)'),
+                        Line2D([], [], marker='o', ls='', color='gray', ms=4, mfc='none', mew=0.9, label='reused from $\\delta$-ball'),
                         Line2D([], [], marker='x', ls='', color='k', ms=7, label='base evaluation'),
                         Line2D([], [], ls='-', color='gray', label='Gaussian(mean, $\\sigma$); mean $\\blacksquare$'),
                         Line2D([], [], ls='--', color='gray', label='split-normal(median, $\\sigma_-$, $\\sigma_+$); median $\\blacktriangle$'),

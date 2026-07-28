@@ -108,6 +108,11 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                 json_dict['fluxes_stds_plus'] = fluxes_stds_plus
             if fluxes_samples:
                 json_dict['fluxes_samples'] = fluxes_samples
+                # Per-sample provenance: False = this evaluation's one-at-a-time scan,
+                # True = reused from the delta ball (reuse_scan_ball). Diagnostics only.
+                from_ball = self.__dict__.get("turb_samples_from_ball", None)
+                if from_ball is not None:
+                    json_dict['fluxes_samples_from_ball'] = np.asarray(from_ball).astype(bool).tolist()
 
             json.dump(json_dict, f, indent=4)
 
@@ -453,6 +458,9 @@ class power_transport:
             json_dict['fluxes_stds_plus'] = fluxes_stds_plus
         if fluxes_samples:
             json_dict['fluxes_samples'] = fluxes_samples
+            from_ball = self.__dict__.get("turb_samples_from_ball", None)
+            if from_ball is not None:
+                json_dict['fluxes_samples_from_ball'] = np.asarray(from_ball).astype(bool).tolist()
 
         with open(sub_folder / file_name, 'w') as f:
             json.dump(json_dict, f, indent=4)

@@ -181,6 +181,7 @@ class tglf_model:
                 setattr(self, f"{var}GB_turb_stds_minus", Flux_extras["stds_minus"][i] if Flux_extras is not None else Flux_std[i])
                 setattr(self, f"{var}GB_turb_stds_plus",  Flux_extras["stds_plus"][i]  if Flux_extras is not None else Flux_std[i])
                 setattr(self, f"{var}GB_turb_samples",    Flux_extras["samples"][i]    if Flux_extras is not None else None)
+            self.turb_samples_from_ball = Flux_extras["samples_from_ball"] if Flux_extras is not None else None
 
         return tglf
 
@@ -343,6 +344,7 @@ class tglf_model:
                 setattr(self, f"{var}GB_turb_stds_minus", Flux_extras["stds_minus"][i] if Flux_extras is not None else Flux_std[i])
                 setattr(self, f"{var}GB_turb_stds_plus",  Flux_extras["stds_plus"][i]  if Flux_extras is not None else Flux_std[i])
                 setattr(self, f"{var}GB_turb_samples",    Flux_extras["samples"][i]    if Flux_extras is not None else None)
+            self.turb_samples_from_ball = Flux_extras["samples_from_ball"] if Flux_extras is not None else None
 
         return tglf
 
@@ -589,8 +591,9 @@ def _aggregate_scan_fluxes(
         Mt = np.append(np.atleast_2d(Flux_base[4]).T, Mt, axis=1)
         S = np.append(np.atleast_2d(Flux_base[5]).T, S, axis=1)
 
+    samples_from_ball = np.zeros(Qe.shape[1], dtype=bool)
     if reuse_scan_ball_file is not None:
-        Qe, Qi, Ge, GZ, Mt, S = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
+        Qe, Qi, Ge, GZ, Mt, S, samples_from_ball = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
 
     def calculate_mean_std(Q):
         return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
@@ -613,6 +616,10 @@ def _aggregate_scan_fluxes(
         "stds_minus": Flux_std_minus,
         "stds_plus": Flux_std_plus,
         "samples": Flux_samples,
+        # Per-sample provenance (False = this evaluation's one-at-a-time scan, True = reused
+        # from the delta ball). Diagnostics only: the reduction treats both identically, since
+        # ball points are, by construction, inside the same delta ball.
+        "samples_from_ball": samples_from_ball,
     }
 
     return Flux_value, Flux_std, Flux_extras
@@ -843,6 +850,8 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
             input_ball = np.array([])
             output_ball = np.array([])
 
+    n_orig = Qe_orig.shape[1]
+
     if rho_ball.shape[0] != 0:
 
         precision_check = 1E-5 # I needed to add a small number to avoid numerical issues because TGLF input files have limited precision
@@ -910,17 +919,23 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
             unique_arrays = tuple(arr[:, unique_notnan_indeces] for arr in arrays)
             duplicate_arrays = tuple(arr[:, duplicate_indices] for arr in arrays)
             
-            return unique_arrays, duplicate_arrays
+            return unique_arrays, duplicate_arrays, np.array(unique_notnan_indeces, dtype=int)
         
-        unique_results, duplicate_results = remove_duplicate_cases(Qe, Qi, Ge, GZ, Mt, S)
+        unique_results, duplicate_results, kept_indices = remove_duplicate_cases(Qe, Qi, Ge, GZ, Mt, S)
         
         Qe, Qi, Ge, GZ, Mt, S = unique_results
+
+        # Provenance of each surviving column: False = this evaluation's one-at-a-time scan,
+        # True = reused from the delta ball. Diagnostics only (plots), never used in the
+        # statistics -- ball points are legitimate members of the local cloud.
+        from_ball = kept_indices >= n_orig
         
         print(f"\t\t>>> Flux arrays have shape {Qe.shape} after finding unique points")
 
     else:
 
         Qe, Qi, Ge, GZ, Mt, S = Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig
+        from_ball = np.zeros(n_orig, dtype=bool)
 
     # --------------------------------------------------------------------------------------------------------
     # Save new ball
@@ -937,4 +952,4 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
              input_keys=np.array(input_params_keys))
     print(f"\t- Saved updated ball with {input_params.shape[-1]} points to {IOtools.clipstr(file)}", typeMsg="i")
     
-    return Qe, Qi, Ge, GZ, Mt, S
+    return Qe, Qi, Ge, GZ, Mt, S, from_ball
