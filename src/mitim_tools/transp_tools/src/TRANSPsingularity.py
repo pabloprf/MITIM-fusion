@@ -5,7 +5,7 @@ import datetime
 import time
 import numpy as np
 from mitim_tools.transp_tools import TRANSPtools, NMLtools
-from mitim_tools.misc_tools import IOtools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, FARMINGtools, LOGtools
 from mitim_tools.misc_tools import CONFIGread
 from mitim_tools.transp_tools.utils import TRANSPhelpers, TRANSPdebug
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -697,7 +697,23 @@ rsync -av{extra_commands} {folderTRANSP}/* . &&  singularity run {txt_bind}--app
         else:
             print(f"Singularity look failed (.CDF file not found), trying again ({i+1}/3)", typeMsg="w")
     if not (folderWork / f"{runid}.CDF").exists():
-        print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on", typeMsg="q")
+        # If the tr.log made it back, diagnose the actual cause of death so the batch
+        # error carries it. Previously this was only a typeMsg='q' prompt, which in
+        # batch surfaced as a contentless InteractiveTerminalError.
+        diag = ""
+        log_file = folderWork / f"{runid}tr.log"
+        if log_file.exists():
+            try:
+                diag = " Likely cause from the log: " + TRANSPdebug.diagnose_transp_failure(
+                    log_file.read_text(errors="ignore"), logname=log_file.name)["message"]
+            except Exception:
+                pass
+        try:
+            print(f"Singularity look failed (.CDF file not found) after {times_retry_look} attempts, please check what's going on.{diag}", typeMsg="q")
+        except LOGtools.InteractiveTerminalError:
+            raise Exception(
+                f"[MITIM] TRANSP look retrieved no {runid}.CDF after {times_retry_look} "
+                f"attempts — the run likely died mid-step.{diag}")
 
 
 def organizeACfiles(

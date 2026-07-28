@@ -57,6 +57,7 @@ _SIGNAL_GLOSS = {
 }
 
 _RE_SIGNAL = re.compile(r"Program received signal (\w+)")
+_RE_MPI_ABORT = re.compile(r"MPI_ABORT CALL|MPI_ABORT was invoked")
 _RE_TA     = re.compile(r"TA=\s*([0-9.eE+-]+)")
 _RE_NSTEP  = re.compile(r"NSTEP[= ]+\s*(\d+)")
 _RE_CURV   = re.compile(r"curvature ratio.*?is:\s*([0-9.eE+-]+)")
@@ -219,7 +220,8 @@ def diagnose_transp_failure(log, logname=None):
     -------
     dict with keys:
         category : one of 'container_rdma_launch', 'container_namespace_launch',
-                   'physics_signal', 'controlled_abort', 'hard_abort', 'unclassified'
+                   'physics_signal', 'controlled_abort', 'mpi_abort', 'hard_abort',
+                   'unclassified'
         message  : the human-readable diagnosis (single paragraph)
         plus category-specific fields (signal, reason, sim_time, nstep, context, node).
     """
@@ -228,7 +230,12 @@ def diagnose_transp_failure(log, logname=None):
     tag = f" See {logname}." if logname else ""
 
     # 1) Infrastructure: IB / RDMA container-launch failure ------------------
-    if any(s in text for s in RDMA_LAUNCH_ERRORS):
+    # The RDMA_LAUNCH_ERRORS strings ALSO appear as benign OpenMPI startup noise in
+    # logs of runs that complete normally (verified against finished production logs
+    # with 20+ "Failed to modify UD QP" hits), so they only diagnose a LAUNCH failure
+    # when the run never advanced in simulated time. Any TA= progress means TRANSP
+    # ran: fall through to the physics checks for the true cause of death.
+    if any(s in text for s in RDMA_LAUNCH_ERRORS) and not _RE_TA.search(text):
         node = _last_match(lines, _RE_NODE) or _last_match(lines, _RE_NODE2)
         where = f" on {node}" if node else ""
         msg = (f"the MPI layer could not initialize the InfiniBand device (mlx5){where}: "
@@ -293,13 +300,39 @@ def diagnose_transp_failure(log, logname=None):
         return {"category": "controlled_abort", "message": msg, "reason": reason,
                 "sim_time": sim_time, "nstep": nstep, "context": context}
 
-    # 5) Other fatal TRANSP aborts -------------------------------------------
+    # 5) MPI-side abort (a parallel component, e.g. NUBEAM, called MPI_ABORT) ----
+    # No signal or ERRSET line in this mode -- the child rank aborts the communicator
+    # directly, so without this branch it came out "unclassified" (or worse, was
+    # misattributed by branch 1 when benign IB noise was present in the log).
+    idx = next((i for i, ln in enumerate(lines) if _RE_MPI_ABORT.search(ln)), None)
+    if idx is not None:
+        pre = lines[max(0, idx - _PRE_TRAP_WINDOW):idx]
+        # warning floods (e.g. ?btfusn_intrp) can push TA= out of the pre window
+        sim_time = _last_match(lines[:idx], _RE_TA)
+        nstep = _last_match(lines[:idx], _RE_NSTEP)
+        context = _classify_context(pre)
+        when = f" at t≈{float(sim_time):.4g}s" if sim_time else ""
+        msg = f"a parallel TRANSP component aborted the run (MPI_ABORT){when}, during {context}."
+        warns = _routine_errors(pre)
+        if warns:
+            msg += f" Preceded by routine warnings: {warns}."
+        if "?btfusn_intrp" in text:
+            msg += (" The ?btfusn_intrp warnings flag fast-ion interaction energies above the "
+                    "beam-target rate-table ceiling — a fast-ion energy runaway (garbage fast-ion "
+                    "kinematics), typically downstream of a profile pathology "
+                    "(look for '?ncsmoo1 ... negative value at the center' upstream).")
+        msg += (" Driven by the physics inputs (not the node), so a requeue almost certainly "
+                "reproduces it." + tag)
+        return {"category": "mpi_abort", "message": msg,
+                "sim_time": sim_time, "nstep": nstep, "context": context}
+
+    # 6) Other fatal TRANSP aborts -------------------------------------------
     for sig in HARD_ABORT_SIGNATURES:
         if sig in text:
             msg = f"TRANSP aborted ('{sig.strip()}'); see the log tail." + tag
             return {"category": "hard_abort", "message": msg, "signature": sig}
 
-    # 6) Unclassified --------------------------------------------------------
+    # 7) Unclassified --------------------------------------------------------
     tail = "\n".join(lines[-15:]).strip()
     msg = ("terminated without a NORMAL EXIT and with no recognized error signature. "
            f"Last log lines below.{tag}\n{tail}")
