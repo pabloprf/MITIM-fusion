@@ -164,6 +164,10 @@ class transp_nml:
         self.gridsMHD = transp_params.get("gridsMHD",[151,127])
         self.MCparticles = transp_params.get("MCparticles",1e6)
         self.useNUBEAMforAlphas = transp_params.get("useNUBEAMforAlphas",True)
+        # Source-power threshold [W] to engage the fusion-product MC (TRANSP plfhe4).
+        # The TRANSP default (100 W) engages the MC on a negligible alpha population;
+        # raising it postpones alpha tracking until the source is significant.
+        self.plfhe4 = transp_params.get("plfhe4", 1.0e2)
         self.toric_ntheta = transp_params.get("toric_ntheta",128)  # 128 int(2**7), default: 64
         self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
 
@@ -857,7 +861,7 @@ class transp_nml:
             "!----- Reactions",
             "",
             f"nlfhe4  = {useNUBEAM}       ! Turn on MC slowing-down of He4 from D+T reactions",
-            "plfhe4  = 1.0E2   ! Source power threshold to run MC (in W)",
+            f"plfhe4  = {self.plfhe4:.1E}   ! Source power threshold to run MC (in W)",
             "",
             "nlfst   = F       ! Turn on MC slowing-down of T from D+D reactions (D+D=T+p)",
             "plfst   = 1.0E0	! Source power threshold to run MC NLFST",
