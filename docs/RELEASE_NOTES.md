@@ -28,6 +28,12 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **MAESTRO EPED beat: teped-lowering retries now also fire on NaN returns**: full EPED can
+    complete but return NaN when the marginal point falls outside the explored `TEPED_BOUND`
+    window (e.g. low-shaping/low-Ip cases unstable already at the window floor); this bypassed the
+    retry loop and killed the beat on the first attempt. Such returns now get the same
+    floor-lowering retries as the exception path, and the final error reports the EPED inputs.
+
 *   🐛 **MAESTRO frozen TRANSP boundary crash on the 2nd TRANSP beat**: reusing the frozen boundary
     disabled the MXH projection for *all* time slices, so the machine-initialization curve (different
     point count) made `write_ufiles` fail with a ragged-array `ValueError` in any chain with two or
