@@ -697,10 +697,11 @@ class transp_beat(beat):
             force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
 
 
-        for key, pkey, ikey in zip(['Pe','Pi'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)'], ['qRFe_MW', 'qRFi_MW']):
+        for key, pkey, ikey in zip(['Pe','Pi', 'Ge'], ['qrfe(MW/m^3)', 'qrfi(MW/m^3)','qpar_beam(1/m^3/s)'], ['qRFe_MW', 'qRFi_MW', 'ge_10E20']):
 
             if force_auxiliary_heating_at_output[key] is not None:
-                print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} MW of power')
+                unit = "MW of power" if key in ('Pe', 'Pi') else "* 1e20 particles/(m^3 s)"
+                print(f'\t\t- Adding {key} = {force_auxiliary_heating_at_output[key][1]} {unit}')
                 self.profiles_output.profiles[pkey] = force_auxiliary_heating_at_output[key][0](self.profiles_output.profiles['rho(-)'])
                 self.profiles_output.derive_quantities()
                 self.profiles_output.profiles[pkey] = self.profiles_output.profiles[pkey] *  force_auxiliary_heating_at_output[key][1]/self.profiles_output.derived[ikey][-1]
@@ -839,14 +840,14 @@ class transp_beat(beat):
                 self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
                 self._rescale_aux_to_frozen(p_frozen, 'qrfi(MW/m^3)',   'qRF_MW',   prescribed_at_output=True)
                 self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
-                self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
+                self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qBEAM_MW', prescribed_at_output=True)
         else:
             # ICRH / NBI
             print('\t\t\t* Bringing total power of frozen plasma state to new plasma state (scaling the profile)')
             self._rescale_aux_to_frozen(p_frozen, 'qrfe(MW/m^3)',   'qRF_MW')
             self._rescale_aux_to_frozen(p_frozen, 'qrfi(MW/m^3)',   'qRF_MW')
             self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW')
-            self._rescale_aux_to_frozen(p_frozen, 'qbeami(MW/m^3)', 'qBEAM_MW')
+            self._rescale_aux_to_frozen(p_frozen, 'qbeame(MW/m^3)', 'qBEAM_MW')
 
         # --------------------------------------------------------------------------------------------
 
@@ -1282,6 +1283,7 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
         Pe = maestro_namelist["plasma"]["heating"]["parameters"]["Pe"]
         Pi = maestro_namelist["plasma"]["heating"]["parameters"]["Pi"]
         nu_source = maestro_namelist["plasma"]["heating"]["parameters"]["nu_source"]
+        particles_source = maestro_namelist["plasma"]["heating"]["parameters"]["particles_source"]    # in units of 1e20 particles/(m^3 s)
 
         def P_auxiliary(rhotor):
             _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
@@ -1291,9 +1293,18 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
             'Pe': [P_auxiliary, Pe],
             'Pi': [P_auxiliary, Pi],
             }
-        
+        def G_auxiliary(rhotor):
+            _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
+            return y
+    
+        force_auxiliary_heating_at_output = {
+            'Pe': [P_auxiliary, Pe],
+            'Pi': [P_auxiliary, Pi],
+            'Ge': [G_auxiliary, particles_source]
+            }
+   
     else:
-        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None}
+        force_auxiliary_heating_at_output = {'Pe': None, 'Pi': None, 'Ge': None}
         
     run_namelist['mpisettings'] = {
         "trmpi": trmpi, 
