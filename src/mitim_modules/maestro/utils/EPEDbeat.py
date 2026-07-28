@@ -17,8 +17,16 @@ from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
 from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
-# <> Function to interpolate a curve <> 
+# <> Function to interpolate a curve <>
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
+
+def _eped_result_is_valid(ptop_kPa, wtop_psipol):
+    '''NaNs compare unequal to everything (including themselves), so do not use == np.nan'''
+    return (
+        ptop_kPa is not None and wtop_psipol is not None
+        and np.isfinite(ptop_kPa) and np.isfinite(wtop_psipol)
+        and ptop_kPa >= 0 and wtop_psipol >= 0
+    )
 
 class eped_beat(beat):
 
@@ -518,7 +526,21 @@ class eped_beat(beat):
 
                         try:
                             ptop_kPa, wtop_psipol = self._run_full_eped(self.folder,*inputs_to_eped, eped_params_override=eped_params_override if eped_params_override else None, nproc_per_run=nproc_per_run, cold_start=cold_start)
-                            break
+                            if _eped_result_is_valid(ptop_kPa, wtop_psipol):
+                                break
+                            # EPED ran to completion but the postprocessing found no G-crossing
+                            # strictly INSIDE the explored TEPED_BOUND window and returned NaN
+                            # (e.g. marginal point below the window floor -- unstable already at
+                            # the first sampled teped). Same physics situation as the
+                            # no-stable-solution exception below, so give it the same
+                            # teped-lowering retries instead of dying on the first attempt.
+                            if attempt == self.teped_retries:
+                                raise ValueError(
+                                    f'[MITIM] EPED failed to return valid results (ptop_kPa={ptop_kPa}, '
+                                    f'wtop_psipol={wtop_psipol}) after {self.teped_retries} teped-lowering '
+                                    f'retries, with inputs [{self._eped_inputs_summary()}], cannot continue '
+                                    'this simulation')
+                            print(f'\t- EPED returned no valid solution (ptop_kPa={ptop_kPa}, wtop_psipol={wtop_psipol}) within the explored teped window, with inputs [{self._eped_inputs_summary()}]', typeMsg='w')
                         except LOGtools.InteractiveTerminalError:
                             # EPED returned no results. Distinguish a genuine physics
                             # no-solution (retry by lowering the teped floor) from the case
@@ -541,24 +563,16 @@ class eped_beat(beat):
                         store_scan = False
                         print('\t- Warning: store_scan requires a NN. Since it is unable, disabling store_scan', typeMsg='w')
             
-            # Note: NaNs compare unequal to everything (including themselves), so do not use `== np.nan`.
-            # Treat NaN/inf as invalid results.
-            if (
-                (ptop_kPa is None)
-                or (wtop_psipol is None)
-                or (not np.isfinite(ptop_kPa))
-                or (not np.isfinite(wtop_psipol))
-                or (ptop_kPa < 0)
-                or (wtop_psipol < 0)
-            ):
-                raise ValueError('[MITIM] EPED failed to return valid results, cannot continue this simulation')
-            
+            # Backstop for the paths that bypass the retry loop (EPED-NN, corrections_set)
+            if not _eped_result_is_valid(ptop_kPa, wtop_psipol):
+                raise ValueError(
+                    f'[MITIM] EPED failed to return valid results (ptop_kPa={ptop_kPa}, '
+                    f'wtop_psipol={wtop_psipol}) with inputs [{self._eped_inputs_summary()}], '
+                    'cannot continue this simulation')
+
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
-
-            if (not np.isfinite(ptop_kPa)) or (not np.isfinite(wtop_psipol)):
-                raise ValueError('[MITIM] EPED returned NaN/inf results, cannot continue this simulation')
 
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')

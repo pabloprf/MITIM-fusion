@@ -6,6 +6,7 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from IPython import embed
+from mitim_modules.powertorch.utils import CALCtools
 
 def element_to_lengyel(symbol):
     
@@ -23,7 +24,7 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, **kwargs):
+    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
 
         self.rhotop = rhotop
 
@@ -45,6 +46,13 @@ class lengyel_beat(beat):
         if not (0.0 <= zeff_relaxation_factor <= 1.0):
             raise ValueError(f"[MAESTRO][LENGYELbeat] zeff_relaxation_factor must be in [0, 1], got {zeff_relaxation_factor}")
         self.zeff_relaxation_factor = zeff_relaxation_factor
+
+        # Hard floor on the vol-avg Zeff after this beat (applied in run(), below, after the relaxation).
+        # If the seed-impurity update (possibly relaxed) would leave the vol-avg Zeff below this value,
+        # the seed-impurity density is scaled up just enough to meet the floor. null (default) means no
+        # floor is applied. Set this to plasma.species.Zeff (the initialization Zeff in the MAESTRO
+        # namelist) to prevent the Lengyel beat from ever dragging Zeff below the starting point.
+        self.zeff_floor = zeff_floor
 
         if radas_dir is not None:
             radas_dir_env = radas_dir
@@ -166,6 +174,11 @@ class lengyel_beat(beat):
         ne = p.profiles['ne(10^19/m^3)']
         Zeff_before = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
 
+        # Contribution to Zeff from every species except the seed impurity; used by both the relaxation and
+        # the floor below. Stays constant through _modify_impurity_density (only slot i_Z changes).
+        other = np.arange(p.profiles['z'].shape[0]) != i_Z
+        z2ni_other = np.sum(p.profiles['ni(10^19/m^3)'][:, other] * p.profiles['z'][other] ** 2, axis=1)
+
         _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
 
         # Relax the Zeff update: the Zeff profile actually realized is a weighted average of the profile
@@ -174,11 +187,6 @@ class lengyel_beat(beat):
         # previous unrelaxed behavior exactly. See zeff_relaxation_factor in prepare().
         w = self.zeff_relaxation_factor
         if w < 1.0:
-            # Contribution to Zeff from every species except the seed impurity (unaffected by this beat, so
-            # identical before/after the call above)
-            other = np.arange(p.profiles['z'].shape[0]) != i_Z
-            z2ni_other = np.sum(p.profiles['ni(10^19/m^3)'][:, other] * p.profiles['z'][other] ** 2, axis=1)
-
             Zeff_after = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / ne
             Zeff_relaxed = w * Zeff_after + (1 - w) * Zeff_before
 
@@ -189,8 +197,38 @@ class lengyel_beat(beat):
             fZ_top = float(p.profiles['ni(10^19/m^3)'][0, i_Z] / ne[0])
             print(f"\t\t* Applying Zeff relaxation factor {w:.2f}: Zeff profile is {w:.2f}*<full Lengyel update> + {1-w:.2f}*<profile input into this beat> (resulting core '{impurity_symbol}' concentration: {fZ_top:.1e})")
 
-        # Enforce quasineutrality
+
+        # Apply a hard floor on the vol-avg Zeff after this beat (see zeff_floor in prepare()). If the
+        # seed-impurity update (possibly relaxed) would leave the vol-avg Zeff below this value, the seed-impurity density is scaled up just enough to meet the floor.
+        if self.zeff_floor is not None:
+            Zeff = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / p.profiles['ne(10^19/m^3)']
+            Zeff_vol = CALCtools.volume_integration(Zeff, p.derived["r"], p.derived["volp_geo"])[-1] / p.derived["volume"]
+            max_iter = 10
+            iterations = 0
+            while Zeff_vol < self.zeff_floor and iterations < max_iter:
+                iterations += 1
+                if Zeff_vol <= 0 or np.isclose(Zeff_vol, 0.0):
+                    print(f"\t\t! Invalid vol-avg Zeff ({Zeff_vol:.3g}); aborting Zeff-floor loop")
+                    break
+                scale_factor = self.zeff_floor / Zeff_vol
+                fZ_top = float(p.profiles['ni(10^19/m^3)'][0, i_Z] * scale_factor / ne[0])
+                
+                # modify impurity in-place on the profile object `p` (pass `p` as first arg)
+                _modify_impurity_density(p, impurity_symbol, impurity_Z, impurity_A, fZ_sep, fZ_top, self.rhotop, i_Z = i_Z, edge_profile=self.seed_impurity_edge_profile)
+                p.enforce_quasineutrality()
+                print(f'Enforced Quasineutrality before recalculating Zeff_vol. Zeff_vol in mitim state object is now {p.derived["Zeff_vol"]}')
+                
+                # Recompute Zeff and its volume average after the change
+                Zeff = np.sum(p.profiles['ni(10^19/m^3)'] * p.profiles['z'] ** 2, axis=1) / p.profiles['ne(10^19/m^3)']
+                Zeff_vol = CALCtools.volume_integration(Zeff, p.derived["r"], p.derived["volp_geo"])[-1] / p.derived["volume"]
+                print(f"\t\t* Applied Zeff floor, manually calculated Zeff_vol now {Zeff_vol:.2f} (iteration {iterations})")
+            
+            if Zeff_vol < self.zeff_floor:
+                print(f"\t\t! Warning: Zeff floor not reached after {max_iter} iterations: vol-avg Zeff {Zeff_vol:.2f} < floor {self.zeff_floor:.2f}")
+
+        # Quasineutrality
         p.enforce_quasineutrality()
+        print(f'Quasineutrality enforced: Zeff_vol is now {p.derived["Zeff_vol"]}')
         
         # Check if the plasma just had too much impurity
         if p.profiles['ni(10^19/m^3)'].min() < 0:

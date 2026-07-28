@@ -66,6 +66,66 @@ def check_unrecognized_namelist_keys(maestro_namelist):
     return unknown
 
 
+def estimate_BetaN_from_scaling(betan_string, parameters_initialize, parameters_engineering, geometry, maestro_namelist):
+    '''
+    Resolve BetaN given as a confinement-quality string ("H98y2" or "H89p", optionally with an
+    explicit target like "H98y2=1.1") into a numeric BetaN, by inverting the corresponding tau_E
+    scaling with the engineering parameters. BetaN is an outcome, not an engineering knob: a fixed
+    guess (e.g. 2.0) becomes unreachable at low Ip and breaks the initialization, whereas a fixed
+    H-factor scans gracefully. Loss power here is Paux only (alphas/ohmic unknown at this stage),
+    so the estimate is biased low on purpose.
+    '''
+    name, _, value = betan_string.partition("=")
+    # Default targets chosen to correspond to standard H-mode confinement in each scaling
+    scalings = {"h98y2": ("tau98y2", 1.0), "h98": ("tau98y2", 1.0), "h89p": ("tau89p", 2.0), "h89": ("tau89p", 2.0)}
+    if name.strip().lower() not in scalings:
+        raise Exception(f'[MAESTRO] BetaN string "{betan_string}" not recognized (use "H98y2" or "H89p", optionally e.g. "H98y2=1.1")')
+    tau_name, H = scalings[name.strip().lower()]
+    if value:
+        H = float(value)
+
+    Ip_MA, B_T = parameters_engineering['Ip_MA'], parameters_engineering['B_T']
+
+    # Geometry from the separatrix parameterization, or from the geqdsk boundary otherwise
+    if 'R' in geometry:
+        R, a, kappa = geometry['R'], geometry['a'], geometry['kappa_sep']
+    elif 'geqdsk_file' in geometry:
+        from mitim_tools.gs_tools import GEQtools
+        g_eq = GEQtools.MITIMgeqdsk(geometry['geqdsk_file'])
+        Rb, Zb = np.array(g_eq.g.raw["rbbbs"]), np.array(g_eq.g.raw["zbbbs"])
+        R, a = (np.nanmax(Rb) + np.nanmin(Rb)) / 2, (np.nanmax(Rb) - np.nanmin(Rb)) / 2
+        kappa = (np.nanmax(Zb) - np.nanmin(Zb)) / (2 * a)
+        if Ip_MA is None:
+            Ip_MA = abs(float(g_eq.g.raw["current"])) * 1E-6
+        if B_T is None:
+            B_T = abs(float(g_eq.g.raw["bcentr"]))
+    else:
+        raise Exception('[MAESTRO] BetaN estimation from a confinement scaling requires separatrix, freegs, fibe or geqdsk initialization geometry')
+
+    # Line-averaged density from neped and the density-peaking target (nu_ne = ne(0.2)/<ne>_vol),
+    # assuming a profile linear in rho: n0 = 2*nu*neped/(3-nu), nbar = (n0 + neped)/2
+    nu_ne = min(parameters_initialize.get("nu_ne", None) or 1.3, 2.5)
+    neped_20 = parameters_engineering['neped_20']
+    n0_20 = 2 * nu_ne * neped_20 / (3 - nu_ne)
+    nbar_20 = (n0_20 + neped_20) / 2
+
+    mbg = np.mean([{'H': 1.0, 'D': 2.0, 'T': 3.0}[i] for i in maestro_namelist["plasma"]["species"]["fuel"]])
+
+    # kappa_sep slightly overestimates the areal elongation the scalings were fitted with (mild, ^0.78 at most)
+    BetaN = PLASMAtools.BetaN_from_confinement_scaling(
+        Ip_MA, R, kappa, nbar_20, a / R, B_T, mbg, parameters_engineering['Paux_MW'], H=H, scaling=tau_name)
+
+    print(f'[MAESTRO] BetaN = "{betan_string}" -> {tau_name} with H = {H:.2f}, using Ip = {Ip_MA:.2f} MA, Bt = {B_T:.2f} T, '
+          f'R = {R:.2f} m, a = {a:.2f} m, kappa = {kappa:.2f}, nbar_20 = {nbar_20:.2f}, M = {mbg:.1f}, Paux = {parameters_engineering["Paux_MW"]:.1f} MW '
+          f'(loss power = Paux only, no alphas): BetaN = {BetaN:.2f}', typeMsg='i')
+
+    BetaN_clipped = float(np.clip(BetaN, 0.5, 3.5))
+    if BetaN_clipped != BetaN:
+        print(f'\t- Estimated BetaN = {BetaN:.2f} outside sanity range [0.5, 3.5], clipping to {BetaN_clipped:.2f}', typeMsg='w')
+
+    return BetaN_clipped
+
+
 @mitim_timer('MAESTRO')
 def run_maestro_local(
         file_path,
@@ -183,7 +243,13 @@ def run_maestro_local(
     
     else:
         geometry = {}
-        
+
+    # BetaN given as a confinement-quality string -> resolve to a number here, so every
+    # downstream consumer (creator, equilibrium p0 seed, EPED) sees the same estimate
+    if isinstance(parameters_initialize.get("BetaN", None), str):
+        parameters_initialize["BetaN"] = estimate_BetaN_from_scaling(
+            parameters_initialize["BetaN"], parameters_initialize, parameters_engineering, geometry, maestro_namelist)
+
     # ---------------------------------------------------------------------------------------
     # Read user settings and default namelists for individual Beats
     # ---------------------------------------------------------------------------------------
