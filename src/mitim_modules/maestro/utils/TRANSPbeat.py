@@ -1289,10 +1289,6 @@ def preprocess_run_transp(run_namelist, maestro_namelist, cpus, cold_start):
             _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
             return y
     
-        force_auxiliary_heating_at_output = {
-            'Pe': [P_auxiliary, Pe],
-            'Pi': [P_auxiliary, Pi],
-            }
         def G_auxiliary(rhotor):
             _, y = PLASMAtools.parabolicProfile(Tbar=1.0,nu=nu_source,rho=rhotor,Tedge=0.0)
             return y
