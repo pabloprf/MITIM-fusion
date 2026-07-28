@@ -227,7 +227,11 @@ class beat_initializer:
             print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
             pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
             p0_MPa = pvol_MPa * 3.0
-            
+        # Otherwise, fall back to a fixed guess
+        else:
+            print('\t- No profiles or BetaN available, using default p0 guess of 1.0 MPa', typeMsg='w')
+            p0_MPa = 1.0
+
         return p0_MPa
             
 # --------------------------------------------------------------------------------------------
@@ -813,20 +817,8 @@ class initializer_from_fibe(initializer_from_geqdsk):
         **kwargs_geqdsk
         ):
 
-        p0 = p0_MPa * 1.0e6
         Ip = Ip_MA * 1.0e6
-        # If profiles exist, substitute the pressure and density guesses by something better (not perfect though, no ions)
-        if ('ne' in kwargs_geqdsk.get('profiles_insert',{})) and ('Te' in kwargs_geqdsk.get('profiles_insert',{})):
-            print('\t- Using ne profile instead of the ne0 guess')
-            ne0_20 = kwargs_geqdsk['profiles_insert']['ne'][0]
-            print('\t- Using Te profile for a better estimation of pressure, instead of the p0 guess')
-            Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][0]
-            p0 = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20)
-        # If betaN provided, use it to estimate the pressure
-        elif 'BetaN' in kwargs_geqdsk:
-            print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
-            pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
-            p0 = pvol_MPa * 3.0 * 1.0e6
+        p0 = self._produce_p0guess(kwargs_geqdsk, Ip_MA, a, B_T) * 1.0e6
 
         # Run FiBE to generate equilibrium
         from fibe import FixedBoundaryEquilibrium

@@ -1082,6 +1082,31 @@ def tau89p(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, tauE=None):
     return tau_scaling, tauE / tau_scaling if tauE is not None else None
 
 
+def BetaN_from_confinement_scaling(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, H=1.0, scaling="tau98y2"):
+    """
+    Invert an energy-confinement scaling into an engineering BetaN estimate:
+
+            W_MJ    = H * tau_scaling * ptot        (thermal stored energy)
+            <p>_MPa = (2/3) * W_MJ / V,  V = 2*pi^2 * Rmajor * a^2 * kappa
+            BetaN   = BetaN_engineering(<p>, Bt, a, Ip)
+
+    Arguments follow the tau98y2/tau89p signature (Ip in MA, ne line-averaged in 1E20,
+    ptot in MW, kappa areal). Notes:
+            - ptot should be the loss power; if only Paux is available (no alphas, no
+              ohmic, radiation not subtracted) the estimate is biased low, which is
+              the safe direction for an initialization seed.
+    """
+
+    tau_scaling = {"tau98y2": tau98y2, "tau89p": tau89p}[scaling](Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot)[0]
+
+    a = epsilon * Rmajor
+    W_MJ = H * tau_scaling * ptot
+    volume = 2 * np.pi**2 * Rmajor * a**2 * kappa
+    pvol_MPa = (2 / 3) * W_MJ / volume
+
+    return BetaN_engineering(pvol_MPa, Bt, a, Ip)
+
+
 def tau97L(Ip, Rmajor, kappa, ne, epsilon, Bt, mbg, ptot, tauE=None):
     """
     As specified in Kaye NF 1997:

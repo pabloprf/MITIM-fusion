@@ -18,6 +18,14 @@ DESCRIPTION
     geqdsk. Explicit values still take precedence; other initialization types are unchanged.
 
 
+*   💥 **MAESTRO BetaN can be a confinement-quality string**: `profiles_initialization.parameters.BetaN`
+    now accepts `"H98y2"` or `"H89p"` (optionally with a target, e.g. `"H98y2=1.1"`) instead of a fixed
+    number: an achievable BetaN is estimated by inverting the corresponding tau_E scaling with the
+    engineering parameters (loss power = Paux only, so deliberately on the low side), so engineering
+    scans (e.g. in Ip) no longer need a per-case guess that can break initialization when unreachable.
+    Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
+    (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
+
 ### Bug Fixes
 
 *   🐛 **MAESTRO frozen TRANSP boundary crash on the 2nd TRANSP beat**: reusing the frozen boundary
