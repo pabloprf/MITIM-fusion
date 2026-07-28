@@ -551,14 +551,18 @@ class eped_beat(beat):
                 or (ptop_kPa < 0)
                 or (wtop_psipol < 0)
             ):
-                raise ValueError('[MITIM] EPED failed to return valid results, cannot continue this simulation')
-            
+                # EPED returned without raising, but the result is unusable (None/NaN/negative
+                # ptop or width) -- e.g. no diamagnetically-stable solution. The exception
+                # paths above report the inputs; this one must too, otherwise a scan that
+                # dies here gives no clue which input combination was infeasible.
+                raise ValueError(
+                    f'[MITIM] EPED failed to return valid results (ptop_kPa={ptop_kPa}, '
+                    f'wtop_psipol={wtop_psipol}) with inputs [{self._eped_inputs_summary()}], '
+                    'cannot continue this simulation')
+
             print('\t- Raw EPED results:')
             print(f'\t\t- ptop_kPa: {ptop_kPa:.4f}')
             print(f'\t\t- wtop_psipol: {wtop_psipol:.4f}')
-
-            if (not np.isfinite(ptop_kPa)) or (not np.isfinite(wtop_psipol)):
-                raise ValueError('[MITIM] EPED returned NaN/inf results, cannot continue this simulation')
 
             if self.ptop_multiplier != 1.0:
                 print(f'\t\t- Multiplying ptop by {self.ptop_multiplier}', typeMsg='i')
