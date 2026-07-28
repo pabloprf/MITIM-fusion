@@ -1,6 +1,7 @@
 from mitim_tools.plasmastate_tools.utils import state_plotting
 import torch
 import copy
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools
@@ -2142,6 +2143,46 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         lab = 'Optimization',
     )
     
+def _read_pooled_samples(folder_execution, power_it, tar_map):
+    '''
+    Raw turbulence samples exactly as persisted by the evaluation (fluxes_turb.json), in the
+    real units the Distributions tab plots, keyed by 'Qe'/'Qi'/'Ge'.
+
+    These are the samples the statistics were reduced from. They are NOT the same set as the
+    turb_drives_* folders when reuse_scan_ball is on: the folders hold only the current
+    one-at-a-time stencil, while the reduction also pools earlier evaluations lying inside the
+    delta ball. Arrays are NaN-padded to a fixed width; callers must strip NaNs.
+
+    GB -> real conversion is taken as reported_real / reported_GB for the same evaluation,
+    which is exactly the GB normalization because both are the same reduced statistic. Returns
+    {} when the file or the sidecar is absent (older runs), so the caller falls back.
+    '''
+    file = folder_execution / "fluxes_turb.json"
+    if not file.exists() or power_it is None:
+        return {}
+    try:
+        with open(file) as f:
+            payload = json.load(f)
+        samples = payload["fluxes_samples"]
+    except (KeyError, ValueError, OSError):
+        return {}
+
+    out = {}
+    for var, (tar_key, _) in tar_map.items():
+        gb_key = f"{var}GB"
+        real = power_it.plasma.get(f"{tar_key}_tr_turb")
+        if gb_key not in samples or gb_key not in payload.get("fluxes_mean", {}) or real is None:
+            continue
+        reported_gb = np.array(payload["fluxes_mean"][gb_key], dtype=float)
+        reported_real = real.cpu().numpy()[0, 1:]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            conv = np.where(np.abs(reported_gb) > 0, reported_real / reported_gb, np.nan)
+        if np.isnan(conv).any():
+            continue                                   # cannot place this channel in real units
+        out[var] = np.array(samples[gb_key], dtype=float) * conv[:, np.newaxis]
+    return out
+
+
 def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     print("- Plotting PORTALS Simulations - Transport models")
@@ -2207,9 +2248,21 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
             tar_map = {'Qe': ('QeMWm2', 'QeMWm2_tr_neoc'), 'Qi': ('QiMWm2', 'QiMWm2_tr_neoc'), 'Ge': ('Ge1E20m2', 'Ge1E20m2_tr_neoc')}
             lab_target = 'target - neoc' if (power_it is not None and 'QeMWm2_tr_neoc' in power_it.plasma) else 'target (incl. neoc)'
 
+            # The cloud to draw is the one the STATISTICS were computed from, which is the
+            # persisted fluxes_samples -- NOT the turb_drives_* folders on disk. With
+            # reuse_scan_ball the two differ a lot: the folders hold only the current
+            # one-at-a-time stencil (~13 cases), while the reduction pools every earlier
+            # evaluation lying inside the delta ball (dozens). Drawing only the folders hides
+            # whole branches of a bimodal cloud and makes the plotted sigma disagree with the
+            # sigma the Ricci metric and the flux bands used.
+            pooled = _read_pooled_samples(self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder", power_it, tar_map)
+
             for i, (_, var, label) in enumerate(varss):
                 ax = axs[i]
-                y = np.array(distributions['y'][var])   # (n_cases, n_rho)
+                y = np.array(distributions['y'][var])   # (n_cases, n_rho); stencil only
+                y_cloud = pooled.get(var)               # (n_rho, n_samples) pooled, or None
+                if y_cloud is None:
+                    y_cloud = y.T
 
                 if power_it is not None:
                     tar_key, neoc_key = tar_map[var]
@@ -2226,10 +2279,12 @@ def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
                 # (median, sigma-, sigma+) to the right (dashed). No radial joining of members:
                 # the scan samples of different radii are unrelated stencils.
                 for ir in range(len(rhos)):
-                    samples, c = y[:, ir], colors_rho[ir]
+                    c = colors_rho[ir]
+                    samples = y_cloud[ir, :]
+                    samples = samples[~np.isnan(samples)]   # pooled arrays are NaN-padded
 
                     ax.plot(np.full(samples.shape, rhos[ir]), samples, 'o', ms=3, alpha=0.5, color=c, zorder=3)
-                    ax.plot(rhos[ir], samples[i_base], 'x', color='k', ms=7, zorder=6)
+                    ax.plot(rhos[ir], y[i_base, ir], 'x', color='k', ms=7, zorder=6)
 
                     mu, sd = np.nanmean(samples), np.nanstd(samples)
                     med, s_minus, s_plus = (v[0] for v in calculate_median_semistds(samples[np.newaxis, :]))
