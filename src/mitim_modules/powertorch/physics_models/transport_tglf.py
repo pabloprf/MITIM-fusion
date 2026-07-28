@@ -38,7 +38,8 @@ class tglf_model:
         # Side-aware (turbulence): see evaluate_turbulence() comment.
         ion_OI_position_in_ion_list = self._impurity_position_transport_for("turb")
 
-        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
+        reuse_scan_ball_region = resolve_reuse_scan_ball(simulation_options)
+        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if reuse_scan_ball_region is not None else None
 
         # All per-plasma powerstates are tiled from the same rho grid, so the rho locations
         # come from batch 0 of the (already batched) self.powerstate exactly as the single-
@@ -151,6 +152,7 @@ class tglf_model:
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ["none", "base"],
                 reuse_scan_ball_file=reuse_scan_ball_file,
+                reuse_scan_ball_region=reuse_scan_ball_region,
                 code_settings=simulation_options["run"].get("code_settings"),
                 statistics=uncertainty_statistics,
                 **run_kwargs,
@@ -200,7 +202,8 @@ class tglf_model:
 
         Qi_includes_fast = simulation_options["Qi_includes_fast"]
         use_tglf_scan_trick = simulation_options["use_scan_trick_for_stds"]
-        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if simulation_options.get("reuse_scan_ball", False) else None
+        reuse_scan_ball_region = resolve_reuse_scan_ball(simulation_options)
+        reuse_scan_ball_file = self.powerstate.transport_options['folder'] / 'Outputs' / 'tglf_ball.npz' if reuse_scan_ball_region is not None else None
         cores_per_tglf_instance = simulation_options["cores_per_tglf_instance"]
         keep_tglf_files = simulation_options["keep_files"]
         percent_error = simulation_options["percent_error"]
@@ -308,6 +311,7 @@ class tglf_model:
                 Qi_includes_fast=Qi_includes_fast,
                 only_minimal_files=keep_tglf_files in ['none', 'base'],
                 reuse_scan_ball_file=reuse_scan_ball_file,
+                reuse_scan_ball_region=reuse_scan_ball_region,
                 statistics=uncertainty_statistics,
                 **simulation_options["run"]
                 )
@@ -442,6 +446,7 @@ def _run_tglf_uncertainty_model(
     Qi_includes_fast=False,
     only_minimal_files=True,    # Since I only care about fluxes here, do not retrieve all the files
     reuse_scan_ball_file=None,      # If not None, it will reuse previous evaluations within the delta ball (to capture combinations)
+    reuse_scan_ball_region='box',   # 'box' | 'ball'; see resolve_reuse_scan_ball()
     print_logs = False,
     subfolder_name = 'turb_drives',  # Base subfolder for the scan; per-plasma callers override to avoid collisions
     statistics="gaussian",          # Reduction of scan samples to (value, std): 'gaussian' or 'asymmetric' (see _aggregate_scan_fluxes)
@@ -511,9 +516,40 @@ def _run_tglf_uncertainty_model(
         ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
         Qi_includes_fast=Qi_includes_fast,
         reuse_scan_ball_file=reuse_scan_ball_file,
+        reuse_scan_ball_region=reuse_scan_ball_region,
         delta=delta,
         statistics=statistics,
     )
+
+
+def resolve_reuse_scan_ball(simulation_options):
+    '''
+    Region used to decide which previously-evaluated points may be reused as extra samples of
+    the current cloud (see _ball_workflow):
+
+        null / None   no reuse; the cloud is only this evaluation's one-at-a-time scan
+        'box'         every input independently within +-delta (L-infinity). Corners reach
+                      delta*sqrt(N) in relative L2, which is what lets MULTI-dimensional
+                      combinations in -- the reason the reuse exists. Historical behaviour.
+        'ball'        relative L2 deviation within delta. Consistent with the scan stencil,
+                      whose points sit at exactly delta, but admits little beyond near-axis
+                      points: two inputs at 0.75*delta each are already outside.
+
+    Deprecated: the boolean form true/false maps to 'box'/None (the historical region was the
+    per-dimension box, despite the name).
+    '''
+    region = simulation_options.get("reuse_scan_ball", None)
+
+    if isinstance(region, bool):
+        if region:
+            print("\t- 'reuse_scan_ball: true' is deprecated, interpreting as 'box' "
+                  "(the historical region is the per-dimension box, not an L2 ball)", typeMsg="w")
+        region = "box" if region else None
+
+    if region not in (None, "box", "ball"):
+        raise ValueError(f"reuse_scan_ball must be null, 'box' or 'ball', not {region!r}")
+
+    return region
 
 
 def calculate_median_semistds(Q):
@@ -542,6 +578,7 @@ def _aggregate_scan_fluxes(
     ion_OI_position_in_ion_list=1,
     Qi_includes_fast=False,
     reuse_scan_ball_file=None,
+    reuse_scan_ball_region='box',
     delta=0.02,
     statistics="gaussian",
 ):
@@ -593,7 +630,7 @@ def _aggregate_scan_fluxes(
 
     samples_from_ball = np.zeros(Qe.shape[1], dtype=bool)
     if reuse_scan_ball_file is not None:
-        Qe, Qi, Ge, GZ, Mt, S, samples_from_ball = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta)
+        Qe, Qi, Ge, GZ, Mt, S, samples_from_ball = _ball_workflow(reuse_scan_ball_file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe, Qi, Ge, GZ, Mt, S, delta_ball=delta, region=reuse_scan_ball_region)
 
     def calculate_mean_std(Q):
         return np.nanmean(Q, axis=1), np.nanstd(Q, axis=1)
@@ -640,6 +677,7 @@ def _run_tglf_uncertainty_model_batched(
     Qi_includes_fast=False,
     only_minimal_files=True,
     reuse_scan_ball_file=None,
+    reuse_scan_ball_region='box',
     print_logs=False,
     code_settings=None,
     extraOptions=None,
@@ -761,6 +799,7 @@ def _run_tglf_uncertainty_model_batched(
             ion_OI_position_in_ion_list=ion_OI_position_in_ion_list,
             Qi_includes_fast=Qi_includes_fast,
             reuse_scan_ball_file=reuse_scan_ball_file,
+            reuse_scan_ball_region=reuse_scan_ball_region,
             delta=delta,
             statistics=statistics,
         )
@@ -781,7 +820,7 @@ def _run_tglf_uncertainty_model_batched(
     return Flux_value, Flux_std, Flux_extras
 
 
-def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02):
+def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position_in_ion_list, Qi_includes_fast, Qe_orig, Qi_orig, Ge_orig, GZ_orig, Mt_orig, S_orig, delta_ball=0.02, region='box'):
     '''
     Workflow to reuse previous TGLF evaluations within a delta ball to capture combinations
     around the current base case.
@@ -864,19 +903,28 @@ def _ball_workflow(file, variables_to_scan, rho_locations, tglf, ion_OI_position
             for icase in range(input_ball.shape[-1]):
                 inputs_case = input_ball[irho, :, icase]
                 
-                # Check if all inputs are within the delta ball (but not exactly equal, in case the ball has been run at the wrong time)
-                is_this_within_ball = True
-                for ikey in range(len(input_params_keys)):
-                    val_current = inputs_base[ikey]
-                    val_ball = inputs_case[ikey]
-                    
-                    # I need to have all inputs within the delta ball
-                    is_this_within_ball = is_this_within_ball and ( abs(val_current-val_ball) <= abs(val_current*delta_ball) + precision_check )
+                # Membership in the reuse region (see resolve_reuse_scan_ball):
+                #   'box'  every input independently within +-delta_ball (L-infinity)
+                #   'ball' relative L2 deviation within delta_ball
+                if region == 'ball':
+                    scale = np.where(np.abs(inputs_base) > 0, np.abs(inputs_base), np.nan)
+                    rel = (inputs_case - inputs_base) / scale
+                    # An input that is zero at the base only contributes if the case matches it
+                    rel = np.where(np.isnan(rel), np.where(np.abs(inputs_case - inputs_base) <= precision_check, 0.0, np.inf), rel)
+                    is_this_within_ball = np.linalg.norm(rel) <= delta_ball + precision_check
+                else:
+                    is_this_within_ball = True
+                    for ikey in range(len(input_params_keys)):
+                        val_current = inputs_base[ikey]
+                        val_ball = inputs_case[ikey]
+
+                        # I need to have all inputs within the delta ball
+                        is_this_within_ball = is_this_within_ball and ( abs(val_current-val_ball) <= abs(val_current*delta_ball) + precision_check )
                     
                 if is_this_within_ball:
                     indices_to_grab[irho].append(icase)
 
-            print(f"\t\t- Out of {input_ball.shape[-1]} points in file, found {len(indices_to_grab[irho])} at location {irho} within the delta ball ({delta_ball*100}%)", typeMsg="i" if len(indices_to_grab[irho]) > 0 else "")
+            print(f"\t\t- Out of {input_ball.shape[-1]} points in file, found {len(indices_to_grab[irho])} at location {irho} within the delta {region} ({delta_ball*100}%)", typeMsg="i" if len(indices_to_grab[irho]) > 0 else "")
         
         # Make an output_ball_select array equivalent to output_ball but only with the points within the delta ball (rest make them NaN)
         output_ball_select = np.full_like(output_ball, np.nan)

@@ -227,8 +227,15 @@ transport:
       #                 In both modes the per-side semi-deviations and raw samples are kept internally.
       uncertainty_statistics: "gaussian"
 
-      # [EXPERIMENTAL] If True, store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
-      reuse_scan_ball: false
+      # Reuse previously-evaluated points lying close to the current base as extra samples of the cloud,
+      # so it also contains MULTI-dimensional input combinations that the one-at-a-time scan cannot
+      # produce (next to a stiffness cliff these can populate a whole second flux branch):
+      #     null:  no reuse; the cloud is only this evaluation's one-at-a-time scan stencil
+      #     box:   every input independently within +-delta (L-infinity). Corners reach delta*sqrt(N) in
+      #            relative L2, which is exactly what lets the combinations in. Historical behavior.
+      #     ball:  relative L2 deviation within delta. Consistent with the scan stencil (whose points sit
+      #            at exactly delta)
+      reuse_scan_ball: null
 
       # Files to keep from simulation
       #     none: all runs will only keep minimal files

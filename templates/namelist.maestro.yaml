@@ -534,7 +534,7 @@ maestro:
                 extraOptions:
                   USE_BPER: true
               keep_files: "none" 
-              reuse_scan_ball: true # Store previous evaluations and reuse them if they are within the delta of all inputs (to capture combinations)
+              reuse_scan_ball: "box" # Reuse previous evaluations within +-delta of ALL inputs (captures multi-dimensional combinations)
         target:
           options:
             force_zero_particle_flux: true

@@ -37,6 +37,16 @@ DESCRIPTION
 
 ### Back-compatibility considerations and defaults
 
+*   🔮 **`reuse_scan_ball` now selects the reuse region, not just on/off**: the TGLF option
+    accepts `null` / `"box"` / `"ball"` instead of a boolean. The historical region — despite the
+    name — is `box`: every input independently within ±delta, whose corners reach delta·sqrt(N) in
+    relative L2 and are exactly what lets *multi-dimensional* combinations enter the sample cloud
+    (next to a stiffness cliff those combinations can populate a whole second flux branch that the
+    one-at-a-time scan never reaches). `ball` applies a relative L2 bound instead, consistent with
+    the scan stencil but rejecting most combinations. `true`/`false` still work and map to
+    `box`/`null`, so existing namelists are unaffected; defaults are unchanged (`null` standalone,
+    `box` in MAESTRO).
+
 *   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
     exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
     `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
