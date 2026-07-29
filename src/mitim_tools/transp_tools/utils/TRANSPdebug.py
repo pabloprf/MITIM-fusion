@@ -32,6 +32,12 @@ RDMA_LAUNCH_ERRORS = [
     "error initializing an OpenFabrics device",
 ]
 
+# mpirun could not bind its processes: the allocation's cpuset had no available cpus
+# (seen on shared/preemptable nodes). TRANSP never starts; infrastructure, requeue.
+MPI_BINDING_ERRORS = [
+    "we found no available cpus",
+]
+
 # Other fatal TRANSP aborts (fortran-side), checked when no signal line is present.
 # Kept in sync with the `hard_failure` set in TRANSPsingularity.interpretRun (that set
 # decides status=-1; this one only labels the already-stopped run). The signal-adjacent
@@ -219,9 +225,9 @@ def diagnose_transp_failure(log, logname=None):
     Returns
     -------
     dict with keys:
-        category : one of 'container_rdma_launch', 'container_namespace_launch',
-                   'physics_signal', 'controlled_abort', 'mpi_abort', 'hard_abort',
-                   'unclassified'
+        category : one of 'container_rdma_launch', 'mpi_binding_launch',
+                   'container_namespace_launch', 'physics_signal', 'controlled_abort',
+                   'mpi_abort', 'hard_abort', 'unclassified'
         message  : the human-readable diagnosis (single paragraph)
         plus category-specific fields (signal, reason, sim_time, nstep, context, node).
     """
@@ -244,6 +250,15 @@ def diagnose_transp_failure(log, logname=None):
                "permission failure, NOT physics — node/config-dependent and usually "
                "succeeds on a retry elsewhere." + tag)
         return {"category": "container_rdma_launch", "message": msg, "node": node}
+
+    # 1b) Infrastructure: mpirun binding failure (no cpus in the allocation) --
+    if any(s in text for s in MPI_BINDING_ERRORS) and not _RE_TA.search(text):
+        node = _last_match(lines, _RE_NODE) or _last_match(lines, _RE_NODE2)
+        where = f" on {node}" if node else ""
+        msg = ("mpirun could not bind its processes -- no available cpus in the "
+               f"allocation{where}. TRANSP never ran: infrastructure, not physics; "
+               "a requeue (different node/binding) usually succeeds." + tag)
+        return {"category": "mpi_binding_launch", "message": msg, "node": node}
 
     # 2) Infrastructure: user-namespace container-launch failure -------------
     if any(s in text for s in CONTAINER_LAUNCH_ERRORS):
