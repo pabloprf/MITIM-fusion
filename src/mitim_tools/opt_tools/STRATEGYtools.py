@@ -3,6 +3,7 @@ import copy
 import datetime
 import array
 import traceback
+import re
 from sympy import EX
 import torch
 from pathlib import Path
@@ -666,6 +667,7 @@ class MITIM_BO:
                 "n_from_training": 32,
                 "min_distance": 0.1,
                 "diversity_algorithm": "greedy_max_min_distance",
+                "seed": None,
             }
             user_lo = self.optimization_options.get("local_optima_options", {})
             self.local_optima_options = {**_lo_defaults, **(user_lo if user_lo else {})}
@@ -736,14 +738,15 @@ class MITIM_BO:
                 # Local optima mining round (if enabled and on the right cycle)
                 # ------------------------------------------------------------------
                 lo = self.local_optima_options
+                required_acq_points = self.best_points_sequence * lo["n_acq_batches_per_cycle"]
                 if (
-                    lo["apply"]
+                    self._is_local_optima_enabled()
                     and not self.hard_finish
                     and self.currentIteration >= lo["min_iteration"]
-                    and self.currentIteration % lo["n_acq_batches_per_cycle"] == 0
+                    and self._acquisition_points_since_last_local_optima() >= required_acq_points
                 ):
                     print(
-                        f"\n--- Local optima mining round at iteration {self.currentIteration} ---",
+                        f"\n--- Local optima mining round after {required_acq_points} acquisition evaluations ---",
                         typeMsg="i",
                     )
                     try:
@@ -759,6 +762,7 @@ class MITIM_BO:
                             n_from_training=lo["n_from_training"],
                             min_distance=lo["min_distance"],
                             diversity_algorithm=lo["diversity_algorithm"],
+                            seed=lo["seed"],
                         )
                         self._inject_and_evaluate_extra(x_extra)
                     except Exception as _exc:
@@ -1019,9 +1023,11 @@ class MITIM_BO:
         The current x_next (acquisition candidates) is preserved and restored
         after injection so the BO loop can continue normally.
         """
+        self.local_optima_round += 1
         _saved_x_next = self.x_next
         self.x_next = X_torch
         try:
+            source_label = f"local_optima_round_{self.local_optima_round}"
             self.updateSet(
                 self.strategy_options_use,
                 isThisCorrected=True,
@@ -1030,10 +1036,42 @@ class MITIM_BO:
                     f"Local optima mining round at iteration {self.currentIteration}, "
                     f"comprised of {len(X_torch)} points"
                 ),
-                source="local_optima",
+                source=source_label,
             )
         finally:
             self.x_next = _saved_x_next
+
+    def _acquisition_points_since_last_local_optima(self):
+        if self.optimization_data is None or "source" not in self.optimization_data.data.columns:
+            return 0
+
+        sources = self.optimization_data.data["source"].fillna("").astype(str).tolist()
+        last_local_optima = -1
+        for idx, source in enumerate(sources):
+            if source.startswith("local_optima"):
+                last_local_optima = idx
+
+        return sum(1 for source in sources[last_local_optima + 1 :] if source == "acquisition")
+
+    def _is_local_optima_enabled(self):
+        return bool(getattr(self, "local_optima_options", {}).get("apply", False))
+
+    @staticmethod
+    def _parse_local_optima_round_from_source(source_value):
+        """Return round index if source matches local_optima_round_N, else None.
+
+        This parser is intentionally tolerant to legacy CSV values where source may
+        be NaN/float or other non-string dtypes.
+        """
+        if source_value is None:
+            return None
+
+        if isinstance(source_value, float) and np.isnan(source_value):
+            return None
+
+        source_text = source_value if isinstance(source_value, str) else str(source_value)
+        match = re.match(r"^local_optima_round_(\d+)$", source_text)
+        return int(match.group(1)) if match else None
 
     @mitim_timer(lambda self: f'Eval @ {self.currentIteration}', log_file=lambda self: self.timings_file)
     def _evaluate(self):
@@ -1294,6 +1332,16 @@ class MITIM_BO:
         # --------------------------------------------------------------------------------------------------
 
         self.Originalinitial_training = copy.deepcopy(self.initial_training)
+        self.local_optima_round = 0
+        if (
+            self._is_local_optima_enabled()
+            and self.optimization_data is not None
+            and "source" in self.optimization_data.data.columns
+        ):
+            for source_value in self.optimization_data.data["source"].tolist():
+                round_num = self._parse_local_optima_round_from_source(source_value)
+                if round_num is not None:
+                    self.local_optima_round = max(self.local_optima_round, round_num)
 
         # -----------------------------------------------------------------
         # Force certain optimizations depending on existence of folders
@@ -1921,6 +1969,7 @@ class MITIM_BO:
         axR = [axs[-1]]
 
         axislabels = [i for i in boundsRaw]
+        boundsThis = None
 
         # ----------------------------------------------------------------------
         # Plot DVs and OFs - Training

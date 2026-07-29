@@ -59,6 +59,7 @@ def mine_local_optima(
     n_from_training=32,
     min_distance=0.1,
     diversity_algorithm="greedy_max_min_distance",
+    seed=None,
 ):
     """Find n_optima diverse local maxima of the GP surrogate posterior mean.
 
@@ -89,6 +90,9 @@ def mine_local_optima(
     diversity_algorithm : str
         Name of the diversity-selection algorithm.  Currently only
         "greedy_max_min_distance" is supported.
+    seed : int or None
+        Seed used for Sobol restart generation. When provided, the local-optima
+        restart pool is deterministic across runs.
 
     Returns
     -------
@@ -120,7 +124,7 @@ def mine_local_optima(
 
     # Sobol samples
     n_sobol = max(0, n_restarts - n_from_training)
-    sobol_ic = draw_sobol_samples(bounds_tensor, n=n_sobol, q=1).to(dtype=dtype, device=device)
+    sobol_ic = draw_sobol_samples(bounds_tensor, n=n_sobol, q=1, seed=seed).to(dtype=dtype, device=device)
     # shape: (n_sobol, 1, n_dvs)
 
     # Best training points as warm starts
