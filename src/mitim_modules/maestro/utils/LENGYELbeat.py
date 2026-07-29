@@ -242,6 +242,17 @@ class lengyel_beat(beat):
 
     def finalize(self, *args, **kwargs):
 
+        # Persist the Lengyel namelist to beat_results (copy under keep_all_files: true;
+        # move otherwise, matching the EPED/PORTALS/TRANSP beat behavior).
+        src_input_namelist = self.folder / 'input.lengyel.controls.yml'
+        dst_input_namelist = self.folder_output / 'input.lengyel.controls.yml'
+        src_output_namelist = self.folder / 'output.lengyel.results.yml'
+        dst_output_namelist = self.folder_output / 'output.lengyel.results.yml'
+        if src_output_namelist.exists():
+            self._persist(src_output_namelist, dst_output_namelist)
+        if src_input_namelist.exists():
+            self._persist(src_input_namelist, dst_input_namelist)
+
         # On a re-invocation after a prior keep_all_files: false cleanup wiped
         # self.folder, input.gacode.lengyel is gone and folder_output already holds
         # the finalized input.gacode from the prior run. Same guard as the
