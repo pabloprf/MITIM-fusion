@@ -688,7 +688,7 @@ maestro:
       # Raise (e.g. 1.0e6) to keep NUBEAM alphas idle until the source is significant -- guards the
       # machine-initialization transition, where MC on a tiny alpha source atop morphing profiles
       # can produce a fast-ion energy runaway (?btfusn_intrp floods -> MPI_ABORT)
-      plfhe4: 1.0e2
+      plfhe4: 1.0e+2
       Pich: True
       Pnbi: True
       # NOTE: dtOut_ms -> TRANSP sedit/stedit, but in practice it does NOT reliably reduce the

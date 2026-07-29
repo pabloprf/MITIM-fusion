@@ -167,7 +167,8 @@ class transp_nml:
         # Source-power threshold [W] to engage the fusion-product MC (TRANSP plfhe4).
         # The TRANSP default (100 W) engages the MC on a negligible alpha population;
         # raising it postpones alpha tracking until the source is significant.
-        self.plfhe4 = transp_params.get("plfhe4", 1.0e2)
+        # float() guards YAML's unsigned-exponent gotcha ("1.0e2" parses as a string)
+        self.plfhe4 = float(transp_params.get("plfhe4", 1.0e2))
         self.toric_ntheta = transp_params.get("toric_ntheta",128)  # 128 int(2**7), default: 64
         self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
 
