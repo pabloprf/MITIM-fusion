@@ -338,11 +338,15 @@ def runSINGULARITY(
             IOtools.shutil_rmtree(folder_inputs)
         
         IOtools.askNewFolder(folder_inputs, force=True)
-        for item in folderWork.glob('*'):
-            if item.is_file():
-                shutil.copy2(item, folder_inputs)
-            elif item.is_dir():
-                shutil.copytree(item, folder_inputs / item.name)
+        # Stage ONLY the known TRANSP inputs (ufiles + namelist). A restarted beat's
+        # folder may still hold outputs of a previous dead attempt (<runid>PH.CDF,
+        # TF.PLN, TR.INF, ex.for, logs); blanket-copying those into the TRANSP working
+        # directory makes it try to resume from the stale state (e.g. transp_rplot_read
+        # on the old PH.CDF -> 'profile "SCEAL" not found' -> abort at NSTEP 1).
+        for pattern in (f"{tok}{shotnumber}.*", f"{runid}TR.DAT"):
+            for item in folderWork.glob(pattern):
+                if item.is_file():
+                    shutil.copy2(item, folder_inputs)
 
         inputFolders = [folderWork / "tmp_inputs"]
 

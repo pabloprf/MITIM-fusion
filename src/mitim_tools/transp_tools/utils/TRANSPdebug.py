@@ -154,9 +154,29 @@ def _routine_errors(pre_lines):
 # Physics-context classification (what was TRANSP doing at the trap)
 # ---------------------------------------------------------------------------
 
+# Any '?routine[: ]msg' complaint line (single '?': the '??<reason>' ERRSET lines are
+# handled separately). Broader than _RE_ROUTINE_ERR, which requires the ' error:' form
+# and e.g. misses '?transp_rplot_read: profile "SCEAL" not found.'
+_RE_ROUTINE_ANY = re.compile(r"^\s*\?(?!\?)([A-Za-z_]\w*):?\s+(.*\S)")
+
+def _last_routine_line(pre_lines, within=12):
+    """Last '?routine: msg' complaint within the final `within` lines before the trap."""
+    for ln in reversed(pre_lines[-within:]):
+        m = _RE_ROUTINE_ANY.match(ln)
+        if m:
+            return m.group(1), m.group(2).strip()
+    return None
+
+
 def _classify_context(pre_lines):
     """Human-readable description of what TRANSP was doing right before the trap."""
     text = "\n".join(pre_lines)
+    # The routine that complained immediately before the trap beats any keyword bucket:
+    # keywords like PRGCHK appear in perfectly healthy logs and misattribute the abort.
+    complained = _last_routine_line(pre_lines)
+    if complained is not None:
+        routine, msg = complained
+        return f"the {routine} routine, which reported '{msg}'"
     if any(s in text for s in ("sawtooth_trigger", "SAWTOOTH EVENT", "Porcelli sawtooth crash")):
         ctx = "a sawtooth crash / reconnection event (Porcelli trigger)"
         if "INVALID INTERPOLATION" in text:
@@ -181,7 +201,9 @@ def _breadcrumbs(pre_lines, context):
     denormal-underflow resets, and — for an equilibrium trap — the convergence
     state, so an equilibrium FP trap is not misread as a convergence failure)."""
     parts = []
-    curv = _last_match(pre_lines, _RE_CURV)
+    # Curvature is only evidence when the trap actually is the geometry check --
+    # PRGCHK lines appear in healthy logs too and used to misattribute other aborts.
+    curv = _last_match(pre_lines, _RE_CURV) if "PRGCHK" in context else None
     if curv is not None:
         cv = float(curv)
         # PRGCHK trips on curvature that is too SMALL (boundary too flat/spiky) or too
