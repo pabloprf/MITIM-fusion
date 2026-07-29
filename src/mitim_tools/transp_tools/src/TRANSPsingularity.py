@@ -343,7 +343,9 @@ def runSINGULARITY(
         # TF.PLN, TR.INF, ex.for, logs); blanket-copying those into the TRANSP working
         # directory makes it try to resume from the stale state (e.g. transp_rplot_read
         # on the old PH.CDF -> 'profile "SCEAL" not found' -> abort at NSTEP 1).
-        for pattern in (f"{tok}{shotnumber}.*", f"{runid}TR.DAT"):
+        # ufile prefix is the literal 'MIT<shot>' (TRANSPhelpers), NOT the tokamak id
+        # in `tok`; MIT[0-9]* also covers the MIT12345.* structure files
+        for pattern in ("MIT[0-9]*.*", f"{runid}TR.DAT"):
             for item in folderWork.glob(pattern):
                 if item.is_file():
                     shutil.copy2(item, folder_inputs)

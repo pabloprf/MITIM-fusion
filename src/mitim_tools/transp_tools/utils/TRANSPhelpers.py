@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.transp_tools import TRANSPtools, CDFtools, UFILEStools, NMLtools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools
+from mitim_tools.misc_tools import IOtools, MATHtools, PLASMAtools, GRAPHICStools, FARMINGtools, LOGtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
@@ -1275,10 +1275,17 @@ def interpret_trdat(file):
                 if ("?" in aux[i]) and ("????" not in aux[i]):
                     print("".join(aux[np.max(i - 5, 0) : i + 2]), typeMsg="w")
                     print("-------------------------------", typeMsg="w")
-            if not print(
-                "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
-            ):
-                embed()
+            try:
+                if not print(
+                    "Do you wish to continue? It will likely fail! (c)", typeMsg="q"
+                ):
+                    embed()
+            except LOGtools.InteractiveTerminalError:
+                # batch: surface the actual TRDAT complaints instead of a bare prompt error
+                err_lines = "".join(
+                    ln for ln in aux if ("?" in ln) and ("????" not in ln)).strip()
+                raise Exception(
+                    f"[MITIM] TRDAT reported errors in the TRANSP inputs: {err_lines}")
         else:
             print("\t- TRDAT output did not show any error", typeMsg="i")
 
