@@ -38,6 +38,13 @@ DESCRIPTION
     MPI_ABORT and geometry-update categories added, the routine complaint preceding the trap
     takes precedence). A `plfhe4` namelist knob (fusion-product MC source-power gate) is also exposed.
 
+*   🐛 **MAESTRO initializer: BetaN auto-lowering when the seed profiles would break TRANSP**:
+    the profile initializer matches a target BetaN by scanning the temperature gradient; at
+    low density the target can be unreachable and the seed saturates above TRANSP's 100 keV
+    input ceiling, killing the first TRANSP beat (TRDAT `CKDRNG` rejection). The BetaN target
+    is now lowered by 25% and re-solved (repeatedly, with warnings) until the on-axis
+    temperature is TRANSP-safe.
+
 *   🐛 **MAESTRO EPED beat: teped-lowering retries now also fire on NaN returns**: full EPED can
     complete but return NaN when the marginal point falls outside the explored `TEPED_BOUND`
     window (e.g. low-shaping/low-Ip cases unstable already at the window floor); this bypassed the

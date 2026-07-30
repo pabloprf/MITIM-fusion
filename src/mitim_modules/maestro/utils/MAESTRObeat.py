@@ -1003,12 +1003,27 @@ class creator_from_parameterization(creator):
                 aLT = self.aLT_guess if self.aLT_guess is not None else 2.0
                 print(f'\n\t- Using aLT = {aLT}')
             else:
-                # Find the temperature gradient that matches the BetaN (bracketed root find; monotonic)
-                print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
-                aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
-                self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
-                print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
-                print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+                # Find the temperature gradient that matches the BetaN (bracketed root find; monotonic).
+                # Guard: TRANSP's TRDAT rejects Te/Ti data above 100 keV (CKDRNG), so if this seed
+                # would exceed T0_cap_keV on axis (BetaN unreachable at low density -> aLT saturates
+                # high), lower the BetaN target 25% and re-solve until it fits.
+                T0_cap_keV = 95.0
+                for _ in range(10):
+                    print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
+                    aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+                    self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
+                    print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
+                    print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
+                    T0 = max(float(self.initialize_instance.profiles_current.profiles['te(keV)'][0]),
+                             float(self.initialize_instance.profiles_current.profiles['ti(keV)'][0, 0]))
+                    if T0 <= T0_cap_keV:
+                        break
+                    self.BetaN *= 0.75
+                    print(f'\t- On-axis T = {T0:.1f} keV exceeds the TRANSP-safe {T0_cap_keV:.0f} keV cap, '
+                          f'lowering initialization BetaN to {self.BetaN:.3f} and re-solving', typeMsg='w')
+                else:
+                    raise Exception(f'[MITIM] Initialization on-axis T still above {T0_cap_keV} keV '
+                                    f'after lowering BetaN to {self.BetaN:.3f}')
 
             # Create profiles
 
