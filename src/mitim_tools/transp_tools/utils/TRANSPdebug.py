@@ -124,8 +124,11 @@ def _last_match(lines, regex):
 
 
 def _signal_line_index(lines):
+    # Anchor at the FIRST signal marker: the UCX handler's "Caught signal" + backtrace
+    # block precedes gfortran's "Program received signal", and anchoring at the latter
+    # fills the pre-trap context window with backtrace junk instead of TRANSP output.
     for i, ln in enumerate(lines):
-        if "Program received signal" in ln:
+        if "Program received signal" in ln or "Caught signal" in ln:
             return i
     return None
 
@@ -170,7 +173,10 @@ def _last_routine_line(pre_lines, within=12):
 
 def _classify_context(pre_lines):
     """Human-readable description of what TRANSP was doing right before the trap."""
-    text = "\n".join(pre_lines)
+    # Keyword buckets only see the LAST few lines: a healthy PRGCHK/TEQ printout from
+    # 15+ lines earlier must not claim a trap that happened in a later module (e.g. a
+    # GFRAME segfault right after a clean equilibrium was misattributed to PRGCHK).
+    text = "\n".join(pre_lines[-10:])
     # The routine that complained immediately before the trap beats any keyword bucket:
     # keywords like PRGCHK appear in perfectly healthy logs and misattribute the abort.
     complained = _last_routine_line(pre_lines)
@@ -182,6 +188,8 @@ def _classify_context(pre_lines):
         if "INVALID INTERPOLATION" in text:
             ctx += ", with an invalid field interpolation flagged just before the trap"
         return ctx
+    if "GFRAME" in text:
+        return "the geometry-frame update (GFRAME)"
     if any(s in text for s in ("PRGCHK", "curvature ratio", "EQBDY_CHECK")):
         return "the plasma-boundary geometry check (PRGCHK)"
     if any(s in text for s in ("MHD EQUILIBRIUM CALCULATED", "*** TEQ ***")):
@@ -204,14 +212,12 @@ def _breadcrumbs(pre_lines, context):
     # Curvature is only evidence when the trap actually is the geometry check --
     # PRGCHK lines appear in healthy logs too and used to misattribute other aborts.
     curv = _last_match(pre_lines, _RE_CURV) if "PRGCHK" in context else None
-    if curv is not None:
-        cv = float(curv)
-        # PRGCHK trips on curvature that is too SMALL (boundary too flat/spiky) or too
-        # large; describe the direction relative to the ~0.06 of typical healthy runs.
-        rel, qual = ("collapsed to", "well below") if cv < 0.06 else ("climbed to", "elevated vs")
+    if curv is not None and float(curv) < 0.06:
+        # only cite curvature when it is actually LOW: the ~0.06 is a floor, and healthy
+        # runs sit anywhere above it (0.13 is normal), so a value there is not evidence
         parts.append(
-            f"boundary (separatrix) curvature ratio had {rel} {cv:.3g} "
-            f"({qual} the ~0.06 of typical healthy runs)"
+            f"boundary (separatrix) curvature ratio had collapsed to {float(curv):.3g} "
+            "(below the ~0.06 floor of healthy runs)"
         )
     n_reset = sum("RESET TO ZERO" in ln for ln in pre_lines)
     if n_reset:
