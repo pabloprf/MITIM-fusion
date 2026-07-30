@@ -28,6 +28,16 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **MAESTRO robustness: TRANSP beats restart cleanly and failures are self-describing**:
+    a restarted TRANSP beat used to stage the *previous attempt's outputs* into the new run
+    (TRANSP tried to resume from the stale state and aborted at NSTEP 1) — staging is now a
+    whitelist of the actual inputs (ufiles + namelist), so re-running a MAESTRO folder needs no
+    manual cleanup. Batch runs no longer die with a blank "interactive response required":
+    the TRDAT and CDF-retrieval paths raise with the diagnosed cause, and the failure classifier
+    reports the true one (infra launch/binding failures only claimed when the run never advanced,
+    MPI_ABORT and geometry-update categories added, the routine complaint preceding the trap
+    takes precedence). A `plfhe4` namelist knob (fusion-product MC source-power gate) is also exposed.
+
 *   🐛 **MAESTRO EPED beat: teped-lowering retries now also fire on NaN returns**: full EPED can
     complete but return NaN when the marginal point falls outside the explored `TEPED_BOUND`
     window (e.g. low-shaping/low-Ip cases unstable already at the window floor); this bypassed the
