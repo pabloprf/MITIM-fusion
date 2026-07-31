@@ -6991,15 +6991,15 @@ def processDominated(k, g, f, krange=[0.0, 0.8], coeff=0):
 
     return {
         "g_ITG_max": g_ITG_max,
-        "g_ETG_max": g_TEM_max,
+        "g_ETG_max": g_ETG_max,
         "g_TEM_max": g_TEM_max,
         "g_lowk_max": g_max,
         "k_ITG_max": k_ITG_max,
-        "k_ETG_max": k_TEM_max,
+        "k_ETG_max": k_ETG_max,
         "k_TEM_max": k_TEM_max,
         "k_lowk_max": k_max,
         "f_ITG_max": f_ITG_max,
-        "f_ETG_max": f_TEM_max,
+        "f_ETG_max": f_ETG_max,
         "f_TEM_max": f_TEM_max,
         "f_lowk_max": f_max,
     }

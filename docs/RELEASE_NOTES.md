@@ -38,6 +38,10 @@ DESCRIPTION
     MPI_ABORT and geometry-update categories added, the routine complaint preceding the trap
     takes precedence). A `plfhe4` namelist knob (fusion-product MC source-power gate) is also exposed.
 
+*   🐛 **TGLF `processDominated` returned TEM values under the ETG keys**: `g_ETG_max`/
+    `k_ETG_max`/`f_ETG_max` were copies of the TEM maxima (so `eta_ITGETG` always equalled
+    `eta_ITGTEM`); the ETG-range values computed in the same function are now returned.
+
 *   🐛 **TRANSP fast-model alphas no longer lost when NUBEAM is off**: the `nalpha=1`
     analytic fast-alpha model writes the alpha population under different CDF variables
     than NUBEAM (`NALPHA`/`UALPHPP`-`UALPHPA`/`PALE`-`PALI` vs `NFI`,`FDENS_4`/`UFIPP`-`UFIPA`/
