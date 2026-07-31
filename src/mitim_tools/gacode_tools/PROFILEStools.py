@@ -90,17 +90,31 @@ class gacode_state(MITIMstate.mitim_state):
         
         self._ensure_shaping_coeffs()
 
+    def _highest_shape_moment(self):
+        '''
+        Highest MXH moment index n for which a shape_cos{n}/shape_sin{n} column exists in the file
+        '''
+        n_max = 0
+        for key in self.profiles:
+            for prefix in ["shape_cos", "shape_sin"]:
+                if key.startswith(prefix) and key.endswith("(-)"):
+                    index = key[len(prefix):-len("(-)")]
+                    if index.isdigit():
+                        n_max = max(n_max, int(index))
+        return n_max
+
     def _ensure_shaping_coeffs(self):
-        
-        # Ensure that we also have the shape coefficients
-        num_moments = 7  # This is the max number of moments I'll be considering. If I don't have that many (usually there are 5 or 3), it'll be populated with zeros
+
+        # Ensure that we also have the shape coefficients, up to the highest moment present in the file
+        # (minimum of 7, which is the historical MITIM padding; extra slots are simply populated with zeros)
+        num_moments = max(7, self._highest_shape_moment())
         if "shape_cos0(-)" not in self.profiles:
             self.profiles["shape_cos0(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
-        for i in range(num_moments):
-            if f"shape_cos{i + 1}(-)" not in self.profiles:
-                self.profiles[f"shape_cos{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
-            if f"shape_sin{i + 1}(-)" not in self.profiles and i > 1:
-                self.profiles[f"shape_sin{i + 1}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+        for i in range(1, num_moments + 1):
+            if f"shape_cos{i}(-)" not in self.profiles:
+                self.profiles[f"shape_cos{i}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
+            if f"shape_sin{i}(-)" not in self.profiles and i > 2:
+                self.profiles[f"shape_sin{i}(-)"] = np.zeros(self.profiles["rmaj(m)"].shape)
 
     def _read_header(self):
         for i in range(len(self.lines)):
@@ -198,24 +212,20 @@ class gacode_state(MITIMstate.mitim_state):
         
         self._ensure_shaping_coeffs()
             
-        self.shape_cos = [
-            self.profiles["shape_cos0(-)"],  # tilt
-            self.profiles["shape_cos1(-)"],
-            self.profiles["shape_cos2(-)"],
-            self.profiles["shape_cos3(-)"],
-            self.profiles["shape_cos4(-)"],
-            self.profiles["shape_cos5(-)"],
-            self.profiles["shape_cos6(-)"],
-        ]
+        # Arbitrary number of MXH moments: both lists span n = 0...n_max and MUST stay the same length
+        n_max = self._highest_shape_moment()
+
+        self.shape_cos = [self.profiles["shape_cos0(-)"]]  # cos0 is the tilt
         self.shape_sin = [
             None,
             None,  # s1 is arcsin(triangularity)
             None,  # s2 is minus squareness
-            self.profiles["shape_sin3(-)"],
-            self.profiles["shape_sin4(-)"],
-            self.profiles["shape_sin5(-)"],
-            self.profiles["shape_sin6(-)"],
         ]
+
+        for n in range(1, n_max + 1):
+            self.shape_cos.append(self.profiles[f"shape_cos{n}(-)"])
+            if n > 2:
+                self.shape_sin.append(self.profiles[f"shape_sin{n}(-)"])
 
     def derive_geometry(self, n_theta_geo=1001, shaping_psin=0.995, **kwargs):
 
@@ -714,39 +724,23 @@ def volp_surf_geo_vectorized(
     geo_rmin_in = geo_rmin_in.clip(1e-10)  # To avoid problems at 0 (Implemented by PRF, not sure how TGYRO deals with this)
     geo_q_in = geo_q_in.clip(1e-2) # To avoid problems at 0 with some geqdsk files that are corrupted...
 
-    [
-        geo_shape_cos0_in,
-        geo_shape_cos1_in,
-        geo_shape_cos2_in,
-        geo_shape_cos3_in,
-        geo_shape_cos4_in,
-        geo_shape_cos5_in,
-        geo_shape_cos6_in,
-        _,
-        _,
-        _,
-        geo_shape_sin3_in,
-        geo_shape_sin4_in,
-        geo_shape_sin5_in,
-        geo_shape_sin6_in,
-    ] = np.array(cos_sin).astype(float).T
+    """
+    cos_sin (and its radial-derivative counterpart cos_sin_s) is [radius][2*(n_max+1)]:
+    the first half are the cosine moments n = 0...n_max, the second half the sine moments
+    (slots 0,1,2 are None -> nan here, because s1 = arcsin(delta) and s2 = -zeta enter
+    through geo_delta_in and geo_zeta_in below). n_max is arbitrary.
+    """
+    cos_sin_arr = np.array(cos_sin).astype(float).T
+    cos_sin_s_arr = np.array(cos_sin_s).astype(float).T
 
-    [
-        geo_shape_s_cos0_in,
-        geo_shape_s_cos1_in,
-        geo_shape_s_cos2_in,
-        geo_shape_s_cos3_in,
-        geo_shape_s_cos4_in,
-        geo_shape_s_cos5_in,
-        geo_shape_s_cos6_in,
-        _,
-        _,
-        _,
-        geo_shape_s_sin3_in,
-        geo_shape_s_sin4_in,
-        geo_shape_s_sin5_in,
-        geo_shape_s_sin6_in,
-    ] = np.array(cos_sin_s).astype(float).T
+    n_moments = cos_sin_arr.shape[0] // 2          # n_max+1
+    geo_shape_cos_in = cos_sin_arr[:n_moments]     # [n, radius]
+    geo_shape_sin_in = cos_sin_arr[n_moments:]
+    geo_shape_s_cos_in = cos_sin_s_arr[:n_moments]
+    geo_shape_s_sin_in = cos_sin_s_arr[n_moments:]
+
+    geo_shape_cos0_in = geo_shape_cos_in[0]
+    geo_shape_s_cos0_in = geo_shape_s_cos_in[0]
 
     geov_theta = np.zeros((n_theta,geo_rmin_in.shape[0]))
     geov_bigr = np.zeros((n_theta,geo_rmin_in.shape[0]))
@@ -781,77 +775,41 @@ def volp_surf_geo_vectorized(
         #! A
         #! dA/dtheta
         #! d^2A/dtheta^2
-        a = (
-            theta
-            + geo_shape_cos0_in
-            + geo_shape_cos1_in * np.cos(theta)
-            + geo_shape_cos2_in * np.cos(2 * theta)
-            + geo_shape_cos3_in * np.cos(3 * theta)
-            + geo_shape_cos4_in * np.cos(4 * theta)
-            + geo_shape_cos5_in * np.cos(5 * theta)
-            + geo_shape_cos6_in * np.cos(6 * theta)
-            + x * np.sin(theta)
-            - geo_zeta_in * np.sin(2 * theta)
-            + geo_shape_sin3_in * np.sin(3 * theta)
-            + geo_shape_sin4_in * np.sin(4 * theta)
-            + geo_shape_sin5_in * np.sin(5 * theta)
-            + geo_shape_sin6_in * np.sin(6 * theta)
-        )
-        a_t = (
-            1.0
-            - geo_shape_cos1_in * np.sin(theta)
-            - 2 * geo_shape_cos2_in * np.sin(2 * theta)
-            - 3 * geo_shape_cos3_in * np.sin(3 * theta)
-            - 4 * geo_shape_cos4_in * np.sin(4 * theta)
-            - 5 * geo_shape_cos5_in * np.sin(5 * theta)
-            - 6 * geo_shape_cos6_in * np.sin(6 * theta)
-            + x * np.cos(theta)
-            - 2 * geo_zeta_in * np.cos(2 * theta)
-            + 3 * geo_shape_sin3_in * np.cos(3 * theta)
-            + 4 * geo_shape_sin4_in * np.cos(4 * theta)
-            + 5 * geo_shape_sin5_in * np.cos(5 * theta)
-            + 6 * geo_shape_sin6_in * np.cos(6 * theta)
-        )
-        a_tt = (
-            -geo_shape_cos1_in * np.cos(theta)
-            - 4 * geo_shape_cos2_in * np.cos(2 * theta)
-            - 9 * geo_shape_cos3_in * np.cos(3 * theta)
-            - 16 * geo_shape_cos4_in * np.cos(4 * theta)
-            - 25 * geo_shape_cos5_in * np.cos(5 * theta)
-            - 36 * geo_shape_cos6_in * np.cos(6 * theta)
-            - x * np.sin(theta)
-            + 4 * geo_zeta_in * np.sin(2 * theta)
-            - 9 * geo_shape_sin3_in * np.sin(3 * theta)
-            - 16 * geo_shape_sin4_in * np.sin(4 * theta)
-            - 25 * geo_shape_sin5_in * np.sin(5 * theta)
-            - 36 * geo_shape_sin6_in * np.sin(6 * theta)
-        )
+        # Sums over the cosine moments n = 1...n_max, then the (implicit) s1 = x and s2 = -zeta
+        # terms, then the sine moments n = 3...n_max (same term ordering as the original 6-moment code)
+        a = theta + geo_shape_cos0_in
+        a_t = 1.0
+        a_tt = 0.0
+        for n in range(1, n_moments):
+            a = a + geo_shape_cos_in[n] * np.cos(n * theta)
+            a_t = a_t - n * geo_shape_cos_in[n] * np.sin(n * theta)
+            a_tt = a_tt - n**2 * geo_shape_cos_in[n] * np.cos(n * theta)
+
+        a = a + x * np.sin(theta) - geo_zeta_in * np.sin(2 * theta)
+        a_t = a_t + x * np.cos(theta) - 2 * geo_zeta_in * np.cos(2 * theta)
+        a_tt = a_tt - x * np.sin(theta) + 4 * geo_zeta_in * np.sin(2 * theta)
+
+        for n in range(3, n_moments):
+            a = a + geo_shape_sin_in[n] * np.sin(n * theta)
+            a_t = a_t + n * geo_shape_sin_in[n] * np.cos(n * theta)
+            a_tt = a_tt - n**2 * geo_shape_sin_in[n] * np.sin(n * theta)
 
         #! R(theta)
         #! dR/dr
         #! dR/dtheta
         #! d^2R/dtheta^2
+        # dA/dr, same structure as A but with the radial-derivative ("s_") moments
+        a_r = geo_shape_s_cos0_in
+        for n in range(1, n_moments):
+            a_r = a_r + geo_shape_s_cos_in[n] * np.cos(n * theta)
+
+        a_r = a_r + geo_s_delta_in / np.cos(x) * np.sin(theta) - geo_s_zeta_in * np.sin(2 * theta)
+
+        for n in range(3, n_moments):
+            a_r = a_r + geo_shape_s_sin_in[n] * np.sin(n * theta)
+
         geov_bigr[i] = geo_rmaj_in + geo_rmin_in * np.cos(a)
-        geov_bigr_r[i] = (
-            geo_drmaj_in
-            + np.cos(a)
-            - np.sin(a)
-            * (
-                geo_shape_s_cos0_in
-                + geo_shape_s_cos1_in * np.cos(theta)
-                + geo_shape_s_cos2_in * np.cos(2 * theta)
-                + geo_shape_s_cos3_in * np.cos(3 * theta)
-                + geo_shape_s_cos4_in * np.cos(4 * theta)
-                + geo_shape_s_cos5_in * np.cos(5 * theta)
-                + geo_shape_s_cos6_in * np.cos(6 * theta)
-                + geo_s_delta_in / np.cos(x) * np.sin(theta)
-                - geo_s_zeta_in * np.sin(2 * theta)
-                + geo_shape_s_sin3_in * np.sin(3 * theta)
-                + geo_shape_s_sin4_in * np.sin(4 * theta)
-                + geo_shape_s_sin5_in * np.sin(5 * theta)
-                + geo_shape_s_sin6_in * np.sin(6 * theta)
-            )
-        )
+        geov_bigr_r[i] = geo_drmaj_in + np.cos(a) - np.sin(a) * a_r
         geov_bigr_t[i] = -geo_rmin_in * a_t * np.sin(a)
         bigr_tt = -geo_rmin_in * a_t**2 * np.cos(a) - geo_rmin_in * a_tt * np.sin(a)
 

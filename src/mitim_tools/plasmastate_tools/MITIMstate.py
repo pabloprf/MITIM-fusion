@@ -2877,8 +2877,10 @@ class mitim_state:
             for ikey in self.profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
 
-                    # TGLF only accepts 6, as of July 2025
-                    if int(ikey[-4]) > 6:
+                    # TGLF only accepts 6, as of July 2025 (parse the full
+                    # index: files may carry n_mxh > 9, and ikey[-4] would read
+                    # only the last digit of a two-digit harmonic)
+                    if int(ikey.split('(')[0].replace('shape_cos', '').replace('shape_sin', '')) > 6:
                         continue
 
                     key_mod = ikey.upper().split('(')[0]
@@ -3041,8 +3043,10 @@ class mitim_state:
             for ikey in self.profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
                     
-                    # TGLF only accepts 6, as of July 2025
-                    if int(ikey[-4]) > 6:
+                    # TGLF only accepts 6, as of July 2025 (parse the full
+                    # index: files may carry n_mxh > 9, and ikey[-4] would read
+                    # only the last digit of a two-digit harmonic)
+                    if int(ikey.split('(')[0].replace('shape_cos', '').replace('shape_sin', '')) > 6:
                         continue
                     
                     key_mod = ikey.upper().split('(')[0]
@@ -3202,8 +3206,10 @@ class mitim_state:
             for ikey in self.profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
                     
-                    # TGLF only accepts 6, as of July 2025
-                    if int(ikey[-4]) > 6:
+                    # TGLF only accepts 6, as of July 2025 (parse the full
+                    # index: files may carry n_mxh > 9, and ikey[-4] would read
+                    # only the last digit of a two-digit harmonic)
+                    if int(ikey.split('(')[0].replace('shape_cos', '').replace('shape_sin', '')) > 6:
                         continue
                     
                     key_mod = ikey.upper().split('(')[0]

@@ -16,6 +16,11 @@ pedestal code involved -- same initialization as capability_tests/maestro_01_run
 
 What this verifies:
     - The minuet beat runs end-to-end inside MAESTRO from an engineering-only start.
+    - A 10-moment MXH refit of the FreeGS surfaces (n_mxh = 10; template default 5)
+      gives a fold-free stored family, so the beat ingests the state WITHOUT the
+      folded-surface boundary trim -- and exercises the no-ceiling MXH path
+      (arbitrary shape_cos{n}/shape_sin{n} columns, incl. two-digit harmonics)
+      through MITIM's state layer and minuet's reader end-to-end.
     - The q-profile actually evolved from the initializer state (current diffusion).
     - The kinetic profiles passed through VERBATIM (frozen-kinetics contract).
     - The gaussian sources were injected with the engineering Pe/Pi totals.
@@ -62,6 +67,24 @@ nml = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.maestro.ya
 nml["plasma"]["profiles_initialization"]["creator_type"] = "fixed_bc"
 nml["plasma"]["profiles_initialization"]["parameters"]["x_bc"] = 0.95
 nml["plasma"]["profiles_initialization"]["parameters"]["Te_bc"] = 3.0  # keV (Ti_bc: null -> same as Te_bc)
+
+# Refit the traced FreeGS surfaces with 10 MXH moments (cos0..9). The template default
+# of 5 under-resolves the shaped edge: the 2 outermost stored surfaces self-intersect
+# when rebuilt from the file and the minuet beat has to trim its boundary to
+# rho ~ 0.991; 7 moments already give a fold-free family. There is NO moment ceiling
+# anymore (2026-07-31): MITIM's state layer and minuet both consume every
+# shape_cos{n}/shape_sin{n} column the file carries, and 10 exercises the
+# two-digit-harmonic path end-to-end. MEASURED dose-response on this case:
+# 5 -> 2 folded surfaces (trim), 7 -> fold-free but edge-marginal, 10 -> fully
+# clean (0 folds, 0 FSA-kernel failures), 20 -> OVERFIT: the export-side
+# 19-harmonic refit of minuet's traced surfaces amplifies tracing noise and
+# breaks MITIM's geometric-factors kernel at one surface (r/a ~ 0.972).
+# More moments fit noise, not shape -- 10 is the sweet spot here.
+# TGLF/CGYRO/GX exports still clamp at 6 (their input schemas); this only
+# smooths what THEY see, never breaks them.
+# NOTE: chains WITH a transp beat share this knob as the TRANSP boundary smoothing
+# (mxh_coeffs_smooth_sep: null inherits it) -- there, pin that one back to 5.
+nml["plasma"]["parameters"]["separatrix"]["n_mxh"] = 10
 
 # Gaussian auxiliary sources: determined in the namelist, injected at minuet beat output
 nml["plasma"]["heating"]["type"] = "gaussian_sources"
@@ -118,6 +141,19 @@ assert (b2 / "beat_results" / "input.gacode").exists(), "portals beat produced n
 
 # Discovery-by-folder-name contract (mitim_plot_maestro / mitim_check_maestro key on run_minuet)
 assert (b1 / "run_minuet").exists(), "minuet beat run folder is not named run_minuet"
+
+# The 10-moment MXH refit (n_mxh = 10 above) must hand minuet a fold-free family:
+# no folded-surface backoff, i.e. minuet's boundary is the last stored surface.
+# (With the template's 5 moments this file exists and the boundary is trimmed.)
+assert not (b1 / "run_minuet" / "input.gacode_trimmed").exists(), \
+    "minuet beat trimmed folded surfaces despite the 10-moment MXH refit"
+
+# ... and the state the beat received must actually CARRY the high harmonics
+# (two-digit column names survive MITIM's writer/reader and minuet's ingest)
+import re as _re
+_txt = (b1 / "run_minuet" / "input.gacode").read_text()
+assert _re.search(r"^# *shape_cos9", _txt, _re.M), \
+    "input.gacode does not carry shape_cos9 -- n_mxh=10 did not reach the file"
 
 # Sidecar + saved discharge object persisted for plotting/inheritance
 assert (b1 / "beat_results" / "minuet_results.npy").exists(), "minuet_results.npy sidecar missing"

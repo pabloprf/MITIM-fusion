@@ -139,8 +139,12 @@ class minuet_beat(beat):
         ig = mn.InputGacode.from_file(str(input_file))
         pr = ig.profiles
         sel = pr['rho'] > 0.0
-        shp_c = np.column_stack([pr.get(f'shape_cos{n}', np.zeros_like(pr['rho']))[sel] for n in range(0, 7)])
-        shp_s = np.column_stack([pr.get(f'shape_sin{n}', np.zeros_like(pr['rho']))[sel] for n in range(0, 7)])
+        # Arbitrary MXH moment count: both stacks must span n = 0...n_max (sin0-2 are carried by delta/zeta)
+        n_max = max([0] +
+                    [int(k[len('shape_cos'):]) for k in pr if k.startswith('shape_cos') and k[len('shape_cos'):].isdigit()] +
+                    [int(k[len('shape_sin'):]) for k in pr if k.startswith('shape_sin') and k[len('shape_sin'):].isdigit()])
+        shp_c = np.column_stack([pr.get(f'shape_cos{n}', np.zeros_like(pr['rho']))[sel] for n in range(0, n_max + 1)])
+        shp_s = np.column_stack([pr.get(f'shape_sin{n}', np.zeros_like(pr['rho']))[sel] for n in range(0, n_max + 1)])
         R, Z = mxh_surface_family(pr['rmin'][sel], pr['rmaj'][sel], pr['zmag'][sel],
                                   pr['kappa'][sel], pr['delta'][sel], pr['zeta'][sel],
                                   shp_c, shp_s, n_theta = 512)

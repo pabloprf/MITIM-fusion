@@ -10,8 +10,6 @@ DESCRIPTION
     from the thermal deuterium population. Validated against interpretive-TRANSP THNTX_DD on
     DIII-D runs (agreement 0.94-1.04). MITIM's fusion power remains DT-only.
 
-*   🎵 **MAESTRO `minuet` beat**: new in-process substitute for `transp_soft` — current diffusion + sawteeth on a fixed-boundary equilibrium (coupled CD+GS) via the standalone MINUET package (`pip install "mitim-fusion[minuet]"`), running in seconds instead of a TRANSP dispatch. Kinetics/species/sources pass through verbatim; only the equilibrium blocks and q/johm/jbs evolve. Fully namelist-driven (`beat_type: minuet`; commented block in `templates/namelist.maestro.yaml`) with gaussian-source heating injection, the sawtooth-times / `ensure_sawtooths` handoff, `mitim_plot_maestro` / `mitim_check_maestro` integration (the full MINUET notebook is appended when `run.minuet` is present), and robustness to FreeGS/engineering-parameter starts (folded-LCFS trim on ingest, trusted-span restore on merge). Dev-test: `tests/dev_tests/test_maestro_minuet_beat.py` (chain `["minuet", "portals"]` with in-process TGLF).
-
 *   💥 **Separatrix initializer from `rz_boundary_file` now shape-faithful**: the boundary fitted
     from the R,Z file carries its FULL MXH moments into the initial state (`shape_cos0+`/`shape_sin3+`,
     previously zeroed), and the `delta`/`zeta` scalars are written in the GACODE-MXH convention
@@ -57,6 +55,14 @@ DESCRIPTION
     removing namelist entries that were redundant with (and could silently disagree with) the
     geqdsk. Explicit values still take precedence; other initialization types are unchanged.
 
+*   📐 **MXH shape moments no longer capped at 7**: the `mitim_state` layer (reader, writer,
+    geometric-factors kernel) now consumes every `shape_cos{n}`/`shape_sin{n}` column an
+    `input.gacode` carries, so `separatrix.n_mxh` above 6 works end-to-end (bit-identical results
+    for existing files; TGLF/CGYRO/GX/ASTRA exports still clamp at harmonic 6 per their input
+    schemas). Fixes under-resolved shaped edges from low-order fits (e.g. FreeGS starts whose
+    outermost stored surfaces self-intersected at the old counts).
+
+*   🎵 **MAESTRO `minuet` beat**: new in-process substitute for `transp_soft` — current diffusion + sawteeth on a fixed-boundary equilibrium (coupled CD+GS) via the standalone MINUET package (`pip install "mitim-fusion[minuet]"`), running in seconds instead of a TRANSP dispatch. Kinetics/species/sources pass through verbatim; only the equilibrium blocks and q/johm/jbs evolve. Fully namelist-driven (`beat_type: minuet`; commented block in `templates/namelist.maestro.yaml`) with gaussian-source heating injection, the sawtooth-times / `ensure_sawtooths` handoff, `mitim_plot_maestro` / `mitim_check_maestro` integration (the full MINUET notebook is appended when `run.minuet` is present), and robustness to FreeGS/engineering-parameter starts (folded-LCFS trim on ingest, trusted-span restore on merge). Dev-test: `tests/dev_tests/test_maestro_minuet_beat.py` (chain `["minuet", "portals"]` with in-process TGLF).
 
 *   💥 **MAESTRO BetaN can be a confinement-quality string**: `profiles_initialization.parameters.BetaN`
     now accepts `"H98y2"` or `"H89p"` (optionally with a target, e.g. `"H98y2=1.1"`) instead of a fixed

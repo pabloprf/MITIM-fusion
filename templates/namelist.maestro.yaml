@@ -83,9 +83,19 @@ plasma:
       # [Optional] If initialization_type = separatrix: path to input.gacode to reproduce internal flux surfaces and other moments
       internal_flux_file: null
 
-      # If initialization_type = geqdsk, freegs, separatrix: MXH order used in TWO places:
-      #   1. the equilibrium->input.gacode conversion at initialization (low order ROUNDS the near-X-point boundary)
-      #   2. smoothing of the boundary handed to TRANSP (first TRANSP beat only; see boundary_surface_psin)
+      # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients used in TWO places:
+      #   1. At INITIALIZATION: the equilibrium->input.gacode conversion (to_profiles) parametrizes every
+      #      flux surface with an MXH of this order -- a low order visibly ROUNDS the near-X-point boundary
+      #      of the initial state relative to the raw geqdsk (visible in the 'MAESTRO init' tab).
+      #   2. To smooth the boundary handed to TRANSP (kinks/loops make TRANSP abort). THIS role is consumed
+      #      by the FIRST TRANSP beat only -- the resulting curve is frozen and reused verbatim by every
+      #      later TRANSP beat (see boundary_surface_psin below).
+      # Values above 7 are supported end-to-end since 2026-07-31 (the state layer consumes every
+      # shape_cos{n}/shape_sin{n} column; TGLF/CGYRO/GX/ASTRA exports still clamp at harmonic 6, their
+      # input schemas). More is not always better: on the FreeGS dev case, 10 is fully clean while 20
+      # overfits tracing noise (see tests/dev_tests/test_maestro_minuet_beat.py). For chains WITH a
+      # transp beat, raising this also sharpens the TRANSP boundary (role 2) -- pin
+      # mxh_coeffs_smooth_sep to decouple.
       n_mxh: 5
 
       # psi_N of the flux surface used as the FIXED TRANSP boundary. 1.0 = separatrix; < 1
