@@ -1393,23 +1393,36 @@ class transp_output:
             self.fmini_avolAVE = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
 
     def getFusionIons(self):
+        # NUBEAM (nalpha=0) writes the fusion-product population as NFI/FDENS_*; the
+        # nalpha=1 analytic fast-alpha model writes it as NALPHA instead (alphas only),
+        # with energies in UALPHPP/UALPHPA and heating in PALE/PALI. Same units.
         try:
             self.nfus = self.f["NFI"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfus_avol = volumeAverage(self.f, "NFI") * 1e6 * 1e-20  # in 10^20m^-3
 
-        except:
-            print("\t- This plasma had no fusion ions")
-            self.nfus = self.nD * 0.0 + self.eps00
-            self.nfus_avol = self.nD_avol * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                self.nfus = self.f["NALPHA"][:] * 1e6 * 1e-20  # in 10^20m^-3
+                self.nfus_avol = volumeAverage(self.f, "NALPHA") * 1e6 * 1e-20  # in 10^20m^-3
+            except (KeyError, IndexError):
+                print("\t- This plasma had no fusion ions")
+                self.nfus = self.nD * 0.0 + self.eps00
+                self.nfus_avol = self.nD_avol * 0.0 + self.eps00
 
         try:
             self.nfusHe4 = self.f["FDENS_4"][:] * 1e6 * 1e-20  # in 10^20m^-3
             self.nfusHe4_avol = (
                 volumeAverage(self.f, "FDENS_4") * 1e6 * 1e-20
             )  # in 10^20m^-3
-        except:
-            self.nfusHe4 = self.nD * 0.0 + self.eps00
-            self.nfusHe4_avol = self.nD_avol * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                self.nfusHe4 = self.f["NALPHA"][:] * 1e6 * 1e-20  # in 10^20m^-3
+                self.nfusHe4_avol = (
+                    volumeAverage(self.f, "NALPHA") * 1e6 * 1e-20
+                )  # in 10^20m^-3
+            except (KeyError, IndexError):
+                self.nfusHe4 = self.nD * 0.0 + self.eps00
+                self.nfusHe4_avol = self.nD_avol * 0.0 + self.eps00
 
         try:
             self.nfusHe3 = self.f["FDENS_3"][:] * 1e6 * 1e-20  # in 10^20m^-3
@@ -1648,9 +1661,14 @@ class transp_output:
         try:
             self.Wperpx_fus = self.f["UFIPP"][:]  # In MJ/m^3
             self.Wparx_fus = self.f["UFIPA"][:]  # In MJ/m^3
-        except:
-            self.Wperpx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
-            self.Wparx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                # nalpha=1 fast-alpha model naming (J/cm^3 == MJ/m^3, no conversion)
+                self.Wperpx_fus = self.f["UALPHPP"][:]  # In MJ/m^3
+                self.Wparx_fus = self.f["UALPHPA"][:]  # In MJ/m^3
+            except (KeyError, IndexError):
+                self.Wperpx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+                self.Wparx_fus = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
         self.pFast_fus = 1 / 2 * self.Wperpx_fus + self.Wparx_fus
         self.pFast_fus_avol = volumeAverage_var(self.f, self.pFast_fus)
 
@@ -1661,9 +1679,14 @@ class transp_output:
         try:
             self.Wperpx_fusHe4 = self.f["UFPRP_4"][:]  # In MJ/m^3
             self.Wparx_fusHe4 = self.f["UFPAR_4"][:]  # In MJ/m^3
-        except:
-            self.Wperpx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
-            self.Wparx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+        except (KeyError, IndexError):
+            try:
+                # fast-alpha model: alphas are the only fusion fast species
+                self.Wperpx_fusHe4 = self.f["UALPHPP"][:]  # In MJ/m^3
+                self.Wparx_fusHe4 = self.f["UALPHPA"][:]  # In MJ/m^3
+            except (KeyError, IndexError):
+                self.Wperpx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+                self.Wparx_fusHe4 = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
         self.pFast_fusHe4 = 1 / 2 * self.Wperpx_fusHe4 + self.Wparx_fusHe4
 
         try:
@@ -2388,12 +2411,13 @@ class transp_output:
         # NBI
         self.getNBIinfo()
 
-        # Alpha
+        # Alpha (PFE/PFI = NUBEAM naming; PALE/PALI = nalpha=1 fast-alpha model, same units)
         try:
-            self.Pfuse = self.f["PFE"][:]  # MW/m^3
-            self.Pfusi = self.f["PFI"][:]  # MW/m^3
-            self.PfuseT = volumeIntegralTot(self.f, "PFE") * 1e-6  # MW
-            self.PfusiT = volumeIntegralTot(self.f, "PFI") * 1e-6  # MW
+            var_e, var_i = ("PFE", "PFI") if "PFE" in self.f else ("PALE", "PALI")
+            self.Pfuse = self.f[var_e][:]  # MW/m^3
+            self.Pfusi = self.f[var_i][:]  # MW/m^3
+            self.PfuseT = volumeIntegralTot(self.f, var_e) * 1e-6  # MW
+            self.PfusiT = volumeIntegralTot(self.f, var_i) * 1e-6  # MW
             if np.sum(self.PfuseT + self.PfusiT) > 0.0 + self.eps00 * (len(self.t) + 1):
                 self.Pfuse_frac = np.array(
                     [
@@ -2407,8 +2431,8 @@ class transp_output:
                 self.Pfusi_frac = 0.0
 
             # Cumulative power
-            self.Pfuse_cum = volumeMultiplication(self.f, "PFE") * 1e-6  # in MW
-            self.Pfusi_cum = volumeMultiplication(self.f, "PFI") * 1e-6  # in MW
+            self.Pfuse_cum = volumeMultiplication(self.f, var_e) * 1e-6  # in MW
+            self.Pfusi_cum = volumeMultiplication(self.f, var_i) * 1e-6  # in MW
 
         except:
             self.Pfuse = copy.deepcopy(self.Poh) * 0.0 + self.eps00

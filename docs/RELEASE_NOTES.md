@@ -38,6 +38,15 @@ DESCRIPTION
     MPI_ABORT and geometry-update categories added, the routine complaint preceding the trap
     takes precedence). A `plfhe4` namelist knob (fusion-product MC source-power gate) is also exposed.
 
+*   🐛 **TRANSP fast-model alphas no longer lost when NUBEAM is off**: the `nalpha=1`
+    analytic fast-alpha model writes the alpha population under different CDF variables
+    than NUBEAM (`NALPHA`/`UALPHPP`-`UALPHPA`/`PALE`-`PALI` vs `NFI`,`FDENS_4`/`UFIPP`-`UFIPA`/
+    `PFE`-`PFI`); the CDF reader only knew the NUBEAM names and silently zero-filled, so
+    NUBEAM-free runs (e.g. MAESTRO with `useNUBEAMforAlphas: false` and no ICRH/NBI) dropped
+    the fast-alpha species AND its heating from the extracted state. The reader now falls
+    back to the fast-model names (validated against a burning-plasma CDF: 275 MW alpha
+    heating and a 1 MeV, 0.03e20 m^-3 alpha species recovered). NUBEAM runs are unaffected.
+
 *   🐛 **MAESTRO initializer: BetaN auto-lowering when the seed profiles would break TRANSP**:
     the profile initializer matches a target BetaN by scanning the temperature gradient; at
     low density the target can be unreachable and the seed saturates above TRANSP's 100 keV
