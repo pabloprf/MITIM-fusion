@@ -1196,6 +1196,9 @@ def calculatePlasmaFrequency(ne):
 
 
 def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1):
+    """
+    Equation is from Lee et al., NF, 2017
+    """
     k0, k1 = 0, 0
 
     if delta < 0.25:
