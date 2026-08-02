@@ -412,3 +412,33 @@ file(s) that prove it. Then the magnitudes (with units / rho). Then, if useful,
 the headless command(s) or `mitim_plot_maestro ...` line the user can run for the
 live GUI. Give one concrete recommendation for the next step, not a menu. Keep
 inference clearly separated from what the files literally show
+
+---
+
+## Hard-won specifics (2026-08 scan campaigns)
+
+- **`derived['Pfus']` can be 0 by design**: scans that run PORTALS with
+  `zero_source_blocks: [qrad, qfus, qohme]` (controlled-Ploss studies) write final
+  states with `qfuse/qfusi` identically zero. Recompute fusion from (nD, nT, Ti)
+  with MITIM's own Bosch-Hale (`targets_analytic.sigv_fun`, or
+  `state.recompute_targets(['qfus'])`) applied identically to every state you
+  compare, and validate once against a TRANSP-beat state that carries real columns.
+- **Paired-scan discipline** (two scans differing by ONE change, identical case
+  labels): pair by label; when pooling both scans in one analysis, rename cases
+  with a per-scan suffix FIRST or `{case.name: ...}` dicts silently overwrite one
+  scan with the other. Report median/IQR + up/down sign counts + a per-pair
+  counterfactual, never bare means: MAESTRO chain chaos is ~±5% IQR with ±30%
+  outliers, so a single pair's delta is uninterpretable. Control confounds by
+  splitting WITHIN an arm (e.g. same Bt, alpha-rich vs alpha-free).
+- **Census-aware analysis**: scripts over a running scan must render with
+  partial/zero data, labelling empties "empty BY CENSUS, not by physics", and must
+  not hardcode per-scan failure/timeout case lists (clear them before another
+  scan's census — a reused list mislabels a scan that simply hasn't run yet).
+- **Guarded shared-module edits**: when extending shared fig modules for a new
+  deck, prove the old decks unchanged by re-rendering them and diffing the outputs
+  byte-for-byte; anything that would change them goes in the new driver instead.
+- **Remote-run gotchas**: inside `ssh host 'bash -l -c "... $VAR ..."'` the remote
+  login shell expands `$VAR` (empty) before bash -c runs — use literal paths.
+  Never pipe a long remote python through `| head -N` (SIGPIPE kills it mid-run,
+  exit 0); use `tail`. After regenerating a file, verify its mtime/md5 actually
+  CHANGED — an identical checksum means the run silently died.
