@@ -647,7 +647,7 @@ maestro:
       tokamak_structures: null 
 
       # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
-      machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium
+      machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium (CMOD, D3D, NSTX, ITER). TEQ warm-starts from a stored equilibrium keyed to this label with a tight (~1.3x) basin: pick the registered machine nearest the target in size/shape (e.g. ITER for ARC-class)
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization. If null, no transition performed
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
       machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma

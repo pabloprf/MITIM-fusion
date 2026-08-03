@@ -20,8 +20,15 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
         self.job_id, self.job_name = None, None
 
     def defineRunParameters(
-        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, **kwargs
+        self, *args, minutesAllocation=60 * 8, ensureMPIcompatibility=True, tokamak_name = None, cpus_per_task = None, **kwargs
     ):
+        # cpus_per_task: SLURM --cpus-per-task for the TRANSP job (None = SLURM default, 1 CPU/task).
+        # Set to 2 on hyperthreaded partitions (ThreadsPerCore=2, e.g. engaging sched_mit_psfc_r8)
+        # when running MPI decks (ICRF/NUBEAM parallel servers): there --ntasks N buys N
+        # hyperthreads = N/2 physical cores, but the container's runscript does
+        # `mpirun -n N -machinefile "localhost slots=N"`, which binds one rank per PHYSICAL core
+        # and aborts with "no available cpus in the allocation". 2 hyperthreads/task makes the
+        # allocation N full cores. Serial decks (nparallel=1) never invoke mpirun and don't care.
         super().defineRunParameters(*args, **kwargs)
 
         self.job_name = f"transp_{self.tok}_{self.runid}"
@@ -57,6 +64,7 @@ class TRANSPsingularity(TRANSPtools.TRANSPgeneric):
             slurm_settings={
                 "minutes": minutesAllocation,
                 "ntasks": self.nparallel,
+                "cpus-per-task": cpus_per_task,     # None -> no line in the sbatch header (see comment above)
                 "name": self.job_name,
                 "mem": 0,                       # All memory available, since TRANSP manages a lot of in-memory operations
             },

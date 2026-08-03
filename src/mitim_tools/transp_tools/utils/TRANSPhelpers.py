@@ -399,7 +399,7 @@ class transp_run:
 
     # --------------------------------------------------------------------------------------------
 
-    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False):
+    def run(self, tokamakTRANSP, tokamak_name = None, mpisettings={"trmpi": 32, "toricmpi": 32, "ptrmpi": 1}, minutesAllocation = 60*8, case='run1', checkMin=10.0, grabIntermediateEachMin=1E6, retrieveAC=False, cpus_per_task=None):
         '''
         Run TRANSP
         '''
@@ -414,7 +414,8 @@ class transp_run:
             self.shot + self.runid, self.shot,
             mpisettings = mpisettings,
             minutesAllocation = minutesAllocation,
-            tokamak_name = tokamak_name)
+            tokamak_name = tokamak_name,
+            cpus_per_task = cpus_per_task)
 
         self.t.run()
 

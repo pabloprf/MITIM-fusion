@@ -295,7 +295,7 @@ class transp_beat(beat):
             modify_p_to_match_pB2 = None
             
         self.machine_run = machine_initialization
-        
+
         if transition_window > 0.0:
             self._additional_operations_add_initialization(
                 machine_initialization = self.machine_run,
@@ -494,6 +494,7 @@ class transp_beat(beat):
             minutesAllocation = 60*kwargs.get("hours_allocation",8),
             case = self.transp.runid,
             tokamak_name = kwargs.get("tokamak_name",None),
+            cpus_per_task = kwargs.get("cpus_per_task",None),
             checkMin = kwargs.get("checkMin",3),
             retrieveAC = self.timeAC is not None,
             )
@@ -992,6 +993,12 @@ class transp_beat(beat):
         elif machine_initialization == 'NSTX':
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 0.89, 0.61, 2.5, 0.46, 0.0, 0.0, 0.4, 1.0, 0.5, 1.0
             # says it has no psi-bndry
+        elif machine_initialization == 'ITER':
+            # Reactor-scale seed: TEQ warm-starts its FIRST solve from a stored per-device
+            # equilibrium keyed to this label, and its convergence basin is tight (~1.3x in
+            # size/shape) -- so pick the registered machine NEAREST the target (e.g. ITER for
+            # ARC-class designs, rather than a ~7x morph from CMOD).
+            R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 6.2, 2.0, 1.85, 0.485, 0.0, 0.0, 0.3, 10.0, 5.3, 1.0
 
         if modify_Ip_to_match_qstar is not None:
             qstar_now = PLASMAtools.evaluate_qstar(

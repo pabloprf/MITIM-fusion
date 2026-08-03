@@ -33,7 +33,18 @@ DESCRIPTION
     in deeply ballooning-limited pedestals. EPED runs also keep per-height TOQ/ELITE work directories
     by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup).
 
+*   💥 **MAESTRO transp beat can seed from ITER** (`machine_initialization: ITER`): TEQ warm-starts
+    its first solve from a stored per-device equilibrium keyed to the tokamak label, with a tight
+    (~1.3x) convergence basin — so reactor-scale targets (ARC-class) should morph from ITER rather
+    than a ~7x walk from CMOD. The namelist comment now documents the pick-the-nearest-machine rule.
+
 ### Bug Fixes
+
+*   🐛 **MPI TRANSP (ICRF/NUBEAM parallel servers) crashed at startup when submitted via sbatch on
+    hyperthreaded partitions** ("mpirun ... no available cpus in the allocation"): `--ntasks N` buys
+    N hyperthreads = N/2 physical cores, but the container binds one rank per core. New
+    `cpus_per_task` argument in `defineRunParameters()` (also reachable via `transp_run.run()` and
+    the transp-beat run kwargs; default None = previous behavior) — set to 2 on such partitions.
 
 *   🐛 **MAESTRO separatrix initializer delivered less auxiliary power than requested when
     the freegs profile correction ran**: sources were volume-normalized on the solved freegs
