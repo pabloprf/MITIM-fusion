@@ -294,6 +294,9 @@ maestro:
       # cores per case (the `cpus` knob in preprocess_prepare_parameters below).
       minutes_slurm: 240
 
+      # (if full EPED) [rule, threshold]: 'G' = flat gamma/omega_A cut; 'W' = EPED1 gamma > C*omega_*i(n)/2 (threshold = calibration C)
+      # stability_rule: ['G', 0.03]
+
       # (if use_full_EPED: false) Location of the EPED-NN files and the transformation
       # function of that specific NN, e.g.:
       #   nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
