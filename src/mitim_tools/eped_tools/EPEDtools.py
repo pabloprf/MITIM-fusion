@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import f90nml
 from pathlib import Path
 from mitim_tools.misc_tools import FARMINGtools, GRAPHICStools, IOtools, GUItools
+from mitim_tools.gacode_tools import PROFILEStools
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -63,6 +64,10 @@ class EPED:
                                         # rerun from scratch instead of asking ('q'). For non-interactive callers.
             job_array_limit = 5,
             removeScratchFolders = True,  #ONLY CHANGE THIS FOR DEBUGGING, if you make this False, your EPED runs will be saved and they are enormous
+            clean_intermediate_files = False, # If True, EPED deletes each per-height TOQ/ELITE work dir (toq.log, raw peddata,
+                                              # eigenfunctions) as soon as its stage is collected (CLEAN_AFTER=1 in all config
+                                              # sections). Default keeps them in the remote scratch so failures are diagnosable
+                                              # post-mortem (the scratch itself still goes away unless removeScratchFolders=False).
             eped_params_override = None,
             teped_guess_eV = -1, # if -1, EPED will choose its own guess
             m = 2.5, z = 1, mi = 20, zi = 10, # plasma composition: main-ion mass/charge and impurity mass/charge.
@@ -80,6 +85,10 @@ class EPED:
         # ------------------------------------
         # Prepare job
         # ------------------------------------
+
+        # CLEAN_AFTER appears in every port section; modify_eped_config replaces all occurrences
+        if clean_intermediate_files:
+            eped_params_override = {**(eped_params_override or {}), 'CLEAN_AFTER': 1}
 
         # Prepare folder structure
         self.folder_run = self.folder / subfolder
@@ -314,6 +323,9 @@ class EPED:
             print_results = True,
             label = None,
             specific_folder = None,
+            diamagnetic_stab_rule = 'G',    # 'G'/'H'/'GH': flat cut; 'W': EPED1 gamma > C*omega_*i(n)/2
+            stability_threshold = 0.03,     # flat rules: cut on gamma/omega_A; 'W': calibration factor C
+            gacode_state = None,            # companion plasma state (path or gacode_state), required by 'W'
             ):
 
         self.results[label if label is not None else subfolder] = {}
@@ -330,7 +342,7 @@ class EPED:
         for output_file in output_files:
 
             with xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4') as ds:
-                data = postprocess_eped(ds, 'G', 0.03)
+                data = postprocess_eped(ds, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state)
 
             sublabel = output_file.name.split('_')[-1].split('.')[0]
 
@@ -372,7 +384,9 @@ class EPED:
         scan_params_labels = ['$n_{e,ped}$ ($10^{19}m^{-3}$)'],
         colors = None,
         fn = None,
-        tab_color=0,
+        tab_color = None,   # FigureNotebook tab color (int index into GRAPHICStools.convert_to_hex_soft,
+                            # or one of its color keys). None: give each label its own color, so the tabs
+                            # of a label are visually grouped; pass a value to force it on every tab
         **kwargs_plot_prediction,
     ):
         
@@ -401,7 +415,10 @@ class EPED:
             additional_labels = None
             
         
-        fig = self.fn.add_figure(label="Pedestal Top", tab_color=tab_color)
+        # Tab color of each label's own set of figures; the shared "Pedestal Top" tab keeps index 0
+        tab_colors = [tab_color if tab_color is not None else i for i in range(len(labels))]
+
+        fig = self.fn.add_figure(label="Pedestal Top", tab_color=tab_color if tab_color is not None else 0)
         axs = fig.subplots(2, 1)
         self.plot_prediction(
             labels = labels,
@@ -417,11 +434,11 @@ class EPED:
         figs_eped_profile_ptot = {}
         figs_eped_profile_q = {}
         figs_eped_profile_j = {}
-        for label in labels:
-            figs_stability[label] = self.fn.add_figure(label="EPED Stability (teped) - " + label, tab_color=tab_color)
-            figs_eped_profile_ptot[label] = self.fn.add_figure(label="EPED profiles (ptot) - " + label, tab_color=tab_color)
-            figs_eped_profile_q[label] = self.fn.add_figure(label="EPED profiles (q) - " + label, tab_color=tab_color)
-            figs_eped_profile_j[label] = self.fn.add_figure(label="EPED profiles (J) - " + label, tab_color=tab_color)
+        for i, label in enumerate(labels):
+            figs_stability[label] = self.fn.add_figure(label="EPED Stability (teped) - " + label, tab_color=tab_colors[i])
+            figs_eped_profile_ptot[label] = self.fn.add_figure(label="EPED profiles (ptot) - " + label, tab_color=tab_colors[i])
+            figs_eped_profile_q[label] = self.fn.add_figure(label="EPED profiles (q) - " + label, tab_color=tab_colors[i])
+            figs_eped_profile_j[label] = self.fn.add_figure(label="EPED profiles (J) - " + label, tab_color=tab_colors[i])
 
         
         for i, label in enumerate(labels):
@@ -568,7 +585,10 @@ class EPED:
         ax.set_xlabel(scan_params_label)
         ax.set_ylabel('$w_{top}$ ($\\psi_{pol,N}$)')
         ax.set_ylim(bottom=0)
-        ax.legend(loc=legend_location, title=legend_title)
+        # This panel mirrors the one above without labels (the legend lives there), so only
+        # legend it when something here actually carries one
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc=legend_location, title=legend_title)
         GRAPHICStools.addDenseAxis(ax)
 
         plt.tight_layout()
@@ -657,12 +677,29 @@ class EPED:
             if j == 0:
                 ax.legend(loc='upper right', fontsize=8)
             
-            # Plot prediction
+            # Plot prediction. Under the 'W' rule the crossing happens on the limiting mode's
+            # own threshold curve, not at the flat g_base -- place the marker there
             xbase = _to_scalar(data[variable[2]]) * variable[4]
-            ax.plot([xbase], [g_base], '-s', c=color, ms=12)
+            ybase = g_base
+            if 'stability_threshold_n' in data.data_vars:
+                step = int(_to_scalar(data['stability_index']))
+                n_lim = int(_to_scalar(data['n_limiting']))
+                if step >= 0 and n_lim > 0:
+                    ybase = np.array(data['stability_threshold_n'])[step, int(np.where(n == n_lim)[0][0])]
+            ax.plot([xbase], [ybase], '-s', c=color, ms=12)
 
-            # Plot criterion
-            ax.axhline(g_base, color='k', ls='--', lw=1.0)
+            # Plot criterion: flat cut, or the per-mode threshold of the 'W' (omega_*) rule
+            if 'stability_threshold_n' in data.data_vars:
+                thr = np.array(data['stability_threshold_n'])
+                for mode in range(n.shape[0]):
+                    ax.plot(h, thr[:, mode], '--', c=colors[mode], lw=0.5)
+                # y-scale set by the lowest-n threshold (the others fan out linearly above it);
+                # thr is all-nan only if every equilibrium of the scan was degenerate
+                thr_valid = thr[:, 0][np.isfinite(thr[:, 0])]
+                ytop = 2.0 * thr_valid.max() if thr_valid.size else g_base * 2.0
+            else:
+                ax.axhline(g_base, color='k', ls='--', lw=1.0)
+                ytop = g_base * 2.0
 
             # Plot starting point
             ax.axvline(h[0], color='k', ls='--', lw=0.5)
@@ -670,7 +707,7 @@ class EPED:
             ax.set_xlabel(variable[1])
             ax.set_ylabel('$\\gamma/\\omega_A$')
             ax.set_title(f'{scan_param} = {_to_scalar(data[scan_param])}', fontsize=10)
-            ax.set_ylim([0,g_base*2.0])
+            ax.set_ylim([0,ytop])
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
             
@@ -704,13 +741,23 @@ class EPED:
             teped = np.array(data['teped_list'])* 1E-3
             teped_base = _to_scalar(data['tped'])
 
+            # When postprocess_eped found no stable solution in the scanned window, the SELECTED
+            # pedestal is undefined (tped/ptop/wptop = nan) but every per-height profile exists.
+            # Draw the full stack anyway, over the widest pedestal window in the scan.
+            has_selection = np.isfinite(teped_base)
+
             minwidth = 1-_to_scalar(data['wptop'])
-            
+            if not np.isfinite(minwidth):
+                wped_all = np.array(data['eq_wped_psi'])
+                wped_all = wped_all[np.isfinite(wped_all) & (wped_all > 0)]
+                minwidth = 1 - 1.5 * wped_all.max() if wped_all.size else 0.85
+
             for iheight in range(p.shape[0]):
-                
-                is_it_on_point = abs(teped[iheight] - teped_base) < 0.01
-                
-                alpha_case = 1.0 if is_it_on_point else (0.3 if teped[iheight] < teped_base else 0.05)
+
+                is_it_on_point = has_selection and abs(teped[iheight] - teped_base) < 0.01
+
+                # Without a selected pedestal no height is privileged, so do not fade any out
+                alpha_case = (1.0 if is_it_on_point else (0.3 if teped[iheight] < teped_base else 0.05)) if has_selection else 0.3
                 lw = 2.0 if is_it_on_point else 0.5
                 ax.plot(psin[iheight,:], p[iheight,:], '-', c=color, lw=lw, alpha=alpha_case)
             
@@ -864,7 +911,8 @@ def _limiting_dome_frac(stability, teped_axis, step, mode_idx, threshold, foot_f
     '''
     Fraction of the explored T_e,ped range over which the limiting mode stays above
     foot_frac*threshold, measured as the contiguous band of pedestal heights containing
-    the crossing `step`.
+    the crossing `step`. `threshold` is a scalar for the flat rules, or the limiting mode's
+    per-height threshold column for the 'W' (omega_*) rule.
 
     This is the "mountain-vs-spike" discriminator, and it is what makes the
     peeling/ballooning call robust rather than a bare cut on the mode number n. A
@@ -959,9 +1007,106 @@ def limiting_mode_from_dataset(data, **classify_kwargs):
     }
 
 
-def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot_frac=0.3):
+# Constants for the omega_* (diamagnetic) stability rule, SI
+_E_C = 1.602176634e-19      # elementary charge [C]
+_MU0 = 4.0e-7 * np.pi       # vacuum permeability [H/m]
+_AMU_KG = 1.66053907e-27    # atomic mass unit [kg]
+
+# Barrier window over which omega_*i is maximized: psi_N in [1 - _BARRIER_WIDTHS*w_ped_psi, 1]
+_BARRIER_WIDTHS = 2.0
+
+
+def _eped_profiles_at_height(data, ih):
+    '''
+    Per-pedestal-height EPED profiles in SI, reordered to ascending psi_N.
+
+    UNITS in the netCDF: profile_ne [1e19 m^-3], profile_Te/Ti [keV], profile_ptot [kPa];
+    converted here to [m^-3], [eV], [Pa]. The last stored point is a psi_N=0 padding point
+    (q = ne = Te = 0) and is dropped.
+    '''
+    out = {}
+    for key, conversion in (('psin', 1.0), ('rho', 1.0), ('q', 1.0), ('ne', 1e19),
+                            ('Te', 1e3), ('Ti', 1e3), ('ptot', 1e3)):
+        out[key] = np.array(data[f'profile_{key}'])[ih][:-1][::-1] * conversion
+    return out
+
+
+def _omega_star_threshold(data, gacode_state, calibration_factor):
+    '''
+    Per-(height, toroidal mode number) EPED1 diamagnetic-stabilization threshold on gamma/omega_A:
+
+        threshold(h,n) = C * 0.5 * max_barrier[ omega_*i(h,n) ] / omega_A(h)
+
+    so that the stability rule reads  gamma > C * omega_*i(n)/2  , with
+    omega_*i = (n / (Z_i e n_i)) dp_i/dpsi  (EPED1 criterion, Snyder et al., Phys. Plasmas 16,
+    056118 (2009); omega_* convention as in Saarelma et al., Nucl. Fusion 52, 103020 (2012)).
+
+    Unlike the flat 'G' cut, the threshold grows ~linearly with n, so high-n modes are
+    progressively harder to declare limiting.
+
+    `calibration_factor` C is the O(1) calibration knob (nominal 1.0): the ABSOLUTE
+    normalization of omega_*/omega_A against ELITE's internal Alfven normalization is
+    uncertain to an O(1) factor -- the robust content of this rule is the ~n scaling.
+    '''
+    state = gacode_state if hasattr(gacode_state, 'profiles') else PROFILEStools.gacode_state(gacode_state)
+    torfluxa = float(np.asarray(state.profiles['torfluxa(Wb/radian)']).ravel()[0])  # [Wb/rad]
+
+    n_modes = np.array(data['nmodes'])
+    z, zi, zeff = _to_scalar(data['z']), _to_scalar(data['zi']), _to_scalar(data['zeffped'])
+    m, mi = _to_scalar(data['m']), _to_scalar(data['mi'])                # [amu]
+    B, R = _to_scalar(data['bt']), _to_scalar(data['r'])                 # [T], [m]
+    wped_psi = np.array(data['eq_wped_psi'])
+
+    threshold = np.full(np.array(data['gamma']).shape, np.nan)
+    for ih in range(threshold.shape[0]):
+
+        pr = _eped_profiles_at_height(data, ih)
+
+        # TOQ equilibria at very high T_e,ped come back degenerate (q=0, repeated psi_N), and
+        # failed heights carry fill values (eq_wped_psi <= 0, which would empty the barrier
+        # window below). Leaving their threshold at NaN keeps them from ever setting the
+        # pedestal limit, consistent with the eq_betanped < 0 masking of the growth rates.
+        if not (np.all(pr['q'] > 0) and np.all(np.diff(pr['psin']) > 0) and wped_psi[ih] > 0):
+            continue
+
+        # Main-ion and impurity densities from quasineutrality with EPED's own z, zi, zeffped
+        # (p_i = n_i T_i, NOT the ptot/2 shortcut, which is ~18% off on the validation case)
+        n_imp = pr['ne'] * (zeff - z) / (zi * (zi - z))
+        n_i = (pr['ne'] - zi * n_imp) / z
+        p_i = n_i * pr['Ti'] * _E_C                                      # [m^-3] * [eV] * [C] -> [Pa]
+
+        # psi_N is linear in psi, so d/dpsi = (d/dpsi_N)/delta_psi. The netCDF carries no
+        # dimensional psi and no torfluxa, so delta_psi = psi_edge - psi_axis is rebuilt from
+        # the netCDF q profile plus the companion input.gacode torfluxa, via
+        # dPsi = dPhi/q with Phi = torfluxa*rho^2. CONVENTION: this runs ~7% below the
+        # input.gacode polflux(edge)-polflux(axis) on the validation case; omega_* ~ 1/delta_psi.
+        delta_psi = float(np.trapezoid(2.0 * torfluxa * pr['rho'] / pr['q'], pr['rho']))
+
+        omega_star_per_n = np.abs(np.gradient(p_i, pr['psin']) / delta_psi) / (z * _E_C * n_i)  # [rad/s]
+
+        rho_m = (n_i * m + n_imp * mi) * _AMU_KG                         # [amu] -> [kg/m^3]
+        omega_A = B / np.sqrt(_MU0 * rho_m) / R                          # v_A/R0 [rad/s], local
+
+        # EPED1 evaluates omega_*i at its maximum across the pedestal barrier
+        barrier = pr['psin'] >= 1.0 - _BARRIER_WIDTHS * wped_psi[ih]
+        j = np.where(barrier)[0][int(np.argmax(omega_star_per_n[barrier]))]
+
+        # omega_A taken with rho_m AT THE BARRIER PEAK; the alternative on-axis rho_m
+        # would scale every threshold by ~1.44x on the validation case
+        threshold[ih, :] = 0.5 * n_modes * omega_star_per_n[j] / omega_A[j]
+
+    return calibration_factor * threshold
+
+
+def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot_frac=0.3, gacode_state=None):
     '''
     Note that this postprocessing uses the diagmanetic stabilization rule to determine stability, may not match EPED
+
+    Rules 'G', 'H', 'GH'/'HG' apply a FLAT cut (max-over-n of the chosen growth-rate metric
+    against `stability_threshold`). Rule 'W' applies the EPED1 diamagnetic criterion
+    gamma > C*omega_*i(n)/2, in which case `stability_threshold` plays the role of the O(1)
+    calibration factor C and `gacode_state` (path or gacode_state) must be the companion
+    plasma state (see _omega_star_threshold).
     '''
 
 
@@ -977,14 +1122,28 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
         y *= data['gamma'].data.copy()
     elif diamagnetic_stab_rule == 'H':
         y = data['gamma_PB'].data.copy()
+    elif diamagnetic_stab_rule == 'W':
+        if gacode_state is None:
+            raise ValueError("[MITIM] The 'W' (omega_*) stability rule needs a companion gacode_state (path or gacode_state) to get the dimensional psi and mass density")
+        y = data['gamma'].data.copy()
     else:
         y = data['gamma'].data.copy()
     y[index, :] = np.nan
 
     data['stability'] = (('dim_height', 'dim_nmodes'), y)
-    y0 = np.nanmax(y, 1)
-    y0 = np.where(y0 == None, 0, y0)
-    indices = np.where(y0 > stability_threshold)[0]
+
+    if diamagnetic_stab_rule == 'W':
+        # Per-(height, n) threshold -> the crossing test must be elementwise, not on max-over-n
+        threshold = _omega_star_threshold(data, gacode_state, stability_threshold)
+        data['stability_threshold_n'] = (('dim_height', 'dim_nmodes'), threshold)
+        excess = y - threshold
+        excess = np.where(np.isnan(excess), -np.inf, excess)
+        indices = np.where(np.max(excess, axis=1) > 0)[0]
+    else:
+        threshold = stability_threshold
+        y0 = np.nanmax(y, 1)
+        y0 = np.where(y0 == None, 0, y0)
+        indices = np.where(y0 > stability_threshold)[0]
     if len(indices):
         step = indices[0]
     else:
@@ -1002,10 +1161,17 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
         # `dome_frac` is how broad that mode's unstable band is, as a fraction of the
         # explored T_e,ped range, distinguishing a coherent ballooning "mountain" (broad)
         # from an isolated spike (sliver).
+        # With a per-(height,n) threshold the limiting mode is the largest EXCESS over the
+        # threshold, not the largest growth rate (for a flat cut the two are identical).
         n_modes_here = np.asarray(data['nmodes']).ravel()
-        mode_idx = int(np.nanargmax(y[step, :]))
+        if diamagnetic_stab_rule == 'W':
+            mode_idx = int(np.argmax(excess[step, :]))
+            threshold_dome = threshold[:, mode_idx]
+        else:
+            mode_idx = int(np.nanargmax(y[step, :]))
+            threshold_dome = stability_threshold
         data['n_limiting'] = (dims, np.array([int(n_modes_here[mode_idx])]))
-        data['dome_frac'] = (dims, np.array([_limiting_dome_frac(y, data['teped_list'].data, step, mode_idx, stability_threshold, dome_foot_frac)]))
+        data['dome_frac'] = (dims, np.array([_limiting_dome_frac(y, data['teped_list'].data, step, mode_idx, threshold_dome, dome_foot_frac)]))
         data['pped'] = (dims, np.array([data['eq_pped'].data[step] * 1.0e3]))
         data['ptop'] = (dims, np.array([data['eq_ptop'].data[step] * 1.0e3]))
         data['tped'] = (dims, np.array([data['eq_tped'].data[step]]))
@@ -1017,7 +1183,16 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
             data['tesep'] = (dims, np.array([75.0]))
             data['nesep'] = 0.25 * data['neped']
     else:
-        print(f'\t> Warning: No stable solution found in EPED postprocessing using the diamagnetic stabilization rule ({diamagnetic_stab_rule} > {stability_threshold}), proceed with caution', typeMsg='w')
+        if len(index) == x.shape[0]:
+            # Every height was masked upstream (eq_* = -1): the EPED driver failed to parse
+            # TOQ's pedestal-top summary on ALL heights. Known cause: TOQ's fixed-width
+            # peddata output glues adjacent fields when a value fills its column (neped >= 100
+            # in 1e19 units, or very large nu* at cold pedestals) and the driver's
+            # read_peddata() whitespace-splits those lines. This is a bookkeeping failure,
+            # NOT a stability result -- the equilibria and growth rates are typically fine.
+            print(f'\t> Warning: EVERY pedestal height has failed pedestal characterization (eq_* = -1 from EPED/TOQ). Growth rates exist but no height can be reported. Known trigger: peddata fixed-width fields gluing at high neped (>=100e19) or high nu* -- a parse bug in the EPED driver (toq_io.read_peddata), not a physics failure.', typeMsg='w')
+        else:
+            print(f'\t> Warning: No stable solution found in EPED postprocessing using the diamagnetic stabilization rule ({diamagnetic_stab_rule} > {stability_threshold}), proceed with caution', typeMsg='w')
         data['stability_index'] = (dims, np.array([-1]))
         data['n_limiting'] = (dims, np.array([-1]))
         data['dome_frac'] = (dims, np.array([0.0]))
@@ -1031,7 +1206,7 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
 
     return data
 
-def read_eped_file(ipaths):
+def read_eped_file(ipaths, diamagnetic_stab_rule = 'G', stability_threshold = 0.03, gacode_state = None):
     invars = ['ip', 'bt', 'r' , 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep']
     data_arrays = []
     for ipath in ipaths:
@@ -1049,7 +1224,7 @@ def read_eped_file(ipaths):
         if ipath.is_file():
             with xr.open_dataset(f'{ipath.resolve()}', engine='netcdf4') as ds:
                 data = ds.load()
-            data = postprocess_eped(data, 'G', 0.03)
+            data = postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state)
         data_arrays.append(data.expand_dims({'filename': [ipath.parent.parent.parent.name]}))
 
     dataset = xr.merge(data_arrays, join='outer', fill_value=np.nan).sortby('filename')

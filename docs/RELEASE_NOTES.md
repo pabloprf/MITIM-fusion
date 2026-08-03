@@ -26,6 +26,13 @@ DESCRIPTION
     Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
     (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
 
+*   💥 **EPED physics-based stability rule** (`postprocess_eped` rule `'W'`, exposed in `EPED.read()`
+    and the MAESTRO eped-beat knob `stability_rule`): the pedestal can now be selected with the EPED1
+    diamagnetic criterion gamma > C*omega_*i(n)/2 — the threshold grows ~linearly with toroidal mode
+    number, so the answer converges in the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut
+    in deeply ballooning-limited pedestals. EPED runs also keep per-height TOQ/ELITE work directories
+    by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup).
+
 ### Bug Fixes
 
 *   🐛 **MAESTRO separatrix initializer delivered less auxiliary power than requested when

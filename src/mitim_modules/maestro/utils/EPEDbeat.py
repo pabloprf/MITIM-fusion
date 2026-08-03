@@ -56,6 +56,9 @@ class eped_beat(beat):
             zeff_location = 'vol_avg',     # Where to evaluate Zeff (and the fuel dilution) fed to EPED: 'vol_avg' (default,
                                            # recovers old behavior) or 'pedestal' (interpolated at rho=0.95). Both feed the
                                            # zeffped input and the effective-impurity charge used by full EPED.
+            stability_rule = ['G', 0.03],  # (full EPED) [rule, threshold] used to pick the pedestal from the ELITE spectrum.
+                                           # 'G' (default): flat cut on gamma/omega_A. 'W': EPED1 diamagnetic criterion
+                                           # gamma > C*omega_*i(n)/2, threshold = the O(1) calibration factor C.
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -104,6 +107,7 @@ class eped_beat(beat):
         self.minutes_slurm = minutes_slurm
         self.forceifcold_start = forceifcold_start
         self.zeff_location = zeff_location
+        self.stability_rule = stability_rule
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -679,6 +683,9 @@ class eped_beat(beat):
             # the label is cached here; the n_limiting / dome_frac it was derived from are
             # classifier internals, recomputed from output_run1.nc when needed.
             'limiting_mode': limiting['limiting_mode'] if limiting else None,
+            # Rule that selected the pedestal from the ELITE spectrum, so later re-reads of
+            # output_run1.nc (summary, plot) reproduce the same call
+            'stability_rule': list(getattr(self, 'stability_rule', ['G', 0.03])),
         }
 
         for key in eped_results:
@@ -687,6 +694,15 @@ class eped_beat(beat):
         self.profiles_output.write_state(file=self.folder / 'input.gacode.eped')
 
         return eped_results
+
+    def _stability_read_kwargs(self, gacode_state, stability_rule = None):
+        '''EPED.read() kwargs implementing this beat's diamagnetic-stability rule. The 'W'
+        (omega_*) rule needs a companion plasma state for the dimensional psi and the mass
+        density; the EPED beat does not touch the equilibrium, so its input or output
+        input.gacode supply the same torfluxa. `stability_rule` overrides the prepare-time
+        knob (used on re-reads driven by what eped_results.npy recorded).'''
+        rule, threshold = stability_rule if stability_rule is not None else getattr(self, 'stability_rule', ['G', 0.03])
+        return dict(diamagnetic_stab_rule = rule, stability_threshold = threshold, gacode_state = gacode_state)
 
     @staticmethod
     def _default_teped_bound():
@@ -796,7 +812,7 @@ class eped_beat(beat):
             m = m, z = z, mi = mi, zi = zi,
         )
 
-        eped.read(subfolder='case1')
+        eped.read(subfolder='case1', **self._stability_read_kwargs(self.profiles_current))
 
         # .item() instead of float(...) so this works under numpy>=2, where
         # float(xarray_da) -> float(da.values) fails on non-0-d single-element arrays.
@@ -937,7 +953,8 @@ class eped_beat(beat):
             png_path = output_dir / png_name
             try:
                 eped = EPEDtools.EPED(folder=self.folder_output)
-                eped.read(subfolder='.', label='run1')
+                eped.read(subfolder='.', label='run1',
+                          **self._stability_read_kwargs(self.folder_output / 'input.gacode', d.get('stability_rule')))
 
                 # Derive the supporting n_limiting / dome_frac from the authoritative
                 # spectrum for the markdown detail, and recover the label itself for
@@ -1069,7 +1086,9 @@ class eped_beat(beat):
         # Full EPED?
         if (self.folder_output / 'output_run1.nc').exists():
             eped = EPEDtools.EPED(folder=self.folder_output)
-            eped.read(subfolder='.', label='full_eped')
+            eped.read(subfolder='.', label='full_eped',
+                      **self._stability_read_kwargs(self.folder_output / 'input.gacode',
+                                                    loaded_results.get('stability_rule') if loaded_results is not None else None))
             eped.plot(fn=fn, labels=['full_eped'], tab_color=counter)
 
         # Scan results? (loaded_results is None for an unfinished beat)
