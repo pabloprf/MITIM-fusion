@@ -692,20 +692,29 @@ class EPED:
                 n_lim = int(_to_scalar(data['n_limiting']))
                 if step >= 0 and n_lim > 0:
                     ybase = np.array(data['stability_threshold_n'])[step, int(np.where(n == n_lim)[0][0])]
-            ax.plot([xbase], [ybase], '-s', c=color, ms=12)
+            ax.plot([xbase], [ybase], '-s', c=color, ms=7, zorder=10)
 
-            # Plot criterion: flat cut, or the per-mode threshold of the 'W' (omega_*) rule
+            # Plot criterion: flat cut, or the per-mode threshold of the 'W' (omega_*) rule.
+            # Logarithmic y-window sized so nothing decision-relevant is clipped (every
+            # threshold curve and the selection marker -- the 'W' thresholds span ~n_max/n_min
+            # by construction, unshowable on a linear axis) while staying robust to the huge
+            # garbage gamma of unconverged-ELITE "forest" regions
+            g_pos = g[np.isfinite(g) & (g > 0)]
             if 'stability_threshold_n' in data.data_vars:
                 thr = np.array(data['stability_threshold_n'])
                 for mode in range(n.shape[0]):
                     ax.plot(h, thr[:, mode], '--', c=colors[mode], lw=0.5)
-                # y-scale set by the lowest-n threshold (the others fan out linearly above it);
                 # thr is all-nan only if every equilibrium of the scan was degenerate
-                thr_valid = thr[:, 0][np.isfinite(thr[:, 0])]
-                ytop = 2.0 * thr_valid.max() if thr_valid.size else g_base * 2.0
+                thr_pos = thr[np.isfinite(thr) & (thr > 0)]
+                ytop = 2.0 * thr_pos.max() if thr_pos.size else g_base * 2.0
+                ybot = 0.5 * thr_pos.min() if thr_pos.size else g_base / 10.0
             else:
                 ax.axhline(g_base, color='k', ls='--', lw=1.0)
-                ytop = g_base * 2.0
+                # show the gamma domes above the flat cut without letting forest garbage set the scale
+                ytop = min(2.0 * g_pos.max(), 20.0 * g_base) if g_pos.size else g_base * 2.0
+                ybot = g_base / 10.0
+            if np.isfinite(ybase) and ybase > 0:
+                ytop = max(ytop, 1.5 * ybase)
 
             # Plot starting point
             ax.axvline(h[0], color='k', ls='--', lw=0.5)
@@ -713,7 +722,8 @@ class EPED:
             ax.set_xlabel(variable[1])
             ax.set_ylabel('$\\gamma/\\omega_A$')
             ax.set_title(f'{scan_param} = {_to_scalar(data[scan_param])}', fontsize=10)
-            ax.set_ylim([0,ytop])
+            ax.set_yscale('log')
+            ax.set_ylim([ybot, ytop])
             ax.set_xlim(left=0)
             GRAPHICStools.addDenseAxis(ax)
             
