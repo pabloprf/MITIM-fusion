@@ -548,8 +548,10 @@ class initializer_from_separatrix(beat_initializer):
             factor = Paux_MW / P_now
             print(f'\t- Renormalizing auxiliary power after the shaping overwrite '
                   f'({P_now:.4f} -> {Paux_MW:.4f} MW, factor {factor:.4f})', typeMsg='i')
-            self.p.profiles[aux_channels['e']] *= factor
-            self.p.profiles[aux_channels['i']] *= factor
+            # non-in-place on purpose: if the two channels alias the same array
+            # (equilibrium_to_profiles used to), in-place *= would apply factor twice
+            self.p.profiles[aux_channels['e']] = self.p.profiles[aux_channels['e']] * factor
+            self.p.profiles[aux_channels['i']] = self.p.profiles[aux_channels['i']] * factor
             self.p.derive_quantities()
 
     def _inform_save(self):

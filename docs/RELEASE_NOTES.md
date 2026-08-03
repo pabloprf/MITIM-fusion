@@ -55,8 +55,10 @@ DESCRIPTION
     renormalizing — delivered/requested fell to ~0.96/0.88/0.83 at kappa_sep 1.5/1.735/1.97
     (elongation-dependent, R-independent). The aux channels are now renormalized against the
     written geometry. Also fixed: `BetaN: null` crashed the initializer pressure guess (presence
-    test instead of a None check) and the freegs-correction failure was swallowed silently — it
-    now logs the exception.
+    test instead of a None check); the freegs-correction failure was swallowed silently — it
+    now logs the exception; and the renormalization initially double-applied because
+    `equilibrium_to_profiles` aliased the e/i aux channels to the same array (now copied,
+    and the renormalization is non-in-place).
 
 *   🐛 **NEO silent failure at extreme Ti/Te fixed and made self-describing**: with zero
     rotation, the Sonic preset's `ROTATION_MODEL=2` quasineutrality solve could fail to

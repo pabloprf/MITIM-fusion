@@ -1343,7 +1343,9 @@ def equilibrium_to_profiles(
 
 
     p.profiles[channel_e] = p.profiles[channel_e] *  (Paux / p.derived[channel_total][-1]) /2
-    p.profiles[channel_i] = p.profiles[channel_e]
+    # .copy(): aliasing e and i to the SAME array makes any later in-place operation on
+    # one channel silently hit both (bit us as a double power renormalization)
+    p.profiles[channel_i] = p.profiles[channel_e].copy()
 
     # -------------------------------------------------------------------------------------------------------
     # Ready to go
