@@ -24,7 +24,7 @@ Key teaching points:
        are read here from the very same EPED output (no extra runs) and
        overplotted, see the discussion in section 3 below.
     6. Two EPED cases are run that differ ONLY in the set of toroidal mode
-       numbers explored (NMODES up to 30 vs up to 40). Reading both cases under
+       numbers explored (NMODES up to 30 vs up to 60). Reading both cases under
        both rules is the cleanest demonstration of why the rule matters: one
        rule is converged with respect to the mode ceiling and the other is not.
 """
@@ -95,8 +95,8 @@ eped.run(
     # usual 0.3: at neped = 105e19 the pedestal is ALREADY unstable at 0.3 keV under both
     # stability rules, so EPED returns "no stable solution" (the deep-ballooning fallback
     # regime) and the marginal point is never resolved. Dropping the floor to 0.1 recovers it.
-    # This sets num_heights = (1.4 - 0.1)/0.01 = 130, and 130 x 7 modes = 910 stays under the
-    # 1024-job limit of the EPED runner -- which is exactly why NMODES must stay at 7 (see below).
+    # This sets num_heights = (1.4 - 0.1)/0.01 + 1 = 131, and 131 x 7 modes = 917 stays under
+    # the 1024-job limit of the EPED runner -- which is exactly why NMODES must stay at 7 (see below).
     # NMODES is left at the template default here (5 6 8 10 15 20 30), i.e. a ceiling of n = 30.
     eped_params_override={"TEPED_BOUND": [0.1, 1.4, 0.01]},
     cold_start=cold_start,
@@ -107,23 +107,25 @@ eped.run(
 )
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 2. The same scan with a higher toroidal-mode ceiling (n up to 40 instead of 30)
+# 2. The same scan with a higher toroidal-mode ceiling (n up to 60 instead of 30)
 # ---------------------------------------------------------------------------------------------------------------------
 
-# Identical to case1 except for NMODES: n = 40 is added and n = 6 is REMOVED, so the set stays
-# at SEVEN modes. That is not cosmetic -- it is a hard constraint of the EPED job runner:
+# Identical to case1 except for NMODES: n = 40, 50, 60 are added and n = 6, 8, 15 are REMOVED,
+# so the set stays at SEVEN modes. That is not cosmetic -- it is a hard constraint of the EPED
+# job runner:
 #
 #   run_parallel.exe dispatches one ELITE job per (pedestal height, mode number) pair and has a
 #   HARDCODED 1024-job limit with NO bounds check. If num_heights * num_modes exceeds 1024,
 #   ELITE simply never runs for the excess: the run still exits 0 and the output netCDF is
 #   written, but with gamma = -1 everywhere. The failure is completely silent.
 #
-#   num_heights comes from TEPED_BOUND: with the [0.1, 1.4, 0.01] window used here that is
-#   130 heights, so 130 x 7 = 910 is safe but 130 x 8 = 1040 is already over the cliff.
-#   Hence 7 modes, not 8.
+#   num_heights comes from TEPED_BOUND: the [0.1, 1.4, 0.01] window used here gives 131 heights
+#   (endpoints included), so 131 x 7 = 917 is safe but 131 x 8 = 1048 is already over the
+#   cliff. Hence 7 modes, not 8 -- and every high-n mode added must displace a low-n one.
 #
-# n = 6 is the right one to sacrifice: at the low-n end the spectrum is smooth and n = 6 is
-# nearly redundant with n = 5, whereas the whole question here is what happens at high n.
+# The low-n modes are the right ones to sacrifice: at the low-n end the spectrum is smooth and
+# n = 6, 8, 15 are nearly redundant with their neighbors, whereas the whole question here is
+# what happens at high n.
 eped.run(
     subfolder="case2",
     input_params={
@@ -143,7 +145,7 @@ eped.run(
     scan_param={"variable": "neped", "values": neped_values},
     keep_nsep_ratio=0.4,
     nproc_per_run=64,
-    eped_params_override={"TEPED_BOUND": [0.1, 1.4, 0.01], "NMODES": [5, 8, 10, 15, 20, 30, 40]},
+    eped_params_override={"TEPED_BOUND": [0.1, 1.4, 0.01], "NMODES": [5, 10, 20, 30, 40, 50, 60]},
     cold_start=cold_start,
     job_array_limit=5,
     removeScratchFolders=True,
@@ -171,18 +173,18 @@ eped.run(
 #       normalization against ELITE's internal Alfven normalization is uncertain.
 #
 # WHAT TO LOOK FOR IN THE OVERLAY -- this contrast is the whole point of the exercise. The two
-# cases differ only in the mode ceiling (n <= 30 vs n <= 40), so a rule that is converged with
+# cases differ only in the mode ceiling (n <= 30 vs n <= 60), so a rule that is converged with
 # respect to the mode set must give the SAME pedestal for both:
 #
-#   * the two FLAT curves should NOT coincide: raising the ceiling 30 -> 40 should LOWER the
+#   * the two FLAT curves should NOT coincide: raising the ceiling 30 -> 60 should LOWER the
 #     predicted pedestal, because a flat bar is easiest to clear for the fastest-growing mode
 #     and that is typically the highest n available. The flat rule therefore keeps chasing the
 #     top of whatever mode set was requested -- it is not converged in n, and the "prediction"
 #     partly reflects the NMODES choice. The effect is largest at high neped, in the
 #     ballooning-limited corner where the high-n modes dominate.
-#   * the two 'W' curves should lie on top of each other: n = 40 has to beat a threshold ~4/3
-#     that of n = 30 (and ~8x that of n = 5), so the added mode is declared diamagnetically
-#     stabilized and never becomes the limiter. The criterion self-truncates the mode set, and
+#   * the two 'W' curves should lie on top of each other: n = 60 has to beat a threshold 2x
+#     that of n = 30 (and 12x that of n = 5), so the added modes are declared diamagnetically
+#     stabilized and never become the limiter. The criterion self-truncates the mode set, and
 #     the answer stops depending on where the mode list was cut.
 #
 # The limiting n annotated next to each marker makes this explicit: it should climb to the top
@@ -201,7 +203,7 @@ gacode_for_omega_star = __mitimroot__ / "tests" / "data" / "input.gacode_SPARC_P
 #
 # read() parses the EPED output files of every case of the scan. Reading a case twice under
 # two labels re-postprocesses the same files, it does not re-run anything.
-for label_tag, case in (("n30", "case1"), ("n40", "case2")):
+for label_tag, case in (("n30", "case1"), ("n60", "case2")):
     eped.read(subfolder=case, label=f"{label_tag}_flat")
     eped.read(
         subfolder=case,
@@ -215,7 +217,7 @@ for label_tag, case in (("n30", "case1"), ("n40", "case2")):
 # All four labels are overlaid in the Pedestal Top tab, and each gets its own Stability tab
 # showing the flat horizontal cut versus the per-n (dashed, one per mode) thresholds.
 eped.plot(
-    labels=["n30_flat", "n30_omegastar", "n40_flat", "n40_omegastar"],
+    labels=["n30_flat", "n30_omegastar", "n60_flat", "n60_omegastar"],
     scan_params=["neped"],
     scan_params_labels=["$n_{e,ped}\\ (10^{19}m^{-3})$"],
 )

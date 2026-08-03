@@ -31,7 +31,10 @@ DESCRIPTION
     diamagnetic criterion gamma > C*omega_*i(n)/2 — the threshold grows ~linearly with toroidal mode
     number, so the answer converges in the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut
     in deeply ballooning-limited pedestals. EPED runs also keep per-height TOQ/ELITE work directories
-    by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup).
+    by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup), and a
+    launch whose num_heights x num_modes would overflow the EPED runner's silent 1024-job table
+    (excess ELITE jobs never run, gamma = -1 everywhere with exit code 0) now asks for confirmation
+    at submission instead of failing undetectably.
 
 *   💥 **MAESTRO transp beat can seed from ITER** (`machine_initialization: ITER`): TEQ warm-starts
     its first solve from a stored per-device equilibrium keyed to the tokamak label, with a tight

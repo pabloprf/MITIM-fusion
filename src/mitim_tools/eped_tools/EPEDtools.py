@@ -110,6 +110,12 @@ class EPED:
             job_array_indices.append(i + 1)
         job_array = ",".join(str(k) for k in job_array_indices)
 
+        # Refuse (interactively) to submit a case that would overflow the EPED runner's silent
+        # job-table limit (see check_runner_job_limit) — the failure mode is gamma = -1
+        # everywhere with exit code 0, i.e. undetectable until read() masks every height
+        if len(job_array_indices) > 0:
+            check_runner_job_limit(self.template_config_file, eped_params_override)
+
         # Initialize Job
         self.eped_job = FARMINGtools.mitim_job(self.folder_run)
 
@@ -851,6 +857,48 @@ def setup_array_batch(launch_path, rpaths, maxqueue=5):
     #logger.info('Batch array created')
 
     return batch_file
+
+
+# Hardcoded job-table size of the EPED driver's runner (MAXJOB in run_parallel.cpp): one ELITE
+# job is dispatched per (pedestal height, mode number) pair and there is NO bounds check — the
+# excess beyond this limit is silently never run (exit code still 0), leaving gamma = -1 for
+# ALL pairs in the output netCDF.
+_EPED_RUNNER_MAXJOB = 1024
+
+
+def check_runner_job_limit(template_config_file, eped_params_override=None):
+    '''
+    Estimate num_heights x num_modes of the case about to be submitted (override wins over the
+    template config file) and ask before proceeding if it exceeds the runner's silent job-table
+    limit. In non-interactive (batch) contexts the question raises, which is the desired loud
+    failure instead of the silent gamma = -1 one.
+    '''
+    override = eped_params_override or {}
+
+    def _effective(key):
+        if key in override:
+            v = override[key]
+            if isinstance(v, str):
+                # accept the same brace format modify_eped_config does: '{0.1, 1.4, 0.01}'
+                v = v.replace('{', ' ').replace('}', ' ').replace(',', ' ').split()
+            return [float(x) for x in v]
+        m = re.search(rf"^\s*{key}\s*=\s*([^#\n]+)", Path(template_config_file).read_text(), re.M)
+        return [float(x) for x in m.group(1).split()]
+
+    tmin, tmax, tstep = _effective('TEPED_BOUND')
+    num_heights = int(round((tmax - tmin) / tstep)) + 1  # endpoints included
+    num_modes = len(_effective('NMODES'))
+
+    njobs = num_heights * num_modes
+    if njobs > _EPED_RUNNER_MAXJOB:
+        if not print(
+            f'\t> TEPED_BOUND gives {num_heights} heights x {num_modes} modes = {njobs} ELITE jobs, over the '
+            f'runner job limit ({_EPED_RUNNER_MAXJOB}, hardcoded MAXJOB with no bounds check): ELITE would '
+            f'silently never run and gamma = -1 would be written for ALL (height, mode) pairs. '
+            f'Reduce NMODES or the TEPED_BOUND window. Proceed anyway?',
+            typeMsg='q',
+        ):
+            raise Exception('[MITIM] EPED launch aborted: num_heights x num_modes exceeds the runner job limit')
 
 
 def modify_eped_config(config_file, file_to_write, parameters_to_change=None):
