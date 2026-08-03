@@ -26,13 +26,6 @@ DESCRIPTION
     Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
     (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
 
-*   💥 **EPED physics-based stability rule** (`postprocess_eped` rule `'W'`, exposed in `EPED.read()`
-    and the MAESTRO eped-beat knob `stability_rule`): the pedestal can now be selected with the EPED1
-    diamagnetic criterion gamma > C*omega_*i(n)/2 — the threshold grows ~linearly with toroidal mode
-    number, so the answer converges in the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut
-    in deeply ballooning-limited pedestals. EPED runs also keep per-height TOQ/ELITE work directories
-    by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup).
-
 ### Bug Fixes
 
 *   🐛 **MAESTRO separatrix initializer delivered less auxiliary power than requested when
@@ -43,6 +36,14 @@ DESCRIPTION
     written geometry. Also fixed: `BetaN: null` crashed the initializer pressure guess (presence
     test instead of a None check) and the freegs-correction failure was swallowed silently — it
     now logs the exception.
+
+*   🐛 **NEO silent failure at extreme Ti/Te fixed and made self-describing**: with zero
+    rotation, the Sonic preset's `ROTATION_MODEL=2` quasineutrality solve could fail to
+    converge for Ti/Te ≲ 1e-2 (reachable by optimizer excursion candidates) and exit 0 with
+    empty transport files; `to_neo` now auto-selects model 1 when w0≡0 (identical fluxes,
+    robust), and the empty-output error now includes the reason NEO wrote to `out.neo.run`.
+
+*   🐛 **MAESTRO robustness: TRANSP beats restart cleanly and failures are self-describing**:
     a restarted TRANSP beat used to stage the *previous attempt's outputs* into the new run
     (TRANSP tried to resume from the stale state and aborted at NSTEP 1) — staging is now a
     whitelist of the actual inputs (ufiles + namelist), so re-running a MAESTRO folder needs no
