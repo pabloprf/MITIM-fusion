@@ -1201,8 +1201,17 @@ class NEOoutput(SIMtools.GACODEoutput):
             lines = f.readlines()
 
         if len(lines) == 0:
+            # NEO can fail internally yet exit 0 with empty transport files (e.g. the
+            # ROTATION_MODEL=2 quasineutrality solve at extreme Ti/Te); the actual reason
+            # is written to out.neo.run, so surface it here instead of guessing.
+            reason = ""
+            runfile = self.FolderGACODE / ("out.neo.run" + self.suffix)
+            if runfile.exists() and runfile.stat().st_size > 0:
+                runlines = runfile.read_text().splitlines()
+                errlines = [l.strip() for l in runlines if 'ERROR' in l.upper()] or runlines[-3:]
+                reason = " NEO reported: " + " | ".join(l.strip() for l in errlines)
             raise ValueError(
-                f"NEO output file {filepath} is empty! NEO run may have failed."
+                f"NEO output file {filepath} is empty! NEO run may have failed.{reason}"
             )
 
         self.roa = float(lines[0].split()[-1])

@@ -719,6 +719,11 @@ class mitim_simulation:
                             )
                         run_status_int = 2
                     except LOGtools.InteractiveTerminalError:
+                        # TODO: this re-run executes in a scratch whose staged inputs may
+                        # already be gone (observed: NEO retried with input.neo missing and
+                        # its early open of out.neo.run truncated the first attempt's error
+                        # message). A correct retry must re-stage inputs or skip execution;
+                        # until then the retry can destroy the failure diagnostic.
                         print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
                         run_status_int += 1
                     

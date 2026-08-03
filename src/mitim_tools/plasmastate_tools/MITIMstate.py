@@ -2829,6 +2829,15 @@ class mitim_state:
 
         self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
 
+        # With zero rotation everywhere, ROTATION_MODEL=2 gives fluxes identical to model 1
+        # but its sonic quasineutrality Newton solve dies SILENTLY (exit 0, empty transport
+        # files) for Ti/Te <~ 1e-2, which extreme optimizer candidates can reach. Downgrade
+        # to model 1 in that case; an explicit extraOptions ROTATION_MODEL still wins (it is
+        # applied downstream, on top of these controls).
+        zero_rotation = bool(np.all(self.profiles["w0(rad/s)"] == 0.0))
+        if zero_rotation:
+            print("\t- w0 = 0 everywhere: using NEO ROTATION_MODEL=1 (identical fluxes, robust at extreme Ti/Te)", typeMsg='i')
+
         input_parameters = {}
         for roa, rho_label in zip(r, r_labels):
 
@@ -2932,6 +2941,9 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             input_dict = controls | plasma
+
+            if zero_rotation and input_dict.get('ROTATION_MODEL') == 2:
+                input_dict['ROTATION_MODEL'] = 1
 
             for i in range(len(species)):
                 for k in species[i+1]:
