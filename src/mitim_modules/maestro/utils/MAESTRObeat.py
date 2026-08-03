@@ -223,7 +223,7 @@ class beat_initializer:
             Te0_keV = kwargs_geqdsk['profiles_insert']['Te'][0]
             p0_MPa = 2 * (Te0_keV*1E3) * 1.602176634E-19 * (ne0_20 * 1E20) * 1E-6 #MPa
         # If betaN provided, use it to estimate the pressure
-        elif 'BetaN' in kwargs_geqdsk:
+        elif kwargs_geqdsk.get('BetaN') is not None:
             print('\t- Using BetaN for a better estimation of pressure, instead of the p0 guess')
             pvol_MPa = ( Ip_MA / (a * B_T) ) * (B_T ** 2 / (2 * 4 * np.pi * 1e-7)) / 1e6 * kwargs_geqdsk['BetaN'] * 1E-2
             p0_MPa = pvol_MPa * 3.0
@@ -468,8 +468,8 @@ class initializer_from_separatrix(beat_initializer):
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
         try:
             self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
-        except:
-            print('\t- Could not run freegs to correct the profiles, proceeding with uncorrected ones', typeMsg = 'w')
+        except Exception as e:
+            print(f'\t- Could not run freegs to correct the profiles ({type(e).__name__}: {e}), proceeding with uncorrected ones', typeMsg = 'w')
         
         # Write it to initialization folder
         self.p.write_state(file=self.folder / 'input.separatrix.gacode')
@@ -533,7 +533,25 @@ class initializer_from_separatrix(beat_initializer):
             self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
         for i in range(coeffs_MXH-3):
             self.p.profiles[f'shape_sin{i+3}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_sin{i+3}(-)'])
-        
+
+        # The shaping overwrite above replaces the geometry that to_profiles normalized the
+        # auxiliary power against (the solved freegs flux surfaces) with the analytic guess
+        # (r = a*rho, kappa ramping from 1). dV/dr changes by up to ~15% in the core at high
+        # elongation, so the volume integral of the aux channels no longer returns Paux_MW.
+        # Renormalize against the geometry actually written.
+        if aux_channels is None:
+            # mirrors the fallback inside GEQtools.equilibrium_to_profiles
+            aux_channels = {'e': 'qrfe(MW/m^3)', 'i': 'qrfi(MW/m^3)', 'total': 'qRF_MW'}
+        self.p.derive_quantities()
+        P_now = self.p.derived[aux_channels['total']][-1]
+        if P_now > 0.0:
+            factor = Paux_MW / P_now
+            print(f'\t- Renormalizing auxiliary power after the shaping overwrite '
+                  f'({P_now:.4f} -> {Paux_MW:.4f} MW, factor {factor:.4f})', typeMsg='i')
+            self.p.profiles[aux_channels['e']] *= factor
+            self.p.profiles[aux_channels['i']] *= factor
+            self.p.derive_quantities()
+
     def _inform_save(self):
         
         if self.extract_995_from is None:

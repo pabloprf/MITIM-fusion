@@ -28,7 +28,14 @@ DESCRIPTION
 
 ### Bug Fixes
 
-*   🐛 **MAESTRO robustness: TRANSP beats restart cleanly and failures are self-describing**:
+*   🐛 **MAESTRO separatrix initializer delivered less auxiliary power than requested when
+    the freegs profile correction ran**: sources were volume-normalized on the solved freegs
+    flux surfaces, but the geometry was then overwritten with the analytic shaping guess without
+    renormalizing — delivered/requested fell to ~0.96/0.88/0.83 at kappa_sep 1.5/1.735/1.97
+    (elongation-dependent, R-independent). The aux channels are now renormalized against the
+    written geometry. Also fixed: `BetaN: null` crashed the initializer pressure guess (presence
+    test instead of a None check) and the freegs-correction failure was swallowed silently — it
+    now logs the exception.
     a restarted TRANSP beat used to stage the *previous attempt's outputs* into the new run
     (TRANSP tried to resume from the stale state and aborted at NSTEP 1) — staging is now a
     whitelist of the actual inputs (ufiles + namelist), so re-running a MAESTRO folder needs no
