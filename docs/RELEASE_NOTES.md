@@ -4,6 +4,14 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **SOL / separatrix estimates collapsed into `mitim_state.calculate_sol()`**: always computes
+    the legacy 2-point `Te_lcfs_estimate` (now DEPRECATED — its `Bp = eps*Bt/q95` is a rough averaged
+    poloidal field, ~2.4x below the true outboard-midplane value; it will be removed in the future),
+    the new `Te_lcfs_2pt` (same model with the exact `Bpol_omp` from the poloidal-flux gradient, also
+    stored) and, optionally (`lengyel=True`), the extended-Lengyel model via `calculate_sol_lengyel()`
+    (`Te_lcfs_lengyel`; optional `[lengyel]` extra — degrades gracefully to NaN if missing). Teaching
+    script: `tests/capability_tests/profiles_02_sol_estimates.py`.
+
 *   💥 **MAESTRO scan interpretation** (`mitim_modules.maestro.utils.MAESTROscan` + new
     `mitim_plot_maestro_scan` CLI): scan-level analysis of a folder of `case_*` MAESTRO runs —
     seed-spread violin panels of performance scalars (seed-only spread; deterministic scan inputs

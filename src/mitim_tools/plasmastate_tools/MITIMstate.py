@@ -1064,26 +1064,7 @@ class mitim_state:
         # Separatrix estimations
         # -------------------------------------------------------
 
-        # ~~~~ Estimate lambda_q
-        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
-        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
-
-        # ~~~~ Estimate upstream temperature
-        Bt = self.profiles["bcentr(T)"][0]
-        Bp = self.derived["eps"] * Bt / self.derived["q95"] #TODO: VERY ROUGH APPROXIMATION!!!!
-
-        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
-                Lambda_q, 
-                self.derived["q95"], 
-                self.derived["ne_vol20"], 
-                self.derived["Psol"], 
-                self.profiles["rcentr(m)"][0], 
-                Bp, 
-                Bt
-                )[0]
-                
-        # ~~~~ Estimate upstream density
-        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
+        self.calculate_sol()
 
         # -------------------------------------------------------
         # Transport parameters
@@ -1118,6 +1099,105 @@ class mitim_state:
         self.derived['s_q'][0] = 0.0 # infinite in first location
 
     # Derivate function
+    def calculate_sol(self, lengyel=False, lengyel_folder=None, **lengyel_kwargs):
+        '''
+        All SOL / separatrix estimates, collapsed in one place.
+
+        Always computes (cheap, analytic):
+          - derived['Te_lcfs_estimate'] [keV]: legacy 2-point model (Brunner lambda_q,
+            Bp = eps*Bt/q95 -- a very rough AVERAGED poloidal field, ~2.4x below the
+            true outboard-midplane value on typical shaped plasmas).
+            DEPRECATED: kept only for backwards compatibility, will be removed in the
+            future -- use Te_lcfs_2pt instead (no in-repo consumers as of 2026-08).
+          - derived['Bpol_omp'] [T]: outboard-midplane poloidal field from the
+            poloidal-flux gradient (exact, no approximation).
+          - derived['Te_lcfs_2pt'] [keV]: same 2-point model with Bp = Bpol_omp
+            (the rough-Bp error is the dominant term it removes; Te shifts ~x0.78
+            through the 2/7 root).
+          - derived['ne_lcfs_estimate'] [1e20 m^-3]: 0.6 * <ne>_vol.
+
+        With lengyel=True, also runs the extended-Lengyel model (optional dependency)
+        via calculate_sol_lengyel(folder=lengyel_folder, **lengyel_kwargs).
+        '''
+
+        # ~~~~ Estimate lambda_q
+        pressure_atm = self.derived["ptot_manual_vol"] * 1e6 / 101325.0
+        Lambda_q = PLASMAtools.calculateHeatFluxWidth_Brunner(pressure_atm)
+
+        Bt = self.profiles["bcentr(T)"][0]
+
+        # ~~~~ Legacy upstream temperature (DEPRECATED, see docstring)
+        Bp_rough = self.derived["eps"] * Bt / self.derived["q95"]
+
+        self.derived['Te_lcfs_estimate'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q,
+                self.derived["q95"],
+                self.derived["ne_vol20"],
+                self.derived["Psol"],
+                self.profiles["rcentr(m)"][0],
+                Bp_rough,
+                Bt
+                )[0]
+
+        # ~~~~ Outboard-midplane Bp from the poloidal-flux gradient
+        Rout = self.profiles["rmaj(m)"] + self.profiles["rmin(m)"]
+        self.derived['Bpol_omp'] = np.abs(np.gradient(self.profiles["polflux(Wb/radian)"], Rout))[-1] / Rout[-1]
+
+        # ~~~~ Upstream temperature with the real OMP Bp
+        # (Bpol_omp is unsigned; |Bt| keeps Bp/Bt positive under gacode's signed-field convention)
+        self.derived['Te_lcfs_2pt'] = PLASMAtools.calculateUpstreamTemperature(
+                Lambda_q,
+                np.abs(self.derived["q95"]),
+                self.derived["ne_vol20"],
+                self.derived["Psol"],
+                self.profiles["rcentr(m)"][0],
+                self.derived['Bpol_omp'],
+                np.abs(Bt)
+                )[0]
+
+        # ~~~~ Estimate upstream density
+        self.derived['ne_lcfs_estimate'] = self.derived["ne_vol20"] * 0.6
+
+        if lengyel:
+            self.calculate_sol_lengyel(folder=lengyel_folder, **lengyel_kwargs)
+
+    def calculate_sol_lengyel(self, folder=None, radas_dir=None, cold_start=False, **kwargs):
+        '''
+        Extended-Lengyel separatrix estimate (optional dependency: pip install -e .[lengyel],
+        plus a radas atomic-data directory, passed here or via the RADAS_DIR env variable).
+
+        Machine/plasma inputs are auto-populated from this state (LENGYELtools.prep);
+        the connection length defaults to the SAME L = pi*R*q95 the 2-point model uses,
+        with a 0.44*L divertor leg -- both overridable through kwargs (any
+        input.lengyel.controls.yaml key, e.g. seed_impurity_species, target_electron_temp).
+
+        Stores derived['Te_lcfs_lengyel'] [keV] (np.nan on any failure -- the model is
+        an optional extra and must never break deriveQuantities) and keeps the full run
+        in self.lengyel (results dict in self.lengyel.results).
+        '''
+        try:
+            import os
+            import tempfile
+            from pathlib import Path
+            from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
+
+            radas_dir = radas_dir if radas_dir is not None else os.environ.get("RADAS_DIR")
+            folder = Path(folder) if folder is not None else Path(tempfile.mkdtemp(prefix="mitim_lengyel_"))
+
+            L_par = np.pi * self.profiles["rcentr(m)"][0] * self.derived["q95"]
+            kwargs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
+            kwargs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
+
+            self.lengyel = Lengyel()
+            self.lengyel.prep(radas_dir, self)
+            self.lengyel.run(folder, cold_start=cold_start, **kwargs)
+
+            self.derived['Te_lcfs_lengyel'] = float(str(self.lengyel.results['separatrix_electron_temp']).split()[0]) * 1e-3
+
+        except Exception as e:
+            print(f"\t- Extended-Lengyel SOL estimate not available ({e}); derived['Te_lcfs_lengyel'] = NaN", typeMsg='w')
+            self.derived['Te_lcfs_lengyel'] = np.nan
+
     def _deriv_gacode(self,y):
         return grad(self.derived["r"],y)
 
