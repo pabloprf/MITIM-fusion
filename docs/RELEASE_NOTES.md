@@ -9,7 +9,7 @@ DESCRIPTION
     poloidal field, ~2.4x below the true outboard-midplane value; it will be removed in the future),
     the new `Te_lcfs_2pt` (same model with the exact `Bpol_omp` from the poloidal-flux gradient, also
     stored) and, optionally (`lengyel=True`), the extended-Lengyel model via `calculate_sol_lengyel()`
-    (`Te_lcfs_lengyel`; optional `[lengyel]` extra — degrades gracefully to NaN if missing). Teaching
+    (`Te_lcfs_lengyel`; optional `[lengyel]` extra — degrades gracefully to NaN if missing; `mode='seeded'` = the package's detachment-seeded driver, `mode='clean'` = unseeded upstream leg, pure conduction at the state's own Zeff). Teaching
     script: `tests/capability_tests/profiles_02_sol_estimates.py`.
 
 *   💥 **MAESTRO scan interpretation** (`mitim_modules.maestro.utils.MAESTROscan` + new

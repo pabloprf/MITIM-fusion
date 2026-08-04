@@ -1161,19 +1161,37 @@ class mitim_state:
         if lengyel:
             self.calculate_sol_lengyel(folder=lengyel_folder, **lengyel_kwargs)
 
-    def calculate_sol_lengyel(self, folder=None, radas_dir=None, cold_start=False, **kwargs):
+    def calculate_sol_lengyel(self, folder=None, radas_dir=None, cold_start=False, mode="seeded", **kwargs):
         '''
         Extended-Lengyel separatrix estimate (optional dependency: pip install -e .[lengyel],
         plus a radas atomic-data directory, passed here or via the RADAS_DIR env variable).
 
         Machine/plasma inputs are auto-populated from this state (LENGYELtools.prep);
         the connection length defaults to the SAME L = pi*R*q95 the 2-point model uses,
-        with a 0.44*L divertor leg -- both overridable through kwargs (any
-        input.lengyel.controls.yaml key, e.g. seed_impurity_species, target_electron_temp).
+        with a 0.441*L divertor leg (the package's default 10 m divertor leg over the
+        SPARC-anchor pi*R*q95 = 22.7 m -- a plausibility convention, not derived; a real
+        value needs field-line tracing of the actual divertor). Both overridable through
+        kwargs (any input.lengyel.controls.yaml key, e.g. seed_impurity_species).
 
-        Stores derived['Te_lcfs_lengyel'] [keV] (np.nan on any failure -- the model is
-        an optional extra and must never break deriveQuantities) and keeps the full run
-        in self.lengyel (results dict in self.lengyel.results).
+        mode:
+          'seeded' -- the package's standard driver: the impurity concentration is
+            SOLVED to detach the divertor at target_electron_temp, and Tsep is
+            conditional on that seeding through the Zeff-corrected conductivity
+            (at low separatrix density the solved seeding can be enormous).
+            Appropriate for seeded / detached operation.
+          'clean'  -- unseeded plasmas: the seeded solve is still run (it provides the
+            divertor-entrance state and the Eich/alpha_t q_parallel), but the upstream
+            leg is redone as pure Spitzer conduction -- the trace-impurity limit of the
+            Lengyel integral is radiation-free, hence closed-form --
+                T_sep^3.5 = T_de^3.5 + 3.5 q_par (L_par - L_div) / (kappa_e0/kappa_z)
+            with kappa_z(Zeff) at the STATE's own volume-average Zeff.
+            Caveat: the divertor-entrance state itself still comes from the seeded
+            divertor solve.
+
+        Stores derived['Te_lcfs_lengyel'] [keV] and ['Te_lcfs_lengyel_mode'] (np.nan on
+        any failure -- the model is an optional extra and must never break
+        deriveQuantities) and keeps the full run in self.lengyel (results dict in
+        self.lengyel.results).
         '''
         try:
             import os
@@ -1184,7 +1202,7 @@ class mitim_state:
             radas_dir = radas_dir if radas_dir is not None else os.environ.get("RADAS_DIR")
             folder = Path(folder) if folder is not None else Path(tempfile.mkdtemp(prefix="mitim_lengyel_"))
 
-            L_par = np.pi * self.profiles["rcentr(m)"][0] * self.derived["q95"]
+            L_par = np.pi * self.profiles["rcentr(m)"][0] * np.abs(self.derived["q95"])
             kwargs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
             kwargs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
 
@@ -1192,11 +1210,27 @@ class mitim_state:
             self.lengyel.prep(radas_dir, self)
             self.lengyel.run(folder, cold_start=cold_start, **kwargs)
 
-            self.derived['Te_lcfs_lengyel'] = float(str(self.lengyel.results['separatrix_electron_temp']).split()[0]) * 1e-3
+            res = self.lengyel.results
+            num = lambda k: float(str(res[k]).split()[0])
+
+            if mode == "clean":
+                from extended_lengyel.initialize import calc_Goldston_kappa_z
+                q_par = num('q_parallel') * (1e9 if 'gigawatt' in str(res['q_parallel'])
+                                             else 1e6 if 'megawatt' in str(res['q_parallel']) else 1.0)
+                L_up = num('parallel_connection_length') - num('divertor_parallel_length')
+                kappa = num('kappa_e0') / calc_Goldston_kappa_z(float(self.derived["Zeff_vol"]))
+                T_de = num('divertor_entrance_electron_temp')
+                Tsep_eV = (T_de**3.5 + 3.5 * q_par * L_up / kappa) ** (2.0 / 7.0)
+            else:
+                Tsep_eV = num('separatrix_electron_temp')
+
+            self.derived['Te_lcfs_lengyel'] = Tsep_eV * 1e-3
+            self.derived['Te_lcfs_lengyel_mode'] = mode
 
         except Exception as e:
             print(f"\t- Extended-Lengyel SOL estimate not available ({e}); derived['Te_lcfs_lengyel'] = NaN", typeMsg='w')
             self.derived['Te_lcfs_lengyel'] = np.nan
+            self.derived['Te_lcfs_lengyel_mode'] = mode
 
     def _deriv_gacode(self,y):
         return grad(self.derived["r"],y)
