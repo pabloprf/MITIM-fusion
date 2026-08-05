@@ -684,7 +684,28 @@ maestro:
       tokamak_structures: null 
 
       # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
-      machine_initialization: CMOD  # Machine to initialize TRANSP equilibrium (CMOD, D3D, NSTX, ITER). TEQ warm-starts from a stored equilibrium keyed to this label with a tight (~1.3x) basin: pick the registered machine nearest the target in size/shape (e.g. ITER for ARC-class)
+      # --- Equilibrium treatment --------------------------------------------------------
+      # machine_initialization selects between the two regimes, because they are rigidly
+      # coupled: TEQ cannot be handed a user initial guess, so "no seed machine" and
+      # "prescribed equilibrium" are the same statement.
+      #
+      # A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov
+      #   every step. TEQ warm-starts its FIRST solve from a stored equilibrium keyed to this
+      #   label and its basin is tight (~1.3x), so pick the registered machine nearest the
+      #   target in size/shape (e.g. ITER for ARC-class) and let transition_window morph the
+      #   shape from that seed to the target.
+      #
+      # null: PRESCRIBED EQUILIBRIUM (levgeo=8). The state's own nested flux surfaces are
+      #   handed to TRANSP as data (full-x RFS/ZFS) together with QPR/GRB/PRS and the TRF/PLF
+      #   enclosed fluxes; TRANSP never solves Grad-Shafranov. No seed, no morph, no MRY, so
+      #   ANY shape works at t=0 and no TEQ device file is needed (a CMOD label is still used
+      #   internally for run-tree bookkeeping only). transition_window and
+      #   currentheating_window are INERT in this mode. Caveats: the geometry is FROZEN in
+      #   time and not pressure-self-consistent in-run, and g = R*Bt is written at its vacuum
+      #   value (a ~1% para/diamagnetic approximation). Requires a state whose
+      #   (x,theta)->(R,Z) map does not fold: prepare() runs a spline-based det(J) check and
+      #   fails loudly if it does, warning if the margin is merely small.
+      machine_initialization: CMOD
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization. If null, no transition performed
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
       machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma

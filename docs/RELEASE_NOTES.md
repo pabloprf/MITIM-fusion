@@ -47,6 +47,14 @@ DESCRIPTION
     (excess ELITE jobs never run, gamma = -1 everywhere with exit code 0) now asks for confirmation
     at submission instead of failing undetectably.
 
+*   💥 **MAESTRO transp beat: prescribed equilibrium and frozen-field (heating-only) mode**:
+    `machine_initialization: null` now hands TRANSP the state's own nested flux surfaces as
+    data (LEVGEO=8) — no TEQ seed machine, no shape morph, so any target shape works from t=0.
+    The new `frozen_field: true` knob additionally pins q verbatim to the input (no GS solve,
+    no current diffusion), turning the beat into a pure source calculator (TORIC/NUBEAM) for
+    downstream beats. Validated end-to-end by `tests/dev_tests/test_transp_prescribed_eq.py`,
+    which can execute a real transp+portals chain (`--full`).
+
 *   💥 **MAESTRO transp beat can seed from ITER** (`machine_initialization: ITER`): TEQ warm-starts
     its first solve from a stored per-device equilibrium keyed to the tokamak label, with a tight
     (~1.3x) convergence basin — so reactor-scale targets (ARC-class) should morph from ITER rather
@@ -67,6 +75,17 @@ DESCRIPTION
     `xi_eff`. Test chain: `tests/dev_tests/test_bc_relaxation.py`.
 
 ### Bug Fixes
+
+*   🐛 **TRANSP beat wrote a negative ICRF antenna frequency for negative-`bcentr` states**:
+    `frqicha` was derived from the signed field, so any state stored with the opposite sign
+    convention (legitimate in gacode) got `frqicha < 0` in the deck; the resonance condition
+    only involves |B| (field direction reaches TRANSP via `nlbccw`), so |bcentr| is now used.
+
+*   🐛 **MAESTRO Transition tabs showed spurious flux-surface offsets between beats with
+    different radial grids**: the equilibria overlay picked surfaces by nearest-grid-point
+    snap, so two states with different rho grids drew rings at different surfaces — up to
+    half a grid spacing (~5 mm) of fake geometry "drift". Surfaces (and the psi_N=0.995
+    curve) are now interpolated at the requested coordinate; only real differences remain.
 
 *   🐛 **MPI TRANSP (ICRF/NUBEAM parallel servers) crashed at startup when submitted via sbatch on
     hyperthreaded partitions** ("mpirun ... no available cpus in the allocation"): `--ntasks N` buys

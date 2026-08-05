@@ -124,11 +124,12 @@ class transp_beat(beat):
         transition_window   = 0.1,                  # Transition (in seconds) to move from guess TRANSP equilibrium to actual. To prevent equilibrium crashes
         currentheating_window = 0.001,
         time_before_end     = 0.001,
-        machine_initialization = 'CMOD',
+        machine_initialization = 'CMOD',            # Registered machine whose stored TEQ equilibrium seeds the first GS solve (shape is then morphed to the target over transition_window). NULL means PRESCRIBED EQUILIBRIUM: levgeo=8, the state's own flux surfaces are handed to TRANSP as data, no seed and no GS solve
         machine_initialization_match_target = False,
         mxh_coeffs_smooth_sep = None,
         extract_at          = "saw-1",              # Which CDF time slice feeds the next beat: 'saw[-N]' (N slices before the last sawtooth) or 'last[-N]'
         min_extraction_flattop_fraction = 0.5,      # Floor the extraction at this fraction (0-1) of the flattop window; guards against an only-early-sawtooth plasma being sampled too soon. None disables
+        frozen_field        = False,                # Freeze the poloidal field: q pinned to the QPR ufile for all time (nlmdif=F/nlqdata=T). Requires machine_initialization: null
         sanitize_q_input    = None,                 # If not None, the target on-axis q0 to rescale the INITIAL q-profile seed fed to TRANSP to (e.g. 0.95), anchored on q95 (q at psiN=0.95 held fixed). Guards a pathological over-peaked equilibrium seed (deep q0 -> q=1 surface far toward the boundary) from crashing the Kadomtsev sawtooth model at startup; current diffusion relaxes q over the flattop regardless, so only the seed needs to start benign. null (default) leaves the seed q untouched
         **transp_namelist
         ):
@@ -146,6 +147,23 @@ class transp_beat(beat):
         # Grab structures
         tokamak_structures = transp_namelist.get('tokamak_structures', None)
         is_machine_fixed = tokamak_structures is not None
+
+        # 'No seed machine' and 'prescribed equilibrium' are the same thing: TEQ cannot be given a
+        # user initial guess, so without a registered machine to warm-start from there is nothing
+        # for it to solve from -- the equilibrium HAS to come in as data. Collapsing the two onto
+        # machine_initialization makes the meaningless combination unrepresentable. The lower-level
+        # equilibrium_mode knob survives in TRANSPhelpers/NMLtools for standalone TRANSP users,
+        # who have no machine_initialization concept.
+        equilibrium_mode = 'prescribed' if machine_initialization is None else 'evolve'
+        if frozen_field and equilibrium_mode != 'prescribed':
+            raise ValueError(
+                f"[MITIM] frozen_field=True requires machine_initialization: null (prescribed "
+                f"equilibrium), got machine_initialization={machine_initialization!r}. Freezing the "
+                f"poloidal field while TEQ re-solves Grad-Shafranov every step is inconsistent: the "
+                f"equilibrium would evolve away from the q it is being held at.")
+        if equilibrium_mode == 'prescribed':
+            print('\t- machine_initialization is null -> PRESCRIBED EQUILIBRIUM (levgeo=8): the state\'s own '
+                  'flux surfaces are handed to TRANSP as data, no seed machine and no GS solve', typeMsg='i')
         
         # Define timings
         # Namelist documents "If null, no transition performed" — same effect as 0.0
@@ -233,7 +251,8 @@ class transp_beat(beat):
             Vsurf = self.profiles_current.Vsurf,
             mxh_coeffs_smooth = mxh_coeffs_smooth_sep,
             boundary_surface_psin = boundary_surface_psin,
-            boundary_override = boundary_override
+            boundary_override = boundary_override,
+            equilibrium_mode = equilibrium_mode
             )
 
         if q_restore is not None:
@@ -260,6 +279,12 @@ class transp_beat(beat):
             raise ValueError('[MITIM] You cannot define UFILES in a MAESTRO transp_namelist')
         else:
             transp_namelist_mod['Ufiles'] = ["qpr","cur","vsf","ter","ti2","ner","rbz","lim","zf2", "rfs", "zfs"]
+            if equilibrium_mode == 'prescribed':
+                # LEVGEO=8 also consumes the equilibrium's flux functions and enclosed fluxes
+                transp_namelist_mod['Ufiles'] += ["grb", "prs", "trf", "plf"]
+
+        transp_namelist_mod['equilibrium_mode'] = equilibrium_mode
+        transp_namelist_mod['frozen_field'] = frozen_field
 
         if is_machine_fixed:
             # Remove antenna geometry that may have been written from GACODE
@@ -294,9 +319,12 @@ class transp_beat(beat):
             modify_Ip_to_match_qstar = None
             modify_p_to_match_pB2 = None
             
-        self.machine_run = machine_initialization
+        # With a prescribed equilibrium no TEQ device file is ever consulted, but TRANSP still needs
+        # a registered tokamak label for its run tree, so fall back to CMOD for bookkeeping only.
+        self.machine_run = machine_initialization if machine_initialization is not None else 'CMOD'
 
-        if transition_window > 0.0:
+        # Nothing to morph away from without a seed: the transition window is simply not applied.
+        if transition_window > 0.0 and equilibrium_mode != 'prescribed':
             self._additional_operations_add_initialization(
                 machine_initialization = self.machine_run,
                 modify_Ip_to_match_qstar=modify_Ip_to_match_qstar,
@@ -346,7 +374,11 @@ class transp_beat(beat):
                 '''
                 if freq_ICH is None:
 
-                    B_T         = self.profiles_current.profiles['bcentr(T)'][0]
+                    # MAGNITUDE: gacode states legitimately carry a negative bcentr (field
+                    # direction is a sign convention), and a signed B_T here put a NEGATIVE
+                    # frqicha into the deck. The resonance condition only involves |B|; the
+                    # field direction reaches TRANSP through nlbccw, not the antenna frequency.
+                    B_T         = abs(self.profiles_current.profiles['bcentr(T)'][0])
 
                     '''
                     Best resonance condition for minority ions
@@ -384,7 +416,8 @@ class transp_beat(beat):
         # Write Ufiles
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed)
+        self.transp.write_ufiles(mxh_coeffs_smooth = mxh_coeffs_smooth_sep, is_machine_fixed=is_machine_fixed,
+                                 equilibrium_mode = equilibrium_mode)
 
         # Freeze the boundary this beat actually handed TRANSP (after the final write_ufiles above)
         self._freeze_boundary_for_transp()

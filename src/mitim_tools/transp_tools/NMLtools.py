@@ -123,6 +123,12 @@ class transp_nml:
             "mry": ["MRY",None],
             "rfs": ["RFS",None],
             "zfs": ["ZFS",None],
+            # LEVGEO=8 (prescribed equilibrium) extras. NRIxxx = -5 is the same as +5 for
+            # a flux coordinate (per the TRANSP help file); -5 keeps the deck consistent.
+            "grb": ["GRB",-5],
+            "prs": ["PRS",-5],
+            "trf": ["TRF",None],
+            "plf": ["PLF",None],
             "cur": ["CUR",None],
             "vsf": ["VSF",None],
             "ter": ["TEL",-5],
@@ -171,6 +177,21 @@ class transp_nml:
         self.plfhe4 = float(transp_params.get("plfhe4", 1.0e2))
         self.toric_ntheta = transp_params.get("toric_ntheta",128)  # 128 int(2**7), default: 64
         self.toric_nrho = transp_params.get("toric_nrho",320)  # 320, default: 128
+
+        # 'evolve'     : TEQ (levgeo=11) solves Grad-Shafranov each step, boundary from RFS/ZFS
+        # 'prescribed' : levgeo=8, the WHOLE equilibrium is input data (RFS/ZFS nested
+        #                surfaces + QPR/GRB/PRS + TRF/PLF); TRANSP never solves GS
+        self.equilibrium_mode = transp_params.get("equilibrium_mode","evolve")
+        # Freeze the poloidal field: q pinned to the QPR ufile for all time, no flux diffusion
+        self.frozen_field = transp_params.get("frozen_field",False)
+
+        if self.equilibrium_mode not in ("evolve","prescribed"):
+            raise ValueError(f"[MITIM] equilibrium_mode must be 'evolve' or 'prescribed', got {self.equilibrium_mode}")
+        if self.frozen_field and self.equilibrium_mode != "prescribed":
+            raise ValueError(
+                "[MITIM] frozen_field=True requires equilibrium_mode='prescribed': freezing the "
+                "poloidal field while TEQ re-solves Grad-Shafranov every step is inconsistent "
+                "(the equilibrium would evolve away from the q it is being held at)")
 
         self.coronal = transp_params.get("coronal",True)
         self.nteq_mode = transp_params.get("nteq_mode",5)
@@ -569,7 +590,11 @@ class transp_nml:
         self.contents += "\n".join(lines) + "\n"
 
     def addMHDandCurrentDiffusion(self):
-        if self.isolver:
+        prescribed = self.equilibrium_mode == "prescribed"
+
+        if prescribed:
+            levgeo, nlqlim0 = 8, "True"
+        elif self.isolver:
             levgeo = 12
             nlqlim0 = "False"
         else:
@@ -583,20 +608,37 @@ class transp_nml:
             "",
             "!----- MHD Geometry",
             "",
-            f"levgeo	       = {levgeo}    ! 11 = TEQ model from LLNL, 12 = ISOLVER",
+            f"levgeo	       = {levgeo}    ! 8 = equilibrium is entirely input data, 11 = TEQ model from LLNL, 12 = ISOLVER",
             "",
-            f"nteq_mode     = {self.nteq_mode}   ! Free param to be matched (5= Q,F_edge & loop for Ip)",
-            "nteq_stretch  = 0   ! Radial grid distribution",
-            f"nteq_nrho     = {self.gridsMHD[0]}   ! Radial points in TEQ (default 71)",
-            f"nteq_ntheta   = {self.gridsMHD[1]}   ! Poloidal points in TEQ (default 127)",
-            f"teq_smooth    = {self.smoothMHD[0]}  ! Smoothing half-width (negative means -val/nzones) (default -1.5)",
-            f"teq_axsmooth  = {self.smoothMHD[1]} ! Smoothing half-width near-axis as val*min(1,2-x/val) (default 0.05)",
-            "softteq       = 0.3   ! Maximum allowed GS average error",
-            "",
+        ]
+
+        if prescribed:
+            # No Grad-Shafranov solve at all: the nested surfaces come from RFS/ZFS and the
+            # flux functions from QPR/GRB/PRS + the TRF/PLF scalars. All the TEQ knobs
+            # (nteq_*, teq_*, softteq) are inert here, so they are not written.
+            lines += [
+                "! Geometry is READ, not solved: RFS/ZFS (R,Z of the nested surfaces vs theta,x,t),",
+                "! QPR (q), GRB (R*Bt), PRS (total pressure), TRF/PLF (enclosed toroidal/poloidal flux).",
+                "! MRY must NOT be present in this mode (mutually exclusive with RFS/ZFS).",
+                "",
+            ]
+        else:
+            lines += [
+                f"nteq_mode     = {self.nteq_mode}   ! Free param to be matched (5= Q,F_edge & loop for Ip)",
+                "nteq_stretch  = 0   ! Radial grid distribution",
+                f"nteq_nrho     = {self.gridsMHD[0]}   ! Radial points in TEQ (default 71)",
+                f"nteq_ntheta   = {self.gridsMHD[1]}   ! Poloidal points in TEQ (default 127)",
+                f"teq_smooth    = {self.smoothMHD[0]}  ! Smoothing half-width (negative means -val/nzones) (default -1.5)",
+                f"teq_axsmooth  = {self.smoothMHD[1]} ! Smoothing half-width near-axis as val*min(1,2-x/val) (default 0.05)",
+                "softteq       = 0.3   ! Maximum allowed GS average error",
+                "",
+            ]
+
+        lines += [
             "!------ Poloidal field (current) diffusion",
             "",
-            "nlmdif	  = T    ! Solve poloidal diffusion equation ",
-            "nlpcur	  = T    ! Match total plasma current",
+            f"nlmdif	  = {'F' if self.frozen_field else 'T'}    ! Solve poloidal diffusion equation ",
+            f"nlpcur	  = {'F' if self.frozen_field else 'T'}    ! Match total plasma current",
             "nlvsur	  = F    ! Match surface voltage",
             "",
             f"nlbccw = {self.B_ccw}    ! Is Bt counter-clockwise (CCW) seen from above?",
@@ -612,14 +654,21 @@ class transp_nml:
             "",
             f"nlqlim0  = {nlqlim0}  ! Place a limit on the max q value possible",
             "qlim0	  = 5.0  ! Set the max possible q value",
-            "nlqdata  = F    ! Use input q data (cannot be set with nlmdif=T as well)",
+            f"nlqdata  = {'T' if self.frozen_field else 'F'}    ! Use input q data (cannot be set with nlmdif=T as well)",
             "",
-            "nqmoda(1) = 4     ! 4: nlqdata=T, 1: nlmdif=T",
-            "nqmodb(1) = 1",
+            # NQMODB picks the boundary condition of each q stage. Under NQMODA=4 the TRANSP
+            # help file gives only two options: 1 -> NLPCUR=TRUE (default), 2 -> NLPCUR=FALSE.
+            # With NLPCUR=TRUE, "the q profile in the edge region is modified in order to force
+            # a consistent solution" with the CUR ufile, over a region set by XUSEBPB -- i.e.
+            # the prescribed q is SILENTLY REWRITTEN near the edge. frozen_field therefore uses
+            # NQMODB=2 on every stage, so QPR is taken verbatim; the current the run carries is
+            # then the one the prescribed q + geometry imply, NOT the CUR ufile value.
+            f"nqmoda(1) = 4     ! 4: nlqdata=T, 1: nlmdif=T",
+            f"nqmodb(1) = {2 if self.frozen_field else 1}",
             f"tqmoda(1) = {self.time_current_diffusion} ! Time to change to next stage",
             "",
-            "nqmoda(2) = 1     ! 4: nlqdata=T, 1: nlmdif=T",
-            "nqmodb(2) = 1",
+            f"nqmoda(2) = {4 if self.frozen_field else 1}     ! 4: nlqdata=T, 1: nlmdif=T",
+            f"nqmodb(2) = {2 if self.frozen_field else 1}",
             f"tqmoda(2) = {self.ftime+100.0} ! Time to change to next stage",
             "",
             "tauqmod   = 1.0E-2 ! Transition window ",
@@ -823,7 +872,11 @@ class transp_nml:
             "nlsaw_trigger    = T 		! trigger sawtooth crashes using model",
             "nlsaw_diagnostic = F		! diagnose sawtooth conditions but do not crash",
             "model_sawtrigger = 2      ! 0=specify below,1=Park-monticello, 2=Porcelli",
-            f"t_sawtooth_on    = {self.timeSaw}	    ! Parameter changed ",
+            # With frozen_field the q profile is data, so a crash would flatten the fast-ion
+            # profiles against a q that snaps straight back to the ufile on the next step.
+            # Closing the crash WINDOW (on == off == 1.0E3) leaves the Porcelli model armed and
+            # in its default configuration rather than rerouting where crash times come from.
+            f"t_sawtooth_on    = {'1.0E3' if self.frozen_field else self.timeSaw}	    ! Parameter changed ",
             "t_sawtooth_off   = 1.0E3  ! Last sawtooth crash time",
             "sawtooth_period  = 1.0    ! Sawtooth period in seconds (if model_sawtrigger = 0)",
             "",

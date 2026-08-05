@@ -389,7 +389,7 @@ class UFILEtransp:
         if labelX is None:
             labelX = " rho_tor                       "
 
-        if varLabel in ["cur", "rbz", "vsf", "zef", "ntx", "gas", "gfd", "saw"]:
+        if varLabel in ["cur", "rbz", "vsf", "zef", "ntx", "gas", "gfd", "saw", "trf", "plf"]:
             self.dim = 1
             self.STR_labelX = (
                 " Time                Seconds   ;-INDEPENDENT VARIABLE LABEL: X0-\n"
@@ -415,6 +415,8 @@ class UFILEtransp:
             "nmr",
             "lhe",
             "lhj",
+            "grb",
+            "prs",
         ]:
             self.dim = 2
             self.STR_labelX = f"{labelX};-INDEPENDENT VARIABLE LABEL: X0-\n"
@@ -568,6 +570,16 @@ class UFILEtransp:
             STR_labelZ = " Power density       WATTS/CM3 ;"
         elif varLabel == "lhj":
             STR_labelZ = " Current density         A/CM2 ;"
+        elif varLabel == "grb":
+            # LEVGEO=8 prescribed equilibrium: g = R*Bt vs x. Same units label as RBZ
+            STR_labelZ = " Rp*Bt               T.cm      ;"
+        elif varLabel == "prs":
+            STR_labelZ = " Pressure            Pascals   ;"
+        elif varLabel == "trf":
+            STR_labelZ = " Toroidal Flux       Wb        ;"
+        elif varLabel == "plf":
+            # NOTE: poloidal flux is PER RADIAN, unlike the toroidal flux above
+            STR_labelZ = " Poloidal Flux       Wb/rad    ;"
         elif varLabel == "rfs":
             STR_labelZ = " R(theta,x) surfaces m         ;"
         elif varLabel == "zfs":
