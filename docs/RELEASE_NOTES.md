@@ -49,6 +49,14 @@ DESCRIPTION
     (~1.3x) convergence basin — so reactor-scale targets (ARC-class) should morph from ITER rather
     than a ~7x walk from CMOD. The namelist comment now documents the pick-the-nearest-machine rule.
 
+*   💥 **Confinement/sharpness beats support Te_bc under-relaxation** (`relaxation` knob in both
+    beats' `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
+    is blended with the value applied by the previous confinement/sharpness beat (shared trans-beat
+    memory `Te_bc_applied`, so mixed chains relax coherently), damping beat-to-beat oscillations of
+    the BC servo. The first incarnation takes the full step; with `relaxation < 1` the target
+    (H-factor / xi) converges across beat iterations and the applied effective xi is reported as
+    `xi_eff`. Test chain: `tests/dev_tests/test_bc_relaxation.py`.
+
 ### Bug Fixes
 
 *   🐛 **MPI TRANSP (ICRF/NUBEAM parallel servers) crashed at startup when submitted via sbatch on

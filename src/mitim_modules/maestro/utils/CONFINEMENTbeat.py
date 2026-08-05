@@ -10,6 +10,7 @@ from mitim_modules.maestro.utils.SHARPNESSbeat import (
     _convert_bc_location,
     _apply_sharpness_bc,
     _plot_sharpness_profiles_coords,
+    relax_bc,
 )
 from IPython import embed
 
@@ -94,6 +95,7 @@ class confinement_beat(beat):
         density_treatment="bc",         # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
         alpha_power_feedback=False,     # recompute qfuse/qfusi at each trial Te_bc (alpha-heating response)
         Te_bc_bounds=(0.05, 10.0),      # bounds on Te_bc (keV) for the minimization
+        relaxation=1.0,                 # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
     ):
@@ -136,6 +138,16 @@ class confinement_beat(beat):
             consistent comparison. Default False (sources frozen during scan).
         Te_bc_bounds : (float, float)
             Bounds on Te_bc in keV during the minimization (default (0.05, 10.0)).
+        relaxation : float
+            Under-relaxation factor for Te_bc across beat incarnations (see
+            SHARPNESSbeat.relax_bc): applied Te_bc = previous + relaxation *
+            (new - previous), with the previous value read from the shared
+            trans-beat parameter 'Te_bc_applied' (written by both sharpness and
+            confinement beats). Default 1.0 = full step. With relaxation < 1
+            the target H-factor is only approached across beat iterations, not
+            within one: the reported H_achieved is recomputed at the applied
+            (relaxed) Te_bc, and the intra-beat mismatch warning is suppressed
+            when the relaxation actually moved the BC.
         update_bc_based_on_portals : bool
             If True, override x_bc with the outermost radial location used by
             the previous PORTALS beat (stored in parameters_trans_beat as
@@ -159,6 +171,8 @@ class confinement_beat(beat):
             raise ValueError(
                 f"density_treatment must be 'bc' or 'keep', got '{density_treatment}'"
             )
+        if not 0.0 < relaxation <= 1.0:
+            raise ValueError(f"relaxation must be in (0, 1], got {relaxation}")
 
         self.x_bc = x_bc
         self.bc_coordinate = bc_coordinate
@@ -169,6 +183,7 @@ class confinement_beat(beat):
         self.density_treatment = density_treatment
         self.alpha_power_feedback = alpha_power_feedback
         self.Te_bc_bounds = tuple(Te_bc_bounds)
+        self.relaxation = relaxation
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
         self.neped_20 = None   # resolved in _inform() from plasma/parameters or previous beat
@@ -176,7 +191,8 @@ class confinement_beat(beat):
         print(
             f"\t- Confinement beat: x_bc={x_bc} ({bc_coordinate}), "
             f"target {confinement_scaling}={confinement}, Ti/Te={tite}, edge_shape={edge_shape}, "
-            f"density_treatment={density_treatment}, alpha_power_feedback={alpha_power_feedback}",
+            f"density_treatment={density_treatment}, alpha_power_feedback={alpha_power_feedback}, "
+            f"relaxation={relaxation}",
             typeMsg="i",
         )
 
@@ -321,7 +337,8 @@ class confinement_beat(beat):
             tol=1e-4,
             bounds=[self.Te_bc_bounds],
         )
-        Te_bc = float(opt.x[0])
+        Te_bc_target = float(opt.x[0])
+        Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
 
         # ------------------------------------------------------------------
@@ -343,9 +360,11 @@ class confinement_beat(beat):
         tau_scaling  = float(profiles_out.derived[tau_key])
 
         mismatch = abs(H_achieved - self.confinement) / self.confinement
+        was_relaxed = Te_bc != Te_bc_target
         print(
             f"\t- Optimization finished after {len(history)} evaluations: "
             f"Te_bc = {Te_bc:.4f} keV, Ti_bc = {Ti_bc:.4f} keV"
+            + (f" (relaxed from target {Te_bc_target:.4f} keV)" if was_relaxed else "")
         )
         print(
             f"\t- {self.confinement_scaling}: achieved {H_achieved:.4f} "
@@ -358,11 +377,20 @@ class confinement_beat(beat):
                 f"{float(profiles_out.derived['Pfus']):.2f} MW (at final Te_bc)"
             )
         if mismatch > 0.01:
-            print(
-                f"\t- WARNING: H-factor mismatch of {mismatch*100:.1f}% remains after optimization "
-                f"(target may be unreachable within Te_bc bounds {self.Te_bc_bounds} keV)",
-                typeMsg="w",
-            )
+            if was_relaxed:
+                # Expected under relaxation: the target is approached across beat
+                # iterations, not within one — informational, not a warning
+                print(
+                    f"\t- H-factor mismatch of {mismatch*100:.1f}% at the relaxed Te_bc "
+                    f"(expected with relaxation={self.relaxation}; converges across beats)",
+                    typeMsg="i",
+                )
+            else:
+                print(
+                    f"\t- WARNING: H-factor mismatch of {mismatch*100:.1f}% remains after optimization "
+                    f"(target may be unreachable within Te_bc bounds {self.Te_bc_bounds} keV)",
+                    typeMsg="w",
+                )
 
         # ------------------------------------------------------------------
         # 5. Store
@@ -405,6 +433,8 @@ class confinement_beat(beat):
             "ne_vol20_achieved":   float(profiles_out.derived["ne_vol20"]),
             "scaling_params":      scaling_params,
             "Te_bc":               Te_bc,
+            "Te_bc_target":        Te_bc_target,
+            "relaxation":          self.relaxation,
             "Ti_bc":               Ti_bc,
             "Te_bc_guess":         Te_bc_guess,
             "Te_bc_bounds":        self.Te_bc_bounds,
@@ -582,9 +612,16 @@ class confinement_beat(beat):
             "rho_bc_rho"
         ]
 
+        # Applied BC temperature: memory for the relax_bc under-relaxation of the
+        # next sharpness/confinement beat (shared key across both beat types)
+        self.maestro_instance.parameters_trans_beat["Te_bc_applied"] = confinement_output[
+            "Te_bc"
+        ]
+
         print(
-            f"\t\t- neped_20={confinement_output['neped_20']:.3f} and "
-            f"rhotop={confinement_output['rho_bc_rho']:.3f} saved for future beats"
+            f"\t\t- neped_20={confinement_output['neped_20']:.3f}, "
+            f"rhotop={confinement_output['rho_bc_rho']:.3f} and "
+            f"Te_bc_applied={confinement_output['Te_bc']:.4f} saved for future beats"
         )
 
 

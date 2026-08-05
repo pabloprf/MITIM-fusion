@@ -14,6 +14,30 @@ from IPython import embed
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
 
+def relax_bc(maestro_instance, Te_bc_new, relaxation):
+    """
+    Under-relax the boundary-condition temperature against the value applied by
+    the previous sharpness/confinement beat incarnation:
+
+        Te_bc = Te_bc_prev + relaxation * (Te_bc_new - Te_bc_prev)
+
+    Te_bc_prev is read from parameters_trans_beat['Te_bc_applied'], a single key
+    shared by the sharpness and confinement beats (they set the same physical
+    actuator), so mixed chains relax coherently. Full step when relaxation=1.0
+    or on the first incarnation (no previous value stored).
+    """
+    prev = maestro_instance.parameters_trans_beat.get("Te_bc_applied")
+    if relaxation < 1.0 and prev is not None:
+        Te_bc = prev + relaxation * (Te_bc_new - prev)
+        print(
+            f"\t- BC relaxation ({relaxation:.2f}): previous {prev:.4f} keV, "
+            f"target {Te_bc_new:.4f} keV -> applied {Te_bc:.4f} keV",
+            typeMsg="i",
+        )
+        return Te_bc
+    return Te_bc_new
+
+
 class sharpness_beat(beat):
     """
     Sharpness beat: sets the temperature boundary condition at rho_bc based on
@@ -49,6 +73,7 @@ class sharpness_beat(beat):
         sharpness_coordinate="psin",   # coordinate for xi derivative: 'rho', 'roa', or 'psin'
         tite=1.0,
         density_treatment="bc",        # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
+        relaxation=1.0,                # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
     ):
@@ -75,6 +100,14 @@ class sharpness_beat(beat):
             'keep': ne and all ion densities left untouched; only Te/Ti are
             modified. The neped_20 passed to subsequent beats is then the
             actual ne at rho_bc read from the profiles.
+        relaxation : float
+            Under-relaxation factor for Te_bc across beat incarnations (see
+            relax_bc): applied Te_bc = previous + relaxation * (new - previous),
+            with the previous value read from the shared trans-beat parameter
+            'Te_bc_applied' (written by both sharpness and confinement beats).
+            Default 1.0 = full step (no relaxation). With relaxation < 1 the
+            prescribed xi is only approached across beat iterations; the
+            effective xi actually applied is reported as xi_eff.
         update_bc_based_on_portals : bool
             If True, override x_bc with the outermost radial location used by
             the previous PORTALS beat (stored in parameters_trans_beat as
@@ -94,6 +127,8 @@ class sharpness_beat(beat):
             raise ValueError(
                 f"density_treatment must be 'bc' or 'keep', got '{density_treatment}'"
             )
+        if not 0.0 < relaxation <= 1.0:
+            raise ValueError(f"relaxation must be in (0, 1], got {relaxation}")
 
         self.x_bc = x_bc
         self.bc_coordinate = bc_coordinate
@@ -101,13 +136,14 @@ class sharpness_beat(beat):
         self.sharpness_coordinate = sharpness_coordinate
         self.tite = tite
         self.density_treatment = density_treatment
+        self.relaxation = relaxation
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
         self.neped_20 = None   # resolved in _inform() from plasma/parameters or previous beat
 
         print(
             f"\t- Sharpness beat: x_bc={x_bc} ({bc_coordinate}), sharpness_coord={sharpness_coordinate}, "
-            f"xi={sharpness}, Ti/Te={tite}, density_treatment={density_treatment}",
+            f"xi={sharpness}, Ti/Te={tite}, density_treatment={density_treatment}, relaxation={relaxation}",
             typeMsg="i",
         )
 
@@ -243,10 +279,15 @@ class sharpness_beat(beat):
             # Clamp to avoid division by zero / negative T_bc
             C = 0.99 / max(self.sharpness, 1e-6)
 
-        Te_bc = Te_sep / (1.0 - self.sharpness * C)
+        Te_bc_target = Te_sep / (1.0 - self.sharpness * C)
+        Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
 
-        print(f"\t- Sharpness C={C:.4f}, xi={self.sharpness:.3f}")
+        # Effective sharpness actually applied (== prescribed xi when no relaxation acted)
+        xi_eff = (1.0 - Te_sep / Te_bc) / C
+
+        print(f"\t- Sharpness C={C:.4f}, xi={self.sharpness:.3f}" +
+              (f" (xi_eff applied after relaxation: {xi_eff:.3f})" if abs(xi_eff - self.sharpness) > 1e-6 else ""))
         print(f"\t- T_sep={Te_sep:.4f} keV")
         print(f"\t- Te_bc={Te_bc:.4f} keV,  Ti_bc={Ti_bc:.4f} keV")
 
@@ -275,8 +316,11 @@ class sharpness_beat(beat):
             "psin_bc":         psin_bc,
             "sharpness":       self.sharpness,
             "sharpness_coord": self.sharpness_coordinate,
+            "xi_eff":          xi_eff,
+            "relaxation":      self.relaxation,
             "C":              C,
             "Te_bc":          Te_bc,
+            "Te_bc_target":   Te_bc_target,
             "Ti_bc":          Ti_bc,
             "Te_sep":         Te_sep,
             "ne_bc_20":       ne_bc_20,
@@ -448,9 +492,16 @@ class sharpness_beat(beat):
             "rho_bc_rho"
         ]
 
+        # Applied BC temperature: memory for the relax_bc under-relaxation of the
+        # next sharpness/confinement beat (shared key across both beat types)
+        self.maestro_instance.parameters_trans_beat["Te_bc_applied"] = sharpness_output[
+            "Te_bc"
+        ]
+
         print(
-            f"\t\t- neped_20={sharpness_output['neped_20']:.3f} and "
-            f"rhotop={sharpness_output['rho_bc_rho']:.3f} saved for future beats"
+            f"\t\t- neped_20={sharpness_output['neped_20']:.3f}, "
+            f"rhotop={sharpness_output['rho_bc_rho']:.3f} and "
+            f"Te_bc_applied={sharpness_output['Te_bc']:.4f} saved for future beats"
         )
 
 

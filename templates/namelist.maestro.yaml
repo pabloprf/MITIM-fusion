@@ -365,6 +365,18 @@ maestro:
       #             rho_bc read from the profiles (any inherited neped_20 is ignored).
       density_treatment: "bc"
 
+      # Under-relaxation of the boundary-condition temperature across beat incarnations:
+      #     Te_bc_applied = Te_bc_prev + relaxation * (Te_bc_new - Te_bc_prev)
+      # where Te_bc_prev is the value applied by the PREVIOUS sharpness/confinement beat
+      # (shared trans-beat parameter 'Te_bc_applied' -- mixed chains relax coherently).
+      # 1.0 (default) = full step, exactly the original behavior; < 1 damps the
+      # beat-to-beat oscillation of the BC servo (each such beat resets Te_bc from the
+      # state, PORTALS then moves the state -- a fixed-point iteration that can ring).
+      # The first incarnation always takes the full step. With relaxation < 1 the
+      # prescribed xi is only approached ACROSS beat iterations; the effective xi
+      # actually applied is reported as xi_eff in the beat results.
+      relaxation: 1.0
+
       # If True, override x_bc with the outermost radial location used by the previous
       # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
       # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
@@ -455,6 +467,14 @@ maestro:
 
       # Bounds on Te_bc (keV) for the minimization
       Te_bc_bounds: [0.05, 10.0]
+
+      # Under-relaxation of the boundary-condition temperature across beat incarnations
+      # (same mechanism and shared 'Te_bc_applied' trans-beat memory as the sharpness
+      # beat -- see the comment there). 1.0 (default) = full step, original behavior.
+      # With relaxation < 1 the target H-factor is only approached ACROSS beat
+      # iterations: H_achieved is computed at the applied (relaxed) Te_bc and the
+      # intra-beat mismatch warning becomes an informational message.
+      relaxation: 1.0
 
       # If True, override x_bc with the outermost radial location used by the previous
       # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
