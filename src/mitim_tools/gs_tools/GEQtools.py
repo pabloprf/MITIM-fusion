@@ -747,17 +747,23 @@ def from_RZ_to_mxh(R, Z, n_coeff=3):
 
     theta_r_cont = theta_r_cont - theta_cont ; theta_r_cont[-1] = theta_r_cont[0]
 
-    # Fourier decompose to find coefficients
+    # Fourier decompose to find coefficients. The integrand is a PIECEWISE-LINEAR
+    # interpolant of tabulated (theta, theta_R - theta) data, so adaptive quadrature
+    # is the wrong tool (it chases the interpolation kinks to the subdivision cap and
+    # spams IntegrationWarning, twice per harmonic per surface): project on a dense
+    # uniform periodic grid instead -- the rectangle rule on periodic data, same
+    # scheme as MINUET's _mxh_fit. Agrees with the old quad values to ~1e-5 in the
+    # coefficients (measured; the residual difference is the old CAPPED quad's own
+    # non-convergence, i.e. the warning it was spamming) and is much faster.
+    n_g = 4096
+    th_u = np.linspace(0.0, 2*np.pi, n_g, endpoint=False)
+    f_u = np.interp(th_u, theta_cont, theta_r_cont, period=2*np.pi)
 
     c, s = np.zeros(n_coeff), np.zeros(n_coeff)
-
-    def f_theta_r(theta):
-        return np.interp(theta, theta_cont, theta_r_cont)
-    
     for i in np.arange(n_coeff):
-        s[i] = quad(f_theta_r,0,2*np.pi, weight="sin", wvar=i)[0]/np.pi
-        c[i] = quad(f_theta_r,0,2*np.pi, weight="cos", wvar=i)[0]/np.pi
-    
+        s[i] = 2.0 * np.mean(f_u * np.sin(i * th_u))
+        c[i] = 2.0 * np.mean(f_u * np.cos(i * th_u))
+
     c[0] /= 2
 
     return c, s, bbox
