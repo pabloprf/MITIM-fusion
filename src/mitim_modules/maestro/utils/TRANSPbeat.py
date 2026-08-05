@@ -7,6 +7,7 @@ from typing import OrderedDict
 from mitim_tools.transp_tools import CDFtools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.gs_tools import GEQtools
 from mitim_tools.misc_tools import PLASMAtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
@@ -1121,7 +1122,20 @@ class transp_beat(beat):
             print(f'\t\t- Modifying p0 of initialization machine from {p0_MPa:.3f} MPa to {p0_MPa/factor_p:.3f} MPa to match target p/B^2 = {modify_p_to_match_pB2:.3f} (original p/B^2 was {beta_now:.3f})')
             p0_MPa = p0_MPa / factor_p
 
-        self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+        # MINUET (fixed-boundary GS) is preferred over FREEGS when installed, with FREEGS as fallback
+        solver_used = None
+        if GEQtools.minuet_available():
+            try:
+                self.transp.populate_time.from_minuet(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+                solver_used = 'MINUET'
+            except Exception as e:
+                print(f'\t\t- MINUET failed to build the initialization machine slice ({type(e).__name__}: {e}), falling back to freegs', typeMsg = 'w')
+
+        if solver_used is None:
+            self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+            solver_used = 'FREEGS'
+
+        print(f'\t\t- Initialization machine slice (t = {self.time_init}) built with {solver_used}')
 
     # -----------------------------------------------------------------------------------------------------------------------
     # MAESTRO interface

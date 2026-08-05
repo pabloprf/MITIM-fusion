@@ -1241,6 +1241,203 @@ class freegs_millerized:
         return g.to_transp(folder=folder, shot=shot, runid=runid, ne0_20=ne0_20, Vsurf=Vsurf, Zeff=Zeff, Paux_MW=Paux_MW, times=times)
 
 
+# --------------------------------------------------------------------------------------------
+# MINUET fixed-boundary Grad-Shafranov equivalent of freegs_millerized
+# --------------------------------------------------------------------------------------------
+
+def minuet_available():
+    '''
+    Is the optional MINUET package importable? Used to prefer MINUET over FREEGS where both work.
+    '''
+    try:
+        import minuet  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+def _import_minuet():
+    try:
+        import minuet as minuet_pkg
+    except ImportError as e:
+        raise ImportError(
+            '[MITIM] The MINUET equilibrium solver requires the standalone MINUET package. '
+            'Install it with: pip install "mitim-fusion[minuet]" '
+            '(or an editable install of the minuet repo)') from e
+    return minuet_pkg
+
+class minuet_millerized:
+    '''
+    Drop-in replacement of freegs_millerized based on the MINUET fixed-boundary Grad-Shafranov
+    solver: the Miller (MXH) curve IS the boundary, so no coil set / free-boundary control is
+    needed and the separatrix is honored exactly.
+
+    Differences in physics inputs w.r.t. FREEGS worth flagging:
+        - FREEGS's ConstrainPaxisIp derives q from a (1-psiN^alpha_m)^alpha_n current ansatz.
+          MINUET instead takes q(x) as INPUT (it is q-constrained), so the q SHAPE here is a
+          modeling choice: parabolic q(x) = 1 + q_shape_lambda * x^2, uniformly scaled until
+          the solved Ip matches the requested one.
+        - The pressure DOES reproduce FREEGS's convention exactly:
+          p(psiN) = p0 * (1 - psiN**alpha_m)**alpha_n, labelled in psi_N (not in x).
+    '''
+
+    def __init__(self, R, a, kappa_sep, delta_sep, zeta_sep, z0):
+
+        print("> Fixed-boundary equilibrium with MINUET")
+
+        print("\t- Initializing miller geometry")
+        print(f"\t\t* R={R} m, a={a} m, kappa_sep={kappa_sep}, delta_sep={delta_sep}, zeta_sep={zeta_sep}, z0={z0} m")
+
+        self.R0 = R
+        self.a = a
+        self.kappa_sep = kappa_sep
+        self.delta_sep = delta_sep
+        self.zeta_sep = zeta_sep if zeta_sep is not None else 0.0
+        self.Z0 = z0
+
+        thetas = np.linspace(0, 2*np.pi, 1000, endpoint=False)
+
+        self.mitim_separatrix = mitim_flux_surfaces()
+        self.mitim_separatrix.reconstruct_from_miller(self.R0, self.a, self.kappa_sep, self.Z0, self.delta_sep, self.zeta_sep, thetas = thetas)
+        self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
+
+    def prep(self, p0_MPa, Ip_MA, B_T,
+            beta_pol = None, q_shape_lambda = 2.0,
+            gs_ns = 128, gs_ntheta = 256, n_surfaces = 80, n_theta_trace = 384,
+            n_passes = 3, n_outer = 3,
+            parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0},
+            **kwargs_freegs_only):
+
+        if beta_pol is not None:
+            raise NotImplementedError('[MITIM] minuet_millerized only supports the p0 branch (beta_pol constraint not implemented), use freegs_millerized instead')
+
+        if len(kwargs_freegs_only) > 0:
+            print(f"\t- Ignoring FREEGS-only arguments in the MINUET solver: {list(kwargs_freegs_only.keys())}")
+
+        print("\t- Initializing plasma parameters")
+        print(f"\t\t* p0={p0_MPa:.5f} MPa, Ip={Ip_MA:.5f} MA, B={B_T:.5f} T")
+
+        self.p0_MPa = p0_MPa
+        self.Ip_MA = Ip_MA
+        self.B_T = B_T
+        self.beta_pol = beta_pol
+        self.parameters_profiles = parameters_profiles
+
+        self.q_shape_lambda = q_shape_lambda
+        self.gs_ns = gs_ns
+        self.gs_ntheta = gs_ntheta
+        self.n_surfaces = n_surfaces
+        self.n_theta_trace = n_theta_trace
+        self.n_passes = n_passes
+        self.n_outer = n_outer
+
+        # Requested current [A] and vacuum R*Bt [m*T], which are what MINUET is anchored to
+        self.Ip_A_requested = self.Ip_MA * 1E6
+        self.F_b = self.B_T * self.R0
+
+        print(f"\t- Preparing equilibrium with MINUET, fixed-boundary GS on a {gs_ns}x{gs_ntheta} (s,theta) grid")
+        print(f"\t\t* q shape (modeling choice): q(x) = 1 + {self.q_shape_lambda}*x^2, scaled to match Ip")
+        print(f"\t\t* p(psiN) = p0*(1-psiN^{parameters_profiles['alpha_m']})^{parameters_profiles['alpha_n']} (FREEGS ConstrainPaxisIp convention)")
+
+    def _q_shape(self, x):
+
+        return 1.0 + self.q_shape_lambda * np.asarray(x, dtype=float)**2
+
+    def _pressure_callable(self, geom):
+        '''
+        p(psiN) with FREEGS's ConstrainPaxisIp convention, but handed to MINUET as p(x): the
+        (x, psiN) relation is taken from the latest solved geometry (rebuilt each pass)
+        '''
+
+        x_g = np.concatenate(([0.0], geom.x))
+        psin_g = np.concatenate(([0.0], geom.psin))
+
+        p0_Pa = self.p0_MPa * 1E6
+        alpha_m = self.parameters_profiles['alpha_m']
+        alpha_n = self.parameters_profiles['alpha_n']
+
+        def p_of_x(x):
+            psin = np.clip(np.interp(np.asarray(x, dtype=float), x_g, psin_g), 0.0, 1.0)
+            return p0_Pa * (1.0 - psin**alpha_m)**alpha_n
+
+        return p_of_x
+
+    def solve(self):
+
+        _import_minuet()
+        from minuet.constants import MU0
+        from minuet.geometry import mxh_surface_family
+        from minuet.gs import FixedBoundaryGS
+        from minuet.coupling import QConstrainedEquilibrium, _flux_area
+
+        print("\t- Solving equilibrium with MINUET")
+        with IOtools.timer():
+
+            # Boundary: the MXH/Miller curve itself (MINUET is fixed-boundary, so it is exact)
+            Rb, Zb = mxh_surface_family(
+                [self.a], [self.R0], [self.Z0], [self.kappa_sep], [self.delta_sep], [self.zeta_sep],
+                n_theta = self.gs_ntheta)
+            self.Rb, self.Zb = Rb[0], Zb[0]
+
+            # Seed: flat FF' scaled to carry the requested Ip, zero pressure (conditions the first Picard pass only)
+            c_ff = MU0 * self.Ip_A_requested * self.R0 / _flux_area(self.Rb, self.Zb)
+            gs = FixedBoundaryGS(self.Rb, self.Zb, ns = self.gs_ns, ntheta = self.gs_ntheta)
+            sol_seed = gs.solve(
+                lambda pn: np.zeros_like(np.asarray(pn, dtype=float)),
+                lambda pn: c_ff * np.ones_like(np.asarray(pn, dtype=float)),
+                self.F_b)
+            g0 = sol_seed.geometry(n_surfaces = self.n_surfaces, n_theta = self.n_theta_trace)
+
+            # q-constrained equilibrium, with the q amplitude iterated until Ip matches
+            eq = QConstrainedEquilibrium(gs, self.F_b, self._pressure_callable(g0),
+                n_surfaces = self.n_surfaces, n_theta_trace = self.n_theta_trace)
+
+            c, geom = 1.0, g0
+            for i in range(self.n_passes):
+                # p(psiN) is re-labelled onto x with the latest (x, psiN) relation BEFORE the solve,
+                # so eq.p_of_x is always the pressure the exported field was actually solved with
+                eq.set_pressure(self._pressure_callable(geom))
+                # NOTE: the SAME pinned seed g0 is passed every pass; feeding back the previous
+                # pass's geometry turns this into a two-variable iteration that wanders
+                dpsi_dx = lambda x, c=c: g0.Phi_b * np.asarray(x, dtype=float) / (np.pi * (c * self._q_shape(x)))
+                geom, _ = eq.solve(g0, dpsi_dx, n_outer = self.n_outer)
+                error = geom.Ip / self.Ip_A_requested - 1.0
+                print(f"\t\t* Pass {i+1}/{self.n_passes}: Ip = {geom.Ip*1E-6:.5f} MA ({100*error:+.3f}% of requested)")
+                c *= geom.Ip / self.Ip_A_requested
+
+            print("\t\t * Done!")
+
+        self.eq = eq
+        self.gs_solution = eq.last_sol
+        self.geom = geom
+        self.p_of_x = eq.p_of_x
+        self.Ip_A = float(geom.Ip)
+
+    def derive(self):
+
+        # Profiles on the psi_N grid, mirroring what freegs_millerized exposes
+        self.profile_psi_norm = np.linspace(0, 1.0, 100)
+        x_of_psin = np.interp(self.profile_psi_norm, self.geom.psin, self.geom.x)
+
+        self.profile_pressure = self.p_of_x(x_of_psin) * 1E-6              # MPa
+        self.profile_q = np.interp(x_of_psin, self.geom.x, self.geom.q)
+        self.profile_RB = np.interp(x_of_psin, self.geom.x, self.geom.F)   # m*T
+
+        self.profile_q0 = float(self.profile_q[0])
+        self.profile_q95 = float(np.interp(0.95, self.profile_psi_norm, self.profile_q))
+
+        print("\t- Deriving equilibrium quantities from MINUET")
+        print(f"\t\t* Ip = {self.Ip_A*1E-6:.5f} MA (requested {self.Ip_MA:.5f} MA, {100*(self.Ip_A/self.Ip_A_requested-1):+.3f}%)")
+        print(f"\t\t* q0 = {self.profile_q0:.3f}, q95 = {self.profile_q95:.3f}")
+        print(f"\t\t* p0 = {self.profile_pressure[0]:.5f} MPa, R*Bt = {self.geom.F[-1]:.5f} m*T")
+
+    def write(self, filename):
+
+        print(f"\t- Writing equilibrium to {IOtools.clipstr(filename)}")
+
+        from minuet.export import to_geqdsk
+        to_geqdsk(str(filename), self.gs_solution, self.geom, self.p_of_x, Ip_A = self.Ip_A)
+
+
 def equilibrium_to_profiles(
         rhotor, psi, q, pressure,torfluxa, R0, B0, Ip,
         kappa, delta, zeta,rmin, rmaj, zmag,sn, cn,

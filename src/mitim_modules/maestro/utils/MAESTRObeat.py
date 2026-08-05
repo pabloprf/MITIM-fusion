@@ -200,6 +200,8 @@ class beat:
             self.initialize = initializer_from_previous(self)
         elif initializer == 'freegs':
             self.initialize = initializer_from_freegs(self)
+        elif initializer == 'minuet':
+            self.initialize = initializer_from_minuet(self)
         elif initializer == 'fibe':
             self.initialize = initializer_from_fibe(self)
         elif initializer == 'geqdsk':
@@ -627,17 +629,33 @@ class initializer_from_separatrix(beat_initializer):
             aux_channels = aux_channels,
         )
 
-        # [Optional] Use the freegs to correct the profiles (keeping the shaping)
+        # [Optional] Use an equilibrium solver to correct the profiles (keeping the shaping).
+        # MINUET (fixed-boundary, honors the Miller curve exactly) is preferred when installed,
+        # with FREEGS as the fallback for anything that goes wrong in the MINUET path
         if boundary_parameters is not None:
             # rz_boundary_file path: the namelist scalars may be null, so feed the
-            # freegs helper the scalars of the equilibrium just built from the file
+            # solver helpers the scalars of the equilibrium just built from the file
             kwargs.update(R = float(rmaj[-1]), a = float(rmin[-1]), z0 = float(z0[-1]),
                           kappa_sep = float(kappa[-1]), delta_sep = float(delta[-1]), zeta_sep = float(zeta[-1]))
         try:
-            self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+            solver_used = None
+            if GEQtools.minuet_available():
+                p_before = copy.deepcopy(self.p)
+                try:
+                    self._correct_profiles_withminuet(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+                    solver_used = 'MINUET'
+                except Exception as e:
+                    self.p = p_before
+                    print(f'\t- MINUET failed to correct the profiles ({type(e).__name__}: {e}), falling back to freegs', typeMsg = 'w')
+
+            if solver_used is None:
+                self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+                solver_used = 'FREEGS'
+
+            print(f'\t- Profiles corrected with the {solver_used} equilibrium')
         except Exception as e:
-            print(f'\t- Could not run freegs to correct the profiles ({type(e).__name__}: {e}), proceeding with uncorrected ones', typeMsg = 'w')
-        
+            print(f'\t- Could not run an equilibrium solver to correct the profiles ({type(e).__name__}: {e}), proceeding with uncorrected ones', typeMsg = 'w')
+
         # Write it to initialization folder
         self.p.write_state(file=self.folder / 'input.separatrix.gacode')
 
@@ -665,10 +683,40 @@ class initializer_from_separatrix(beat_initializer):
         
         f.write(self.folder / 'freegs.geqdsk.helper')
 
-        f = GEQtools.MITIMgeqdsk(self.folder / 'freegs.geqdsk.helper')
-        
+        self._correct_profiles_from_geqdsk(self.folder / 'freegs.geqdsk.helper',
+            Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+
+    def _correct_profiles_withminuet(self,
+            Paux_MW = 1.0, Zeff = 1.5, netop_20 = 1.0, coeffs_MXH = 5,
+            Ip_MA = 1.0, a = 0.5, B_T = 5.4, R = 1.5, kappa_sep = 1.7, delta_sep = 0.3, zeta_sep = 0.0, z0 = 0.0, **kwargs):
+        '''
+        Same as _correct_profiles_withfreegs, but with the MINUET fixed-boundary GS solver
+        '''
+
+        p0_MPa = self._produce_p0guess(kwargs, Ip_MA, a, B_T)
+
+        # Run minuet to generate equilibrium
+        f = GEQtools.minuet_millerized(R, a, kappa_sep, delta_sep, zeta_sep if zeta_sep is not None else 0.0, z0)
+        f.prep(p0_MPa, Ip_MA, B_T)
+        f.solve()
+        f.derive()
+
+        f.write(self.folder / 'minuet.geqdsk.helper')
+
+        self._correct_profiles_from_geqdsk(self.folder / 'minuet.geqdsk.helper',
+            Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
+
+    def _correct_profiles_from_geqdsk(self, geqdsk_file,
+            Paux_MW = 1.0, Zeff = 1.5, netop_20 = 1.0, coeffs_MXH = 5, **kwargs):
+        '''
+        Splice a solved equilibrium (any solver, read back from its geqdsk) into the guessed
+        profiles: everything comes from the equilibrium EXCEPT the shaping, which is kept
+        '''
+
+        f = GEQtools.MITIMgeqdsk(geqdsk_file)
+
         # Use old shaping
-        
+
         p_old = copy.deepcopy(self.p)
         
         type_heating = kwargs.get('type_heating', 'ICRH')
@@ -688,10 +736,10 @@ class initializer_from_separatrix(beat_initializer):
             self.p.profiles[i] = p_old.profiles[i]
 
         # When a real equilibrium was supplied via internal_flux_file, preserve ITS poloidal-flux
-        # mapping too -- not just the shaping. Otherwise the freegs psi (less edge-compressed than a
+        # mapping too -- not just the shaping. Otherwise the solved psi (less edge-compressed than a
         # real equilibrium) is kept, so boundary_surface_psin extracts a too-near-separatrix (over-
         # squared) surface and the realistic radial decay is partly wasted. Without a file, keep
-        # freegs's self-consistent psi (still better than the linear-ramp guess).
+        # the solver's self-consistent psi (still better than the linear-ramp guess).
         if kwargs.get('internal_flux_file') is not None:
             self.p.profiles['polflux(Wb/radian)'] = np.interp(
                 self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles['polflux(Wb/radian)'])
@@ -998,6 +1046,46 @@ class initializer_from_freegs(initializer_from_geqdsk):
 
         # Call the geqdsk initializer
         super().__call__(geqdsk_file = self.folder / 'freegs.geqdsk',**kwargs_geqdsk)
+
+# --------------------------------------------------------------------------------------------
+# Initializer from MINUET: load the equilibrium, convert to geqdsk and call the geqdsk initializer
+# --------------------------------------------------------------------------------------------
+
+class initializer_from_minuet(initializer_from_geqdsk):
+    '''
+    Same as initializer_from_freegs, but with the MINUET fixed-boundary GS solver.
+    No FREEGS fallback here: asking for initialization_type = minuet is an explicit request,
+    so a missing MINUET package must raise (with its install hint).
+    '''
+    def __init__(self, beat_instance, label = 'minuet'):
+        super().__init__(beat_instance, label = label)
+
+    def __call__(self,
+        R,
+        a,
+        kappa_sep,
+        delta_sep,
+        zeta_sep,
+        z0,
+        p0_MPa = 1.0,
+        Ip_MA = 1.0,
+        B_T = 5.4,
+        **kwargs_geqdsk
+        ):
+
+        p0_MPa = self._produce_p0guess(kwargs_geqdsk, Ip_MA, a, B_T)
+
+        # Run minuet to generate equilibrium
+        f = GEQtools.minuet_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
+        f.prep(p0_MPa, Ip_MA, B_T)
+        f.solve()
+        f.derive()
+
+        # Convert to geqdsk and write it to initialization folder
+        f.write(self.folder / 'minuet.geqdsk')
+
+        # Call the geqdsk initializer
+        super().__call__(geqdsk_file = self.folder / 'minuet.geqdsk',**kwargs_geqdsk)
 
 # --------------------------------------------------------------------------------------------
 # Initializer from FiBE: create the equilibrium, convert to geqdsk and call the geqdsk initializer

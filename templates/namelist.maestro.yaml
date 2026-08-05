@@ -17,9 +17,13 @@ plasma:
     # How to initialize the boundary and q-profile. Options:
     #       geqdsk:     use a GEQDSK file directly
     #       freegs:     use FREEGS to create an equilibrium from boundary parameters
+    #       minuet:     use the MINUET fixed-boundary Grad-Shafranov solver to create an equilibrium from boundary parameters
+    #                   (the Miller/MXH curve IS the boundary, so it is honored exactly; requires mitim-fusion[minuet])
     #       fibe:       use FIBE to create an equilibrium from boundary parameters, requires geqdsk file to specify f and pressure profiles
     #       separatrix: create separatrix from parameters (or RZ file) and guess internal equilibrium or use internal_flux_file
     #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
+    # NOTE: the "separatrix" internal-equilibrium correction and the TRANSP machine-initialization morph
+    #       automatically PREFER MINUET over FREEGS when the minuet package is installed (FREEGS is the fallback)
     initialization_type: freegs      
 
     # How to initialize the profiles. Options:

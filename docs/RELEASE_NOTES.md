@@ -62,6 +62,15 @@ DESCRIPTION
     schemas). Fixes under-resolved shaped edges from low-order fits (e.g. FreeGS starts whose
     outermost stored surfaces self-intersected at the old counts).
 
+*   🧲 **MINUET-driven MAESTRO initialization**: new `initialization_type: minuet` builds the
+    engineering-parameters seed equilibrium with the MINUET fixed-boundary GS solver
+    (`GEQtools.minuet_millerized`) instead of FREEGS — the Miller curve IS the boundary (honored
+    exactly, no synthetic coils), solving in seconds. The `separatrix` initializer's internal-
+    equilibrium correction and the TRANSP machine-initialization morph also auto-prefer MINUET
+    when `mitim-fusion[minuet]` is installed, with automatic FREEGS fallback otherwise.
+    Dev tests: `test_maestro_minuet_initializer.py` (all three sites + figures),
+    `test_maestro_minuet_init_confinement.py` (minimal `[minuet, confinement]` chain).
+
 *   🎵 **MAESTRO `minuet` beat**: new in-process substitute for `transp_soft` — current diffusion + sawteeth on a fixed-boundary equilibrium (coupled CD+GS) via the standalone MINUET package (`pip install "mitim-fusion[minuet]"`), running in seconds instead of a TRANSP dispatch. Kinetics/species/sources pass through verbatim; only the equilibrium blocks and q/johm/jbs evolve. Fully namelist-driven (`beat_type: minuet`; commented block in `templates/namelist.maestro.yaml`) with gaussian-source heating injection, the sawtooth-times / `ensure_sawtooths` handoff, `mitim_plot_maestro` / `mitim_check_maestro` integration (the full MINUET notebook is appended when `run.minuet` is present), and robustness to FreeGS/engineering-parameter starts (folded-LCFS trim on ingest, trusted-span restore on merge). Dev-test: `tests/dev_tests/test_maestro_minuet_beat.py` (chain `["minuet", "portals"]` with in-process TGLF).
 
 *   💥 **MAESTRO BetaN can be a confinement-quality string**: `profiles_initialization.parameters.BetaN`

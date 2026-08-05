@@ -57,6 +57,8 @@ def grabMAESTRO(folder):
     beat_initializer = None
     if (folder_beats / f'{beats[0]}' / 'initializer_freegs').exists():
         beat_initializer = 'freegs'
+    elif (folder_beats / f'{beats[0]}' / 'initializer_minuet').exists():
+        beat_initializer = 'minuet'
     elif (folder_beats / f'{beats[0]}' / 'initializer_geqdsk').exists():
         beat_initializer = 'geqdsk'
     elif (folder_beats / f'{beats[0]}' / 'initializer_profiles').exists():
@@ -185,7 +187,7 @@ def plot_results(self, fn, summary_only=False):
 
         if ini['geqdsk'] is not None:
             # Label the equilibrium by the actual initializer that produced it
-            # (initializer_from_geqdsk / _freegs / _fibe all write input.geqdsk)
+            # (initializer_from_geqdsk / _freegs / _minuet / _fibe all write input.geqdsk)
             init_type = type(self.beats[1].initialize).__name__.replace('initializer_from_', '')
             plot_g_quantities(ini['geqdsk'], axs, color = 'b', lw = lw, ms = ms,
                               label = f'Initial equilibrium ({init_type})')

@@ -112,7 +112,7 @@ def estimate_BetaN_from_scaling(betan_string, parameters_initialize, parameters_
         if B_T is None:
             B_T = abs(float(g_eq.g.raw["bcentr"]))
     else:
-        raise Exception('[MAESTRO] BetaN estimation from a confinement scaling requires separatrix, freegs, fibe or geqdsk initialization geometry')
+        raise Exception('[MAESTRO] BetaN estimation from a confinement scaling requires separatrix, freegs, minuet, fibe or geqdsk initialization geometry')
 
     # Line-averaged density from neped and the density-peaking target (nu_ne = ne(0.2)/<ne>_vol),
     # assuming a profile linear in rho: n0 = 2*nu*neped/(3-nu), nbar = (n0 + neped)/2
@@ -230,7 +230,7 @@ def run_maestro_local(
             maestro_namelist["plasma"]["parameters"]["separatrix"]["freeze_995_from"] = "analytic_interpolation"
             
     # Initialize geometry from first 4 MXH moments
-    if initialization_type in ['fibe','separatrix',"freegs"]:
+    if initialization_type in ['fibe','separatrix',"freegs","minuet"]:
         
         R           = maestro_namelist["plasma"]["parameters"]["separatrix"]["R"]
         a           = maestro_namelist["plasma"]["parameters"]["separatrix"]["a"]
@@ -368,7 +368,7 @@ def run_maestro_local(
         # Define beat
         # ****************************************************************************
         
-        # Initialization chosen (profiles, freegs, geqdsk, fibe) for the first beat
+        # Initialization chosen (profiles, freegs, minuet, geqdsk, fibe) for the first beat
         initialize_this_beat_with = initialization_type if (not creator_added) else None
         
         m.define_beat(
