@@ -58,7 +58,8 @@ class eped_beat(beat):
                                            # zeffped input and the effective-impurity charge used by full EPED.
             stability_rule = ['G', 0.03],  # (full EPED) [rule, threshold] used to pick the pedestal from the ELITE spectrum.
                                            # 'G' (default): flat cut on gamma/omega_A. 'W': EPED1 diamagnetic criterion
-                                           # gamma > C*omega_*i(n)/2, threshold = the O(1) calibration factor C.
+                                           # gamma > C*omega_*pi(n)/2, threshold = the O(1) calibration factor C
+                                           # (C = 1 is EPED1 as published). ['W'] alone uses the nominal C = 1.
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -701,7 +702,9 @@ class eped_beat(beat):
         density; the EPED beat does not touch the equilibrium, so its input or output
         input.gacode supply the same torfluxa. `stability_rule` overrides the prepare-time
         knob (used on re-reads driven by what eped_results.npy recorded).'''
-        rule, threshold = stability_rule if stability_rule is not None else getattr(self, 'stability_rule', ['G', 0.03])
+        sr = stability_rule if stability_rule is not None else getattr(self, 'stability_rule', ['G', 0.03])
+        # ['W'] without a threshold is allowed: None resolves to the per-rule nominal downstream
+        rule, threshold = (list(sr) + [None])[:2]
         return dict(diamagnetic_stab_rule = rule, stability_threshold = threshold, gacode_state = gacode_state)
 
     @staticmethod

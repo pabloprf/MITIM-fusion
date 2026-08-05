@@ -118,9 +118,10 @@ eped.run(
 # Two rules to pick the pedestal from the gamma(height, n) spectrum:
 #   'G' (default, threshold 0.03): flat cut on gamma/omega_A -- same bar for every n, so the
 #       prediction chases the highest n in the set (NOT converged in the mode ceiling).
-#   'W' (threshold = O(1) calibration factor C): EPED1 diamagnetic criterion
-#       gamma > C * omega_*i(n)/2 (Snyder et al., Phys. Plasmas 16, 056118 (2009)). The bar
-#       rises linearly with n, so the mode set self-truncates and the answer converges.
+#   'W' (threshold = O(1) calibration factor C, C = 1 is EPED1 as published): diamagnetic
+#       criterion gamma > C * omega_*pi(n)/2, with omega_*pi the HALF-maximum of the ion
+#       diamagnetic frequency across the barrier (Snyder et al., PoP 16, 056118 (2009)). The
+#       bar rises linearly with n, so the mode set self-truncates and the answer converges.
 # In the overlay: the two flat curves should differ (higher ceiling -> lower pedestal), the
 # two 'W' curves should coincide; the annotated limiting n makes this explicit.
 #

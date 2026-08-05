@@ -329,9 +329,10 @@ class EPED:
             print_results = True,
             label = None,
             specific_folder = None,
-            diamagnetic_stab_rule = 'G',    # 'G'/'H'/'GH': flat cut; 'W': EPED1 gamma > C*omega_*i(n)/2
-            stability_threshold = 0.03,     # flat rules: cut on gamma/omega_A; 'W': calibration factor C
+            diamagnetic_stab_rule = 'G',    # 'G'/'H'/'GH': flat cut; 'W': EPED1 gamma > C*omega_*pi(n)/2
+            stability_threshold = None,     # None -> per-rule nominal (flat: 0.03 on gamma/omega_A; 'W': C = 1.0)
             gacode_state = None,            # companion plasma state (path or gacode_state), required by 'W'
+            consecutive_heights = 1,        # 1 = plain first crossing (EPED behavior); 2+ rejects isolated-spike selections
             ):
 
         self.results[label if label is not None else subfolder] = {}
@@ -348,7 +349,7 @@ class EPED:
         for output_file in output_files:
 
             with xr.open_dataset(f'{output_file.resolve()}', engine='netcdf4') as ds:
-                data = postprocess_eped(ds, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state)
+                data = postprocess_eped(ds, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state, consecutive_heights=consecutive_heights)
 
             sublabel = output_file.name.split('_')[-1].split('.')[0]
 
@@ -1093,18 +1094,23 @@ def _omega_star_threshold(data, gacode_state, calibration_factor):
     '''
     Per-(height, toroidal mode number) EPED1 diamagnetic-stabilization threshold on gamma/omega_A:
 
-        threshold(h,n) = C * 0.5 * max_barrier[ omega_*i(h,n) ] / omega_A(h)
+        threshold(h,n) = C * 0.5 * omega_*pi(h,n) / omega_A(h)
+        omega_*pi     = 0.5 * max_barrier[ omega_*i(h,n) ]     (HALF-maximum)
 
-    so that the stability rule reads  gamma > C * omega_*i(n)/2  , with
-    omega_*i = (n / (Z_i e n_i)) dp_i/dpsi  (EPED1 criterion, Snyder et al., Phys. Plasmas 16,
-    056118 (2009); omega_* convention as in Saarelma et al., Nucl. Fusion 52, 103020 (2012)).
+    so that the stability rule reads  gamma > C * omega_*pi(n)/2 , with
+    omega_*i = (n / (Z_i e n_i)) dp_i/dpsi. EPED1 specifies omega_*pi as the HALF maximum of
+    the ion diamagnetic frequency across the edge barrier (Snyder et al., Phys. Plasmas 16,
+    056118 (2009); Nucl. Fusion 51, 103016 (2011) Sec. 3.1), i.e. the net cut is
+    C * max(omega_*i)/4 -- consistent with the ELITE-side normalization of this EPED install,
+    gamma_PB = gamma/(omega_*max/4 + 0.02*omega_A) (wsmodel=6), up to the small regularizer.
 
     Unlike the flat 'G' cut, the threshold grows ~linearly with n, so high-n modes are
     progressively harder to declare limiting.
 
-    `calibration_factor` C is the O(1) calibration knob (nominal 1.0): the ABSOLUTE
-    normalization of omega_*/omega_A against ELITE's internal Alfven normalization is
-    uncertain to an O(1) factor -- the robust content of this rule is the ~n scaling.
+    `calibration_factor` C is the O(1) calibration knob: C = 1 is EPED1 as published; the
+    value that reproduces this install's own internal EPED1 selection is ~0.6-0.75
+    (remaining definitional differences in omega_*, omega_A and ELITE's +0.02*omega_A term).
+    The robust content of this rule is the ~n scaling, not the absolute constant.
     '''
     state = gacode_state if hasattr(gacode_state, 'profiles') else PROFILEStools.gacode_state(gacode_state)
     torfluxa = float(np.asarray(state.profiles['torfluxa(Wb/radian)']).ravel()[0])  # [Wb/rad]
@@ -1115,7 +1121,19 @@ def _omega_star_threshold(data, gacode_state, calibration_factor):
     B, R = _to_scalar(data['bt']), _to_scalar(data['r'])                 # [T], [m]
     wped_psi = np.array(data['eq_wped_psi'])
 
+    # The companion state only supplies normalizations (torfluxa, mass density), but a state
+    # describing a DIFFERENT plasma silently rescales every threshold -- check it matches the
+    # EPED scalars
+    for name, eped_val, state_val in (
+        ('R', R, float(np.asarray(state.profiles['rcentr(m)']).ravel()[0])),
+        ('a', _to_scalar(data['a']), float(np.asarray(state.profiles['rmin(m)']).ravel()[-1])),
+        ('Bt', abs(B), abs(float(np.asarray(state.profiles['bcentr(T)']).ravel()[0]))),
+    ):
+        if abs(eped_val - state_val) > 0.05 * abs(eped_val):
+            print(f"\t> omega_* companion gacode_state has {name} = {state_val:.3f} vs EPED's {eped_val:.3f} (> 5% off): is this the right plasma state? Thresholds scale with its torfluxa/density", typeMsg='w')
+
     threshold = np.full(np.array(data['gamma']).shape, np.nan)
+    n_degenerate = 0
     for ih in range(threshold.shape[0]):
 
         pr = _eped_profiles_at_height(data, ih)
@@ -1125,6 +1143,7 @@ def _omega_star_threshold(data, gacode_state, calibration_factor):
         # window below). Leaving their threshold at NaN keeps them from ever setting the
         # pedestal limit, consistent with the eq_betanped < 0 masking of the growth rates.
         if not (np.all(pr['q'] > 0) and np.all(np.diff(pr['psin']) > 0) and wped_psi[ih] > 0):
+            n_degenerate += 1
             continue
 
         # Main-ion and impurity densities from quasineutrality with EPED's own z, zi, zeffped
@@ -1136,8 +1155,10 @@ def _omega_star_threshold(data, gacode_state, calibration_factor):
         # psi_N is linear in psi, so d/dpsi = (d/dpsi_N)/delta_psi. The netCDF carries no
         # dimensional psi and no torfluxa, so delta_psi = psi_edge - psi_axis is rebuilt from
         # the netCDF q profile plus the companion input.gacode torfluxa, via
-        # dPsi = dPhi/q with Phi = torfluxa*rho^2. CONVENTION: this runs ~7% below the
-        # input.gacode polflux(edge)-polflux(axis) on the validation case; omega_* ~ 1/delta_psi.
+        # dPsi = dPhi/q with Phi = torfluxa*rho^2 (verified to reproduce the state's own
+        # polflux to <1e-3 on the SAME equilibrium). Any residual offset vs the companion
+        # state's polflux is an equilibrium MISMATCH (TOQ vs the state, ~5% observed), not a
+        # flux convention; omega_* ~ 1/delta_psi inherits it.
         delta_psi = float(np.trapezoid(2.0 * torfluxa * pr['rho'] / pr['q'], pr['rho']))
 
         omega_star_per_n = np.abs(np.gradient(p_i, pr['psin']) / delta_psi) / (z * _E_C * n_i)  # [rad/s]
@@ -1145,27 +1166,47 @@ def _omega_star_threshold(data, gacode_state, calibration_factor):
         rho_m = (n_i * m + n_imp * mi) * _AMU_KG                         # [amu] -> [kg/m^3]
         omega_A = B / np.sqrt(_MU0 * rho_m) / R                          # v_A/R0 [rad/s], local
 
-        # EPED1 evaluates omega_*i at its maximum across the pedestal barrier
+        # EPED1 references omega_*i by its HALF maximum across the pedestal barrier
+        # (Snyder 2009/2011, see docstring) -- NOT the maximum
         barrier = pr['psin'] >= 1.0 - _BARRIER_WIDTHS * wped_psi[ih]
         j = np.where(barrier)[0][int(np.argmax(omega_star_per_n[barrier]))]
 
         # omega_A taken with rho_m AT THE BARRIER PEAK; the alternative on-axis rho_m
         # would scale every threshold by ~1.44x on the validation case
-        threshold[ih, :] = 0.5 * n_modes * omega_star_per_n[j] / omega_A[j]
+        threshold[ih, :] = 0.5 * n_modes * (0.5 * omega_star_per_n[j]) / omega_A[j]
+
+    if n_degenerate > 0:
+        frac = n_degenerate / threshold.shape[0]
+        print(f"\t> omega_* rule: {n_degenerate}/{threshold.shape[0]} heights have degenerate/failed TOQ equilibria (NaN threshold) and can never be selected", typeMsg='w' if frac > 0.25 else 'i')
 
     return calibration_factor * threshold
 
 
-def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot_frac=0.3, gacode_state=None):
+def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold=None, dome_foot_frac=0.3, gacode_state=None, consecutive_heights=1):
     '''
     Note that this postprocessing uses the diagmanetic stabilization rule to determine stability, may not match EPED
 
     Rules 'G', 'H', 'GH'/'HG' apply a FLAT cut (max-over-n of the chosen growth-rate metric
     against `stability_threshold`). Rule 'W' applies the EPED1 diamagnetic criterion
-    gamma > C*omega_*i(n)/2, in which case `stability_threshold` plays the role of the O(1)
+    gamma > C*omega_*pi(n)/2, in which case `stability_threshold` plays the role of the O(1)
     calibration factor C and `gacode_state` (path or gacode_state) must be the companion
     plasma state (see _omega_star_threshold).
+
+    `stability_threshold = None` resolves to the per-rule nominal: 0.03 for the flat rules,
+    C = 1.0 (EPED1 as published) for 'W' -- the two live on different scales, so a single
+    shared default would silently poison whichever rule it wasn't meant for.
+
+    The selected pedestal is the first height where the instability persists for
+    `consecutive_heights` consecutive heights. The default (1) is the literal first
+    crossing, matching the EPED driver's own behavior; setting 2 is a MITIM-side
+    robustness heuristic (NOT in EPED or the papers) that rejects selections carried by
+    an isolated unconverged-ELITE spike one height wide.
     '''
+
+    if stability_threshold is None:
+        stability_threshold = 1.0 if diamagnetic_stab_rule == 'W' else 0.03
+    elif diamagnetic_stab_rule == 'W' and stability_threshold < 0.2:
+        print(f"\t> Rule 'W' received stability_threshold = {stability_threshold}: this is the CALIBRATION FACTOR C (O(1), nominal 1.0), not a gamma/omega_A cut -- a flat-rule value here makes the criterion ~{1/stability_threshold:.0f}x too permissive", typeMsg='w')
 
 
     coords = {k: data[k].values for k in ['dim_height', 'dim_widths', 'dim_nmodes', 'dim_rho', 'dim_three', 'dim_one']}
@@ -1196,20 +1237,29 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
         data['stability_threshold_n'] = (('dim_height', 'dim_nmodes'), threshold)
         excess = y - threshold
         excess = np.where(np.isnan(excess), -np.inf, excess)
-        indices = np.where(np.max(excess, axis=1) > 0)[0]
+        crossed = np.max(excess, axis=1) > 0
     else:
         threshold = stability_threshold
         y0 = np.nanmax(y, 1)
         y0 = np.where(y0 == None, 0, y0)
-        indices = np.where(y0 > stability_threshold)[0]
-    if len(indices):
-        step = indices[0]
-    else:
-        step = -1
+        crossed = y0 > stability_threshold
+
+    # First height opening a run of `consecutive_heights` unstable heights (with the
+    # default of 1 this is the plain first crossing)
+    step, run = -1, 0
+    for i, c in enumerate(crossed):
+        run = run + 1 if c else 0
+        if run >= consecutive_heights:
+            step = i - consecutive_heights + 1
+            break
 
     dims = ('dim_one')
     data['stability_rule'] = (dims, [diamagnetic_stab_rule])
     data['stability_threshold'] = (dims, np.array([stability_threshold]))
+    # step == 0 is deliberately treated as no-solution: unstable at the very first height
+    # means the marginal point lies BELOW the explored TEPED_BOUND window, and reporting the
+    # window floor as "the pedestal" would overstate it -- NaN instead, which is what the
+    # MAESTRO eped-beat floor-lowering retries key on
     if step > 0:
         data['stability_index'] = (dims, np.array([step]))
         # Limiting crossing diagnostics (data-driven; the peeling/ballooning label is
@@ -1264,7 +1314,7 @@ def postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, dome_foot
 
     return data
 
-def read_eped_file(ipaths, diamagnetic_stab_rule = 'G', stability_threshold = 0.03, gacode_state = None):
+def read_eped_file(ipaths, diamagnetic_stab_rule = 'G', stability_threshold = None, gacode_state = None, consecutive_heights = 1):
     invars = ['ip', 'bt', 'r' , 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep']
     data_arrays = []
     for ipath in ipaths:
@@ -1282,7 +1332,7 @@ def read_eped_file(ipaths, diamagnetic_stab_rule = 'G', stability_threshold = 0.
         if ipath.is_file():
             with xr.open_dataset(f'{ipath.resolve()}', engine='netcdf4') as ds:
                 data = ds.load()
-            data = postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state)
+            data = postprocess_eped(data, diamagnetic_stab_rule, stability_threshold, gacode_state=gacode_state, consecutive_heights=consecutive_heights)
         data_arrays.append(data.expand_dims({'filename': [ipath.parent.parent.parent.name]}))
 
     dataset = xr.merge(data_arrays, join='outer', fill_value=np.nan).sortby('filename')

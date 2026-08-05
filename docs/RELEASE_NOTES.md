@@ -39,13 +39,18 @@ DESCRIPTION
 
 *   💥 **EPED physics-based stability rule** (`postprocess_eped` rule `'W'`, exposed in `EPED.read()`
     and the MAESTRO eped-beat knob `stability_rule`): the pedestal can now be selected with the EPED1
-    diamagnetic criterion gamma > C*omega_*i(n)/2 — the threshold grows ~linearly with toroidal mode
-    number, so the answer converges in the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut
-    in deeply ballooning-limited pedestals. EPED runs also keep per-height TOQ/ELITE work directories
-    by default for post-mortems (`clean_intermediate_files=True` restores the old cleanup), and a
-    launch whose num_heights x num_modes would overflow the EPED runner's silent 1024-job table
-    (excess ELITE jobs never run, gamma = -1 everywhere with exit code 0) now asks for confirmation
-    at submission instead of failing undetectably.
+    diamagnetic criterion gamma > C*omega_*pi(n)/2, with omega_*pi the HALF-maximum of the ion
+    diamagnetic frequency across the barrier (Snyder PoP 2009 / NF 2011) so that C = 1 is EPED1 as
+    published — the threshold grows ~linearly with toroidal mode number and the answer converges in
+    the mode-set ceiling, unlike the flat gamma/omega_A > 0.03 cut in deeply ballooning-limited
+    pedestals. `stability_threshold = None` now resolves per-rule (flat: 0.03; 'W': C = 1), a
+    flat-like C warns, the companion gacode state is sanity-checked against the EPED scalars, and an
+    optional `consecutive_heights` knob (default 1 = plain first crossing) can reject selections
+    carried by isolated unconverged-ELITE spikes. EPED runs also keep per-height TOQ/ELITE work
+    directories by default for post-mortems (`clean_intermediate_files=True` restores the old
+    cleanup), and a launch whose num_heights x num_modes would overflow the EPED runner's silent
+    1024-job table (excess ELITE jobs never run, gamma = -1 everywhere with exit code 0) now asks
+    for confirmation at submission instead of failing undetectably.
 
 *   💥 **MAESTRO transp beat: prescribed equilibrium and frozen-field (heating-only) mode**:
     `machine_initialization: null` now hands TRANSP the state's own nested flux surfaces as
