@@ -1,0 +1,63 @@
+# Extended-Lengyel FORWARD (clean / non-detached) mode: upstream separatrix Te from
+# pure Spitzer-Haerm conduction with the package's Zeff-corrected conductivity.
+# No impurity seeding, no detachment root-find, no radas atomic data: every algorithm
+# below is a registered, test-covered package function (upstream_temp.py provides the
+# conduction closed forms; the divertor-entrance temperature is computed FORWARD from
+# q_parallel, the divertor leg and the broadening factor -- it is insensitive to
+# target_electron_temp, which is therefore a non-parameter here).
+# Radiation above the X-point is neglected: at trace impurity content it changes Tsep
+# by <~1% (verified against the package's Lengyel integral), which is why the
+# radiation-retaining forward integrator (bit-rotted, uncalled upstream) is avoided.
+# lambda_q convention: Brunner (pressure-based, same family as the 2-point model's
+# Te_lcfs_2pt) -- NOT the seeded driver's Eich2020H(alpha_t); the two differ in both
+# scaling and the B_pol they use, so clean and seeded Tsep are not interchangeable.
+algorithms:
+  - calc_magnetic_field_and_safety_factor
+  - calc_fieldline_pitch_at_omp
+  - calc_lambda_q_with_brunner
+  - calc_parallel_heat_flux_density
+  - calc_kappa_e0
+  - calc_Goldston_kappa_z
+  - calc_electron_temp_from_cc_fit
+  - calc_separatrix_electron_temp_with_broadening
+  - calc_separatrix_total_pressure_LG
+input:
+    # Length along a magnetic fieldline from divertor target to divertor entrance.
+    divertor_parallel_length: 10.0 m
+    # Length along a magnetic fieldline from divertor target to outboard midplane
+    # or stagnation point.
+    parallel_connection_length: 30 m
+    # Major radius
+    major_radius: 1.85 m
+    # Minor radius
+    minor_radius: 0.57 m
+    # Elongation at psiN = 0.95
+    elongation_psi95: 1.7
+    # Triangularity at psiN = 0.95
+    triangularity_psi95: 0.3
+    # Magnetic field on axis
+    magnetic_field_on_axis: 12.2 T
+    # Plasma current
+    plasma_current: 8.7 MA
+    # Ratio of Bpol_OMP / Bpol_avg
+    ratio_of_upstream_to_average_poloidal_field: 4/3
+    # Ratio between lambda_INT and lambda_q
+    divertor_broadening_factor: 3.0
+    # Power crossing separatrix
+    power_crossing_separatrix: 20.9MW
+    # Fraction of power directed to outer divertor. NOTE: the package's seeded driver
+    # internally multiplies this by (1 - 1/e) before computing q_parallel
+    # (Lengyel_model_extended_S_Zeff_alphat.py); run_forward() applies the same factor
+    # so the two modes share the q_parallel convention.
+    fraction_of_P_SOL_to_divertor: 2/3
+    # Upstream electron density
+    separatrix_electron_density: 15.0e19/m^3
+    # Electron temperature at target (non-parameter here: the divertor-entrance
+    # temperature it feeds is conduction-dominated; kept for completeness)
+    target_electron_temp: 2.34eV
+    # Zeff entering the Goldston conductivity correction kappa = kappa_e0/kappa_z(Zeff).
+    # Populated from the plasma state's volume-average Zeff by Lengyel.prep().
+    z_effective: 1.5
+    # Volume-average total pressure (Brunner lambda_q scaling input).
+    # Populated from the plasma state by Lengyel.prep().
+    average_total_pressure: 3 atm

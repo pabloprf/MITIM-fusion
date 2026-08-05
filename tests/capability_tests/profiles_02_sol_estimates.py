@@ -73,7 +73,7 @@ if os.getenv("RADAS_DIR") is None:
 
 Prf_scan = [1.0, 2.0, 5.0, 10.0, 20.0]  # MW
 
-results = {"Psol": [], "legacy": [], "twopt": [], "lengyel": []}
+results = {"Psol": [], "legacy": [], "twopt": [], "lengyel": [], "lengyel_clean": []}
 for i, Prf in enumerate(Prf_scan):
     p.changeRFpower(PrfMW=Prf)                       # rederives -> analytic estimates updated
     p.calculate_sol(lengyel=True, lengyel_folder=folder / f"point_{i}", cold_start=cold_start)
@@ -83,9 +83,14 @@ for i, Prf in enumerate(Prf_scan):
     results["twopt"].append(p.derived["Te_lcfs_2pt"] * 1e3)
     results["lengyel"].append(p.derived["Te_lcfs_lengyel"] * 1e3)
 
+    # mode='clean': non-detached forward conduction, no seeding, no radas needed
+    # (registered package algorithms only -- see templates/input.lengyel_clean.controls.yaml)
+    p.calculate_sol(lengyel=True, lengyel_folder=folder / f"point_{i}_clean", cold_start=cold_start, mode="clean")
+    results["lengyel_clean"].append(p.derived["Te_lcfs_lengyel"] * 1e3)
+
     print(f"Prf = {Prf:5.1f} MW -> Psol = {results['Psol'][-1]:5.2f} MW: "
           f"legacy {results['legacy'][-1]:6.1f} eV, 2pt {results['twopt'][-1]:6.1f} eV, "
-          f"Lengyel {results['lengyel'][-1]:6.1f} eV")
+          f"Lengyel {results['lengyel'][-1]:6.1f} eV, Lengyel-clean {results['lengyel_clean'][-1]:6.1f} eV")
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 3. Plot the comparison
@@ -97,7 +102,9 @@ fig, ax = plt.subplots(figsize=(7, 5))
 ax.plot(Psol, results["legacy"], "o-", label="Te_lcfs_estimate (legacy 2-pt, rough Bp) [DEPRECATED]")
 ax.plot(Psol, results["twopt"], "s-", label="Te_lcfs_2pt (2-pt, exact OMP Bp)")
 if np.isfinite(results["lengyel"]).any():
-    ax.plot(Psol, results["lengyel"], "^-", label="Te_lcfs_lengyel (extended-Lengyel)")
+    ax.plot(Psol, results["lengyel"], "^-", label="Te_lcfs_lengyel (extended-Lengyel, seeded)")
+if np.isfinite(results["lengyel_clean"]).any():
+    ax.plot(Psol, results["lengyel_clean"], "v-", label="Te_lcfs_lengyel (clean forward, no seeding)")
 
 # Spitzer-conduction stiffness reference: Tsep ~ Psol^(2/7)
 ax.plot(Psol, results["twopt"][0] * (Psol / Psol[0]) ** (2.0 / 7.0), "k--", lw=0.8,

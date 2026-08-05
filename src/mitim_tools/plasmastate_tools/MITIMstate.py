@@ -1179,14 +1179,14 @@ class mitim_state:
             conditional on that seeding through the Zeff-corrected conductivity
             (at low separatrix density the solved seeding can be enormous).
             Appropriate for seeded / detached operation.
-          'clean'  -- unseeded plasmas: the seeded solve is still run (it provides the
-            divertor-entrance state and the Eich/alpha_t q_parallel), but the upstream
-            leg is redone as pure Spitzer conduction -- the trace-impurity limit of the
-            Lengyel integral is radiation-free, hence closed-form --
-                T_sep^3.5 = T_de^3.5 + 3.5 q_par (L_par - L_div) / (kappa_e0/kappa_z)
-            with kappa_z(Zeff) at the STATE's own volume-average Zeff.
-            Caveat: the divertor-entrance state itself still comes from the seeded
-            divertor solve.
+          'clean'  -- unseeded plasmas: pure Spitzer-Haerm conduction with the
+            package's Zeff-corrected conductivity at the STATE's own volume-average
+            Zeff, run entirely with registered package algorithms via
+            Lengyel.run_forward() (algorithm list + modeling notes:
+            templates/input.lengyel_clean.controls.yaml). No detachment root-find,
+            no impurity seeding, no atomic data. NOTE the lambda_q convention
+            differs from 'seeded' (Brunner vs Eich2020H(alpha_t)) -- see the
+            template header.
 
         Stores derived['Te_lcfs_lengyel'] [keV] and ['Te_lcfs_lengyel_mode'] (np.nan on
         any failure -- the model is an optional extra and must never break
@@ -1197,32 +1197,26 @@ class mitim_state:
             import os
             import tempfile
             from pathlib import Path
+            from mitim_tools import __mitimroot__
             from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 
-            radas_dir = radas_dir if radas_dir is not None else os.environ.get("RADAS_DIR")
             folder = Path(folder) if folder is not None else Path(tempfile.mkdtemp(prefix="mitim_lengyel_"))
 
             L_par = np.pi * self.profiles["rcentr(m)"][0] * np.abs(self.derived["q95"])
             kwargs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
             kwargs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
 
-            self.lengyel = Lengyel()
-            self.lengyel.prep(radas_dir, self)
-            self.lengyel.run(folder, cold_start=cold_start, **kwargs)
-
-            res = self.lengyel.results
-            num = lambda k: float(str(res[k]).split()[0])
-
             if mode == "clean":
-                from extended_lengyel.initialize import calc_Goldston_kappa_z
-                q_par = num('q_parallel') * (1e9 if 'gigawatt' in str(res['q_parallel'])
-                                             else 1e6 if 'megawatt' in str(res['q_parallel']) else 1.0)
-                L_up = num('parallel_connection_length') - num('divertor_parallel_length')
-                kappa = num('kappa_e0') / calc_Goldston_kappa_z(float(self.derived["Zeff_vol"]))
-                T_de = num('divertor_entrance_electron_temp')
-                Tsep_eV = (T_de**3.5 + 3.5 * q_par * L_up / kappa) ** (2.0 / 7.0)
+                self.lengyel = Lengyel(namelist_location=__mitimroot__ / 'templates' / 'input.lengyel_clean.controls.yaml')
+                self.lengyel.prep(input_gacode=self)
+                self.lengyel.run_forward(folder, cold_start=cold_start, **kwargs)
             else:
-                Tsep_eV = num('separatrix_electron_temp')
+                radas_dir = radas_dir if radas_dir is not None else os.environ.get("RADAS_DIR")
+                self.lengyel = Lengyel()
+                self.lengyel.prep(radas_dir, self)
+                self.lengyel.run(folder, cold_start=cold_start, **kwargs)
+
+            Tsep_eV = float(str(self.lengyel.results['separatrix_electron_temp']).split()[0])
 
             self.derived['Te_lcfs_lengyel'] = Tsep_eV * 1e-3
             self.derived['Te_lcfs_lengyel_mode'] = mode
