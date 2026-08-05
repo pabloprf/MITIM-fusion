@@ -493,10 +493,24 @@ maestro:
 
     parameters_prepare:
 
+      # What this beat runs and applies (same vocabulary as MITIMstate.calculate_sol_lengyel):
+      #     'seeded' (default): the package's detachment-seeded driver -- the impurity
+      #             concentration is SOLVED to detach the divertor, and BOTH the separatrix
+      #             temperature and the seed-impurity/Zeff update are applied to the profiles.
+      #     'clean': non-detached forward conduction (Lengyel.run_forward, registered package
+      #             algorithms per templates/input.lengyel_clean.controls.yaml). ONLY the
+      #             separatrix temperature is applied (quadratic blend from rhotop);
+      #             densities/impurities untouched, no radas needed, seed/fixed impurity
+      #             entries ignored. Connection length defaults to pi*R*|q95| with a 0.441
+      #             divertor leg (overridable via override_namelist_params). PORTALS
+      #             surrogate data is NOT invalidated (a/L at the control points preserved).
+      mode: 'seeded'
+
       # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
+      # (or input.lengyel_clean.controls.yaml when mode: 'clean')
       lengyel_namelist_location: null
 
-      # Path to radas directory. If null, it will use $RADAS_DIR environement variable
+      # Path to radas directory. If null, it will use $RADAS_DIR environement variable (unused when mode: 'clean')
       radas_dir: null
 
       seed_impurity_species: 

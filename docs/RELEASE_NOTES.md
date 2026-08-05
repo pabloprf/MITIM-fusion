@@ -52,6 +52,12 @@ DESCRIPTION
     (~1.3x) convergence basin — so reactor-scale targets (ARC-class) should morph from ITER rather
     than a ~7x walk from CMOD. The namelist comment now documents the pick-the-nearest-machine rule.
 
+*   💥 **MAESTRO lengyel beat `mode: 'clean'`**: non-detached forward-conduction separatrix
+    temperature (the package-native clean-Lengyel mode above) applied to the profiles WITHOUT
+    touching densities/impurities — no detachment solve, no seeding, no radas. Gives BC-setting
+    beats (sharpness/confinement) a physics-based Tsep scale instead of the namelist constant;
+    PORTALS surrogate data stays reusable. Test chain: `tests/dev_tests/test_lengyel_clean_beat.py`.
+
 *   💥 **Confinement/sharpness beats support Te_bc under-relaxation** (`relaxation` knob in both
     beats' `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
     is blended with the value applied by the previous confinement/sharpness beat (shared trans-beat

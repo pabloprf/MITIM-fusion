@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import copy
+from mitim_tools import __mitimroot__
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_modules.maestro.utils.MAESTRObeat import beat
@@ -24,13 +25,33 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
+    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
+
+        if mode not in ('seeded', 'clean'):
+            raise ValueError(f"[MAESTRO][LENGYELbeat] mode must be 'seeded' or 'clean', got '{mode}'")
+        self.mode = mode
 
         self.rhotop = rhotop
 
         # User overrides for the Lengyel namelist `input` block (keys as in input.lengyel.controls.yaml),
         # applied at run() time on top of the defaults and input.gacode-derived values
         self.override_namelist_params = override_namelist_params if override_namelist_params is not None else {}
+
+        # ----------------------------------------------------
+        # mode='clean': non-detached forward conduction Tsep (Lengyel.run_forward);
+        # ONLY the separatrix temperature will be applied to the profiles -- no
+        # impurity seeding, no Zeff change, no atomic data. Same vocabulary as
+        # MITIMstate.calculate_sol_lengyel.
+        # ----------------------------------------------------
+        if self.mode == 'clean':
+            if lengyel_namelist_location is None:
+                lengyel_namelist_location = __mitimroot__ / 'templates' / 'input.lengyel_clean.controls.yaml'
+            print(f"\t- Lengyel beat in 'clean' (tsep-only forward) mode: impurities untouched, no radas needed", typeMsg='i')
+            self.l = Lengyel(namelist_location = lengyel_namelist_location)
+            self.l.prep(input_gacode = self.profiles_current)
+            self.lengyel_args = {}
+            self._inform()
+            return
 
         # Relaxation factor w in [0, 1] applied (in run(), below) to the Zeff update: the Zeff profile
         # actually realized is
@@ -114,10 +135,35 @@ class lengyel_beat(beat):
         
         self._inform()
 
+    def prepare_minimal(self, *args, mode = 'seeded', **kwargs):
+        # Skip-path counterpart of prepare(): _inform_save() (which always runs)
+        # needs the mode of a completed beat
+        self.mode = mode
+
     def run(self, *args, **kwargs):
-        
+
         # Merge user-provided namelist overrides on top of the impurity args (overrides win on key collision)
         lengyel_inputs = {**self.lengyel_args, **self.override_namelist_params}
+
+        if self.mode == 'clean':
+            # Connection length defaults tied to the state (same convention as
+            # MITIMstate.calculate_sol_lengyel: L = pi*R*|q95|, 0.441*L divertor leg)
+            L_par = np.pi * self.profiles_current.profiles["rcentr(m)"][0] * abs(self.profiles_current.derived["q95"])
+            lengyel_inputs.setdefault("parallel_connection_length", f"{L_par:.2f}m")
+            lengyel_inputs.setdefault("divertor_parallel_length", f"{0.441 * L_par:.2f}m")
+
+            self.l.run_forward(self.folder, cold_start=True, **lengyel_inputs)
+
+            Tesep = float(str(self.l.results['separatrix_electron_temp']).split()[0]) * 1E-3
+
+            # Only the separatrix temperature is applied; densities/impurities untouched
+            print(f'\t- Applying Lengyel (clean forward) separatrix temperature to profiles:')
+            p = copy.deepcopy(self.profiles_current)
+            _modify_temperatures(p, Tesep, self.rhotop)
+
+            p.write_state(file=self.folder / 'input.gacode.lengyel')
+            self.impurity_lengyel = None
+            return
 
         # Run Lengyel standalone
         self.l.run(
@@ -277,10 +323,16 @@ class lengyel_beat(beat):
             print(f"\t\t- Using previous rhotop: {self.rhotop}")
             
     def _inform_save(self, *args, **kwargs):
-        
-        # If I have run Lengyel, I cannot reuse surrogate data #TODO: Maybe not always true?
+
+        # mode='clean' only moves the temperature edge tail beyond rhotop (a/L at the
+        # PORTALS control points is preserved by the blend) and touches no densities,
+        # so PORTALS surrogate data stays reusable
+        if self.mode == 'clean':
+            return
+
+        # If I have run Lengyel (seeded), I cannot reuse surrogate data #TODO: Maybe not always true?
         self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = None
-        
+
         # Store the impurity specifications
         #self.maestro_instance.parameters_trans_beat['lowZ_impurity'] = self.impurity_lengyel
 
