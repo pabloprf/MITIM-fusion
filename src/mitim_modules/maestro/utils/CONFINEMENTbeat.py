@@ -95,6 +95,7 @@ class confinement_beat(beat):
         density_treatment="bc",         # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
         alpha_power_feedback=False,     # recompute qfuse/qfusi at each trial Te_bc (alpha-heating response)
         Te_bc_bounds=(0.05, 10.0),      # bounds on Te_bc (keV) for the minimization
+        Te_bc_min_Tesep_factor=1.2,     # dynamic floor: Te_bc >= factor * Tesep of the incoming state (isothermal-edge guard)
         relaxation=1.0,                 # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
@@ -138,6 +139,16 @@ class confinement_beat(beat):
             consistent comparison. Default False (sources frozen during scan).
         Te_bc_bounds : (float, float)
             Bounds on Te_bc in keV during the minimization (default (0.05, 10.0)).
+        Te_bc_min_Tesep_factor : float
+            Dynamic lower-bound guard: the effective floor is
+            max(Te_bc_bounds[0], factor * Te_sep), with Te_sep read from the
+            incoming state (last profile point). A Te_bc at or below Te_sep
+            makes the rho_bc->separatrix edge isothermal/inverted and TRANSP
+            dies on it (SIGFPE), so the floor adapts to whatever separatrix
+            temperature an earlier beat (e.g. lengyel) set. Values <= 1
+            effectively disable the margin. Default 1.2. If the optimum pins
+            at this floor the H target is unreachable above the guard —
+            flagged as 'Te_bc_at_floor' in the beat results.
         relaxation : float
             Under-relaxation factor for Te_bc across beat incarnations (see
             SHARPNESSbeat.relax_bc): applied Te_bc = previous + relaxation *
@@ -183,6 +194,7 @@ class confinement_beat(beat):
         self.density_treatment = density_treatment
         self.alpha_power_feedback = alpha_power_feedback
         self.Te_bc_bounds = tuple(Te_bc_bounds)
+        self.Te_bc_min_Tesep_factor = Te_bc_min_Tesep_factor
         self.relaxation = relaxation
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
@@ -307,10 +319,22 @@ class confinement_beat(beat):
         H_initial = float(profiles.derived[H_key])
         Te_bc_guess = float(np.interp(rho_bc_rho, rho, Te))
 
+        # Isothermal-edge guard: never let the scan probe at/below the separatrix
+        # temperature of the incoming state (TRANSP SIGFPEs on a flat/inverted edge)
+        Te_sep = float(Te[-1])
+        Te_bc_floor = max(self.Te_bc_bounds[0], self.Te_bc_min_Tesep_factor * Te_sep)
+        Te_bc_bounds_eff = (Te_bc_floor, self.Te_bc_bounds[1])
+        if Te_bc_floor > self.Te_bc_bounds[0]:
+            print(
+                f"\t- Te_bc floor raised {self.Te_bc_bounds[0]:.3f} -> {Te_bc_floor:.3f} keV "
+                f"({self.Te_bc_min_Tesep_factor:.2f} x Tesep = {Te_sep*1e3:.1f} eV)"
+            )
+        Te_bc_guess = max(Te_bc_guess, Te_bc_floor)
+
         print(
             f"\t- Optimizing Te_bc to match {self.confinement_scaling} = {self.confinement:.3f} "
             f"(initial {self.confinement_scaling} = {H_initial:.3f}, "
-            f"Te_bc guess = {Te_bc_guess:.4f} keV, bounds = {self.Te_bc_bounds} keV)"
+            f"Te_bc guess = {Te_bc_guess:.4f} keV, bounds = {Te_bc_bounds_eff} keV)"
         )
 
         history = []   # (Te_bc, H, residual) per evaluation
@@ -335,9 +359,10 @@ class confinement_beat(beat):
             [Te_bc_guess],
             method="Nelder-Mead",
             tol=1e-4,
-            bounds=[self.Te_bc_bounds],
+            bounds=[Te_bc_bounds_eff],
         )
         Te_bc_target = float(opt.x[0])
+        Te_bc_at_floor = Te_bc_target <= Te_bc_floor * 1.001
         Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
 
@@ -388,9 +413,15 @@ class confinement_beat(beat):
             else:
                 print(
                     f"\t- WARNING: H-factor mismatch of {mismatch*100:.1f}% remains after optimization "
-                    f"(target may be unreachable within Te_bc bounds {self.Te_bc_bounds} keV)",
+                    f"(target may be unreachable within Te_bc bounds {Te_bc_bounds_eff} keV)",
                     typeMsg="w",
                 )
+        if Te_bc_at_floor:
+            print(
+                f"\t- Te_bc pinned at the floor {Te_bc_floor:.4f} keV: {self.confinement_scaling} = "
+                f"{self.confinement:.3f} unattainable above the Tesep guard (best achievable {H_achieved:.4f})",
+                typeMsg="w",
+            )
 
         # ------------------------------------------------------------------
         # 5. Store
@@ -438,6 +469,9 @@ class confinement_beat(beat):
             "Ti_bc":               Ti_bc,
             "Te_bc_guess":         Te_bc_guess,
             "Te_bc_bounds":        self.Te_bc_bounds,
+            "Te_bc_bounds_eff":    Te_bc_bounds_eff,
+            "Te_bc_at_floor":      Te_bc_at_floor,
+            "Te_sep_keV":          Te_sep,
             "ne_bc_20":            ne_bc_20,
             "neped_20":            ne_bc_20,   # keep standard key name for compatibility
             "tite":                self.tite,

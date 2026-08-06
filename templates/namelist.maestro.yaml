@@ -468,6 +468,16 @@ maestro:
       # Bounds on Te_bc (keV) for the minimization
       Te_bc_bounds: [0.05, 10.0]
 
+      # Isothermal-edge guard: the effective lower bound on Te_bc is
+      # max(Te_bc_bounds[0], factor * Te_sep), with Te_sep read from the incoming state
+      # (last profile point). A Te_bc at or below Te_sep makes the rho_bc->separatrix
+      # edge isothermal/inverted and TRANSP dies on it (SIGFPE); the dynamic floor
+      # adapts to whatever separatrix temperature an earlier beat (e.g. lengyel) set.
+      # Values <= 1 effectively disable the margin. If the optimum pins at this floor
+      # the H target is unreachable above the guard (warned, and flagged as
+      # 'Te_bc_at_floor' in the beat results).
+      Te_bc_min_Tesep_factor: 1.2
+
       # Under-relaxation of the boundary-condition temperature across beat incarnations
       # (same mechanism and shared 'Te_bc_applied' trans-beat memory as the sharpness
       # beat -- see the comment there). 1.0 (default) = full step, original behavior.

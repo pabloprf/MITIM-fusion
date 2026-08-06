@@ -77,7 +77,11 @@ DESCRIPTION
     memory `Te_bc_applied`, so mixed chains relax coherently), damping beat-to-beat oscillations of
     the BC servo. The first incarnation takes the full step; with `relaxation < 1` the target
     (H-factor / xi) converges across beat iterations and the applied effective xi is reported as
-    `xi_eff`. Test chain: `tests/dev_tests/test_bc_relaxation.py`.
+    `xi_eff`. The confinement beat also gained an isothermal-edge guard (`Te_bc_min_Tesep_factor`,
+    default 1.2): the effective Te_bc floor is `max(bound, factor * Tesep)` of the incoming state,
+    so the H-servo can never apply a sub-separatrix boundary temperature (which SIGFPEs TRANSP);
+    pinned optima are flagged `Te_bc_at_floor` in the beat results instead of crashing the chain.
+    Test chain: `tests/dev_tests/test_bc_relaxation.py`.
 
 ### Bug Fixes
 
