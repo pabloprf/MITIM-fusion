@@ -659,6 +659,16 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
 
     p.derive_quantities(rederiveGeometry=False)
 
+    # The rescale changed n,T (up to orders of magnitude at extreme BCs) but nothing
+    # above touches the ptot(Pa) column; make the written state self-consistent
+    # (downstream PORTALS/TRANSP recompute or ignore it, but direct readers of the
+    # beat_results input.gacode would otherwise get pre-BC pressure silently).
+    # Silenced: the confinement beat calls this per Nelder-Mead trial (same
+    # HiddenPrints pattern as its _recompute_alpha_power)
+    from mitim_tools.misc_tools import LOGtools
+    with LOGtools.HiddenPrints():
+        p.selfconsistentPTOT()
+
     return p
 
 
