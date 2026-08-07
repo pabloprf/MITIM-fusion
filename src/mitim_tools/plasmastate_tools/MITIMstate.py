@@ -9,6 +9,7 @@ from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.plasmastate_tools.utils import state_plotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
+from fusio.classes.io import io
 from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
@@ -113,18 +114,31 @@ class mitim_state:
 
         self.type = type_file
 
+        # Populated when this state is constructed from a fusio plasma_io object
+        # (see scratch()); kept around so downstream code can eventually source
+        # data from it directly instead of only from the flattened profiles dict.
+        self.plasma_io = None
+
     @classmethod
     def scratch(cls, profiles, label_header='', **kwargs_process):
         # Method to write a scratch file
-        
+
         instance = cls(None)
 
         # Header
         instance.header = f'''
 #  Created from scratch with MITIM version {__version__}
-#  {label_header}                                                       
+#  {label_header}
 #
 '''
+        # `profiles` may be given as a fusio object (e.g. plasma_io) instead of
+        # an already-flattened dict. In that case, keep a handle on the source
+        # object and derive the "name(unit)"-keyed dict from its gacode
+        # conversion, the same way MITIM's file-based readers do.
+        if isinstance(profiles, io):
+            instance.plasma_io = profiles
+            profiles = profiles.to("gacode").to_dict(side="input")
+
         # Add data to profiles
         instance.profiles = profiles
 

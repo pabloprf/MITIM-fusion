@@ -152,7 +152,18 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         if isinstance(profiles_object, MITIMstate.mitim_state):
-            self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
+            # If this state was built from a fusio plasma_io object (via scratch()), source
+            # powerstate's construction from plasma_io's own SI-native fields instead of the
+            # GACODE-unit profiles/derived dict -- see plasma_io_to_powerstate()'s docstring for
+            # the current scope/caveats of this path.
+            if getattr(profiles_object, "plasma_io", None) is not None:
+                self.to_powerstate = TRANSFORMtools.plasma_io_to_powerstate
+                self.to_plasma_io = MethodType(TRANSFORMtools.to_plasma_io, self)
+                self.sync_plasma_io = MethodType(TRANSFORMtools.sync_plasma_io, self)
+            else:
+                self.to_powerstate = TRANSFORMtools.gacode_to_powerstate
+                self.to_plasma_io = None
+                self.sync_plasma_io = None
             self.from_powerstate = MethodType(TRANSFORMtools.to_gacode, self)
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
