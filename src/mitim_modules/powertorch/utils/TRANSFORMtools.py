@@ -335,12 +335,16 @@ def plasma_io_to_powerstate(self, rho_vec=None):
     )
     # B_ref is NOT the same quantity as B_unit (a common confusion): MITIM defines it as
     # |B_unit * bt_geo|, a genuine radius-varying profile that needs a proper flux-surface
-    # geometric factor (bt_geo) to compute correctly. plasma_io's closest existing candidate,
-    # mxh_field_ref, is numerically unstable near the axis (blows up to ~1e5, contaminating the
-    # whole interpolation) and isn't actually bt_geo-equivalent. Until a proper bt_geo-style
-    # calculation exists in plasma_io, use field_axis (bcentr) broadcast across the grid as a
-    # stable, order-of-magnitude placeholder rather than a per-radius profile.
-    B_ref_native = np.full_like(pdict["radius"], np.abs(pdict["field_axis"]))
+    # geometric factor (bt_geo) to compute correctly. plasma_io's mxh_field_inner stores
+    # [bt_inner, bp_inner] (direction order ['toroidal', 'poloidal'], dimensionless B/field_unit)
+    # at the inboard point of each flux surface, so its toroidal component scaled by field_unit
+    # gives a real per-radius profile, matching the gacode_to_powerstate branch's convention.
+    # Previously used field_axis (bcentr) broadcast as a flat placeholder instead, since
+    # plasma_io's only candidate at the time (mxh_field_ref) was numerically unstable near the
+    # axis (blew up to ~1e5) due to a Jacobian-sign bug in plasma_io's MXH synthesis step, since
+    # fixed -- mxh_field_inner comes from the same (now-fixed) synthesis and is bounded and
+    # radially smooth.
+    B_ref_native = np.abs(pdict["field_unit"] * pdict["mxh_field_inner"][:, 0])
     precomputed = {"s_q": s_q_native, "betae": betae_native, "B_ref": B_ref_native}
 
     # [powerstate key, plasma_io native key, ion index (None if not per-ion), unit-conversion factor]
