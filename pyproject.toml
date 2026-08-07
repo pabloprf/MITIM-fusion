@@ -59,7 +59,7 @@ dependencies = [
   # "extended-lengyel @ git+https://github.com/cfs-energy/extended-lengyel.git",
   # "quends @ git+https://github.com/sandialabs/quends.git"
   #"onnx2pytorch",   # Stricly not for MITIM, but good to use ONNX models
-  "fusio",
+  "fusio>=0.4.3",
 ]
 
 [project.optional-dependencies]
