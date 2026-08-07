@@ -1,7 +1,7 @@
 import copy
 import shutil
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, brentq
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools, GRAPHICStools, GUItools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
@@ -148,7 +148,9 @@ class confinement_beat(beat):
             temperature an earlier beat (e.g. lengyel) set. Values <= 1
             effectively disable the margin. Default 1.2. If the optimum pins
             at this floor the H target is unreachable above the guard —
-            flagged as 'Te_bc_at_floor' in the beat results.
+            flagged as 'Te_bc_at_floor' in the beat results. A floor pin with
+            H BELOW the target is a Nelder-Mead bound-clipping artifact (the
+            crossing is bracketed above) and is re-solved by brentq.
         relaxation : float
             Under-relaxation factor for Te_bc across beat incarnations (see
             SHARPNESSbeat.relax_bc): applied Te_bc = previous + relaxation *
@@ -339,8 +341,7 @@ class confinement_beat(beat):
 
         history = []   # (Te_bc, H, residual) per evaluation
 
-        def _residual(Te_bc_arr):
-            Te_bc_trial = float(Te_bc_arr[0])
+        def _H_at(Te_bc_trial):
             p_mod = _apply_sharpness_bc(
                 profiles, rho_bc_rho, psin_bc,
                 Te_bc_trial, Te_bc_trial * self.tite, ne_bc_1e19,
@@ -352,7 +353,11 @@ class confinement_beat(beat):
             H_trial = float(p_mod.derived[H_key])
             res = ((H_trial - self.confinement) / self.confinement) ** 2
             history.append((Te_bc_trial, H_trial, res))
-            return res
+            return H_trial
+
+        def _residual(Te_bc_arr):
+            H_trial = _H_at(float(Te_bc_arr[0]))
+            return ((H_trial - self.confinement) / self.confinement) ** 2
 
         opt = minimize(
             _residual,
@@ -363,6 +368,26 @@ class confinement_beat(beat):
         )
         Te_bc_target = float(opt.x[0])
         Te_bc_at_floor = Te_bc_target <= Te_bc_floor * 1.001
+
+        # Nelder-Mead with bounds can collapse its simplex onto the clipped floor and
+        # declare convergence there even when the H(Te_bc) crossing sits above it (H is
+        # monotone increasing in Te_bc under the BC rescale). A floor pin with H BELOW
+        # the target is that artifact — the root is bracketed, so solve it directly.
+        if Te_bc_at_floor and _H_at(Te_bc_floor) < self.confinement:
+            for Te_hi in (Te_bc_guess, self.Te_bc_bounds[1]):
+                if Te_hi > Te_bc_floor and _H_at(Te_hi) > self.confinement:
+                    Te_bc_target = float(brentq(
+                        lambda te: _H_at(te) - self.confinement,
+                        Te_bc_floor, Te_hi, xtol=1e-4,
+                    ))
+                    Te_bc_at_floor = False
+                    print(
+                        f"\t- Floor pin rejected (H at floor below target): bracketed root find "
+                        f"in [{Te_bc_floor:.4f}, {Te_hi:.4f}] keV -> Te_bc = {Te_bc_target:.4f} keV",
+                        typeMsg="i",
+                    )
+                    break
+
         Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
 

@@ -80,7 +80,9 @@ DESCRIPTION
     `xi_eff`. The confinement beat also gained an isothermal-edge guard (`Te_bc_min_Tesep_factor`,
     default 1.2): the effective Te_bc floor is `max(bound, factor * Tesep)` of the incoming state,
     so the H-servo can never apply a sub-separatrix boundary temperature (which SIGFPEs TRANSP);
-    pinned optima are flagged `Te_bc_at_floor` in the beat results instead of crashing the chain.
+    pinned optima are flagged `Te_bc_at_floor` in the beat results instead of crashing the chain
+    (a pin with H below the target — a Nelder-Mead bound-clipping artifact — is re-solved exactly
+    by a bracketed root find).
     Test chain: `tests/dev_tests/test_bc_relaxation.py`.
 
 ### Bug Fixes

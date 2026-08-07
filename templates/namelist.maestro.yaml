@@ -475,7 +475,9 @@ maestro:
       # adapts to whatever separatrix temperature an earlier beat (e.g. lengyel) set.
       # Values <= 1 effectively disable the margin. If the optimum pins at this floor
       # the H target is unreachable above the guard (warned, and flagged as
-      # 'Te_bc_at_floor' in the beat results).
+      # 'Te_bc_at_floor' in the beat results). A floor pin with H BELOW the target is a
+      # Nelder-Mead bound-clipping artifact (the crossing is bracketed above) and is
+      # re-solved exactly by a brentq root find.
       Te_bc_min_Tesep_factor: 1.2
 
       # Under-relaxation of the boundary-condition temperature across beat incarnations
