@@ -83,7 +83,8 @@ def initializeProblem(
     elif isinstance(fileStart, io):
         if not fileStart.has_output and fileStart.has_input:
             fileStart.swap()
-        profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
+        #profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
+        profiles = PROFILEStools.gacode_state.scratch(fileStart)
     # If it is a file, then assume it is a gacode one (#TODO: check type?)
     else:
         profiles = PROFILEStools.gacode_state(initialization_file)

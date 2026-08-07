@@ -432,10 +432,25 @@ class portals(STRATEGYtools.opt_evaluator):
         portals = PORTALSanalysis.PORTALSanalyzer.from_folder(self.folder)
         powerstate = portals.powerstates[portals.ibest]
         
-        powerstate.profiles.write_state(self.folder / "Outputs" / f"input.gacode_final_{suffix}")
+        # Prefer plasma_io-native output -- the fusio plasma_io object stored on
+        # powerstate.profiles.plasma_io (see plasma_io_migration_plan.md), updated with this
+        # evaluation's predicted profiles via powerstate_to_plasma_io()/to_plasma_io() -- over
+        # the GACODE ASCII text format. Only falls back to input.gacode when this run was not
+        # plasma_io-backed (profiles.plasma_io is None), so a final output is always produced.
+        #
+        # Note: powerstate.profiles_transport (the transport-evaluated, as opposed to
+        # flux-matched, snapshot) has no plasma_io-native equivalent yet -- to_plasma_io() is a
+        # powerstate method, and profiles_transport is a standalone gacode_state, not a
+        # powerstate -- so it is still written as GACODE ASCII regardless.
+        if getattr(powerstate, "to_plasma_io", None) is not None:
+            powerstate.to_plasma_io(write_plasma_io=self.folder / "Outputs" / f"plasma_final_{suffix}.nc")
+            print(f"\n- Final plasma_io state (iteration {portals.ibest}) written to Outputs/plasma_final_{suffix}.nc", typeMsg="i")
+        else:
+            powerstate.profiles.write_state(self.folder / "Outputs" / f"input.gacode_final_{suffix}")
+            print(f"\n- Final profiles (iteration {portals.ibest}) written to Outputs/input.gacode_final_{suffix}", typeMsg="i")
+
         powerstate.profiles_transport.write_state(self.folder / "Outputs" / f"input.gacode_transport_final_{suffix}")
-        
-        print(f"\n- Final profiles (iteration {portals.ibest}) written to Outputs/input.gacode_final_{suffix} and Outputs/input.gacode_transport_final_{suffix}", typeMsg="i")
+        print(f"- Final transport-evaluated profiles (iteration {portals.ibest}) written to Outputs/input.gacode_transport_final_{suffix}", typeMsg="i")
 
 def runModelEvaluator(
     self,
@@ -490,6 +505,13 @@ def runModelEvaluator(
 
     # Evaluate X (DVs) through powerstate.calculate(). This will populate .plasma with the results
     powerstate.calculate(X, nameRun=name, folder=folder_model, evaluation_number=numPORTALS)
+
+    # This single call to calculate() is the completed evaluation for this candidate point --
+    # the "iteration complete" boundary that to_gacode() deliberately never syncs plasma_io
+    # from inside calculate()'s own internal transport-evaluation call (see
+    # TRANSFORMtools.to_gacode()'s docstring / plasma_io_migration_plan.md).
+    if getattr(powerstate, "sync_plasma_io", None) is not None:
+        powerstate.sync_plasma_io()
 
     # ---------------------------------------------------------------------------------------------------
     # Produce dictOFs
