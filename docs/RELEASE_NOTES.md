@@ -82,8 +82,14 @@ DESCRIPTION
     so the H-servo can never apply a sub-separatrix boundary temperature (which SIGFPEs TRANSP);
     pinned optima are flagged `Te_bc_at_floor` in the beat results instead of crashing the chain
     (a pin with H below the target — a Nelder-Mead bound-clipping artifact — is re-solved exactly
-    by a bracketed root find).
-    Test chain: `tests/dev_tests/test_bc_relaxation.py`.
+    by a bracketed root find). Both beats can now also run a measured-response servo
+    (`servo_mode: response_fit` + `servo_*` knobs): every incarnation records the delivered
+    (post-transport) H or xi at the previously applied Te_bc into a persistent trans-beat history,
+    and the step comes from a local linear fit of that measured response (fallback secant → seeded
+    step, trust-clamped) instead of a fixed relaxation of the frozen-shape solve — which is ~2.5×
+    too stiff (delivered dlnH/dlnTe_bc ≈ 0.4 vs ~1.0 frozen), the cause of slow cross-beat
+    convergence in confinement↔PORTALS chains. Default remains the previous relaxation behavior.
+    Test chains: `tests/dev_tests/test_bc_relaxation.py`, `tests/dev_tests/test_bc_servo_response_fit.py`.
 
 ### Bug Fixes
 

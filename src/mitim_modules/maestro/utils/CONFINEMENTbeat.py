@@ -11,6 +11,8 @@ from mitim_modules.maestro.utils.SHARPNESSbeat import (
     _apply_sharpness_bc,
     _plot_sharpness_profiles_coords,
     relax_bc,
+    record_bc_response,
+    servo_step,
 )
 from IPython import embed
 
@@ -97,6 +99,11 @@ class confinement_beat(beat):
         Te_bc_bounds=(0.05, 10.0),      # bounds on Te_bc (keV) for the minimization
         Te_bc_min_Tesep_factor=1.2,     # dynamic floor: Te_bc >= factor * Tesep of the incoming state (isothermal-edge guard)
         relaxation=1.0,                 # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
+        servo_mode="relaxation",        # 'relaxation' (previous behavior) or 'response_fit' (fit the measured delivered response)
+        servo_fit_window=3,             # response_fit: number of most recent usable pairs entering the fit
+        servo_alpha_band=(0.10, 2.0),   # response_fit: acceptance band on the fitted alpha = dlnH/dlnTe_bc
+        servo_trust_factor=1.5,         # response_fit: maximum x or 1/x change of Te_bc per cycle
+        servo_seed_gain=2.5,            # response_fit: gain on the frozen-solve step when only one pair exists
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
     ):
@@ -161,6 +168,35 @@ class confinement_beat(beat):
             within one: the reported H_achieved is recomputed at the applied
             (relaxed) Te_bc, and the intra-beat mismatch warning is suppressed
             when the relaxation actually moved the BC.
+        servo_mode : str
+            How the applied Te_bc is derived from the frozen-shape solve above.
+            'relaxation' (default): the under-relaxation described above,
+            exactly the previous behavior. 'response_fit': step from a local
+            linear fit of the DELIVERED H measured at the previously applied
+            Te_bc values (see SHARPNESSbeat.servo_step), falling back to secant
+            and then to a seeded step when the fit is degenerate. The frozen
+            solve has alpha = dlnH/dlnTe_bc ~ 1 by construction, whereas the
+            delivered response measured across cycles has median alpha = 0.40
+            (IQR 0.26-0.60), so the frozen step is ~2.5x too stiff and a fixed
+            relaxation cannot see it.
+        servo_fit_window : int
+            response_fit: how many of the most recent usable (non-railed) pairs
+            enter the fit (default 3; the drift of the response is mild and
+            longer windows alias the early transient).
+        servo_alpha_band : (float, float)
+            response_fit: acceptance band on the fitted sensitivity
+            alpha = dlnH/dlnTe_bc; outside it the rung falls back to secant and
+            then to the seeded step. Default (0.10, 2.0), loose enough to keep
+            the measured 5-95% spread [0.04, 1.33] of real variability while
+            rejecting fits driven by noise.
+        servo_trust_factor : float
+            response_fit: maximum multiplicative change of Te_bc per cycle
+            (default 1.5), so the fit is never extrapolated far beyond the
+            ~x1.44 Te_bc range the loop actually explores.
+        servo_seed_gain : float
+            response_fit: gain applied to the frozen solve's own step when only
+            one measured pair exists (default 2.5 = the measured over-stiffness
+            1.0/0.40 of the frozen-shape solve). Capped by servo_trust_factor.
         update_bc_based_on_portals : bool
             If True, override x_bc with the outermost radial location used by
             the previous PORTALS beat (stored in parameters_trans_beat as
@@ -186,6 +222,10 @@ class confinement_beat(beat):
             )
         if not 0.0 < relaxation <= 1.0:
             raise ValueError(f"relaxation must be in (0, 1], got {relaxation}")
+        if servo_mode not in ("relaxation", "response_fit"):
+            raise ValueError(
+                f"servo_mode must be 'relaxation' or 'response_fit', got '{servo_mode}'"
+            )
 
         self.x_bc = x_bc
         self.bc_coordinate = bc_coordinate
@@ -198,6 +238,11 @@ class confinement_beat(beat):
         self.Te_bc_bounds = tuple(Te_bc_bounds)
         self.Te_bc_min_Tesep_factor = Te_bc_min_Tesep_factor
         self.relaxation = relaxation
+        self.servo_mode = servo_mode
+        self.servo_fit_window = servo_fit_window
+        self.servo_alpha_band = tuple(servo_alpha_band)
+        self.servo_trust_factor = servo_trust_factor
+        self.servo_seed_gain = servo_seed_gain
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
         self.neped_20 = None   # resolved in _inform() from plasma/parameters or previous beat
@@ -206,7 +251,7 @@ class confinement_beat(beat):
             f"\t- Confinement beat: x_bc={x_bc} ({bc_coordinate}), "
             f"target {confinement_scaling}={confinement}, Ti/Te={tite}, edge_shape={edge_shape}, "
             f"density_treatment={density_treatment}, alpha_power_feedback={alpha_power_feedback}, "
-            f"relaxation={relaxation}",
+            f"relaxation={relaxation}, servo_mode={servo_mode}",
             typeMsg="i",
         )
 
@@ -319,6 +364,12 @@ class confinement_beat(beat):
         # ------------------------------------------------------------------
 
         H_initial = float(profiles.derived[H_key])
+
+        # H of the INCOMING state = the H actually DELIVERED at the Te_bc the previous
+        # incarnation applied (after the intervening beats moved the state). Recorded in
+        # both servo modes: it is the measured response curve, diagnostic gold either way.
+        record_bc_response(self.maestro_instance, self.confinement_scaling, H_initial)
+
         Te_bc_guess = float(np.interp(rho_bc_rho, rho, Te))
 
         # Isothermal-edge guard: never let the scan probe at/below the separatrix
@@ -388,8 +439,26 @@ class confinement_beat(beat):
                     )
                     break
 
-        Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
+        if self.servo_mode == "response_fit":
+            Te_bc, servo_diag = servo_step(
+                self.maestro_instance, self.confinement_scaling, self.confinement,
+                Te_bc_target, Te_bc_bounds_eff,
+                fit_window=self.servo_fit_window,
+                alpha_band=self.servo_alpha_band,
+                trust_factor=self.servo_trust_factor,
+                seed_gain=self.servo_seed_gain,
+            )
+        else:
+            servo_diag = None
+            Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
+
+        # Pin flag of the APPLIED value (Te_bc_at_floor above flags the frozen-solve target
+        # instead): a railed actuation is not a valid sample of the response curve, so the
+        # next incarnation must exclude the pair it forms
+        Te_bc_applied_railed = bool(
+            (Te_bc <= Te_bc_floor * 1.001) or (Te_bc >= self.Te_bc_bounds[1] * 0.999)
+        )
 
         # ------------------------------------------------------------------
         # 4. Apply the optimal boundary condition
@@ -411,10 +480,12 @@ class confinement_beat(beat):
 
         mismatch = abs(H_achieved - self.confinement) / self.confinement
         was_relaxed = Te_bc != Te_bc_target
+        # Both servo modes deliberately depart from the frozen-solve target; only the wording differs
+        step_note = "servo-stepped" if self.servo_mode == "response_fit" else "relaxed"
         print(
             f"\t- Optimization finished after {len(history)} evaluations: "
             f"Te_bc = {Te_bc:.4f} keV, Ti_bc = {Ti_bc:.4f} keV"
-            + (f" (relaxed from target {Te_bc_target:.4f} keV)" if was_relaxed else "")
+            + (f" ({step_note} from target {Te_bc_target:.4f} keV)" if was_relaxed else "")
         )
         print(
             f"\t- {self.confinement_scaling}: achieved {H_achieved:.4f} "
@@ -431,8 +502,10 @@ class confinement_beat(beat):
                 # Expected under relaxation: the target is approached across beat
                 # iterations, not within one — informational, not a warning
                 print(
-                    f"\t- H-factor mismatch of {mismatch*100:.1f}% at the relaxed Te_bc "
-                    f"(expected with relaxation={self.relaxation}; converges across beats)",
+                    f"\t- H-factor mismatch of {mismatch*100:.1f}% at the {step_note} Te_bc "
+                    + ("(expected with servo_mode=response_fit; converges across beats)"
+                       if self.servo_mode == "response_fit" else
+                       f"(expected with relaxation={self.relaxation}; converges across beats)"),
                     typeMsg="i",
                 )
             else:
@@ -491,6 +564,8 @@ class confinement_beat(beat):
             "Te_bc":               Te_bc,
             "Te_bc_target":        Te_bc_target,
             "relaxation":          self.relaxation,
+            "servo_mode":          self.servo_mode,
+            "Te_bc_applied_railed": Te_bc_applied_railed,
             "Ti_bc":               Ti_bc,
             "Te_bc_guess":         Te_bc_guess,
             "Te_bc_bounds":        self.Te_bc_bounds,
@@ -509,6 +584,16 @@ class confinement_beat(beat):
             "history_H":           history[:, 1],
             "history_residual":    history[:, 2],
         }
+
+        if servo_diag is not None:
+            confinement_results.update({
+                "servo_rung":           servo_diag["rung"],
+                "servo_n_pairs":        servo_diag["n_pairs"],
+                "servo_alpha":          servo_diag["alpha"],
+                "servo_slope":          servo_diag["slope"],
+                "servo_trust_clamped":  servo_diag["trust_clamped"],
+                "servo_bounds_clamped": servo_diag["bounds_clamped"],
+            })
 
         for key, val in confinement_results.items():
             if not key.startswith("history_"):
@@ -671,11 +756,16 @@ class confinement_beat(beat):
             "rho_bc_rho"
         ]
 
-        # Applied BC temperature: memory for the relax_bc under-relaxation of the
-        # next sharpness/confinement beat (shared key across both beat types)
+        # Applied BC temperature: memory for the relax_bc under-relaxation / response_fit
+        # servo of the next sharpness/confinement beat (shared key across both beat types).
+        # The rail flag travels with it: the next incarnation pairs the delivered response
+        # with this Te_bc and must know whether the actuator went where it was asked.
         self.maestro_instance.parameters_trans_beat["Te_bc_applied"] = confinement_output[
             "Te_bc"
         ]
+        self.maestro_instance.parameters_trans_beat["Te_bc_applied_railed"] = confinement_output.get(
+            "Te_bc_applied_railed", False
+        )
 
         print(
             f"\t\t- neped_20={confinement_output['neped_20']:.3f}, "

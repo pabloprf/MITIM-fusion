@@ -38,6 +38,147 @@ def relax_bc(maestro_instance, Te_bc_new, relaxation):
     return Te_bc_new
 
 
+def record_bc_response(maestro_instance, kind, delivered_value, extra=None):
+    """
+    Record the MEASURED response of the chain to the boundary condition applied by the
+    previous sharpness/confinement incarnation: the pair (Te_bc that was applied, value
+    of the controlled quantity that the state came back with after the intervening beats).
+
+    'kind' labels the controlled quantity (the H-factor name for the confinement beat,
+    'xi' for the sharpness beat) so a mixed chain keeps separate response curves on the
+    same shared actuator. The pair is skipped when there is no previous applied Te_bc
+    (first incarnation: nothing was actuated yet, so nothing was measured).
+
+    Pairs carry the 'railed' flag of the applied value (bounds/floor pin): a railed
+    actuation did not go where the servo asked, so the resulting pair is not a valid
+    sample of the response curve and servo_step drops it.
+
+    History lives in parameters_trans_beat['bc_response_history'] as plain floats/bools,
+    so MAESTRO's per-beat JSON snapshot persists it across checkpoint restarts for free.
+    """
+
+    tb = maestro_instance.parameters_trans_beat
+    Te_bc_prev = tb.get("Te_bc_applied")
+    if Te_bc_prev is None:
+        return None
+
+    record = {
+        "kind":   kind,
+        "beat":   int(maestro_instance.counter_current),
+        "Te_bc":  float(Te_bc_prev),
+        "value":  float(delivered_value),
+        "railed": bool(tb.get("Te_bc_applied_railed", False)),
+    }
+    if extra is not None:
+        record.update(extra)
+
+    tb.setdefault("bc_response_history", []).append(record)
+
+    print(
+        f"\t- BC response recorded: {kind} = {record['value']:.4f} delivered at "
+        f"Te_bc = {record['Te_bc']:.4f} keV"
+        + (" (railed: excluded from fits)" if record["railed"] else "")
+        + f" [{len(tb['bc_response_history'])} pairs in history]",
+        typeMsg="i",
+    )
+
+    return record
+
+
+def servo_step(maestro_instance, kind, target, Te_bc_target_frozen, bounds_eff, *,
+               fit_window=3, alpha_band=(0.10, 2.0), trust_factor=1.5, seed_gain=2.5):
+    """
+    Response-fit BC servo: step the boundary condition using the DELIVERED response
+    measured over previous cycles instead of trusting the frozen-shape solve.
+
+    The frozen-shape solve has, by construction, alpha = dln(value)/dln(Te_bc) ~ 1
+    (T(rho) scales with Te_bc at frozen a/L). The response actually delivered once the
+    downstream beats have moved the state is much softer -- measured median alpha = 0.40
+    (IQR 0.26-0.60, 5-95% [0.04, 1.33]) -- so the frozen step is ~2.5x too stiff and a
+    fixed relaxation factor, which cannot see that, converges at only ~0.7/cycle.
+
+    Over the ~x1.44 Te_bc window the loop explores, curvature of the response is not
+    identifiable, so the model is a LOCAL LINEAR fit of the delivered value vs Te_bc
+    over the last <= fit_window measured pairs (it beats both a secant tail and a
+    quadratic, which invents false roots inside the window).
+
+    Rung ladder, first one that produces an acceptable step wins:
+      'fit'    : >=2 usable pairs spanning >2% in Te_bc; least squares value = a + b*Te_bc
+      'secant' : slope from the last two pairs (fit degenerate or rejected)
+      'seed'   : one pair only / everything above degenerate; step seed_gain x the frozen
+                 solve's own step (compensating its ~2.5x over-stiffness)
+      'full'   : no previous applied Te_bc (first incarnation) -> the frozen target itself
+
+    A slope is accepted only if b > 0 and alpha = b*Te_last/value_last lies in alpha_band;
+    the step is then the linear crossing Te_last + (target - value_last)/b. All rungs but
+    'full' are clamped to [Te_prev/trust_factor, Te_prev*trust_factor] (the fit is never
+    extrapolated far beyond the explored range) and then to bounds_eff.
+
+    Returns (Te_bc_applied, diag).
+    """
+
+    tb = maestro_instance.parameters_trans_beat
+    Te_prev = tb.get("Te_bc_applied")
+    pairs = [
+        h for h in tb.get("bc_response_history", []) if h["kind"] == kind and not h["railed"]
+    ][-fit_window:]
+
+    x = np.array([float(h["Te_bc"]) for h in pairs])
+    y = np.array([float(h["value"]) for h in pairs])
+
+    diag = {"rung": "full", "n_pairs": len(pairs), "slope": None, "alpha": None,
+            "trust_clamped": False, "bounds_clamped": False}
+
+    def _step_from_slope(b):
+        """Crossing of the linear response with the target, if the slope is credible."""
+        if b <= 0.0:
+            return None, None
+        alpha = b * x[-1] / y[-1]
+        if not alpha_band[0] <= alpha <= alpha_band[1]:
+            return None, alpha
+        return x[-1] + (target - y[-1]) / b, alpha
+
+    Te_star = None
+    if len(pairs) >= 2:
+        if x.max() / x.min() > 1.02:
+            b = float(np.polyfit(x, y, 1)[0])
+            Te_star, alpha = _step_from_slope(b)
+            if Te_star is not None:
+                diag.update(rung="fit", slope=b, alpha=alpha)
+        if Te_star is None and max(x[-2:]) / min(x[-2:]) > 1.02:
+            b = float((y[-1] - y[-2]) / (x[-1] - x[-2]))
+            Te_star, alpha = _step_from_slope(b)
+            if Te_star is not None:
+                diag.update(rung="secant", slope=b, alpha=alpha)
+
+    if Te_star is None and Te_prev is not None:
+        Te_star = Te_prev + seed_gain * (Te_bc_target_frozen - Te_prev)
+        diag["rung"] = "seed"
+
+    if Te_star is None:
+        Te_star = Te_bc_target_frozen
+        diag["rung"] = "full"
+
+    if diag["rung"] != "full":
+        Te_trust = min(max(Te_star, Te_prev / trust_factor), Te_prev * trust_factor)
+        diag["trust_clamped"] = Te_trust != Te_star
+        Te_star = Te_trust
+
+    Te_bc = min(max(Te_star, bounds_eff[0]), bounds_eff[1])
+    diag["bounds_clamped"] = Te_bc != Te_star
+
+    print(
+        f"\t- BC servo (response_fit, {kind}): rung={diag['rung']}, n_pairs={diag['n_pairs']}"
+        + (f", slope={diag['slope']:.4f}, alpha={diag['alpha']:.3f}" if diag["alpha"] is not None else "")
+        + f", frozen target {Te_bc_target_frozen:.4f} keV -> applied {Te_bc:.4f} keV"
+        + (" [trust-clamped]" if diag["trust_clamped"] else "")
+        + (" [bounds-clamped]" if diag["bounds_clamped"] else ""),
+        typeMsg="i",
+    )
+
+    return float(Te_bc), diag
+
+
 class sharpness_beat(beat):
     """
     Sharpness beat: sets the temperature boundary condition at rho_bc based on
@@ -74,6 +215,11 @@ class sharpness_beat(beat):
         tite=1.0,
         density_treatment="bc",        # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
         relaxation=1.0,                # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
+        servo_mode="relaxation",       # 'relaxation' (previous behavior) or 'response_fit' (fit the measured delivered response)
+        servo_fit_window=3,            # response_fit: number of most recent usable pairs entering the fit
+        servo_alpha_band=(0.10, 2.0),  # response_fit: acceptance band on the fitted alpha = dln(xi)/dln(Te_bc)
+        servo_trust_factor=1.5,        # response_fit: maximum x or 1/x change of Te_bc per cycle
+        servo_seed_gain=2.5,           # response_fit: gain on the frozen-solve step when only one pair exists
         update_bc_based_on_portals=False,  # if True, override x_bc with last PORTALS prediction radius
         **kwargs,
     ):
@@ -108,6 +254,32 @@ class sharpness_beat(beat):
             Default 1.0 = full step (no relaxation). With relaxation < 1 the
             prescribed xi is only approached across beat iterations; the
             effective xi actually applied is reported as xi_eff.
+        servo_mode : str
+            How the applied Te_bc is derived from the frozen-shape target.
+            'relaxation' (default): the under-relaxation above, exactly the
+            previous behavior. 'response_fit': step from a local linear fit of
+            the DELIVERED xi measured at the previously applied Te_bc values
+            (see SHARPNESSbeat.servo_step), falling back to secant and then to
+            a seeded step when the fit is degenerate. EXPERIMENTAL for this
+            beat: the defaults below were calibrated on the confinement beat's
+            H-factor response; the xi response has not been characterized.
+        servo_fit_window : int
+            response_fit: how many of the most recent usable (non-railed) pairs
+            enter the fit (default 3).
+        servo_alpha_band : (float, float)
+            response_fit: acceptance band on the fitted sensitivity
+            alpha = dln(xi)/dln(Te_bc); outside it the rung falls back to
+            secant and then to the seeded step. Default (0.10, 2.0).
+        servo_trust_factor : float
+            response_fit: maximum multiplicative change of Te_bc per cycle
+            (default 1.5), so the fit is never extrapolated far beyond the
+            range of Te_bc actually explored.
+        servo_seed_gain : float
+            response_fit: gain applied to the frozen solve's own step when only
+            one measured pair exists (default 2.5, compensating the ~2.5x
+            over-stiffness of the frozen-shape solve measured for the
+            confinement beat: delivered alpha median 0.40 vs frozen ~1.0).
+            Capped by servo_trust_factor.
         update_bc_based_on_portals : bool
             If True, override x_bc with the outermost radial location used by
             the previous PORTALS beat (stored in parameters_trans_beat as
@@ -129,6 +301,10 @@ class sharpness_beat(beat):
             )
         if not 0.0 < relaxation <= 1.0:
             raise ValueError(f"relaxation must be in (0, 1], got {relaxation}")
+        if servo_mode not in ("relaxation", "response_fit"):
+            raise ValueError(
+                f"servo_mode must be 'relaxation' or 'response_fit', got '{servo_mode}'"
+            )
 
         self.x_bc = x_bc
         self.bc_coordinate = bc_coordinate
@@ -137,13 +313,19 @@ class sharpness_beat(beat):
         self.tite = tite
         self.density_treatment = density_treatment
         self.relaxation = relaxation
+        self.servo_mode = servo_mode
+        self.servo_fit_window = servo_fit_window
+        self.servo_alpha_band = tuple(servo_alpha_band)
+        self.servo_trust_factor = servo_trust_factor
+        self.servo_seed_gain = servo_seed_gain
         self.update_bc_based_on_portals = update_bc_based_on_portals
         self._portals_rho_bc = None   # (value, coordinate) set by _inform() if update_bc_based_on_portals
         self.neped_20 = None   # resolved in _inform() from plasma/parameters or previous beat
 
         print(
             f"\t- Sharpness beat: x_bc={x_bc} ({bc_coordinate}), sharpness_coord={sharpness_coordinate}, "
-            f"xi={sharpness}, Ti/Te={tite}, density_treatment={density_treatment}, relaxation={relaxation}",
+            f"xi={sharpness}, Ti/Te={tite}, density_treatment={density_treatment}, relaxation={relaxation}, "
+            f"servo_mode={servo_mode}",
             typeMsg="i",
         )
 
@@ -270,6 +452,15 @@ class sharpness_beat(beat):
 
         C = (1.0 - c_bc) * aLT_Te_bc * droa_dcoord_bc
 
+        # Delivered sharpness of the INCOMING state: the same xi definition evaluated at
+        # the Te_bc the state actually came back with. This IS the response to the BC the
+        # previous incarnation applied (the actuator is held at the BC, so the response
+        # arrives through the core gradient, i.e. through C). Recorded before the C clamp
+        # so the measurement reflects the state, not the guarded solve.
+        Te_bc_current = float(np.interp(rho_bc_rho, rho, Te))
+        xi_delivered = (1.0 - Te_sep / Te_bc_current) / C
+        record_bc_response(self.maestro_instance, "xi", xi_delivered)
+
         if C >= 1.0 / self.sharpness:
             print(
                 f"\t- WARNING: sharpness formula denominator non-positive "
@@ -280,7 +471,19 @@ class sharpness_beat(beat):
             C = 0.99 / max(self.sharpness, 1e-6)
 
         Te_bc_target = Te_sep / (1.0 - self.sharpness * C)
-        Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
+
+        if self.servo_mode == "response_fit":
+            # No Te_bc bound concept in this beat, so the servo only sees its trust clamp
+            Te_bc, servo_diag = servo_step(
+                self.maestro_instance, "xi", self.sharpness, Te_bc_target, (0.0, np.inf),
+                fit_window=self.servo_fit_window,
+                alpha_band=self.servo_alpha_band,
+                trust_factor=self.servo_trust_factor,
+                seed_gain=self.servo_seed_gain,
+            )
+        else:
+            servo_diag = None
+            Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
         Ti_bc = Te_bc * self.tite
 
         # Effective sharpness actually applied (== prescribed xi when no relaxation acted)
@@ -317,7 +520,11 @@ class sharpness_beat(beat):
             "sharpness":       self.sharpness,
             "sharpness_coord": self.sharpness_coordinate,
             "xi_eff":          xi_eff,
+            "xi_delivered":    xi_delivered,
             "relaxation":      self.relaxation,
+            "servo_mode":      self.servo_mode,
+            # This beat has no Te_bc bounds, so the applied value can only be trust-clamped
+            "Te_bc_applied_railed": bool(servo_diag["bounds_clamped"]) if servo_diag is not None else False,
             "C":              C,
             "Te_bc":          Te_bc,
             "Te_bc_target":   Te_bc_target,
@@ -331,6 +538,16 @@ class sharpness_beat(beat):
             "tite":           self.tite,
             "density_treatment": self.density_treatment,
         }
+
+        if servo_diag is not None:
+            sharpness_results.update({
+                "servo_rung":            servo_diag["rung"],
+                "servo_n_pairs":         servo_diag["n_pairs"],
+                "servo_alpha":           servo_diag["alpha"],
+                "servo_slope":           servo_diag["slope"],
+                "servo_trust_clamped":   servo_diag["trust_clamped"],
+                "servo_bounds_clamped":  servo_diag["bounds_clamped"],
+            })
 
         for key, val in sharpness_results.items():
             print(f"\t\t- {key}: {val}")
@@ -492,11 +709,16 @@ class sharpness_beat(beat):
             "rho_bc_rho"
         ]
 
-        # Applied BC temperature: memory for the relax_bc under-relaxation of the
-        # next sharpness/confinement beat (shared key across both beat types)
+        # Applied BC temperature: memory for the relax_bc under-relaxation / response_fit
+        # servo of the next sharpness/confinement beat (shared key across both beat types).
+        # The rail flag travels with it: the next incarnation pairs the delivered response
+        # with this Te_bc and must know whether the actuator went where it was asked.
         self.maestro_instance.parameters_trans_beat["Te_bc_applied"] = sharpness_output[
             "Te_bc"
         ]
+        self.maestro_instance.parameters_trans_beat["Te_bc_applied_railed"] = sharpness_output.get(
+            "Te_bc_applied_railed", False
+        )
 
         print(
             f"\t\t- neped_20={sharpness_output['neped_20']:.3f}, "

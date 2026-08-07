@@ -377,6 +377,39 @@ maestro:
       # actually applied is reported as xi_eff in the beat results.
       relaxation: 1.0
 
+      # How the APPLIED Te_bc is derived from the frozen-shape target above. Options:
+      #     'relaxation':   the under-relaxation above (default, previous behavior)
+      #     'response_fit': fit the MEASURED delivered response from previous cycles
+      #                     (pairs of applied Te_bc vs the xi the state came back with,
+      #                     stored in the trans-beat parameter 'bc_response_history') and
+      #                     step to where that fit crosses the target. Degenerate fits
+      #                     fall back: fit -> secant (last two pairs) -> seeded step
+      #                     (seed_gain x the frozen solve's own step) -> full step.
+      # Rationale: the frozen-shape solve has, by construction, a sensitivity
+      # alpha = dln(quantity)/dln(Te_bc) ~ 1, whereas the DELIVERED response measured
+      # after the downstream beats have moved the state has median alpha = 0.40 -- the
+      # frozen step is ~2.5x too stiff and a fixed relaxation factor cannot see it.
+      # EXPERIMENTAL here: those statistics were measured for the confinement beat's
+      # H-factor; the xi response of this beat is not yet characterized.
+      servo_mode: "relaxation"
+
+      # response_fit: number of most recent usable (non-railed) pairs entering the fit.
+      # Drift of the response is mild; longer windows alias the early transient.
+      servo_fit_window: 3
+
+      # response_fit: acceptance band on the fitted alpha = dln(xi)/dln(Te_bc). A fit
+      # outside the band (or with negative slope) is rejected -> secant -> seeded step.
+      servo_alpha_band: [0.10, 2.0]
+
+      # response_fit: maximum multiplicative (x or 1/x) change of Te_bc per cycle, so the
+      # fit is never extrapolated beyond the range of Te_bc actually explored.
+      servo_trust_factor: 1.5
+
+      # response_fit: gain on the frozen solve's own step, used by the seeded rung (a
+      # single measured pair), compensating the frozen solve's ~2.5x over-stiffness.
+      # Capped by servo_trust_factor.
+      servo_seed_gain: 2.5
+
       # If True, override x_bc with the outermost radial location used by the previous
       # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
       # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
@@ -487,6 +520,44 @@ maestro:
       # iterations: H_achieved is computed at the applied (relaxed) Te_bc and the
       # intra-beat mismatch warning becomes an informational message.
       relaxation: 1.0
+
+      # How the APPLIED Te_bc is derived from the frozen-shape Nelder-Mead solve above.
+      # Options:
+      #     'relaxation':   the under-relaxation above (default, previous behavior)
+      #     'response_fit': fit the MEASURED delivered response from previous cycles
+      #                     (pairs of applied Te_bc vs the H the state came back with,
+      #                     stored in the trans-beat parameter 'bc_response_history') and
+      #                     step to where that fit crosses the target. Degenerate fits
+      #                     fall back: fit -> secant (last two pairs) -> seeded step
+      #                     (seed_gain x the frozen solve's own step) -> full step.
+      # Rationale: the frozen-shape solve has, by construction, alpha = dlnH/dlnTe_bc ~ 1
+      # (T(rho) scales with Te_bc at frozen a/L), whereas the DELIVERED response measured
+      # after the downstream beats have moved the state has median alpha = 0.40 (IQR
+      # 0.26-0.60) -- the frozen step is ~2.5x too stiff, and a fixed relaxation factor,
+      # which cannot see that, converges at only ~0.7 per cycle. Over the ~x1.44 Te_bc
+      # window the loop explores, curvature is not identifiable, so the model is a LOCAL
+      # LINEAR fit (it beats a secant tail and a quadratic, which invents false roots).
+      # Pairs formed by a railed (floor/bound-pinned) actuation are excluded from fits.
+      servo_mode: "relaxation"
+
+      # response_fit: number of most recent usable (non-railed) pairs entering the fit.
+      # Drift of the response is mild; longer windows alias the early transient.
+      servo_fit_window: 3
+
+      # response_fit: acceptance band on the fitted alpha = dlnH/dlnTe_bc. A fit outside
+      # the band (or with negative slope) is rejected -> secant -> seeded step. The
+      # default brackets the measured 5-95% spread [0.04, 1.33] loosely enough to keep
+      # real variability while rejecting fits driven by noise.
+      servo_alpha_band: [0.10, 2.0]
+
+      # response_fit: maximum multiplicative (x or 1/x) change of Te_bc per cycle, so the
+      # fit is never extrapolated beyond the range of Te_bc actually explored.
+      servo_trust_factor: 1.5
+
+      # response_fit: gain on the frozen solve's own step, used by the seeded rung (a
+      # single measured pair, no slope yet): 2.5 = 1.0/0.40, the measured over-stiffness
+      # of the frozen-shape solve. Capped by servo_trust_factor.
+      servo_seed_gain: 2.5
 
       # If True, override x_bc with the outermost radial location used by the previous
       # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
