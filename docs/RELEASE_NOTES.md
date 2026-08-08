@@ -91,6 +91,15 @@ DESCRIPTION
     convergence in confinement↔PORTALS chains. Default remains the previous relaxation behavior.
     Test chains: `tests/dev_tests/test_bc_relaxation.py`, `tests/dev_tests/test_bc_servo_response_fit.py`.
 
+*   💥 **New PORTALS tab "Fluxes vs Gradients"** (`mitim_plot_portals --complete`, or
+    `PORTALSanalyzer.plotFluxesVsGradients()`): an NxN matrix over the predicted channels
+    scattering every evaluated flux against every evolved gradient, one color per radius,
+    with 1-sigma transport-model error bars and a per-radius least-squares line. The diagonal
+    panels (flux vs its own drive) expose the critical-gradient / stiffness behavior of the
+    transport model across the whole run, with the vertical spread at fixed gradient showing
+    the effect of everything else that moved (Ti/Te, nu_ei, beta_e, ...). Fluxes are gyro-Bohm
+    normalized by default; `flux_type` selects turbulent (default), neoclassical or the sum.
+
 ### Bug Fixes
 
 *   🐛 **TRANSP beat wrote a negative ICRF antenna frequency for negative-`bcentr` states**:

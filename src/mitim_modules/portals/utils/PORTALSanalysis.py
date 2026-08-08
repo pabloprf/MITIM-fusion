@@ -576,9 +576,10 @@ class PORTALSanalyzer:
         #   3  PROFILES Ranges
         #   4  PROFILES - * + PROFILES Comparison + Powerstate (shared, via plotSummary)
         #   5  PORTALS Debugger
-        #   6  Transport models start — plotTransportModels offsets internally
-        #      (for CGYRO this resolves to slot 7 for the per-radius group and
-        #       slot 8 for the per-channel group; each group is single-colored).
+        #   6  PORTALS Fluxes vs Gradients
+        #   7  Transport models start — plotTransportModels offsets internally
+        #      (for CGYRO this resolves to slot 8 for the per-radius group and
+        #       slot 9 for the per-channel group; each group is single-colored).
         # `tabs_colors_common` overrides this scheme with a single color for every
         # tab — used by callers that embed PORTALS plots inside a larger notebook
         # and want tabs to be visually grouped.
@@ -619,11 +620,14 @@ class PORTALSanalyzer:
         fig = self.fn.add_figure(label="PORTALS Debugger", tab_color=_c(5))
         self.plotDebug(fig=fig)
 
-        # Transport models: CGYRO traces use _c(6) (per-radius, all same)
-        # and _c(7) (per-channel, all same). Other backends (TGLF/NEO)
+        fig = self.fn.add_figure(label="PORTALS Fluxes vs Gradients", tab_color=_c(6))
+        self.plotFluxesVsGradients(fig=fig)
+
+        # Transport models: CGYRO traces use _c(7) (per-radius, all same)
+        # and _c(8) (per-channel, all same). Other backends (TGLF/NEO)
         # offset internally from fn_color.
         if plot_transport_models and len(self.transport_model_objects) > 0:
-            self.plotTransportModels(fn=self.fn, fn_color=_c(6))
+            self.plotTransportModels(fn=self.fn, fn_color=_c(7))
         
         # fig = self.fn.add_figure(label="PORTALS Simulation", tab_color=tab_color_istart + 4 if tabs_colors_common is None else tabs_colors_common)
         # _, _ = self.plotModelComparison(fig=fig)
@@ -647,6 +651,9 @@ class PORTALSanalyzer:
 
     def plotDebug(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotDebug(self, **kwargs)
+
+    def plotFluxesVsGradients(self, **kwargs):
+        PORTALSplot.PORTALSanalyzer_plotFluxesVsGradients(self, **kwargs)
 
     def plotTransportModels(self, **kwargs):
         PORTALSplot.PORTALSanalyzer_plotTransportModels(self, **kwargs)

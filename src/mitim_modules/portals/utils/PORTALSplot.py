@@ -2141,6 +2141,151 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
         lab = 'Optimization',
     )
     
+def _linear_regression(x, y):
+    '''Least-squares slope/intercept, or (None, None) if the fit is not defined'''
+    mask = np.isfinite(x) & np.isfinite(y)
+    if mask.sum() < 2 or np.ptp(x[mask]) == 0.0:
+        return None, None
+    slope, intercept = np.polyfit(x[mask], y[mask], 1)
+    return slope, intercept
+
+
+def PORTALSanalyzer_plotFluxesVsGradients(self, fig=None, flux_type="turb", normalized=True, plot_errors=True):
+    '''
+    Scatter of every evaluated flux against every evolved gradient, one panel per
+    (flux, gradient) pair and one color per radius. The diagonal panels are the
+    critical-gradient views (flux vs its own driving gradient); the off-diagonal
+    ones show cross-channel drives. Scatter (not lines) because each point is an
+    independent transport-code call at a different plasma state, so the vertical
+    spread at fixed gradient is the effect of everything else that moved (Ti/Te,
+    nu_ei, beta_e, ...).
+
+    flux_type:  'turb' (default), 'neoc' or 'total'
+    normalized: gyro-Bohm normalized fluxes (default) -- the right y for a
+                critical-gradient view, since it removes the trivial radial
+                scaling of Qgb/Ggb
+    plot_errors:1-sigma error bars from the transport model (the '_stds' fields:
+                TGLF's assigned relative error, CGYRO's time-trace scatter)
+    '''
+
+    if fig is None:
+        plt.ion()
+        fig = plt.figure(figsize=(15, 9))
+
+    channel_info = {
+        "te": {"grad": "aLte", "grad_label": "$a/L_{Te}$",
+               "flux": "QeMWm2", "gb": "Qgb",
+               "label": "$Q_e$ ($MW/m^2$)",       "label_gb": "$Q_e/Q_{GB}$"},
+        "ti": {"grad": "aLti", "grad_label": "$a/L_{Ti}$",
+               "flux": "QiMWm2", "gb": "Qgb",
+               "label": "$Q_i$ ($MW/m^2$)",       "label_gb": "$Q_i/Q_{GB}$"},
+        "ne": {"grad": "aLne", "grad_label": "$a/L_{ne}$",
+               "flux": "Ge1E20m2", "gb": "Ggb",
+               "label": "$\\Gamma_e$ ($10^{20}m^{-2}s^{-1}$)", "label_gb": "$\\Gamma_e/\\Gamma_{GB}$"},
+        "nZ": {"grad": "aLnZ", "grad_label": "$a/L_{nZ}$",
+               "flux": "GZ1E20m2", "gb": "Ggb",
+               "label": "$\\Gamma_Z$ ($10^{20}m^{-2}s^{-1}$)", "label_gb": "$\\Gamma_Z/\\Gamma_{GB}$"},
+        # aLw0_n is the c_s-normalized rotation-gradient the surrogates actually see, not a/L_w0
+        "w0": {"grad": "aLw0_n", "grad_label": "$-(a/c_s)\\cdot d\\omega_0/dr$",
+               "flux": "MtJm2", "gb": "Pgb",
+               "label": "$M_T$ ($J/m^2$)",        "label_gb": "$M_T/\\Pi_{GB}$"},
+    }
+
+    channels = [c for c in self.predicted_channels if c in channel_info]
+
+    suffix = {"turb": "_tr_turb", "neoc": "_tr_neoc", "total": "_tr"}[flux_type]
+    name_flux = {"turb": "turbulent", "neoc": "neoclassical", "total": "turb+neoc"}[flux_type]
+
+    # ------------------------------------------------------------------------
+    # Gather all evaluations: (n_evaluations, n_radii) arrays per quantity
+    # ------------------------------------------------------------------------
+
+    def _grab(power, key):
+        return power.plasma[key][0, 1:].cpu().numpy()
+
+    gradients, fluxes, errors = {}, {}, {}
+    for c in channels:
+        info = channel_info[c]
+        gradients[c] = np.array([_grab(p, info["grad"]) for p in self.powerstates])
+        f = np.array([_grab(p, info["flux"] + suffix) for p in self.powerstates])
+
+        # There is no '_tr_stds' field: for the summed flux, add turb and neoc in quadrature
+        if flux_type == "total":
+            e = np.sqrt(sum(np.array([_grab(p, f"{info['flux']}_tr_{s}_stds") for p in self.powerstates])**2
+                            for s in ["turb", "neoc"]))
+        else:
+            e = np.array([_grab(p, info["flux"] + suffix + "_stds") for p in self.powerstates])
+
+        if normalized:
+            gb = np.array([_grab(p, info["gb"]) for p in self.powerstates])
+            f, e = f / gb, e / gb
+
+        fluxes[c], errors[c] = f, e
+
+    # ------------------------------------------------------------------------
+    # Grid: rows = fluxes, columns = gradients
+    # ------------------------------------------------------------------------
+
+    n = len(channels)
+    grid = plt.GridSpec(nrows=n, ncols=n, hspace=0.1, wspace=0.1)
+    colors = GRAPHICStools.listColors()
+
+    for i, c_flux in enumerate(channels):
+
+        ax_row = None
+        for j, c_grad in enumerate(channels):
+
+            ax = fig.add_subplot(grid[i, j], sharey=ax_row)
+            if ax_row is None:
+                ax_row = ax
+
+            for ir in range(len(self.rhos)):
+
+                x, y = gradients[c_grad][:, ir], fluxes[c_flux][:, ir]
+
+                if plot_errors:
+                    ax.errorbar(
+                        x, y, yerr=errors[c_flux][:, ir],
+                        fmt="none", ecolor=colors[ir], elinewidth=0.8, capsize=2, alpha=0.5, zorder=2,
+                    )
+
+                ax.scatter(
+                    x, y,
+                    s=45,
+                    c=colors[ir],
+                    alpha=0.6,
+                    edgecolors="none",
+                    label=f"$r/a$ = {self.roa[ir]:.2f}" if (i == 0 and j == 0) else None,
+                )
+
+                slope, intercept = _linear_regression(x, y)
+                if slope is not None:
+                    xfit = np.array([x.min(), x.max()])
+                    ax.plot(xfit, slope * xfit + intercept, "--", c=colors[ir], lw=1.2, alpha=0.9, zorder=3)
+
+            GRAPHICStools.addDenseAxis(ax, n=5)
+
+            # Only the frame panels carry labels, otherwise the matrix is unreadable
+            if i == n - 1:
+                ax.set_xlabel(channel_info[c_grad]["grad_label"], fontsize=12)
+            else:
+                ax.set_xticklabels([])
+            if j == 0:
+                ax.set_ylabel(channel_info[c_flux]["label_gb" if normalized else "label"], fontsize=12)
+            else:
+                ax.tick_params(labelleft=False)
+
+            if i == j:
+                ax.set_facecolor("#f2f2f2")
+
+    fig.suptitle(f"PORTALS transport database: {name_flux} fluxes vs gradients "
+                 f"({len(self.powerstates)} evaluations, {len(self.rhos)} radii, "
+                 f"{'gyro-Bohm normalized' if normalized else 'real units'}). "
+                 f"Shaded diagonal = critical-gradient view")
+
+    fig.axes[0].legend(loc="best", prop={"size": 8})
+
+
 def PORTALSanalyzer_plotTransportModels(self, fn = None, fn_color=None):
     
     print("- Plotting PORTALS Simulations - Transport models")
