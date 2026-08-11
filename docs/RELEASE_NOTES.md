@@ -102,6 +102,14 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **Every NEO retrieval waited 60 s for a file NEO never writes**: `out.neo.rotation` was
+    listed as a mandatory output, but NEO only produces it for the rotation models that solve
+    for the poloidal potential (never with `ROTATION_MODEL=1`). Each retrieval therefore
+    reported it missing, slept 60 s and re-pulled every output of every radius once more —
+    ~224 times (~3.7 h of pure sleep) in a 14-beat MAESTRO chain, enough to push long chains
+    past their wall clock. It is now declared optional: still retrieved whenever NEO does
+    write it, its absence only warns.
+
 *   🐛 **TRANSP beat wrote a negative ICRF antenna frequency for negative-`bcentr` states**:
     `frqicha` was derived from the signed field, so any state stored with the opposite sign
     convention (legitimate in gacode) got `frqicha < 0` in the deck; the resonance condition

@@ -60,7 +60,6 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             'out.neo.transport_gv',
             'out.neo.equil',
             'out.neo.theory',
-            'out.neo.rotation',
             'out.neo.grid',
             'out.neo.diagnostic_geo',
             'out.neo.diagnostic_geo2',
@@ -68,6 +67,12 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
             'out.neo.run',
             'out.neo.version',
         ]
+        # NEO only writes out.neo.rotation for the rotation models that solve for the
+        # poloidal potential; with ROTATION_MODEL=1 it is never produced. Listing it as
+        # mandatory made every retrieval miss it, sleep 60 s and re-pull ALL outputs of
+        # ALL radii once more (~224 times, ~3.7 h of pure sleep, in a 14-beat chain).
+        # Optional = still retrieved whenever NEO does write it, absence only warns.
+        self.output_files_simulation["optional"] = ['out.neo.rotation']
 
     # ------------------------------------------------------------------
     # In-process / subprocess dispatch.  Each method picks the engine
