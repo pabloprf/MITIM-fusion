@@ -229,18 +229,43 @@ maestro:
   # Sequence of beats
   beats: ["transp", "eped", "portals", "eped", "portals"]
 
-  # If false, wipe each beat's `run_<name>/` contents after the beat completes.
-  # `beat_results/` is preserved — it carries the canonical state for the next beat
-  # AND for cross-invocation restart (see beat-specific `_inform_save` for what's
-  # persisted: input.gacode + a small sidecar per beat). Plot tabs that depend on
-  # run-folder artifacts degrade gracefully (caught by MAESTROmain._plot_beats's
-  # try/except FileNotFoundError, never fatal):
+  # How much on-disk material to discard as the run proceeds. Higher = smaller footprint,
+  # less post-mortem detail. `beat_results/` is preserved at EVERY level (except the PORTALS
+  # pass at level 3 below) — it carries the canonical state for the next beat AND for
+  # cross-invocation restart (see each beat's `_inform_save`: input.gacode + a small sidecar).
+  #   0 : keep everything. The old `keep_all_files: true`.
+  #   1 : drop execution scratch nothing reads back; mitim_plot_maestro is still FULLY intact.
+  #         - transp: the `results/` tree (a second copy of the multi-GB CDF, already surfaced
+  #           into run_transp/), `*PH.CDF`, job logs. The main CDF and AC folders are kept.
+  #         - eped: the per-height TOQ/ELITE work dirs under `case1/run1/` ("enormous"; see
+  #           EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept.
+  #         - portals: `Execution/` (per-iteration model trees, incl. CGYRO restart binaries),
+  #           `Initialization/`, `flux_match/`. `run_portals/Outputs` is kept.
+  #         - lengyel / sharpness / confinement: nothing (these beats are KB-scale).
+  #   2 : 1 + wipe each beat's `run_<name>/` entirely. Two plot tabs then degrade (see below).
+  #   3 : 2 + prune persisted outputs and initializers. The old `keep_all_files: false`.
+  #         - portals: LAST beat's optimization_object.pkl re-saved lean (GP steps dropped);
+  #           INTERMEDIATE beats drop the pickles, portals_profiles/ and their beat logs.
+  #           Chaining keeps surrogate_data.csv and beat_results/input.gacode.
+  #         - initializers: the throwaway geqdsk intermediates and any nested run folder
+  #           (notably `initializer_eped/run_eped/`, a full TOQ/ELITE tree that no earlier
+  #           level reaches). `input.gacode`, `input.geqdsk` and `beat_results/` are NEVER
+  #           touched — MAESTRO re-reads them on every invocation and so does the plotter.
+  # Plot tabs that depend on run-folder artifacts degrade gracefully from level 2 on (never
+  # fatal — mitim_plot_maestro reports what it skipped and carries on):
   #   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
-  #   - TRANSP CDF detail tab is skipped: the multi-GB CDF is no longer copied to
-  #     beat_results/; only `transp_results.npy` (sawtooth_times + impurity_order)
-  #     travels forward. Sufficient for chain inheritance, not for full CDF plotting.
-  # PORTALS plot tabs are unaffected (their inputs are persisted in beat_results/Outputs/).
-  keep_all_files: true
+  #   - TRANSP CDF detail tab is skipped: the multi-GB CDF is never copied to beat_results/;
+  #     only `transp_results.npy` (sawtooth_times + impurity_order) travels forward.
+  #     Sufficient for chain inheritance, not for full CDF plotting.
+  # PORTALS plot tabs are unaffected up to level 2 (their inputs live in beat_results/Outputs/).
+  # Use `mitim_prune_maestro <folder> --level N` to apply a level to an ALREADY-FINISHED run.
+  prune_level: 0
+
+  # Per-beat override: any beat section below may set its own `prune_level`, which wins over
+  # the global one above (e.g. keep TRANSP intact while pruning PORTALS hard):
+  #   transp:  {prune_level: 0, ...}
+  #   portals: {prune_level: 3, ...}
+  # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
   # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) that is fed to every EPED beat.
   # This is orthogonal to `plasma.parameters.separatrix.freeze_995_from` (which sets HOW the surface

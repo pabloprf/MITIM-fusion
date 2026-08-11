@@ -9,7 +9,7 @@ from mitim_modules.portals.utils import PORTALSanalysis, PORTALSoptimization
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds, PRUNE_OUTPUTS
 from IPython import embed
 from mitim_tools import __mitimroot__
 
@@ -17,6 +17,12 @@ from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
 class portals_beat(beat):
+
+    # Level-1: the per-iteration model trees (with CGYRO these carry the restart binaries and
+    # dominate the beat), the simple-relax seed states and the warm-start seed. All read only
+    # while the beat is live -- finalize()/merge_parameters() work off folder_output, and the
+    # replot reads beat_results/Outputs, which is a full copy of run_portals/Outputs.
+    scratch_patterns = ['Execution', 'Initialization', 'flux_match']
 
     def __init__(self, maestro_instance):
         super().__init__(maestro_instance, beat_name = 'portals')
@@ -248,7 +254,7 @@ class portals_beat(beat):
             )
 
     def optional_postprocessing(self):
-        '''Space-saving (keep_all_files: false), run once per beat at the END of the MAESTRO run
+        '''Space-saving (prune_level >= PRUNE_OUTPUTS), run once per beat at the END of the MAESTRO run
         (MAESTRO.finalize, AFTER all beats and generate_summary). Safe to slim/drop here because
         nothing reads a PORTALS beat's GP surrogates any more: the in-run consumers
         (the next beat's _flux_match_for_first_point, and summary()) have already happened.
@@ -259,7 +265,7 @@ class portals_beat(beat):
             (portals_profiles/), optimization_log.txt, and its MAESTRO per-phase stdout logs
             (Outputs/Logs/beat_<n>_*.log); chaining keeps surrogate_data.csv and
             beat_results/input.gacode, and warnings are already in warnings.log.'''
-        if self.maestro_instance.keep_all_files:
+        if self.prune_level < PRUNE_OUTPUTS:
             return
         out = getattr(self, 'folder_output', None)
         if out is None:
@@ -566,17 +572,25 @@ class portals_beat(beat):
 
     def plot(self,  fn = None, counter = 0, full_plot = True):
 
+        # The full path rebuilds the raw optimization object, which needs optimization_object.pkl --
+        # dropped from an INTERMEDIATE beat at prune_level >= PRUNE_OUTPUTS. Degrade to the
+        # metrics-only view instead of taking all of this beat's tabs down with an exception.
+        folder = self.folder_output if self.maestro_instance.check(beat_check=self) else self.folder
+        if full_plot and not (folder / 'Outputs' / 'optimization_object.pkl').exists():
+            print('\t\t- Skipping the full PORTALS tabs: optimization_object.pkl not available '
+                  '(pruned); plotting metrics only', typeMsg='w')
+            full_plot = False
+
         opt_fun, _ = self.grab_output(full = full_plot)
 
         if full_plot:
             opt_fun.fn = fn
             opt_fun.plot_optimization_results(analysis_level=4, tabs_colors=counter)
+        elif opt_fun is None or len(opt_fun.powerstates) == 0:
+            print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
         else:
-            if len(opt_fun.powerstates)>0:
-                fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
-                opt_fun.plotMetrics(fig=fig)
-            else:
-                print('\t\t- PORTALS has not run enough to plot anything', typeMsg='w')
+            fig = fn.add_figure(label="PORTALS Metrics", tab_color=counter)
+            opt_fun.plotMetrics(fig=fig)
 
         msg = '\t\t- Plotting of PORTALS beat done'
 

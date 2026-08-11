@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.gs_tools import GEQtools
-from mitim_tools.misc_tools import PLASMAtools
+from mitim_tools.misc_tools import PLASMAtools, IOtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from pyro import factor
@@ -13,10 +13,55 @@ from scipy.optimize import brentq
 from IPython import embed
 
 # --------------------------------------------------------------------------------------------
+# Pruning levels (maestro.prune_level, per-beat override maestro.<beat>.prune_level)
+# --------------------------------------------------------------------------------------------
+# 0 PRUNE_NOTHING : keep everything                                    (legacy keep_all_files: true)
+# 1 PRUNE_SCRATCH : drop execution scratch nothing reads back; every plot tab still works
+# 2 PRUNE_RUN     : 1 + wipe run_<name>/ entirely; _persist moves instead of copying
+# 3 PRUNE_OUTPUTS : 2 + prune persisted outputs and initializers       (legacy keep_all_files: false)
+#
+# `beat_results/` is NEVER touched by any level here -- it carries the sole idempotence key
+# (beat_results/input.gacode) and the small sidecars the next beat reads. The only pruning that
+# reaches into beat_results is PORTALS' end-of-run pass (portals_beat.optional_postprocessing).
+PRUNE_NOTHING, PRUNE_SCRATCH, PRUNE_RUN, PRUNE_OUTPUTS = 0, 1, 2, 3
+PRUNE_LEVELS = (PRUNE_NOTHING, PRUNE_SCRATCH, PRUNE_RUN, PRUNE_OUTPUTS)
+
+# Initializer artifacts that are written and consumed within the same call and never read back.
+# Everything else in initializer_*/ is load-bearing: input.gacode is re-read by MAESTRO's
+# engineering-parameter freeze on EVERY invocation, input.geqdsk by mitim_plot_maestro, and
+# initializer_eped/beat_results/ by the EPED creator's _inform_save on a restart.
+_INITIALIZER_SCRATCH = ['freegs.geqdsk', 'freegs.geqdsk.helper', 'input.geqdsk.gacode']
+
+
+def _prune_paths(paths):
+    '''
+    Delete the given files/folders, returning the bytes freed. Never raises: a failure to
+    remove one item is reported and the rest still go, since pruning is opportunistic.
+    '''
+
+    freed = 0
+    for path in paths:
+        if not path.exists():
+            continue
+        size = IOtools.path_size_bytes(path)
+        try:
+            IOtools.shutil_rmtree(path) if path.is_dir() else path.unlink()
+            freed += size
+        except Exception as e:
+            print(f'\t\t- Could not prune {IOtools.clipstr(path)}: {type(e).__name__}: {e}', typeMsg='w')
+    return freed
+
+
+# --------------------------------------------------------------------------------------------
 # Generic beat class with required methods
 # --------------------------------------------------------------------------------------------
 
 class beat:
+
+    # Level-1 prune targets inside run_<name>/, as glob patterns relative to it. Only artifacts
+    # that nothing reads back after the beat completes belong here -- a level-1 run must still
+    # replot in full. Overridden per beat; the generic beat drops nothing.
+    scratch_patterns = []
 
     def __init__(self, maestro_instance, beat_name = 'generic', folder_name = None):
 
@@ -37,8 +82,95 @@ class beat:
         self.folder_output.mkdir(parents=True, exist_ok=True)
 
         self.initialize_called = False
-        
+
         self.cold_start = False
+
+        # Per-beat prune level from maestro.<beat>.prune_level (None -> inherit maestro.prune_level)
+        self.prune_level_override = None
+
+    @property
+    def prune_level(self):
+        '''Effective prune level for this beat: the per-beat namelist override, else the global one'''
+        if self.prune_level_override is not None:
+            return self.prune_level_override
+        return self.maestro_instance.prune_level
+
+    def _scratch_to_drop(self):
+        '''
+        Level-1 targets inside run_<name>/, resolved from `scratch_patterns`. Beats override
+        this when the selection needs logic rather than a glob (see eped_beat).
+        '''
+        paths = []
+        for pattern in self.scratch_patterns:
+            paths += sorted(self.folder.glob(pattern))
+        return paths
+
+    def prune_run_folder(self):
+        '''
+        Post-beat pruning of this beat's run_<name>/, dispatched on the effective prune level.
+        Called by MAESTRO after finalize/merge/inform, so everything a downstream beat or a
+        replot needs has already been persisted into beat_results/ (never touched here).
+        '''
+
+        level = self.prune_level
+
+        if level >= PRUNE_RUN:
+            targets = sorted(self.folder.iterdir()) if self.folder.exists() else []
+            what = f'run_{self.name}/ contents'
+        elif level == PRUNE_SCRATCH:
+            targets = self._scratch_to_drop()
+            what = f'run_{self.name}/ execution scratch'
+        else:
+            return
+
+        if not targets:
+            return
+
+        freed = _prune_paths(targets)
+        print(f'\t\t- Pruning (level {level}): freed {IOtools.human_readable_size(freed)} of {what}')
+
+    def prune_initializer(self):
+        '''
+        Level-3 pruning inside this beat's initializer_*/ folders. Drops the throwaway geqdsk
+        intermediates and, when the initializer hosts a nested beat (eped_initializer builds a
+        real eped_beat rooted there), prunes that beat's run folder with the same level.
+
+        NEVER removes the initializer folder itself, nor input.gacode / input.geqdsk /
+        beat_results -- all of those are read back on a re-invocation or by mitim_plot_maestro.
+        '''
+
+        if self.prune_level < PRUNE_OUTPUTS:
+            return
+
+        targets = []
+        for initializer_folder in sorted(self.folder_beat.glob('initializer_*')):
+            targets += [initializer_folder / name for name in _INITIALIZER_SCRATCH]
+            # The nested beat's run folder (e.g. initializer_eped/run_eped/, which holds a full
+            # per-height TOQ/ELITE tree); its beat_results/ sidecar is deliberately left alone
+            for nested_run in sorted(initializer_folder.glob('run_*')):
+                targets += sorted(nested_run.iterdir()) if nested_run.is_dir() else []
+
+        targets = [t for t in targets if t.exists()]
+        if not targets:
+            return
+
+        freed = _prune_paths(targets)
+        print(f'\t\t- Pruning (level {self.prune_level}): freed {IOtools.human_readable_size(freed)} of initializer scratch')
+
+    def incoming_profiles(self):
+        '''
+        The input.gacode this beat received, for the "before" trace in plots. run_<name>/input.gacode
+        is gone from prune level 2 on, so fall back to the initializer copy (the very same state the
+        beat ran on, which pruning never removes). Returns None when neither survives, so callers
+        skip that trace instead of raising -- mitim_plot_maestro must never fail on a pruned run.
+        '''
+
+        for f in [self.folder / 'input.gacode'] + sorted(self.folder_beat.glob('initializer_*/input.gacode')):
+            if f.exists():
+                return PROFILEStools.gacode_state(f)
+
+        print(f'\t\t- Skipping the "before" profiles of beat {self.name}: input.gacode not available (pruned)', typeMsg='w')
+        return None
 
     def define_initializer(self, initializer):
 
@@ -76,12 +208,12 @@ class beat:
 
     def _persist(self, src, dst):
         '''
-        Copy src to dst, or move when `maestro.keep_all_files: false` and the cleanup
-        loop is about to wipe src anyway. shutil.move reduces to os.rename on the same
-        filesystem (folder and folder_output share parent folder_beat), so the move
-        path is essentially free regardless of file size.
+        Copy src to dst, or move when this beat's prune level is about to wipe the run folder
+        anyway (>= PRUNE_RUN). shutil.move reduces to os.rename on the same filesystem (folder
+        and folder_output share parent folder_beat), so the move path is essentially free
+        regardless of file size.
         '''
-        if self.maestro_instance.keep_all_files:
+        if self.prune_level < PRUNE_RUN:
             if src.is_dir():
                 shutil.copytree(src, dst)
             else:

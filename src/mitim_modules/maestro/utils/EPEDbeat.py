@@ -33,6 +33,16 @@ class eped_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'eped', folder_name = folder_name)
 
+    def _scratch_to_drop(self):
+        '''
+        Level-1: the per-height TOQ/ELITE work dirs under case1/run1/ (toq.log, raw peddata,
+        eigenfunctions) -- "enormous" per EPEDtools.EPED.run's clean_intermediate_files docstring,
+        and read only while the beat is live. Directories only: the sibling files (eped.input.1,
+        eped.config) are tiny provenance. output_run1.nc, which the stability plot needs, lives
+        one level up in case1/ and is persisted to beat_results/ anyway.
+        '''
+        return [p for p in sorted(self.folder.glob('case1/run1/*')) if p.is_dir()]
+
     def prepare(
             self,
             use_full_EPED = False,
@@ -1064,10 +1074,11 @@ class eped_beat(beat):
 
         loaded_results, profiles = self.grab_output()
 
-        profiles_current = PROFILEStools.gacode_state(self.folder / 'input.gacode')
+        profiles_current = self.incoming_profiles()
 
-        profiles_current.plotRelevant(axs = axs, color = 'b', label = 'orig')
-        
+        if profiles_current is not None:
+            profiles_current.plotRelevant(axs = axs, color = 'b', label = 'orig')
+
         if loaded_results is not None:
             profiles.plotRelevant(axs = axs, color = 'r', label = 'EPED')
 
