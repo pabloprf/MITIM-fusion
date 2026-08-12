@@ -103,7 +103,7 @@ def maestro_namelist(machine_initialization=None, frozen_field=True, gacode=None
         },
         "maestro": {
             "beats": ["transp"],
-            "keep_all_files": True,
+            "prune_level": 0,
             "refreeze_995_after_beat": 0,
             "master_cpus": 1,
             "transp": {
@@ -166,7 +166,7 @@ def run_prepare(folder, machine_initialization=None, frozen_field=True, cold_sta
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         m = maestro(folder, master_seed=nm["seed"], terminal_outputs=True,
-                    master_cold_start=cold_start, keep_all_files=True, maestro_namelist=nm)
+                    master_cold_start=cold_start, prune_level=0, maestro_namelist=nm)
         m.define_beat("transp", initializer="profiles")
         m.initialize(profiles_file=str(GACODE), **engineering)
         m.prepare(**prep)
@@ -527,7 +527,7 @@ def test_stage2_deck_constructed_correctly():
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             m = maestro(d, master_seed=nm["seed"], terminal_outputs=True,
-                        master_cold_start=True, keep_all_files=True, maestro_namelist=nm)
+                        master_cold_start=True, prune_level=0, maestro_namelist=nm)
             m.define_beat("transp", initializer="profiles")
             m.initialize(profiles_file=str(GACODE_DT), **engineering)
             m.prepare(**prep)
@@ -576,7 +576,7 @@ def run_full_chain(folder):
 
     # cold_start False so a re-run reuses completed beats (the capability-test pattern)
     m = maestro(folder, master_seed=nm["seed"], terminal_outputs=True,
-                master_cold_start=False, keep_all_files=True, maestro_namelist=nm)
+                master_cold_start=False, prune_level=0, maestro_namelist=nm)
 
     for i, beat in enumerate(nm["maestro"]["beats"]):
         cfg = nm["maestro"][beat]

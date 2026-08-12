@@ -100,6 +100,16 @@ DESCRIPTION
     the effect of everything else that moved (Ti/Te, nu_ei, beta_e, ...). Fluxes are gyro-Bohm
     normalized by default; `flux_type` selects turbulent (default), neoclassical or the sum.
 
+*   💥 **MAESTRO graded pruning** (`maestro.prune_level`, 0-3, replacing the `keep_all_files`
+    boolean): 0 keeps everything; 1 drops per-beat execution scratch nothing reads back (TRANSP
+    `results/` CDF duplicate + PH.CDF, EPED per-height TOQ/ELITE dirs, PORTALS `Execution/`
+    trees) with every plot tab intact; 2 also wipes `run_<name>/`; 3 adds the PORTALS output
+    prune and the initializer prune (incl. the nested `initializer_eped/run_eped/` tree that
+    the old cleanup never reached). Overridable per beat (`maestro.<beat>.prune_level`), and
+    `mitim_prune_maestro --level N` applies any level post-hoc to a finished run, importing the
+    same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
+    pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
+
 ### Bug Fixes
 
 *   🐛 **Every NEO retrieval waited 60 s for a file NEO never writes**: `out.neo.rotation` was
@@ -196,6 +206,10 @@ DESCRIPTION
 *   🔎 **NEW CHANGE**, description
 
 ### Back-compatibility considerations and defaults
+
+*   🔮 **`maestro.keep_all_files` is deprecated** in favor of `prune_level` (true -> 0, false -> 3).
+    The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,
+    `--no-keep-all-files`) with a deprecation notice; the default remains keep-everything.
 
 *   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
     exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,

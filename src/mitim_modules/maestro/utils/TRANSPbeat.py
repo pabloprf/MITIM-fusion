@@ -61,6 +61,13 @@ def _apply_flattop_floor(cdf_results, it_extract, time_diffusion, time_end, min_
 
 class transp_beat(beat):
 
+    # `results/` is the retrieved copy of what runSINGULARITY_finish already surfaced into the run
+    # folder -- it carries a SECOND copy of the multi-GB CDF and nothing reads it locally (see
+    # TRANSPsingularity.runSINGULARITY_finish, which tries to drop it but does not on every path).
+    # PH.CDF is the intermediate dump, and a stale one actively aborts the next run.
+    # The main .CDF and the AC folders stay: mitim_plot_maestro still needs them at level 1.
+    scratch_patterns = ['results', '*PH.CDF', 'paramiko.log', 'squeue_output.dat']
+
     def __init__(
         self,
         maestro_instance,

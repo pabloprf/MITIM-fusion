@@ -712,6 +712,30 @@ def calculate_size_pickle(file):
         obj = pickle.load(f)
     calculate_sizes_obj_recursive(obj, recursion = 20)
 
+def path_size_bytes(path):
+    '''
+    Total bytes of a file or (recursively) a directory. 0 if it does not exist.
+    '''
+
+    path = Path(path)
+    if not path.exists():
+        return 0
+    if path.is_file():
+        return path.stat().st_size
+    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+
+def human_readable_size(nbytes):
+    '''
+    Byte count as a short human string (e.g. 1.4G).
+    '''
+
+    size = float(nbytes)
+    for unit in ('B', 'K', 'M', 'G', 'T'):
+        if size < 1024 or unit == 'T':
+            return f'{size:.0f}{unit}' if unit == 'B' else f'{size:.1f}{unit}'
+        size /= 1024
+    return f'{size:.1f}T'
+
 def check_flags_mitim_namelist(d, d_check, avoid = [], askQuestions=True):
     for key in d.keys():
         if key in avoid:

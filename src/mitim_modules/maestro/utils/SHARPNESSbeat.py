@@ -634,23 +634,17 @@ class sharpness_beat(beat):
             fn = GUItools.FigureNotebook("Sharpness")
 
         loaded_results, profiles_after = self.grab_output()
-        # "before" profiles = the input this beat received. self.folder/input.gacode is
-        # wiped under keep_all_files: false; fall back to the initializer copy (the same
-        # input.gacode the beat ran on), which survives the cleanup.
-        before_file = self.folder / "input.gacode"
-        if not before_file.exists():
-            cands = sorted(self.folder_beat.glob("initializer_*/input.gacode"))
-            if cands:
-                before_file = cands[0]
-        profiles_before = PROFILEStools.gacode_state(before_file)
-        profiles_before.derive_quantities(rederiveGeometry=False)
 
-        if loaded_results is not None and profiles_after is not None:
+        profiles_before = self.incoming_profiles()
+        if profiles_before is not None:
+            profiles_before.derive_quantities(rederiveGeometry=False)
+
+        if loaded_results is not None and profiles_after is not None and profiles_before is not None:
             profiles_after.derive_quantities(rederiveGeometry=False)
             _plot_sharpness_beat(fn, loaded_results, profiles_before, profiles_after, counter)
             _plot_sharpness_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter)
         else:
-            # Fallback: nothing to show yet
+            # Fallback: nothing to show (never ran yet, or the inputs were pruned)
             fig = fn.add_figure(label="Sharpness", tab_color=counter)
             fig.add_subplot(111).text(0.5, 0.5, "No sharpness results available",
                                       ha="center", va="center", transform=fig.transFigure)

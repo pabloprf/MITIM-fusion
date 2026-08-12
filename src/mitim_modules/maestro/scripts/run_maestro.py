@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools, GUItools, PLASMAtools
-from mitim_modules.maestro.MAESTROmain import maestro
+from mitim_modules.maestro.MAESTROmain import maestro, _resolve_prune_level
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools.scripts.slurm import run_slurm
@@ -133,7 +133,7 @@ def run_maestro_local(
         terminal_outputs    = False,
         force_cold_start    = False,
         cpus                = 8,
-        keep_all_files      = None,   # None -> read from YAML (`maestro.keep_all_files`); else explicit override
+        prune_level         = None,   # None -> read from YAML (`maestro.prune_level`); else explicit override
         ):
 
     maestro_namelist = IOtools.read_mitim_yaml(file_path)
@@ -141,10 +141,12 @@ def run_maestro_local(
     # Warn about misplaced/misspelled keys that would otherwise be silently ignored
     check_unrecognized_namelist_keys(maestro_namelist)
 
-    # If the caller didn't explicitly set keep_all_files, take it from the YAML
-    # (templates/namelist.maestro.yaml documents `maestro.keep_all_files`).
-    if keep_all_files is None:
-        keep_all_files = maestro_namelist.get("maestro", {}).get("keep_all_files", True)
+    # If the caller didn't explicitly set prune_level, take it from the YAML
+    # (templates/namelist.maestro.yaml documents `maestro.prune_level`), honoring the
+    # deprecated `maestro.keep_all_files` boolean when prune_level is absent.
+    if prune_level is None:
+        prune_level = maestro_namelist.get("maestro", {}).get("prune_level", None)
+        prune_level = _resolve_prune_level(prune_level, maestro_namelist.get("maestro", {}).get("keep_all_files", None))
     
     # In case a beat requests this information (e.g. EPED initializer)
     maestro_namelist['maestro']['master_cpus'] = cpus
@@ -334,7 +336,7 @@ def run_maestro_local(
         terminal_outputs = terminal_outputs,
         overall_log_file = True,
         master_cold_start = force_cold_start,
-        keep_all_files = keep_all_files,
+        prune_level = prune_level,
         maestro_namelist = maestro_namelist
         )
 
@@ -360,6 +362,7 @@ def run_maestro_local(
         m.define_beat(
             beat_parameters["beat_type"],
             initializer = initialize_this_beat_with,
+            prune_level = beat_parameters.get("prune_level", None),
             )
 
         # ****************************************************************************
@@ -454,8 +457,12 @@ def main():
     parser.add_argument('--terminal', action='store_true', help='Print terminal outputs')
     parser.add_argument('--save', required=False, default=False, action='store_true')
     parser.add_argument('--coldstart',action='store_true', help='force cold start')
+    parser.add_argument('--prune-level', dest='prune_level', type=int, default=None, choices=[0, 1, 2, 3],
+                        help='How much to discard as the run proceeds: 0 keep everything, 1 drop execution '
+                             'scratch, 2 wipe run_<name>/, 3 also prune outputs+initializers. '
+                             'Overrides YAML maestro.prune_level.')
     parser.add_argument('--no-keep-all-files', dest='no_keep_all_files', action='store_true',
-                        help='Wipe per-beat run_<name>/ folders after each beat (overrides YAML maestro.keep_all_files).')
+                        help='DEPRECATED alias of --prune-level 3.')
 
     # Slurm option must be or None or a list wiht [partition, enviroment, hours, memory]
     parser.add_argument('--slurm', nargs=4, metavar=('PARTITION', 'ENVIRONMENT', 'HOURS', 'MEMORY'), help='Submit to SLURM with given parameters')
@@ -471,8 +478,10 @@ def main():
     terminal_outputs = args.terminal
     save_figs = args.save
     force_cold_start = args.coldstart
-    # None -> let run_maestro_local fall back to the YAML; False -> CLI override.
-    keep_all_files = False if args.no_keep_all_files else None
+    # None -> let run_maestro_local fall back to the YAML; an int -> CLI override.
+    prune_level = args.prune_level
+    if prune_level is None and args.no_keep_all_files:
+        prune_level = _resolve_prune_level(None, keep_all_files=False)
 
     slurm = args.slurm
 
@@ -481,7 +490,7 @@ def main():
         optional_flags = "--save" if save_figs else ""
         optional_flags += " --coldstart" if force_cold_start else ""
         optional_flags += " --terminal" if terminal_outputs else ""
-        optional_flags += " --no-keep-all-files" if args.no_keep_all_files else ""
+        optional_flags += f" --prune-level {prune_level}" if prune_level is not None else ""
 
         partition, environment, hours, memory = slurm
 
@@ -496,7 +505,7 @@ def main():
         run_maestro_local(maestro_namelist, folder=folder, cpus=cpus,
                           terminal_outputs=terminal_outputs,
                           force_cold_start=force_cold_start,
-                          keep_all_files=keep_all_files)
+                          prune_level=prune_level)
 
         if save_figs:
             

@@ -23,6 +23,7 @@ from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
 from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
+from mitim_modules.maestro.utils.MAESTRObeat import PRUNE_NOTHING, PRUNE_OUTPUTS, PRUNE_LEVELS
 
 '''
 MAESTRO:
@@ -32,6 +33,26 @@ MAESTRO:
 
 ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
+
+def _resolve_prune_level(prune_level, keep_all_files = None):
+    '''
+    Resolve the effective prune level, honoring the deprecated `keep_all_files` boolean
+    (True -> PRUNE_NOTHING, False -> PRUNE_OUTPUTS). `prune_level` wins when both are given.
+    '''
+
+    if prune_level is None and keep_all_files is not None:
+        prune_level = PRUNE_NOTHING if keep_all_files else PRUNE_OUTPUTS
+        print(f'\t- `keep_all_files: {keep_all_files}` is deprecated, use `prune_level: {prune_level}` instead', typeMsg='w')
+
+    if prune_level is None:
+        prune_level = PRUNE_NOTHING
+
+    if prune_level not in PRUNE_LEVELS:
+        raise ValueError(f'[MITIM] maestro.prune_level must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
+
+    return prune_level
+
+
 class maestro:
 
     def __init__(
@@ -40,7 +61,8 @@ class maestro:
             terminal_outputs = False,
             master_cold_start = False,
             overall_log_file = True,
-            keep_all_files = True,
+            keep_all_files = None,
+            prune_level = None,
             master_seed = 0,
             maestro_namelist = {}
             ):
@@ -48,11 +70,15 @@ class maestro:
         Inputs:
             - folder: Main folder where all the beats will be saved
             - terminal_outputs: If True, all outputs will be printed to terminal. If False, they will be saved to a log file per beat step
+            - prune_level: How much on-disk material to discard as the run proceeds, 0-3
+              (see MAESTRObeat's PRUNE_* constants and templates/namelist.maestro.yaml).
+              Overridable per beat via maestro.<beat>.prune_level.
+            - keep_all_files: DEPRECATED boolean alias of prune_level (True -> 0, False -> 3)
         '''
 
         self.terminal_outputs = terminal_outputs
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
-        self.keep_all_files = keep_all_files              # If True, all files will be kept, if False, only the final output files will be kept
+        self.prune_level = _resolve_prune_level(prune_level, keep_all_files)
         self.master_seed = master_seed
 
         self.maestro_namelist = maestro_namelist
@@ -123,7 +149,11 @@ class maestro:
         # artifacts (done automatically at the first beat run())
         self._unfinalize_done = False
 
-    def define_beat(self, beat, initializer = None, cold_start = False):
+        # Plot degradations collected during plot() (reset there; defined here so
+        # _plot_beats never hits an undefined attribute if called directly)
+        self._plot_skips = []
+
+    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None):
 
         timeBeginning = datetime.datetime.now()
 
@@ -152,6 +182,11 @@ class maestro:
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
+
+        # Per-beat prune level (maestro.<beat>.prune_level); None -> inherit maestro.prune_level
+        if prune_level is not None and prune_level not in PRUNE_LEVELS:
+            raise ValueError(f'[MITIM] prune_level for beat "{beat}" must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
+        self.beat.prune_level_override = prune_level
 
         # Define initializer
         self.beat.define_initializer(initializer)
@@ -352,10 +387,9 @@ class maestro:
         # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
         self._maybe_refreeze_995()
 
-        # To save space, we can remove the contents of the run_ folder, as everything needed is in the output folder
-        if not self.keep_all_files:
-            for item in self.beat.folder .iterdir():
-                IOtools.shutil_rmtree(item) if item.is_dir() else item.unlink()
+        # To save space, prune this beat's run_ folder according to its effective prune level.
+        # Everything needed downstream is already in beat_results/, which pruning never touches.
+        self.beat.prune_run_folder()
 
     # --------------------------------------------------------------------------------------------
     # Cross-beat parameters (parameters_trans_beat) persistence
@@ -588,8 +622,12 @@ class maestro:
             # drop intermediates). Runs LAST -- after every beat's run (so all next-beat flux-match
             # warm-starts already consumed the prior beats' surrogates) and after the summary -- so
             # nothing still needs the full GP surrogates. No-op for beats that don't override it.
+            # The initializer prune goes here too: the engineering-parameter freeze reads
+            # initializer_*/input.gacode on every invocation, so it can only be safe once the run
+            # is over (and that file is never a target -- see beat.prune_initializer).
             for beat_obj in self.beats.values():
                 beat_obj.optional_postprocessing()
+                beat_obj.prune_initializer()
 
     # --------------------------------------------------------------------------------------------
     # Summary report
@@ -730,10 +768,21 @@ class maestro:
             wasProvided = True
             self.fn = fn
 
+        # Plotting must never fail on a pruned run: show what survives, report what did not.
+        self._plot_skips = []
+
         # summary_only -> only the cross-beat 'special' + 'timings' tabs (no per-beat tabs)
         if num_beats>0 and not summary_only:
             self._plot_beats(self.fn, num_beats = num_beats, only_beats = only_beats, full_plot = full_plot)
-        ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
+
+        try:
+            ps, ps_lab = self._plot_results(self.fn, summary_only = summary_only)
+        except Exception as e:
+            self._plot_skips.append(f'cross-beat results tabs: {type(e).__name__}: {e}')
+            print(f'\t\t- Could not plot the cross-beat results: {type(e).__name__}: {e}', typeMsg = 'w')
+            ps, ps_lab = [], []
+
+        self._report_plot_skips()
 
         if not wasProvided:
             self.fn.show()
@@ -753,16 +802,28 @@ class maestro:
                     with LOGtools.conditional_log_to_file(write_log=not ENABLE_EMBED,log_file=log_file):
                         msg = beat.plot(fn = self.fn, counter = i, full_plot = full_plot)
                     print(msg)
-                except FileNotFoundError:
-                    print(f'\t\t- Could not plot beat #{counter} because some files are missing', typeMsg = 'w')
+                except FileNotFoundError as e:
+                    self._plot_skips.append(f'beat #{counter} ({beat.name}): missing {IOtools.clipstr(getattr(e, "filename", None) or e)}')
+                    print(f'\t\t- Skipping beat #{counter} ({beat.name}): {getattr(e, "filename", None) or e} not available (pruned?)', typeMsg = 'w')
                 except Exception as e:
-                    print(f'\t\t- Could not plot beat #{counter} because of an error: {e}', typeMsg = 'w')
+                    self._plot_skips.append(f'beat #{counter} ({beat.name}): {type(e).__name__}: {e}')
+                    print(f'\t\t- Could not plot beat #{counter} because of an error: {type(e).__name__}: {e}', typeMsg = 'w')
 
     def _plot_results(self, fn, summary_only = False):
 
         print('\t- Plotting MAESTRO results...')
 
         return MAESTROplot.plot_results(self, fn, summary_only = summary_only)
+
+    def _report_plot_skips(self):
+        '''Tell the user, in one place, what the plot could not show (e.g. pruned artifacts)'''
+
+        if not self._plot_skips:
+            return
+
+        print(f'\t- MAESTRO plotting finished with {len(self._plot_skips)} item(s) skipped:', typeMsg = 'w')
+        for skip in self._plot_skips:
+            print(f'\t\t- {skip}', typeMsg = 'w')
 
 
 def read_warning(file, d, label):
