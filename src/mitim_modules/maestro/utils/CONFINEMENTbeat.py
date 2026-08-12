@@ -97,7 +97,8 @@ class confinement_beat(beat):
         density_treatment="bc",         # 'bc': rescale ne to ne_bc (current behavior); 'keep': leave ne/ni untouched
         alpha_power_feedback=False,     # recompute qfuse/qfusi at each trial Te_bc (alpha-heating response)
         Te_bc_bounds=(0.05, 10.0),      # bounds on Te_bc (keV) for the minimization
-        Te_bc_min_Tesep_factor=1.2,     # dynamic floor: Te_bc >= factor * Tesep of the incoming state (isothermal-edge guard)
+        Te_bc_min_Tesep_factor=1.2,     # dynamic floor: Te_bc >= factor * Tesep of the incoming state (isothermal-edge guard); None disables it
+        sep_max_frac=None,              # if set, cap the APPLIED Tesep at frac*Te_bc instead of flooring Te_bc (inverts the guard; see docstring)
         relaxation=1.0,                 # under-relaxation of Te_bc vs previous sharpness/confinement beat (1.0 = full step)
         servo_mode="relaxation",        # 'relaxation' (previous behavior) or 'response_fit' (fit the measured delivered response)
         servo_fit_window=3,             # response_fit: number of most recent usable pairs entering the fit
@@ -158,6 +159,18 @@ class confinement_beat(beat):
             flagged as 'Te_bc_at_floor' in the beat results. A floor pin with
             H BELOW the target is a Nelder-Mead bound-clipping artifact (the
             crossing is bracketed above) and is re-solved by brentq.
+            None disables the dynamic floor entirely (only Te_bc_bounds[0]
+            remains) — pair with sep_max_frac so the edge stays monotone.
+        sep_max_frac : float or None
+            Inverts the isothermal-edge guard: instead of flooring Te_bc at
+            1.2*Tesep, let Te_bc go as low as the servo wants and cap the
+            APPLIED separatrix temperatures in the written state at
+            sep_max_frac * bc value (Te and Ti; forwarded to
+            _apply_sharpness_bc). The physical Tesep (e.g. from the lengyel
+            beat) is untouched upstream and stays available to analysis; a
+            case whose Te_bc lands at/below it is then a physics result
+            (sharpness <= 0), not a rail. Typical value 0.8. Default None =
+            old behavior.
         relaxation : float
             Under-relaxation factor for Te_bc across beat incarnations (see
             SHARPNESSbeat.relax_bc): applied Te_bc = previous + relaxation *
@@ -237,6 +250,7 @@ class confinement_beat(beat):
         self.alpha_power_feedback = alpha_power_feedback
         self.Te_bc_bounds = tuple(Te_bc_bounds)
         self.Te_bc_min_Tesep_factor = Te_bc_min_Tesep_factor
+        self.sep_max_frac = sep_max_frac
         self.relaxation = relaxation
         self.servo_mode = servo_mode
         self.servo_fit_window = servo_fit_window
@@ -373,14 +387,24 @@ class confinement_beat(beat):
         Te_bc_guess = float(np.interp(rho_bc_rho, rho, Te))
 
         # Isothermal-edge guard: never let the scan probe at/below the separatrix
-        # temperature of the incoming state (TRANSP SIGFPEs on a flat/inverted edge)
+        # temperature of the incoming state (TRANSP SIGFPEs on a flat/inverted edge).
+        # With sep_max_frac the guard is inverted (the APPLIED Tesep follows Te_bc
+        # down inside _apply_sharpness_bc), so no dynamic floor is needed.
         Te_sep = float(Te[-1])
-        Te_bc_floor = max(self.Te_bc_bounds[0], self.Te_bc_min_Tesep_factor * Te_sep)
+        if self.Te_bc_min_Tesep_factor is None:
+            Te_bc_floor = self.Te_bc_bounds[0]
+        else:
+            Te_bc_floor = max(self.Te_bc_bounds[0], self.Te_bc_min_Tesep_factor * Te_sep)
         Te_bc_bounds_eff = (Te_bc_floor, self.Te_bc_bounds[1])
         if Te_bc_floor > self.Te_bc_bounds[0]:
             print(
                 f"\t- Te_bc floor raised {self.Te_bc_bounds[0]:.3f} -> {Te_bc_floor:.3f} keV "
                 f"({self.Te_bc_min_Tesep_factor:.2f} x Tesep = {Te_sep*1e3:.1f} eV)"
+            )
+        if self.sep_max_frac is not None:
+            print(
+                f"\t- Applied-Tesep cap active: Tesep_applied = min(Tesep, "
+                f"{self.sep_max_frac:.2f} x Te_bc)  (incoming Tesep = {Te_sep*1e3:.1f} eV)"
             )
         Te_bc_guess = max(Te_bc_guess, Te_bc_floor)
 
@@ -398,6 +422,7 @@ class confinement_beat(beat):
                 Te_bc_trial, Te_bc_trial * self.tite, ne_bc_1e19,
                 edge_shape=self.edge_shape,
                 density_treatment=self.density_treatment,
+                sep_max_frac=self.sep_max_frac,
             )
             if self.alpha_power_feedback:
                 p_mod = _recompute_alpha_power(p_mod)
@@ -468,6 +493,7 @@ class confinement_beat(beat):
             profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
             edge_shape=self.edge_shape,
             density_treatment=self.density_treatment,
+            sep_max_frac=self.sep_max_frac,
         )
         if self.alpha_power_feedback:
             # Recomputed sources also travel in the beat output state, so the next

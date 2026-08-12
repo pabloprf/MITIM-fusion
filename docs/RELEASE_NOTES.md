@@ -37,6 +37,12 @@ DESCRIPTION
     Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
     (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
 
+*   💥 **MAESTRO confinement beat: invertible isothermal-edge guard** (`sep_max_frac`): instead of
+    flooring the H-servo at `Te_bc >= 1.2*Tesep`, the beat can now let `Te_bc` go arbitrarily low and
+    cap the APPLIED separatrix Te/Ti at `sep_max_frac * Te_bc` (edge stays monotone, TRANSP-safe),
+    with `Te_bc_min_Tesep_factor: null` disabling the dynamic floor. An H-target that demands an edge
+    at/below the physical (e.g. Lengyel) Tesep then shows up as a result, not a rail.
+
 *   💥 **EPED physics-based stability rule** (`postprocess_eped` rule `'W'`, exposed in `EPED.read()`
     and the MAESTRO eped-beat knob `stability_rule`): the pedestal can now be selected with the EPED1
     diamagnetic criterion gamma > C*omega_*pi(n)/2, with omega_*pi the HALF-maximum of the ion

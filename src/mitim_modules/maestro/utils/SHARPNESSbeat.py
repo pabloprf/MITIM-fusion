@@ -749,7 +749,7 @@ def _convert_bc_location(rho_bc, coordinate, rho, roa, psi_pol_n):
 
 
 def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19, edge_shape="linear",
-                        density_treatment="bc"):
+                        density_treatment="bc", sep_max_frac=None):
     """
     Modify *profiles* in-place (returns modified copy) so that:
 
@@ -790,6 +790,14 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
     ne_bc_1e19  : float   – ne at BC  [10^19 m^-3] (unused if density_treatment='keep')
     edge_shape  : str     – 'linear' (default) or 'tanh'
     density_treatment : str – 'bc' (default) or 'keep'
+    sep_max_frac : float or None
+        If set, cap the APPLIED separatrix temperatures at sep_max_frac * y_bc
+        (Te and Ti only; ne untouched): y_sep_applied = min(y_sep, sep_max_frac*y_bc).
+        This keeps the edge monotone-decreasing when the BC is pushed at/below the
+        incoming separatrix temperature (TRANSP SIGFPEs on a flat/inverted edge),
+        replacing the confinement beat's old Te_bc >= 1.2*Tesep floor. The physical
+        (e.g. Lengyel) Tesep remains recorded upstream; only the state written here
+        is modified. None (default) = old behavior, separatrix values untouched.
     """
 
     if edge_shape not in ("linear", "tanh"):
@@ -838,6 +846,10 @@ def _apply_sharpness_bc(profiles, rho_bc_rho, psin_bc, Te_bc, Ti_bc, ne_bc_1e19,
     Te_sep     = float(p.profiles["te(keV)"][-1])
     Ti_sep     = float(p.profiles["ti(keV)"][-1, 0])
     ne_sep     = float(p.profiles["ne(10^19/m^3)"][-1])
+
+    if sep_max_frac is not None:
+        Te_sep = min(Te_sep, sep_max_frac * Te_bc)
+        Ti_sep = min(Ti_sep, sep_max_frac * Ti_bc)
 
     # ---- build new full profiles ----
     Te_new  = _scale_core(p.profiles["te(keV)"],       Te_bc)
