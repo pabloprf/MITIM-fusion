@@ -206,7 +206,11 @@ class mitim_state:
                 if i in self.titles_single:
                     listWrite = self.profiles[i]
 
-                    if IOtools.isnum(listWrite[0]):
+                    if i in ["nexp", "nion", "shot"] and IOtools.isnum(listWrite[0]):
+                        # Integer fields per the GACODE format; they may live as floats
+                        # internally (e.g. read cast or fusio-built dicts)
+                        f.write(f"{int(round(float(listWrite[0])))}\n")
+                    elif IOtools.isnum(listWrite[0]):
                         listWrite = [f"{i:.7e}".rjust(14) for i in listWrite]
                         f.write(f"{''.join(listWrite)}\n")
                     else:
