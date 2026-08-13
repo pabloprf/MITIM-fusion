@@ -116,6 +116,12 @@ DESCRIPTION
     same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
     pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
 
+*   💥 **MAESTRO fixed thermal helium-ash support with explicit gates**: `plasma.species.mix`
+    now accepts `fixed_helium_ash` with `fHe/ZHe/AHe`, and TRANSP applies helium as a separate
+    impurity contribution in the same low-Z closure flow as other impurities only when the gate is
+    enabled. Lengyel adds optional `parameters_prepare.lengyel_fixed_helium_ash` (bool): when true,
+    helium is added as a second fixed impurity species; defaults preserve legacy behavior.
+
 ### Bug Fixes
 
 *   🐛 **Every NEO retrieval waited 60 s for a file NEO never writes**: `out.neo.rotation` was
