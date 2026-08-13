@@ -25,7 +25,7 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
+    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, lengyel_fixed_helium_ash = False, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
 
         if mode not in ('seeded', 'clean'):
             raise ValueError(f"[MAESTRO][LENGYELbeat] mode must be 'seeded' or 'clean', got '{mode}'")
@@ -103,6 +103,67 @@ class lengyel_beat(beat):
         
         fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
 
+        # ---------------------------------------------------------------------------------
+        # Optional second fixed impurity for Lengyel: thermal helium ash.
+        # Boolean-only gate:
+        #   - False (default): EXACT legacy behavior
+        #   - True: activate only when mix.fixed_helium_ash is also True and fHe > 0
+        # ---------------------------------------------------------------------------------
+        if not isinstance(lengyel_fixed_helium_ash, bool):
+            raise ValueError(
+                f"[MAESTRO][LENGYELbeat] lengyel_fixed_helium_ash must be true/false, got {lengyel_fixed_helium_ash}"
+            )
+
+        mix = self.maestro_instance.maestro_namelist.get("plasma", {}).get("species", {}).get("mix", {})
+        mix_fixed_helium_ash = bool(mix.get("fixed_helium_ash", False))
+        use_lengyel_fixed_helium_ash = lengyel_fixed_helium_ash
+
+        # If Lengyel requests fixed helium ash but TRANSP/mix gate is off, warn and force off.
+        if use_lengyel_fixed_helium_ash and not mix_fixed_helium_ash:
+            print(
+                "\t- [MAESTRO][LENGYELbeat] Requested lengyel_fixed_helium_ash=True, but plasma.species.mix.fixed_helium_ash=False; "
+                "forcing lengyel_fixed_helium_ash=False for this beat.",
+                typeMsg='w'
+            )
+            use_lengyel_fixed_helium_ash = False
+
+        # Keep this list explicit so run() can ignore all fixed species when inferring seed impurity order.
+        fixed_impurity_symbols = [fixed_impurity_symbol]
+        fixed_impurity_names = [fixed_impurity_name]
+        fixed_impurity_weights_list = [fixed_impurity_weights]
+
+        if use_lengyel_fixed_helium_ash:
+            fHe = float(mix.get("fHe", 0.0) or 0.0)
+            ZHe = float(mix.get("ZHe", 2.0) or 2.0)
+            AHe = float(mix.get("AHe", 4.0) or 4.0)
+            if fHe <= 0.0:
+                print(
+                    "\t- [MAESTRO][LENGYELbeat] lengyel_fixed_helium_ash=True but plasma.species.mix.fHe<=0; "
+                    "keeping legacy single fixed-impurity behavior.",
+                    typeMsg='i'
+                )
+            else:
+                if (not np.isclose(ZHe, 2.0)) or (not np.isclose(AHe, 4.0)):
+                    print(
+                        f"\t- [MAESTRO][LENGYELbeat] lengyel_fixed_helium_ash=True uses plasma.species.mix.fHe={fHe:.3e}, "
+                        f"ZHe={ZHe:.3f}, AHe={AHe:.3f}; Lengyel fixed species are keyed by element name, so non-He Z/A "
+                        "settings are informational in this beat.",
+                        typeMsg='w'
+                    )
+                # Lengyel fixed species are provided by element name + weight.
+                helium_symbol = "He"
+                helium_name, _, _ = element_to_lengyel(helium_symbol)
+                fixed_impurity_symbols.append(helium_symbol)
+                fixed_impurity_names.append(helium_name)
+                fixed_impurity_weights_list.append(fHe)
+                print(
+                    f"\t- [MAESTRO][LENGYELbeat] Adding fixed helium ash to Lengyel fixed species: fHe={fHe:.3e}, ZHe={ZHe:.3f}, AHe={AHe:.3f}",
+                    typeMsg='i'
+                )
+
+        self.use_lengyel_fixed_helium_ash = use_lengyel_fixed_helium_ash
+        self.fixed_impurity_symbols = fixed_impurity_symbols
+
         # Prepare Lengyel with default inputs and changes from GACODE
         self.l.prep(
             radas_dir = radas_dir_env,
@@ -116,8 +177,8 @@ class lengyel_beat(beat):
         self.lengyel_args = {
             'seed_impurity_species': [ seed_impurity_name ],
             'seed_impurity_weights': [ 1.0 ],
-            'fixed_impurity_species': [fixed_impurity_name],
-            'fixed_impurity_weights': [fixed_impurity_weights]
+            'fixed_impurity_species': fixed_impurity_names,
+            'fixed_impurity_weights': fixed_impurity_weights_list
         }
         
         # ----------------------------------------------------
@@ -201,9 +262,11 @@ class lengyel_beat(beat):
         if "impurity_order_transp" in self.maestro_instance.parameters_trans_beat:
             # Impurities ordered as in TRANSP
             impurities_in_transp =  list(self.maestro_instance.parameters_trans_beat['impurity_order_transp'].keys())
-        
-            # Do not consider the high-Z impurity, which is fixed
-            impurities_in_transp.remove( self.fixed_impurity_symbol )
+
+            # Do not consider fixed impurities (legacy high-Z and optional fixed helium ash).
+            for fixed_symbol in getattr(self, 'fixed_impurity_symbols', [self.fixed_impurity_symbol]):
+                if fixed_symbol in impurities_in_transp:
+                    impurities_in_transp.remove(fixed_symbol)
             
             # Get index of the FIRST (unique for now) seed impurity in TRANSP
             i_Z = self.maestro_instance.parameters_trans_beat['impurity_order_transp'][impurities_in_transp[0]]

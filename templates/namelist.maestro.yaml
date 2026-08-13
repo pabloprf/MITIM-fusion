@@ -162,6 +162,10 @@ plasma:
       highZ: W
       fhighZ: 1.5e-5
       CShighZ_estimate: 50    # Estimate of the charge state of high-Z impurity, to compute the lumped low-Z impurity at initialization
+      fixed_helium_ash: false # Gate for fixed thermal He in TRANSP beat. false keeps legacy behavior unchanged
+      fHe: 0.0                # Thermal helium fraction (only used when fixed_helium_ash is true)
+      ZHe: 2.0                # Helium charge (only used when fixed_helium_ash is true)
+      AHe: 4.0                # Helium mass number (only used when fixed_helium_ash is true)
       
   # Heating parameters
   heating:
@@ -627,6 +631,14 @@ maestro:
         edge_profile: "flat"    # Options: "flat", "linear"
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
+
+      # Optional Lengyel-only gate to keep thermal helium ash fixed as a second fixed impurity species.
+      # Type: true/false. Default false keeps EXACT legacy behavior (no helium handling in Lengyel).
+      # If true: uses plasma.species.mix.{fHe,ZHe,AHe}; if fHe == 0, behavior remains unchanged.
+      # Safety gate coupling:
+      #   - if plasma.species.mix.fixed_helium_ash is false and this is true, a warning is printed and
+      #     Lengyel internally forces this option to false for this beat.
+      lengyel_fixed_helium_ash: false
 
       # Relaxation factor w in [0, 1] for the Zeff update. The Zeff profile actually realized is
       # w * <Zeff this Lengyel beat would fully impose> + (1-w) * <Zeff of the profiles input into this
