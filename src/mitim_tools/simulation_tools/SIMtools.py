@@ -116,7 +116,8 @@ class mitim_simulation:
         # Keep a copy of the file
         self.profiles.write_state(file=self.FolderGACODE / "input.gacode_torun")
 
-        self.profiles.derive_quantities(mi_ref=md_u)
+        if getattr(self.profiles, "plasma_io", None) is None:
+            self.profiles.derive_quantities(mi_ref=md_u)
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Initialize from state

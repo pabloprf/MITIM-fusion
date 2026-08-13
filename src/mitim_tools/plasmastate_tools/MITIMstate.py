@@ -7,6 +7,7 @@ from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtool
 from mitim_modules.powertorch.utils import CALCtools
 from mitim_tools.gacode_tools.utils import GACODEdefaults
 from mitim_tools.plasmastate_tools.utils import state_plotting
+from mitim_tools.plasmastate_tools.utils.derived_field_map import DERIVED_FIELD_MAP, geometry_factors_from_native
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from fusio.classes.io import io
@@ -110,6 +111,16 @@ class mitim_state:
     Class to manipulate the plasma state in MITIM.
     '''
 
+    # Class-level fallback for the plasma_io property's backing attribute. Instances
+    # constructed via __init__() always shadow this with their own instance-level
+    # _plasma_io (set through the property setter below). But unpickling an object
+    # pickled by code *older* than this property (e.g. a pre-2026-08-13 run) restores
+    # __dict__ directly, bypassing __init__ entirely -- such an instance never had
+    # _plasma_io in its pickled state, so without this class default, the property
+    # getter's `return self._plasma_io` raises AttributeError on first access
+    # (surfaced e.g. via get_profiles()/get_derived() on any old, legacy-pickled run).
+    _plasma_io = None
+
     def __init__(self, type_file = 'input.gacode'):
 
         self.type = type_file
@@ -118,6 +129,31 @@ class mitim_state:
         # (see scratch()); kept around so downstream code can eventually source
         # data from it directly instead of only from the flattened profiles dict.
         self.plasma_io = None
+
+    @property
+    def plasma_io(self):
+        return self._plasma_io
+
+    @plasma_io.setter
+    def plasma_io(self, value):
+        # Assigning a new plasma_io object (construction, or a live-update reassignment like
+        # TRANSFORMtools.sync_plasma_io()'s self.profiles.plasma_io = powerstate_to_plasma_io(...))
+        # invalidates both lazy caches below -- they were derived from whichever plasma_io object
+        # was assigned before, so leaving them in place would make every subsequent
+        # get_profiles()/get_derived() call keep returning data from the *old* object. This is
+        # what makes plasma_io reassignment a sufficient way to keep get_profiles()/get_derived()
+        # current on its own, with no caller needing to separately remember to invalidate anything.
+        #
+        # Does NOT cover mutating the *contents* of an already-cached get_profiles() dict in place
+        # (get_profiles()'s own docstring documents that as deliberately supported, e.g.
+        # TRANSFORMtools.powerstate_to_gacode()'s slice assignment) -- that path doesn't reassign
+        # .plasma_io at all, so it still needs its own explicit invalidate_derived_cache() call;
+        # see that method's docstring.
+        self._plasma_io = value
+        self._profiles_cache = None
+        self._profiles_cache_side = None
+        self._derived_cache = None
+        self._derived_cache_side = None
 
     @classmethod
     def scratch(cls, profiles, label_header='', **kwargs_process):
@@ -133,11 +169,24 @@ class mitim_state:
 '''
         # `profiles` may be given as a fusio object (e.g. plasma_io) instead of
         # an already-flattened dict. In that case, keep a handle on the source
-        # object and derive the "name(unit)"-keyed dict from its gacode
-        # conversion, the same way MITIM's file-based readers do.
+        # object; `.profiles`/`.derived` are NOT populated as stored attributes
+        # for this branch -- consumers must call get_profiles()/get_derived(),
+        # which lazily source from `instance.plasma_io` on first access. See
+        # test/fusio_integration/plasma_io_migration_plan.md, "New phase
+        # (2026-08-12)". Species bookkeeping (readSpecies()/DTplasma()/
+        # sumFast(), the cheap prefix of derive_quantities_base()) is still
+        # done eagerly here -- plasma_io_to_powerstate()/defineIonsFromPlasmaIO()
+        # already depend on the resulting self.Species/self.mi_first/self.Dion/
+        # self.Tion instance attributes directly, and these calls are cheap
+        # (get_profiles()-backed dict lookups, not the expensive MXH-geometry
+        # derived-quantity pipeline that get_derived() defers).
         if isinstance(profiles, io):
             instance.plasma_io = profiles
-            profiles = profiles.to("gacode").to_dict(side="input")
+            instance.readSpecies()
+            instance.mi_first = instance.Species[0]["A"]
+            instance.DTplasma()
+            instance.sumFast()
+            return instance
 
         # Add data to profiles
         instance.profiles = profiles
@@ -145,6 +194,164 @@ class mitim_state:
         instance.derive_quantities(**kwargs_process)
 
         return instance
+
+    def get_profiles(self, side="output"):
+        """
+        Dict-of-arrays view of the profile data, keyed/unit-suffixed exactly
+        like the legacy `.profiles` attribute (e.g. "te(keV)"). For
+        plasma_io-backed instances (`self.plasma_io is not None`), this is
+        lazily materialized from `plasma_io.to("gacode", side=...).to_dict(side="input")`
+        (the same conversion `scratch()` used to make eagerly) and cached
+        privately per-instance -- NOT re-derived on every call, since some
+        callers perform in-place mutation on the returned arrays (e.g.
+        `TRANSFORMtools.powerstate_to_gacode()`'s slice assignment) and expect
+        that mutation to be visible on subsequent access. For legacy,
+        dict-backed instances, just returns `.profiles` unchanged.
+
+        `side` selects which side of `self.plasma_io` (the source object) to
+        read -- NOT which side of the resulting dict (fusio's `.to(fmt)`
+        conversion always lands its output on the target's `.input`, per
+        `io.py`'s convention, so `to_dict(side="input")` is fixed regardless
+        of this parameter). Defaults to "output", matching the convention
+        established throughout PORTALS' plasma_io construction paths (both
+        the `.gacode` and `.nc` branches leave the live data on `.output` by
+        the time `scratch()` receives the object -- see
+        `PORTALS_workflow.py`), and matching what the original eager
+        `scratch()` code did implicitly (it never passed `side` to `.to()`,
+        so fusio's own `_from()` default of `side='output'` applied).
+        """
+        if self.plasma_io is not None:
+            if getattr(self, "_profiles_cache", None) is None or self._profiles_cache_side != side:
+                cache = self.plasma_io.to("gacode", side=side).to_dict(side="input")
+                # gacode_io.from_plasma() (the .to("gacode") conversion) does not populate
+                # shape_cosN(-)/shape_sinN(-) (MXH shape coefficients) -- unlike plasma_io, fusio
+                # has no method that derives them from a plasma_io object's own mxh_cos/mxh_sin
+                # fields (the only fusio code that writes them needs a *separate EQDSK file*,
+                # add_geometry_from_eqdsk-style, not applicable here); this is a genuine, open
+                # fusio gap, not something to route around further on the MITIM side (see
+                # plasma_io_migration_plan.md, "New phase (2026-08-12)"). Zero-fill them here,
+                # mirroring PROFILEStools._ensure_shaping_coeffs()'s exact convention for the
+                # legacy hand-rolled-parser path, so downstream consumers (e.g. to_neo()/to_tglf())
+                # see the same key set either way -- zero shape coefficients (spherical/Miller
+                # geometry) rather than silently missing keys. Real shape data is lost by this
+                # fallback whenever the source file had non-trivial MXH shaping; tracked as the
+                # open fusio-side follow-up.
+                num_moments = 7
+                if "shape_cos0(-)" not in cache:
+                    cache["shape_cos0(-)"] = np.zeros(cache["rmaj(m)"].shape)
+                for i in range(num_moments):
+                    if f"shape_cos{i + 1}(-)" not in cache:
+                        cache[f"shape_cos{i + 1}(-)"] = np.zeros(cache["rmaj(m)"].shape)
+                    if f"shape_sin{i + 1}(-)" not in cache and i > 1:
+                        cache[f"shape_sin{i + 1}(-)"] = np.zeros(cache["rmaj(m)"].shape)
+                self._profiles_cache = cache
+                self._profiles_cache_side = side
+            return self._profiles_cache
+        return self.profiles
+
+    def get_derived(self, side="output"):
+        """
+        Dict of derived quantities, keyed exactly like the legacy `.derived`
+        attribute (e.g. "aLTe", "Q", "Pfus"). For plasma_io-backed instances,
+        lazily computed and cached privately per-instance on first access
+        (never on every call -- `plasma_io.compute_derived_quantities()` is
+        expensive, and nothing in PORTALS' BO sub-iteration hot path reads
+        `.derived` except `ptot_manual`, which is handled separately by
+        `selfconsistentPTOT()` without going through this cache at all -- see
+        the migration plan doc). For legacy, dict-backed instances, just
+        returns `.derived` unchanged.
+
+        `side` selects which side of `self.plasma_io` to read/compute on;
+        default "output" for the same reason as `get_profiles()`.
+        """
+        if self.plasma_io is not None:
+            if getattr(self, "_derived_cache", None) is None or self._derived_cache_side != side:
+                self._derived_cache = self._compute_derived_from_plasma_io(side=side)
+                self._derived_cache_side = side
+            return self._derived_cache
+        # Legacy dict-backed instances: self-heal if .derived is missing/empty. This happens for
+        # any unpickled powerstate whose profiles were saved via PORTALSmain._dropped_derived()
+        # (stripped to {} to shrink the pickle) -- plasma_io-backed instances self-heal for free
+        # above since they always recompute from self.plasma_io regardless of what's cached, but
+        # a legacy instance has no such fallback source, so it must rebuild via derive_quantities()
+        # once here instead of raising a KeyError on every derived-quantity read downstream (e.g.
+        # PORTALSanalysis.prep_metrics()'s Q/Pfus/tauE reads).
+        if not getattr(self, "derived", None):
+            self.derive_quantities()
+        return self.derived
+
+    def invalidate_derived_cache(self):
+        """
+        Clear get_derived()'s cache so the next call recomputes from the current get_profiles()
+        dict. No-op for legacy dict-backed instances (.derived is a plain, directly-mutated
+        attribute there, not a lazily-cached copy, so there's nothing to invalidate).
+
+        get_profiles() deliberately returns its cached dict by reference so callers can mutate
+        it in place (see its docstring) -- but get_derived()'s own cache has no way to detect
+        that mutation. Any caller that mutates a plasma_io-backed instance's get_profiles()
+        dict MUST call this afterward, or every later get_derived() call -- on this instance,
+        and on every future copy.deepcopy() of it -- keeps returning whatever was cached before
+        the mutation, silently stale forever (nothing else ever recomputes it).
+
+        This was a real, live bug in PORTALS: TRANSFORMtools.powerstate_to_gacode() mutates
+        get_profiles() (inserting the newly-predicted te/ti/ne/nZ, plus Ti_thermals/ni_thermals
+        postprocessing) on every transport evaluation, and self.profiles gets copy.deepcopy'd
+        into the next evaluation's starting point each time -- so the very first get_derived()
+        call of a run cached gradients once, and every subsequent evaluation's to_tglf() (which
+        reads aLTe/aLTi/aLne etc. straight out of get_derived()) kept silently reusing that first
+        cache, regardless of what X the BO optimizer actually proposed on later iterations. See
+        test/fusio_integration/plasma_io_migration_plan.md.
+        """
+        if self.plasma_io is not None:
+            self._derived_cache = None
+            self._derived_cache_side = None
+
+    def _compute_derived_from_plasma_io(self, side="output"):
+        # Baseline: reuse the existing, unmodified derive_quantities_base/
+        # derive_quantities_full pipeline, via a throwaway "shadow" instance built from
+        # get_profiles()'s already-correct dict. This keeps get_derived() byte-identical to
+        # today's `.derived` for every key that doesn't yet have a validated DERIVED_FIELD_MAP
+        # entry (or, for the geometry_prepop case below, structurally can't have one -- see
+        # geometry_factors_from_native()'s docstring).
+        #
+        # native/geometry_prepop are read here (not inside derive_quantities()) deliberately
+        # without calling self.plasma_io.compute_derived_quantities() first: that's an
+        # expensive six-stage call, and forcing it on every get_derived() cache miss (i.e.
+        # every BO evaluation, per invalidate_derived_cache()) would be a real cost regression
+        # over just falling back to calculateGeometricFactors() for this call. Whenever
+        # self.plasma_io already has fresh derived quantities (e.g. after
+        # sync_plasma_io()/powerstate_to_plasma_io()), this is free.
+        native = self.plasma_io.to_dict(side=side)
+        geometry_prepop = geometry_factors_from_native(native)
+
+        # Shadow construction is replicated manually here (rather than calling scratch()
+        # directly) so _geometry_factor_prepop can be set *before* derive_quantities() runs --
+        # scratch() is a single atomic call with no injection point for that. Falls back to
+        # the normal scratch() call (calculateGeometricFactors() runs as before) whenever
+        # geometry_prepop is None.
+        profiles_dict = copy.deepcopy(self.get_profiles(side=side))
+        if geometry_prepop is not None:
+            shadow = type(self)(None)
+            shadow.header = f'''
+#  Created from scratch with MITIM version {__version__}
+#
+'''
+            shadow.profiles = profiles_dict
+            shadow._geometry_factor_prepop = geometry_prepop
+            shadow.derive_quantities()
+        else:
+            shadow = type(self).scratch(profiles_dict)
+        local_derived = shadow.derived
+
+        # Overlay plasma_io-native fields validated so far (see
+        # plasmastate_tools/utils/derived_field_map.py -- empty until Phase 3
+        # of the self.profiles/self.derived removal work populates it
+        # module-by-module, each entry parity-tested first).
+        if DERIVED_FIELD_MAP:
+            for mitim_key, mapping in DERIVED_FIELD_MAP.items():
+                local_derived[mitim_key] = mapping.apply(native)
+
+        return local_derived
 
     @IOtools.hook_method(before=ensure_variables_existence)
     def derive_quantities_base(self, mi_ref=None, derive_quantities=True, rederiveGeometry=True, **kwargs_rederive_geometry):
@@ -193,18 +400,20 @@ class mitim_state:
         if file is None:
             file = self.files[0]
 
+        profiles = self.get_profiles()
+
         with open(file, "w") as f:
             for line in self.header:
                 f.write(line)
 
-            for i in self.profiles:
+            for i in profiles:
                 if "(" not in i:
                     f.write(f"# {i}\n")
                 else:
                     f.write(f"# {i.split('(')[0]} | {i.split('(')[-1].split(')')[0]}\n")
 
                 if i in self.titles_single:
-                    listWrite = self.profiles[i]
+                    listWrite = profiles[i]
 
                     if i in ["nexp", "nion", "shot"] and IOtools.isnum(listWrite[0]):
                         # Integer fields per the GACODE format; they may live as floats
@@ -217,13 +426,13 @@ class mitim_state:
                         f.write(f"{' '.join(listWrite)}\n")
 
                 else:
-                    if len(self.profiles[i].shape) == 1:
-                        for j, val in enumerate(self.profiles[i]):
+                    if len(profiles[i].shape) == 1:
+                        for j, val in enumerate(profiles[i]):
                             pos = f"{j + 1}".rjust(3)
                             valt = f"{round(val,99):.7e}".rjust(15)
                             f.write(f"{pos}{valt}\n")
                     else:
-                        for j, val in enumerate(self.profiles[i]):
+                        for j, val in enumerate(profiles[i]):
                             pos = f"{j + 1}".rjust(3)
                             txt = "".join([f"{k:.7e}".rjust(15) for k in val])
                             f.write(f"{pos}{txt}\n")
@@ -301,47 +510,49 @@ class mitim_state:
             self.write_state(file=write_new_file)
 
     def readSpecies(self, maxSpecies=100, correct_zeff = True):
-        maxSpecies = int(self.profiles["nion"][0])
+        profiles = self.get_profiles()
+        maxSpecies = int(profiles["nion"][0])
 
         Species = []
         for j in range(maxSpecies):
             # To determine later if this specie has zero density
-            niT = self.profiles["ni(10^19/m^3)"][0, j]
+            niT = profiles["ni(10^19/m^3)"][0, j]
 
             sp = {
-                "N": self.profiles["name"][j],
-                "Z": float(self.profiles["z"][j]),
-                "A": float(self.profiles["mass"][j]),
-                "S": self.profiles["type"][j].split("[")[-1].split("]")[0],
+                "N": profiles["name"][j],
+                "Z": float(profiles["z"][j]),
+                "A": float(profiles["mass"][j]),
+                "S": profiles["type"][j].split("[")[-1].split("]")[0],
                 "n0": niT,
             }
 
             Species.append(sp)
 
         self.Species = Species
-        
+
         # Correct Zeff if needed
         if correct_zeff:
             self.correct_zeff_array()
-            
+
     def correct_zeff_array(self):
-        
-        self.profiles["z_eff(-)"] = np.sum(self.profiles["ni(10^19/m^3)"] * self.profiles["z"] ** 2, axis=1) / self.profiles["ne(10^19/m^3)"]
-            
+        profiles = self.get_profiles()
+        profiles["z_eff(-)"] = np.sum(profiles["ni(10^19/m^3)"] * profiles["z"] ** 2, axis=1) / profiles["ne(10^19/m^3)"]
+
     def sumFast(self):
-        self.nFast = self.profiles["ne(10^19/m^3)"] * 0.0
-        self.nZFast = self.profiles["ne(10^19/m^3)"] * 0.0
-        self.nThermal = self.profiles["ne(10^19/m^3)"] * 0.0
-        self.nZThermal = self.profiles["ne(10^19/m^3)"] * 0.0
+        profiles = self.get_profiles()
+        self.nFast = profiles["ne(10^19/m^3)"] * 0.0
+        self.nZFast = profiles["ne(10^19/m^3)"] * 0.0
+        self.nThermal = profiles["ne(10^19/m^3)"] * 0.0
+        self.nZThermal = profiles["ne(10^19/m^3)"] * 0.0
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "fast":
-                self.nFast += self.profiles["ni(10^19/m^3)"][:, sp]
+                self.nFast += profiles["ni(10^19/m^3)"][:, sp]
                 self.nZFast += (
-                    self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
+                    profiles["ni(10^19/m^3)"][:, sp] * profiles["z"][sp]
                 )
             else:
-                self.nThermal += self.profiles["ni(10^19/m^3)"][:, sp]
-                self.nZThermal += self.profiles["ni(10^19/m^3)"][:, sp] * self.profiles["z"][sp]
+                self.nThermal += profiles["ni(10^19/m^3)"][:, sp]
+                self.nZThermal += profiles["ni(10^19/m^3)"][:, sp] * profiles["z"][sp]
 
     def derive_quantities_full(self, mi_ref=None, rederiveGeometry=True, **kwargs_rederive_geometry):
         """
@@ -1245,7 +1456,7 @@ class mitim_state:
             self.derived['Te_lcfs_lengyel_mode'] = mode
 
     def _deriv_gacode(self,y):
-        return grad(self.derived["r"],y)
+        return grad(self.get_derived()["r"],y)
 
     def calculateMass(self):
         self.derived["mbg"] = 0.0
@@ -1430,22 +1641,24 @@ class mitim_state:
         return table
 
     def makeAllThermalIonsHaveSameTemp(self, refIon=0):
+        profiles = self.get_profiles()
         SpecRef = self.Species[refIon]["N"]
-        tiRef = self.profiles["ti(keV)"][:, refIon]
+        tiRef = profiles["ti(keV)"][:, refIon]
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm" and sp != refIon:
                 print(f"\t\t\t- Temperature forcing {self.Species[sp]['N']} --> {SpecRef}")
-                self.profiles["ti(keV)"][:, sp] = tiRef
+                profiles["ti(keV)"][:, sp] = tiRef
 
     def scaleAllThermalDensities(self, scaleFactor=1.0):
+        profiles = self.get_profiles()
         scaleFactor_ions = scaleFactor
 
         for sp in range(len(self.Species)):
             if self.Species[sp]["S"] == "therm":
                 print(f"\t\t\t- Scaling density of {self.Species[sp]['N']} by an average factor of {np.mean(scaleFactor_ions):.3f}")
-                ni_orig = self.profiles["ni(10^19/m^3)"][:, sp]
-                self.profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
+                ni_orig = profiles["ni(10^19/m^3)"][:, sp]
+                profiles["ni(10^19/m^3)"][:, sp] = scaleFactor_ions * ni_orig
 
     def toNumpyArrays(self):
         self.profiles.update({key: tensor.cpu().detach().cpu().numpy() for key, tensor in self.profiles.items() if isinstance(tensor, torch.Tensor)})
@@ -1563,13 +1776,14 @@ class mitim_state:
         print(f"\t\t- Profiles smoothed via gradient-integration (relative_smoothing={relative_smoothing:.3f}): {variables}", typeMsg="i")
 
     def DTplasma(self):
+        profiles = self.get_profiles()
         self.Dion, self.Tion = None, None
         try:
-            self.Dion = np.where(self.profiles["name"] == "D")[0][0]
+            self.Dion = np.where(profiles["name"] == "D")[0][0]
         except:
             pass
         try:
-            self.Tion = np.where(self.profiles["name"] == "T")[0][0]
+            self.Tion = np.where(profiles["name"] == "T")[0][0]
         except:
             pass
 
@@ -1922,6 +2136,15 @@ class mitim_state:
 
         print("\t- Custom correction of input.gacode file has been requested")
 
+        # NOTE: remove()/enforce_same_density_gradients()/enforce_quasineutrality()/
+        # introduceRotationProfile()/make_fast_ions_thermal() (the shape-changing/species-
+        # mutating branches below, each gated by an options[] flag not yet converted here) still
+        # read/write .profiles directly and are not yet plasma_io-get_profiles()-aware -- fine for
+        # now since PORTALSinit.py's only caller passes just {"recalculate_ptot": True}, so none
+        # of those branches are reached in the plasma_io-backed path. See "New phase
+        # (2026-08-12)" in plasma_io_migration_plan.md.
+        profiles = self.get_profiles()
+
         # ----------------------------------------------------------------------
         # Correct
         # ----------------------------------------------------------------------
@@ -1946,22 +2169,22 @@ class mitim_state:
             self.make_fast_ions_thermal()
 
         # Correct LUMPED
-        for i in range(len(self.profiles["name"])):
-            if self.profiles["name"][i] in ["LUMPED", "None"]:
+        for i in range(len(profiles["name"])):
+            if profiles["name"][i] in ["LUMPED", "None"]:
                 name = ionName(
-                    int(self.profiles["z"][i]), int(self.profiles["mass"][i])
+                    int(profiles["z"][i]), int(profiles["mass"][i])
                 )
                 if name is not None:
-                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, now it is renamed to {name}',typeMsg="i",)
-                    self.profiles["name"][i] = name
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={profiles["z"][i]}, now it is renamed to {name}',typeMsg="i",)
+                    profiles["name"][i] = name
                 else:
-                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={self.profiles["z"][i]}, but I could not find what element it is, so doing nothing',typeMsg="w",)
+                    print(f'\t\t- Ion in position #{i+1} was named LUMPED with Z={profiles["z"][i]}, but I could not find what element it is, so doing nothing',typeMsg="w",)
 
         # Correct qione
-        if groupQIONE and (np.abs(self.profiles["qione(MW/m^3)"].sum()) > 1e-14):
+        if groupQIONE and (np.abs(profiles["qione(MW/m^3)"].sum()) > 1e-14):
             print('\t\t- Inserting "qione" into "qrfe"', typeMsg="i")
-            self.profiles["qrfe(MW/m^3)"] += self.profiles["qione(MW/m^3)"]
-            self.profiles["qione(MW/m^3)"] = self.profiles["qione(MW/m^3)"] * 0.0
+            profiles["qrfe(MW/m^3)"] += profiles["qione(MW/m^3)"]
+            profiles["qione(MW/m^3)"] = profiles["qione(MW/m^3)"] * 0.0
 
         # Make all thermal ions have the same gradient as the electron density, by keeping volume average constant
         if enforce_same_aLn:
@@ -1971,7 +2194,7 @@ class mitim_state:
         if quasineutrality:
             self.enforce_quasineutrality()
 
-        print(f"\t\t\t* Quasineutrality error = {self.derived['QN_Error']:.1e}")
+        print(f"\t\t\t* Quasineutrality error = {self.get_derived()['QN_Error']:.1e}")
 
         # Zero seed source blocks (e.g. drop TRANSP-supplied radiation/alpha/
         # ohmic so PORTALS sees an "all-auxiliary" sources picture). Run before
@@ -1982,22 +2205,26 @@ class mitim_state:
                 continue
             keys_zeroed = []
             for key in _SOURCE_BLOCK_ALIASES[alias]:
-                if key in self.profiles:
-                    self.profiles[key] = self.profiles[key] * 0.0
+                if key in profiles:
+                    profiles[key] = profiles[key] * 0.0
                     keys_zeroed.append(key)
             if keys_zeroed:
                 print(f"\t\t- Zeroed seed source block '{alias}' ({', '.join(keys_zeroed)})", typeMsg="i")
 
         # Recompute ptot
         if recalculate_ptot:
-            self.derive_quantities(rederiveGeometry=False)
+            # For plasma_io-backed instances, .derived is no longer stored -- skip the
+            # (expensive, dict-based) recompute; selfconsistentPTOT() sources ptot_manual via
+            # its own cheap, get_profiles()-based local calculation regardless.
+            if getattr(self, "plasma_io", None) is None:
+                self.derive_quantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
         # If I don't trust the negative particle flux in the core that comes from TRANSP...
         if ensure_positive_Gamma:
             print("\t\t- Making particle flux always positive", typeMsg="i")
-            self.profiles["qpar_beam(1/m^3/s)"] = self.profiles["qpar_beam(1/m^3/s)"].clip(0)
-            self.profiles["qpar_wall(1/m^3/s)"] = self.profiles["qpar_wall(1/m^3/s)"].clip(0)
+            profiles["qpar_beam(1/m^3/s)"] = profiles["qpar_beam(1/m^3/s)"].clip(0)
+            profiles["qpar_wall(1/m^3/s)"] = profiles["qpar_wall(1/m^3/s)"].clip(0)
 
         # Mach
         if force_mach is not None:
@@ -2007,7 +2234,10 @@ class mitim_state:
         # Re-derive
         # ----------------------------------------------------------------------
 
-        self.derive_quantities(rederiveGeometry=False) 
+        # For plasma_io-backed instances .derived is sourced lazily via get_derived() instead
+        # of eagerly stored -- nothing here needs it recomputed as a post-condition.
+        if getattr(self, "plasma_io", None) is None:
+            self.derive_quantities(rederiveGeometry=False)
 
         # ----------------------------------------------------------------------
         # Write
@@ -2166,9 +2396,31 @@ class mitim_state:
         if modified_num > 0:
             print("\t- Making fast species as if they were thermal (to keep dilution effect and Qi-sum of fluxes)",typeMsg="w")
     
+    def _ptot_manual(self):
+        # Cheap, self-contained pressure calculation from get_profiles()'s te/ti/ne/ni alone --
+        # deliberately kept as local MITIM math (not sourced from plasma_io) rather than going
+        # through the full derive_quantities_full()/get_derived() pipeline, since this is the one
+        # derived quantity actually read inside PORTALS' BO sub-iteration hot path (via
+        # selfconsistentPTOT(), below) and needs a cheap per-sub-iteration recompute that
+        # plasma_io.compute_derived_quantities()'s monolithic six-stage call doesn't cheaply
+        # support (see test/fusio_integration/plasma_io_migration_plan.md, "New phase
+        # (2026-08-12)" -- follow-up noted there to eventually add a cheap, geometry-independent
+        # pressure calculation to fusio so this carve-out can retire). Formula matches
+        # derive_quantities_full()'s "ptot_manual" computation exactly.
+        profiles = self.get_profiles()
+        ptot_manual, _, _, _ = PLASMAtools.calculatePressure(
+            np.expand_dims(profiles["te(keV)"], 0),
+            np.expand_dims(np.transpose(profiles["ti(keV)"]), 0),
+            np.expand_dims(profiles["ne(10^19/m^3)"] * 0.1, 0),
+            np.expand_dims(np.transpose(profiles["ni(10^19/m^3)"] * 0.1), 0),
+        )
+        return ptot_manual[0, ...]
+
     def selfconsistentPTOT(self):
-        print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {self.profiles['ptot(Pa)'][0] * 1e-3:.1f} to {self.derived['ptot_manual'][0]*1e+3:.1f} kPa",typeMsg="i")
-        self.profiles["ptot(Pa)"] = self.derived["ptot_manual"] * 1e6
+        profiles = self.get_profiles()
+        ptot_manual = self._ptot_manual()
+        print(f"\t\t* Recomputing ptot and inserting it as ptot(Pa), changed from p0 = {profiles['ptot(Pa)'][0] * 1e-3:.1f} to {ptot_manual[0]*1e+3:.1f} kPa",typeMsg="i")
+        profiles["ptot(Pa)"] = ptot_manual * 1e6
 
     # DEPRECATED
     def enforceQuasineutrality(self, *args, **kwargs):
@@ -2732,14 +2984,17 @@ class mitim_state:
         # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
+        profiles = self.get_profiles()
+        derived = self.get_derived()
+
         # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
         r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
-        r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), profiles['rho(-)'], derived['roa']).tolist()
+        r_interpolation = derived['roa']
 
         # Determine the number of species to use in TGLF
-        max_species_tglf = 6  # TGLF only accepts up to 6 species  
+        max_species_tglf = 6  # TGLF only accepts up to 6 species
         if len(self.Species) > max_species_tglf-1:
             print(f"\t- Warning: TGLF only accepts {max_species_tglf} species, but there are {len(self.Species)} ions pecies in the GACODE input. The first {max_species_tglf-1} will be used.", typeMsg="w")
             tglf_ions_num = max_species_tglf - 1
@@ -2749,46 +3004,46 @@ class mitim_state:
         # Determine the mass reference for TGLF (use 2.0 for D-mass normalization; derivatives use mD_u elsewhere)
         mass_ref = 2.0
 
-        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', derived["a"], 1.0, mass_ref)
 
         # -----------------------------------------------------------------------
         # Derived profiles
         # -----------------------------------------------------------------------
-        
-        sign_it = -np.sign(self.profiles["current(MA)"][-1])
-        sign_bt = -np.sign(self.profiles["bcentr(T)"][-1])
 
-        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
-        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
-        s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
-        
+        sign_it = -np.sign(profiles["current(MA)"][-1])
+        sign_bt = -np.sign(profiles["bcentr(T)"][-1])
+
+        s_kappa  = derived["r"] / profiles["kappa(-)"] * self._deriv_gacode(profiles["kappa(-)"])
+        s_delta  = derived["r"]                             * self._deriv_gacode(profiles["delta(-)"])
+        s_zeta   = derived["r"]                             * self._deriv_gacode(profiles["zeta(-)"])
+
         '''
         Total pressure
         --------------------------------------------------------
             Recompute pprime with those species that belong to this run             #TODO not exact?
         '''
-        
+
         dpdr = self._calculate_pressure_gradient_from_aLx(
-            self.derived['pe'], self.derived['pi_all'][:,:tglf_ions_num],
-            self.derived['aLTe'], self.derived['aLTi'][:,:tglf_ions_num],
-            self.derived['aLne'], self.derived['aLni'][:,:tglf_ions_num],
-            self.derived['a']
+            derived['pe'], derived['pi_all'][:,:tglf_ions_num],
+            derived['aLTe'], derived['aLTi'][:,:tglf_ions_num],
+            derived['aLne'], derived['aLni'][:,:tglf_ions_num],
+            derived['a']
         )
-        
-        pprime = 1E-7 * abs(self.profiles["q(-)"])*self.derived['a']**2/self.derived["r"]/self.derived["B_unit"]**2*dpdr
+
+        pprime = 1E-7 * abs(profiles["q(-)"])*derived['a']**2/derived["r"]/derived["B_unit"]**2*dpdr
         pprime[0] = 0 # infinite in first location
 
         '''
         Rotations
         --------------------------------------------------------
             E×B and parallel-velocity shear are derived once in derive_quantities
-            (self.derived['gamma_exb'] / ['gamma_p'], TGLF VEXB_SHEAR / VPAR_SHEAR normalization).
+            (derived['gamma_exb'] / ['gamma_p'], TGLF VEXB_SHEAR / VPAR_SHEAR normalization).
             VPAR (parallel velocity, not a shear) stays local.
         '''
 
-        vexb_shear  = self.derived["gamma_exb"]
-        vpar_shear  = self.derived["gamma_p"]
-        vpar        = -sign_it * self.profiles["rmaj(m)"]*self.profiles["w0(rad/s)"]/self.derived['c_s']
+        vexb_shear  = derived["gamma_exb"]
+        vpar_shear  = derived["gamma_p"]
+        vpar        = -sign_it * profiles["rmaj(m)"]*profiles["w0(rad/s)"]/derived['c_s']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs for TGLF
@@ -2818,8 +3073,8 @@ class mitim_state:
                 1: {
                     'ZS': -1.0,
                     'MASS': PLASMAtools.me_u / mass_ref,
-                    'RLNS': interpolator(self.derived['aLne']),
-                    'RLTS': interpolator(self.derived['aLTe']),
+                    'RLNS': interpolator(derived['aLne']),
+                    'RLTS': interpolator(derived['aLTe']),
                     'TAUS': 1.0,
                     'AS': 1.0,
                     'VPAR': interpolator(vpar),
@@ -2832,10 +3087,10 @@ class mitim_state:
                 species[i+2] = {
                     'ZS': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
-                    'RLNS': interpolator(self.derived['aLni'][:,i]),
-                    'RLTS': interpolator(self.derived["aLTi"][:,i]),
-                    'TAUS': interpolator(self.derived["tite_all"][:,i]),
-                    'AS': interpolator(self.derived['fi'][:,i]),
+                    'RLNS': interpolator(derived['aLni'][:,i]),
+                    'RLTS': interpolator(derived["aLTi"][:,i]),
+                    'TAUS': interpolator(derived["tite_all"][:,i]),
+                    'AS': interpolator(derived['fi'][:,i]),
                     'VPAR': interpolator(vpar),
                     'VPAR_SHEAR': interpolator(vpar_shear),
                     'VNS_SHEAR': 0.0,
@@ -2852,10 +3107,10 @@ class mitim_state:
                 'SIGN_IT': sign_it,
                 'VEXB': 0.0,
                 'VEXB_SHEAR': interpolator(vexb_shear),
-                'XNUE': interpolator(self.derived['xnue']),
-                'ZEFF': interpolator(self.derived['Zeff']),
-                'DEBYE': interpolator(self.derived['debye']),
-                'BETAE': interpolator(self.derived['betae']),
+                'XNUE': interpolator(derived['xnue']),
+                'ZEFF': interpolator(derived['Zeff']),
+                'DEBYE': interpolator(derived['debye']),
+                'BETAE': interpolator(derived['betae']),
                 }
 
 
@@ -2864,25 +3119,25 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             parameters = {
-                'RMIN_LOC':     self.derived['roa'],
-                'RMAJ_LOC':     self.derived['Rmajoa'],
-                'ZMAJ_LOC':     self.derived["Zmagoa"],
-                'DRMINDX_LOC':  np.ones(self.profiles["rho(-)"].shape), # Force 1.0 because of numerical issues in TGLF
-                'DRMAJDX_LOC':  self._deriv_gacode(self.profiles["rmaj(m)"]),
-                'DZMAJDX_LOC':  self._deriv_gacode(self.profiles["zmag(m)"]),
-                'Q_LOC':        np.abs(self.profiles["q(-)"]),
-                'KAPPA_LOC':    self.profiles["kappa(-)"],
+                'RMIN_LOC':     derived['roa'],
+                'RMAJ_LOC':     derived['Rmajoa'],
+                'ZMAJ_LOC':     derived["Zmagoa"],
+                'DRMINDX_LOC':  np.ones(profiles["rho(-)"].shape), # Force 1.0 because of numerical issues in TGLF
+                'DRMAJDX_LOC':  self._deriv_gacode(profiles["rmaj(m)"]),
+                'DZMAJDX_LOC':  self._deriv_gacode(profiles["zmag(m)"]),
+                'Q_LOC':        np.abs(profiles["q(-)"]),
+                'KAPPA_LOC':    profiles["kappa(-)"],
                 'S_KAPPA_LOC':  s_kappa,
-                'DELTA_LOC':    self.profiles["delta(-)"],
+                'DELTA_LOC':    profiles["delta(-)"],
                 'S_DELTA_LOC':  s_delta,
-                'ZETA_LOC':     self.profiles["zeta(-)"],
+                'ZETA_LOC':     profiles["zeta(-)"],
                 'S_ZETA_LOC':   s_zeta,
-                'Q_PRIME_LOC':  self.derived['s_q'],
+                'Q_PRIME_LOC':  derived['s_q'],
                 'P_PRIME_LOC':  pprime,
             }
 
             # Add MXH and derivatives
-            for ikey in self.profiles:
+            for ikey in profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
 
                     # TGLF only accepts 6, as of July 2025
@@ -2891,8 +3146,8 @@ class mitim_state:
 
                     key_mod = ikey.upper().split('(')[0]
 
-                    parameters[key_mod] = self.profiles[ikey]
-                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
+                    parameters[key_mod] = profiles[ikey]
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = derived["r"] * self._deriv_gacode(profiles[ikey])
 
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
@@ -2920,11 +3175,14 @@ class mitim_state:
         # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
+        profiles = self.get_profiles()
+        derived = self.get_derived()
+
         # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
         r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
-        r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), profiles['rho(-)'], derived['roa']).tolist()
+        r_interpolation = derived['roa']
 
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -2933,34 +3191,34 @@ class mitim_state:
         # Determine the mass reference
         mass_ref = 2.0
         
-        sign_it = int(-np.sign(self.profiles["current(MA)"][-1]))
-        sign_bt = int(-np.sign(self.profiles["bcentr(T)"][-1]))
+        sign_it = int(-np.sign(profiles["current(MA)"][-1]))
+        sign_bt = int(-np.sign(profiles["bcentr(T)"][-1]))
         
-        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
-        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
-        s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
+        s_kappa  = derived["r"] / profiles["kappa(-)"] * self._deriv_gacode(profiles["kappa(-)"])
+        s_delta  = derived["r"]                             * self._deriv_gacode(profiles["delta(-)"])
+        s_zeta   = derived["r"]                             * self._deriv_gacode(profiles["zeta(-)"])
 
         # Rotations
-        rmaj = self.derived['Rmajoa']
-        cs = self.derived['c_s']
-        a = self.derived['a']
-        mach = self.profiles["w0(rad/s)"] * (self.derived['Rmajoa']*a)
-        gamma_p = self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.derived['Rmajoa']*a)
+        rmaj = derived['Rmajoa']
+        cs = derived['c_s']
+        a = derived['a']
+        mach = profiles["w0(rad/s)"] * (derived['Rmajoa']*a)
+        gamma_p = self._deriv_gacode(profiles["w0(rad/s)"]) * (derived['Rmajoa']*a)
 
         # NEO definition: 'OMEGA_ROT=',mach_loc/rmaj_loc/cs_loc
-        omega_rot = mach / rmaj / cs        # Equivalent to: self.profiles["w0(rad/s)"] / self.derived['c_s'] * a
+        omega_rot = mach / rmaj / cs        # Equivalent to: profiles["w0(rad/s)"] / derived['c_s'] * a
         
         # NEO definition: 'OMEGA_ROT_DERIV=',-gamma_p_loc*a/cs_loc/rmaj_loc
-        omega_rot_deriv = gamma_p * a / cs / rmaj # Equivalent to: self._deriv_gacode(self.profiles["w0(rad/s)"])/ self.derived['c_s'] * self.derived['a']**2
+        omega_rot_deriv = gamma_p * a / cs / rmaj # Equivalent to: self._deriv_gacode(profiles["w0(rad/s)"])/ derived['c_s'] * derived['a']**2
 
-        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', derived["a"], 1.0, mass_ref)
 
         # With zero rotation everywhere, ROTATION_MODEL=2 gives fluxes identical to model 1
         # but its sonic quasineutrality Newton solve dies SILENTLY (exit 0, empty transport
         # files) for Ti/Te <~ 1e-2, which extreme optimizer candidates can reach. Downgrade
         # to model 1 in that case; an explicit extraOptions ROTATION_MODEL still wins (it is
         # applied downstream, on top of these controls).
-        zero_rotation = bool(np.all(self.profiles["w0(rad/s)"] == 0.0))
+        zero_rotation = bool(np.all(profiles["w0(rad/s)"] == 0.0))
         if zero_rotation:
             print("\t- w0 = 0 everywhere: using NEO ROTATION_MODEL=1 (identical fluxes, robust at extreme Ti/Te)", typeMsg='i')
 
@@ -2989,18 +3247,18 @@ class mitim_state:
                 species[i+1] = {
                     'Z': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
-                    'DLNNDR': interpolator(self.derived['aLni'][:,i]),
-                    'DLNTDR': interpolator(self.derived["aLTi"][:,i]),
-                    'TEMP': interpolator(self.derived["tite_all"][:,i]),
-                    'DENS': interpolator(self.derived['fi'][:,i]),
+                    'DLNNDR': interpolator(derived['aLni'][:,i]),
+                    'DLNTDR': interpolator(derived["aLTi"][:,i]),
+                    'TEMP': interpolator(derived["tite_all"][:,i]),
+                    'DENS': interpolator(derived['fi'][:,i]),
                     }
 
             ie = i+2
             species[ie] = {
                     'Z': -1.0,
                     'MASS': 0.000272445,
-                    'DLNNDR': interpolator(self.derived['aLne']),
-                    'DLNTDR': interpolator(self.derived['aLTe']),
+                    'DLNNDR': interpolator(derived['aLne']),
+                    'DLNTDR': interpolator(derived['aLTe']),
                     'TEMP': 1.0,
                     'DENS': 1.0,
                 }
@@ -3020,8 +3278,8 @@ class mitim_state:
                 'BTCCW': sign_bt,
                 'OMEGA_ROT': interpolator(omega_rot),
                 'OMEGA_ROT_DERIV': interpolator(omega_rot_deriv),
-                'NU_1': interpolator(self.derived['xnue'])* factor_nu,
-                'RHO_STAR': interpolator(self.derived["rho_sa"]),
+                'NU_1': interpolator(derived['xnue'])* factor_nu,
+                'RHO_STAR': interpolator(derived["rho_sa"]),
                 }
 
 
@@ -3030,23 +3288,23 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             parameters = {
-                'RMIN_OVER_A':  self.derived['roa'],
-                'RMAJ_OVER_A':  self.derived['Rmajoa'],
-                'SHIFT':         self._deriv_gacode(self.profiles["rmaj(m)"]),
-                'ZMAG_OVER_A':  self.derived["Zmagoa"],
-                'S_ZMAG':       self._deriv_gacode(self.profiles["zmag(m)"]),
-                'Q':            np.abs(self.profiles["q(-)"]),
-                'SHEAR':        self.derived["s_hat"],
-                'KAPPA':        self.profiles["kappa(-)"],
+                'RMIN_OVER_A':  derived['roa'],
+                'RMAJ_OVER_A':  derived['Rmajoa'],
+                'SHIFT':         self._deriv_gacode(profiles["rmaj(m)"]),
+                'ZMAG_OVER_A':  derived["Zmagoa"],
+                'S_ZMAG':       self._deriv_gacode(profiles["zmag(m)"]),
+                'Q':            np.abs(profiles["q(-)"]),
+                'SHEAR':        derived["s_hat"],
+                'KAPPA':        profiles["kappa(-)"],
                 'S_KAPPA':      s_kappa,
-                'DELTA':        self.profiles["delta(-)"],
+                'DELTA':        profiles["delta(-)"],
                 'S_DELTA':      s_delta,
-                'ZETA':         self.profiles["zeta(-)"],
+                'ZETA':         profiles["zeta(-)"],
                 'S_ZETA':       s_zeta,
             }
             
             # Add MXH and derivatives
-            for ikey in self.profiles:
+            for ikey in profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
                     
                     # TGLF only accepts 6, as of July 2025
@@ -3055,8 +3313,8 @@ class mitim_state:
                     
                     key_mod = ikey.upper().split('(')[0]
                     
-                    parameters[key_mod] = self.profiles[ikey]
-                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
+                    parameters[key_mod] = profiles[ikey]
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = derived["r"] * self._deriv_gacode(profiles[ikey])
 
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
@@ -3084,11 +3342,14 @@ class mitim_state:
         # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
+        profiles = self.get_profiles()
+        derived = self.get_derived()
+
         # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
         r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
-        r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), profiles['rho(-)'], derived['roa']).tolist()
+        r_interpolation = derived['roa']
             
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -3097,19 +3358,19 @@ class mitim_state:
         # Determine the mass reference
         mass_ref = 2.0
         
-        sign_it = int(-np.sign(self.profiles["current(MA)"][-1]))
-        sign_bt = int(-np.sign(self.profiles["bcentr(T)"][-1]))
+        sign_it = int(-np.sign(profiles["current(MA)"][-1]))
+        sign_bt = int(-np.sign(profiles["bcentr(T)"][-1]))
         
-        s_kappa  = self.derived["r"] / self.profiles["kappa(-)"] * self._deriv_gacode(self.profiles["kappa(-)"])
-        s_delta  = self.derived["r"]                             * self._deriv_gacode(self.profiles["delta(-)"])
-        s_zeta   = self.derived["r"]                             * self._deriv_gacode(self.profiles["zeta(-)"])
+        s_kappa  = derived["r"] / profiles["kappa(-)"] * self._deriv_gacode(profiles["kappa(-)"])
+        s_delta  = derived["r"]                             * self._deriv_gacode(profiles["delta(-)"])
+        s_zeta   = derived["r"]                             * self._deriv_gacode(profiles["zeta(-)"])
 
         # Rotations
-        cs = self.derived['c_s']
-        a = self.derived['a']
-        mach = self.profiles["w0(rad/s)"] * (self.derived['Rmajoa']*a)
-        gamma_p = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.derived['Rmajoa']*a)
-        gamma_e = -self._deriv_gacode(self.profiles["w0(rad/s)"]) * (self.profiles['rmin(m)'] / self.profiles['q(-)'])
+        cs = derived['c_s']
+        a = derived['a']
+        mach = profiles["w0(rad/s)"] * (derived['Rmajoa']*a)
+        gamma_p = -self._deriv_gacode(profiles["w0(rad/s)"]) * (derived['Rmajoa']*a)
+        gamma_e = -self._deriv_gacode(profiles["w0(rad/s)"]) * (profiles['rmin(m)'] / profiles['q(-)'])
 
         # CGYRO definition: 'MACH=',mach_loc/cs_loc
         mach = mach / cs
@@ -3121,9 +3382,9 @@ class mitim_state:
         gamma_e = gamma_e * a / cs
             
         # Because in MITIMstate I keep Bunit always positive, but CGYRO routines may need it negative? #TODO
-        sign_Bunit = np.sign(self.profiles['torfluxa(Wb/radian)'][0])
+        sign_Bunit = np.sign(profiles['torfluxa(Wb/radian)'][0])
             
-        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', derived["a"], 1.0, mass_ref)
             
         input_parameters = {}
         for roa, rho_label in zip(r, r_labels):
@@ -3151,18 +3412,18 @@ class mitim_state:
                 species[i+1] = {
                     'Z': self.Species[i]['Z'],
                     'MASS': self.Species[i]['A']/mass_ref,
-                    'DLNNDR': interpolator(self.derived['aLni'][:,i]),
-                    'DLNTDR': interpolator(self.derived["aLTi"][:,i]),
-                    'TEMP': interpolator(self.derived["tite_all"][:,i]),
-                    'DENS': interpolator(self.derived['fi'][:,i]),
+                    'DLNNDR': interpolator(derived['aLni'][:,i]),
+                    'DLNTDR': interpolator(derived["aLTi"][:,i]),
+                    'TEMP': interpolator(derived["tite_all"][:,i]),
+                    'DENS': interpolator(derived['fi'][:,i]),
                     }
 
             ie = i+2
             species[ie] = {
                     'Z': -1.0,
                     'MASS': 0.000272445,
-                    'DLNNDR': interpolator(self.derived['aLne']),
-                    'DLNTDR': interpolator(self.derived['aLTe']),
+                    'DLNNDR': interpolator(derived['aLne']),
+                    'DLNTDR': interpolator(derived['aLTe']),
                     'TEMP': 1.0,
                     'DENS': 1.0,
                 }
@@ -3180,9 +3441,9 @@ class mitim_state:
                 'MACH': interpolator(mach),
                 'GAMMA_E': interpolator(gamma_e),
                 'GAMMA_P': interpolator(gamma_p),
-                'NU_EE': interpolator(self.derived['xnue']),
-                'BETAE_UNIT': interpolator(self.derived['betae']),
-                'LAMBDA_STAR': interpolator(self.derived['debye']) * sign_Bunit,
+                'NU_EE': interpolator(derived['xnue']),
+                'BETAE_UNIT': interpolator(derived['betae']),
+                'LAMBDA_STAR': interpolator(derived['debye']) * sign_Bunit,
                 }
 
 
@@ -3191,23 +3452,23 @@ class mitim_state:
             # ---------------------------------------------------------------------------------------------------------------------------------------
 
             parameters = {
-                'RMIN':     self.derived['roa'],
-                'RMAJ':     self.derived['Rmajoa'],
-                'SHIFT':    self._deriv_gacode(self.profiles["rmaj(m)"]),
-                'ZMAG':     self.derived["Zmagoa"],
-                'DZMAG':    self._deriv_gacode(self.profiles["zmag(m)"]),
-                'Q':        np.abs(self.profiles["q(-)"]),
-                'S':        self.derived["s_hat"],
-                'KAPPA':    self.profiles["kappa(-)"],
+                'RMIN':     derived['roa'],
+                'RMAJ':     derived['Rmajoa'],
+                'SHIFT':    self._deriv_gacode(profiles["rmaj(m)"]),
+                'ZMAG':     derived["Zmagoa"],
+                'DZMAG':    self._deriv_gacode(profiles["zmag(m)"]),
+                'Q':        np.abs(profiles["q(-)"]),
+                'S':        derived["s_hat"],
+                'KAPPA':    profiles["kappa(-)"],
                 'S_KAPPA':  s_kappa,
-                'DELTA':    self.profiles["delta(-)"],
+                'DELTA':    profiles["delta(-)"],
                 'S_DELTA':  s_delta,
-                'ZETA':     self.profiles["zeta(-)"],
+                'ZETA':     profiles["zeta(-)"],
                 'S_ZETA':   s_zeta,
             }
             
             # Add MXH and derivatives
-            for ikey in self.profiles:
+            for ikey in profiles:
                 if 'shape_cos' in ikey or 'shape_sin' in ikey:
                     
                     # TGLF only accepts 6, as of July 2025
@@ -3216,8 +3477,8 @@ class mitim_state:
                     
                     key_mod = ikey.upper().split('(')[0]
                     
-                    parameters[key_mod] = self.profiles[ikey]
-                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = self.derived["r"] * self._deriv_gacode(self.profiles[ikey])
+                    parameters[key_mod] = profiles[ikey]
+                    parameters[f"{key_mod.split('_')[0]}_S_{key_mod.split('_')[-1]}"] = derived["r"] * self._deriv_gacode(profiles[ikey])
 
             for k in parameters:
                 par = torch.nan_to_num(torch.from_numpy(parameters[k]) if type(parameters[k]) is np.ndarray else parameters[k], nan=0.0, posinf=1E10, neginf=-1E10)
@@ -3242,11 +3503,14 @@ class mitim_state:
         # <> Function to interpolate a curve <>
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
+        profiles = self.get_profiles()
+        derived = self.get_derived()
+
         # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
         r_labels = r  # preserve original values for dict keys / filenames
         if r_is_rho:
-            r = interpolation_function(np.atleast_1d(r), self.profiles['rho(-)'], self.derived['roa']).tolist()
-        r_interpolation = self.derived['roa']
+            r = interpolation_function(np.atleast_1d(r), profiles['rho(-)'], derived['roa']).tolist()
+        r_interpolation = derived['roa']
             
         # ---------------------------------------------------------------------------------------------------------------------------------------
         # Prepare the inputs
@@ -3256,17 +3520,17 @@ class mitim_state:
         mass_ref = 2.0
 
         dpdr = self._calculate_pressure_gradient_from_aLx(
-            self.derived['pe'], self.derived['pi_all'][:,:],
-            self.derived['aLTe'], self.derived['aLTi'][:,:],
-            self.derived['aLne'], self.derived['aLni'][:,:],
-            self.derived['a']
+            derived['pe'], derived['pi_all'][:,:],
+            derived['aLTe'], derived['aLTi'][:,:],
+            derived['aLne'], derived['aLni'][:,:],
+            derived['a']
         )
-        betaprim = -(8*np.pi*1E-7) * self.derived['a'] / self.derived['B_unit']**2 * dpdr
+        betaprim = -(8*np.pi*1E-7) * derived['a'] / derived['B_unit']**2 * dpdr
         
-        s_kappa  = np.gradient(self.profiles['kappa(-)'], self.derived['roa'])
-        s_delta  = np.gradient(self.profiles['delta(-)'], self.derived['roa'])
+        s_kappa  = np.gradient(profiles['kappa(-)'], derived['roa'])
+        s_delta  = np.gradient(profiles['delta(-)'], derived['roa'])
 
-        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', self.derived["a"], 1.0, mass_ref)
+        self._print_gb_normalizations('a', 'Z_D', 'A_D', 'n_e', 'T_e', 'B_unit', derived["a"], 1.0, mass_ref)
             
         input_parameters = {}
         for roa, rho_label in zip(r, r_labels):
@@ -3293,19 +3557,19 @@ class mitim_state:
             # Ions
             for i in range(len(self.Species)):
 
-                nu_ii = self.derived['xnue'] * \
-                    (self.Species[i]['Z']/self.profiles['ze'][0])**4 * \
-                        (self.profiles['ni(10^19/m^3)'][:,0]/self.profiles['ne(10^19/m^3)']) * \
-                            (self.profiles['mass'][i]/self.profiles['masse'][0])**-0.5 * \
-                                (self.profiles['ti(keV)'][:,0]/self.profiles['te(keV)'])**-1.5
+                nu_ii = derived['xnue'] * \
+                    (self.Species[i]['Z']/profiles['ze'][0])**4 * \
+                        (profiles['ni(10^19/m^3)'][:,0]/profiles['ne(10^19/m^3)']) * \
+                            (profiles['mass'][i]/profiles['masse'][0])**-0.5 * \
+                                (profiles['ti(keV)'][:,0]/profiles['te(keV)'])**-1.5
 
                 species[i+1] = {
                     'z': self.Species[i]['Z'],
                     'mass': self.Species[i]['A']/mass_ref,
-                    'temp': interpolator(self.derived["tite_all"][:,i]),
-                    'dens': interpolator(self.derived['fi'][:,i]),
-                    'fprim': interpolator(self.derived['aLni'][:,i]),
-                    'tprim': interpolator(self.derived["aLTi"][:,i]),
+                    'temp': interpolator(derived["tite_all"][:,i]),
+                    'dens': interpolator(derived['fi'][:,i]),
+                    'fprim': interpolator(derived['aLni'][:,i]),
+                    'tprim': interpolator(derived["aLTi"][:,i]),
                     'vnewk': interpolator(nu_ii),
                     'type': 'ion',
                     }
@@ -3317,9 +3581,9 @@ class mitim_state:
                     'mass': 0.000272445,
                     'temp': 1.0,
                     'dens': 1.0,
-                    'fprim': interpolator(self.derived['aLne']),
-                    'tprim': interpolator(self.derived['aLTe']),
-                    'vnewk': interpolator(self.derived['xnue']),
+                    'fprim': interpolator(derived['aLne']),
+                    'tprim': interpolator(derived['aLTe']),
+                    'vnewk': interpolator(derived['xnue']),
                     'type': 'electron'
                 }
 
@@ -3332,27 +3596,27 @@ class mitim_state:
             } 
 
             parameters = {
-                'beta':     self.derived['betae'],
+                'beta':     derived['betae'],
             }
             
             # Standard geometry specification
             if self.type == 'input.gacode':
                 parameters_geometry = {
-                    'rhoc':     self.derived['roa'],
-                    'Rmaj':     self.derived['Rmajoa'],
-                    'R_geo':    self.derived['Rmajoa'] / abs(self.derived['B_unit'] / self.derived['B0']),
-                    'shift':    self._deriv_gacode(self.profiles["rmaj(m)"]),
-                    'qinp':     np.abs(self.profiles["q(-)"]),
-                    'shat':     self.derived["s_hat"],
-                    'akappa':   self.profiles["kappa(-)"],
+                    'rhoc':     derived['roa'],
+                    'Rmaj':     derived['Rmajoa'],
+                    'R_geo':    derived['Rmajoa'] / abs(derived['B_unit'] / derived['B0']),
+                    'shift':    self._deriv_gacode(profiles["rmaj(m)"]),
+                    'qinp':     np.abs(profiles["q(-)"]),
+                    'shat':     derived["s_hat"],
+                    'akappa':   profiles["kappa(-)"],
                     'akappri':  s_kappa,
-                    'tri':      self.profiles["delta(-)"],
+                    'tri':      profiles["delta(-)"],
                     'tripri':   s_delta,
                     'betaprim': betaprim,
                 }
             elif self.type == 'vmec':
                 parameters_geometry = {
-                    'torflux': self.profiles['rho(-)']**2,
+                    'torflux': profiles['rho(-)']**2,
                 }
             
             params = parameters | parameters_geometry
@@ -3397,43 +3661,45 @@ class mitim_state:
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as interpolation_function
 
         p = self
+        profiles = self.get_profiles()
+        derived = self.get_derived()
 
         # Always interpolate in r/a (rmin) space, matching GACODE's expro_locsim cub_spline
         r = np.atleast_1d(np.array(r, dtype=float))
         if r_is_rho:
             rhos = r
-            roa_targets = interpolation_function(rhos, p.profiles['rho(-)'], p.derived['roa'])
+            roa_targets = interpolation_function(rhos, profiles['rho(-)'], derived['roa'])
         else:
             roa_targets = r
-            rhos = interpolation_function(roa_targets, p.derived['roa'], p.profiles['rho(-)'])
-        r_interpolation = p.derived["roa"]
+            rhos = interpolation_function(roa_targets, derived['roa'], profiles['rho(-)'])
+        r_interpolation = derived["roa"]
 
         def interp_vec(y):
             return np.atleast_1d(interpolation_function(roa_targets, r_interpolation, y))
 
         n_ions = min(len(p.Species), max_ions)
 
-        sign_it = -np.sign(p.profiles["current(MA)"][-1])
+        sign_it = -np.sign(profiles["current(MA)"][-1])
 
         # QuaLiKiz normalises logarithmic gradients by major radius R (R/LT, R/Ln),
         # whereas MITIM's gacode convention uses minor radius a (a/LT, a/Ln).
         # Convert: R/L = (R/a) * (a/L), using the local Ro already interpolated above.
-        Ro_over_a = interp_vec(p.profiles["rmaj(m)"]) / p.derived["a"]
+        Ro_over_a = interp_vec(profiles["rmaj(m)"]) / derived["a"]
 
         cref = 3.094969e5  # defined in QuaLiKiz as sqrt(1 keV / proton_mass)
 
         # MHD alpha = -(2 mu0 R q^2 / B^2) dp/dr
         dpdr = p._calculate_pressure_gradient_from_aLx(
-            p.derived["pe"], p.derived["pi_all"][:, :n_ions],
-            p.derived["aLTe"], p.derived["aLTi"][:, :n_ions],
-            p.derived["aLne"], p.derived["aLni"][:, :n_ions],
-            p.derived["a"],
+            derived["pe"], derived["pi_all"][:, :n_ions],
+            derived["aLTe"], derived["aLTi"][:, :n_ions],
+            derived["aLne"], derived["aLni"][:, :n_ions],
+            derived["a"],
         )
         alpha_mhd = (
             2.0 * 4 * np.pi * 1e-7
-            * p.profiles["q(-)"] ** 2
-            * p.profiles["rmaj(m)"]
-            / np.abs(p.profiles["bcentr(T)"][-1]) ** 2
+            * profiles["q(-)"] ** 2
+            * profiles["rmaj(m)"]
+            / np.abs(profiles["bcentr(T)"][-1]) ** 2
             * dpdr
         )
         alpha_mhd[0] = 0.0
@@ -3442,26 +3708,26 @@ class mitim_state:
         # Machtor/Autor/Machpar/Aupar are NOT computed here -- only Machtor (a
         # best-effort R*Omega_tor/c_s) and gammaE are returned; QuaLiKizXpoint.set_puretor()
         # derives the rest assuming pure toroidal rotation.
-        gamma_eb0 = -p._deriv_gacode(p.profiles["w0(rad/s)"]) * p.derived["r"] / np.abs(p.profiles["q(-)"])
-        vexb_shear = -sign_it * gamma_eb0 * p.profiles["rmaj(m)"] / cref
-        vpar = -sign_it * p.profiles["rmaj(m)"] * p.profiles["w0(rad/s)"] / cref
+        gamma_eb0 = -p._deriv_gacode(profiles["w0(rad/s)"]) * derived["r"] / np.abs(profiles["q(-)"])
+        vexb_shear = -sign_it * gamma_eb0 * profiles["rmaj(m)"] / cref
+        vpar = -sign_it * profiles["rmaj(m)"] * profiles["w0(rad/s)"] / cref
 
         geometry_scan = {
             "x": roa_targets,
             "rho": rhos,
-            "Ro": interp_vec(p.profiles["rmaj(m)"]),
-            "q": np.abs(interp_vec(p.profiles["q(-)"])),
-            "smag": interp_vec(p.derived["s_hat"]),
+            "Ro": interp_vec(profiles["rmaj(m)"]),
+            "q": np.abs(interp_vec(profiles["q(-)"])),
+            "smag": interp_vec(derived["s_hat"]),
             "alpha": interp_vec(alpha_mhd),
             "Machtor": interp_vec(vpar),
             "gammaE": interp_vec(vexb_shear),
         }
 
         electron_scan = {
-            "Te": interp_vec(p.profiles["te(keV)"]),
-            "ne": interp_vec(p.profiles["ne(10^19/m^3)"]),
-            "Ate": interp_vec(p.derived["aLTe"]) * Ro_over_a,
-            "Ane": interp_vec(p.derived["aLne"]) * Ro_over_a,
+            "Te": interp_vec(profiles["te(keV)"]),
+            "ne": interp_vec(profiles["ne(10^19/m^3)"]),
+            "Ate": interp_vec(derived["aLTe"]) * Ro_over_a,
+            "Ane": interp_vec(derived["aLne"]) * Ro_over_a,
         }
 
         ion_scan = {}
@@ -3473,10 +3739,10 @@ class mitim_state:
                 "Z": p.Species[i]["Z"],
                 "type": 4 if is_fast else 1,
             })
-            ion_scan[f"Ti{i}"] = interp_vec(p.profiles["ti(keV)"][:, i])
-            ion_scan[f"ni{i}"] = interp_vec(p.derived["fi"][:, i])
-            ion_scan[f"Ati{i}"] = interp_vec(p.derived["aLTi"][:, i]) * Ro_over_a
-            ion_scan[f"Ani{i}"] = interp_vec(p.derived["aLni"][:, i]) * Ro_over_a
+            ion_scan[f"Ti{i}"] = interp_vec(profiles["ti(keV)"][:, i])
+            ion_scan[f"ni{i}"] = interp_vec(derived["fi"][:, i])
+            ion_scan[f"Ati{i}"] = interp_vec(derived["aLTi"][:, i]) * Ro_over_a
+            ion_scan[f"Ani{i}"] = interp_vec(derived["aLni"][:, i]) * Ro_over_a
 
         # Same "which ion absorbs quasineutrality" choice as the QuaLiKizXpoint
         # options QLKtools passes downstream (set_qn_normni/set_qn_An): highest-Z
@@ -3514,8 +3780,8 @@ class mitim_state:
             "ion_scan": ion_scan,
             "ion_species": ion_species,
             "qn_ion_index": qn_ion_index,
-            "a": float(p.derived["a"]),
-            "Bo": float(abs(p.profiles["bcentr(T)"][-1])),
+            "a": float(derived["a"]),
+            "Bo": float(abs(profiles["bcentr(T)"][-1])),
         }
 
     def to_transp(self, folder = '~/scratch/', shot = '12345', runid = 'P01', times = [0.0,1.0], Vsurf = 0.0, mxh_coeffs_smooth = 5, boundary_surface_psin = 1.0, boundary_override = None, equilibrium_mode = 'evolve'):
@@ -3535,20 +3801,23 @@ class mitim_state:
 
     def to_eped(self, ped_rho = 0.95, beta_pass = "BetaN_engineering"):
 
-        neped_19 = np.interp(ped_rho, self.profiles['rho(-)'], self.profiles['ne(10^19/m^3)'])
+        profiles = self.get_profiles()
+        derived = self.get_derived()
+
+        neped_19 = np.interp(ped_rho, profiles['rho(-)'], profiles['ne(10^19/m^3)'])
 
         eped_evaluation = {
-            'Ip': np.abs(self.profiles['current(MA)'][0]),
-            'Bt': np.abs(self.profiles['bcentr(T)'][0]),
-            'R': np.abs(self.profiles['rcentr(m)'][0]),
-            'a': np.abs(self.derived['a']),
-            'kappa995': np.abs(self.derived['kappa995']),
-            'delta995': np.abs(self.derived['delta995']),
+            'Ip': np.abs(profiles['current(MA)'][0]),
+            'Bt': np.abs(profiles['bcentr(T)'][0]),
+            'R': np.abs(profiles['rcentr(m)'][0]),
+            'a': np.abs(derived['a']),
+            'kappa995': np.abs(derived['kappa995']),
+            'delta995': np.abs(derived['delta995']),
             'neped': np.abs(neped_19),
-            'betan': np.abs(self.derived[beta_pass]),
-            'zeff': np.abs(self.derived['Zeff_vol']),
-            'tesep': np.abs(self.profiles['te(keV)'][-1])*1E3,
-            'nesep_ratio': np.abs(self.profiles['ne(10^19/m^3)'][-1] / neped_19),
+            'betan': np.abs(derived[beta_pass]),
+            'zeff': np.abs(derived['Zeff_vol']),
+            'tesep': np.abs(profiles['te(keV)'][-1])*1E3,
+            'nesep_ratio': np.abs(profiles['ne(10^19/m^3)'][-1] / neped_19),
         }
 
         return eped_evaluation

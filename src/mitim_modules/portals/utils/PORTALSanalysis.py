@@ -216,19 +216,27 @@ class PORTALSanalyzer:
         # Profiles and tgyro results
         print("\t- Reading profiles and tgyros for each evaluation")
 
+        # PORTALSmain._dropped_derived strips 'derived' off lean-stored gacode_state instances at
+        # save time; downstream code here reads via get_derived() instead of the raw .derived dict,
+        # which recomputes lazily on demand regardless of what was stripped -- so no eager rebuild
+        # is needed. (.profiles/.derived aren't stored attributes at all for plasma_io-backed
+        # states -- see get_profiles()/get_derived() on mitim_state -- so an eager
+        # derive_quantities() call here would fail outright for those anyway.)
         self.powerstates = []
         for i in range(self.ilast + 1):
-            power = self.mitim_runs[i]["powerstate"]
-            # Lean-stored powerstates have 'derived' dropped at save (PORTALSmain._dropped_derived);
-            # rebuild it here so all downstream plots/metrics find it.
-            prof = getattr(power, "profiles", None)
-            if prof is not None and not getattr(prof, "derived", None):
-                prof.derive_quantities()
-            self.powerstates.append(power)
+            self.powerstates.append(self.mitim_runs[i]["powerstate"])
 
-        # The string-keyed standalone states ('profiles_original'/'profiles_modified') are also
-        # reached and stripped by PORTALSmain._dropped_derived, but sit outside the integer loop
-        # above -- rebuild them too so plotSummary's plot_gradients(useRoa=True) finds derived['roa'].
+        # The string-keyed standalone states ('profiles_original'/'profiles_modified',
+        # PORTALSmain.py's dictStore["profiles_original"] = PROFILEStools.gacode_state(path))
+        # are a genuinely different case from the numbered powerstates above: they're built via
+        # gacode_state's plain constructor (reading a written input.gacode_original/_modified
+        # ASCII file directly), which always leaves .plasma_io = None -- regardless of whether
+        # this run itself is plasma_io-backed. get_derived() only recomputes lazily for
+        # plasma_io-backed instances (self.plasma_io is not None); for these two it just returns
+        # .derived directly, which _dropped_derived() stripped to {} at save time and nothing
+        # else ever rebuilds after unpickling. Needed by PORTALSplot.py's
+        # PORTALSanalyzer_plotSummary() (profile_original_unCorrected/profile_original_0 ->
+        # plot_gradients()'s useRoa branch, get_derived()["roa"]).
         for ikey in ("profiles_original", "profiles_modified"):
             prof = self.mitim_runs.get(ikey, None)
             if prof is not None and not getattr(prof, "derived", None):
@@ -291,13 +299,15 @@ class PORTALSanalyzer:
         for i, power in enumerate(self.powerstates):
             print(f"\t\t- Processing evaluation {i}/{len(self.powerstates)-1}")
 
-            if 'Q' not in power.profiles.derived:
-                power.profiles.derive_quantities()
+            # get_derived() recomputes lazily on demand (cached per-instance) and works
+            # uniformly for both plasma_io-backed and legacy dict-backed states -- see
+            # mitim_state.get_derived().
+            derived = power.profiles.get_derived()
 
             self.evaluations.append(i)
-            self.FusionGain.append(power.profiles.derived["Q"])
-            self.FusionPower.append(power.profiles.derived["Pfus"])
-            self.tauE.append(power.profiles.derived["tauE"])
+            self.FusionGain.append(derived["Q"])
+            self.FusionPower.append(derived["Pfus"])
+            self.tauE.append(derived["tauE"])
 
             # ------------------------------------------------
             # Residual definitions
@@ -1258,14 +1268,15 @@ class PORTALSinitializer:
                 batch_size = getattr(p, "batch_size", 0) or 1
                 if batch_size > 1:
                     self.n_trajectories = batch_size
+                # No eager derive_quantities() call needed -- downstream code reads derived
+                # quantities via get_derived(), which recomputes lazily on demand for both
+                # plasma_io-backed and legacy dict-backed states (see mitim_state.get_derived()).
                 if batch_size <= 1:
-                    p.profiles.derive_quantities()
                     self.powerstates.append(p)
                 else:
                     for b in range(batch_size):
                         p_b = copy.deepcopy(p)
                         p_b._repeat_tensors(batch_size=1, positionToUnrepeat=b)
-                        p_b.profiles.derive_quantities()
                         self.powerstates.append(p_b)
 
         self.fn = None

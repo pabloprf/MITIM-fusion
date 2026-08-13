@@ -98,25 +98,27 @@ def normalizations_tgyro(tgyro, rho, roa):
 def normalizations_profiles(profiles):
 
     if profiles is not None:
+        profiles_dict = profiles.get_profiles()
+        derived_dict = profiles.get_derived()
         Set_norm = {
-            "rho": profiles.profiles["rho(-)"],
-            "roa": profiles.derived["roa"],
-            "rmin": np.abs(profiles.profiles["rmin(m)"]),
-            "q_gb": np.abs(profiles.derived["q_gb"]),
-            "g_gb": np.abs(profiles.derived["g_gb"]),
-            "pi_gb": np.abs(profiles.derived["pi_gb"]),
-            "s_gb": np.abs(profiles.derived["s_gb"]),
-            "B_unit": np.abs(profiles.derived["B_unit"]),
-            "rho_s": np.abs(profiles.derived["rho_s"]),
-            "c_s": np.abs(profiles.derived["c_s"]),
-            "Te_keV": np.abs(profiles.profiles["te(keV)"]),
-            "ne_20": np.abs(profiles.profiles["ne(10^19/m^3)"]) * 1e-1,
-            "Ti_keV": np.abs(profiles.profiles["ti(keV)"][:, 0]),
-            "ni_20": np.abs(profiles.derived["ni_thrAll"]) * 1e-1,
-            "exp_Qe": profiles.derived["qe_MWm2"] ,  # This is the same as qe_MWm2
-            "exp_Qi": profiles.derived["qi_MWm2"] ,
-            "exp_Ge": profiles.derived["ge_10E20m2"],
-            "mi_ref": profiles.derived["mi_ref"],
+            "rho": profiles_dict["rho(-)"],
+            "roa": derived_dict["roa"],
+            "rmin": np.abs(profiles_dict["rmin(m)"]),
+            "q_gb": np.abs(derived_dict["q_gb"]),
+            "g_gb": np.abs(derived_dict["g_gb"]),
+            "pi_gb": np.abs(derived_dict["pi_gb"]),
+            "s_gb": np.abs(derived_dict["s_gb"]),
+            "B_unit": np.abs(derived_dict["B_unit"]),
+            "rho_s": np.abs(derived_dict["rho_s"]),
+            "c_s": np.abs(derived_dict["c_s"]),
+            "Te_keV": np.abs(profiles_dict["te(keV)"]),
+            "ne_20": np.abs(profiles_dict["ne(10^19/m^3)"]) * 1e-1,
+            "Ti_keV": np.abs(profiles_dict["ti(keV)"][:, 0]),
+            "ni_20": np.abs(derived_dict["ni_thrAll"]) * 1e-1,
+            "exp_Qe": derived_dict["qe_MWm2"] ,  # This is the same as qe_MWm2
+            "exp_Qi": derived_dict["qi_MWm2"] ,
+            "exp_Ge": derived_dict["ge_10E20m2"],
+            "mi_ref": derived_dict["mi_ref"],
         }
 
         return Set_norm, Set_norm["rho"], Set_norm["roa"], Set_norm["mi_ref"]

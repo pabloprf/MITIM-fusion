@@ -168,7 +168,12 @@ class powerstate:
 
             # Use a copy because I'm deriving, it may be expensive and I don't want to carry that out outside of this class
             self.profiles = copy.deepcopy(profiles_object)
-            if "derived" not in self.profiles.__dict__:
+            # For plasma_io-backed states, .profiles/.derived are no longer stored attributes
+            # (see get_profiles()/get_derived() on mitim_state) -- derived quantities are
+            # sourced lazily on first get_derived() call instead, so this eager call is both
+            # unnecessary and would fail (gacode_state.derive_quantities() touches the dict
+            # attribute directly).
+            if getattr(self.profiles, "plasma_io", None) is None and "derived" not in self.profiles.__dict__:
                 self.profiles.derive_quantities()
 
         else:
@@ -188,7 +193,11 @@ class powerstate:
         # -------------------------------------------------------------------------------------
 
         # Resolution of input.gacode
-        if increase_profile_resol:
+        # (skipped for plasma_io-backed states: plasma_io_to_powerstate() deliberately reads
+        # from plasma_io's own native grid and never consumes this resampled dict -- see its
+        # docstring / plasma_io_migration_plan.md's "Performance" note. Also, .profiles is no
+        # longer a stored attribute for such states -- see get_profiles()/get_derived().)
+        if increase_profile_resol and getattr(self.profiles, "plasma_io", None) is None:
             smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
             TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec, smooth_around_coarsing=smooth_around_coarsing)
 

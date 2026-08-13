@@ -31,6 +31,8 @@ def gacode_to_powerstate(self, rho_vec=None):
     print("\t- Producing powerstate object from input.gacode")
 
     input_gacode = self.profiles
+    input_gacode_profiles = input_gacode.get_profiles()
+    input_gacode_derived = input_gacode.get_derived()
     if rho_vec is None:
         rho_vec = self.plasma["rho"]
 
@@ -38,7 +40,7 @@ def gacode_to_powerstate(self, rho_vec=None):
     # Radial grid
     # *********************************************************************************************
 
-    rho_use = input_gacode.profiles["rho(-)"]
+    rho_use = input_gacode_profiles["rho(-)"]
 
     # *********************************************************************************************
     # plasma_io propagation (see plasma_io_migration_plan.md, Part 2 Phase 2): when the source
@@ -56,7 +58,7 @@ def gacode_to_powerstate(self, rho_vec=None):
         rho_plasma_io = plasma_io_obj.output["radius"].to_numpy()
         rmin_plasma_io_native = plasma_io_obj.output["r_minor"].isel(time=-1).to_numpy()
         rmin_from_plasma_io = interpolation_function(rho_use, rho_plasma_io, rmin_plasma_io_native)
-        rmin_from_dict = input_gacode.profiles["rmin(m)"]
+        rmin_from_dict = input_gacode_profiles["rmin(m)"]
         # rmin_from_dict was itself resampled onto rho_use by improve_resolution_profiles()
         # using a different interpolant (pchip) than the cubic spline used here, so a small
         # (sub-mm, sub-percent) discrepancy near sharp-curvature regions (e.g. the axis) is
@@ -69,8 +71,8 @@ def gacode_to_powerstate(self, rho_vec=None):
             )
         plasma_io_overrides["rmin"] = rmin_from_plasma_io
 
-    roa_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode.derived["roa"])
-    rho_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode.profiles["rho(-)"])
+    roa_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode_derived["roa"])
+    rho_array = interpolation_function(rho_vec.cpu(), rho_use, input_gacode_profiles["rho(-)"])
     
     if len(rho_array) < 10:
         print(f"\t\t@ rho = {[round(i,6) for i in rho_array]}")
@@ -90,8 +92,8 @@ def gacode_to_powerstate(self, rho_vec=None):
     self.plasma["roa"] = torch.from_numpy(roa_array).to(rho_vec)
     self.plasma["rho"] = torch.from_numpy(rho_array).to(rho_vec)
     self.plasma["mi_u"] = torch.tensor(input_gacode.mi_first).to(rho_vec)
-    self.plasma["a"] = torch.tensor(input_gacode.derived["a"]).to(rho_vec)
-    self.plasma["eps"] = torch.tensor(input_gacode.derived["eps"]).to(rho_vec)
+    self.plasma["a"] = torch.tensor(input_gacode_derived["a"]).to(rho_vec)
+    self.plasma["eps"] = torch.tensor(input_gacode_derived["eps"]).to(rho_vec)
 
     # Add more stuff: name, original name, index, unit conversion, is derived
     quantities_to_interpolate = [
@@ -131,7 +133,7 @@ def gacode_to_powerstate(self, rho_vec=None):
         if key[0] in plasma_io_overrides:
             quant = plasma_io_overrides[key[0]]
         else:
-            quant = input_gacode.derived[key[1]] if key[4] else input_gacode.profiles[key[1]]
+            quant = input_gacode_derived[key[1]] if key[4] else input_gacode_profiles[key[1]]
 
         # *********************************************************************************************
         # Extract the quantity via interpolation and tensorization
@@ -146,25 +148,25 @@ def gacode_to_powerstate(self, rho_vec=None):
     # *********************************************************************************************
 
     quantitites = {}
-    quantitites["QeMWm2_fixedtargets"] = input_gacode.derived["qe_aux_MW"]
-    quantitites["QiMWm2_fixedtargets"] = input_gacode.derived["qi_aux_MW"]
-    quantitites["Ge_fixedtargets"] = input_gacode.derived["ge_10E20"]
-    quantitites["GZ_fixedtargets"] = input_gacode.derived["ge_10E20"] * 0.0
-    quantitites["MtJm2_fixedtargets"] = input_gacode.derived["mt_J"]
+    quantitites["QeMWm2_fixedtargets"] = input_gacode_derived["qe_aux_MW"]
+    quantitites["QiMWm2_fixedtargets"] = input_gacode_derived["qi_aux_MW"]
+    quantitites["Ge_fixedtargets"] = input_gacode_derived["ge_10E20"]
+    quantitites["GZ_fixedtargets"] = input_gacode_derived["ge_10E20"] * 0.0
+    quantitites["MtJm2_fixedtargets"] = input_gacode_derived["mt_J"]
 
     if 'qfus' not in self.target_options["options"]["targets_evolve"]:
         # Fusion fixed
-        quantitites["QeMWm2_fixedtargets"] += input_gacode.derived["qe_fus_MW"]
-        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qi_fus_MW"]
+        quantitites["QeMWm2_fixedtargets"] += input_gacode_derived["qe_fus_MW"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode_derived["qi_fus_MW"]
    
     if 'qrad' not in self.target_options["options"]["targets_evolve"]:
         # Fusion fixed
-        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qrad_MW"]
+        quantitites["QeMWm2_fixedtargets"] -= input_gacode_derived["qrad_MW"]
     
     if 'qie' not in self.target_options["options"]["targets_evolve"]:
         # Exchange fixed if 1
-        quantitites["QeMWm2_fixedtargets"] -= input_gacode.derived["qe_exc_MW"]
-        quantitites["QiMWm2_fixedtargets"] += input_gacode.derived["qe_exc_MW"]
+        quantitites["QeMWm2_fixedtargets"] -= input_gacode_derived["qe_exc_MW"]
+        quantitites["QiMWm2_fixedtargets"] += input_gacode_derived["qe_exc_MW"]
 
     for key in quantitites:
         
@@ -206,14 +208,14 @@ def gacode_to_powerstate(self, rho_vec=None):
     ]
 
     # Add all ions
-    for i in range(input_gacode.profiles['ni(10^19/m^3)'].shape[1]):
+    for i in range(input_gacode_profiles['ni(10^19/m^3)'].shape[1]):
         cases_to_parameterize.append([f"ni{i}", "ni(10^19/m^3)", i, 1.0, True])
 
     smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
 
     self.profile_constructors_fine, self.profile_constructors_coarse, self.profile_constructors_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
-        quant = input_gacode.profiles[key[1]] if key[2] is None else input_gacode.profiles[key[1]][:, key[2]]
+        quant = input_gacode_profiles[key[1]] if key[2] is None else input_gacode_profiles[key[1]][:, key[2]]
 
         (
             aLy_coarse,
@@ -221,7 +223,7 @@ def gacode_to_powerstate(self, rho_vec=None):
             self.profile_constructors_coarse[key[0]],
             self.profile_constructors_coarse_middle[key[0]],
         ) = parameterizers.piecewise_linear(
-            input_gacode.derived["roa"],
+            input_gacode_derived["roa"],
             quant,
             self.plasma["roa"],
             parameterize_in_aLx=key[4],
@@ -502,8 +504,8 @@ def plasma_io_to_powerstate(self, rho_vec=None):
     # at whatever resolution improve_resolution_profiles() left it at. So even though
     # plasma_io_to_powerstate otherwise reads straight from plasma_io's native grid (mismatch #1),
     # this one piece needs plasma_io's quantities resampled onto input_gacode's fine grid first.
-    roa_use_dict = input_gacode.derived["roa"]
-    rho_use_dict = input_gacode.profiles["rho(-)"]
+    roa_use_dict = input_gacode.get_derived()["roa"]
+    rho_use_dict = input_gacode.get_profiles()["rho(-)"]
 
     self.profile_constructors_fine, self.profile_constructors_coarse, self.profile_constructors_coarse_middle = {}, {}, {}
     for key in cases_to_parameterize:
@@ -597,6 +599,8 @@ def to_plasma_io(
     time_index=-1,
     postprocess_plasma_io={},
     recompute_derived=True,
+    insert_highres_powers=False,
+    gacode_profiles=None,
 ):
     '''
     plasma_io-native sibling of to_gacode(): writes powerstate's currently-predicted
@@ -604,6 +608,14 @@ def to_plasma_io(
     the updated plasma_io instance. Does NOT replace to_gacode()/from_powerstate -- callers
     that need input.gacode text output or gacode_state's species metadata/.derived dict for
     TGYRO/downstream MITIM logic must still use to_gacode().
+
+    insert_highres_powers (default False, matching to_gacode()'s own default): if True,
+    also writes qie/qrad_*/qfus* into plasma_io_obj's heat_exchange_ei/heat_source_e/
+    heat_source_i via powerstate_to_plasma_io_powers() -- done here, between the channel
+    writes and the final recompute_derived, matching to_gacode()'s own ordering (powers
+    inserted before its recalculate_ptot). gacode_profiles is passed straight through to
+    powerstate_to_plasma_io_powers() as its fine-grid source; defaults to self.profiles
+    (get_profiles() works whether or not that's plasma_io-backed).
     '''
     print(">> Inserting powerstate into plasma_io")
 
@@ -612,8 +624,19 @@ def to_plasma_io(
         position_in_powerstate_batch=position_in_powerstate_batch,
         time_index=time_index,
         postprocess_plasma_io=postprocess_plasma_io,
-        recompute_derived=recompute_derived,
+        recompute_derived=False,
     )
+
+    if insert_highres_powers:
+        plasma_io_obj = powerstate_to_plasma_io_powers(
+            self,
+            plasma_io_obj,
+            gacode_profiles if gacode_profiles is not None else self.profiles,
+            time_index=time_index,
+        )
+
+    if recompute_derived:
+        plasma_io_obj.compute_derived_quantities(side='output')
 
     if write_plasma_io is not None:
         write_plasma_io = Path(write_plasma_io)
@@ -674,6 +697,7 @@ def powerstate_to_gacode(
 
     # Start from the originally stored (at initialization) in this powerstate object
     profiles = copy.deepcopy(self.profiles)
+    profiles_dict = profiles.get_profiles()
 
     quantities = [
         ["te", "te(keV)", None],
@@ -699,11 +723,11 @@ def powerstate_to_gacode(
             y_new = y[0, :].cpu().numpy()
                 
             if key[2] is None:
-                Y_copy = copy.deepcopy(profiles.profiles[key[1]])
-                profiles.profiles[key[1]] = y_new
+                Y_copy = copy.deepcopy(profiles_dict[key[1]])
+                profiles_dict[key[1]] = y_new
             else:
-                Y_copy = copy.deepcopy(profiles.profiles[key[1]][:, key[2]])
-                profiles.profiles[key[1]][:, key[2]] = y_new
+                Y_copy = copy.deepcopy(profiles_dict[key[1]][:, key[2]])
+                profiles_dict[key[1]][:, key[2]] = y_new
 
             # ------------------------------------------------------------------------------------------
             # Special treatments
@@ -714,7 +738,7 @@ def powerstate_to_gacode(
                 for sp in range(len(profiles.Species)):
                     if profiles.Species[sp]["S"] == "fast":
                         print(f"\t\t\t- Modifying temperature of species #{sp}")
-                        profiles.profiles["ti(keV)"][:, sp] = profiles.profiles["ti(keV)"][:, sp] * (profiles.profiles["te(keV)"] / Y_copy)
+                        profiles_dict["ti(keV)"][:, sp] = profiles_dict["ti(keV)"][:, sp] * (profiles_dict["te(keV)"] / Y_copy)
 
             if key[0] == "ti" and Ti_thermals:
                 print("\t\t* Ensuring Ti is equal for all thermal ions", typeMsg="i")
@@ -740,7 +764,11 @@ def powerstate_to_gacode(
     # Recalculate and change ptot to make it consistent?
     # ------------------------------------------------------------------------------------------
 
-    if rederive or recalculate_ptot:
+    # For plasma_io-backed profiles, .derived is no longer a stored attribute -- skip the
+    # (expensive, dict-based) recompute; selfconsistentPTOT() below sources ptot_manual via its
+    # own cheap, get_profiles()-based local calculation (_ptot_manual()) regardless, so it
+    # doesn't need this call either way. See "New phase (2026-08-12)" in the migration plan doc.
+    if (rederive or recalculate_ptot) and getattr(profiles, "plasma_io", None) is None:
         profiles.derive_quantities(rederiveGeometry=False)
 
     if recalculate_ptot:
@@ -748,6 +776,14 @@ def powerstate_to_gacode(
 
     if debugPlot:
         debug_transformation(self.profiles,profiles,self)
+
+    # The channel inserts above (te/ti/ne/nZ/w0) and the Ti_thermals/ni_thermals postprocessing
+    # all mutate profiles.get_profiles()'s cached dict in place -- but nothing about that
+    # mutation is visible to get_derived()'s own, separate cache. Without this, every consumer
+    # of the returned profiles object that reads get_derived() (to_tglf() and friends) would
+    # keep seeing whatever derived dict was cached before this call, deep-copied forward
+    # unchanged into every subsequent evaluation. See invalidate_derived_cache()'s docstring.
+    profiles.invalidate_derived_cache()
 
     return profiles
 
@@ -787,9 +823,17 @@ def powerstate_to_plasma_io(
           exactly matching powerstate_to_gacode's insertion order (nZ processed
           after ne, so its direct assignment overwrites whatever
           scaleAllThermalDensities did to that index).
-        - No Tfast_ratio/force_mach equivalent (fast-ion and w0-from-Mach handling)
-          -- narrower scope than powerstate_to_gacode's postprocessing, since
-          plasma_io's fast-ion bookkeeping wasn't part of this pass.
+        - Tfast_ratio/force_mach (postprocess_plasma_io dict, both default matching
+          powerstate_to_gacode's own defaults: Tfast_ratio=False, force_mach=None): mirror
+          powerstate_to_gacode's fast-ion Ti-ratio and Mach-number-fixed w0 postprocessing.
+          Tfast_ratio scales each fast species' temperature_i by the just-written
+          temperature_e's ratio to its pre-write value, applied directly on plasma_io's
+          native grid (no extra interpolation needed, since the te channel write already
+          happened on that grid). force_mach recomputes w0 via
+          PLASMAtools.constructVtorFromMach() using mbg/R_LF/ti sourced from a throwaway
+          gacode_state.scratch(plasma_io_copy) shadow (the same get_derived() mechanism
+          used throughout this migration) -- interpolated from that shadow's gacode-dict
+          grid onto plasma_io's native grid, same as the channel writes above.
         - recompute_derived (default True): reruns plasma_io_copy.compute_derived_quantities()
           after all writes/postprocessing. This is plasma_io's equivalent of
           gacode_state.selfconsistentPTOT() -- unlike GACODE's separately-stored,
@@ -801,8 +845,11 @@ def powerstate_to_plasma_io(
           full MXH geometry decomposition every call even though geometry itself did
           not change here) -- set recompute_derived=False to skip if only the raw
           kinetic-profile fields are needed downstream.
-        - Does not insert powers (heat/particle/momentum sources); TGYRO/TGLF power
-          consumption remains served by to_gacode()'s input.gacode, unaffected.
+        - Does not itself insert heat-source powers (qie/qrad_*/qfus*) -- that's
+          to_plasma_io()'s job (insert_highres_powers=True, via
+          powerstate_to_plasma_io_powers()), applied after this function returns. Does
+          not insert particle/momentum sources at all yet; TGYRO/TGLF power consumption
+          remains served by to_gacode()'s input.gacode either way, unaffected.
         - Batches all direct channel writes into a single update_output_data_vars() call
           (one dataset copy on read via .output, one on write) rather than one call per
           channel, since both .output and update_output_data_vars deep-copy the full
@@ -812,6 +859,8 @@ def powerstate_to_plasma_io(
 
     Ti_thermals = postprocess_plasma_io.get("Ti_thermals", True)
     ni_thermals = postprocess_plasma_io.get("ni_thermals", True)
+    Tfast_ratio = postprocess_plasma_io.get("Tfast_ratio", False)
+    force_mach = postprocess_plasma_io.get("force_mach", None)
 
     input_gacode = self.profiles
     plasma_io_obj = getattr(input_gacode, "plasma_io", None)
@@ -834,6 +883,7 @@ def powerstate_to_plasma_io(
 
     newvars = {}
     ne_old_native, ne_new_native = None, None
+    te_old_native, te_new_native = None, None
     for key in quantities:
         if key[0] not in self.predicted_channels:
             continue
@@ -871,6 +921,10 @@ def powerstate_to_plasma_io(
                 # full_array) so ni_thermals can derive its scale factor below.
                 ne_old_native = full_array[time_index, :].copy()
                 ne_new_native = y_native
+            if key[0] == "te":
+                # Same idea, for Tfast_ratio below.
+                te_old_native = full_array[time_index, :].copy()
+                te_new_native = y_native
             full_array[time_index, :] = y_native
         else:
             full_array[time_index, :, ion_idx] = y_native
@@ -895,6 +949,47 @@ def powerstate_to_plasma_io(
         plasma_io_copy.scale_thermal_ion_densities(scale_factor, side='output', exclude_ion_indices=exclude_ion_indices)
 
     # ------------------------------------------------------------------------------------------
+    # Tfast_ratio: keep fast species' Ti at a fixed ratio to the just-written Te, matching
+    # powerstate_to_gacode()'s "for sp in Species: if S == 'fast': ti[sp] *= te_new/te_old"
+    # ------------------------------------------------------------------------------------------
+
+    if "te" in self.predicted_channels and Tfast_ratio:
+        print("\t- If any fast species, changing Tfast to ensure fixed Tfast/Te ratio")
+        te_ratio_native = te_new_native / te_old_native
+        output_ds_now = plasma_io_copy.output
+        ti_full = output_ds_now["temperature_i"].to_numpy().copy()
+        for sp in range(len(input_gacode.Species)):
+            if input_gacode.Species[sp]["S"] == "fast":
+                print(f"\t\t- Modifying temperature of species #{sp}")
+                ti_full[time_index, :, sp] = ti_full[time_index, :, sp] * te_ratio_native
+        plasma_io_copy.update_output_data_vars({"temperature_i": (list(output_ds_now["temperature_i"].dims), ti_full)})
+
+    # ------------------------------------------------------------------------------------------
+    # force_mach: fix w0 to a target low-field-side Mach number, matching
+    # powerstate_to_gacode()'s introduceRotationProfile(Mach_LF=force_mach) call
+    # ------------------------------------------------------------------------------------------
+
+    if "w0" not in self.predicted_channels and force_mach is not None:
+        print(f"\t- Enforcing Mach Number in LF of {force_mach}")
+        from mitim_tools.gacode_tools import PROFILEStools
+        # Throwaway shadow, built on the just-written plasma_io_copy, purely to source
+        # mbg/R_LF/ti(keV) via the same get_derived()/get_profiles() machinery used
+        # everywhere else in this migration -- not a new derived-quantity computation.
+        shadow = PROFILEStools.gacode_state.scratch(plasma_io_copy)
+        profiles_snapshot = shadow.get_profiles()
+        derived_snapshot = shadow.get_derived()
+        Vtor_LF = PLASMAtools.constructVtorFromMach(
+            force_mach, profiles_snapshot["ti(keV)"][:, 0], derived_snapshot["mbg"]
+        )  # m/s
+        w0_dict_grid = Vtor_LF / derived_snapshot["R_LF"]  # rad/s, on the shadow's gacode-dict grid
+        output_ds_now = plasma_io_copy.output
+        roa_native = output_ds_now["r_minor_norm"].isel(time=time_index).to_numpy()
+        w0_native = interpolation_function(roa_native, derived_snapshot["roa"], w0_dict_grid)
+        full_array = output_ds_now["rotation_frequency_sonic"].to_numpy().copy()
+        full_array[time_index, :] = w0_native
+        plasma_io_copy.update_output_data_vars({"rotation_frequency_sonic": (list(output_ds_now["rotation_frequency_sonic"].dims), full_array)})
+
+    # ------------------------------------------------------------------------------------------
     # Recalculate derived quantities to make them consistent (see recompute_derived note above)
     # ------------------------------------------------------------------------------------------
 
@@ -903,22 +998,33 @@ def powerstate_to_plasma_io(
 
     return plasma_io_copy
 
-def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
+def _compute_highres_powers(self, profiles, rederive_at_high_res=True):
+    """
+    Shared fine-grid target-power computation used by both powerstate_to_gacode_powers()
+    (GACODE-dict write target) and powerstate_to_plasma_io_powers() (plasma_io write
+    target), factored out so both write exactly the same computed numbers -- only the
+    final write destination differs, removing any risk of the two diverging.
 
-    profiles.derive_quantities(rederiveGeometry=False)
-
-    print("\t- Inserting powers")
+    Returns (state_temp, conversions, extra_points): for each key in conversions,
+    state_temp.plasma[key][position_in_powerstate_batch, :] (roa-indexed, aligned with
+    state_temp.plasma["roa"][position_in_powerstate_batch, :]) holds the computed power
+    value in the same MW/m^3-equivalent units/sign convention as the GACODE columns named
+    in `conversions.values()`. extra_points is how many trailing grid points the
+    high-res reconstruction's fine grid drops (0 when rederive_at_high_res=False).
+    """
+    profiles_dict = profiles.get_profiles()
 
     state_temp = self.copy_state()
 
+    extra_points = 2 if rederive_at_high_res else 0
     if rederive_at_high_res:
         # ------------------------------------------------------------------------------------------
         # Recalculate powers with powerstate on the gacode-original fine grid
         # ------------------------------------------------------------------------------------------
 
         # Modify power flows by tricking the powerstate into a fine grid (same as does TGYRO)
-        extra_points = 2  # If I don't allow this, it will fail
-        rhoy = profiles.profiles["rho(-)"][1:-extra_points]
+        # extra_points=2: if I don't allow this, it will fail
+        rhoy = profiles_dict["rho(-)"][1:-extra_points]
         with LOGtools.HiddenPrints():
             state_temp.__init__(
                 profiles,
@@ -939,19 +1045,6 @@ def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
         state_temp.calculateTargets()
         # ------------------------------------------------------------------------------------------
 
-        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
-            profiles.profiles[conversions[ikey]][:-extra_points] = state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-
-    else:
-        # Just interpolate from powerstate to gacode grid
-        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
-            profiles.profiles[conversions[ikey]] = interpolation_function(
-                profiles.profiles["rho(-)"],
-                state.plasma["rho"][position_in_powerstate_batch,:].cpu().numpy(),
-                state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
-            )
-
-
     conversions = {}
 
     if 'qie' in self.target_options["options"]["targets_evolve"]:
@@ -964,14 +1057,117 @@ def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
         conversions['qfuse'] = "qfuse(MW/m^3)"
         conversions['qfusi'] = "qfusi(MW/m^3)"
 
+    return state_temp, conversions, extra_points
+
+def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
+
+    if getattr(profiles, "plasma_io", None) is None:
+        profiles.derive_quantities(rederiveGeometry=False)
+    profiles_dict = profiles.get_profiles()
+
+    print("\t- Inserting powers")
+
+    state_temp, conversions, extra_points = _compute_highres_powers(self, profiles, rederive_at_high_res=rederive_at_high_res)
+
+    if rederive_at_high_res:
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.get_profiles()[conversions[ikey]][:-extra_points] = state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+
+    else:
+        # Just interpolate from powerstate to gacode grid
+        def state_to_profiles(state, profiles, state_key, profiles_key,position_in_powerstate_batch, **kwargs):
+            profiles.get_profiles()[conversions[ikey]] = interpolation_function(
+                profiles.get_profiles()["rho(-)"],
+                state.plasma["rho"][position_in_powerstate_batch,:].cpu().numpy(),
+                state.plasma[ikey][position_in_powerstate_batch,:].cpu().numpy()
+            )
+
     position_in_powerstate_batch = 0
 
     for ikey in conversions:
-        if conversions[ikey] in profiles.profiles:
+        if conversions[ikey] in profiles_dict:
             state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
         else:
-            profiles.profiles[conversions[ikey]] = np.zeros(len(profiles.profiles["qei(MW/m^3)"]))
+            profiles_dict[conversions[ikey]] = np.zeros(len(profiles_dict["qei(MW/m^3)"]))
             state_to_profiles(state_temp, profiles, ikey, conversions[ikey], position_in_powerstate_batch)
+
+def powerstate_to_plasma_io_powers(self, plasma_io_obj, gacode_profiles, time_index=-1, rederive_at_high_res=True):
+    """
+    plasma_io-native sibling of powerstate_to_gacode_powers(): writes the same fine-grid
+    -computed target powers (qie/qrad_bremms/qrad_sync/qrad_line/qfuse/qfusi) into a deep
+    copy of plasma_io_obj's heat_exchange_ei/heat_source_e/heat_source_i output fields,
+    instead of the GACODE-unit profile dict.
+
+    Reuses _compute_highres_powers() -- the exact same state_temp/conversions computation
+    powerstate_to_gacode_powers() uses -- so the two write targets see identical numbers;
+    only the final destination differs. `gacode_profiles` plays the same role
+    powerstate_to_gacode_powers()'s own `profiles` argument does -- it's only used to
+    source rho(-)'s fine grid for the underlying high-res powerstate reconstruction, so
+    any gacode-unit-capable mitim_state works (self.profiles is fine, plasma_io-backed
+    or not: get_profiles() handles both).
+
+    Unit/sign conventions for the heat_source_e/i 'source'-slice writes match fusio's own
+    from_gacode() conversion exactly (plasma.py): qrad_sync/qrad_bremms/qrad_line are loss
+    terms and get sign-flipped relative to their GACODE-convention positive magnitude;
+    qie/qfuse/qfusi are not. qfusi (ion fusion heating) is written to ion index 0 only,
+    matching from_gacode()'s own "assumes all ion heat sources apply to the first ion
+    species only" convention -- not a new limitation introduced here. Source-slice
+    positions are looked up by label (plasma_io_obj.sources.index(name)), not hardcoded,
+    so they track fusio's own source ordering if it ever changes.
+
+    Does not insert particle/momentum sources -- matches powerstate_to_plasma_io()'s
+    existing scope note (no equivalent to those in powerstate_to_gacode() either).
+    """
+    print("\t- Inserting powers into plasma_io")
+
+    state_temp, conversions, extra_points = _compute_highres_powers(self, gacode_profiles, rederive_at_high_res=rederive_at_high_res)
+
+    plasma_io_copy = copy.deepcopy(plasma_io_obj)
+    output_ds = plasma_io_copy.output
+    roa_native = output_ds["r_minor_norm"].isel(time=time_index).to_numpy()
+
+    position_in_powerstate_batch = 0
+    x_fine = state_temp.plasma["roa"][position_in_powerstate_batch, :].cpu().numpy()
+
+    source_index = {name: plasma_io_copy.sources.index(name) for name in
+                     ("synchrotron", "bremsstrahlung", "line_radiation", "fusion")}
+
+    # [powerstate key, sign (matches fusio's from_gacode() convention), target var, source index or None]
+    writes = []
+    if 'qie' in conversions:
+        writes.append(('qie', 1.0, 'heat_exchange_ei', None))
+    if 'qrad_sync' in conversions:
+        writes.append(('qrad_sync', -1.0, 'heat_source_e', source_index['synchrotron']))
+    if 'qrad_bremms' in conversions:
+        writes.append(('qrad_bremms', -1.0, 'heat_source_e', source_index['bremsstrahlung']))
+    if 'qrad_line' in conversions:
+        writes.append(('qrad_line', -1.0, 'heat_source_e', source_index['line_radiation']))
+    if 'qfuse' in conversions:
+        writes.append(('qfuse', 1.0, 'heat_source_e', source_index['fusion']))
+    if 'qfusi' in conversions:
+        writes.append(('qfusi', 1.0, 'heat_source_i', source_index['fusion']))
+
+    newvars = {}
+    for key, sign, target, src_idx in writes:
+        y_fine = state_temp.plasma[key][position_in_powerstate_batch, :].cpu().numpy()
+        # MW/m^3 (powerstate/GACODE convention) -> W/m^3 (plasma_io native): same 1e6
+        # factor fusio's own from_gacode() uses for these exact fields.
+        y_native = sign * 1.0e6 * interpolation_function(roa_native, x_fine, y_fine)
+
+        if target not in newvars:
+            newvars[target] = (list(output_ds[target].dims), output_ds[target].to_numpy().copy())
+        full_array = newvars[target][1]
+        if target == 'heat_source_i':
+            full_array[time_index, :, 0, src_idx] = y_native
+        elif src_idx is None:
+            full_array[time_index, :] = y_native
+        else:
+            full_array[time_index, :, src_idx] = y_native
+
+    if newvars:
+        plasma_io_copy.update_output_data_vars(newvars)
+
+    return plasma_io_copy
     
 def defineIons(self, input_gacode, rho_vec, dfT):
     """
@@ -982,26 +1178,28 @@ def defineIons(self, input_gacode, rho_vec, dfT):
             - Note that this means that it won't calculate radiation based on fast species (e.g. 5% He3 minority won't radiate)
     """
 
+    input_gacode_profiles = input_gacode.get_profiles()
+
     # What is the radial coordinate of rho_vec?
-    rho_use = input_gacode.profiles["rho(-)"]
+    rho_use = input_gacode_profiles["rho(-)"]
 
     # If I'm grabbing original axis, include as part of powerstate all the grid points near axis
     rho_vec = rho_vec.clone().cpu()
 
     # ** Store the information about the thermal ions, including the cooling coefficients
     self.plasma["ni"], mi, Zi, c_rad = [], [], [], []
-    for i in range(len(input_gacode.profiles["mass"])):
-        if input_gacode.profiles["type"][i] == "[therm]":
-            self.plasma["ni"].append(interpolation_function(rho_vec, rho_use, input_gacode.profiles["ni(10^19/m^3)"][:, i]))
-            mi.append(input_gacode.profiles["mass"][i])
-            Zi.append(input_gacode.profiles["z"][i])
+    for i in range(len(input_gacode_profiles["mass"])):
+        if input_gacode_profiles["type"][i] == "[therm]":
+            self.plasma["ni"].append(interpolation_function(rho_vec, rho_use, input_gacode_profiles["ni(10^19/m^3)"][:, i]))
+            mi.append(input_gacode_profiles["mass"][i])
+            Zi.append(input_gacode_profiles["z"][i])
 
             # Grab chebyshev coefficients from file
             data_df = pd.read_csv(__mitimroot__ / "src" / "mitim_modules" / "powertorch" / "physics_models" / "radiation_chebyshev.csv")
             try:
-                c = data_df[data_df['Ion'].str.lower()==input_gacode.profiles["name"][i].lower()].to_numpy()[0,2:].astype(float)
+                c = data_df[data_df['Ion'].str.lower()==input_gacode_profiles["name"][i].lower()].to_numpy()[0,2:].astype(float)
             except IndexError:
-                print(f'\t- Specie {input_gacode.profiles["name"][i]} not found in radiation database, assuming zero radiation from it',typeMsg="w")
+                print(f'\t- Specie {input_gacode_profiles["name"][i]} not found in radiation database, assuming zero radiation from it',typeMsg="w")
                 c = [-1e10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
             c_rad.append(c)

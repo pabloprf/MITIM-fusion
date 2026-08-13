@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 import torch
 import copy
 import numpy as np
@@ -12,6 +13,8 @@ from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from fusio.classes.io import io
+from fusio.classes.gacode import gacode_io
+from fusio.classes.plasma import plasma_io
 from IPython import embed
 
 
@@ -35,6 +38,7 @@ def initializeProblem(
     },
     add_fidelity_level_variable=False,
     n_fidelities=1,
+    use_plasma_io=True,
     ):
     """
     Notes:
@@ -54,6 +58,32 @@ def initializeProblem(
         IOtools.askNewFolder(folderWork, force=cold_start)
 
     FolderInitialization.mkdir(parents=True, exist_ok=True)
+
+    # ---- If given a raw file path (not a MITIMstate/fusio object already), route it through
+    # fusio's plasma_io conversion instead of the legacy hand-rolled input.gacode parser -- reuses
+    # the exact sequence already validated end-to-end in test/fusio_integration/PORTALS_workflow.py's
+    # .gacode branch (Ricci/residual numbers documented in plasma_io_migration_plan.md). Once
+    # converted, fileStart becomes a fusio `io` instance and falls through to the branches below
+    # unchanged. Old (hand-rolled-parser) behavior kept available via use_plasma_io=False.
+    if use_plasma_io and not isinstance(fileStart, (MITIMstate.mitim_state, io)):
+        fileStart_path = Path(fileStart)
+        if fileStart_path.suffix == ".gacode":
+            fileStart = gacode_io.from_file(fileStart_path).to("plasma")
+            # .to("plasma") always writes to the *input* side of the new plasma_io object
+            # (io.py's convention for all from_*()/.to() conversions) -- move to .output,
+            # matching every other plasma_io construction path in this codebase (scratch()'s
+            # implicit .to("gacode") read expects data on .output).
+            fileStart.output = fileStart.input
+            # use_main_ion=True: matches MITIM's own gacode_state.correct(quasineutrality=True)
+            # convention (adjusts D/T ion density to match ne).
+            fileStart.remove_fast_ions(enforce_quasineutrality=True, use_main_ion=True, side='output')
+            fileStart.compute_derived_quantities(side='output')
+        elif fileStart_path.suffix == ".nc":
+            fileStart = plasma_io.from_file(fileStart_path)
+            fileStart.remove_fast_ions(enforce_quasineutrality=True, side='output')
+            fileStart.compute_derived_quantities(side='output')
+        # else: unrecognized suffix -- leave fileStart as the original path, falls through to the
+        # legacy shutil.copy2/hand-rolled-parser branches below.
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
@@ -92,7 +122,7 @@ def initializeProblem(
     # About radial locations
     if portals_fun.portals_parameters["solution"]["predicted_roa"] is not None:
         roa = portals_fun.portals_parameters["solution"]["predicted_roa"]
-        rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
+        rho = np.interp(roa, profiles.get_derived()["roa"], profiles.get_profiles()["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
@@ -107,7 +137,7 @@ def initializeProblem(
         position_of_impurity = 0
 
     if portals_fun.portals_parameters["solution"]["fZ0_as_weight"] is not None and portals_fun.portals_parameters["solution"]["trace_impurity"] is not None:
-        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
+        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.get_profiles()['ne(10^19/m^3)'][0]
         portals_fun.portals_parameters["solution"]["fImp_orig"] = f0/portals_fun.portals_parameters["solution"]["fZ0_as_weight"]
         print(f'\t- Ion {portals_fun.portals_parameters["solution"]["trace_impurity"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.portals_parameters["solution"]["fZ0_as_weight"]} as scaling factor of GZ -> {portals_fun.portals_parameters["solution"]["fImp_orig"]:.2e}',typeMsg="i")
     else:
