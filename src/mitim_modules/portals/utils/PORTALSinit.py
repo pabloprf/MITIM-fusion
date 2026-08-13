@@ -18,6 +18,46 @@ from fusio.classes.plasma import plasma_io
 from IPython import embed
 
 
+def _ensure_plasma_io_deepcopy(obj):
+    """
+    Establishes fusio's .input side as MITIM/PORTALS' canonical, untouched starting-state
+    snapshot and .output as an independent deep-copied working copy -- the rest of PORTALS
+    then reads from and overwrites only .output as BO iterations progress
+    (get_profiles()/get_derived() default to side="output" throughout, see MITIMstate.py).
+    io.py's input/output getters and setters already deep-copy on both read and write, so
+    `obj.output = obj.input` below is a true independent copy, not an alias.
+
+    Idempotent/safe to call more than once on the same object -- once both sides are
+    populated, this is a no-op. This matters because initializeProblem() calls it at
+    several points that can all see the same object (the raw-path auto-conversion branch,
+    then again later when it falls through to the generic isinstance(fileStart, io)
+    branches) -- an unconditional `obj.output = obj.input` would silently clobber
+    .output's already-preprocessed state (post remove_fast_ions()/
+    compute_derived_quantities(), which run on .output right after the first call) with
+    the stale, unprocessed .input snapshot on the second call. Must still run exactly
+    once as the very first *effective* operation on any plasma_io/gacode_io object MITIM
+    receives -- NOT inside mitim_state.scratch(), which is called repeatedly throughout a
+    run (every transport evaluation) and, unlike this idempotent guard, has no way to
+    distinguish "fresh object" from "object with real accumulated BO progress on .output".
+
+    If the object arrives with only .output populated (e.g. a caller-constructed object
+    that ran its own preprocessing directly on .output -- every existing .nc-branch
+    PORTALS_workflow_nc*.py script does this today), .input is backfilled from it first so
+    a reference snapshot still exists. This is deliberately a backfill, not a hard
+    requirement that callers populate .input themselves, so existing scripts' own
+    loading/preprocessing conventions don't need to change.
+    """
+    if not obj.has_input:
+        if not obj.has_output:
+            raise ValueError(
+                f"{type(obj).__name__} object has neither .input nor .output populated -- "
+                "cannot establish a starting state for MITIM/PORTALS."
+            )
+        obj.input = obj.output
+    if not obj.has_output:
+        obj.output = obj.input
+
+
 def initializeProblem(
     portals_fun,
     folderWork,
@@ -70,16 +110,18 @@ def initializeProblem(
         if fileStart_path.suffix == ".gacode":
             fileStart = gacode_io.from_file(fileStart_path).to("plasma")
             # .to("plasma") always writes to the *input* side of the new plasma_io object
-            # (io.py's convention for all from_*()/.to() conversions) -- move to .output,
-            # matching every other plasma_io construction path in this codebase (scratch()'s
-            # implicit .to("gacode") read expects data on .output).
-            fileStart.output = fileStart.input
+            # (io.py's convention for all from_*()/.to() conversions) -- see
+            # _ensure_plasma_io_deepcopy()'s docstring for why this is the first operation.
+            _ensure_plasma_io_deepcopy(fileStart)
             # use_main_ion=True: matches MITIM's own gacode_state.correct(quasineutrality=True)
             # convention (adjusts D/T ion density to match ne).
             fileStart.remove_fast_ions(enforce_quasineutrality=True, use_main_ion=True, side='output')
             fileStart.compute_derived_quantities(side='output')
         elif fileStart_path.suffix == ".nc":
-            fileStart = plasma_io.from_file(fileStart_path)
+            # input=... (not the bare/path= default, which lands on .output) so the raw file
+            # lands on .input -- see _ensure_plasma_io_deepcopy()'s docstring.
+            fileStart = plasma_io.from_file(input=fileStart_path)
+            _ensure_plasma_io_deepcopy(fileStart)
             fileStart.remove_fast_ions(enforce_quasineutrality=True, side='output')
             fileStart.compute_derived_quantities(side='output')
         # else: unrecognized suffix -- leave fileStart as the original path, falls through to the
@@ -93,8 +135,12 @@ def initializeProblem(
     if isinstance(fileStart, MITIMstate.mitim_state):
         fileStart.write_state(file=FolderInitialization / "input.gacode")
     elif isinstance(fileStart, io):
-        if not fileStart.has_output and fileStart.has_input:
-            fileStart.swap()
+        # Establishes .input as the canonical snapshot and .output as an independent
+        # working copy (backfilling .input from .output first if only .output was
+        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring.
+        # Replaces the old swap()-based logic, which emptied out whichever side had
+        # data instead of preserving it as a pristine reference.
+        _ensure_plasma_io_deepcopy(fileStart)
         fileStart.to("gacode").write(FolderInitialization / "input.gacode", side="input")
     else:
         shutil.copy2(fileStart, FolderInitialization / "input.gacode")
@@ -111,8 +157,12 @@ def initializeProblem(
     if isinstance(fileStart, MITIMstate.mitim_state):
         profiles = copy.deepcopy(fileStart)
     elif isinstance(fileStart, io):
-        if not fileStart.has_output and fileStart.has_input:
-            fileStart.swap()
+        # Establishes .input as the canonical snapshot and .output as an independent
+        # working copy (backfilling .input from .output first if only .output was
+        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring.
+        # Replaces the old swap()-based logic, which emptied out whichever side had
+        # data instead of preserving it as a pristine reference.
+        _ensure_plasma_io_deepcopy(fileStart)
         #profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
         profiles = PROFILEStools.gacode_state.scratch(fileStart)
     # If it is a file, then assume it is a gacode one (#TODO: check type?)
