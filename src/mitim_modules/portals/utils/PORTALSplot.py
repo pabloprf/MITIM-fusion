@@ -129,52 +129,52 @@ def PORTALSanalyzer_plotMetrics(
             rho = power.plasma['rho'][0].cpu().numpy()
 
             ix = np.argmin(
-                np.abs(p.profiles["rho(-)"] - rho[-1].item())
+                np.abs(p.get_profiles()["rho(-)"] - rho[-1].item())
             )
             if axTe is not None:
                 axTe.plot(
-                    p.profiles["rho(-)"],
-                    p.profiles["te(keV)"],
+                    p.get_profiles()["rho(-)"],
+                    p.get_profiles()["te(keV)"],
                     lw=lw,
                     color=col,
                     label=lab,
                     alpha=alph,
                 )
                 axTe_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLTe"][:ix],
+                    p.get_profiles()["rho(-)"][:ix],
+                    p.get_derived()["aLTe"][:ix],
                     lw=lw,
                     color=col,
                     alpha=alph,
                 )
             if axTi is not None:
                 axTi.plot(
-                    p.profiles["rho(-)"],
-                    p.profiles["ti(keV)"][:, 0],
+                    p.get_profiles()["rho(-)"],
+                    p.get_profiles()["ti(keV)"][:, 0],
                     lw=lw,
                     color=col,
                     label=lab,
                     alpha=alph,
                 )
                 axTi_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLTi"][:ix, 0],
+                    p.get_profiles()["rho(-)"][:ix],
+                    p.get_derived()["aLTi"][:ix, 0],
                     lw=lw,
                     color=col,
                     alpha=alph,
                 )
             if axne is not None:
                 axne.plot(
-                    p.profiles["rho(-)"],
-                    p.profiles["ne(10^19/m^3)"] * 1e-1,
+                    p.get_profiles()["rho(-)"],
+                    p.get_profiles()["ne(10^19/m^3)"] * 1e-1,
                     lw=lw,
                     color=col,
                     label=lab,
                     alpha=alph,
                 )
                 axne_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLne"][:ix],
+                    p.get_profiles()["rho(-)"][:ix],
+                    p.get_derived()["aLne"][:ix],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -182,16 +182,16 @@ def PORTALSanalyzer_plotMetrics(
 
             if axnZ is not None:
                 axnZ.plot(
-                    p.profiles["rho(-)"],
-                    p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                    p.get_profiles()["rho(-)"],
+                    p.get_profiles()["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                     lw=lw,
                     color=col,
                     label=lab,
                     alpha=alph,
                 )
                 axnZ_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["aLni"][:ix, self.runWithImpurity],
+                    p.get_profiles()["rho(-)"][:ix],
+                    p.get_derived()["aLni"][:ix, self.runWithImpurity],
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -199,16 +199,16 @@ def PORTALSanalyzer_plotMetrics(
 
             if axw0 is not None:
                 axw0.plot(
-                    p.profiles["rho(-)"],
-                    p.profiles["w0(rad/s)"] * 1e-3,
+                    p.get_profiles()["rho(-)"],
+                    p.get_profiles()["w0(rad/s)"] * 1e-3,
                     lw=lw,
                     color=col,
                     label=lab,
                     alpha=alph,
                 )
                 axw0_g.plot(
-                    p.profiles["rho(-)"][:ix],
-                    p.derived["dw0dr"][:ix] * factor_dw0dr,
+                    p.get_profiles()["rho(-)"][:ix],
+                    p.get_derived()["dw0dr"][:ix] * factor_dw0dr,
                     lw=lw,
                     color=col,
                     alpha=alph,
@@ -289,15 +289,15 @@ def PORTALSanalyzer_plotMetrics(
         power = self.powerstates[indexUse]
         p = power.profiles
         
-        ix = np.argmin(np.abs(p.profiles["rho(-)"] - rho[-1]))
+        ix = np.argmin(np.abs(p.get_profiles()["rho(-)"] - rho[-1]))
 
         if axTe_g is not None:
             axTe.plot(
-                p.profiles["rho(-)"], p.profiles["te(keV)"], lw=2, color=col, label=lab
+                p.get_profiles()["rho(-)"], p.get_profiles()["te(keV)"], lw=2, color=col, label=lab
             )
             axTe_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTe"][:ix],
+                p.get_profiles()["rho(-)"][:ix],
+                p.get_derived()["aLTe"][:ix],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -305,15 +305,15 @@ def PORTALSanalyzer_plotMetrics(
             )
         if axTi_g is not None:
             axTi.plot(
-                p.profiles["rho(-)"],
-                p.profiles["ti(keV)"][:, 0],
+                p.get_profiles()["rho(-)"],
+                p.get_profiles()["ti(keV)"][:, 0],
                 lw=2,
                 color=col,
                 label=lab,
             )
             axTi_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLTi"][:ix, 0],
+                p.get_profiles()["rho(-)"][:ix],
+                p.get_derived()["aLTi"][:ix, 0],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -321,15 +321,15 @@ def PORTALSanalyzer_plotMetrics(
             )
         if axne is not None:
             axne.plot(
-                p.profiles["rho(-)"],
-                p.profiles["ne(10^19/m^3)"] * 1e-1,
+                p.get_profiles()["rho(-)"],
+                p.get_profiles()["ne(10^19/m^3)"] * 1e-1,
                 lw=2,
                 color=col,
                 label=lab,
             )
             axne_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLne"][:ix],
+                p.get_profiles()["rho(-)"][:ix],
+                p.get_derived()["aLne"][:ix],
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -338,15 +338,15 @@ def PORTALSanalyzer_plotMetrics(
 
         if axnZ is not None:
             axnZ.plot(
-                p.profiles["rho(-)"],
-                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                p.get_profiles()["rho(-)"],
+                p.get_profiles()["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                 lw=2,
                 color=col,
                 label=lab,
             )
             axnZ_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["aLni"][:ix, self.runWithImpurity],
+                p.get_profiles()["rho(-)"][:ix],
+                p.get_derived()["aLni"][:ix, self.runWithImpurity],
                 markersize=msFlux,
                 lw=2,
                 color=col,
@@ -354,15 +354,15 @@ def PORTALSanalyzer_plotMetrics(
 
         if axw0 is not None:
             axw0.plot(
-                p.profiles["rho(-)"],
-                p.profiles["w0(rad/s)"] * 1e-3,
+                p.get_profiles()["rho(-)"],
+                p.get_profiles()["w0(rad/s)"] * 1e-3,
                 lw=2,
                 color=col,
                 label=lab,
             )
             axw0_g.plot(
-                p.profiles["rho(-)"][:ix],
-                p.derived["dw0dr"][:ix] * factor_dw0dr,
+                p.get_profiles()["rho(-)"][:ix],
+                p.get_derived()["dw0dr"][:ix] * factor_dw0dr,
                 "-",
                 markersize=msFlux,
                 lw=2,
@@ -1201,8 +1201,8 @@ def PORTALSanalyzer_plotExpected(
 
     p = self.powerstates[0].profiles
 
-    rho = p.profiles["rho(-)"]
-    roa = p.derived["roa"]
+    rho = p.get_profiles()["rho(-)"]
+    roa = p.get_derived()["roa"]
     rhoVals = self.portals_parameters["solution"]["predicted_rho"]
     roaVals = np.interp(rhoVals, rho, roa)
     lastX = roaVals[-1]
@@ -1214,15 +1214,15 @@ def PORTALSanalyzer_plotExpected(
 
         p = self.powerstates[i].profiles
 
-        ix = np.argmin(np.abs(p.derived["roa"] - lastX)) + 1
+        ix = np.argmin(np.abs(p.get_derived()["roa"] - lastX)) + 1
 
         lw = 1.0 if cont > 0 else 1.5
 
         if axTe is not None:
             ax = axTe
             ax.plot(
-                p.derived["roa"],
-                p.profiles["te(keV)"],
+                p.get_derived()["roa"],
+                p.get_profiles()["te(keV)"],
                 "-",
                 c=colors[cont],
                 label=labelAssigned[cont],
@@ -1231,13 +1231,13 @@ def PORTALSanalyzer_plotExpected(
         if axTi is not None:
             ax = axTi
             ax.plot(
-                p.derived["roa"], p.profiles["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
+                p.get_derived()["roa"], p.get_profiles()["ti(keV)"][:, 0], "-", c=colors[cont], lw=lw
             )
         if axne is not None:
             ax = axne
             ax.plot(
-                p.derived["roa"],
-                p.profiles["ne(10^19/m^3)"] * 1e-1,
+                p.get_derived()["roa"],
+                p.get_profiles()["ne(10^19/m^3)"] * 1e-1,
                 "-",
                 c=colors[cont],
                 lw=lw,
@@ -1245,8 +1245,8 @@ def PORTALSanalyzer_plotExpected(
         if axnZ is not None:
             ax = axnZ
             ax.plot(
-                p.derived["roa"],
-                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                p.get_derived()["roa"],
+                p.get_profiles()["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                 "-",
                 c=colors[cont],
                 lw=lw,
@@ -1254,8 +1254,8 @@ def PORTALSanalyzer_plotExpected(
         if axw0 is not None:
             ax = axw0
             ax.plot(
-                p.derived["roa"],
-                p.profiles["w0(rad/s)"] * 1e-3,
+                p.get_derived()["roa"],
+                p.get_profiles()["w0(rad/s)"] * 1e-3,
                 "-",
                 c=colors[cont],
                 lw=lw,
@@ -1264,8 +1264,8 @@ def PORTALSanalyzer_plotExpected(
         if axTe_g is not None:
             ax = axTe_g
             ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLTe"][:ix],
+                p.get_derived()["roa"][:ix],
+                p.get_derived()["aLTe"][:ix],
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1274,8 +1274,8 @@ def PORTALSanalyzer_plotExpected(
         if axTi_g is not None:
             ax = axTi_g
             ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLTi"][:ix, 0],
+                p.get_derived()["roa"][:ix],
+                p.get_derived()["aLTi"][:ix, 0],
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1284,8 +1284,8 @@ def PORTALSanalyzer_plotExpected(
         if axne_g is not None:
             ax = axne_g
             ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLne"][:ix],
+                p.get_derived()["roa"][:ix],
+                p.get_derived()["aLne"][:ix],
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1295,8 +1295,8 @@ def PORTALSanalyzer_plotExpected(
         if axnZ_g is not None:
             ax = axnZ_g
             ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["aLni"][:ix, self.runWithImpurity],
+                p.get_derived()["roa"][:ix],
+                p.get_derived()["aLni"][:ix, self.runWithImpurity],
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1305,8 +1305,8 @@ def PORTALSanalyzer_plotExpected(
         if axw0_g is not None:
             ax = axw0_g
             ax.plot(
-                p.derived["roa"][:ix],
-                p.derived["dw0dr"][:ix] * factor_dw0dr,
+                p.get_derived()["roa"][:ix],
+                p.get_derived()["dw0dr"][:ix] * factor_dw0dr,
                 "-o",
                 c=colors[cont],
                 markersize=0,
@@ -1319,8 +1319,8 @@ def PORTALSanalyzer_plotExpected(
 
     if self.profiles_next is not None:
         p = self.profiles_next
-        roa = self.profiles_next_new.derived["roa"]
-        dw0dr = self.profiles_next_new.derived["dw0dr"]
+        roa = self.profiles_next_new.get_derived()["roa"]
+        dw0dr = self.profiles_next_new.get_derived()["dw0dr"]
 
         ix = np.argmin(np.abs(roa - lastX)) + 1
 
@@ -1330,7 +1330,7 @@ def PORTALSanalyzer_plotExpected(
             ax = axTe
             ax.plot(
                 roa,
-                p.profiles["te(keV)"],
+                p.get_profiles()["te(keV)"],
                 "-",
                 c="k",
                 label=f"#{x_train_num} (next)",
@@ -1338,40 +1338,40 @@ def PORTALSanalyzer_plotExpected(
             )
         if axTi is not None:
             ax = axTi
-            ax.plot(roa, p.profiles["ti(keV)"][:, 0], "-", c="k", lw=lw)
+            ax.plot(roa, p.get_profiles()["ti(keV)"][:, 0], "-", c="k", lw=lw)
         if axne is not None:
             ax = axne
-            ax.plot(roa, p.profiles["ne(10^19/m^3)"] * 1e-1, "-", c="k", lw=lw)
+            ax.plot(roa, p.get_profiles()["ne(10^19/m^3)"] * 1e-1, "-", c="k", lw=lw)
 
         if axnZ is not None:
             ax = axnZ
             ax.plot(
                 roa,
-                p.profiles["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
+                p.get_profiles()["ni(10^19/m^3)"][:, self.runWithImpurity] * 1e-1,
                 "-",
                 c="k",
                 lw=lw,
             )
         if axw0 is not None:
             ax = axw0
-            ax.plot(roa, p.profiles["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
+            ax.plot(roa, p.get_profiles()["w0(rad/s)"] * 1e-3, "-", c="k", lw=lw)
 
         if axTe_g is not None:
             ax = axTe_g
-            ax.plot(roa[:ix], p.derived["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
+            ax.plot(roa[:ix], p.get_derived()["aLTe"][:ix], "o-", c="k", markersize=0, lw=lw)
         if axTi_g is not None:
             ax = axTi_g
-            ax.plot(roa[:ix], p.derived["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
+            ax.plot(roa[:ix], p.get_derived()["aLTi"][:ix, 0], "o-", c="k", markersize=0, lw=lw)
 
         if axne_g is not None:
             ax = axne_g
-            ax.plot(roa[:ix], p.derived["aLne"][:ix], "o-", c="k", markersize=0, lw=lw)
+            ax.plot(roa[:ix], p.get_derived()["aLne"][:ix], "o-", c="k", markersize=0, lw=lw)
 
         if axnZ_g is not None:
             ax = axnZ_g
             ax.plot(
                 roa[:ix],
-                p.derived["aLni"][:ix, self.runWithImpurity],
+                p.get_derived()["aLni"][:ix, self.runWithImpurity],
                 "-o",
                 c="k",
                 markersize=0,
@@ -1390,13 +1390,13 @@ def PORTALSanalyzer_plotExpected(
 
             
 
-            rho = self.profiles_next_new.profiles["rho(-)"]
+            rho = self.profiles_next_new.get_profiles()["rho(-)"]
             rhoVals = self.portals_parameters["solution"]["predicted_rho"]
             roaVals = np.interp(rhoVals, rho, roa)
 
             p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
-            z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
+            z = ((p.get_derived()["aLTe"] - p0.get_derived()["aLTe"]) / p0.get_derived()["aLTe"]) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
             axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
@@ -1404,7 +1404,7 @@ def PORTALSanalyzer_plotExpected(
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
                 p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
-                z = ((p.derived["aLTe"] - p0.derived["aLTe"]) / p0.derived["aLTe"]) * 100.0
+                z = ((p.get_derived()["aLTe"] - p0.get_derived()["aLTe"]) / p0.get_derived()["aLTe"]) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
                 axTe_g_twin.plot(roaVals, zVals, "--s", c=colors[1], lw=0.5, markersize=4)
@@ -1418,8 +1418,8 @@ def PORTALSanalyzer_plotExpected(
             p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
             z = (
-                (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
-                / p0.derived["aLTi"][:, 0]
+                (p.get_derived()["aLTi"][:, 0] - p0.get_derived()["aLTi"][:, 0])
+                / p0.get_derived()["aLTi"][:, 0]
             ) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
@@ -1429,8 +1429,8 @@ def PORTALSanalyzer_plotExpected(
                 p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
                 z = (
-                    (p.derived["aLTi"][:, 0] - p0.derived["aLTi"][:, 0])
-                    / p0.derived["aLTi"][:, 0]
+                    (p.get_derived()["aLTi"][:, 0] - p0.get_derived()["aLTi"][:, 0])
+                    / p0.get_derived()["aLTi"][:, 0]
                 ) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
@@ -1447,7 +1447,7 @@ def PORTALSanalyzer_plotExpected(
 
             p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
-            z = ((p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]) * 100.0
+            z = ((p.get_derived()["aLne"] - p0.get_derived()["aLne"]) / p0.get_derived()["aLne"]) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
             axne_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
@@ -1456,7 +1456,7 @@ def PORTALSanalyzer_plotExpected(
                 p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
                 z = (
-                    (p.derived["aLne"] - p0.derived["aLne"]) / p0.derived["aLne"]
+                    (p.get_derived()["aLne"] - p0.get_derived()["aLne"]) / p0.get_derived()["aLne"]
                 ) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
@@ -1476,10 +1476,10 @@ def PORTALSanalyzer_plotExpected(
             zVals = []
             z = (
                 (
-                    p.derived["aLni"][:, self.runWithImpurity]
-                    - p0.derived["aLni"][:, self.runWithImpurity]
+                    p.get_derived()["aLni"][:, self.runWithImpurity]
+                    - p0.get_derived()["aLni"][:, self.runWithImpurity]
                 )
-                / p0.derived["aLni"][:, self.runWithImpurity]
+                / p0.get_derived()["aLni"][:, self.runWithImpurity]
             ) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
@@ -1490,10 +1490,10 @@ def PORTALSanalyzer_plotExpected(
                 zVals = []
                 z = (
                     (
-                        p.derived["aLni"][:, self.runWithImpurity]
-                        - p0.derived["aLni"][:, self.runWithImpurity]
+                        p.get_derived()["aLni"][:, self.runWithImpurity]
+                        - p0.get_derived()["aLni"][:, self.runWithImpurity]
                     )
-                    / p0.derived["aLni"][:, self.runWithImpurity]
+                    / p0.get_derived()["aLni"][:, self.runWithImpurity]
                 ) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
@@ -1511,7 +1511,7 @@ def PORTALSanalyzer_plotExpected(
 
             p0 = self.powerstates[plotPoints[0]].profiles
             zVals = []
-            z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
+            z = ((dw0dr - p0.get_derived()["dw0dr"]) / p0.get_derived()["dw0dr"]) * 100.0
             for roai in roaVals:
                 zVals.append(np.interp(roai, roa, z))
             axw0_g_twin.plot(roaVals, zVals, "--s", c=colors[0], lw=0.5, markersize=4)
@@ -1519,7 +1519,7 @@ def PORTALSanalyzer_plotExpected(
             if len(labelAssigned) > 1 and "last" in labelAssigned[1]:
                 p0 = self.powerstates[plotPoints[1]].profiles
                 zVals = []
-                z = ((dw0dr - p0.derived["dw0dr"]) / p0.derived["dw0dr"]) * 100.0
+                z = ((dw0dr - p0.get_derived()["dw0dr"]) / p0.get_derived()["dw0dr"]) * 100.0
                 for roai in roaVals:
                     zVals.append(np.interp(roai, roa, z))
                 axw0_g_twin.plot(
@@ -2035,33 +2035,33 @@ def PORTALSanalyzer_plotDebug(self, fig=None):
             power = self.powerstates[i]
             p = power.profiles
             
-            axs['Te'].plot(p.derived['roa'], p.profiles["te(keV)"], label=f"#{i}", c=colors[j], lw=lw)
+            axs['Te'].plot(p.get_derived()['roa'], p.get_profiles()["te(keV)"], label=f"#{i}", c=colors[j], lw=lw)
             axs['Te'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['te'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['Ti'].plot(p.derived['roa'], p.profiles["ti(keV)"][:,0], c=colors[j], lw=lw)
+            axs['Ti'].plot(p.get_derived()['roa'], p.get_profiles()["ti(keV)"][:,0], c=colors[j], lw=lw)
             axs['Ti'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['ne'].plot(p.derived['roa'], p.profiles["ne(10^19/m^3)"] * 1e-1, c=colors[j], lw=lw)
+            axs['ne'].plot(p.get_derived()['roa'], p.get_profiles()["ne(10^19/m^3)"] * 1e-1, c=colors[j], lw=lw)
             axs['ne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['ne'][0,1:].cpu().numpy() * 1e-1, mm, c=colors[j], markersize=3)
             
-            axs['aLTe'].plot(p.derived['roa'], p.derived["aLTe"], c=colors[j], lw=lw)
+            axs['aLTe'].plot(p.get_derived()['roa'], p.get_derived()["aLTe"], c=colors[j], lw=lw)
             axs['aLTe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLte'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['aLTi'].plot(p.derived['roa'], p.derived["aLTi"][:,0], c=colors[j], lw=lw)
+            axs['aLTi'].plot(p.get_derived()['roa'], p.get_derived()["aLTi"][:,0], c=colors[j], lw=lw)
             axs['aLTi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLti'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['aLne'].plot(p.derived['roa'], p.derived["aLne"], c=colors[j], lw=lw)
+            axs['aLne'].plot(p.get_derived()['roa'], p.get_derived()["aLne"], c=colors[j], lw=lw)
             axs['aLne'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['aLne'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
-            axs['Qe'].plot(p.derived['roa'], p.derived["qe_MWm2"], c=colors[j], lw=lw/2, label=f"HR target")
+            axs['Qe'].plot(p.get_derived()['roa'], p.get_derived()["qe_MWm2"], c=colors[j], lw=lw/2, label=f"HR target")
             axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3, label=f"target")
             axs['Qe'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QeMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3, label=f"transport")
             
-            axs['Qi'].plot(p.derived['roa'], p.derived["qi_MWm2"], c=colors[j], lw=lw/2)
+            axs['Qi'].plot(p.get_derived()['roa'], p.get_derived()["qi_MWm2"], c=colors[j], lw=lw/2)
             axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
             axs['Qi'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['QiMWm2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
 
-            axs['Ge'].plot(p.derived['roa'], p.derived["ge_10E20m2"], c=colors[j], lw=lw/2)
+            axs['Ge'].plot(p.get_derived()['roa'], p.get_derived()["ge_10E20m2"], c=colors[j], lw=lw/2)
             axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2'][0,1:].cpu().numpy(), mm2, c=colors[j], markersize=3)
             axs['Ge'].plot(power.plasma['roa'][0,1:].cpu().numpy(), power.plasma['Ge1E20m2_tr'][0,1:].cpu().numpy(), mm, c=colors[j], markersize=3)
             
@@ -3698,15 +3698,15 @@ def plotFluxComparison(
         ):
             if ax is not None:
                 if var is None:
-                    y = tBest.profiles["rho(-)"] * 0.0
+                    y = tBest.get_profiles()["rho(-)"] * 0.0
                 else:
-                    y = tBest.derived[var] * mult
+                    y = tBest.get_derived()[var] * mult
 
                 if var == "ge_10E20m2":
                     y *= 1 - int(force_zero_particle_flux)
 
                 ax.plot(
-                    (tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"]),
+                    (tBest.get_profiles()["rho(-)"] if not useRoa else tBest.get_derived()["roa"]),
                     y,
                     ":",
                     lw=1.0,
@@ -3745,8 +3745,8 @@ def plotFluxComparison(
 
         if addFlowLegend:
             (l4,) = axTe_f.plot(
-                tBest.profiles["rho(-)"] if not useRoa else tBest.derived["roa"],
-                tBest.derived["qe_MWm2"],
+                tBest.get_profiles()["rho(-)"] if not useRoa else tBest.get_derived()["roa"],
+                tBest.get_derived()["qe_MWm2"],
                 ":",
                 c="k",
                 lw=1.0,
