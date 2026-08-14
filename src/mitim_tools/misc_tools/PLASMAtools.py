@@ -1238,7 +1238,7 @@ def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallra
         k1 = (
             0.41
             * (inductance) ** (-1.21)
-            * (betap) ** (-0.06)
+            * (betap) ** (0.06)
             * (feedback) ** (-0.18)
             * (1 + wallrad) ** (0.68)
         )
