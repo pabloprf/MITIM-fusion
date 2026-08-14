@@ -1198,6 +1198,12 @@ def calculatePlasmaFrequency(ne):
 def calculateKappaLimit(epsilon, delta, inductance, betap, feedback=2.25, wallrad=0.1):
     """
     Equation is from Lee et al., NF, 2017
+    Wallrad (or DELTA_0 in the paper) is the outer gap between the plasma and the wall normalized by minor radius. (b/a = 1 + DELTA_0). 
+    This seems to be between ~0.05 and ~0.2 in present day experiments, so 0.1 is a good baseline.
+    Feedback is  highly machine, and triangularity dependent. Generally feedback increases with triangularity. The value of this parameter
+    represents a decision about the capability of the vertical instability constrol system. Adjusting this would be a good place to start 
+    if trying to match higher fidelity results. For the machiens in the paper, these vary between 1.0 and 3.25. 
+    The paper gives an expression for delta = 0, delta = 0.33, delta = 0.50, and delta = 0.70 so the thresholds are put these in the middle of their respective ranges.
     """
     k0, k1 = 0, 0
 

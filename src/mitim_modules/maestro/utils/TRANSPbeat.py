@@ -607,10 +607,48 @@ class transp_beat(beat):
                 if spec == z:
                     impurity_order[spec] = i
                     break
-        np.save(self.folder_output / 'transp_results.npy', {
+        # Extract Li3 (plasma inductance) and BPEQ from the TRANSP CDF and save them.
+        # Also attach the same dict to `self.transp_results` for in-memory access by maestro.
+        try:
+            li3_full = getattr(cdf_results, 'Li3', None)
+            if li3_full is None:
+                try:
+                    li3_full = np.asarray(cdf_results.f['LI_3'][:])
+                except Exception:
+                    li3_full = np.array([])
+            else:
+                li3_full = np.asarray(li3_full)
+            li3_at_extract = float(li3_full[it_extract]) if (hasattr(li3_full, 'size') and li3_full.size) else np.array([])
+        except Exception:
+            li3_full = np.array([])
+            li3_at_extract = np.array([])
+
+        try:
+            bpeq_full = getattr(cdf_results, 'BPEQ', None)
+            if bpeq_full is None:
+                try:
+                    bpeq_full = np.asarray(cdf_results.f['BPEQ'][:])
+                except Exception:
+                    bpeq_full = np.array([])
+            else:
+                bpeq_full = np.asarray(bpeq_full)
+            bpeq_at_extract = float(bpeq_full[it_extract]) if (hasattr(bpeq_full, 'size') and bpeq_full.size) else np.array([])
+        except Exception:
+            bpeq_full = np.array([])
+            bpeq_at_extract = np.array([])
+
+        transp_results = {
             'impurity_order': impurity_order,
             'sawtooth_times': np.array(cdf_results.tlastsawU),
-        })
+            'Li3': li3_at_extract,
+            'Li3_full': li3_full,
+            'BPEQ': bpeq_at_extract,
+            'BPEQ_full': bpeq_full,
+        }
+
+        # Persist summary sidecar and keep an in-memory copy on the beat instance
+        np.save(self.folder_output / 'transp_results.npy', transp_results)
+        self.transp_results = transp_results
 
         # Close the (multi-GB) TRANSP CDF now, before the downstream PORTALS beats fork their
         # workers -- otherwise the open fd is inherited and the wiped CDF stays pinned on disk
