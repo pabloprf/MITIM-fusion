@@ -549,6 +549,7 @@ def interpretRun(infoSLURM, log_file):
         elif rdma_failure:
             status = -1
             info["info"]["status"] = "stopped"
+            info["info"]["rdma_failure"] = True   # enables the bounded relaunch in checkUntilFinished
             print("\t- TRANSP's MPI layer failed to bring up the InfiniBand device (mlx5); the container was denied the RDMA queue-pair and mpirun segfaulted. Flagging run as stopped (infrastructure, not physics)",typeMsg="w",)
         elif hard_failure:
             status = -1

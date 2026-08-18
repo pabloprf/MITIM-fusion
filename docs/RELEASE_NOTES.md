@@ -124,6 +124,12 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **TRANSP runs no longer die on the transient InfiniBand/RDMA container-launch failure**:
+    when the apptainer container is denied the mlx5 queue-pair at mpirun startup (a known
+    node/config-dependent infrastructure hiccup that MITIM already fingerprints via
+    `TRANSPdebug.RDMA_LAUNCH_ERRORS`), `checkUntilFinished` now relaunches the run (up to 2
+    attempts) instead of stopping the whole chain; genuine TRANSP aborts still stop immediately.
+
 *   🐛 **Every NEO retrieval waited 60 s for a file NEO never writes**: `out.neo.rotation` was
     listed as a mandatory output, but NEO only produces it for the rotation models that solve
     for the poloidal potential (never with `ROTATION_MODEL=1`). Each retrieval therefore
