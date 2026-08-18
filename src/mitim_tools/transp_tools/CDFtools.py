@@ -3902,11 +3902,11 @@ class transp_output:
             self.x_saw_mix = self.t * 0.0 + self.eps00
 
         for i in range(len(self.t)):
-            self.x_saw_inv[it] = np.interp(
-                self.x_saw_inv[it], self.roa[it], self.xb[it]
+            self.x_saw_inv[i] = np.interp(
+                self.x_saw_inv[i], self.roa[i], self.xb[i]
             )
-            self.x_saw_mix[it] = np.interp(
-                self.x_saw_mix[it], self.roa[it], self.xb[it]
+            self.x_saw_mix[i] = np.interp(
+                self.x_saw_mix[i], self.roa[i], self.xb[i]
             )
 
         self.q0 = self.q[:, 0]
