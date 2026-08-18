@@ -308,6 +308,12 @@ maestro:
       # Definition of equilibrium parameters that will based to EPED
       toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
 
+      # Where to evaluate the Zeff (and the fuel dilution) fed to EPED. Options:
+      #     'vol_avg':  volume-averaged Zeff of the current state (default, original behavior)
+      #     'pedestal': Zeff interpolated at rho=0.95
+      # Both feed the zeffped input and the effective-impurity charge used by full EPED.
+      zeff_location: 'vol_avg'
+
       # (if full EPED) EPED override parameters: dictionary of EPED configuration parameters to override default values in config
       eped_params_override: {}
 
@@ -541,6 +547,16 @@ maestro:
       # Nelder-Mead bound-clipping artifact (the crossing is bracketed above) and is
       # re-solved exactly by a brentq root find.
       Te_bc_min_Tesep_factor: 1.2
+
+      # Inverts the isothermal-edge guard above: instead of flooring Te_bc at
+      # factor*Te_sep, let Te_bc go as low as the servo wants and cap the APPLIED
+      # separatrix temperatures in the written state at sep_max_frac * BC value
+      # (Te and Ti; ne untouched). The physical Tesep set upstream (e.g. by the
+      # lengyel beat) is not modified there and stays available to analysis; a
+      # case whose Te_bc lands at/below it is then a physics result (sharpness
+      # <= 0), not a rail. Pair with Te_bc_min_Tesep_factor: null so the floor
+      # does not fire first. Typical value 0.8. null (default) = old behavior.
+      sep_max_frac: null
 
       # Under-relaxation of the boundary-condition temperature across beat incarnations
       # (same mechanism and shared 'Te_bc_applied' trans-beat memory as the sharpness
@@ -829,6 +845,13 @@ maestro:
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization. If null, no transition performed
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
       machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma
+
+      # Freeze the poloidal field: q pinned to the input QPR ufile for ALL time
+      # (nlmdif=F/nlqdata=T), i.e. no current diffusion -- TRANSP keeps the q-profile
+      # the state came in with. REQUIRES machine_initialization: null (prescribed
+      # equilibrium); freezing q while TEQ re-solves Grad-Shafranov every step is
+      # inconsistent and prepare() raises on that combination.
+      frozen_field: false
 
       # Smoothing of the separatrix boundary for TRANSP ufile generation
       mxh_coeffs_smooth_sep: null # if null, it will take n_mxh from "separatrix" section of "plasma"
