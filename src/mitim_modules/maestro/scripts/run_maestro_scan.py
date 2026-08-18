@@ -387,8 +387,11 @@ def _shape95_ratios_from_gacode(baseline_gacode):
             float(p.derived['delta95']) / delta_sep)
 
 
-def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
+def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True, name=None):
     """Write scan_folders.txt and submit one sbatch array of len(folders) tasks.
+
+    ``name`` sets the SLURM job-array name (run_slurm's ``nameJob``); default None
+    keeps run_slurm's ``mitim_<folder>`` naming.
 
     When ``per_case_logs`` is True, each case folder gets slurm.out/slurm.err as
     symlinks into SLURM's live array logs (slurm_output/slurm_error_<%A>_<%a>.dat in
@@ -428,7 +431,7 @@ def _submit_array(folders, main_folder, *, slurm, save, per_case_logs=True):
               exclude=slurm.get('exclude'), qos=slurm.get('qos'),
               max_hours=slurm.get('max_hours', 8),
               exclusive=slurm.get('exclusive', False), are_n_threads=False, ntasks_per_node=cpus,
-              job_array=job_array)
+              job_array=job_array, nameJob=name)
 
     _write_per_case_sbatch_stubs(main_folder, folders)
 
