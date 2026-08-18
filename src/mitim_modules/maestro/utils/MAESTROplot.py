@@ -12,8 +12,7 @@ from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
-from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
-from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
+from mitim_modules.maestro.utils.BCbeat import bc_beat, BC_METHODS
 from IPython import embed
 
 MARKERSIZE = 1
@@ -28,7 +27,7 @@ def grabMAESTRO(folder):
         key=lambda x: int(x.split('_')[1]),
     )
 
-    beat_types = [] 
+    beat_types = []   # entries: beat_type str, or ('bc', method, legacy) for bc beats
     for beat in range(len(beats)):
         if (folder_beats / f'{beats[beat]}' / 'run_transp').exists():
             beat_types.append('transp')
@@ -38,10 +37,15 @@ def grabMAESTRO(folder):
             beat_types.append('eped')
         elif (folder_beats / f'{beats[beat]}' / 'run_lengyel').exists():
             beat_types.append('lengyel')
-        elif (folder_beats / f'{beats[beat]}' / 'run_sharpness').exists():
-            beat_types.append('sharpness')
-        elif (folder_beats / f'{beats[beat]}' / 'run_confinement').exists():
-            beat_types.append('confinement')
+        else:
+            for _method in BC_METHODS:
+                if (folder_beats / f'{beats[beat]}' / f'run_bc_{_method}').exists():
+                    beat_types.append(('bc', _method, False))
+                    break
+                # pre-'bc'-refactor folder naming (run_sharpness/, run_confinement/)
+                if (folder_beats / f'{beats[beat]}' / f'run_{_method}').exists():
+                    beat_types.append(('bc', _method, True))
+                    break
 
     if len(beats) == 0:
         raise ValueError(f"No beats found in {folder_beats}")
@@ -59,7 +63,11 @@ def grabMAESTRO(folder):
     from mitim_modules.maestro.MAESTROmain import maestro
     m = maestro(folder, terminal_outputs = True, overall_log_file = False)
     for i,beat in enumerate(beat_types):
-        m.define_beat(beat, initializer = beat_initializer if i == 0 else None)
+        method, legacy = None, False
+        if isinstance(beat, tuple):
+            beat, method, legacy = beat
+        m.define_beat(beat, initializer = beat_initializer if i == 0 else None,
+                      method = method, legacy = legacy)
 
     # Add final if exists
     folder_output = Path(folder) / 'Outputs'
@@ -82,8 +90,16 @@ def plotMAESTRO(folder, fn = None, num_beats = 2, only_beats = None, full_plot =
 
 _BEAT_TYPE_LABELS = [
     (transp_beat, 'TRANSP'), (portals_beat, 'PORTALS'), (eped_beat, 'EPED'),
-    (lengyel_beat, 'Lengyel'), (sharpness_beat, 'Sharpness'), (confinement_beat, 'Confinement'),
+    (lengyel_beat, 'Lengyel'),
 ]
+
+
+def _beat_label(beat_obj):
+    '''Display label for a beat object (bc beats carry their method in the label;
+    a legacy pre-'bc' folder keeps its original label)'''
+    if isinstance(beat_obj, bc_beat):
+        return beat_obj.method.capitalize() if beat_obj.legacy else f'BC {beat_obj.method}'
+    return next((lab for cls, lab in _BEAT_TYPE_LABELS if isinstance(beat_obj, cls)), 'Beat')
 
 
 def collect_beat_states(self):
@@ -104,7 +120,7 @@ def collect_beat_states(self):
     for i, beat in enumerate(self.beats.values()):
         profs = (PROFILEStools.gacode_state(beat.folder_output / 'input.gacode')
                  if (beat.folder_output / 'input.gacode').exists() else None)
-        key = next((lab for cls, lab in _BEAT_TYPE_LABELS if isinstance(beat, cls)), 'Beat')
+        key = _beat_label(beat)
         objs[f'{key} b#{i+1}'] = profs
 
     ps, ps_lab = [], []

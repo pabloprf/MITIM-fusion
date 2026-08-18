@@ -363,6 +363,9 @@ def run_maestro_local(
             beat_parameters["beat_type"],
             initializer = initialize_this_beat_with,
             prune_level = beat_parameters.get("prune_level", None),
+            # 'bc' beats need the method at construction time (it names the run folder);
+            # read from the MERGED prepare namelist so base_module inheritance works
+            method = beat_prepare_namelists[beat].get("method") if beat_parameters["beat_type"] == 'bc' else None,
             )
 
         # ****************************************************************************

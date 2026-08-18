@@ -31,12 +31,10 @@ plasma:
 
     parameters:
 
-      # If creator_type = eped_initializer: Profiles will be initialized such that BetaN is matched as close as possible
-      #   BetaN can also be a string ("H98y2" or "H89p", optionally with a target, e.g. "H98y2=1.1"): an achievable
-      #   BetaN is then estimated by inverting that confinement scaling with the engineering parameters, so scans in
-      #   Ip/Bt/density don't need a per-case guess. Default targets: H98y2=1.0, H89p=2.0. The loss power used is
-      #   Paux only (alphas/ohmic unknown at initialization), so the estimate is deliberately on the low side.
-      BetaN: 1.0    # Normalized global beta (number, or confinement-scaling string as described above)
+      # If creator_type = eped_initializer: profiles are initialized to match this BetaN.
+      # Can also be a confinement-scaling string ("H98y2" or "H89p", optionally "H98y2=1.1"):
+      # BetaN is then inverted from that scaling (see run_maestro.estimate_BetaN_from_scaling)
+      BetaN: 1.0    # Normalized global beta (number, or confinement-scaling string)
       nu_ne: 1.3    # Density peaking
       aLTe_to_aLTi_ratio: 1.0  # Keep this ratio during the BetaN optimization
       aLT: null     # [Optional] Use this a/LTi directly (aLTe = aLTe_to_aLTi_ratio * aLTi), skipping the BetaN optimization
@@ -45,16 +43,9 @@ plasma:
 
       # If creator_type = fixed_bc: User-specified boundary condition values at x_bc
       #   - x_bc + bc_coordinate, Te_bc, Ti_bc fix the pedestal-top values; Tsep and nsep come from Tesep_eV and ne_ratio_sep_ped above
-      #   - BetaN and nu_ne (above) are still used to match target values by adjusting aLT and aLn
-      #   - Set BetaN and/or nu_ne to null to skip the corresponding gradient optimization and use aLT/aLn directly
-      #
-      #   !! Recommend bc_coordinate: 'rho'. rho_tor is the immutable grid coordinate carried
-      #      unchanged across beats; 'roa'/'psin' depend on the equilibrium, which is not yet
-      #      solved at separatrix initialization, so the BC can be pinned at the wrong rho_tor
-      #      and drift once the real equilibrium is solved. The non-rho options are kept
-      #      available to accommodate future improvements.
+      #   - BetaN and nu_ne (above) are still matched by adjusting aLT and aLn; set them to null to use aLT/aLn directly
       x_bc: null           # BC location value in bc_coordinate (e.g. pedestal top, typically ~0.95)
-      bc_coordinate: "rho" # 'rho' (rho_tor) recommended; 'roa'/'psin' unreliable at init (see note above)
+      bc_coordinate: "rho" # 'rho' (rho_tor) recommended; 'roa'/'psin' unreliable at init (see creator_from_fixed_bc in MAESTRObeat.py)
       Te_bc: null          # Te at x_bc (keV)
       Ti_bc: null          # Ti at x_bc (keV); if null, uses Te_bc
       # Note: for fixed_bc, neped_20 (from plasma.parameters above) is used directly as ne_bc
@@ -71,12 +62,9 @@ plasma:
 
     # Profile boundary conditions
     neped_20: 2.5           # Density at "ped" location as defined by EPED
-    fGped: null             # [Optional] if not null, use this pedestal Greenwald fraction (overrides neped_20).
-                            #            NOTE: needs Ip and a. With initialization_type=geqdsk, any of the two
-                            #            left null is read from the geqdsk itself (|CURRENT| in MA; a = separatrix
-                            #            half-width), avoiding entries redundant with (or inconsistent with) the
-                            #            file; explicit values still take precedence. For all other initialization
-                            #            types both must be provided in this namelist.
+    fGped: null             # [Optional] if not null, use this pedestal Greenwald fraction (OVERRIDES neped_20).
+                            #            Needs Ip and a; only initialization_type=geqdsk can source a missing one
+                            #            from the equilibrium file (explicit values still win)
     ne_ratio_sep_ped: 0.3   # Ratio nsep/nped 
     Tesep_eV: 75.0          # Temperature at separatrix (to potentially change if beat provides physics for this, e.g. Lengyel)
 
@@ -95,48 +83,28 @@ plasma:
       # [Optional] If initialization_type = separatrix: path to input.gacode to reproduce internal flux surfaces and other moments
       internal_flux_file: null
 
-      # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients used in TWO places:
-      #   1. At INITIALIZATION: the equilibrium->input.gacode conversion (to_profiles) parametrizes every
-      #      flux surface with an MXH of this order -- a low order visibly ROUNDS the near-X-point boundary
-      #      of the initial state relative to the raw geqdsk (visible in the 'MAESTRO init' tab).
-      #   2. To smooth the boundary handed to TRANSP (kinks/loops make TRANSP abort). THIS role is consumed
-      #      by the FIRST TRANSP beat only -- the resulting curve is frozen and reused verbatim by every
-      #      later TRANSP beat (see boundary_surface_psin below).
+      # If initialization_type = geqdsk, freegs, separatrix: MXH order used in TWO places:
+      #   1. the equilibrium->input.gacode conversion at initialization (low order ROUNDS the near-X-point boundary)
+      #   2. smoothing of the boundary handed to TRANSP (first TRANSP beat only; see boundary_surface_psin)
       n_mxh: 5
 
-      # Normalized poloidal flux (psi_N) of the flux surface used as the FIXED TRANSP boundary.
-      # 1.0 (default) = the separatrix. A value < 1 (e.g. 0.995) backs the boundary off to a surface
-      # just inside the separatrix: it is rounder (higher curvature ratio) so it avoids TRANSP's
-      # boundary curvature-ratio abort on sharp/near-X-point separatrices, while keeping the true
-      # plasma shape (unlike lowering n_mxh).
-      #
-      # CONSUMED BY THE FIRST TRANSP BEAT ONLY. That beat builds the boundary curve (backoff + n_mxh
-      # smoothing), freezes it in parameters_trans_beat, and every later TRANSP beat reuses it
-      # VERBATIM -- neither knob is re-applied. This is deliberate: the separatrix is a frozen
-      # engineering parameter and TRANSP is fixed-boundary, so the boundary must be identical on
-      # every beat. Re-deriving it would compound, because TRANSP's output psi_N=1 surface IS the
-      # boundary it was given: 0.995 -> 0.995^2 -> 0.995^3 ... shrinking the plasma every beat (and
-      # the MXH round-trip, being a projection rather than idempotent, adds its own smaller drift).
+      # psi_N of the flux surface used as the FIXED TRANSP boundary. 1.0 = separatrix; < 1
+      # (e.g. 0.995) backs off to a rounder surface, avoiding TRANSP's boundary-curvature abort
+      # on sharp/near-X-point separatrices. CONSUMED BY THE FIRST TRANSP BEAT ONLY: the curve is
+      # frozen and reused verbatim thereafter (re-applying would compound the shrink each beat;
+      # see TRANSPbeat._freeze_boundary_for_transp)
       boundary_surface_psin: 1.0
 
-      # If initialization_type = geqdsk, freegs, fibe: How to extract the 99.5% poloidal flux surface parameters (kappa, delta, zeta)
-      # The non-null options below extract these ONCE at initialization (with the chosen parameterization) and FREEZE them:
-      # every later EPED beat reuses those same fixed values, even though the real internal flux surfaces drift as the
-      # equilibrium evolves (Shafranov shift, beta, ...). This pinning is the purpose of the knob.
-      # Options:
-      #      analytic:                Use the analytical formulas (not the best fit) to Turnbull-Miller parameters
-      #      analytic_interpolation:  Use the analytical formulas (not the best fit) to Turnbull-Miller parameters, but interpolating the coefficients at psiN=0.995
-      #      turnbull:                Use Turnbull-Miller parameterization via best-fit methods
-      #      mxh:                     Use MXH parameterization via best-fit methods
-      #      [miller:                  Use Miller parameterization via best-fit methods] -> NOT AVAILABLE YET
-      #      null:                    Do NOT freeze: store nothing in trans_beat, so each EPED beat instead recomputes the
-      #                               99.5% shaping from its own current equilibrium -> the values evolve beat-to-beat
-      # NOTE: if initialization_type = separatrix, only null vs non-null is honored; the parameterization above is ignored
-      #       and the 99.5% surface is always obtained by interpolating the built profiles to psiN=0.995 (no MXH s_three/s_four).
-      #       A runtime warning is printed in this case. Since separatrix internal flux surfaces are a parametric guess,
-      #       consider `maestro.refreeze_995_after_beat: N` to re-extract the 99.5% shaping from an evolved (e.g. TRANSP) beat.
-      # This knob controls only HOW the surface is extracted and whether it is frozen at init; WHEN it is (re)frozen for
-      # later EPED beats is controlled by `maestro.refreeze_995_after_beat` (see below).
+      # If initialization_type = geqdsk, freegs, fibe: how the 99.5% shaping (kappa, delta, zeta)
+      # fed to EPED is extracted -- ONCE at initialization, then FROZEN for every EPED beat
+      # (WHEN it is re-frozen is maestro.refreeze_995_after_beat below). Options:
+      #      analytic:                Analytical formulas (not best-fit) to Turnbull-Miller parameters
+      #      analytic_interpolation:  Same, but interpolating the coefficients at psiN=0.995
+      #      turnbull:                Turnbull-Miller parameterization via best-fit
+      #      mxh:                     MXH parameterization via best-fit (also stores s_three/s_four995)
+      #      null:                    Do NOT freeze: each EPED beat recomputes from its own equilibrium
+      # With initialization_type = separatrix only null vs non-null is honored (plain interpolation
+      # of the built profiles; a runtime warning is printed)
       freeze_995_from: analytic
 
       # psi_N at which the "995" shaping (kappa995/delta995/zeta995/s_three995/s_four995) is sampled.
@@ -189,15 +157,9 @@ plasma:
       # Minority species [Z,A]
       minority: [2, 3]
 
-      # Minority fraction to be added to the mix.
-      #     Also honored when type = gaussian_sources: if fmini > 0, TRANSPbeat
-      #     forces Pich on and runs TORIC at the full P_icrh specified above,
-      #     so TRANSP evolves the H-minority density and pressure
-      #     self-consistently. At TRANSP output the auxiliary heating is
-      #     replaced with the gaussian_sources Pe/Pi (downstream beats see
-      #     only the gaussian heating, plus the now-thermalized minority
-      #     density/pressure profiles). Dilution / Zeff via estimateLowZ
-      #     therefore matches what's actually in the plasma.
+      # Minority fraction to be added to the mix. Also honored when type = gaussian_sources:
+      # fmini > 0 forces Pich on (TORIC at the full P_icrh) so the minority is evolved
+      # self-consistently; the gaussian Pe/Pi replace the heating at TRANSP output (see TRANSPbeat.py)
       fmini: 0.05
 
       # Antenna frequency (MHz)
@@ -214,10 +176,8 @@ plasma:
 
       # ~~~~~~~~~~~
       # Parameters for simple Gaussian sources (type = gaussian_sources)
-      #     Keep in mind that these implement the profiles of source densities
-      #     to provide the desired integrated powers using the current volume
-      #     integrals. If the equilibrium changes across beats, the actual Pe/Pi
-      #     delivered by the same source parameters can change.
+      #     Source DENSITIES are built with the current volume integrals: if the equilibrium
+      #     changes across beats, the actual Pe/Pi delivered can change.
       # ~~~~~~~~~~~
       nu_source: 5.0  # Peaking factor for the source profile
       Pe: 11.0        # Total electron heating power
@@ -233,54 +193,26 @@ maestro:
   # Sequence of beats
   beats: ["transp", "eped", "portals", "eped", "portals"]
 
-  # How much on-disk material to discard as the run proceeds. Higher = smaller footprint,
-  # less post-mortem detail. `beat_results/` is preserved at EVERY level (except the PORTALS
-  # pass at level 3 below) — it carries the canonical state for the next beat AND for
-  # cross-invocation restart (see each beat's `_inform_save`: input.gacode + a small sidecar).
-  #   0 : keep everything. The old `keep_all_files: true`.
-  #   1 : drop execution scratch nothing reads back; mitim_plot_maestro is still FULLY intact.
-  #         - transp: the `results/` tree (a second copy of the multi-GB CDF, already surfaced
-  #           into run_transp/), `*PH.CDF`, job logs. The main CDF and AC folders are kept.
-  #         - eped: the per-height TOQ/ELITE work dirs under `case1/run1/` ("enormous"; see
-  #           EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept.
-  #         - portals: `Execution/` (per-iteration model trees, incl. CGYRO restart binaries),
-  #           `Initialization/`, `flux_match/`. `run_portals/Outputs` is kept.
-  #         - lengyel / sharpness / confinement: nothing (these beats are KB-scale).
-  #   2 : 1 + wipe each beat's `run_<name>/` entirely. Two plot tabs then degrade (see below).
-  #   3 : 2 + prune persisted outputs and initializers. The old `keep_all_files: false`.
-  #         - portals: LAST beat's optimization_object.pkl re-saved lean (GP steps dropped);
-  #           INTERMEDIATE beats drop the pickles, portals_profiles/ and their beat logs.
-  #           Chaining keeps surrogate_data.csv and beat_results/input.gacode.
-  #         - initializers: the throwaway geqdsk intermediates and any nested run folder
-  #           (notably `initializer_eped/run_eped/`, a full TOQ/ELITE tree that no earlier
-  #           level reaches). `input.gacode`, `input.geqdsk` and `beat_results/` are NEVER
-  #           touched — MAESTRO re-reads them on every invocation and so does the plotter.
-  # Plot tabs that depend on run-folder artifacts degrade gracefully from level 2 on (never
-  # fatal — mitim_plot_maestro reports what it skipped and carries on):
-  #   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
-  #   - TRANSP CDF detail tab is skipped: the multi-GB CDF is never copied to beat_results/;
-  #     only `transp_results.npy` (sawtooth_times + impurity_order) travels forward.
-  #     Sufficient for chain inheritance, not for full CDF plotting.
-  # PORTALS plot tabs are unaffected up to level 2 (their inputs live in beat_results/Outputs/).
+  # How much on-disk material to discard as the run proceeds (per-beat/plot details in the
+  # pruning-levels block of MAESTRObeat.py). `beat_results/` is preserved at EVERY level (except
+  # the PORTALS pass at level 3) — it carries the canonical state for the next beat and restart.
+  #   0 : keep everything (the old `keep_all_files: true`)
+  #   1 : drop execution scratch nothing reads back; mitim_plot_maestro still FULLY intact
+  #   2 : 1 + wipe each beat's `run_<name>/` entirely (two plot tabs degrade gracefully)
+  #   3 : 2 + prune persisted outputs and initializers (the old `keep_all_files: false`)
   # Use `mitim_prune_maestro <folder> --level N` to apply a level to an ALREADY-FINISHED run.
   prune_level: 0
 
   # Per-beat override: any beat section below may set its own `prune_level`, which wins over
-  # the global one above (e.g. keep TRANSP intact while pruning PORTALS hard):
-  #   transp:  {prune_level: 0, ...}
-  #   portals: {prune_level: 3, ...}
+  # the global one (e.g. transp: {prune_level: 0, ...} while portals: {prune_level: 3, ...}).
   # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
-  # When to freeze the 99.5% shaping (kappa995/delta995/zeta995) that is fed to every EPED beat.
-  # This is orthogonal to `plasma.parameters.separatrix.freeze_995_from` (which sets HOW the surface
-  # is extracted); this knob sets WHEN it is fixed:
-  #   0    : freeze at initialization and reuse for the whole run (default; the old behavior).
-  #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. N=2 -> after the first real TRANSP
-  #          beat), overwrite the frozen values, and reuse those for every later EPED beat. Use this to
-  #          feed EPED a real equilibrium instead of the initialization guess (relevant for separatrix
-  #          init, whose internal flux surfaces are a parametric guess).
-  #   null : never freeze -- each EPED beat recomputes the 99.5% shaping from its own current
-  #          equilibrium, so the values evolve beat-to-beat.
+  # WHEN the 99.5% shaping fed to EPED is (re)frozen (HOW it is extracted is
+  # plasma.parameters.separatrix.freeze_995_from). Options:
+  #   0    : freeze at initialization and reuse for the whole run (default)
+  #   N>0  : re-extract ONCE from beat N's evolved equilibrium (e.g. N=2 -> after the first
+  #          real TRANSP beat); useful when the init shaping is a guess (separatrix init)
+  #   null : never freeze -- each EPED beat recomputes from its own current equilibrium
   refreeze_995_after_beat: 0
 
   # ---------------------------------------------------------------------------
@@ -308,37 +240,30 @@ maestro:
       # Definition of equilibrium parameters that will based to EPED
       toq_eq_choice: "standard"   # 'standard', 'full_turnbull_miller', 'mxh' - if not provided will default to 'standard'
 
-      # Where to evaluate the Zeff (and the fuel dilution) fed to EPED. Options:
-      #     'vol_avg':  volume-averaged Zeff of the current state (default, original behavior)
+      # Where to evaluate the Zeff (and fuel dilution) fed to EPED:
+      #     'vol_avg':  volume-averaged Zeff of the current state (default)
       #     'pedestal': Zeff interpolated at rho=0.95
-      # Both feed the zeffped input and the effective-impurity charge used by full EPED.
       zeff_location: 'vol_avg'
 
       # (if full EPED) EPED override parameters: dictionary of EPED configuration parameters to override default values in config
       eped_params_override: {}
 
-      # (if full EPED) Retries when EPED finds no stable solution within the explored
-      # pedestal-temperature window: each retry lowers the floor of TEPED_BOUND relative
-      # to the original one (floor_n = floor_0 * teped_retry_lower_factor^n) and re-runs.
-      # Set teped_retries: 0 to fail immediately instead (pre-retry behavior).
+      # (if full EPED) Retries with a lowered teped exploration floor when no stable
+      # solution is found (0: fail immediately); each retry multiplies the floor by the factor
       teped_retries: 2
       teped_retry_lower_factor: 0.7
 
-      # (if full EPED) SLURM time limit (minutes) of each EPED case. Full EPED needs
-      # generous wall-time (the width x teped stability sweep); pair it with enough
-      # cores per case (the `cpus` knob in preprocess_prepare_parameters below).
+      # (if full EPED) SLURM time limit (minutes) of each EPED case (needs generous wall-time)
       minutes_slurm: 240
 
       # (if full EPED) [rule, threshold]: 'G' = flat gamma/omega_A cut; 'W' = EPED1 gamma > C*omega_*i(n)/2 (threshold = calibration C)
       # stability_rule: ['G', 0.03]
 
-      # (if use_full_EPED: false) Location of the EPED-NN files and the transformation
-      # function of that specific NN, e.g.:
+      # (if use_full_EPED: false) EPED-NN files and that NN's transformation function, e.g.:
       #   nn_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-MODEL-SPARC.keras
       #   norm_location: $MFEIM_PATH/private_code_mitim/NN_DATA/EPED-NN-SPARC/EPED-NN-NORMALIZATION-SPARC.txt
       #   transform_inputs_fun: import::mitim_tools.surrogate_tools.NNtools.standard_arguments_eped
-      # A `corrections_set:` dictionary (e.g. {Bt: 12.2, R: 1.85, a: 0.57}) can force
-      # exact input values, to avoid NN issues with non-trained parameters.
+      # A `corrections_set:` dict (e.g. {Bt: 12.2, R: 1.85}) can force exact NN input values
       nn_location: null
       norm_location: null
       transform_inputs_fun: null
@@ -360,254 +285,106 @@ maestro:
 
     parameters_prepare: {}
 
-  sharpness:
+  # Boundary-condition (bc) beat: sets the temperature BC at x_bc by one of several
+  # methods, all sharing the same BC-application machinery (core rescaled preserving
+  # a/L, analytical edge down to the separatrix, shared 'Te_bc_applied' trans-beat
+  # memory and relaxation / response-fit servo).
+  # Namelist shape: COMMON knobs sit at the top level of parameters_prepare;
+  # method-specific knobs live in a per-method sub-dict named '<method>_parameters'
+  # (confinement_parameters, sharpness_parameters; a future betap method would add
+  # betap_parameters symmetrically). Both sub-dicts may coexist -- only the selected
+  # method's sub-dict is consumed, the other is ignored (its keys are still checked
+  # for typos), so base_module inheritance and method switching need no pruning.
+  # A method-specific knob placed at the TOP level raises with a pointer to the
+  # right sub-dict; unknown keys anywhere raise.
+  bc:
 
-    beat_type: sharpness
-
-    base_module: null
-
-    parameters_prepare:
-
-      # Location of the boundary condition in the coordinate given by bc_coordinate
-      x_bc: 0.90
-
-      # Coordinate system for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin' (normalized poloidal flux)
-      bc_coordinate: "rho"
-
-      # Prescribed sharpness parameter xi (ratio of edge to core temperature gradient)
-      # xi=1 means edge gradient matches core gradient; xi>1 means sharper (more H-mode-like) edge
-      # How the BC is applied: core (rho < rho_bc) preserves a/LT and a/Ln exactly (the
-      # profiles are multiplied by T_bc,new/T_bc,old; absolute gradients dT/dr scale with
-      # the BC ratio); edge is replaced by a straight line in psi_n down to the
-      # (kept-fixed) separatrix value. The analytical edge starts ONE grid point past
-      # the BC, so the a/L gradients that PORTALS reads at its last control point are
-      # preserved exactly (the slope kink sits outside the PORTALS prediction grid).
-      sharpness: 1.0
-
-      # Coordinate system in which the sharpness parameter xi (the gradient ratio) is defined.
-      # Independent of bc_coordinate. Options: 'psin' (default), 'rho' (rho_tor), 'roa' (r/a)
-      sharpness_coordinate: "psin"
-
-      # Ti/Te ratio at the boundary condition location (default 1.0)
-      tite: 1.0
-
-      # What to do with the density profiles at the BC change. Options:
-      #     'bc':   core ne rescaled to ne_bc (= neped_20) preserving a/Lne, edge replaced
-      #             with the same shape as the temperatures, ion densities rescaled to
-      #             keep ni/ne ratios (default, original behavior)
-      #     'keep': ne and all ion densities left untouched; only Te/Ti are modified.
-      #             The neped_20 passed to subsequent beats is then the actual ne at
-      #             rho_bc read from the profiles (any inherited neped_20 is ignored).
-      density_treatment: "bc"
-
-      # Under-relaxation of the boundary-condition temperature across beat incarnations:
-      #     Te_bc_applied = Te_bc_prev + relaxation * (Te_bc_new - Te_bc_prev)
-      # where Te_bc_prev is the value applied by the PREVIOUS sharpness/confinement beat
-      # (shared trans-beat parameter 'Te_bc_applied' -- mixed chains relax coherently).
-      # 1.0 (default) = full step, exactly the original behavior; < 1 damps the
-      # beat-to-beat oscillation of the BC servo (each such beat resets Te_bc from the
-      # state, PORTALS then moves the state -- a fixed-point iteration that can ring).
-      # The first incarnation always takes the full step. With relaxation < 1 the
-      # prescribed xi is only approached ACROSS beat iterations; the effective xi
-      # actually applied is reported as xi_eff in the beat results.
-      relaxation: 1.0
-
-      # How the APPLIED Te_bc is derived from the frozen-shape target above. Options:
-      #     'relaxation':   the under-relaxation above (default, previous behavior)
-      #     'response_fit': fit the MEASURED delivered response from previous cycles
-      #                     (pairs of applied Te_bc vs the xi the state came back with,
-      #                     stored in the trans-beat parameter 'bc_response_history') and
-      #                     step to where that fit crosses the target. Degenerate fits
-      #                     fall back: fit -> secant (last two pairs) -> seeded step
-      #                     (seed_gain x the frozen solve's own step) -> full step.
-      # Rationale: the frozen-shape solve has, by construction, a sensitivity
-      # alpha = dln(quantity)/dln(Te_bc) ~ 1, whereas the DELIVERED response measured
-      # after the downstream beats have moved the state has median alpha = 0.40 -- the
-      # frozen step is ~2.5x too stiff and a fixed relaxation factor cannot see it.
-      # EXPERIMENTAL here: those statistics were measured for the confinement beat's
-      # H-factor; the xi response of this beat is not yet characterized.
-      servo_mode: "relaxation"
-
-      # response_fit: number of most recent usable (non-railed) pairs entering the fit.
-      # Drift of the response is mild; longer windows alias the early transient.
-      servo_fit_window: 3
-
-      # response_fit: acceptance band on the fitted alpha = dln(xi)/dln(Te_bc). A fit
-      # outside the band (or with negative slope) is rejected -> secant -> seeded step.
-      servo_alpha_band: [0.10, 2.0]
-
-      # response_fit: maximum multiplicative (x or 1/x) change of Te_bc per cycle, so the
-      # fit is never extrapolated beyond the range of Te_bc actually explored.
-      servo_trust_factor: 1.5
-
-      # response_fit: gain on the frozen solve's own step, used by the seeded rung (a
-      # single measured pair), compensating the frozen solve's ~2.5x over-stiffness.
-      # Capped by servo_trust_factor.
-      servo_seed_gain: 2.5
-
-      # If True, override x_bc with the outermost radial location used by the previous
-      # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
-      # bc_coordinate is updated automatically; sharpness_coordinate is never changed.
-      update_bc_based_on_portals: false
-
-    preprocess_prepare: null
-    preprocess_prepare_parameters: {}
-    preprocess_run: null
-
-  confinement:
-
-    beat_type: confinement
+    beat_type: bc
 
     base_module: null
 
     parameters_prepare:
 
-      # Location of the boundary condition in the coordinate given by bc_coordinate
-      x_bc: 0.90
+      # Method that determines the temperature BC at x_bc (full mechanics and rationale
+      # documented in BCbeat.py):
+      #     'confinement': scan Te_bc until the state matches a target H-factor
+      #     'sharpness':   closed-form Te_bc = Tsep/(1 - xi*C) from a prescribed
+      #                    edge-to-core gradient ratio xi
+      # Both apply the BC the same way: core a/LT and a/Ln preserved exactly, edge
+      # replaced by an analytic shape down to the (kept-fixed) separatrix value.
+      method: "confinement"
 
-      # Coordinate system for x_bc: 'rho' (rho_tor, default), 'roa' (r/a), 'psin' (normalized poloidal flux)
+      # BC location, in the coordinate given by bc_coordinate ('rho', 'roa' or 'psin')
+      x_bc: 0.90
       bc_coordinate: "rho"
 
-      # Confinement scaling law whose H-factor is matched. Options:
-      #     'H98y2': IPB98(y,2) thermal energy confinement scaling (default)
-      #     'H89p':  ITER89-P L-mode scaling
-      confinement_scaling: "H98y2"
-
-      # Target H-factor value. Te_bc cannot be inverted analytically from the H-factor
-      # (it depends on the volume-integrated thermal stored energy of the full modified
-      # profiles), so it is found by Nelder-Mead minimization of ((H - target)/target)^2,
-      # applying the boundary condition at each trial Te_bc with the same profile
-      # machinery as the sharpness beat.
-      # How the BC is applied (same machinery as the sharpness beat):
-      #   - Core (rho < rho_bc): the normalized logarithmic gradients a/LT and a/Ln are
-      #     PRESERVED exactly (the profiles are multiplied by T_bc,new/T_bc,old). The
-      #     absolute gradients dT/dr are NOT preserved -- they scale with that same
-      #     ratio. a/LT is the gradient-driven-transport quantity, so PORTALS surrogate
-      #     data remains reusable across the BC change.
-      #   - Edge: profiles replaced by the shape selected with edge_shape below, down to
-      #     the (kept-fixed) separatrix value. The analytical edge starts ONE grid point
-      #     past the BC, so the a/L gradients that PORTALS reads at its last control
-      #     point are preserved exactly (the slope kink sits outside the PORTALS
-      #     prediction grid).
-      #   - Density: per density_treatment below (rescaled to ne_bc, or left untouched).
-      # NOTE: by default, the auxiliary, fusion and radiation source profiles stored in
-      # input.gacode are NOT recomputed during the Te_bc scan (total heating power stays
-      # frozen); the H-factor responds through the thermal stored energy. Source
-      # self-consistency is recovered by the subsequent PORTALS/TRANSP beat in the chain.
-      # See alpha_power_feedback below to lift this assumption for the fusion sources.
-      confinement: 1.0
-
-      # Ti/Te ratio at the boundary condition location (default 1.0)
+      # Ti/Te ratio at the BC location
       tite: 1.0
 
-      # Shape of the Te/Ti/ne profiles in the edge region (rho > rho_bc). Options:
-      #     'linear': straight line in psi_n from the BC value to the separatrix value
-      #     'tanh':   pedestal tanh in r/a, the same functional form the eped_initializer
-      #               uses (FunctionalForms.pedestal_tanh), also anchored at the BC and
-      #               separatrix values
-      edge_shape: "linear"
-
-      # If true, recompute the fusion source profiles (qfuse/qfusi) from the trial
-      # profiles at every minimization step, using the analytic powerstate targets
-      # (transport-free; same model as PORTALS analytical targets). The H-factor then
-      # accounts for the alpha-heating response to the BC change: raising Te_bc raises
-      # Pfus -> raises qHeat -> H grows slower than with frozen sources (H ~ W*P^-0.31
-      # for H98y2), so in burning plasmas freezing the sources underestimates the Te_bc
-      # needed for a given target. The recomputed qfus is also written into the beat
-      # output state (and the baseline H is recomputed with the same model for a
-      # consistent comparison). Radiation/exchange sources are left untouched: they do
-      # not enter the H-factor and are evolved by the next PORTALS beat anyway.
-      # No-op for non-DT plasmas (analytic model returns zero fusion without thermal D+T).
-      # Cost: negligible (analytic, no transport calls).
-      alpha_power_feedback: false
-
-      # What to do with the density profiles at the BC change. Options:
-      #     'bc':   core ne rescaled to ne_bc (= neped_20) preserving a/Lne, edge replaced
-      #             with the same shape as the temperatures, ion densities rescaled to
-      #             keep ni/ne ratios (default, original behavior)
-      #     'keep': ne and all ion densities left untouched; only Te/Ti are modified, so
-      #             the H-factor responds to the BC purely through the temperatures (note
-      #             the tau scalings carry a density dependence, e.g. <ne>^0.41 in H98y2,
-      #             so 'bc' lets density move H independently of Te_bc). The neped_20
-      #             passed to subsequent beats is then the actual ne at rho_bc read from
-      #             the profiles (any inherited neped_20 is ignored).
+      # Density at the BC change: 'bc' = rescale ne to ne_bc (= neped_20) like the
+      # temperatures; 'keep' = leave ne/ni untouched (the neped_20 forwarded to later
+      # beats then becomes the actual ne at x_bc)
       density_treatment: "bc"
 
-      # Bounds on Te_bc (keV) for the minimization
-      Te_bc_bounds: [0.05, 10.0]
-
-      # Isothermal-edge guard: the effective lower bound on Te_bc is
-      # max(Te_bc_bounds[0], factor * Te_sep), with Te_sep read from the incoming state
-      # (last profile point). A Te_bc at or below Te_sep makes the rho_bc->separatrix
-      # edge isothermal/inverted and TRANSP dies on it (SIGFPE); the dynamic floor
-      # adapts to whatever separatrix temperature an earlier beat (e.g. lengyel) set.
-      # Values <= 1 effectively disable the margin. If the optimum pins at this floor
-      # the H target is unreachable above the guard (warned, and flagged as
-      # 'Te_bc_at_floor' in the beat results). A floor pin with H BELOW the target is a
-      # Nelder-Mead bound-clipping artifact (the crossing is bracketed above) and is
-      # re-solved exactly by a brentq root find.
-      Te_bc_min_Tesep_factor: 1.2
-
-      # Inverts the isothermal-edge guard above: instead of flooring Te_bc at
-      # factor*Te_sep, let Te_bc go as low as the servo wants and cap the APPLIED
-      # separatrix temperatures in the written state at sep_max_frac * BC value
-      # (Te and Ti; ne untouched). The physical Tesep set upstream (e.g. by the
-      # lengyel beat) is not modified there and stays available to analysis; a
-      # case whose Te_bc lands at/below it is then a physics result (sharpness
-      # <= 0), not a rail. Pair with Te_bc_min_Tesep_factor: null so the floor
-      # does not fire first. Typical value 0.8. null (default) = old behavior.
-      sep_max_frac: null
-
-      # Under-relaxation of the boundary-condition temperature across beat incarnations
-      # (same mechanism and shared 'Te_bc_applied' trans-beat memory as the sharpness
-      # beat -- see the comment there). 1.0 (default) = full step, original behavior.
-      # With relaxation < 1 the target H-factor is only approached ACROSS beat
-      # iterations: H_achieved is computed at the applied (relaxed) Te_bc and the
-      # intra-beat mismatch warning becomes an informational message.
+      # Under-relaxation of Te_bc across bc-beat incarnations (shared 'Te_bc_applied'
+      # trans-beat memory; 1.0 = full step; < 1 approaches the target ACROSS beats)
       relaxation: 1.0
 
-      # How the APPLIED Te_bc is derived from the frozen-shape Nelder-Mead solve above.
-      # Options:
-      #     'relaxation':   the under-relaxation above (default, previous behavior)
-      #     'response_fit': fit the MEASURED delivered response from previous cycles
-      #                     (pairs of applied Te_bc vs the H the state came back with,
-      #                     stored in the trans-beat parameter 'bc_response_history') and
-      #                     step to where that fit crosses the target. Degenerate fits
-      #                     fall back: fit -> secant (last two pairs) -> seeded step
-      #                     (seed_gain x the frozen solve's own step) -> full step.
-      # Rationale: the frozen-shape solve has, by construction, alpha = dlnH/dlnTe_bc ~ 1
-      # (T(rho) scales with Te_bc at frozen a/L), whereas the DELIVERED response measured
-      # after the downstream beats have moved the state has median alpha = 0.40 (IQR
-      # 0.26-0.60) -- the frozen step is ~2.5x too stiff, and a fixed relaxation factor,
-      # which cannot see that, converges at only ~0.7 per cycle. Over the ~x1.44 Te_bc
-      # window the loop explores, curvature is not identifiable, so the model is a LOCAL
-      # LINEAR fit (it beats a secant tail and a quadratic, which invents false roots).
-      # Pairs formed by a railed (floor/bound-pinned) actuation are excluded from fits.
+      # Servo for the APPLIED Te_bc: 'relaxation' (above) or 'response_fit' (fit the
+      # measured Te_bc -> H/xi response of previous cycles and step to the target;
+      # fallbacks fit -> secant -> seeded step; see BCbeat.py). response_fit is
+      # calibrated for confinement; EXPERIMENTAL for sharpness.
       servo_mode: "relaxation"
+      servo_fit_window: 3            # response_fit: recent (non-railed) pairs entering the fit
+      servo_alpha_band: [0.10, 2.0]  # response_fit: accepted range of fitted alpha = dlnH/dlnTe_bc
+      servo_trust_factor: 1.5        # response_fit: max multiplicative (x or 1/x) Te_bc change per cycle
+      servo_seed_gain: 2.5           # response_fit: gain on the single-pair seeded step
 
-      # response_fit: number of most recent usable (non-railed) pairs entering the fit.
-      # Drift of the response is mild; longer windows alias the early transient.
-      servo_fit_window: 3
-
-      # response_fit: acceptance band on the fitted alpha = dlnH/dlnTe_bc. A fit outside
-      # the band (or with negative slope) is rejected -> secant -> seeded step. The
-      # default brackets the measured 5-95% spread [0.04, 1.33] loosely enough to keep
-      # real variability while rejecting fits driven by noise.
-      servo_alpha_band: [0.10, 2.0]
-
-      # response_fit: maximum multiplicative (x or 1/x) change of Te_bc per cycle, so the
-      # fit is never extrapolated beyond the range of Te_bc actually explored.
-      servo_trust_factor: 1.5
-
-      # response_fit: gain on the frozen solve's own step, used by the seeded rung (a
-      # single measured pair, no slope yet): 2.5 = 1.0/0.40, the measured over-stiffness
-      # of the frozen-shape solve. Capped by servo_trust_factor.
-      servo_seed_gain: 2.5
-
-      # If True, override x_bc with the outermost radial location used by the previous
-      # PORTALS beat (predicted_rho[-1] or predicted_roa[-1] from trans-beat parameters).
-      # bc_coordinate is updated automatically.
+      # If True, override x_bc with the previous PORTALS beat's outermost predicted radius
       update_bc_based_on_portals: false
+
+      # -----------------------------------------------------------------------------
+      # Method-specific knobs. Consumed only when method matches; the other sub-dict
+      # is ignored (keys still typo-checked), so both can stay here.
+      # -----------------------------------------------------------------------------
+
+      confinement_parameters:
+
+        # Scaling law whose H-factor is matched: 'H98y2' (IPB98(y,2)) or 'H89p' (ITER89-P)
+        confinement_scaling: "H98y2"
+
+        # Target H-factor, matched by scanning Te_bc. Sources stay frozen during the
+        # scan (see alpha_power_feedback); self-consistency returns with the next beat.
+        confinement: 1.0
+
+        # Edge shape outside x_bc: 'linear' (in psi_n) or 'tanh' (pedestal tanh in r/a).
+        # Sharpness is always linear (its xi definition assumes it), hence confinement-only.
+        edge_shape: "linear"
+
+        # Recompute qfuse/qfusi analytically at each trial Te_bc so H sees the
+        # alpha-heating response (recommended for burning plasmas; negligible cost)
+        alpha_power_feedback: false
+
+        # Bounds on Te_bc (keV) for the scan
+        Te_bc_bounds: [0.05, 10.0]
+
+        # Isothermal-edge guard: effective floor = max(Te_bc_bounds[0], factor*Tesep),
+        # so the edge never goes isothermal/inverted (TRANSP dies on it). A pin at the
+        # floor is flagged 'Te_bc_at_floor' in the results. null disables.
+        Te_bc_min_Tesep_factor: 1.2
+
+        # Alternative to the guard above (pair with Te_bc_min_Tesep_factor: null): let
+        # Te_bc go low and cap the APPLIED Tesep at frac*Te_bc instead (typical 0.8)
+        sep_max_frac: null
+
+      sharpness_parameters:
+
+        # Prescribed edge-to-core gradient ratio xi (Te_bc = Tsep/(1 - xi*C)):
+        # xi=1 edge gradient equals core gradient; xi>1 sharper (H-mode-like) edge
+        sharpness: 1.0
+
+        # Coordinate in which xi is defined: 'psin', 'rho' or 'roa'. Independent of bc_coordinate
+        sharpness_coordinate: "psin"
 
     preprocess_prepare: null
     preprocess_prepare_parameters: {}
@@ -621,17 +398,11 @@ maestro:
 
     parameters_prepare:
 
-      # What this beat runs and applies (same vocabulary as MITIMstate.calculate_sol_lengyel):
-      #     'seeded' (default): the package's detachment-seeded driver -- the impurity
-      #             concentration is SOLVED to detach the divertor, and BOTH the separatrix
-      #             temperature and the seed-impurity/Zeff update are applied to the profiles.
-      #     'clean': non-detached forward conduction (Lengyel.run_forward, registered package
-      #             algorithms per templates/input.lengyel_clean.controls.yaml). ONLY the
-      #             separatrix temperature is applied (quadratic blend from rhotop);
-      #             densities/impurities untouched, no radas needed, seed/fixed impurity
-      #             entries ignored. Connection length defaults to pi*R*|q95| with a 0.441
-      #             divertor leg (overridable via override_namelist_params). PORTALS
-      #             surrogate data is NOT invalidated (a/L at the control points preserved).
+      # What this beat runs and applies (details in LENGYELbeat.py):
+      #     'seeded' (default): detachment-seeded driver -- impurity concentration SOLVED to
+      #             detach the divertor; BOTH Tsep and the seed-impurity/Zeff update applied
+      #     'clean': non-detached forward conduction -- ONLY Tsep applied; impurities/densities
+      #             untouched, no radas needed, PORTALS surrogate data NOT invalidated
       mode: 'seeded'
 
       # If null, it will use the default namelist at: __mitimroot__ / "templates" / "input.lengyel.controls.yaml"
@@ -648,32 +419,20 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
-      # Optional Lengyel-only gate to keep thermal helium ash fixed as a second fixed impurity species.
-      # Type: true/false. Default false keeps EXACT legacy behavior (no helium handling in Lengyel).
-      # If true: uses plasma.species.mix.{fHe,ZHe,AHe}; if fHe == 0, behavior remains unchanged.
-      # Safety gate coupling:
-      #   - if plasma.species.mix.fixed_helium_ash is false and this is true, a warning is printed and
-      #     Lengyel internally forces this option to false for this beat.
+      # Keep thermal helium ash fixed as a second fixed impurity species (uses
+      # plasma.species.mix.{fHe,ZHe,AHe}). Requires plasma.species.mix.fixed_helium_ash: true,
+      # otherwise it is forced back to false for this beat (with a warning)
       lengyel_fixed_helium_ash: false
 
-      # Relaxation factor w in [0, 1] for the Zeff update. The Zeff profile actually realized is
-      # w * <Zeff this Lengyel beat would fully impose> + (1-w) * <Zeff of the profiles input into this
-      # beat>. w = 1.0 (default) applies the full update every time (old behavior). Lower values slow down
-      # how fast Zeff/impurity content changes beat-to-beat -- useful since a higher core Zeff (e.g. 2.0-2.3)
-      # than strictly required for divertor protection can be beneficial, and letting it swing every beat can
-      # make the workflow oscillate/degrade instead of converging. The "profile input into this beat" is
-      # whatever input.gacode this beat received from the immediately preceding beat (PORTALS, EPED, TRANSP,
-      # or a previous Lengyel beat), so this applies identically on the first Lengyel beat of a sequence as
-      # on every subsequent one.
-      zeff_relaxation_factor: 1.0 
+      # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
+      # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)
+      zeff_relaxation_factor: 1.0
 
-      # Zeff floor will enforce that the Zeff after the Lengyel beat has to stay about this value. Since impurities can help improvement performance, 
-      # this prevents cycles of decreasing performance, decreasing the amount of impurities, etc. Null will not enforce any floor. 
-      zeff_floor: Null 
+      # Floor on the post-Lengyel Zeff (prevents performance/impurity decay cycles). null = no floor
+      zeff_floor: Null
 
-      # Overrides applied to the Lengyel namelist's `input` block (see templates/input.lengyel.controls.yaml).
-      # Any key from that file can be set here verbatim and it will replace the default (or input.gacode-derived)
-      # value for this beat, e.g. override_namelist_params: {parallel_connection_length: '40 m', target_angle_of_incidence: '5 degree'}
+      # Verbatim overrides of the Lengyel namelist's `input` block (keys from
+      # templates/input.lengyel.controls.yaml), e.g. {parallel_connection_length: '40 m'}
       override_namelist_params: {}
 
 
@@ -701,9 +460,8 @@ maestro:
         solution:
           predicted_roa: [0.35, 0.45, 0.55, 0.65, 0.75, 0.875, 0.9]
           keep_full_model_folder: false
-          # Wider exploration than the PORTALS defaults (ymax 3.0, yminymax_atleast [0,2]):
-          # validated across the ARC V3A / V4C case7 MAESTRO scans (2026), where the narrower
-          # defaults could clip the flux-matched gradients at high-performance points.
+          # Wider exploration than the PORTALS defaults: narrower ranges can clip the
+          # flux-matched gradients at high-performance points
           exploration_ranges:
             ymin: 1.0
             ymax: 4.0
@@ -739,19 +497,13 @@ maestro:
         thermalize_fast: true
         # Enforce quasineutrality by adjusting ion densities
         quasineutrality: true
-        # zero_source_blocks: list of source-term aliases to zero in the seed
-        # input.gacode handed to PORTALS. Useful when the upstream beat (e.g.
-        # TRANSP) populated radiation/alpha/ohmic and you want PORTALS to see
-        # an "all-auxiliary" sources picture (the only heating left is what's
-        # in qrfe/qrfi/qbeame/qbeami/qione).
-        # Recognized aliases:
-        #   'qrad'  -> qbrem(MW/m^3), qsync(MW/m^3), qline(MW/m^3)
-        #   'qfus'  -> qfuse(MW/m^3), qfusi(MW/m^3)
-        #   'qohme' -> qohme(MW/m^3)
-        # IMPORTANT: zeroing here only persists in the PORTALS output if PORTALS
-        # is configured NOT to evolve the corresponding channel — exclude the
-        # same alias from `target.options.targets_evolve` in the portals_parameters
-        # overlay above. Otherwise PORTALS overwrites the zeros on iter 1.
+        # zero_source_blocks: source-term aliases to zero in the seed input.gacode handed to
+        # PORTALS (an "all-auxiliary" sources picture). Aliases:
+        #   'qrad'  -> qbrem, qsync, qline
+        #   'qfus'  -> qfuse, qfusi
+        #   'qohme' -> qohme
+        # IMPORTANT: only persists if the same alias is excluded from target.options.targets_evolve
+        # in the overlay above -- otherwise PORTALS overwrites the zeros on iter 1
         # zero_source_blocks: ['qrad', 'qfus', 'qohme']
 
       # If the width of the pedestal has changed, modify the BC (last in predicted_rX) for PORTALS accordingly
@@ -819,38 +571,20 @@ maestro:
       #       If machine (SPARC, CMOD, ARC, D3D): use actual machine structures harcoded in MITIM (see mitim_tools/experiment_tools/)
       tokamak_structures: null 
 
-      # Machine to initialize TRANSP equilibrium, and time (s) to transition to MAESTRO plasma
-      # --- Equilibrium treatment --------------------------------------------------------
-      # machine_initialization selects between the two regimes, because they are rigidly
-      # coupled: TEQ cannot be handed a user initial guess, so "no seed machine" and
-      # "prescribed equilibrium" are the same statement.
-      #
-      # A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov
-      #   every step. TEQ warm-starts its FIRST solve from a stored equilibrium keyed to this
-      #   label and its basin is tight (~1.3x), so pick the registered machine nearest the
-      #   target in size/shape (e.g. ITER for ARC-class) and let transition_window morph the
-      #   shape from that seed to the target.
-      #
-      # null: PRESCRIBED EQUILIBRIUM (levgeo=8). The state's own nested flux surfaces are
-      #   handed to TRANSP as data (full-x RFS/ZFS) together with QPR/GRB/PRS and the TRF/PLF
-      #   enclosed fluxes; TRANSP never solves Grad-Shafranov. No seed, no morph, no MRY, so
-      #   ANY shape works at t=0 and no TEQ device file is needed (a CMOD label is still used
-      #   internally for run-tree bookkeeping only). transition_window and
-      #   currentheating_window are INERT in this mode. Caveats: the geometry is FROZEN in
-      #   time and not pressure-self-consistent in-run, and g = R*Bt is written at its vacuum
-      #   value (a ~1% para/diamagnetic approximation). Requires a state whose
-      #   (x,theta)->(R,Z) map does not fold: prepare() runs a spline-based det(J) check and
-      #   fails loudly if it does, warning if the margin is merely small.
+      # Equilibrium treatment (full mechanics and caveats documented in TRANSPbeat.py):
+      #   A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov
+      #     every step, warm-started from that machine's stored equilibrium -- pick the one
+      #     nearest the target in size/shape and let transition_window morph it
+      #   null: PRESCRIBED EQUILIBRIUM (levgeo=8) -- the state's own flux surfaces handed to
+      #     TRANSP as data, no GS solve, ANY shape works at t=0; transition_window and
+      #     currentheating_window are INERT; the geometry stays FROZEN in time
       machine_initialization: CMOD
       transition_window: 0.1        # Time (s) to transition to MAESTRO plasma from the machine_initialization. If null, no transition performed
       currentheating_window: 0.001  # Time (s) to turn on current diffusion and heating once transitioned
       machine_initialization_match_target: false # If true, ease initialization, match qstar and p0/B0^2 of initialization machine to target plasma
 
-      # Freeze the poloidal field: q pinned to the input QPR ufile for ALL time
-      # (nlmdif=F/nlqdata=T), i.e. no current diffusion -- TRANSP keeps the q-profile
-      # the state came in with. REQUIRES machine_initialization: null (prescribed
-      # equilibrium); freezing q while TEQ re-solves Grad-Shafranov every step is
-      # inconsistent and prepare() raises on that combination.
+      # Freeze the poloidal field: q pinned to the input QPR ufile for all time (no current
+      # diffusion). REQUIRES machine_initialization: null; prepare() raises otherwise
       frozen_field: false
 
       # Smoothing of the separatrix boundary for TRANSP ufile generation
@@ -858,44 +592,36 @@ maestro:
 
       # Simulation length
       flattop_window: 2.5
-      min_sawtooth_period_ms: 10.0 # Approximate floor on the Porcelli sawtooth period [ms]: sets c_sawtooth(2)=floor/Park-Monticello-period per case so compact plasmas stop crashing every ~ms (which bloats the output CDF); machines whose natural period already exceeds it are unaffected. null disables; if absent, defaults to 1 ms.
-      # NOTE: this floor is APPROXIMATE -- c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP applies it with the evolving post-crash central Te, so the realized minimum can differ from the requested value.
+      # APPROXIMATE floor on the Porcelli sawtooth period [ms] (sets c_sawtooth(2) per case, see
+      # TRANSPbeat.py) -- stops compact plasmas crashing every ~ms and bloating the CDF.
+      # null disables; if absent, defaults to 1 ms
+      min_sawtooth_period_ms: 10.0
       ensure_sawtooths: null  # If not null, ensure at least this many sawtooths in the simulation (if previous TRANSP beat provided this information)
-      # Sanitize a pathological over-peaked q seed so TRANSP starts cleanly. Some equilibria (e.g. certain
-      # FREEGS geqdsks) carry a very low on-axis q0 -> the q=1 surface sits far toward the boundary, and the
-      # Kadomtsev sawtooth model fails on its first crash ("q=1 too close to boundary") and hard-exits before
-      # current diffusion moves anything. Since current diffusion relaxes q to self-consistency over the whole
-      # flattop, only the SEED needs to start benign. If set (e.g. 0.95), rescale the initial q-profile so q0
-      # hits this value, anchored on q95 (q at psiN=0.95 held fixed) so shape/edge are preserved. Applied to
-      # the TRANSP seed only (state passed downstream is untouched). null (default) leaves the seed q as-is.
+      # If set (e.g. 0.95), rescale the INITIAL q-profile seed so q0 hits this value (q95 held
+      # fixed) -- guards over-peaked seeds (deep q0) that crash the Kadomtsev sawtooth model at
+      # startup. TRANSP seed only; the state passed downstream is untouched. null = seed untouched
       sanitize_q_input: null
 
       # Which CDF time slice is extracted to build the next beat's input.gacode:
-      #   'saw'    -> the last sawtooth (CDFtools ind_saw)
-      #   'saw-N'  -> N coarse slices before the last sawtooth (the coarse MAESTRO time grid can
-      #              otherwise land mid-crash; a small step-back avoids sawtoothing profiles)
+      #   'saw'    -> the last sawtooth
+      #   'saw-N'  -> N coarse slices before the last sawtooth (avoids sampling mid-crash)
       #   'last'   -> the last simulated slice
       #   'last-N' -> N coarse slices before the last slice
-      extract_at: saw-1  # historical default
-      # Floor on how early we sample: if the extract_at slice lands before this fraction of the
-      # flattop window (measured from the start of flattop, time_diffusion -> time_end), extract
-      # at the floor instead. Guards against a plasma whose ONLY sawtooth fires early (then never
-      # again) being sampled before heating / current diffusion have settled. null disables.
+      extract_at: saw-1
+      # Floor the extraction at this fraction of the flattop window -- guards an
+      # only-early-sawtooth plasma from being sampled before heating settles. null disables
       min_extraction_flattop_fraction: 0.5
 
       # TRANSP namelist parameters
       useNUBEAMforAlphas: True
       # Source-power threshold [W] to engage the fusion-product MC (TRANSP plfhe4; default 100 W).
-      # Raise (e.g. 1.0e6) to keep NUBEAM alphas idle until the source is significant -- guards the
-      # machine-initialization transition, where MC on a tiny alpha source atop morphing profiles
-      # can produce a fast-ion energy runaway (?btfusn_intrp floods -> MPI_ABORT)
+      # Raise (e.g. 1.0e6) to keep NUBEAM alphas idle until the source is significant (guards a
+      # fast-ion runaway during the machine-initialization transition; see NMLtools.py)
       plfhe4: 1.0e+2
       Pich: True
       Pnbi: True
-      # NOTE: dtOut_ms -> TRANSP sedit/stedit, but in practice it does NOT reliably reduce the
-      # output CDF size: observed transp_soft CDFs are written at ~the internal timestep (tens of
-      # thousands of slices over a ~20 s run) regardless. CDF size tracks run length/timestep, not
-      # this knob (mechanism not fully root-caused as of 2026-06).
+      # NOTE: dtOut_ms (TRANSP sedit/stedit) does NOT reliably reduce the output CDF size --
+      # CDF size tracks run length/timestep, not this knob
       dtOut_ms : 10.0
       dtIn_ms : 10.0
       nzones : 60

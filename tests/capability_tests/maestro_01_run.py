@@ -7,12 +7,12 @@ template's production chain (TRANSP -> EPED -> PORTALS -> EPED -> PORTALS) is
 replaced by a cheaper one with a CONSTANT (user-fixed) boundary condition at
 initialization:
 
-    init (FreeGS + fixed BC) -> transp_soft -> portals -> confinement -> portals
+    init (FreeGS + fixed BC) -> transp_soft -> portals -> bc (confinement) -> portals
 
 (transp_soft: a shortened current-diffusion-only TRANSP run; portals: Te/Ti
-prediction with SAT0; confinement: adjust the temperature BC to match a
-target H98y2). TGLF/NEO run locally, but the transp_soft beat needs the
-TRANSP machine configured in config_user.json.
+prediction with SAT0; bc with method 'confinement': adjust the temperature BC
+to match a target H98y2). TGLF/NEO run locally, but the transp_soft beat needs
+the TRANSP machine configured in config_user.json.
 
 Key teaching points:
     1. The namelist is the single definition of the simulation: engineering
@@ -27,7 +27,7 @@ Key teaching points:
        matches BetaN and density peaking by adjusting the gradients — no
        pedestal code involved.
     3. Beats appearing more than once (portals here) share one config block;
-       the confinement beat preserves a/LT when it rescales the BC, so the
+       the bc beat preserves a/LT when it rescales the BC, so the
        second PORTALS beat can reuse the first one's surrogate data.
     4. run_maestro_local() is the programmatic equivalent of the CLI
        `mitim_run_maestro <folder> --namelist <file>`. MAESTRO is checkpointed
@@ -78,8 +78,9 @@ nml["plasma"]["profiles_initialization"]["parameters"]["Te_bc"] = 3.0  # keV (Ti
 
 # --- Beat chain (instead of the production template chain) ------------------------------
 # transp_soft: current diffusion only (no alphas/ICRH); portals: core transport;
-# confinement: rescale the temperature BC to match the target H-factor; portals again
-nml["maestro"]["beats"] = ["transp_soft", "portals", "confinement", "portals"]
+# bc (method 'confinement'): rescale the temperature BC to match the target H-factor;
+# portals again
+nml["maestro"]["beats"] = ["transp_soft", "portals", "bc", "portals"]
 
 # --- Shorten the transp_soft run (see the WARNING in the docstring) ----------------------
 # The template uses a long 20 s flattop for full current diffusion; cut it down for speed
@@ -94,9 +95,13 @@ pp["transport"]["options"]["tglf"]["run"]["code_settings"] = "SAT0"
 pp["transport"]["options"]["tglf"]["run"]["extraOptions"] = {"USE_BPER": False}  # electrostatic, consistent with SAT0
 pp.setdefault("optimization_options", {}).setdefault("convergence_options", {})["maximum_iterations"] = 2
 
-# --- Confinement beat: match H98y2 = 1 by adjusting the temperature boundary condition ---
-nml["maestro"]["confinement"]["parameters_prepare"]["confinement_scaling"] = "H98y2"
-nml["maestro"]["confinement"]["parameters_prepare"]["confinement"] = 1.0
+# --- BC beat: match H98y2 = 1 by adjusting the temperature boundary condition ------------
+# The single 'bc' beat type covers several methods; 'confinement' does the H-factor match.
+# Common knobs sit at the parameters_prepare top level; method-specific ones live in the
+# '<method>_parameters' sub-dict (only the selected method's sub-dict is consumed)
+nml["maestro"]["bc"]["parameters_prepare"]["method"] = "confinement"
+nml["maestro"]["bc"]["parameters_prepare"]["confinement_parameters"]["confinement_scaling"] = "H98y2"
+nml["maestro"]["bc"]["parameters_prepare"]["confinement_parameters"]["confinement"] = 1.0
 
 # The exact namelist used is written alongside the run for traceability
 namelist_file = folder / "namelist.maestro.yaml"

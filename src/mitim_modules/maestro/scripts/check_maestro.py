@@ -341,12 +341,16 @@ def _classify_folder(folder, squeue_by_jobid, chars_folder_clip, show_full_path)
             beat = 'EPED'
         elif 'run_transp' in run_names:
             beat = 'TRANSP'
-        elif 'run_sharpness' in run_names:
-            beat = 'SHARPNESS'
-        elif 'run_confinement' in run_names:
-            beat = 'CONFINEMENT'
         elif 'run_lengyel' in run_names:
             beat = 'LENGYEL'
+        elif 'run_sharpness' in run_names:   # legacy pre-'bc' folder naming
+            beat = 'SHARPNESS'
+        elif 'run_confinement' in run_names:  # legacy pre-'bc' folder naming
+            beat = 'CONFINEMENT'
+        else:
+            bc_runs = [n for n in run_names if n.startswith('run_bc_')]
+            if bc_runs:
+                beat = bc_runs[0].removeprefix('run_').upper()   # e.g. BC_CONFINEMENT
 
     if job_state and job_state.upper() in {"PENDING", "PD"}:
         details = f"{beat}{(' - ' + txt) if txt else ''}" if (beat != 'UNKNOWN' or txt) else ''

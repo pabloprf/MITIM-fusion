@@ -19,8 +19,7 @@ from mitim_modules.maestro.utils.EPEDbeat import eped_beat
 from mitim_modules.maestro.utils.TRANSPbeat import transp_beat
 from mitim_modules.maestro.utils.PORTALSbeat import portals_beat
 from mitim_modules.maestro.utils.LENGYELbeat import lengyel_beat
-from mitim_modules.maestro.utils.SHARPNESSbeat import sharpness_beat
-from mitim_modules.maestro.utils.CONFINEMENTbeat import confinement_beat
+from mitim_modules.maestro.utils.BCbeat import bc_beat
 from mitim_modules.maestro.utils.MAESTRObeat import creator_from_eped, creator_from_parameterization, creator_from_fixed_bc, creator
 from mitim_modules.maestro.utils.MAESTRObeat import beat as beat_generic
 from mitim_modules.maestro.utils.MAESTRObeat import PRUNE_NOTHING, PRUNE_OUTPUTS, PRUNE_LEVELS
@@ -153,7 +152,7 @@ class maestro:
         # _plot_beats never hits an undefined attribute if called directly)
         self._plot_skips = []
 
-    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None):
+    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False):
 
         timeBeginning = datetime.datetime.now()
 
@@ -173,12 +172,16 @@ class maestro:
         elif beat == 'lengyel':
             print(f'\n- Beat {self.counter_current}: LENGYEL ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
             self.beats[self.counter_current] = lengyel_beat(self)
-        elif beat == 'sharpness':
-            print(f'\n- Beat {self.counter_current}: SHARPNESS ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
-            self.beats[self.counter_current] = sharpness_beat(self)
-        elif beat == 'confinement':
-            print(f'\n- Beat {self.counter_current}: CONFINEMENT ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
-            self.beats[self.counter_current] = confinement_beat(self)
+        elif beat == 'bc':
+            print(f'\n- Beat {self.counter_current}: BC ({method}) ******************************* {timeBeginning.strftime("%Y-%m-%d %H:%M:%S")}')
+            # legacy=True only for READING pre-refactor run folders (run_<method>/,
+            # <method>_results.npy); set by plot-side consumers, never from a namelist
+            self.beats[self.counter_current] = bc_beat(self, method=method, legacy=legacy)
+        elif beat in ('sharpness', 'confinement'):
+            raise ValueError(
+                f"[MITIM] beat_type '{beat}' has been removed: use beat_type 'bc' with "
+                f"parameters_prepare 'method: {beat}' instead"
+            )
 
         # Access current beat easily
         self.beat = self.beats[self.counter_current]
@@ -934,8 +937,10 @@ def _render_beat_flow_png(beats, wall_times, out_path):
         'portals':   '#9ec5fe',  # sky-blue
         'eped':      '#b7e4c7',  # light green
         'lengyel':   '#fff3b0',  # pale yellow
-        'sharpness': '#e0c3fc',  # lavender
-        'confinement': '#a8dadc',  # light teal
+        'bc_sharpness': '#e0c3fc',  # lavender
+        'bc_confinement': '#a8dadc',  # light teal
+        'sharpness': '#e0c3fc',    # legacy pre-'bc' folder naming
+        'confinement': '#a8dadc',  # legacy pre-'bc' folder naming
     }
     DEFAULT_COLOR = '#d0d0d0'
 
