@@ -124,6 +124,12 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **Headless MAESTRO `--save` no longer killed by matplotlib's Qt backend**: on SLURM
+    nodes without a display, matplotlib could pick Qt/xcb and SIGABRT the whole process
+    during summary-report generation (nodes missing `libxcb-cursor0`), marking a
+    physics-complete run as FAILED. `mitim_run_maestro` now forces the Agg backend on
+    headless Linux (explicit `MPLBACKEND` still wins; macOS untouched).
+
 *   🐛 **TRANSP runs no longer die on the transient InfiniBand/RDMA container-launch failure**:
     when the apptainer container is denied the mlx5 queue-pair at mpirun startup (a known
     node/config-dependent infrastructure hiccup that MITIM already fingerprints via

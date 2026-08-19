@@ -1,6 +1,18 @@
 import argparse
 import copy
 import json
+import os
+import sys
+
+# Headless Linux (no DISPLAY, e.g. SLURM nodes): force the Agg backend before any
+# pyplot import. Otherwise matplotlib may pick Qt/xcb, which SIGABRTs the whole run
+# during --save report generation on nodes missing libxcb-cursor0 — killing a case
+# whose physics already completed. An explicit MPLBACKEND still wins; macOS (native
+# backend, no DISPLAY var) is untouched.
+if sys.platform != "darwin" and not os.environ.get("DISPLAY") and not os.environ.get("MPLBACKEND"):
+    import matplotlib
+    matplotlib.use("Agg")
+
 import numpy as np
 from pathlib import Path
 from mitim_tools import __mitimroot__
