@@ -291,7 +291,9 @@ class bc_beat(beat):
     Density is a spectator: ne_bc in the inversion is the ne that will actually stand
     at x_bc after application (neped_20 under density_treatment 'bc', the incoming
     state's value under 'keep'), so the delivered betap' matches the target under both.
-    Linear edge always, like the sharpness method.
+    The edge is LINEAR IN THERMAL PRESSURE (not the shared linear-in-Te edge): Te is
+    derived pointwise from the pressure line and the standing density, so
+    d(beta_p)/dpsin is constant along the edge (Te comes out convex-up).
 
     method 'confinement' — such that the plasma state matches a prescribed
     confinement level (H-factor). The H-factor cannot be inverted analytically for
@@ -431,8 +433,9 @@ class bc_beat(beat):
             default 2.0):  betap' = [beta_p(x_bc) - beta_p(sep)]/(1 - psin_bc),
             with beta_p = 2*mu0*p_th/Bpa^2 (thermal pressure only) and the
             engineering norm Bpa = mu0*Ip/L_pol. Inverted in closed form for
-            Te_bc; density is a spectator (never set by this method). Linear
-            edge always (the two-point finite-difference definition assumes it).
+            Te_bc; density is a spectator (never set by this method). The edge
+            is linear in THERMAL PRESSURE (Te derived pointwise, convex-up), so
+            d(beta_p)/dpsin is constant across the edge, equal to -betap'.
 
         Parameters (confinement_parameters sub-dict; consumed when method='confinement')
         --------------------------------------------------------------------------------
@@ -993,8 +996,12 @@ class bc_beat(beat):
         print(f"\t- Te_bc={Te_bc:.4f} keV,  Ti_bc={Ti_bc:.4f} keV")
 
         # ------------------------------------------------------------------
-        # Modify profiles (linear edge always: the two-point finite-difference
-        # betap' definition, like the sharpness xi, assumes it)
+        # Modify profiles: shared machinery first (core a/L-preserving rescale + the
+        # standard edge), then rewrite the edge PRESSURE-LINEAR ("option 2"): overwrite
+        # Te/Ti on the edge interior so p_th follows the straight line from
+        # (psin_bc_grid, p_bc_applied) to (1, p_sep) — d(beta_p)/dpsin is then CONSTANT
+        # = -betap'_eff along the whole edge (equal to the secant), instead of the
+        # sagging product-of-linears the shared linear-in-Te edge produces.
         # ------------------------------------------------------------------
 
         profiles_out = _apply_bc(
@@ -1005,6 +1012,9 @@ class bc_beat(beat):
             Ti_bc,
             ne_bc_1e19,
             density_treatment=self.density_treatment,
+        )
+        profiles_out = _rewrite_edge_pressure_linear(
+            profiles_out, rho_bc_rho, self.tite, p_bc_applied, p_sep,
         )
 
         # ------------------------------------------------------------------
@@ -1547,6 +1557,67 @@ def _betap_normalization(p):
     Z = np.asarray(p.derived["Z_surface"][0][-1])
     L_pol = float(np.sum(np.hypot(np.diff(np.append(R, R[0])), np.diff(np.append(Z, Z[0])))))
     return mu0 * Ip_A / L_pol, L_pol, Ip_A
+
+
+def _rewrite_edge_pressure_linear(p, rho_bc_rho, tite, p_bc_Pa, p_sep_Pa):
+    """
+    Betap-only edge rewrite ("option 2"): overwrite Te/Ti on the EDGE INTERIOR grid
+    points so the thermal pressure follows the straight line (the ibc->separatrix
+    secant) from (psin_bc_grid, p_bc) to (1, p_sep):
+
+        Te(psin) = p_lin(psin) / [(ne + tite*sum_i(thermal) ni) * 1e19 * 1e3 * e],
+        Ti = tite*Te for thermal ions (fast untouched, same handling as _apply_bc)
+
+    which is exact since p_th = Te*(ne + tite*ni_th) when Ti = tite*Te: the local
+    d(beta_p)/dpsin is then constant along the edge, equal to the two-point betap'.
+    The densities used are the ones standing AFTER the density treatment, so the
+    rewrite is exact under both 'bc' and 'keep'.
+
+    Offset convention preserved: the point at i_edge = ibc+1 keeps its core-extended
+    value (the BC point's a/L stencil reads core-shaped values on both sides, as with
+    the shared edge), and the separatrix point is untouched (its own Te/Ti already
+    give exactly p_sep). Both endpoints of the metric are pinned, so the delivered
+    two-point betap' is unaffected; only the interior points move onto the secant.
+    The one-cell segment i_edge -> i_edge+1 carries the (tiny) kink, exactly where
+    the shared edge puts its slope discontinuity.
+    """
+    e_J = 1.602176634e-19
+
+    rho  = p.profiles["rho(-)"]
+    psin = p.derived["psi_pol_n"]
+    ibc = int(np.argmin(np.abs(rho - rho_bc_rho)))
+    i_edge = min(ibc + 1, len(rho) - 2)
+    psin_g = float(psin[ibc])
+
+    j0, j1 = i_edge + 1, len(rho) - 1   # rewrite j0..j1-1; separatrix (j1) untouched
+    if j0 >= j1:
+        return p
+
+    p_lin = p_bc_Pa + (p_sep_Pa - p_bc_Pa) * (psin[j0:j1] - psin_g) / (1.0 - psin_g)
+
+    ni_th = np.zeros_like(p.profiles["ne(10^19/m^3)"])
+    for sp in range(len(p.Species)):
+        if p.Species[sp]["S"] != "fast":
+            ni_th += p.profiles["ni(10^19/m^3)"][:, sp]
+    denom = (p.profiles["ne(10^19/m^3)"][j0:j1] + tite * ni_th[j0:j1]) * 1e19 * 1e3 * e_J
+
+    TiTimain_orig = p.profiles["ti(keV)"] / p.profiles["ti(keV)"][:, [0]]
+
+    Te_edge = p_lin / denom
+    p.profiles["te(keV)"][j0:j1] = Te_edge
+    p.profiles["ti(keV)"][j0:j1, 0] = tite * Te_edge
+
+    p.makeAllThermalIonsHaveSameTemp()
+    for sp in range(len(p.Species)):
+        if p.Species[sp]["S"] == "fast":
+            p.profiles["ti(keV)"][:, sp] = p.profiles["ti(keV)"][:, 0] * TiTimain_orig[:, sp]
+
+    p.derive_quantities(rederiveGeometry=False)
+    from mitim_tools.misc_tools import LOGtools
+    with LOGtools.HiddenPrints():
+        p.selfconsistentPTOT()
+
+    return p
 
 
 def _convert_bc_location(rho_bc, coordinate, rho, roa, psi_pol_n):
@@ -2463,9 +2534,11 @@ def _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter)
     Betap figure (2 rows x 3 plot cols + info column).
 
     Row 0 — Te, Ti, ne profiles vs psi_n, before (blue) and after (red), BC marked.
-    Row 1 — thermal pressure p_th vs psi_n, and beta_p vs psi_n with the BC->separatrix
+    Row 1 — thermal pressure p_th vs psi_n; beta_p vs psi_n with the BC->separatrix
             secant chords whose slopes ARE the two-point betap' (delivered before,
-            applied after).
+            applied after); and -d(beta_p)/dpsin over the edge neighborhood with the
+            delivered/applied betap' levels (the "after" curve sits flat ON the target
+            level across the edge with the pressure-linear edge).
     Right column — the normalization and inversion quantities (Ip, L_pol, Bpa,
     p_sep/p_bc, ne_bc used, f_i) and target/delivered/applied betap'.
     """
@@ -2529,7 +2602,8 @@ def _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter)
     axTi = fig.add_subplot(gs[0, 1])
     axne = fig.add_subplot(gs[0, 2])
     axp  = fig.add_subplot(gs[1, 0])
-    axbp = fig.add_subplot(gs[1, 1:3])
+    axbp = fig.add_subplot(gs[1, 1])
+    axdbp = fig.add_subplot(gs[1, 2])
     axIn = fig.add_subplot(gs[:, 3])
     axIn.set_axis_off()
 
@@ -2558,9 +2632,41 @@ def _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter)
     axbp.plot([psin_g, 1.0], [bp_a[ibc], bp_a[-1]], color=ca, ls="--", lw=1.2,
               label=rf"applied $\beta_p'$={betap_eff:.2f}")
     _vbc(axbp)
-    _style(axbp, r"$\psi_n$", r"$\beta_p$", r"$\beta_p=2\mu_0 p_{th}/B_{pa}^2$",
+    _style(axbp, r"$\psi_n$", r"$\beta_p$",
+           r"$\beta_p=2\mu_0 p_{th}/B_{pa}^2$,  $B_{pa}=\mu_0 I_p/L_{pol}$",
            _ymax(psin_cut, (psin_b, bp_b), (psin_a, bp_a)))
+    axbp.title.set_fontsize(FS - 2)   # full convention on one line, slightly smaller
     axbp.legend(prop={"size": FS_leg}, loc="upper right")
+
+    # The controlled quantity itself: -d(beta_p)/dpsin. With the pressure-linear edge
+    # the "after" curve sits flat ON the target level across the whole edge; the dashed
+    # levels are drawn over the edge only, so they read as the secant values. X-range is
+    # restricted to the edge neighborhood (the core derivative is not what this beat
+    # controls) and the y-scale is set by the edge levels, not core/separatrix spikes.
+    dbp_b = -np.gradient(bp_b, psin_b)
+    dbp_a = -np.gradient(bp_a, psin_a)
+    x0_dbp = max(0.7, psin_g - 0.15)
+    axdbp.plot(psin_b, dbp_b, color=cb, lw=lw, label="before")
+    axdbp.plot(psin_a, dbp_a, color=ca, lw=lw, label="after")
+    axdbp.plot([psin_g, 1.0], [betap_delivered, betap_delivered], color=cb, ls="--", lw=1.2,
+               label=rf"delivered $\beta_p'$={betap_delivered:.2f}")
+    axdbp.plot([psin_g, 1.0], [betap_eff, betap_eff], color=ca, ls="--", lw=1.2,
+               label=rf"applied $\beta_p'$={betap_eff:.2f}")
+    _vbc(axdbp)
+    axdbp.set_xlabel(r"$\psi_n$", fontsize=FS)
+    axdbp.set_ylabel(r"$-d\beta_p/d\psi_n$", fontsize=FS)
+    axdbp.set_title("Edge $\\beta_p$ gradient", fontsize=FS)
+    axdbp.set_xlim([x0_dbp, 1.0])
+    ymax_levels = max(abs(betap_eff), abs(betap_delivered))
+    ymax_dbp = min(
+        1.15 * max(float(np.nanmax(np.abs(dbp_b[psin_b >= x0_dbp]))),
+                   float(np.nanmax(np.abs(dbp_a[psin_a >= x0_dbp]))), ymax_levels),
+        3.0 * ymax_levels,   # clip: don't let core/separatrix spikes hide the edge levels
+    )
+    axdbp.set_ylim(0, ymax_dbp)
+    GRAPHICStools.addDenseAxis(axdbp)
+    axdbp.tick_params(labelsize=FS_tick)
+    axdbp.legend(prop={"size": FS_leg}, loc="upper left")
 
     axIn.text(
         0.0, 1.0,
@@ -2569,7 +2675,7 @@ def _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter)
             "",
             rf"  $I_p$    = {loaded_results['Ip_MA']:.2f} MA",
             rf"  $L_{{pol}}$ = {loaded_results['L_pol_m']:.2f} m",
-            rf"  $B_{{pa}}$  = {Bpa:.3f} T",
+            rf"  $B_{{pa}}=\mu_0 I_p/L_{{pol}}$ = {Bpa:.3f} T",
             rf"  $p_{{sep}}$ = {loaded_results['p_sep_Pa']*1e-3:.2f} kPa",
             rf"  $p_{{bc}}$  = {loaded_results['p_bc_applied_Pa']*1e-3:.2f} kPa",
             rf"  $n_{{e,bc}}$ = {loaded_results['ne_bc_used_1e19']*0.1:.2f} $10^{{20}}m^{{-3}}$",

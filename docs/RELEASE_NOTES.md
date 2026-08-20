@@ -13,7 +13,9 @@ DESCRIPTION
     as a single metric module. First new method: `betap` — closed-form Te_bc from a prescribed
     edge poloidal-beta gradient d(beta_p)/d(psi_N) (engineering norm Bpa = mu0*Ip/L_pol, thermal
     pressure, density a spectator; default 2.0, grounded in L-H edge-gradient literature —
-    Rogers/Drake/Zeiler PRL 1998, Eich & Manz NF 2021).
+    Rogers/Drake/Zeiler PRL 1998, Eich & Manz NF 2021). The betap edge is built linear in
+    thermal PRESSURE (constant d(beta_p)/d(psi_N) across the edge, Te derived pointwise from
+    the standing density); its plot tab shows the edge beta_p gradient explicitly.
 
 *   💥 **SOL / separatrix estimates collapsed into `mitim_state.calculate_sol()`**: always computes
     the legacy 2-point `Te_lcfs_estimate` (now DEPRECATED — its `Bp = eps*Bt/q95` is a rough averaged

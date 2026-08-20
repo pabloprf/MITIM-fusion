@@ -71,6 +71,29 @@ def measure_betap_prime(p, rho_bc_rho):
     return (float(beta_p[ibc]) - float(beta_p[-1])) / (1.0 - float(psin[ibc]))
 
 
+def measure_edge_slopes(p, rho_bc_rho):
+    """Local finite-difference |d(beta_p)/dpsin| between consecutive grid points on the
+    rewritten edge interior (from i_edge+1 = ibc+2 to the separatrix): with the
+    pressure-linear edge, every one of these slopes must equal the two-point betap'.
+    (The single cell i_edge -> i_edge+1 deliberately carries the kink and is excluded.)"""
+    e_J, mu0 = 1.602176634e-19, 4.0e-7 * np.pi
+    p_th = p.profiles["ne(10^19/m^3)"] * p.profiles["te(keV)"]
+    for sp in range(len(p.Species)):
+        if p.Species[sp]["S"] != "fast":
+            p_th = p_th + p.profiles["ni(10^19/m^3)"][:, sp] * p.profiles["ti(keV)"][:, sp]
+    p_th = p_th * 1e19 * 1e3 * e_J
+    Ip_A = abs(float(p.profiles["current(MA)"][-1])) * 1e6
+    R = np.asarray(p.derived["R_surface"][0][-1])
+    Z = np.asarray(p.derived["Z_surface"][0][-1])
+    L_pol = float(np.sum(np.hypot(np.diff(np.append(R, R[0])), np.diff(np.append(Z, Z[0])))))
+    Bpa = mu0 * Ip_A / L_pol
+    beta_p = 2.0 * mu0 * p_th / Bpa**2
+    psin = p.derived["psi_pol_n"]
+    ibc = int(np.argmin(np.abs(p.profiles["rho(-)"] - rho_bc_rho)))
+    j0 = ibc + 2   # first rewritten point
+    return -np.diff(beta_p[j0:]) / np.diff(psin[j0:])
+
+
 def make_mock():
     return SimpleNamespace(
         parameters_trans_beat={},
@@ -113,6 +136,17 @@ for treatment in ("bc", "keep"):
     dev_file = abs(meas_file - TARGET) / TARGET
     pass_mem, pass_file = dev_mem < 1e-9, dev_file < 1e-4
     ok &= pass_mem and pass_file
+
+    # Pressure-linear edge: every local slope on the rewritten edge interior equals betap'
+    slopes_mem = measure_edge_slopes(p_mem, results["rho_bc_rho"])
+    slopes_file = measure_edge_slopes(p_file, results["rho_bc_rho"])
+    dev_sl_mem = float(np.max(np.abs(slopes_mem - TARGET)) / TARGET)
+    dev_sl_file = float(np.max(np.abs(slopes_file - TARGET)) / TARGET)
+    pass_sl = dev_sl_mem < 1e-6
+    ok &= pass_sl
+    print(f"      edge local d(beta_p)/dpsin ({slopes_mem.size} segments): "
+          f"max rel dev vs target (memory) = {dev_sl_mem:.2e} [{'PASS' if pass_sl else 'FAIL'}], "
+          f"(file) = {dev_sl_file:.2e}")
     print(f"  density_treatment='{treatment}': achieved (memory) = {meas_mem:.12f} "
           f"[rel dev {dev_mem:.2e}, {'PASS' if pass_mem else 'FAIL'}], "
           f"achieved (file) = {meas_file:.8f} [rel dev {dev_file:.2e}, {'PASS' if pass_file else 'FAIL'}]")

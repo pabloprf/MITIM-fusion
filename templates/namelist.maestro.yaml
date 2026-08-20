@@ -393,7 +393,8 @@ maestro:
         # Prescribed magnitude (positive) of the edge poloidal-beta gradient:
         #     betap' = [beta_p(x_bc) - beta_p(sep)]/(1 - psin_bc),  beta_p = 2*mu0*p_th/Bpa^2,
         #     Bpa = mu0*Ip/L_pol -- inverted in closed form for Te_bc (thermal pressure only;
-        # density is a spectator; linear edge always). Default 2.0 puts the edge-average
+        # density is a spectator; edge linear in THERMAL PRESSURE, so d(beta_p)/dpsin is
+        # constant across the edge = -betap'). Default 2.0 puts the edge-average
         # alpha_MHD near L-H-relevant/near-marginal gradients (Rogers, Drake & Zeiler,
         # PRL 81 (1998) 4396 barrier threshold; Eich & Manz, NF 61 (2021) 086017 separatrix
         # ballooning limit alpha_c = kappa^1.2*(1+1.5*delta); review: Manz et al., Rev. Mod.
