@@ -25,7 +25,7 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, **kwargs):
+    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, dilution_impurity_species = None, dilution_impurity_charge = None, dilution_impurity_mass = None, dilution_impurity_min_concentration = 0, **kwargs):
 
         if mode not in ('seeded', 'clean'):
             raise ValueError(f"[MAESTRO][LENGYELbeat] mode must be 'seeded' or 'clean', got '{mode}'")
@@ -78,6 +78,13 @@ class lengyel_beat(beat):
         # namelist) to prevent the Lengyel beat from ever dragging Zeff below the starting point.
         self.zeff_floor = zeff_floor
 
+        # Save the diluting impurity parameters for use in run()
+        self.dilution_impurity_species = dilution_impurity_species
+        self.dilution_impurity_charge = dilution_impurity_charge
+        self.dilution_impurity_mass = dilution_impurity_mass
+        self.dilution_impurity_min_concentration = dilution_impurity_min_concentration
+
+
         if radas_dir is not None:
             radas_dir_env = radas_dir
         else:
@@ -103,6 +110,15 @@ class lengyel_beat(beat):
             i_W = np.where(self.profiles_current.profiles['name']==fixed_impurity_symbol)[0][0]
         except IndexError:
             raise ValueError(f"[MAESTRO][LENGYELbeat] The high-Z impurity species '{fixed_impurity_symbol}' was not found in the input.gacode profiles; please ensure it is present to keep its concentration fixed during the Lengyel beat.")
+
+        # See if the diluting impurity is already in the profile object, otherwise set self.i_dilution to None (it will be added in run() if needed)
+        if self.dilution_impurity_species is not None:
+            try:
+                self.i_dilution = np.where(self.profiles_current.profiles['name']==dilution_impurity_species)[0][0]
+            except IndexError:
+                self.i_dilution = None
+        else: 
+            self.i_dilution = None
         
         fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
 
@@ -274,6 +290,21 @@ class lengyel_beat(beat):
             
             if Zeff_vol < self.zeff_floor:
                 print(f"\t\t! Warning: Zeff floor not reached after {max_iter} iterations: vol-avg Zeff {Zeff_vol:.2f} < floor {self.zeff_floor:.2f}")
+
+        # Add in the diluting impurity as a species if need if needed
+        if self.dilution_impurity_species is not None and self.i_dilution is None:
+            print(f'\t\t* Adding diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) to the profiles with a minimum concentration of {self.dilution_impurity_min_concentration:.2f}')                                                                                                               
+            p.addSpecie(Z = self.dilution_impurity_charge, mass = self.dilution_impurity_mass, fi_vol = 0.0, forcename = self.dilution_impurity_species)
+            self.i_dilution = np.where(p.profiles['name']==self.dilution_impurity_species)[0][0]
+
+        if self.dilution_impurity_species is not None:
+            diluting_impurity_current_concentration = p.profiles['ni(10^19/m^3)'][:, self.i_dilution] / p.profiles['ne(10^19/m^3)'][:]
+            if np.any(diluting_impurity_current_concentration < self.dilution_impurity_min_concentration):
+                below_minimum = diluting_impurity_current_concentration < self.dilution_impurity_min_concentration
+                p.profiles['ni(10^19/m^3)'][below_minimum, self.i_dilution] = (
+                    self.dilution_impurity_min_concentration * p.profiles['ne(10^19/m^3)'][below_minimum]
+                )
+
 
         # Quasineutrality
         p.enforce_quasineutrality()

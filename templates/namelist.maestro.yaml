@@ -432,6 +432,11 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
+      dilution_impurity_species: None
+      dilution_impurity_charge: 2
+      dilution_impurity_mass: 3.9746
+      dilution_impurity_min_concentration: 0
+
       # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
       # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)
       zeff_relaxation_factor: 1.0
