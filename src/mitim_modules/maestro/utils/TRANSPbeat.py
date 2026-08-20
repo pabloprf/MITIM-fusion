@@ -161,6 +161,20 @@ class transp_beat(beat):
         # machine_initialization makes the meaningless combination unrepresentable. The lower-level
         # equilibrium_mode knob survives in TRANSPhelpers/NMLtools for standalone TRANSP users,
         # who have no machine_initialization concept.
+        #
+        # A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov every
+        # step, warm-starting its FIRST solve from a stored equilibrium keyed to this label. TEQ's
+        # basin is tight (~1.3x), so pick the registered machine nearest the target in size/shape
+        # (e.g. ITER for ARC-class) and let transition_window morph the shape from seed to target.
+        #
+        # null -> PRESCRIBED EQUILIBRIUM (levgeo=8): the state's own nested flux surfaces are handed
+        # to TRANSP as data (full-x RFS/ZFS with QPR/GRB/PRS and the TRF/PLF enclosed fluxes); no
+        # seed, no morph, no MRY, so ANY shape works at t=0 and no TEQ device file is needed (a CMOD
+        # label survives for run-tree bookkeeping only). transition_window and currentheating_window
+        # are INERT. Caveats: the geometry is FROZEN in time and not pressure-self-consistent
+        # in-run, and g = R*Bt is written at its vacuum value (a ~1% para/diamagnetic
+        # approximation). Requires a state whose (x,theta)->(R,Z) map does not fold: prepare() runs
+        # a spline-based det(J) check and fails loudly if it does, warning if the margin is small.
         equilibrium_mode = 'prescribed' if machine_initialization is None else 'evolve'
         if frozen_field and equilibrium_mode != 'prescribed':
             raise ValueError(
@@ -304,6 +318,8 @@ class transp_beat(beat):
         # and a multi-GB output CDF. Pick c_sawtooth(2) so the floor lands at min_sawtooth_period_ms
         # for this plasma; large machines (tau_PM already above the floor) are left effectively
         # untouched. Set None to bypass and use the raw NMLtools c_sawtooth(2) default.
+        # The floor is APPROXIMATE: c_sawtooth(2) is sized from the INITIAL central Te, but TRANSP
+        # applies it with the evolving post-crash central Te, so the realized minimum can differ.
         if min_sawtooth_period_ms is not None and 'c_sawtooth_2' not in transp_namelist_mod:
             p = self.profiles_current
             tau_PM = PLASMAtools.park_monticello_sawtooth_period(

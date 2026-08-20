@@ -4,6 +4,19 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **MAESTRO boundary-condition beats unified into a single `bc` beat**: `beat_type: bc` with
+    `method: confinement | sharpness` replaces the separate `sharpness`/`confinement` beat types —
+    common knobs (location, servo/relaxation, density treatment) at the `parameters_prepare` top
+    level, method-specific ones in `confinement_parameters`/`sharpness_parameters` sub-dicts
+    (misplaced or unknown keys now raise). Run folders/artifacts become `run_bc_<method>`/
+    `bc_results.npy`. Numerics are bit-identical to the old beats; future BC methods drop in
+    as a single metric module. First new method: `betap` — closed-form Te_bc from a prescribed
+    edge poloidal-beta gradient d(beta_p)/d(psi_N) (engineering norm Bpa = mu0*Ip/L_pol, thermal
+    pressure, density a spectator; default 2.0, grounded in L-H edge-gradient literature —
+    Rogers/Drake/Zeiler PRL 1998, Eich & Manz NF 2021). The betap edge is built linear in
+    thermal PRESSURE (constant d(beta_p)/d(psi_N) across the edge, Te derived pointwise from
+    the standing density); its plot tab shows the edge beta_p gradient explicitly.
+
 *   💥 **SOL / separatrix estimates collapsed into `mitim_state.calculate_sol()`**: always computes
     the legacy 2-point `Te_lcfs_estimate` (now DEPRECATED — its `Bp = eps*Bt/q95` is a rough averaged
     poloidal field, ~2.4x below the true outboard-midplane value; it will be removed in the future),
@@ -37,7 +50,7 @@ DESCRIPTION
     Also fixed a crash in the initializer pressure guess when neither profiles nor BetaN were provided
     (now falls back to 1.0 MPa with a warning), and de-duplicated the FiBE copy of that formula.
 
-*   💥 **MAESTRO confinement beat: invertible isothermal-edge guard** (`sep_max_frac`): instead of
+*   💥 **MAESTRO bc beat (method: confinement): invertible isothermal-edge guard** (`sep_max_frac`): instead of
     flooring the H-servo at `Te_bc >= 1.2*Tesep`, the beat can now let `Te_bc` go arbitrarily low and
     cap the APPLIED separatrix Te/Ti at `sep_max_frac * Te_bc` (edge stays monotone, TRANSP-safe),
     with `Te_bc_min_Tesep_factor: null` disabling the dynamic floor. An H-target that demands an edge
@@ -74,13 +87,13 @@ DESCRIPTION
 *   💥 **MAESTRO lengyel beat `mode: 'clean'`**: non-detached forward-conduction separatrix
     temperature (the package-native clean-Lengyel mode above) applied to the profiles WITHOUT
     touching densities/impurities — no detachment solve, no seeding, no radas. Gives BC-setting
-    beats (sharpness/confinement) a physics-based Tsep scale instead of the namelist constant;
+    beats (the bc beat) a physics-based Tsep scale instead of the namelist constant;
     PORTALS surrogate data stays reusable. Test chain: `tests/dev_tests/test_lengyel_clean_beat.py`.
 
-*   💥 **Confinement/sharpness beats support Te_bc under-relaxation** (`relaxation` knob in both
-    beats' `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
-    is blended with the value applied by the previous confinement/sharpness beat (shared trans-beat
-    memory `Te_bc_applied`, so mixed chains relax coherently), damping beat-to-beat oscillations of
+*   💥 **BC beats support Te_bc under-relaxation** (`relaxation` knob in the bc beat's
+    `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
+    is blended with the value applied by the previous bc beat (shared trans-beat
+    memory `Te_bc_applied`, so mixed-method chains relax coherently), damping beat-to-beat oscillations of
     the BC servo. The first incarnation takes the full step; with `relaxation < 1` the target
     (H-factor / xi) converges across beat iterations and the applied effective xi is reported as
     `xi_eff`. The confinement beat also gained an isothermal-edge guard (`Te_bc_min_Tesep_factor`,
@@ -230,6 +243,11 @@ DESCRIPTION
 *   🔎 **NEW CHANGE**, description
 
 ### Back-compatibility considerations and defaults
+
+*   🔮 **`beat_type: sharpness` and `beat_type: confinement` are REMOVED** (no aliases): namelists
+    must use `beat_type: bc` with `method:`. Pre-existing run folders (`run_sharpness/`,
+    `run_confinement/`) are still read by `mitim_plot_maestro`/`mitim_check_maestro` with a
+    deprecation notice.
 
 *   🔮 **`maestro.keep_all_files` is deprecated** in favor of `prune_level` (true -> 0, false -> 3).
     The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,

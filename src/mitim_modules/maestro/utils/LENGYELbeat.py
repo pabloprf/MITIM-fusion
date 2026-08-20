@@ -38,9 +38,12 @@ class lengyel_beat(beat):
         self.override_namelist_params = override_namelist_params if override_namelist_params is not None else {}
 
         # ----------------------------------------------------
-        # mode='clean': non-detached forward conduction Tsep (Lengyel.run_forward);
+        # mode='clean': non-detached forward conduction Tsep (Lengyel.run_forward,
+        # registered package algorithms per templates/input.lengyel_clean.controls.yaml);
         # ONLY the separatrix temperature will be applied to the profiles -- no
-        # impurity seeding, no Zeff change, no atomic data. Same vocabulary as
+        # impurity seeding, no Zeff change, no atomic data; seed/fixed impurity
+        # entries are ignored. Connection length defaults to pi*R*|q95| with a 0.441
+        # divertor leg (overridable via override_namelist_params). Same vocabulary as
         # MITIMstate.calculate_sol_lengyel.
         # ----------------------------------------------------
         if self.mode == 'clean':

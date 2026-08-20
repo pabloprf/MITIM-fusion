@@ -17,8 +17,30 @@ from IPython import embed
 # --------------------------------------------------------------------------------------------
 # 0 PRUNE_NOTHING : keep everything                                    (legacy keep_all_files: true)
 # 1 PRUNE_SCRATCH : drop execution scratch nothing reads back; every plot tab still works
+#       - transp:  the `results/` tree (a second copy of the multi-GB CDF, already surfaced into
+#         run_transp/), `*PH.CDF`, job logs. The main CDF and AC folders are kept.
+#       - eped:    the per-height TOQ/ELITE work dirs under `case1/run1/` ("enormous"; see
+#         EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept.
+#       - portals: `Execution/` (per-iteration model trees, incl. CGYRO restart binaries),
+#         `Initialization/`, `flux_match/`. `run_portals/Outputs` is kept.
+#       - lengyel / bc: nothing (KB-scale).
 # 2 PRUNE_RUN     : 1 + wipe run_<name>/ entirely; _persist moves instead of copying
 # 3 PRUNE_OUTPUTS : 2 + prune persisted outputs and initializers       (legacy keep_all_files: false)
+#       - portals: LAST beat's optimization_object.pkl re-saved lean (GP steps dropped);
+#         INTERMEDIATE beats drop the pickles, portals_profiles/ and their beat logs.
+#         Chaining keeps surrogate_data.csv and beat_results/input.gacode.
+#       - initializers: the throwaway geqdsk intermediates and any nested run folder (notably
+#         `initializer_eped/run_eped/`, a full TOQ/ELITE tree no earlier level reaches).
+#         `input.gacode`, `input.geqdsk` and `beat_results/` are never touched -- MAESTRO
+#         re-reads them on every invocation and so does the plotter.
+#
+# Plot tabs that depend on run-folder artifacts degrade gracefully from level 2 on (never fatal --
+# mitim_plot_maestro reports what it skipped and carries on):
+#   - EPED "orig" pre-EPED profile trace is skipped (`run_eped/input.gacode` is gone).
+#   - TRANSP CDF detail tab is skipped: the multi-GB CDF is never copied to beat_results/; only
+#     `transp_results.npy` (sawtooth_times + impurity_order) travels forward -- sufficient for
+#     chain inheritance, not for full CDF plotting.
+# PORTALS plot tabs are unaffected up to level 2 (their inputs live in beat_results/Outputs/).
 #
 # `beat_results/` is NEVER touched by any level here -- it carries the sole idempotence key
 # (beat_results/input.gacode) and the small sidecars the next beat reads. The only pruning that
@@ -472,7 +494,15 @@ class initializer_from_geqdsk(beat_initializer):
         super().__call__(**kwargs_profiles)
 
     def _inform_save(self):
-        
+        '''
+        Extract the 99.5% shaping (kappa/delta/zeta[/s_three/s_four]) with the parameterization
+        selected by freeze_995_from and FREEZE it in parameters_trans_beat: every later EPED beat
+        reuses these fixed values even though the real internal surfaces drift as the equilibrium
+        evolves (Shafranov shift, beta, ...) -- that pinning is the purpose of the knob.
+        extract_995_from = None stores nothing, so each EPED beat recomputes from its own current
+        equilibrium instead. WHEN the frozen values are later refreshed is controlled by
+        maestro.refreeze_995_after_beat (MAESTROmain._maybe_refreeze_995).
+        '''
         if self.extract_995_from is None:
             return
 
@@ -1271,7 +1301,13 @@ class creator_from_fixed_bc(creator_from_parameterization):
         initialize_instance,
         label = 'fixed_bc',
         x_bc = None,                # BC location value in the coordinate given by bc_coordinate
-        bc_coordinate = 'rho',      # coordinate for x_bc: 'rho' (rho_tor), 'roa' (r/a), or 'psin'
+        bc_coordinate = 'rho',      # coordinate for x_bc: 'rho' (rho_tor), 'roa' (r/a), or 'psin'.
+                                    # 'rho' recommended: it is the immutable grid coordinate carried
+                                    # unchanged across beats, whereas 'roa'/'psin' depend on the
+                                    # equilibrium, which is not yet solved at separatrix
+                                    # initialization -- the BC can be pinned at the wrong rho_tor and
+                                    # drift once the real equilibrium is solved. The non-rho options
+                                    # are kept available to accommodate future improvements.
         Te_bc = None,               # Te at x_bc (keV)
         Ti_bc = None,               # Ti at x_bc (keV); if None, uses Te_bc
         neped_20 = None,            # ne at x_bc (10^20 m^-3)

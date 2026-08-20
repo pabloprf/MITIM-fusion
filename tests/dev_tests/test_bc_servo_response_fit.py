@@ -1,7 +1,7 @@
 """
 test_bc_servo_response_fit.py
 =============================
-Exercises the 'response_fit' BC servo (SHARPNESSbeat.record_bc_response + servo_step),
+Exercises the 'response_fit' BC servo (BCbeat.record_bc_response + servo_step),
 which replaces the fixed under-relaxation by a step derived from the MEASURED delivered
 response of previous cycles.
 
@@ -15,7 +15,7 @@ Two parts:
    Checks: convergence speed vs a fixed relaxation of 0.75, boundedness of the ladder
    for a stiff plant (alpha_true = 1.2), and exclusion of railed pairs from the fits.
 
-2) Real-chain smoke test: a minimal MAESTRO run with three confinement beats in a row,
+2) Real-chain smoke test: a minimal MAESTRO run with three bc(confinement) beats in a row,
    all with servo_mode='response_fit'. Nothing runs between them, so the delivered
    response is ~the identity (alpha ~ 1 and the state is already at H = 1): this checks
    the plumbing (history accumulation in parameters_trans_beat AND in the JSON snapshot
@@ -33,7 +33,7 @@ import sys
 import json
 import numpy as np
 from mitim_modules.maestro.scripts import run_maestro
-from mitim_modules.maestro.utils.SHARPNESSbeat import record_bc_response, servo_step
+from mitim_modules.maestro.utils.BCbeat import record_bc_response, servo_step
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools
 
@@ -175,11 +175,12 @@ nml["plasma"]["profiles_initialization"]["creator_type"] = "fixed_bc"
 nml["plasma"]["profiles_initialization"]["parameters"]["x_bc"] = 0.95
 nml["plasma"]["profiles_initialization"]["parameters"]["Te_bc"] = 3.0  # keV
 
-nml["maestro"]["beats"] = ["confinement", "confinement", "confinement"]
+nml["maestro"]["beats"] = ["bc", "bc", "bc"]
 
-nml["maestro"]["confinement"]["parameters_prepare"]["confinement_scaling"] = "H98y2"
-nml["maestro"]["confinement"]["parameters_prepare"]["confinement"] = 1.0
-nml["maestro"]["confinement"]["parameters_prepare"]["servo_mode"] = "response_fit"
+nml["maestro"]["bc"]["parameters_prepare"]["method"] = "confinement"
+nml["maestro"]["bc"]["parameters_prepare"]["confinement_parameters"]["confinement_scaling"] = "H98y2"
+nml["maestro"]["bc"]["parameters_prepare"]["confinement_parameters"]["confinement"] = 1.0
+nml["maestro"]["bc"]["parameters_prepare"]["servo_mode"] = "response_fit"   # common knob: top level
 
 namelist_file = folder / "namelist.maestro.yaml"
 IOtools.write_mitim_yaml(nml, namelist_file)
@@ -196,12 +197,12 @@ m = run_maestro.run_maestro_local(
 sys.stdout = sys.__stdout__
 
 print("\n===========================================================================")
-print(" PART 2 - real chain: 3 x confinement beat with servo_mode=response_fit")
+print(" PART 2 - real chain: 3 x bc(confinement) beat with servo_mode=response_fit")
 print("===========================================================================")
 
 print("\n  beat  frozen target   applied      rung    n_pairs   alpha      H_initial -> H_achieved")
 for i in (1, 2, 3):
-    r = np.load(folder / "Beats" / f"Beat_{i}" / "beat_results" / "confinement_results.npy",
+    r = np.load(folder / "Beats" / f"Beat_{i}" / "beat_results" / "bc_results.npy",
                 allow_pickle=True).item()
     alpha = r.get("servo_alpha")
     print(f"  {i:>4}  {r['Te_bc_target']:>13.4f}  {r['Te_bc']:>9.4f}  {r.get('servo_rung', '-'):>8}  "
