@@ -130,10 +130,6 @@ plasma:
       highZ: W
       fhighZ: 1.5e-5
       CShighZ_estimate: 50    # Estimate of the charge state of high-Z impurity, to compute the lumped low-Z impurity at initialization
-      fixed_helium_ash: false # Gate for fixed thermal He in TRANSP beat. false keeps legacy behavior unchanged
-      fHe: 0.0                # Thermal helium fraction (only used when fixed_helium_ash is true)
-      ZHe: 2.0                # Helium charge (only used when fixed_helium_ash is true)
-      AHe: 4.0                # Helium mass number (only used when fixed_helium_ash is true)
       
   # Heating parameters
   heating:
@@ -435,11 +431,6 @@ maestro:
         edge_profile: "flat"    # Options: "flat", "linear"
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
-
-      # Keep thermal helium ash fixed as a second fixed impurity species (uses
-      # plasma.species.mix.{fHe,ZHe,AHe}). Requires plasma.species.mix.fixed_helium_ash: true,
-      # otherwise it is forced back to false for this beat (with a warning)
-      lengyel_fixed_helium_ash: false
 
       # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
       # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)

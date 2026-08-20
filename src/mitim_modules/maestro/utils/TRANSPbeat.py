@@ -1235,72 +1235,23 @@ def preprocess_prepare_transp(transp_namelist,maestro_namelist, preprocess_prepa
 
     # Grab Z and A of high-Z
     import periodictable as pt
-    mix = maestro_namelist["plasma"]["species"]["mix"]
-    e = pt.elements.symbol(mix["highZ"])
+    e = pt.elements.symbol(maestro_namelist["plasma"]["species"]["mix"]["highZ"])
     highZ = e.number
     highA = e.mass    
     # ------ 
 
-    fixed_helium_ash = bool(mix.get("fixed_helium_ash", False))
-    if fixed_helium_ash:
-        fHe = float(mix.get("fHe", 0.0) or 0.0)
-        ZHe = float(mix.get("ZHe", 2.0) or 2.0)
-        AHe = float(mix.get("AHe", 2.0 * ZHe) or (2.0 * ZHe))
-
-        # Explicit impurity bookkeeping: treat thermal He like the W contribution
-        # in the low-Z closure, but keep it behind the fixed_helium_ash gate.
-        factor1 = 1.0 - (
-            mix["fmain"]
-            + Zmini * fmini
-            + mix["CShighZ_estimate"] * mix["fhighZ"]
-            + ZHe * fHe
-        )
-        factor2 = maestro_namelist["plasma"]["species"]["Zeff"] - (
-            mix["fmain"]
-            + Zmini**2 * fmini
-            + mix["CShighZ_estimate"]**2 * mix["fhighZ"]
-            + ZHe**2 * fHe
-        )
-
-        if factor1 <= 0:
-            raise ValueError(f"[MITIM] Invalid composition constraints for fixed_helium_ash: no charge budget left (factor1={factor1:.3e})")
-
-        LowZ = factor2 / factor1
-
-        if LowZ <= 0:
-            raise ValueError(f"[MITIM] Invalid composition constraints for fixed_helium_ash: computed Z_low={LowZ:.3e}")
-
-        print(f"\t- Low-Z impurity must have Z_low = {LowZ:.2f}~{int(round(LowZ))}")
-        LowZ = int(round(LowZ))
-
-        f_low = factor1 / LowZ
-        Wratio = np.inf if np.isclose(f_low, 0.0) else mix["fhighZ"] / f_low
-        He_ratio = 0.0 if fHe <= 0.0 else (fHe / f_low)
-
-        print(f'\t- f_high/f_lower = {Wratio:.2e}  -> f_low = {f_low:.2e}')
-    else:
-        fHe = 0.0
-        ZHe = 2.0
-        AHe = 4.0
-        LowZ, Wratio = PLASMAtools.estimateLowZ(
-            mix["fmain"],
-            maestro_namelist["plasma"]["species"]["Zeff"],
-            Zmini,
-            fmini,
-            mix["CShighZ_estimate"],
-            mix["fhighZ"] )
+    LowZ, Wratio = PLASMAtools.estimateLowZ(
+        maestro_namelist["plasma"]["species"]["mix"]["fmain"],
+        maestro_namelist["plasma"]["species"]["Zeff"],
+        Zmini,
+        fmini,
+        maestro_namelist["plasma"]["species"]["mix"]["CShighZ_estimate"],
+        maestro_namelist["plasma"]["species"]["mix"]["fhighZ"] )
     
     lowA = 2*LowZ   # Approximation
-
-    # Densities in NMLtools z-lump are entered relative to a low-Z reference species.
-    # Keep that convention and map the requested fixed helium fraction to the same basis.
     
-    transp_namelist["zlump"] = [
-        [highZ, highA, 0.1 * Wratio],
-        [LowZ, lowA, 0.1],
-    ]
-    if fixed_helium_ash and fHe > 0.0:
-        transp_namelist["zlump"].insert(0, [ZHe, AHe, 0.1 * He_ratio])
+    transp_namelist["zlump"] =[  [ highZ, highA, 0.1*Wratio ],
+                                 [  LowZ,  lowA, 0.1        ] ]
 
     transp_namelist['DTplasma'] = maestro_namelist["plasma"]["species"]['fuel'] == ['D', 'T']   #TODO: generalize TRANSP module
     
