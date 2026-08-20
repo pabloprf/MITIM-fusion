@@ -10,7 +10,10 @@ DESCRIPTION
     level, method-specific ones in `confinement_parameters`/`sharpness_parameters` sub-dicts
     (misplaced or unknown keys now raise). Run folders/artifacts become `run_bc_<method>`/
     `bc_results.npy`. Numerics are bit-identical to the old beats; future BC methods drop in
-    as a single metric module.
+    as a single metric module. First new method: `betap` — closed-form Te_bc from a prescribed
+    edge poloidal-beta gradient d(beta_p)/d(psi_N) (engineering norm Bpa = mu0*Ip/L_pol, thermal
+    pressure, density a spectator; default 2.0, grounded in L-H edge-gradient literature —
+    Rogers/Drake/Zeiler PRL 1998, Eich & Manz NF 2021).
 
 *   💥 **SOL / separatrix estimates collapsed into `mitim_state.calculate_sol()`**: always computes
     the legacy 2-point `Te_lcfs_estimate` (now DEPRECATED — its `Bp = eps*Bt/q95` is a rough averaged

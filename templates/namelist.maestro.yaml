@@ -310,7 +310,9 @@ maestro:
       #     'confinement': scan Te_bc until the state matches a target H-factor
       #     'sharpness':   closed-form Te_bc = Tsep/(1 - xi*C) from a prescribed
       #                    edge-to-core gradient ratio xi
-      # Both apply the BC the same way: core a/LT and a/Ln preserved exactly, edge
+      #     'betap':       closed-form Te_bc from a prescribed edge poloidal-beta
+      #                    gradient betap' (engineering norm Bpa = mu0*Ip/L_pol)
+      # All apply the BC the same way: core a/LT and a/Ln preserved exactly, edge
       # replaced by an analytic shape down to the (kept-fixed) separatrix value.
       method: "confinement"
 
@@ -385,6 +387,20 @@ maestro:
 
         # Coordinate in which xi is defined: 'psin', 'rho' or 'roa'. Independent of bc_coordinate
         sharpness_coordinate: "psin"
+
+      betap_parameters:
+
+        # Prescribed magnitude (positive) of the edge poloidal-beta gradient:
+        #     betap' = [beta_p(x_bc) - beta_p(sep)]/(1 - psin_bc),  beta_p = 2*mu0*p_th/Bpa^2,
+        #     Bpa = mu0*Ip/L_pol -- inverted in closed form for Te_bc (thermal pressure only;
+        # density is a spectator; linear edge always). Default 2.0 puts the edge-average
+        # alpha_MHD near L-H-relevant/near-marginal gradients (Rogers, Drake & Zeiler,
+        # PRL 81 (1998) 4396 barrier threshold; Eich & Manz, NF 61 (2021) 086017 separatrix
+        # ballooning limit alpha_c = kappa^1.2*(1+1.5*delta); review: Manz et al., Rev. Mod.
+        # Plasma Phys. 9 (2025) 5). NOTE: fixed betap' is NOT fixed alpha_MHD across machines
+        # (mapping carries q95^2*(Bpa/B0)^2), and this is an x_bc->sep average, larger locally
+        # at the separatrix. See BCbeat.py for the mapping.
+        betap_prime: 2.0
 
     preprocess_prepare: null
     preprocess_prepare_parameters: {}

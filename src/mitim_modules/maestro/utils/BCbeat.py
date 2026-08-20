@@ -208,18 +208,19 @@ def _recompute_alpha_power(profiles):
 # Per-method parameter sets (prepare() validation)
 # --------------------------------------------------------------------------------------------
 # The bc beat determines Te_bc by one of two routes:
-#   - a CLOSED-FORM solve (method 'sharpness': Te_bc = Tsep/(1 - xi*C))
+#   - a CLOSED-FORM solve (method 'sharpness': Te_bc = Tsep/(1 - xi*C); method 'betap':
+#     invert the prescribed edge poloidal-beta gradient for the BC thermal pressure)
 #   - the GENERIC ITERATIVE metric-matching solver (method 'confinement': scan Te_bc,
 #     applying the BC at each trial and re-deriving the metric, until metric == target)
-# A future method (e.g. 'betap', matching d(betap)/dpsin at the BC) slots into the
-# iterative route with its own metric evaluation — see _run_confinement for the pattern.
+# A future method whose target needs the full modified state slots into the iterative
+# route with its own metric evaluation — see _run_confinement for the pattern.
 #
 # Namelist shape: common knobs (_COMMON_DEFAULTS) sit at the TOP level of
 # parameters_prepare; each method's knobs (_METHOD_DEFAULTS[m]) live in a
-# '<m>_parameters' sub-dict (confinement_parameters, sharpness_parameters, and a
-# future betap_parameters symmetrically). Only the selected method's sub-dict is
-# consumed; the other may coexist (typo-checked but ignored), so base_module
-# inheritance and method switching need no pruning.
+# '<m>_parameters' sub-dict (confinement_parameters, sharpness_parameters,
+# betap_parameters). Only the selected method's sub-dict is consumed; the others may
+# coexist (typo-checked but ignored), so base_module inheritance and method switching
+# need no pruning.
 
 _COMMON_DEFAULTS = dict(
     x_bc=0.90,
@@ -249,6 +250,9 @@ _METHOD_DEFAULTS = {
         Te_bc_min_Tesep_factor=1.2,
         sep_max_frac=None,
     ),
+    "betap": dict(
+        betap_prime=2.0,
+    ),
 }
 
 BC_METHODS = tuple(_METHOD_DEFAULTS.keys())
@@ -272,6 +276,22 @@ class bc_beat(beat):
 
         C    = (1 - c_bc) * aLT_bc * d(r/a)/dc|_bc
         T_bc = T_sep / (1 - xi * C)
+
+    method 'betap' — from a prescribed magnitude of the edge poloidal-beta gradient
+    (two-point finite difference in psi_n between the BC and the separatrix):
+
+        beta_p(psin) = 2*mu0*p_th(psin) / Bpa^2,   Bpa = mu0*Ip/L_pol  (engineering norm)
+        betap' = [beta_p(x_bc) - beta_p(sep)] / (1 - psin_bc)     (prescribed positive)
+
+    with p_th the THERMAL pressure only. Inverted in closed form:
+
+        p_bc  = (Bpa^2/(2*mu0)) * betap' * (1 - psin_bc) + p_sep
+        Te_bc = p_bc / [ne_bc * (1 + f_i*tite)],   f_i = sum_i(thermal) ni/ne at x_bc
+
+    Density is a spectator: ne_bc in the inversion is the ne that will actually stand
+    at x_bc after application (neped_20 under density_treatment 'bc', the incoming
+    state's value under 'keep'), so the delivered betap' matches the target under both.
+    Linear edge always, like the sharpness method.
 
     method 'confinement' — such that the plasma state matches a prescribed
     confinement level (H-factor). The H-factor cannot be inverted analytically for
@@ -404,6 +424,16 @@ class bc_beat(beat):
             ratio) is defined: 'rho' (rho_tor), 'roa' (r/a), or 'psin' (default).
             This is independent of bc_coordinate.
 
+        Parameters (betap_parameters sub-dict; consumed when method='betap')
+        --------------------------------------------------------------------
+        betap_prime : float
+            Prescribed magnitude of the edge poloidal-beta gradient (positive;
+            default 2.0):  betap' = [beta_p(x_bc) - beta_p(sep)]/(1 - psin_bc),
+            with beta_p = 2*mu0*p_th/Bpa^2 (thermal pressure only) and the
+            engineering norm Bpa = mu0*Ip/L_pol. Inverted in closed form for
+            Te_bc; density is a spectator (never set by this method). Linear
+            edge always (the two-point finite-difference definition assumes it).
+
         Parameters (confinement_parameters sub-dict; consumed when method='confinement')
         --------------------------------------------------------------------------------
         confinement_scaling : str
@@ -531,6 +561,12 @@ class bc_beat(beat):
                 raise ValueError(
                     f"edge_shape must be 'linear' or 'tanh', got '{resolved['edge_shape']}'"
                 )
+        elif self.method == "betap":
+            if not resolved["betap_prime"] > 0.0:
+                raise ValueError(
+                    f"betap_prime must be positive (magnitude of the falling edge beta_p gradient), "
+                    f"got {resolved['betap_prime']}"
+                )
 
         # ---- store ----
         self.x_bc = resolved["x_bc"]
@@ -568,6 +604,15 @@ class bc_beat(beat):
                 f"target {self.confinement_scaling}={self.confinement}, Ti/Te={self.tite}, "
                 f"edge_shape={self.edge_shape}, density_treatment={self.density_treatment}, "
                 f"alpha_power_feedback={self.alpha_power_feedback}, relaxation={self.relaxation}, "
+                f"servo_mode={self.servo_mode}",
+                typeMsg="i",
+            )
+        elif self.method == "betap":
+            self.betap_prime = resolved["betap_prime"]
+            print(
+                f"\t- BC beat (betap): x_bc={self.x_bc} ({self.bc_coordinate}), "
+                f"betap_prime={self.betap_prime}, Ti/Te={self.tite}, "
+                f"density_treatment={self.density_treatment}, relaxation={self.relaxation}, "
                 f"servo_mode={self.servo_mode}",
                 typeMsg="i",
             )
@@ -686,6 +731,9 @@ class bc_beat(beat):
         elif self.method == "confinement":
             return self._run_confinement(profiles, rho, Te,
                                          rho_bc_rho, psin_bc, ne_bc_1e19, ne_bc_20)
+        elif self.method == "betap":
+            return self._run_betap(profiles, rho, psi_pol_n, Te, ne,
+                                   rho_bc_rho, psin_bc, ne_bc_1e19, ne_bc_20)
 
     # ------------------------------------------------------------------
     # method 'sharpness': closed-form solve
@@ -812,6 +860,189 @@ class bc_beat(beat):
             "aLT_Te_bc":      aLT_Te_bc,
             "droa_dcoord_bc": droa_dcoord_bc,
             "tite":           self.tite,
+            "density_treatment": self.density_treatment,
+        }
+
+        if servo_diag is not None:
+            bc_results.update({
+                "servo_rung":            servo_diag["rung"],
+                "servo_n_pairs":         servo_diag["n_pairs"],
+                "servo_alpha":           servo_diag["alpha"],
+                "servo_slope":           servo_diag["slope"],
+                "servo_trust_clamped":   servo_diag["trust_clamped"],
+                "servo_bounds_clamped":  servo_diag["bounds_clamped"],
+            })
+
+        for key, val in bc_results.items():
+            print(f"\t\t- {key}: {val}")
+
+        # Write intermediate result
+        profiles_out.write_state(file=self.folder / self._state_file)
+
+        self.profiles_output = profiles_out
+
+        return bc_results
+
+    # ------------------------------------------------------------------
+    # method 'betap': closed-form solve from the edge poloidal-beta gradient
+    # ------------------------------------------------------------------
+
+    def _run_betap(self, profiles, rho, psi_pol_n, Te, ne,
+                   rho_bc_rho, psin_bc, ne_bc_1e19, ne_bc_20):
+
+        # ------------------------------------------------------------------
+        # Compute Te_bc from the prescribed edge poloidal-beta gradient
+        #
+        #    beta_p(psin) = 2*mu0*p_th(psin) / Bpa^2,   Bpa = mu0*Ip/L_pol
+        #    betap' = [beta_p(x_bc) - beta_p(sep)] / (1 - psin_bc)   (prescribed POSITIVE:
+        #             magnitude of the falling edge gradient, two-point finite difference)
+        #      => p_bc  = (Bpa^2/(2*mu0)) * betap' * (1 - psin_bc) + p_sep
+        #         Te_bc = p_bc / [ne_bc * (1 + f_i*tite)]
+        #
+        # p_th is THERMAL pressure only; density is a SPECTATOR (never set here): ne_bc in
+        # the inversion is the ne that will actually stand at the BC point after application.
+        #
+        # Literature mapping (grounds the default betap' ~ 2): our quantity relates to the
+        # ballooning parameter as
+        #    alpha_MHD = betap' * R * q^2 * (Bpa/B0)^2 * (dpsin/dr)
+        # giving alpha_MHD ~ 1 (DIII-D-class) to ~2-3.6 (ARC-class, q95-driven) at betap'=2 —
+        # above the spontaneous-barrier threshold alpha ~ 0.25-0.5 of Rogers, Drake & Zeiler,
+        # PRL 81 (1998) 4396, and an order-unity fraction of the separatrix ideal-ballooning
+        # limit alpha_c = kappa^1.2*(1+1.5*delta) ~ 2.4 of Eich & Manz, NF 61 (2021) 086017
+        # (review: Manz, Eich & Grover, Rev. Mod. Plasma Phys. 9 (2025) 5). Caveats: this is
+        # an x_bc->sep AVERAGE (locally larger at the separatrix, where SepOS uses lambda_p),
+        # and fixed betap' is NOT fixed alpha_MHD across machines (q95^2*(Bpa/B0)^2 factor).
+        # Do not confuse alpha_MHD with SepOS alpha_t (no pressure gradient in the latter).
+        # ------------------------------------------------------------------
+
+        e_J = 1.602176634e-19   # elementary charge [C]: n(1e19 m^-3)*T(keV) -> Pa via 1e19*1e3*e
+        mu0 = 4.0e-7 * np.pi    # [T m/A] (pre-2019-SI value; fractional difference ~1e-10)
+
+        Bpa, L_pol_m, Ip_A = _betap_normalization(profiles)
+        coef = Bpa**2 / (2.0 * mu0)   # [Pa]: p_bc - p_sep = coef * betap' * (1 - psin_bc)
+
+        # Grid-point convention: _apply_bc lands Te_bc EXACTLY on the grid point nearest
+        # rho_bc_rho, so every inversion input is taken at that point (psin included) —
+        # the written state then delivers the target betap' exactly, under both density
+        # treatments. psin_bc (interpolated, shared preamble) is stored for reference only.
+        ibc = int(np.argmin(np.abs(rho - rho_bc_rho)))
+        psin_g = float(psi_pol_n[ibc])
+
+        p_th = _thermal_pressure_Pa(profiles)   # [Pa]
+        p_sep = float(p_th[-1])                 # invariant under _apply_bc (separatrix held fixed)
+        Te_sep = float(Te[-1])
+        ne_sep_1e19 = float(ne[-1])
+
+        # Thermal-ion fraction f_i = sum_i(thermal) ni/ne at the BC grid point: invariant
+        # under 'bc' (ni/ne ratios preserved by _apply_bc) and untouched under 'keep'
+        ni_th = np.zeros_like(ne)
+        for sp in range(len(profiles.Species)):
+            if profiles.Species[sp]["S"] != "fast":
+                ni_th += profiles.profiles["ni(10^19/m^3)"][:, sp]
+        f_i = float(ni_th[ibc] / ne[ibc])
+
+        # ne standing at the BC point after application: neped_20 under 'bc' (core rescaled
+        # to it exactly at ibc), the incoming grid value under 'keep'
+        ne_used_1e19 = ne_bc_1e19 if self.density_treatment == "bc" else float(ne[ibc])
+
+        # Delivered betap' of the INCOMING state: the response to the BC the previous
+        # incarnation applied (measured response curve for the relaxation/response_fit servo)
+        betap_prime_delivered = (float(p_th[ibc]) - p_sep) / (coef * (1.0 - psin_g))
+        record_bc_response(self.maestro_instance, "betap", betap_prime_delivered)
+
+        # Closed-form inversion (all thermal ions share Ti = tite*Te_bc after application)
+        p_bc_target = coef * self.betap_prime * (1.0 - psin_g) + p_sep
+        Te_bc_target = p_bc_target / (ne_used_1e19 * 1e19 * (1.0 + f_i * self.tite) * 1e3 * e_J)
+
+        # Guard (xi*C-clamp analog): an inversion at/below the incoming separatrix temperature
+        # would make the edge isothermal/inverted (TRANSP SIGFPEs on it). Near-impossible with
+        # a positive target and nsep < nped, but clamp at 1.2*Tesep and flag if it happens.
+        Te_bc_floor = 1.2 * Te_sep
+        Te_bc_at_floor = Te_bc_target <= Te_bc_floor
+        if Te_bc_at_floor:
+            print(
+                f"\t- WARNING: betap inversion yields Te_bc={Te_bc_target*1e3:.1f} eV at/below "
+                f"1.2 x Tesep={Te_sep*1e3:.1f} eV. Clamping to {Te_bc_floor*1e3:.1f} eV (railed).",
+                typeMsg="w",
+            )
+            Te_bc_target = Te_bc_floor
+
+        if self.servo_mode == "response_fit":
+            # No Te_bc bound concept in this method, so the servo only sees its trust clamp
+            Te_bc, servo_diag = servo_step(
+                self.maestro_instance, "betap", self.betap_prime, Te_bc_target, (0.0, np.inf),
+                fit_window=self.servo_fit_window,
+                alpha_band=self.servo_alpha_band,
+                trust_factor=self.servo_trust_factor,
+                seed_gain=self.servo_seed_gain,
+            )
+        else:
+            servo_diag = None
+            Te_bc = relax_bc(self.maestro_instance, Te_bc_target, self.relaxation)
+        Ti_bc = Te_bc * self.tite
+
+        # Effective betap' actually applied (== prescribed when no relaxation/clamp acted)
+        p_bc_applied = ne_used_1e19 * 1e19 * (1.0 + f_i * self.tite) * Te_bc * 1e3 * e_J
+        betap_prime_eff = (p_bc_applied - p_sep) / (coef * (1.0 - psin_g))
+
+        print(f"\t- Betap norm: Ip={Ip_A*1e-6:.3f} MA, L_pol={L_pol_m:.3f} m -> Bpa={Bpa:.4f} T")
+        print(f"\t- betap'={self.betap_prime:.3f}" +
+              (f" (betap'_eff applied after relaxation: {betap_prime_eff:.3f})"
+               if abs(betap_prime_eff - self.betap_prime) > 1e-6 else ""))
+        print(f"\t- p_sep={p_sep:.1f} Pa, p_bc={p_bc_applied:.1f} Pa, T_sep={Te_sep:.4f} keV")
+        print(f"\t- Te_bc={Te_bc:.4f} keV,  Ti_bc={Ti_bc:.4f} keV")
+
+        # ------------------------------------------------------------------
+        # Modify profiles (linear edge always: the two-point finite-difference
+        # betap' definition, like the sharpness xi, assumes it)
+        # ------------------------------------------------------------------
+
+        profiles_out = _apply_bc(
+            profiles,
+            rho_bc_rho,
+            psin_bc,
+            Te_bc,
+            Ti_bc,
+            ne_bc_1e19,
+            density_treatment=self.density_treatment,
+        )
+
+        # ------------------------------------------------------------------
+        # Store
+        # ------------------------------------------------------------------
+
+        bc_results = {
+            "method":            "betap",
+            "x_bc":              self.x_bc,
+            "bc_coordinate":     self.bc_coordinate,
+            "rho_bc_rho":        rho_bc_rho,
+            "psin_bc":           psin_bc,
+            "psin_bc_grid":      psin_g,
+            "betap_prime":       self.betap_prime,
+            "betap_prime_eff":   betap_prime_eff,
+            "betap_prime_delivered": betap_prime_delivered,
+            "relaxation":        self.relaxation,
+            "servo_mode":        self.servo_mode,
+            # Railed if the floor clamp or the servo bounds acted (the actuator did not
+            # go where the solve asked); pairs formed from it are excluded from servo fits
+            "Te_bc_applied_railed": bool(servo_diag["bounds_clamped"]) if servo_diag is not None else bool(Te_bc_at_floor),
+            "Te_bc_at_floor":    bool(Te_bc_at_floor),
+            "Ip_MA":             Ip_A * 1e-6,
+            "L_pol_m":           L_pol_m,
+            "Bpa_T":             Bpa,
+            "p_sep_Pa":          p_sep,
+            "p_bc_target_Pa":    p_bc_target,
+            "p_bc_applied_Pa":   p_bc_applied,
+            "ne_bc_used_1e19":   ne_used_1e19,
+            "f_i_bc":            f_i,
+            "Te_bc":             Te_bc,
+            "Te_bc_target":      Te_bc_target,
+            "Ti_bc":             Ti_bc,
+            "Te_sep":            Te_sep,
+            "ne_bc_20":          ne_bc_20,
+            "neped_20":          ne_bc_20,   # keep standard key name for compatibility
+            "ne_sep_1e19":       ne_sep_1e19,
+            "tite":              self.tite,
             "density_treatment": self.density_treatment,
         }
 
@@ -1197,6 +1428,10 @@ class bc_beat(beat):
                 _plot_confinement_bc(fn, loaded_results, profiles_before, profiles_after, counter)
                 _plot_bc_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter,
                                          label="Confinement")
+            elif self.method == "betap":
+                _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter)
+                _plot_bc_profiles_coords(fn, loaded_results, profiles_before, profiles_after, counter,
+                                         label="Betap")
         else:
             # Fallback: nothing to show (never ran yet, or the inputs were pruned)
             label = self.method.capitalize()
@@ -1279,6 +1514,39 @@ class bc_beat(beat):
 # ============================================================================
 # Helper functions
 # ============================================================================
+
+
+def _thermal_pressure_Pa(p):
+    """
+    Thermal pressure profile [Pa]: ne*Te + sum over THERMAL ions of ni*Ti (fast species
+    excluded). Units: profiles carry n in 10^19 m^-3 and T in keV, so
+    p[Pa] = n*1e19 * T*1e3 * 1.602176634e-19.
+    """
+    e_J = 1.602176634e-19
+    p_th = p.profiles["ne(10^19/m^3)"] * p.profiles["te(keV)"]
+    for sp in range(len(p.Species)):
+        if p.Species[sp]["S"] != "fast":
+            p_th = p_th + p.profiles["ni(10^19/m^3)"][:, sp] * p.profiles["ti(keV)"][:, sp]
+    return p_th * 1e19 * 1e3 * e_J
+
+
+def _betap_normalization(p):
+    """
+    Engineering poloidal-field normalization for beta_p:  Bpa = mu0*Ip/L_pol  [T],
+    with Ip the total plasma current (|profiles['current(MA)'][-1]|, a flat profile in
+    input.gacode, converted MA -> A) and L_pol the poloidal perimeter of the LCFS
+    (closed-loop arc length of derived['R_surface'][0][-1], ['Z_surface'][0][-1]).
+    Returns (Bpa [T], L_pol [m], Ip [A]). Re-derives geometry if the surface contours
+    are not present in derived.
+    """
+    mu0 = 4.0e-7 * np.pi
+    Ip_A = abs(float(p.profiles["current(MA)"][-1])) * 1e6
+    if "R_surface" not in p.derived:
+        p.derive_quantities(rederiveGeometry=True)
+    R = np.asarray(p.derived["R_surface"][0][-1])
+    Z = np.asarray(p.derived["Z_surface"][0][-1])
+    L_pol = float(np.sum(np.hypot(np.diff(np.append(R, R[0])), np.diff(np.append(Z, Z[0])))))
+    return mu0 * Ip_A / L_pol, L_pol, Ip_A
 
 
 def _convert_bc_location(rho_bc, coordinate, rho, roa, psi_pol_n):
@@ -2181,5 +2449,142 @@ def _plot_confinement_bc(fn, loaded_results, profiles_before, profiles_after, co
         rf"BC beat (confinement)  |  {scaling}: {H_initial:.3f} $\to$ {H_achieved:.3f} "
         rf"(target {H_target:.3f}),  $T_{{e,bc}}={Te_bc:.3f}$ keV at $\rho_N={rho_bc_rho:.3f}$,  "
         rf"edge: {edge_shape}{alpha_note}",
+        fontsize=FS,
+    )
+
+
+# ============================================================================
+# Plotting helpers — method 'betap'
+# ============================================================================
+
+
+def _plot_betap_bc(fn, loaded_results, profiles_before, profiles_after, counter):
+    """
+    Betap figure (2 rows x 3 plot cols + info column).
+
+    Row 0 — Te, Ti, ne profiles vs psi_n, before (blue) and after (red), BC marked.
+    Row 1 — thermal pressure p_th vs psi_n, and beta_p vs psi_n with the BC->separatrix
+            secant chords whose slopes ARE the two-point betap' (delivered before,
+            applied after).
+    Right column — the normalization and inversion quantities (Ip, L_pol, Bpa,
+    p_sep/p_bc, ne_bc used, f_i) and target/delivered/applied betap'.
+    """
+
+    FS, FS_tick, FS_leg = 13, 11, 10
+    MARGIN = 0.01
+
+    betap_target    = loaded_results["betap_prime"]
+    betap_eff       = loaded_results["betap_prime_eff"]
+    betap_delivered = loaded_results["betap_prime_delivered"]
+    Te_bc      = loaded_results["Te_bc"]
+    rho_bc_rho = loaded_results["rho_bc_rho"]
+    psin_g     = loaded_results["psin_bc_grid"]
+    Bpa        = loaded_results["Bpa_T"]
+    mu0        = 4.0e-7 * np.pi
+    coef       = Bpa**2 / (2.0 * mu0)   # [Pa]
+
+    psin_b = profiles_before.derived["psi_pol_n"]
+    psin_a = profiles_after.derived["psi_pol_n"]
+    Te_b, Te_a = profiles_before.profiles["te(keV)"], profiles_after.profiles["te(keV)"]
+    Ti_b, Ti_a = profiles_before.profiles["ti(keV)"][:, 0], profiles_after.profiles["ti(keV)"][:, 0]
+    ne_b = profiles_before.profiles["ne(10^19/m^3)"] * 0.1
+    ne_a = profiles_after.profiles["ne(10^19/m^3)"] * 0.1
+
+    # Thermal pressure and beta_p of each state (same formula the beat used)
+    p_b = _thermal_pressure_Pa(profiles_before)
+    p_a = _thermal_pressure_Pa(profiles_after)
+    bp_b, bp_a = p_b / coef, p_a / coef
+
+    ibc = int(np.argmin(np.abs(profiles_after.profiles["rho(-)"] - rho_bc_rho)))
+    psin_bc_g = psin_a[ibc]
+
+    def _ymax(x_cut, *pairs):
+        vals = []
+        for x, y in pairs:
+            mask = x <= x_cut
+            if mask.any():
+                vals.append(float(np.nanmax(np.abs(y[mask]))))
+        return max(vals) * 1.15 if vals else 1.0
+
+    psin_cut = psin_bc_g + MARGIN
+    cb, ca = "royalblue", "crimson"
+    lw = 1.8
+
+    def _style(ax, xlabel, ylabel, title, ylim_top=None):
+        ax.set_xlabel(xlabel, fontsize=FS)
+        ax.set_ylabel(ylabel, fontsize=FS)
+        ax.set_title(title, fontsize=FS)
+        ax.set_xlim([0, 1])
+        if ylim_top is not None:
+            ax.set_ylim(0, ylim_top)
+        GRAPHICStools.addDenseAxis(ax)
+        ax.tick_params(labelsize=FS_tick)
+
+    def _vbc(ax):
+        ax.axvline(psin_bc_g, color="k", ls=":", lw=1.0, zorder=0)
+
+    fig = fn.add_figure(label="Betap", tab_color=counter)
+    gs = fig.add_gridspec(2, 4, hspace=0.5, wspace=0.45, width_ratios=[1, 1, 1, 0.6])
+    axTe = fig.add_subplot(gs[0, 0])
+    axTi = fig.add_subplot(gs[0, 1])
+    axne = fig.add_subplot(gs[0, 2])
+    axp  = fig.add_subplot(gs[1, 0])
+    axbp = fig.add_subplot(gs[1, 1:3])
+    axIn = fig.add_subplot(gs[:, 3])
+    axIn.set_axis_off()
+
+    for ax, yb, ya, lab in ((axTe, Te_b, Te_a, r"$T_e$ (keV)"),
+                            (axTi, Ti_b, Ti_a, r"$T_i$ (keV)"),
+                            (axne, ne_b, ne_a, r"$n_e$ ($10^{20}$ m$^{-3}$)")):
+        ax.plot(psin_b, yb, color=cb, lw=lw, label="before")
+        ax.plot(psin_a, ya, color=ca, lw=lw, label="after")
+        _vbc(ax)
+        _style(ax, r"$\psi_n$", lab, lab.split(" ")[0] + " profile",
+               _ymax(psin_cut, (psin_b, yb), (psin_a, ya)))
+        ax.legend(prop={"size": FS_leg}, loc="upper right")
+
+    axp.plot(psin_b, p_b * 1e-3, color=cb, lw=lw, label="before")
+    axp.plot(psin_a, p_a * 1e-3, color=ca, lw=lw, label="after")
+    _vbc(axp)
+    _style(axp, r"$\psi_n$", r"$p_{th}$ (kPa)", "Thermal pressure",
+           _ymax(psin_cut, (psin_b, p_b * 1e-3), (psin_a, p_a * 1e-3)))
+    axp.legend(prop={"size": FS_leg}, loc="upper right")
+
+    # beta_p with the BC->separatrix secant chords (slope magnitude = two-point betap')
+    axbp.plot(psin_b, bp_b, color=cb, lw=lw, label="before")
+    axbp.plot(psin_a, bp_a, color=ca, lw=lw, label="after")
+    axbp.plot([psin_g, 1.0], [bp_b[ibc], bp_b[-1]], color=cb, ls="--", lw=1.2,
+              label=rf"delivered $\beta_p'$={betap_delivered:.2f}")
+    axbp.plot([psin_g, 1.0], [bp_a[ibc], bp_a[-1]], color=ca, ls="--", lw=1.2,
+              label=rf"applied $\beta_p'$={betap_eff:.2f}")
+    _vbc(axbp)
+    _style(axbp, r"$\psi_n$", r"$\beta_p$", r"$\beta_p=2\mu_0 p_{th}/B_{pa}^2$",
+           _ymax(psin_cut, (psin_b, bp_b), (psin_a, bp_a)))
+    axbp.legend(prop={"size": FS_leg}, loc="upper right")
+
+    axIn.text(
+        0.0, 1.0,
+        "\n".join([
+            "betap inversion",
+            "",
+            rf"  $I_p$    = {loaded_results['Ip_MA']:.2f} MA",
+            rf"  $L_{{pol}}$ = {loaded_results['L_pol_m']:.2f} m",
+            rf"  $B_{{pa}}$  = {Bpa:.3f} T",
+            rf"  $p_{{sep}}$ = {loaded_results['p_sep_Pa']*1e-3:.2f} kPa",
+            rf"  $p_{{bc}}$  = {loaded_results['p_bc_applied_Pa']*1e-3:.2f} kPa",
+            rf"  $n_{{e,bc}}$ = {loaded_results['ne_bc_used_1e19']*0.1:.2f} $10^{{20}}m^{{-3}}$",
+            rf"  $f_i$   = {loaded_results['f_i_bc']:.3f}",
+            "",
+            rf"  $\beta_p'$ target    = {betap_target:.3f}",
+            rf"  $\beta_p'$ delivered = {betap_delivered:.3f}",
+            rf"  $\beta_p'$ applied   = {betap_eff:.3f}",
+        ]),
+        transform=axIn.transAxes, ha="left", va="top", fontsize=10, linespacing=1.7,
+        bbox=dict(boxstyle="round,pad=0.6", facecolor="whitesmoke", edgecolor="lightgray"),
+    )
+
+    fig.suptitle(
+        rf"BC beat (betap)  |  $\beta_p'={betap_target:.2f}$,  $\psi_{{n,bc}}={psin_bc_g:.3f}$"
+        rf"  ($\rho_N={rho_bc_rho:.3f}$),  $T_{{e,bc}}={Te_bc:.3f}$ keV",
         fontsize=FS,
     )

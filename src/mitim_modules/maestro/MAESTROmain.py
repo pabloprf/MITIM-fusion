@@ -939,6 +939,7 @@ def _render_beat_flow_png(beats, wall_times, out_path):
         'lengyel':   '#fff3b0',  # pale yellow
         'bc_sharpness': '#e0c3fc',  # lavender
         'bc_confinement': '#a8dadc',  # light teal
+        'bc_betap':  '#ffd6e0',  # light pink
         'sharpness': '#e0c3fc',    # legacy pre-'bc' folder naming
         'confinement': '#a8dadc',  # legacy pre-'bc' folder naming
     }
