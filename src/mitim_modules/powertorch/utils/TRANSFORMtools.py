@@ -49,14 +49,13 @@ def gacode_to_powerstate(self, rho_vec=None):
     # each gated by a parity check against the dict-derived value it would otherwise replace.
     # *********************************************************************************************
     plasma_io_overrides = {}
-    plasma_io_obj = getattr(input_gacode, "plasma_io", None)
-    if plasma_io_obj is not None and "r_minor" in plasma_io_obj.output:
+    if getattr(input_gacode, "has_output", False) and "r_minor" in input_gacode.output:
         # Note: input_gacode.profiles may have already been resampled onto a different radial
         # grid than plasma_io's own 'radius' coordinate (e.g. by improve_resolution_profiles,
-        # which only touches the dict, not the companion plasma_io object) — interpolate onto
+        # which only touches the dict, not input_gacode's own inherited tree) — interpolate onto
         # rho_use (the grid actually in use here) before comparing/substituting.
-        rho_plasma_io = plasma_io_obj.output["radius"].to_numpy()
-        rmin_plasma_io_native = plasma_io_obj.output["r_minor"].isel(time=-1).to_numpy()
+        rho_plasma_io = input_gacode.output["radius"].to_numpy()
+        rmin_plasma_io_native = input_gacode.output["r_minor"].isel(time=-1).to_numpy()
         rmin_from_plasma_io = interpolation_function(rho_use, rho_plasma_io, rmin_plasma_io_native)
         rmin_from_dict = input_gacode_profiles["rmin(m)"]
         # rmin_from_dict was itself resampled onto rho_use by improve_resolution_profiles()
@@ -247,9 +246,9 @@ def plasma_io_to_powerstate(self, rho_vec=None):
     GACODE-unit profiles/derived dict.
 
     Requires:
-        - self.profiles.plasma_io is set (i.e. the source mitim_state was built via
+        - self.profiles.has_output is True (i.e. the source mitim_state was built via
           scratch() from a plasma_io object).
-        - plasma_io.compute_derived_quantities() has already been run on it -- not
+        - compute_derived_quantities() has already been run on it -- not
           called here, since it's expensive (MXH shape decomposition) and callers
           should control when it reruns rather than paying that cost on every
           powerstate construction.
@@ -286,11 +285,10 @@ def plasma_io_to_powerstate(self, rho_vec=None):
     print("\t- Producing powerstate object from plasma_io")
 
     input_gacode = self.profiles
-    plasma_io_obj = getattr(input_gacode, "plasma_io", None)
-    if plasma_io_obj is None:
-        raise ValueError("[MITIM] plasma_io_to_powerstate requires self.profiles.plasma_io to be set")
+    if not input_gacode.has_output:
+        raise ValueError("[MITIM] plasma_io_to_powerstate requires self.profiles to be plasma_io-backed (has_output)")
 
-    pdict = plasma_io_obj.to_dict(side="output")
+    pdict = input_gacode.to_dict(side="output")
 
     if rho_vec is None:
         rho_vec = self.plasma["rho"]
@@ -548,16 +546,16 @@ def to_gacode(
     '''
     Notes:
         - insert_highres_powers: whether to insert high resolution powers (will calculate them with powerstate targets object, not other custom ones)
-        - Does NOT sync/refresh self.profiles.plasma_io: to_gacode()/from_powerstate() is
+        - Does NOT sync/refresh self.profiles.output: to_gacode()/from_powerstate() is
           called from TRANSPORTtools.py's _produce_profiles() on *every* transport
           evaluation, including every discarded intermediate flux-match sub-iteration
           (STATEtools.flux_match()'s solver loop calls self.calculate() -> ... ->
           _produce_profiles() many times per solve, most of which get immediately
           superseded by the next sub-iteration), so syncing here would redo the
           deepcopy+interpolation+postprocessing work for data nobody ever reads. The
-          returned profiles.plasma_io is therefore just whatever self.profiles.plasma_io
+          returned profiles.output is therefore just whatever self.profiles.output
           already was (stale hand-me-down, via powerstate_to_gacode's copy.deepcopy).
-          plasma_io should only track the result of a real BO step (newly-proposed
+          .output should only track the result of a real BO step (newly-proposed
           gradients, evaluated and fed back) -- see PORTALSmain.runModelEvaluator()'s
           explicit powerstate.sync_plasma_io() call after its single
           powerstate.calculate(X, ...), and plasma_io_migration_plan.md for why
@@ -604,8 +602,8 @@ def to_plasma_io(
 ):
     '''
     plasma_io-native sibling of to_gacode(): writes powerstate's currently-predicted
-    te/ti/ne/nZ/w0 profiles back into a deep copy of self.profiles.plasma_io and returns
-    the updated plasma_io instance. Does NOT replace to_gacode()/from_powerstate -- callers
+    te/ti/ne/nZ/w0 profiles back into a deep copy of self.profiles and returns the
+    updated mitim_state/gacode_state instance. Does NOT replace to_gacode()/from_powerstate -- callers
     that need input.gacode text output or gacode_state's species metadata/.derived dict for
     TGYRO/downstream MITIM logic must still use to_gacode().
 
@@ -648,9 +646,15 @@ def to_plasma_io(
 
 def sync_plasma_io(self, position_in_powerstate_batch=0):
     '''
-    Refresh self.profiles.plasma_io IN PLACE from the powerstate's current predicted
+    Refresh self.profiles.output IN PLACE from the powerstate's current predicted
     profiles (cheap path -- powerstate_to_plasma_io with recompute_derived=False, no MXH
-    geometry recompute). No-op if self.profiles.plasma_io is not set.
+    geometry recompute). No-op if self.profiles.has_output is False.
+
+    Mutates self.profiles.output in place (rather than reassigning self.profiles wholesale)
+    to preserve self.profiles's own object identity and Species/mi_first bookkeeping --
+    powerstate_to_plasma_io() returns a full mitim_state/gacode_state copy, so only its
+    .output is pulled across; .input (and this method's scope generally) is left untouched,
+    matching powerstate_to_plasma_io()'s own current scope of only ever writing .output.
 
     Call this once per real BO step -- newly-proposed gradients, evaluated and fed back into
     the gacode representation -- i.e. right after a single powerstate.calculate(X, ...) call
@@ -660,12 +664,12 @@ def sync_plasma_io(self, position_in_powerstate_batch=0):
     the initial training set or run diagnostics, and are not "the" proposed-gradients result;
     see plasma_io_migration_plan.md).
     '''
-    if getattr(self.profiles, "plasma_io", None) is not None:
-        self.profiles.plasma_io = powerstate_to_plasma_io(
+    if getattr(self.profiles, "has_output", False):
+        self.profiles.output = powerstate_to_plasma_io(
             self,
             position_in_powerstate_batch=position_in_powerstate_batch,
             recompute_derived=False,
-        )
+        ).output
 
 def powerstate_to_gacode(
     self,
@@ -768,7 +772,7 @@ def powerstate_to_gacode(
     # (expensive, dict-based) recompute; selfconsistentPTOT() below sources ptot_manual via its
     # own cheap, get_profiles()-based local calculation (_ptot_manual()) regardless, so it
     # doesn't need this call either way. See "New phase (2026-08-12)" in the migration plan doc.
-    if (rederive or recalculate_ptot) and getattr(profiles, "plasma_io", None) is None:
+    if (rederive or recalculate_ptot) and not getattr(profiles, "has_output", False):
         profiles.derive_quantities(rederiveGeometry=False)
 
     if recalculate_ptot:
@@ -796,13 +800,15 @@ def powerstate_to_plasma_io(
 ):
     """
     plasma_io-native sibling of powerstate_to_gacode(): writes powerstate's currently
-    predicted te/ti/ne/nZ/w0 profiles into a deep copy of self.profiles.plasma_io's own
-    SI-native DataTree, instead of the GACODE-unit dict.
+    predicted te/ti/ne/nZ/w0 profiles into a deep copy of self.profiles' own SI-native
+    DataTree, instead of the GACODE-unit dict.
 
     Notes:
-        - Requires self.profiles.plasma_io is set (same precondition as
+        - Requires self.profiles.has_output is True (same precondition as
           plasma_io_to_powerstate; if powerstate was constructed via that path,
-          self.profile_constructors_fine is already populated).
+          self.profile_constructors_fine is already populated). Returns a full
+          mitim_state/gacode_state copy (not a bare fusio plasma_io), mirroring
+          powerstate_to_gacode()'s own copy.deepcopy(self.profiles) pattern.
         - Reciprocal of plasma_io_to_powerstate's quantities_to_interpolate unit factors:
           te/ti keV->eV (x1e3), ne/nZ 10^19/m^3 -> 1/m^3 (x1e19), w0 unchanged.
         - Only self.predicted_channels are written directly; everything else in the
@@ -863,11 +869,10 @@ def powerstate_to_plasma_io(
     force_mach = postprocess_plasma_io.get("force_mach", None)
 
     input_gacode = self.profiles
-    plasma_io_obj = getattr(input_gacode, "plasma_io", None)
-    if plasma_io_obj is None:
-        raise ValueError("[MITIM] powerstate_to_plasma_io requires self.profiles.plasma_io to be set")
+    if not input_gacode.has_output:
+        raise ValueError("[MITIM] powerstate_to_plasma_io requires self.profiles to be plasma_io-backed (has_output)")
 
-    plasma_io_copy = copy.deepcopy(plasma_io_obj)
+    plasma_io_copy = copy.deepcopy(input_gacode)  # whole mitim_state/gacode_state, not a sub-object
 
     output_ds = plasma_io_copy.output  # single deep-copy read buffer
     n_ions = output_ds.sizes["ion"]
@@ -1061,7 +1066,7 @@ def _compute_highres_powers(self, profiles, rederive_at_high_res=True):
 
 def powerstate_to_gacode_powers(self, profiles, rederive_at_high_res=True):
 
-    if getattr(profiles, "plasma_io", None) is None:
+    if not getattr(profiles, "has_output", False):
         profiles.derive_quantities(rederiveGeometry=False)
     profiles_dict = profiles.get_profiles()
 

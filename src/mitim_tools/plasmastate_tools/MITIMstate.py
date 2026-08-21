@@ -1,6 +1,7 @@
 import copy
 import torch
 import csv
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, MATHtools, PLASMAtools, IOtools
@@ -11,6 +12,8 @@ from mitim_tools.plasmastate_tools.utils.derived_field_map import DERIVED_FIELD_
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __version__
 from fusio.classes.io import io
+from fusio.classes.gacode import gacode_io
+from fusio.classes.plasma import plasma_io
 from IPython import embed
 
 from mitim_tools.misc_tools.PLASMAtools import md_u
@@ -92,6 +95,44 @@ def ensure_variables_existence(self):
             self.profiles[key] = copy.deepcopy(self.profiles[template_key_1d]) * 0.0 if dim == 1 else np.atleast_2d(copy.deepcopy(self.profiles[template_key_1d]) * 0.0).T
 
 
+def _ensure_plasma_io_deepcopy(obj):
+    """
+    Establishes fusio's .input side as MITIM/PORTALS' canonical, untouched starting-state
+    snapshot and .output as an independent deep-copied working copy -- the rest of PORTALS
+    then reads from and overwrites only .output as BO iterations progress
+    (get_profiles()/get_derived() default to side="output" throughout). io.py's input/output
+    getters and setters already deep-copy on both read and write, so `obj.output = obj.input`
+    below is a true independent copy, not an alias.
+
+    Idempotent/safe to call more than once on the same object -- once both sides are
+    populated, this is a no-op. This matters because callers (e.g. PORTALSinit.py's
+    initializeProblem()) can call this at several points that all see the same object -- an
+    unconditional `obj.output = obj.input` would silently clobber .output's already-
+    preprocessed state (post remove_fast_ions()/compute_derived_quantities(), which run on
+    .output right after the first call) with the stale, unprocessed .input snapshot on the
+    second call. Must still run exactly once as the very first *effective* operation on any
+    plasma_io/gacode_io object MITIM receives -- NOT inside mitim_state.scratch(), which is
+    called repeatedly throughout a run (every transport evaluation) and, unlike this
+    idempotent guard, has no way to distinguish "fresh object" from "object with real
+    accumulated BO progress on .output".
+
+    If the object arrives with only .output populated (e.g. a caller-constructed object
+    that ran its own preprocessing directly on .output), .input is backfilled from it first
+    so a reference snapshot still exists. This is deliberately a backfill, not a hard
+    requirement that callers populate .input themselves, so existing scripts' own
+    loading/preprocessing conventions don't need to change.
+    """
+    if not obj.has_input:
+        if not obj.has_output:
+            raise ValueError(
+                f"{type(obj).__name__} object has neither .input nor .output populated -- "
+                "cannot establish a starting state for MITIM/PORTALS."
+            )
+        obj.input = obj.output
+    if not obj.has_output:
+        obj.output = obj.input
+
+
 '''
 The mitim_state class is the base class for manipulating plasma states in MITIM.
 Any class that inherits from this class should implement the methods:
@@ -106,50 +147,85 @@ Any class that inherits from this class should implement the methods:
 
 '''
 
-class mitim_state:
+class mitim_state(plasma_io):
     '''
     Class to manipulate the plasma state in MITIM.
     '''
 
-    # Class-level fallback for the plasma_io property's backing attribute. Instances
-    # constructed via __init__() always shadow this with their own instance-level
-    # _plasma_io (set through the property setter below). But unpickling an object
-    # pickled by code *older* than this property (e.g. a pre-2026-08-13 run) restores
-    # __dict__ directly, bypassing __init__ entirely -- such an instance never had
-    # _plasma_io in its pickled state, so without this class default, the property
-    # getter's `return self._plasma_io` raises AttributeError on first access
-    # (surfaced e.g. via get_profiles()/get_derived() on any old, legacy-pickled run).
-    _plasma_io = None
-
     def __init__(self, type_file = 'input.gacode'):
-
+        super().__init__()          # -> plasma_io.__init__ -> io.__init__, sets self._tree
         self.type = type_file
-
-        # Populated when this state is constructed from a fusio plasma_io object
-        # (see scratch()); kept around so downstream code can eventually source
-        # data from it directly instead of only from the flattened profiles dict.
-        self.plasma_io = None
+        self._profiles_cache = None
+        self._profiles_cache_side = None
+        self._derived_cache = None
+        self._derived_cache_side = None
 
     @property
-    def plasma_io(self):
-        return self._plasma_io
+    def format(self):
+        # io.format derives the format string from the class name minus a "_io"
+        # suffix -- mitim_state/gacode_state don't end in "_io", so without this
+        # override self.format would resolve to the wrong string and break
+        # self.to("gacode", ...)'s dispatch (gacode_io.from_plasma lookup) and
+        # dump()/load() roundtrips.
+        return 'plasma'
 
-    @plasma_io.setter
-    def plasma_io(self, value):
-        # Assigning a new plasma_io object (construction, or a live-update reassignment like
-        # TRANSFORMtools.sync_plasma_io()'s self.profiles.plasma_io = powerstate_to_plasma_io(...))
-        # invalidates both lazy caches below -- they were derived from whichever plasma_io object
-        # was assigned before, so leaving them in place would make every subsequent
-        # get_profiles()/get_derived() call keep returning data from the *old* object. This is
-        # what makes plasma_io reassignment a sufficient way to keep get_profiles()/get_derived()
-        # current on its own, with no caller needing to separately remember to invalidate anything.
-        #
-        # Does NOT cover mutating the *contents* of an already-cached get_profiles() dict in place
-        # (get_profiles()'s own docstring documents that as deliberately supported, e.g.
-        # TRANSFORMtools.powerstate_to_gacode()'s slice assignment) -- that path doesn't reassign
-        # .plasma_io at all, so it still needs its own explicit invalidate_derived_cache() call;
-        # see that method's docstring.
-        self._plasma_io = value
+    def autoformat(self):
+        self._tree.attrs['class'] = self.format
+
+    def __setstate__(self, state):
+        # Default unpickling bypasses __init__ entirely, so any object pickled before this
+        # class inherited from plasma_io has no _tree in its restored __dict__ -- the first
+        # touch of has_output/.output/.to() etc. would raise AttributeError without this
+        # fallback. Two distinct pre-refactor eras land here:
+        #   1. Deep-legacy pickles (pure dict-backed, no plasma_io involvement at all): no
+        #      _plasma_io either -- just .profiles/.derived dicts. Giving them a real but
+        #      empty _tree is sufficient; has_output correctly reads False and .profiles is
+        #      still there, untouched.
+        #   2. Intermediate-era pickles (the short-lived composed self.plasma_io property
+        #      design that predated this inheritance-based refactor): their real fusio data
+        #      lives on the now-orphaned self._plasma_io backing attribute, NOT in
+        #      .profiles/.derived (that design's scratch() never populated those for
+        #      plasma_io-backed instances) -- without migrating it, has_output would read
+        #      False (empty _tree) while .profiles also doesn't exist, so any accessor call
+        #      falls through to a nonexistent .profiles and raises AttributeError anyway.
+        self.__dict__.update(state)
+        if '_tree' not in self.__dict__:
+            old_plasma_io = self.__dict__.pop('_plasma_io', None)
+            io.__init__(self)
+            if old_plasma_io is not None:
+                if old_plasma_io.has_input:
+                    self.input = old_plasma_io.input
+                if old_plasma_io.has_output:
+                    self.output = old_plasma_io.output
+
+    # io.input/io.output are plain data properties with no notion of the caches below --
+    # neither io nor plasma_io override them. Reassigning either side (e.g.
+    # TRANSFORMtools.sync_plasma_io()'s self.profiles.output = powerstate_to_plasma_io(...).output)
+    # must invalidate both get_profiles()/get_derived()'s lazy caches, exactly as the old composed
+    # `plasma_io` property's setter used to when this class had a separate `self.plasma_io`
+    # sub-object instead of being one itself -- without this, get_profiles()/get_derived() keep
+    # silently returning whatever was cached before the reassignment forever (the same class of
+    # live bug invalidate_derived_cache()'s docstring describes for in-place profiles-dict
+    # mutation, but for whole-side reassignment instead).
+    @property
+    def input(self):
+        return super().input
+
+    @input.setter
+    def input(self, data):
+        io.input.fset(self, data)
+        self._profiles_cache = None
+        self._profiles_cache_side = None
+        self._derived_cache = None
+        self._derived_cache_side = None
+
+    @property
+    def output(self):
+        return super().output
+
+    @output.setter
+    def output(self, data):
+        io.output.fset(self, data)
         self._profiles_cache = None
         self._profiles_cache_side = None
         self._derived_cache = None
@@ -159,6 +235,28 @@ class mitim_state:
     def scratch(cls, profiles, label_header='', **kwargs_process):
         # Method to write a scratch file
 
+        # `profiles` may be given as a raw .gacode/.nc filename -- route it through
+        # fusio's conversion pipeline directly (the exact per-suffix preprocessing
+        # PORTALSinit.py used to do itself), then recurse into the fusio-object
+        # branch below to adopt the result. Preserves the use_main_ion=True vs.
+        # omitted distinction so already-validated Ricci-metric/residual numbers
+        # don't shift.
+        if isinstance(profiles, (str, Path)):
+            path = Path(profiles)
+            if path.suffix == ".gacode":
+                src = gacode_io.from_file(path).to("plasma")
+                _ensure_plasma_io_deepcopy(src)
+                src.remove_fast_ions(enforce_quasineutrality=True, use_main_ion=True, side='output')
+                src.compute_derived_quantities(side='output')
+            elif path.suffix == ".nc":
+                src = plasma_io.from_file(input=path)
+                _ensure_plasma_io_deepcopy(src)
+                src.remove_fast_ions(enforce_quasineutrality=True, side='output')
+                src.compute_derived_quantities(side='output')
+            else:
+                raise ValueError(f"scratch(): unrecognized suffix for fusio-routed load: {path}")
+            return cls.scratch(src, label_header=label_header, **kwargs_process)
+
         instance = cls(None)
 
         # Header
@@ -167,21 +265,54 @@ class mitim_state:
 #  {label_header}
 #
 '''
-        # `profiles` may be given as a fusio object (e.g. plasma_io) instead of
-        # an already-flattened dict. In that case, keep a handle on the source
-        # object; `.profiles`/`.derived` are NOT populated as stored attributes
-        # for this branch -- consumers must call get_profiles()/get_derived(),
-        # which lazily source from `instance.plasma_io` on first access. See
-        # test/fusio_integration/plasma_io_migration_plan.md, "New phase
-        # (2026-08-12)". Species bookkeeping (readSpecies()/DTplasma()/
-        # sumFast(), the cheap prefix of derive_quantities_base()) is still
-        # done eagerly here -- plasma_io_to_powerstate()/defineIonsFromPlasmaIO()
-        # already depend on the resulting self.Species/self.mi_first/self.Dion/
-        # self.Tion instance attributes directly, and these calls are cheap
-        # (get_profiles()-backed dict lookups, not the expensive MXH-geometry
-        # derived-quantity pipeline that get_derived() defers).
+        # `profiles` may be given as an already-built fusio object (plasma_io/
+        # gacode_io, bare or already a mitim_state) instead of an already-flattened
+        # dict. Adopt its data onto this instance's own inherited tree via the
+        # .input/.output setters (a deep copy, not the old aliasing
+        # `instance.plasma_io = profiles`). Species bookkeeping (readSpecies()/
+        # DTplasma()/sumFast(), the cheap prefix of derive_quantities_base()) is
+        # still done eagerly here -- plasma_io_to_powerstate()/
+        # defineIonsFromPlasmaIO() already depend on the resulting
+        # self.Species/self.mi_first/self.Dion/self.Tion instance attributes
+        # directly, and these calls are cheap (get_profiles()-backed dict lookups,
+        # not the expensive MXH-geometry derived-quantity pipeline that
+        # get_derived() defers).
         if isinstance(profiles, io):
-            instance.plasma_io = profiles
+            if profiles.format == 'plasma':
+                src = profiles
+            else:
+                # fusio's `.to(fmt)` reads a single side of the source (side="output" by
+                # default) and always writes the conversion result onto the *new* object's
+                # .input -- calling it once would silently drop whichever side isn't the
+                # default, even though bare non-plasma-format objects (e.g. gacode_io) are
+                # a documented input to this branch. Convert each populated side
+                # independently and reassemble both onto one plasma_io.
+                src = plasma_io()
+                if profiles.has_input:
+                    src.input = profiles.to('plasma', side='input').input
+                if profiles.has_output:
+                    src.output = profiles.to('plasma', side='output').input
+            # Copy whichever side(s) `src` has onto `instance` first (via the deep-copying
+            # .input/.output setters -- never aliases `profiles`/`src`), THEN backfill any side
+            # `instance` still lacks by calling _ensure_plasma_io_deepcopy() on `instance`
+            # itself, not on `src`. `src` is `profiles` verbatim whenever no format conversion
+            # was needed (the `if profiles.format == 'plasma'` branch above) -- backfilling
+            # directly on `src` in that case would silently mutate the CALLER's own object (e.g.
+            # a bare, .output-only plasma_io the caller still holds a reference to) as a side
+            # effect of what's supposed to be a copy-only operation. Backfilling on `instance`
+            # instead gives the same guarantee (every downstream accessor below defaults to
+            # side="output", so a source with only .input populated would otherwise leave
+            # `instance` with has_output=False and no legacy `.profiles` dict to fall back on)
+            # with no risk of touching the caller's object. _ensure_plasma_io_deepcopy() only
+            # backfills a side that's genuinely empty -- it never touches a side that already has
+            # data, so this can't clobber independently-evolved .output content either (e.g. the
+            # post-remove_fast_ions/compute_derived_quantities state the filename branch above
+            # already established before recursing here).
+            if src.has_input:
+                instance.input = src.input
+            if src.has_output:
+                instance.output = src.output
+            _ensure_plasma_io_deepcopy(instance)
             instance.readSpecies()
             instance.mi_first = instance.Species[0]["A"]
             instance.DTplasma()
@@ -199,8 +330,8 @@ class mitim_state:
         """
         Dict-of-arrays view of the profile data, keyed/unit-suffixed exactly
         like the legacy `.profiles` attribute (e.g. "te(keV)"). For
-        plasma_io-backed instances (`self.plasma_io is not None`), this is
-        lazily materialized from `plasma_io.to("gacode", side=...).to_dict(side="input")`
+        plasma_io-backed instances (`self.has_output`), this is lazily
+        materialized from `self.to("gacode", side=...).to_dict(side="input")`
         (the same conversion `scratch()` used to make eagerly) and cached
         privately per-instance -- NOT re-derived on every call, since some
         callers perform in-place mutation on the returned arrays (e.g.
@@ -208,21 +339,21 @@ class mitim_state:
         that mutation to be visible on subsequent access. For legacy,
         dict-backed instances, just returns `.profiles` unchanged.
 
-        `side` selects which side of `self.plasma_io` (the source object) to
-        read -- NOT which side of the resulting dict (fusio's `.to(fmt)`
-        conversion always lands its output on the target's `.input`, per
-        `io.py`'s convention, so `to_dict(side="input")` is fixed regardless
-        of this parameter). Defaults to "output", matching the convention
-        established throughout PORTALS' plasma_io construction paths (both
-        the `.gacode` and `.nc` branches leave the live data on `.output` by
-        the time `scratch()` receives the object -- see
-        `PORTALS_workflow.py`), and matching what the original eager
-        `scratch()` code did implicitly (it never passed `side` to `.to()`,
-        so fusio's own `_from()` default of `side='output'` applied).
+        `side` selects which side of `self`'s own inherited fusio tree (the
+        source data) to read -- NOT which side of the resulting dict (fusio's
+        `.to(fmt)` conversion always lands its output on the target's
+        `.input`, per `io.py`'s convention, so `to_dict(side="input")` is
+        fixed regardless of this parameter). Defaults to "output", matching
+        the convention established throughout PORTALS' plasma_io construction
+        paths (both the `.gacode` and `.nc` branches leave the live data on
+        `.output` -- see `PORTALS_workflow.py`), and matching what the
+        original eager `scratch()` code did implicitly (it never passed
+        `side` to `.to()`, so fusio's own `_from()` default of `side='output'`
+        applied).
         """
-        if self.plasma_io is not None:
+        if self.has_output:
             if getattr(self, "_profiles_cache", None) is None or self._profiles_cache_side != side:
-                cache = self.plasma_io.to("gacode", side=side).to_dict(side="input")
+                cache = self.to("gacode", side=side).to_dict(side="input")
                 # gacode_io.from_plasma() (the .to("gacode") conversion) does not populate
                 # shape_cosN(-)/shape_sinN(-) (MXH shape coefficients) -- unlike plasma_io, fusio
                 # has no method that derives them from a plasma_io object's own mxh_cos/mxh_sin
@@ -252,19 +383,20 @@ class mitim_state:
     def get_derived(self, side="output"):
         """
         Dict of derived quantities, keyed exactly like the legacy `.derived`
-        attribute (e.g. "aLTe", "Q", "Pfus"). For plasma_io-backed instances,
-        lazily computed and cached privately per-instance on first access
-        (never on every call -- `plasma_io.compute_derived_quantities()` is
-        expensive, and nothing in PORTALS' BO sub-iteration hot path reads
+        attribute (e.g. "aLTe", "Q", "Pfus"). For plasma_io-backed instances
+        (`self.has_output`), lazily computed and cached privately per-instance
+        on first access (never on every call -- `compute_derived_quantities()`
+        is expensive, and nothing in PORTALS' BO sub-iteration hot path reads
         `.derived` except `ptot_manual`, which is handled separately by
         `selfconsistentPTOT()` without going through this cache at all -- see
         the migration plan doc). For legacy, dict-backed instances, just
         returns `.derived` unchanged.
 
-        `side` selects which side of `self.plasma_io` to read/compute on;
-        default "output" for the same reason as `get_profiles()`.
+        `side` selects which side of `self`'s own inherited fusio tree to
+        read/compute on; default "output" for the same reason as
+        `get_profiles()`.
         """
-        if self.plasma_io is not None:
+        if self.has_output:
             if getattr(self, "_derived_cache", None) is None or self._derived_cache_side != side:
                 self._derived_cache = self._compute_derived_from_plasma_io(side=side)
                 self._derived_cache_side = side
@@ -272,7 +404,8 @@ class mitim_state:
         # Legacy dict-backed instances: self-heal if .derived is missing/empty. This happens for
         # any unpickled powerstate whose profiles were saved via PORTALSmain._dropped_derived()
         # (stripped to {} to shrink the pickle) -- plasma_io-backed instances self-heal for free
-        # above since they always recompute from self.plasma_io regardless of what's cached, but
+        # above since they always recompute from self's own inherited tree regardless of what's
+        # cached, but
         # a legacy instance has no such fallback source, so it must rebuild via derive_quantities()
         # once here instead of raising a KeyError on every derived-quantity read downstream (e.g.
         # PORTALSanalysis.prep_metrics()'s Q/Pfus/tauE reads).
@@ -302,7 +435,7 @@ class mitim_state:
         cache, regardless of what X the BO optimizer actually proposed on later iterations. See
         test/fusio_integration/plasma_io_migration_plan.md.
         """
-        if self.plasma_io is not None:
+        if self.has_output:
             self._derived_cache = None
             self._derived_cache_side = None
 
@@ -315,13 +448,13 @@ class mitim_state:
         # geometry_factors_from_native()'s docstring).
         #
         # native/geometry_prepop are read here (not inside derive_quantities()) deliberately
-        # without calling self.plasma_io.compute_derived_quantities() first: that's an
-        # expensive six-stage call, and forcing it on every get_derived() cache miss (i.e.
-        # every BO evaluation, per invalidate_derived_cache()) would be a real cost regression
-        # over just falling back to calculateGeometricFactors() for this call. Whenever
-        # self.plasma_io already has fresh derived quantities (e.g. after
+        # without calling self.compute_derived_quantities() first: that's an expensive
+        # six-stage call, and forcing it on every get_derived() cache miss (i.e. every BO
+        # evaluation, per invalidate_derived_cache()) would be a real cost regression over
+        # just falling back to calculateGeometricFactors() for this call. Whenever self
+        # already has fresh derived quantities on its own tree (e.g. after
         # sync_plasma_io()/powerstate_to_plasma_io()), this is free.
-        native = self.plasma_io.to_dict(side=side)
+        native = self.to_dict(side=side)
         geometry_prepop = geometry_factors_from_native(native)
 
         # Shadow construction is replicated manually here (rather than calling scratch()
@@ -2216,7 +2349,7 @@ class mitim_state:
             # For plasma_io-backed instances, .derived is no longer stored -- skip the
             # (expensive, dict-based) recompute; selfconsistentPTOT() sources ptot_manual via
             # its own cheap, get_profiles()-based local calculation regardless.
-            if getattr(self, "plasma_io", None) is None:
+            if not self.has_output:
                 self.derive_quantities(rederiveGeometry=False)
             self.selfconsistentPTOT()
 
@@ -2236,7 +2369,7 @@ class mitim_state:
 
         # For plasma_io-backed instances .derived is sourced lazily via get_derived() instead
         # of eagerly stored -- nothing here needs it recomputed as a post-condition.
-        if getattr(self, "plasma_io", None) is None:
+        if not self.has_output:
             self.derive_quantities(rederiveGeometry=False)
 
         # ----------------------------------------------------------------------

@@ -8,54 +8,13 @@ from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.plasmastate_tools import MITIMstate
+from mitim_tools.plasmastate_tools.MITIMstate import _ensure_plasma_io_deepcopy
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from fusio.classes.io import io
-from fusio.classes.gacode import gacode_io
-from fusio.classes.plasma import plasma_io
 from IPython import embed
-
-
-def _ensure_plasma_io_deepcopy(obj):
-    """
-    Establishes fusio's .input side as MITIM/PORTALS' canonical, untouched starting-state
-    snapshot and .output as an independent deep-copied working copy -- the rest of PORTALS
-    then reads from and overwrites only .output as BO iterations progress
-    (get_profiles()/get_derived() default to side="output" throughout, see MITIMstate.py).
-    io.py's input/output getters and setters already deep-copy on both read and write, so
-    `obj.output = obj.input` below is a true independent copy, not an alias.
-
-    Idempotent/safe to call more than once on the same object -- once both sides are
-    populated, this is a no-op. This matters because initializeProblem() calls it at
-    several points that can all see the same object (the raw-path auto-conversion branch,
-    then again later when it falls through to the generic isinstance(fileStart, io)
-    branches) -- an unconditional `obj.output = obj.input` would silently clobber
-    .output's already-preprocessed state (post remove_fast_ions()/
-    compute_derived_quantities(), which run on .output right after the first call) with
-    the stale, unprocessed .input snapshot on the second call. Must still run exactly
-    once as the very first *effective* operation on any plasma_io/gacode_io object MITIM
-    receives -- NOT inside mitim_state.scratch(), which is called repeatedly throughout a
-    run (every transport evaluation) and, unlike this idempotent guard, has no way to
-    distinguish "fresh object" from "object with real accumulated BO progress on .output".
-
-    If the object arrives with only .output populated (e.g. a caller-constructed object
-    that ran its own preprocessing directly on .output -- every existing .nc-branch
-    PORTALS_workflow_nc*.py script does this today), .input is backfilled from it first so
-    a reference snapshot still exists. This is deliberately a backfill, not a hard
-    requirement that callers populate .input themselves, so existing scripts' own
-    loading/preprocessing conventions don't need to change.
-    """
-    if not obj.has_input:
-        if not obj.has_output:
-            raise ValueError(
-                f"{type(obj).__name__} object has neither .input nor .output populated -- "
-                "cannot establish a starting state for MITIM/PORTALS."
-            )
-        obj.input = obj.output
-    if not obj.has_output:
-        obj.output = obj.input
 
 
 def initializeProblem(
@@ -102,28 +61,24 @@ def initializeProblem(
     # ---- If given a raw file path (not a MITIMstate/fusio object already), route it through
     # fusio's plasma_io conversion instead of the legacy hand-rolled input.gacode parser -- reuses
     # the exact sequence already validated end-to-end in test/fusio_integration/PORTALS_workflow.py's
-    # .gacode branch (Ricci/residual numbers documented in plasma_io_migration_plan.md). Once
-    # converted, fileStart becomes a fusio `io` instance and falls through to the branches below
-    # unchanged. Old (hand-rolled-parser) behavior kept available via use_plasma_io=False.
+    # .gacode branch (Ricci/residual numbers documented in plasma_io_migration_plan.md), now moved
+    # into mitim_state.scratch() itself (see MITIMstate.py's raw-filename branch) rather than being
+    # orchestrated here. .gacode loads still become a gacode_state (the source really was a GACODE
+    # ASCII file, and downstream code needs its hand-rolled-parser/write_state() capability); .nc
+    # loads become a bare mitim_state instead -- a .nc file was never actually GACODE-format, so
+    # tagging it gacode_state would misrepresent its provenance and drag in write_state()'s
+    # dependency on gacode_state-only bookkeeping (self.titles_single/self.files) that a .nc-sourced
+    # object never has. The checkpoints below dispatch on gacode_state specifically (not the
+    # broader mitim_state) so a .nc-sourced bare mitim_state instead falls through the same
+    # isinstance(fileStart, io) branches used for any other raw fusio object, upgrading to a real
+    # gacode_state only where the pipeline actually needs one (checkpoint 2's `profiles`). Old
+    # (hand-rolled-parser) behavior kept available via use_plasma_io=False.
     if use_plasma_io and not isinstance(fileStart, (MITIMstate.mitim_state, io)):
         fileStart_path = Path(fileStart)
         if fileStart_path.suffix == ".gacode":
-            fileStart = gacode_io.from_file(fileStart_path).to("plasma")
-            # .to("plasma") always writes to the *input* side of the new plasma_io object
-            # (io.py's convention for all from_*()/.to() conversions) -- see
-            # _ensure_plasma_io_deepcopy()'s docstring for why this is the first operation.
-            _ensure_plasma_io_deepcopy(fileStart)
-            # use_main_ion=True: matches MITIM's own gacode_state.correct(quasineutrality=True)
-            # convention (adjusts D/T ion density to match ne).
-            fileStart.remove_fast_ions(enforce_quasineutrality=True, use_main_ion=True, side='output')
-            fileStart.compute_derived_quantities(side='output')
+            fileStart = PROFILEStools.gacode_state.scratch(fileStart_path)
         elif fileStart_path.suffix == ".nc":
-            # input=... (not the bare/path= default, which lands on .output) so the raw file
-            # lands on .input -- see _ensure_plasma_io_deepcopy()'s docstring.
-            fileStart = plasma_io.from_file(input=fileStart_path)
-            _ensure_plasma_io_deepcopy(fileStart)
-            fileStart.remove_fast_ions(enforce_quasineutrality=True, side='output')
-            fileStart.compute_derived_quantities(side='output')
+            fileStart = MITIMstate.mitim_state.scratch(fileStart_path)
         # else: unrecognized suffix -- leave fileStart as the original path, falls through to the
         # legacy shutil.copy2/hand-rolled-parser branches below.
 
@@ -132,14 +87,15 @@ def initializeProblem(
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     # ---- Copy the file of interest to initialization folder
-    if isinstance(fileStart, MITIMstate.mitim_state):
+    if isinstance(fileStart, PROFILEStools.gacode_state):
         fileStart.write_state(file=FolderInitialization / "input.gacode")
     elif isinstance(fileStart, io):
         # Establishes .input as the canonical snapshot and .output as an independent
         # working copy (backfilling .input from .output first if only .output was
-        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring.
-        # Replaces the old swap()-based logic, which emptied out whichever side had
-        # data instead of preserving it as a pristine reference.
+        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring. Also
+        # catches a bare (non-gacode_state) mitim_state, e.g. from the .nc branch above --
+        # write_state() would fail on it (no titles_single/files), so it goes through
+        # fusio's own gacode-text writer instead, same as any other raw fusio object.
         _ensure_plasma_io_deepcopy(fileStart)
         fileStart.to("gacode").write(FolderInitialization / "input.gacode", side="input")
     else:
@@ -152,9 +108,9 @@ def initializeProblem(
     # ---- Initialize file to modify and increase resolution
 
     initialization_file = FolderInitialization / "input.gacode"
-    
+
     # If it is a profiles class, use it directly
-    if isinstance(fileStart, MITIMstate.mitim_state):
+    if isinstance(fileStart, PROFILEStools.gacode_state):
         profiles = copy.deepcopy(fileStart)
     elif isinstance(fileStart, io):
         # Establishes .input as the canonical snapshot and .output as an independent

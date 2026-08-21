@@ -230,9 +230,9 @@ class PORTALSanalyzer:
         # PORTALSmain.py's dictStore["profiles_original"] = PROFILEStools.gacode_state(path))
         # are a genuinely different case from the numbered powerstates above: they're built via
         # gacode_state's plain constructor (reading a written input.gacode_original/_modified
-        # ASCII file directly), which always leaves .plasma_io = None -- regardless of whether
+        # ASCII file directly), which always leaves has_output False -- regardless of whether
         # this run itself is plasma_io-backed. get_derived() only recomputes lazily for
-        # plasma_io-backed instances (self.plasma_io is not None); for these two it just returns
+        # plasma_io-backed instances (self.has_output); for these two it just returns
         # .derived directly, which _dropped_derived() stripped to {} at save time and nothing
         # else ever rebuilds after unpickling. Needed by PORTALSplot.py's
         # PORTALSanalyzer_plotSummary() (profile_original_unCorrected/profile_original_0 ->

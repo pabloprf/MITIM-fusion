@@ -156,7 +156,7 @@ class powerstate:
             # powerstate's construction from plasma_io's own SI-native fields instead of the
             # GACODE-unit profiles/derived dict -- see plasma_io_to_powerstate()'s docstring for
             # the current scope/caveats of this path.
-            if getattr(profiles_object, "plasma_io", None) is not None:
+            if getattr(profiles_object, "has_output", False):
                 self.to_powerstate = TRANSFORMtools.plasma_io_to_powerstate
                 self.to_plasma_io = MethodType(TRANSFORMtools.to_plasma_io, self)
                 self.sync_plasma_io = MethodType(TRANSFORMtools.sync_plasma_io, self)
@@ -173,7 +173,7 @@ class powerstate:
             # sourced lazily on first get_derived() call instead, so this eager call is both
             # unnecessary and would fail (gacode_state.derive_quantities() touches the dict
             # attribute directly).
-            if getattr(self.profiles, "plasma_io", None) is None and "derived" not in self.profiles.__dict__:
+            if not getattr(self.profiles, "has_output", False) and "derived" not in self.profiles.__dict__:
                 self.profiles.derive_quantities()
 
         else:
@@ -197,7 +197,7 @@ class powerstate:
         # from plasma_io's own native grid and never consumes this resampled dict -- see its
         # docstring / plasma_io_migration_plan.md's "Performance" note. Also, .profiles is no
         # longer a stored attribute for such states -- see get_profiles()/get_derived().)
-        if increase_profile_resol and getattr(self.profiles, "plasma_io", None) is None:
+        if increase_profile_resol and not getattr(self.profiles, "has_output", False):
             smooth_around_coarsing = self.transport_options.get("flatten_gradients_at_control_points", True)
             TRANSFORMtools.improve_resolution_profiles(self.profiles, rho_vec, smooth_around_coarsing=smooth_around_coarsing)
 
