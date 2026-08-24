@@ -4,6 +4,14 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Separatrix initializer from `rz_boundary_file` now shape-faithful**: the boundary fitted
+    from the R,Z file carries its FULL MXH moments into the initial state (`shape_cos0+`/`shape_sin3+`,
+    previously zeroed), and the `delta`/`zeta` scalars are written in the GACODE-MXH convention
+    (delta = sin(s1), zeta = -s2) instead of the geometric squareness — which could differ in sign
+    and magnitude (an ARC pointed double-null boundary was over-rounded by +24% in cross-section
+    area; now +0.2%). The internal freegs correction also works when the namelist shape scalars are
+    left null with a boundary file. Analytic (scalar) separatrix initialization is unchanged.
+
 *   💥 **MAESTRO boundary-condition beats unified into a single `bc` beat**: `beat_type: bc` with
     `method: confinement | sharpness` replaces the separate `sharpness`/`confinement` beat types —
     common knobs (location, servo/relaxation, density treatment) at the `parameters_prepare` top

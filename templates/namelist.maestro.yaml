@@ -78,7 +78,7 @@ plasma:
       kappa_sep: 1.97
       zeta_sep: 0.0  # Can be left as null to use the squareness of the internal_flux_file, if provided
 
-      rz_boundary_file: null # [Optional] file containing the separatrix R,Z points
+      rz_boundary_file: null # [Optional] CSV (columns R,Z) with the separatrix points; overrides the scalars above and carries the FULL MXH moments of the fitted boundary (not just kappa/delta/zeta), so strongly-shaped boundaries are not over-rounded
 
       # [Optional] If initialization_type = separatrix: path to input.gacode to reproduce internal flux surfaces and other moments
       internal_flux_file: null

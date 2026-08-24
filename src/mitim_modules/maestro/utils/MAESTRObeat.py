@@ -628,6 +628,11 @@ class initializer_from_separatrix(beat_initializer):
         )
 
         # [Optional] Use the freegs to correct the profiles (keeping the shaping)
+        if boundary_parameters is not None:
+            # rz_boundary_file path: the namelist scalars may be null, so feed the
+            # freegs helper the scalars of the equilibrium just built from the file
+            kwargs.update(R = float(rmaj[-1]), a = float(rmin[-1]), z0 = float(z0[-1]),
+                          kappa_sep = float(kappa[-1]), delta_sep = float(delta[-1]), zeta_sep = float(zeta[-1]))
         try:
             self._correct_profiles_withfreegs(Paux_MW = Paux_MW, Zeff = Zeff, netop_20 = netop_20, coeffs_MXH = coeffs_MXH, **kwargs)
         except Exception as e:
@@ -812,8 +817,19 @@ def separatrix_to_equilibrium(boundary_parameters=None,separatrix_parameters=Non
         zeta = np.linspace(0, zeta_sep if zeta_sep is not None else 0, resol)
         
         coeffs_MXH = 7
-        sn = np.zeros((resol, coeffs_MXH))
-        cn = np.zeros((resol, coeffs_MXH))
+        if separatrix_parameters.get('sn_sep') is not None:
+            # Boundary loaded from file: carry its full MXH moments, ramped from zero
+            # at the axis like delta/zeta above (delta/zeta stay in their own arrays;
+            # equilibrium_to_profiles writes only cn[:] and sn[3:] from these)
+            sn_sep = np.asarray(separatrix_parameters['sn_sep'], dtype=float)
+            cn_sep = np.asarray(separatrix_parameters['cn_sep'], dtype=float)
+            coeffs_MXH = len(sn_sep)
+            ramp = np.linspace(0, 1, resol)
+            sn = np.outer(ramp, sn_sep)
+            cn = np.outer(ramp, cn_sep)
+        else:
+            sn = np.zeros((resol, coeffs_MXH))
+            cn = np.zeros((resol, coeffs_MXH))
         
         torfluxa = torflux_total
         psi = np.linspace(0, polflux_total, resol)
@@ -931,10 +947,18 @@ def load_separatrix_from_file(boundary_parameters):
         'a': surfaces.a[0],
         'z0': surfaces.Z0[0],
         'kappa_sep': surfaces.kappa[0],
-        'delta_sep': surfaces.delta[0],
-        'zeta_sep': surfaces.zeta[0]
+        # delta/zeta in the GACODE-MXH convention (delta = sin(s1), zeta = -s2), NOT the
+        # geometric _to_miller ones: these scalars land in the gacode 'delta(-)'/'zeta(-)'
+        # arrays, whose consumers reconstruct the shape as theta + arcsin(delta)*sin(theta)
+        # - zeta*sin(2theta). The geometric squareness can differ in sign AND magnitude
+        # (ARC V4D pointed double-null: -s2 = -0.246 vs geometric +0.16 -> +24% area error)
+        'delta_sep': float(np.sin(surfaces.sn[0][1])),
+        'zeta_sep': float(-surfaces.sn[0][2]),
+        # Higher MXH moments of the fitted boundary (gacode shape_cos0+/shape_sin3+)
+        'sn_sep': surfaces.sn[0],
+        'cn_sep': surfaces.cn[0],
     }
-    
+
     return separatrix_parameters
 
 # --------------------------------------------------------------------------------------------
