@@ -130,6 +130,9 @@ def RicciMetric(y1, y2, y1_std, y2_std, h=None, d0=2.0, l=1.0):
 
 
 def LHthreshold_nmin(Ip, Bt, a, Rmajor):
+    '''
+    From Ryter NF 2014
+    '''
     nLH_min = (
         0.07 * Ip**0.34 * Bt**0.62 * a ** (-0.95) * (Rmajor / a) ** 0.4
     )  # in 1E20 m^-3
