@@ -108,16 +108,25 @@ class lengyel_beat(beat):
         
         try:
             i_W = np.where(self.profiles_current.profiles['name']==fixed_impurity_symbol)[0][0]
+            print(f'Found fixed impurity "{fixed_impurity_symbol}" (Z={fixed_impurity_Z}, A={fixed_impurity_A}) in input.gacode at index {i_W}')
         except IndexError:
             raise ValueError(f"[MAESTRO][LENGYELbeat] The high-Z impurity species '{fixed_impurity_symbol}' was not found in the input.gacode profiles; please ensure it is present to keep its concentration fixed during the Lengyel beat.")
 
         # See if the diluting impurity is already in the profile object, otherwise set self.i_dilution to None (it will be added in run() if needed)
         if self.dilution_impurity_species is not None:
             try:
-                self.i_dilution = np.where(self.profiles_current.profiles['name']==dilution_impurity_species)[0][0]
+                tmp_i_dilution = np.where(self.profiles_current.profiles['name']==self.dilution_impurity_species)[0][0]
+                print(f'Found diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) in input.gacode at index {tmp_i_dilution}')
+                if self.profiles_current.profiles['type'][tmp_i_dilution] not in ['thermal', '[thermal]']:
+                    print(f'Diluting impurity is present, but not as thermal species (type = {self.profiles_current.profiles["type"][tmp_i_dilution]}). It will be added as a thermal species in run() if needed and the variable i_dilution has not been set here.')
+                    self.i_dilution = None
+                else: 
+                    print(f'Diluting impurity is present as a thermal species (type = {self.profiles_current.profiles["type"][tmp_i_dilution]}). It will be used in run() if needed and the variable i_dilution is set here.')
+                    self.i_dilution = tmp_i_dilution
             except IndexError:
                 self.i_dilution = None
         else: 
+            print(f'\t- No diluting impurity species specified, skipping dilution impurity handling')
             self.i_dilution = None
         
         fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
@@ -291,20 +300,35 @@ class lengyel_beat(beat):
             if Zeff_vol < self.zeff_floor:
                 print(f"\t\t! Warning: Zeff floor not reached after {max_iter} iterations: vol-avg Zeff {Zeff_vol:.2f} < floor {self.zeff_floor:.2f}")
 
-        # Add in the diluting impurity as a species if need if needed
+        # Add in the diluting impurity as a species if needed. Note all impurities that are added in this way are automatically thermal.
         if self.dilution_impurity_species is not None and self.i_dilution is None:
-            print(f'\t\t* Adding diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) to the profiles with a minimum concentration of {self.dilution_impurity_min_concentration:.2f}')                                                                                                               
+            print(f'\t\t* Adding diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) to the profiles with a minimum concentration of {self.dilution_impurity_min_concentration:.2f}. It will be added as a thermal species.')                                                                                                               
+            self.i_dilution = len(p.profiles['name'])  # New species will be added at the end of the profiles
             p.addSpecie(Z = self.dilution_impurity_charge, mass = self.dilution_impurity_mass, fi_vol = 0.0, forcename = self.dilution_impurity_species)
-            self.i_dilution = np.where(p.profiles['name']==self.dilution_impurity_species)[0][0]
+            print(f'All species in input.gacode.lengyel after adding the diluting impurity: {p.Species}')
 
+        # check self.i_dilution is not none at this point 
+        if self.i_dilution is None:
+            raise ValueError(f'Diluting impurity "{self.dilution_impurity_species}" was expected to be added as a thermal species, but i_dilution is still none.')
+        else: 
+            print(f'Index of self.i_dilution is {self.i_dilution} for diluting impurity "{self.dilution_impurity_species}"')
+        
+        # Add the diluting impurity where needed as appropriate
         if self.dilution_impurity_species is not None:
             diluting_impurity_current_concentration = p.profiles['ni(10^19/m^3)'][:, self.i_dilution] / p.profiles['ne(10^19/m^3)'][:]
-            if np.any(diluting_impurity_current_concentration < self.dilution_impurity_min_concentration):
-                below_minimum = diluting_impurity_current_concentration < self.dilution_impurity_min_concentration
+            below_minimum = diluting_impurity_current_concentration < self.dilution_impurity_min_concentration
+
+            print(f'Diluting impurity current concentration. If the diluting impurity was just added this should be zero!: {diluting_impurity_current_concentration.tolist()}')
+
+            if np.any(below_minimum):
                 p.profiles['ni(10^19/m^3)'][below_minimum, self.i_dilution] = (
                     self.dilution_impurity_min_concentration * p.profiles['ne(10^19/m^3)'][below_minimum]
                 )
+                print(f'\t\t* Diluting impurity "{self.dilution_impurity_species}" concentration was below the minimum of {self.dilution_impurity_min_concentration:.2f} in some regions; it has been raised to meet the minimum.')
+            else:
+                print(f'\t\t* Diluting impurity "{self.dilution_impurity_species}" concentration is already at or above the minimum of {self.dilution_impurity_min_concentration:.2f} at all rho values; no change applied.')
 
+            print(f'Diluting impurity new concentration: {p.profiles["ni(10^19/m^3)"][:, self.i_dilution] / p.profiles["ne(10^19/m^3)"][:]}')
 
         # Quasineutrality
         p.enforce_quasineutrality()
