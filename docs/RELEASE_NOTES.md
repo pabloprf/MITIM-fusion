@@ -145,6 +145,13 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
+    fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
+    left at zero in the extracted `input.gacode`, so downstream PORTALS density predictions ran
+    against a Gamma=0 target. Also fixed the impurity-mass namelist lookup, which could not parse
+    multi-valued `AIMPS = 12.0, 40.0` lines and silently fell back to `2*Zave` (Ar came out A~36
+    instead of 40). Tests: `tests/dev_tests/test_transp_particle_sources.py`.
+
 *   🐛 **Headless MAESTRO `--save` no longer killed by matplotlib's Qt backend**: on SLURM
     nodes without a display, matplotlib could pick Qt/xcb and SIGABRT the whole process
     during summary-report generation (nodes missing `libxcb-cursor0`), marking a

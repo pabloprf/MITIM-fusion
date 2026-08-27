@@ -1,4 +1,5 @@
 import os
+import re
 import tarfile
 import shutil
 import pickle
@@ -3083,6 +3084,12 @@ class transp_output:
             # Info about sources of particles
             self.nD_source_beams = copy.deepcopy(self.Poh) * 0.0 + self.eps00
             self.nD_source_halo = copy.deepcopy(self.Poh) * 0.0 + self.eps00
+
+        try:
+            # Total beam thermalization source, all thermal species (SBTH = sum of SBTH_D, SBTH_T, ...)
+            self.ni_source_beams = self.f["SBTH"][:] * 1e6 * 1e-20  # in 10^20m^-3/s
+        except:
+            self.ni_source_beams = copy.deepcopy(self.Poh) * 0.0 + self.eps00
 
     def getFusionPower(self):
         self.FusTT = self.f["TOT2TT"][:] * (11.3) * 1e6
@@ -11801,6 +11808,14 @@ class transp_output:
         )
         ax.plot(
             self.x_lw,
+            self.ni_source_beams[it],
+            lw=1,
+            c="m",
+            ls=":",
+            label="$S_{i,vol,beam}$ (all species)",
+        )
+        ax.plot(
+            self.x_lw,
             self.nD_source_halo[it],
             lw=1,
             c="c",
@@ -13600,6 +13615,17 @@ class transp_output:
     # Additional analysis
     # --------------------------------------
 
+    def _impurity_mass_from_namelist(self, index):
+        # AIMPS appears either indexed (AIMPS(2) = 40.0) or multi-valued (AIMPS = 12.0, 40.0); index is 0-based
+        with open(self.LocationNML, "r", errors="ignore") as f:
+            txt = f.read()
+        m = re.search(rf"^\s*AIMPS\s*\(\s*{index+1}\s*\)\s*=\s*([\d.Ee+-]+)", txt, re.I | re.M)
+        if m is not None:
+            return float(m.group(1))
+        m = re.search(r"^\s*AIMPS\s*=\s*([^!\n]+)", txt, re.I | re.M)
+        vals = [v for v in re.split(r"[,\s]+", m.group(1).strip()) if v]
+        return float(vals[index])
+
     def getSpecies(self):
 
         self.Species = {
@@ -13648,7 +13674,7 @@ class transp_output:
             foundImpurity = False
             if self.LocationNML is not None:
                 try:
-                    mass = IOtools.findValue(self.LocationNML, f"aimps({cont+1})", "=")
+                    mass = self._impurity_mass_from_namelist(cont)
                     foundImpurity = True
                 except:
                     pass
@@ -15404,6 +15430,20 @@ class transp_output:
         # Torque — full NBI momentum source: collisional + JxB + thermalization  (time-averaged)
         profiles['qmom(N/m^2)'] = _p(self.Pnbit_coll) + _p(self.Pnbit_jxb) + _p(self.Pnbit_therm)
 
+        # Particle sources  (time-averaged, parsed attributes in 10^20 m^-3/s -> 1/m^3/s is x1e20)
+        # qpar_beam: ni_source_beams (SBTH) = fast-ion thermalization source (beam ions joining the
+        #   thermal population), NOT the deposition (BDEP/SDEP) family, which counts fast-ion birth
+        #   before CX/orbit losses
+        # qpar_wall: nD_source_wall (SWD) = thermal ion source from wall/recycled neutrals only; SVD
+        #   would double-count the beam (it contains SBTH) and SISRC adds volume-recombination re-ionization
+        # Missing CDF variables leave the parsed attributes at the eps00 floor -> warn, effectively zero
+        profiles['qpar_beam(1/m^3/s)'] = _p(self.ni_source_beams) * 1e20
+        if np.all(np.abs(self.ni_source_beams) <= self.eps00):
+            print("\t\t* SBTH not found in CDF, qpar_beam is zero", typeMsg='w')
+        profiles['qpar_wall(1/m^3/s)'] = _p(self.nD_source_wall) * 1e20
+        if np.all(np.abs(self.nD_source_wall) <= self.eps00):
+            print("\t\t* SWD not found in CDF, qpar_wall is zero", typeMsg='w')
+
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Interpolate from x to xb (zone centres to boundary grid)
         # -------------------------------------------------------------------------------------------------------
@@ -15411,7 +15451,7 @@ class transp_output:
         def grid_interpolation_method_to_one(x, y, x_new):
             return extrapolation_routine(x_new, x, y)
 
-        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)']
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)', 'qpar_beam(1/m^3/s)', 'qpar_wall(1/m^3/s)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
                 profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key], profiles['rho(-)'])
