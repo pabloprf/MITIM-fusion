@@ -475,6 +475,23 @@ def conduction(n19, TkeV, chi, aLT, a):
 # --------------------------------------------------------------------------------------------------------------------------------
 
 
+def sigmav_dd_neutron(Ti_keV):
+    """
+    D(d,n)3He fusion reactivity <sigma*v> (cm^3/s) from Ti (keV), Bosch-Hale parametrization
+    [H.-S. Bosch and G.M. Hale, Nucl. Fusion 32 (1992) 611, Table VII].
+    Validity range 0.2-4800 keV; inputs are clipped to it.
+    """
+    bg, er = 31.3970, 937814.0  # B_G (keV^0.5) and m_r*c^2 (keV) for D+D
+    c1, c2, c3, c4, c5, c6, c7 = 5.43360e-12, 5.85778e-3, 7.68222e-3, 0.0, -2.96400e-6, 0.0, 0.0
+
+    ti = np.clip(Ti_keV, 0.2, 4800.0)
+    r0 = ti * (c2 + ti * (c4 + ti * c6)) / (1.0 + ti * (c3 + ti * (c5 + ti * c7)))
+    theta = ti / (1.0 - r0)
+    xi = (bg**2 / (4.0 * theta)) ** (1.0 / 3.0)
+
+    return c1 * theta * (xi / (er * ti**3)) ** 0.5 * np.exp(-3.0 * xi)
+
+
 def loglam(Te_keV, ne_20):
     precomputed_factor = 9.210340371976184  # torch.log( (1E20*1E-6)**0.5/1E3 )
 

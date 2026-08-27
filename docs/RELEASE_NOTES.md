@@ -4,6 +4,12 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Thermal D-D neutron rate**: new `PLASMAtools.sigmav_dd_neutron` (Bosch-Hale
+    D(d,n)3He parametrization [Bosch & Hale, Nucl. Fusion 32 (1992) 611, Table VII]) and
+    `mitim_state.derived['ndd_thermal']` — volume-integrated thermal D(d,n)3He neutron rate (n/s)
+    from the thermal deuterium population. Validated against interpretive-TRANSP THNTX_DD on
+    DIII-D runs (agreement 0.94-1.04). MITIM's fusion power remains DT-only.
+
 *   💥 **Separatrix initializer from `rz_boundary_file` now shape-faithful**: the boundary fitted
     from the R,Z file carries its FULL MXH moments into the initial state (`shape_cos0+`/`shape_sin3+`,
     previously zeroed), and the `delta`/`zeta` scalars are written in the GACODE-MXH convention

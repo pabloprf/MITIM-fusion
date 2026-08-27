@@ -818,6 +818,16 @@ class mitim_state:
             self.derived["ni_vol20"]
         )
 
+        # Thermal D-D neutron rate, D(d,n)3He branch on the thermal deuterium population (n/s)
+        nD19 = np.zeros(r.shape[0])
+        for i in range(len(self.profiles["name"])):
+            if self.profiles["name"][i] == "D" and "therm" in self.profiles["type"][i]:
+                nD19 += self.profiles["ni(10^19/m^3)"][:, i]
+        self.derived["ndd_thermal"] = CALCtools.volume_integration(
+            0.5 * (nD19 * 1e13) ** 2 * PLASMAtools.sigmav_dd_neutron(self.profiles["ti(keV)"][:, 0]) * 1e6,
+            r, volp,
+        )[-1]  # 1e13: 1e19 m^-3 -> cm^-3; 1e6: cm^-3 s^-1 -> m^-3 s^-1
+
         self.derived["ne_peaking"] = (
             self.profiles["ne(10^19/m^3)"][0] * 0.1 / self.derived["ne_vol20"]
         )
