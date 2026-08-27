@@ -1154,14 +1154,45 @@ class creator:
 
         def __call__(self):
 
+            # Coordinate mapping (roa/psin -> rho) through a SMOOTHED spline of the state's
+            # own relation, not raw np.interp: the state's rho(roa) relation carries knot-scale
+            # conversion ripple (~1e-5, from the initializer's equilibrium processing) that a
+            # raw interp would bake into the new grid's rho labels under the created kinetics.
+            # That stays self-cancelling within this state, but the first beat that REPLACES
+            # the equilibrium breaks the cancellation and the ripple reappears amplified in
+            # every a/L* gradient (d/dr of a lambda~0.02 ripple x300). Both coordinates are
+            # smooth flux labels, so a coarse-knot spline is the physical mapping.
+            def _smooth_map(x_target, x_state, rho_state):
+                from scipy.interpolate import LSQUnivariateSpline
+                xq = np.clip(x_target, x_state[0], x_state[-1])
+                raw = np.interp(xq, x_state, rho_state)
+                dk = 0.05
+                kn = np.arange(x_state[0] + dk, x_state[-1] - dk + 1e-12, dk)
+                try:
+                    sp = LSQUnivariateSpline(x_state, rho_state, kn, k=3)(xq)
+                except Exception:
+                    return raw
+                # Blend: spline in the interior only, exact raw interp near both ends --
+                # a coarse-knot spline cannot follow the mapping's genuine edge curvature
+                # (measured 0.026 sag at the boundary on a freegs state, which truncated
+                # the grid and broke the downstream beat) and the endpoints must be exact.
+                lo, hi = x_state[0] + 1.5 * dk, x_state[-1] - 1.5 * dk
+                w = np.clip(np.minimum((xq - lo) / dk, (hi - xq) / dk), 0.0, 1.0)
+                w = 0.5 - 0.5 * np.cos(np.pi * w)
+                rho_new = w * sp + (1.0 - w) * raw
+                if np.any(np.diff(rho_new) <= 0):
+                    print('\t- Smoothed coordinate mapping not monotone, falling back to raw interp', typeMsg='w')
+                    return raw
+                return rho_new
+
             if 'roa' in self.profiles_insert:
                 if 'rho' in self.profiles_insert:
                     print('\t- Both r/a and rho provided to insert profiles, using roa',typeMsg = 'w')
-                self.profiles_insert['rho'] = np.interp(self.profiles_insert['roa'], self.initialize_instance.profiles_current.derived['roa'], self.initialize_instance.profiles_current.profiles['rho(-)'])
+                self.profiles_insert['rho'] = _smooth_map(self.profiles_insert['roa'], self.initialize_instance.profiles_current.derived['roa'], self.initialize_instance.profiles_current.profiles['rho(-)'])
             if 'psin' in self.profiles_insert:
                 if 'rho' in self.profiles_insert:
                     print('\t- Both psin and rho provided to insert profiles, using psin',typeMsg = 'w')
-                self.profiles_insert['rho'] = np.interp(self.profiles_insert['psin'], self.initialize_instance.profiles_current.derived['psi_pol_n'], self.initialize_instance.profiles_current.profiles['rho(-)'])
+                self.profiles_insert['rho'] = _smooth_map(self.profiles_insert['psin'], self.initialize_instance.profiles_current.derived['psi_pol_n'], self.initialize_instance.profiles_current.profiles['rho(-)'])
 
             rho, Te, Ti, ne = self.profiles_insert['rho'], self.profiles_insert['Te'], self.profiles_insert['Ti'], self.profiles_insert['ne']
             
@@ -1183,6 +1214,11 @@ class creator:
 
             # Update derived
             self.initialize_instance.profiles_current.derive_quantities()
+
+            # The creator overwrote the kinetics, so the file's ptot column no longer
+            # describes this plasma -- recompute it (downstream GS consumers, e.g. the
+            # MINUET beat, read ptot as the equilibrium pressure)
+            self.initialize_instance.profiles_current.selfconsistentPTOT()
 
         def _inform_save(self, **kwargs):
             pass

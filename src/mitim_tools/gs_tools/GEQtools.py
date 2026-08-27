@@ -1530,6 +1530,10 @@ def equilibrium_to_profiles(
     profiles['ti(keV)'] = np.array([T_keV]*2).T
     profiles['ne(10^19/m^3)'] = ne_20*10.0
     profiles['ni(10^19/m^3)'] = np.array([profiles['ne(10^19/m^3)']*(1-Z*fZ),profiles['ne(10^19/m^3)']*fZ]).T
+    # ptot must be populated: downstream GS consumers (e.g. the MINUET beat) read the file's
+    # ptot column as the equilibrium pressure and would otherwise solve force-free. The GS
+    # ansatz pressure IS the thermal pe+pi here by construction (T was built as p/(2 e ne))
+    profiles['ptot(Pa)'] = pressure
 
     # -------------------------------------------------------------------------------------------------------
     # Power: insert parabolic and use PROFILES volume integration to find desired power

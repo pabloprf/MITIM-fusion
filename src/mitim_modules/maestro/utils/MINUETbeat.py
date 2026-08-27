@@ -48,8 +48,8 @@ class minuet_beat(beat):
             resistivity_model   = 'sauter',     # 'sauter' | 'spitzer'
             bootstrap_model     = 'sauter',     # 'sauter' | None (purely ohmic)
             Ip_from_frozen      = True,         # command Ip to the frozen engineering current(MA) (CUR-ufile analog)
-            gs_ns               = 128,
-            gs_ntheta           = 256,
+            gs_ns               = 256,          # (256,512) is the knee of the exported-gradient convergence: at (128,256) the
+            gs_ntheta           = 512,          # traced-surface knots carry GS discretization jitter that shows up as jagged a/L* downstream
             n_cells             = 200,          # current-diffusion radial cells
             rtol                = None,         # BDF relative tolerance (None -> MINUET default)
             n_save              = 201,          # saved time frames (plot granularity of run.minuet)
@@ -208,6 +208,12 @@ class minuet_beat(beat):
             sawtooth = sawtooth,
             gs_ns = cfg['gs_ns'],
             gs_ntheta = cfg['gs_ntheta'],
+            # Near-uniform radial map: minuet's global default (2.0) packs cells to the edge
+            # for diverted/X-point boundaries, but the beat solves a smooth fixed-boundary MXH
+            # curve -- packing there starves the core grid (~2x coarser, equivalent to halving
+            # gs_ns) and puts GS jitter into the exported a/L* gradients, while buying nothing
+            # at the edge (kappa995/delta995 unchanged at the 1e-6 level, zero cost in time)
+            gs_s_packing = 0.5,
             diffusion = mn.DiffusionSettings(**diffusion_kwargs),
         )
 

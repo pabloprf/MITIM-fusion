@@ -761,9 +761,12 @@ maestro:
       # false: use the flux content of the incoming state as-is
       Ip_from_frozen: true
 
-      # Resolution / numerics (MINUET defaults; raise gs_ns/gs_ntheta for shaping studies)
-      gs_ns: 128        # Grad-Shafranov radial grid
-      gs_ntheta: 256    # Grad-Shafranov poloidal grid
+      # Resolution / numerics. (256,512) is the knee of the exported-gradient convergence:
+      # at (128,256) the traced surfaces carry GS discretization jitter (inboard side) that
+      # shows up as jagged a/L* gradients in the exported input.gacode; higher than (256,512)
+      # buys nothing measurable. ~2 s/solve vs 0.5 s -- negligible for a MAESTRO beat.
+      gs_ns: 256        # Grad-Shafranov radial grid
+      gs_ntheta: 512    # Grad-Shafranov poloidal grid
       n_cells: 200      # current-diffusion radial cells
       rtol: null        # BDF relative tolerance (null -> MINUET default)
       n_save: 201       # saved time frames (plot granularity of run.minuet)
