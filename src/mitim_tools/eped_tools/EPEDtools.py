@@ -344,7 +344,17 @@ class EPED:
 
         where_is_this = folder / subfolder if folder is not None else Path(subfolder)
 
-        output_files = sorted(list(where_is_this.glob("*.nc")))
+        # Accept a single output .nc passed directly (e.g. mitim_plot_eped <file>.nc)
+        if where_is_this.is_file():
+            output_files = [where_is_this]
+        else:
+            output_files = sorted(list(where_is_this.glob("*.nc")))
+
+        if len(output_files) == 0:
+            raise FileNotFoundError(
+                f'No EPED output .nc files found in {where_is_this} — pass the scan folder '
+                f'containing output_run*.nc, or a single output .nc file'
+            )
 
         for output_file in output_files:
 
