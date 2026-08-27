@@ -1,5 +1,5 @@
 '''
-Dev-test: MINIMAL MAESTRO run -- MINUET initializer + a ["minuet", "confinement"] chain.
+Dev-test: MINIMAL MAESTRO run -- MINUET initializer + a ["minuet", "bc"] (method: confinement) chain.
 
 The smallest MAESTRO exercise of the new `initialization_type: minuet`
 (GEQtools.minuet_millerized) driving a short two-beat chain, all in-process:
@@ -62,8 +62,10 @@ nml["plasma"]["heating"]["parameters"]["Pi"] = 5.0
 nml["plasma"]["heating"]["parameters"]["nu_source"] = 5.0
 nml["plasma"]["heating"]["parameters"]["fmini"] = 0.0
 
-# Two beats: minuet (short run) then confinement (all template defaults: x_bc 0.90, H98y2 target 1.0)
-nml["maestro"]["beats"] = ["minuet", "confinement"]
+# Two beats: minuet (short run) then the bc beat with its template default method
+# ("confinement": x_bc 0.90, H98y2 target 1.0). beat_type "confinement" was removed
+# in the bc-beat unification -- use beat_type bc + method.
+nml["maestro"]["beats"] = ["minuet", "bc"]
 nml["maestro"]["minuet"]["parameters_prepare"]["t_end"] = 2.0
 nml["maestro"]["minuet"]["parameters_prepare"]["n_save"] = 51
 
