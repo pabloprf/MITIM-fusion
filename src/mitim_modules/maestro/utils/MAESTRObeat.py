@@ -1192,6 +1192,8 @@ class creator_from_parameterization(creator):
             x_top = np.interp(self.rhotop, self.initialize_instance.profiles_current.profiles['rho(-)'], self.initialize_instance.profiles_current.derived['roa'])
             
             x_a = 0.3
+            
+            aLT_upper_bound = 5.0
 
             if (self.aLn_guess is not None) or (self.nu_ne is None):
                 aLn = self.aLn_guess if self.aLn_guess is not None else 0.2
@@ -1199,7 +1201,7 @@ class creator_from_parameterization(creator):
             else:
                 # Find the density gradient that matches the peaking (bracketed root find; monotonic)
                 print(f'\n\t- Optimizing aLn to match ne peaking = {self.nu_ne}')
-                aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+                aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, aLT_upper_bound), 'ne peaking')
                 self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
                 print(f'\n\t- Gradient: aLn = {aLn:.4f}')
                 print(f'\t- ne peaking: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
@@ -1216,7 +1218,7 @@ class creator_from_parameterization(creator):
                 T0_cap_keV = 95.0
                 for _ in range(10):
                     print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN}, with aLTe/aLTi = {self.aLTe_to_aLTi_ratio}')
-                    aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+                    aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, aLT_upper_bound), 'BetaN')
                     self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
                     print(f'\n\t- Gradient: aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
                     print(f'\t- BetaN: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
@@ -1424,6 +1426,8 @@ class creator_from_fixed_bc(creator_from_parameterization):
         print(f'\t- x_bc = {self.x_bc} ({self.bc_coordinate}) -> rho_tor = {self.rhotop:.4f} -> r/a = {x_top:.4f}')
 
         x_a = 0.3
+        
+        aLT_upper_bound = 5.0
 
         # Optimize aLn to match nu_ne (density peaking)
         if (self.aLn_guess is not None) or (self.nu_ne is None):
@@ -1431,7 +1435,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
             print(f'\n\t- Using fixed aLn = {aLn:.4f} (no nu_ne optimization)')
         else:
             print(f'\n\t- Optimizing aLn to match nu_ne = {self.nu_ne:.4f}')
-            aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, 3.0), 'ne peaking')
+            aLn = _match_gradient_to_target(lambda a: self._return_profile_peaking_mismatch(a, x_a, x_top=x_top), (0.0, aLT_upper_bound), 'ne peaking')
             self._return_profile_peaking_mismatch(aLn, x_a, x_top=x_top)
             print(f'\t  --> aLn = {aLn:.4f}')
             print(f'\t  --> ne peaking achieved: {self.initialize_instance.profiles_current.derived["ne_peaking0.2"]:.5f} (target: {self.nu_ne:.5f})')
@@ -1442,7 +1446,7 @@ class creator_from_fixed_bc(creator_from_parameterization):
             print(f'\n\t- Using fixed aLT = {aLT:.4f} (no BetaN optimization)')
         else:
             print(f'\n\t- Optimizing aLTi to match BetaN = {self.BetaN:.4f} (aLTe/aLTi = {self.aLTe_to_aLTi_ratio:.4f})')
-            aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, 3.0), 'BetaN')
+            aLT = _match_gradient_to_target(lambda a: self._return_profile_betan_mismatch(a, x_a, aLn, x_top=x_top), (0.5, aLT_upper_bound), 'BetaN')
             self._return_profile_betan_mismatch(aLT, x_a, aLn, x_top=x_top)
             print(f'\t  --> aLTi = {aLT:.4f}, aLTe = {aLT*self.aLTe_to_aLTi_ratio:.4f}')
             print(f'\t  --> BetaN achieved: {self.initialize_instance.profiles_current.derived["BetaN_engineering"]:.5f} (target: {self.BetaN:.5f})')
