@@ -79,7 +79,7 @@ solution:
   # If provided, using fZ0_as_weight/fZ_0 as scaling factor for GZ, where fZ_0 is the original impurity concentration on axis
   fZ0_as_weight: 1.0 # if null, it will not be used
 
-  # [Qe,Qi,Ge,Mt,GZ] multipliers to calculate scalarized function
+  # [Qe,Qi,Ge,GZ,Mt] multipliers to calculate scalarized function (Ge is the convective flux Ce)
   scalar_multipliers: [1.0, 1.0, 1.0, 1.0, 1.0]
 
   # Physics-informed parameters to fit surrogates (numbers are the last iteration to consider that line; keys are the physics-informed parameters
