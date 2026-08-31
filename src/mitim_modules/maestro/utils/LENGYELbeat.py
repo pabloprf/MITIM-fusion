@@ -117,7 +117,7 @@ class lengyel_beat(beat):
             try:
                 tmp_i_dilution = np.where(self.profiles_current.profiles['name']==self.dilution_impurity_species)[0][0]
                 print(f'Found diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) in input.gacode at index {tmp_i_dilution}')
-                if self.profiles_current.profiles['type'][tmp_i_dilution] not in ['thermal', '[thermal]']:
+                if self.profiles_current.profiles['type'][tmp_i_dilution] not in ['thermal', '[thermal]', 'therm', '[therm]']:
                     print(f'Diluting impurity is present, but not as thermal species (type = {self.profiles_current.profiles["type"][tmp_i_dilution]}). It will be added as a thermal species in run() if needed and the variable i_dilution has not been set here.')
                     self.i_dilution = None
                 else: 
