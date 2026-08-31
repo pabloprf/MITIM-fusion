@@ -15258,6 +15258,51 @@ class transp_output:
 
         return transp
 
+    def _radiation_for_profiles(self, it_range):
+        """Radiation channels for the gacode state, on the TRANSP zone-centre grid, averaged over it_range.
+
+        The gacode state radiates qbrem+qsync+qline and that sum is what gets subtracted from the
+        electron power balance, so it must equal TRANSP's TOTAL radiated power PRAD (self.Prad). In
+        interpretive decks that prescribe measured radiation (the .QRA ufile), PRAD *is* the physical
+        radiated power, while PRAD_BR/PRAD_CY/PRAD_LI (self.Prad_b/_c/_l) are TRANSP's internally
+        computed subset and can be an order of magnitude smaller. Mapping only that subset makes the
+        extracted state under-radiate and biases the electron target flux high.
+
+        Convention: keep the computed bremsstrahlung and cyclotron channels as they are and put the
+        remainder, PRAD - qbrem - qsync, into the line channel (line radiation plus whatever else the
+        bolometer sees). Where the prescribed total is locally BELOW brems+sync that remainder would be
+        negative, i.e. an unphysical local electron heat source; there the line channel is zeroed and
+        brems+sync scaled by PRAD/(qbrem+qsync) instead, which keeps every channel non-negative and the
+        total exactly equal to PRAD. That rescaling is reported, never silently applied.
+        """
+
+        def _p(arr):
+            return np.mean(arr[it_range, :], axis=0)
+
+        qbrem, qsync = _p(self.Prad_b), _p(self.Prad_c)
+
+        # No prescribed total available (older/differently-configured runs) -> keep the internal split
+        if (not hasattr(self, 'Prad')) or np.all(np.abs(self.Prad) <= self.eps00):
+            print("\t\t* PRAD not found in CDF, radiation falls back to the PRAD_BR/CY/LI split "
+                  "(the state will under-radiate if the deck prescribes bolometric power)", typeMsg='w')
+            return qbrem, qsync, _p(self.Prad_l)
+
+        qtot = _p(self.Prad)
+        qline = qtot - qbrem - qsync
+
+        neg = qline < 0.0
+        if neg.any():
+            computed = qbrem[neg] + qsync[neg]
+            scale = qtot[neg] / computed
+            print(f"\t\t* PRAD below qbrem+qsync at {int(neg.sum())}/{neg.size} zones (worst deficit "
+                  f"{float(np.max(1.0 - scale))*100:.1f}%): qline zeroed there and qbrem/qsync scaled "
+                  f"down, so the total still equals PRAD", typeMsg='w')
+            qbrem[neg] *= scale
+            qsync[neg] *= scale
+            qline[neg] = 0.0
+
+        return qbrem, qsync, qline
+
     def to_profiles(self, time_extraction=None, time_window=0.0):
 
         if time_extraction is None:
@@ -15413,16 +15458,22 @@ class transp_output:
 
         # Power profiles  (time-averaged)
         profiles['qei(MW/m^3)'] = _p(self.Pei)
-        profiles['qrfe(MW/m^3)'] = _p(self.Peich)
-        profiles['qrfi(MW/m^3)'] = _p(self.Piich)
-        profiles['qbrem(MW/m^3)'] = _p(self.Prad_b)
-        profiles['qsync(MW/m^3)'] = _p(self.Prad_c)
-        profiles['qline(MW/m^3)'] = _p(self.Prad_l)
+        # RF: gacode has a single auxiliary-RF channel per species, so ICRH + ECH + LH are summed
+        # (Peich/Piich = PEICH/PIICH, Pech = PEECH, Plhe/Plhi = PELH/PILH). Missing systems sit at
+        # the eps00 floor, so the sum is safe when only one is present
+        profiles['qrfe(MW/m^3)'] = _p(self.Peich) + _p(self.Pech) + _p(self.Plhe)
+        profiles['qrfi(MW/m^3)'] = _p(self.Piich) + _p(self.Plhi)
+        # Ion power exchanged with neutrals (CX + ionization). SIGN FLIP: TRANSP's P0NET is a LOSS
+        # (Pi_teo = Pi + Pei - Pcx), whereas gacode sums qioni into qi with +1, so it must be negated
+        profiles['qioni(MW/m^3)'] = -_p(self.Pcx)
         profiles['qohme(MW/m^3)'] = _p(self.Poh)
         profiles['qfuse(MW/m^3)'] = _p(self.Pfuse)
         profiles['qfusi(MW/m^3)'] = _p(self.Pfusi)
         profiles['qbeame(MW/m^3)'] = _p(self.Pnbie)
         profiles['qbeami(MW/m^3)'] = _p(self.Pnbii)
+
+        # Radiation  (time-averaged): total pinned to TRANSP's PRAD, not the PRAD_BR/CY/LI subset
+        profiles['qbrem(MW/m^3)'], profiles['qsync(MW/m^3)'], profiles['qline(MW/m^3)'] = self._radiation_for_profiles(it_range)
 
         # Rotation  (time-averaged)
         profiles['w0(rad/s)'] = _p(self.TGLF_w0)
@@ -15451,7 +15502,7 @@ class transp_output:
         def grid_interpolation_method_to_one(x, y, x_new):
             return extrapolation_routine(x_new, x, y)
 
-        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)', 'qpar_beam(1/m^3/s)', 'qpar_wall(1/m^3/s)']
+        keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qioni(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)', 'qpar_beam(1/m^3/s)', 'qpar_wall(1/m^3/s)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
                 profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key], profiles['rho(-)'])

@@ -158,6 +158,14 @@ DESCRIPTION
     multi-valued `AIMPS = 12.0, 40.0` lines and silently fell back to `2*Zave` (Ar came out A~36
     instead of 40). Tests: `tests/dev_tests/test_transp_particle_sources.py`.
 
+*   🐛 **TRANSP `to_profiles` power channels (radiation, RF, charge exchange)**: total radiation is
+    now pinned to TRANSP's `PRAD` instead of the internally-computed `PRAD_BR/CY/LI` split — on decks
+    that prescribe measured radiation (`.QRA` ufile) that split is only 5-20% of `PRAD`, so every
+    extracted state under-radiated and biased the electron target flux high (the remainder goes into
+    `qline`; where `PRAD` sits below brems+sync those two are rescaled instead, and it is reported).
+    `qrfe`/`qrfi` now sum ICRH+ECH+LH rather than ICRH alone, and `qioni` carries `-P0NET` (a loss in
+    TRANSP, but gacode sums `qioni` into `qi`), worth ~2% of `qHeat` on these DIII-D runs.
+
 *   🐛 **Headless MAESTRO `--save` no longer killed by matplotlib's Qt backend**: on SLURM
     nodes without a display, matplotlib could pick Qt/xcb and SIGABRT the whole process
     during summary-report generation (nodes missing `libxcb-cursor0`), marking a
