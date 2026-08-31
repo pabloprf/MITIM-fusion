@@ -442,9 +442,9 @@ maestro:
       #   dilution_impurity_mass: [3.9746, 6.892]
       #   dilution_impurity_min_concentration: [0.00, 0.01]
       dilution_impurity_species: null
-      dilution_impurity_charge: null
-      dilution_impurity_mass: null
-      dilution_impurity_min_concentration: null
+      dilution_impurity_charges: null
+      dilution_impurity_masses: null
+      dilution_impurity_min_concentrations: null
 
       # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
       # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)
