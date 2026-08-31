@@ -432,10 +432,19 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
-      dilution_impurity_species: None
-      dilution_impurity_charge: 2
-      dilution_impurity_mass: 3.9746
-      dilution_impurity_min_concentration: 0
+      # Optional diluting impurities (all four entries must have the SAME list length).
+      # - null: disables this feature entirely (legacy behavior; no dilution handling)
+      # - string/list: species names searched in input.gacode; if missing or non-thermal,
+      #   they are added as thermal species in run() and then floored to the minimum concentration.
+      # Example:
+      #   dilution_impurity_species: ['He', 'Li']
+      #   dilution_impurity_charge: [2, 3]
+      #   dilution_impurity_mass: [3.9746, 6.892]
+      #   dilution_impurity_min_concentration: [0.00, 0.01]
+      dilution_impurity_species: null
+      dilution_impurity_charge: null
+      dilution_impurity_mass: null
+      dilution_impurity_min_concentration: null
 
       # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
       # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)

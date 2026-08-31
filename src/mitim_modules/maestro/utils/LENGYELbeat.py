@@ -25,7 +25,7 @@ class lengyel_beat(beat):
     def __init__(self, maestro_instance, folder_name = None):
         super().__init__(maestro_instance, beat_name = 'lengyel', folder_name = folder_name)
 
-    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, dilution_impurity_species = None, dilution_impurity_charge = None, dilution_impurity_mass = None, dilution_impurity_min_concentration = 0, **kwargs):
+    def prepare(self, *args, mode = 'seeded', lengyel_namelist_location = None, radas_dir = None, seed_impurity_species = None, fixed_impurity_species = None, rhotop=None, override_namelist_params = None, zeff_relaxation_factor = 1.0, zeff_floor = None, dilution_impurity_species = None, dilution_impurity_charges = None, dilution_impurity_masses = None, dilution_impurity_min_concentrations = None, **kwargs):
 
         if mode not in ('seeded', 'clean'):
             raise ValueError(f"[MAESTRO][LENGYELbeat] mode must be 'seeded' or 'clean', got '{mode}'")
@@ -78,12 +78,44 @@ class lengyel_beat(beat):
         # namelist) to prevent the Lengyel beat from ever dragging Zeff below the starting point.
         self.zeff_floor = zeff_floor
 
-        # Save the diluting impurity parameters for use in run()
-        self.dilution_impurity_species = dilution_impurity_species
-        self.dilution_impurity_charge = dilution_impurity_charge
-        self.dilution_impurity_mass = dilution_impurity_mass
-        self.dilution_impurity_min_concentration = dilution_impurity_min_concentration
+        if dilution_impurity_species is None:
+            # Legacy behavior: dilution feature disabled
+            self.dilution_impurity_species = None
+            self.dilution_impurity_charges = None
+            self.dilution_impurity_masses = None
+            self.dilution_impurity_min_concentrations = None
+        else:
+            if (
+                dilution_impurity_charges is None
+                or dilution_impurity_masses is None
+                or dilution_impurity_min_concentrations is None
+            ):
+                raise ValueError(
+                    "[MAESTRO][LENGYELbeat] When dilution_impurity_species is provided, "
+                    "dilution_impurity_charges, dilution_impurity_masses, and "
+                    "dilution_impurity_min_concentrations must also be provided as lists."
+                )
 
+            # Check dilution_impurity lists are all the same length
+            if (
+                len(dilution_impurity_species) != len(dilution_impurity_charges)
+                or len(dilution_impurity_species) != len(dilution_impurity_masses)
+                or len(dilution_impurity_species) != len(dilution_impurity_min_concentrations)
+            ):
+                raise ValueError(
+                    "[MAESTRO][LENGYELbeat] dilution_impurity_species, dilution_impurity_charges, "
+                    "dilution_impurity_masses, and dilution_impurity_min_concentrations must all be the same length. "
+                    f"Got lengths: {len(dilution_impurity_species)}, "
+                    f"{len(dilution_impurity_charges)}, "
+                    f"{len(dilution_impurity_masses)}, "
+                    f"{len(dilution_impurity_min_concentrations)}"
+                )
+
+            # Save the diluting impurity parameters for use in run()
+            self.dilution_impurity_species = dilution_impurity_species
+            self.dilution_impurity_charges = dilution_impurity_charges
+            self.dilution_impurity_masses = dilution_impurity_masses
+            self.dilution_impurity_min_concentrations = dilution_impurity_min_concentrations
 
         if radas_dir is not None:
             radas_dir_env = radas_dir
@@ -112,23 +144,21 @@ class lengyel_beat(beat):
         except IndexError:
             raise ValueError(f"[MAESTRO][LENGYELbeat] The high-Z impurity species '{fixed_impurity_symbol}' was not found in the input.gacode profiles; please ensure it is present to keep its concentration fixed during the Lengyel beat.")
 
-        # See if the diluting impurity is already in the profile object, otherwise set self.i_dilution to None (it will be added in run() if needed)
-        if self.dilution_impurity_species is not None:
-            try:
-                tmp_i_dilution = np.where(self.profiles_current.profiles['name']==self.dilution_impurity_species)[0][0]
-                print(f'Found diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) in input.gacode at index {tmp_i_dilution}')
-                if self.profiles_current.profiles['type'][tmp_i_dilution] not in ['thermal', '[thermal]', 'therm', '[therm]']:
-                    print(f'Diluting impurity is present, but not as thermal species (type = {self.profiles_current.profiles["type"][tmp_i_dilution]}). It will be added as a thermal species in run() if needed and the variable i_dilution has not been set here.')
-                    self.i_dilution = None
-                else: 
-                    print(f'Diluting impurity is present as a thermal species (type = {self.profiles_current.profiles["type"][tmp_i_dilution]}). It will be used in run() if needed and the variable i_dilution is set here.')
-                    self.i_dilution = tmp_i_dilution
-            except IndexError:
-                self.i_dilution = None
-        else: 
-            print(f'\t- No diluting impurity species specified, skipping dilution impurity handling')
-            self.i_dilution = None
-        
+        if self.dilution_impurity_species is None:
+            self.i_dilutions = []
+        else:
+            self.i_dilutions = [None] * len(self.dilution_impurity_species)
+            # keep self.i_dilution=None so run() can add it as thermal if needed.
+            for i,dilution_impurity_species in enumerate(self.dilution_impurity_species):  
+                i_dilution = self._find_thermal_species_index(dilution_impurity_species)
+                if i_dilution is not None:
+                    print(f'\t- Diluting impurity "{dilution_impurity_species}" found in input.gacode at index {i_dilution}; it will be used in run() if needed.')
+                    i_dilution = int(i_dilution)
+                else:
+                    print(f'\t- Diluting impurity "{dilution_impurity_species}" not found in input.gacode; it will be added as a thermal species in run() if needed.')
+                self.i_dilutions[i] = i_dilution
+
+    
         fixed_impurity_weights = self.profiles_current.derived['fi_vol'][i_W]
 
         # Prepare Lengyel with default inputs and changes from GACODE
@@ -167,6 +197,50 @@ class lengyel_beat(beat):
         # Skip-path counterpart of prepare(): _inform_save() (which always runs)
         # needs the mode of a completed beat
         self.mode = mode
+
+    def _find_thermal_species_index(self, species_name):
+        matches = np.where(self.profiles_current.profiles['name'] == species_name)[0]
+
+        if matches.size == 0:
+            print(
+                f'Diluting impurity "{species_name}" was not found in input.gacode; '
+                'it will be added as a thermal species in run() if needed.'
+            )
+            return None
+
+        print(
+            f'Found diluting impurity "{species_name}" '
+            f'in input.gacode at index(es) {matches}'
+        )
+
+        thermal_labels = {'thermal', '[thermal]', 'therm', '[therm]'}
+        thermal_matches = [
+            int(i)
+            for i in matches
+            if str(self.profiles_current.profiles['type'][i]).strip().lower() in thermal_labels
+        ]
+
+        if len(thermal_matches) == 0:
+            print(
+                'Diluting impurity exists, but not as thermal species. '
+                'A thermal species will be added in run() if needed.'
+            )
+            return None
+
+        i_dilution = thermal_matches[0]
+        print(
+            f'Diluting impurity is present as a thermal species '
+            f'(type = {self.profiles_current.profiles["type"][i_dilution]} at index {i_dilution}). '
+            'It will be used in run() if needed.'
+        )
+        if len(thermal_matches) > 1:
+            print(
+                f'Multiple thermal matches found for "{species_name}" '
+                f'at indexes {thermal_matches}; using the first one ({i_dilution}).',
+                typeMsg='w'
+            )
+
+        return i_dilution
 
     def run(self, *args, **kwargs):
 
@@ -300,35 +374,63 @@ class lengyel_beat(beat):
             if Zeff_vol < self.zeff_floor:
                 print(f"\t\t! Warning: Zeff floor not reached after {max_iter} iterations: vol-avg Zeff {Zeff_vol:.2f} < floor {self.zeff_floor:.2f}")
 
-        # Add in the diluting impurity as a species if needed. Note all impurities that are added in this way are automatically thermal.
-        if self.dilution_impurity_species is not None and self.i_dilution is None:
-            print(f'\t\t* Adding diluting impurity "{self.dilution_impurity_species}" (Z={self.dilution_impurity_charge}, A={self.dilution_impurity_mass}) to the profiles with a minimum concentration of {self.dilution_impurity_min_concentration:.2f}. It will be added as a thermal species.')                                                                                                               
-            self.i_dilution = len(p.profiles['name'])  # New species will be added at the end of the profiles
-            p.addSpecie(Z = self.dilution_impurity_charge, mass = self.dilution_impurity_mass, fi_vol = 0.0, forcename = self.dilution_impurity_species)
-            print(f'All species in input.gacode.lengyel after adding the diluting impurity: {p.Species}')
-
-        # check self.i_dilution is not none at this point 
-        if self.i_dilution is None:
-            raise ValueError(f'Diluting impurity "{self.dilution_impurity_species}" was expected to be added as a thermal species, but i_dilution is still none.')
-        else: 
-            print(f'Index of self.i_dilution is {self.i_dilution} for diluting impurity "{self.dilution_impurity_species}"')
-        
-        # Add the diluting impurity where needed as appropriate
+        # add dilution impurities to the profiles if they are not already present, and ensure their concentrations meet the minimum specified
         if self.dilution_impurity_species is not None:
-            diluting_impurity_current_concentration = p.profiles['ni(10^19/m^3)'][:, self.i_dilution] / p.profiles['ne(10^19/m^3)'][:]
-            below_minimum = diluting_impurity_current_concentration < self.dilution_impurity_min_concentration
+            for i, dilution_impurity in enumerate(self.dilution_impurity_species):
+                species = dilution_impurity
+                charge = self.dilution_impurity_charges[i]
+                mass = self.dilution_impurity_masses[i]
+                min_conc = self.dilution_impurity_min_concentrations[i]
+                i_dilution = self.i_dilutions[i]
 
-            print(f'Diluting impurity current concentration. If the diluting impurity was just added this should be zero!: {diluting_impurity_current_concentration.tolist()}')
+                # Add species as thermal if it does not currently exist as thermal
+                if i_dilution is None:
+                    print(
+                        f'\t\t* Adding diluting impurity "{species}" (Z={charge}, A={mass}) '
+                        f'to the profiles with a minimum concentration of {min_conc:.2f}. '
+                        'It will be added as a thermal species.'
+                    )
+                    i_dilution = len(p.profiles['name'])
+                    p.addSpecie(Z=charge, mass=mass, fi_vol=0.0, forcename=species)
+                    print(f'All species in input.gacode.lengyel after adding the diluting impurity "{species}": {p.Species}')
 
-            if np.any(below_minimum):
-                p.profiles['ni(10^19/m^3)'][below_minimum, self.i_dilution] = (
-                    self.dilution_impurity_min_concentration * p.profiles['ne(10^19/m^3)'][below_minimum]
+                # check adding the species worked
+                if i_dilution is None:
+                    raise ValueError(
+                        f'Diluting impurity "{species}" was expected to be added as a thermal species, '
+                        'but i_dilution is still None.'
+                    )
+                print(f'Index of i_dilution is {i_dilution} for diluting impurity "{species}"')
+
+                # dilute the impurity concentration if it is below the minimum specified
+                diluting_impurity_current_concentration = (
+                    p.profiles['ni(10^19/m^3)'][:, i_dilution] / p.profiles['ne(10^19/m^3)'][:]
                 )
-                print(f'\t\t* Diluting impurity "{self.dilution_impurity_species}" concentration was below the minimum of {self.dilution_impurity_min_concentration:.2f} in some regions; it has been raised to meet the minimum.')
-            else:
-                print(f'\t\t* Diluting impurity "{self.dilution_impurity_species}" concentration is already at or above the minimum of {self.dilution_impurity_min_concentration:.2f} at all rho values; no change applied.')
+                below_minimum = diluting_impurity_current_concentration < min_conc
 
-            print(f'Diluting impurity new concentration: {p.profiles["ni(10^19/m^3)"][:, self.i_dilution] / p.profiles["ne(10^19/m^3)"][:]}')
+                print(
+                    f'Diluting impurity "{species}" current concentration. '
+                    f'If it was just added this should be zero: {diluting_impurity_current_concentration.tolist()}'
+                )
+
+                if np.any(below_minimum):
+                    p.profiles['ni(10^19/m^3)'][below_minimum, i_dilution] = (
+                        min_conc * p.profiles['ne(10^19/m^3)'][below_minimum]
+                    )
+                    print(
+                        f'\t\t* Diluting impurity "{species}" concentration was below the minimum '
+                        f'of {min_conc:.2f} in some regions; it has been raised to meet the minimum.'
+                    )
+                else:
+                    print(
+                        f'\t\t* Diluting impurity "{species}" concentration is already at or above '
+                        f'the minimum of {min_conc:.2f} at all rho values; no change applied.'
+                    )
+
+                print(
+                    f'Diluting impurity "{species}" new concentration: '
+                    f'{p.profiles["ni(10^19/m^3)"][:, i_dilution] / p.profiles["ne(10^19/m^3)"][:]}'
+                )
 
         # Quasineutrality
         p.enforce_quasineutrality()
