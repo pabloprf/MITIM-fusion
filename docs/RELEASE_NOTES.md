@@ -151,6 +151,18 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
+    `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
+    prescribed (linear-in-psi_n) edge, written by the BC beat beyond the outermost predicted
+    radius, put a gradient kink one grid point out. The neoclassical Er — and, one derivative
+    further, the `VEXB_SHEAR` handed to TGLF — spiked at the boundary control point (O(0.3-1)
+    c_s/a vs O(1e-3) in the core), suppressing the boundary turbulent flux several-fold and
+    biasing the flux-matched edge gradient; the pre-VGEN smoothing spline amplified it further.
+    VGEN now runs on a copy whose edge beyond the last predicted radius is a C1 continuation of
+    the core (`mitim_state.continue_edge_constant_aLx`), with the smoothing spline off, and a
+    warning fires if `|gamma_exb|` at the last predicted radius still exceeds 10x the median over
+    the others. Only affects runs using `vgen_exb_shear` (default off).
+
 *   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
     fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
     left at zero in the extracted `input.gacode`, so downstream PORTALS density predictions ran

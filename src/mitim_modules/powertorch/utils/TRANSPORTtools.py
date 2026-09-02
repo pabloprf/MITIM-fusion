@@ -632,14 +632,34 @@ class power_transport:
 
             neo_exb = NEOtools.NEO(rhos=[])
             neo_exb.FolderGACODE = self.folder
-            neo_exb.profiles = self.powerstate.profiles_transport
+            # VGEN must see a profile smooth across the last predicted radius. The BC beat
+            # writes a steep prescribed (linear-in-psi_n) edge beyond it; that corner makes
+            # the neoclassical Er — and, one derivative further, VEXB_SHEAR — spike at the
+            # boundary control point. Run VGEN on a COPY whose edge beyond the last predicted
+            # radius is a C1 continuation of the core (no kink); only w0 inside the band is
+            # kept below. This replaces the old smoothing spline, which itself rang on the
+            # corner and amplified the spike. See MITIMstate.continue_edge_constant_aLx.
+            import copy as _copy
+            profiles_for_vgen = _copy.deepcopy(self.powerstate.profiles_transport)
+            profiles_for_vgen.continue_edge_constant_aLx(float(rho_portals.max()))
+            neo_exb.profiles = profiles_for_vgen
             # numcores=None → run_vgen() resolves from machineSettings (same logic as SIMtools._run())
-            # smooth_profiles=True: smooth Te/Ti/ne/ni before VGEN so piecewise-linear
-            # kinks in the gradients do not pollute the computed Er
             neo_exb.run_vgen(subfolder="vgen_neo_exb", vgenOptions=vgenOptions, cold_start=self.cold_start,
-                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=True,
+                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=False,
                              in_process=in_process_vgen)
             neo_exb.read_vgen()
+
+            # Guard: flag a residual boundary spike in the ExB shear at the control points.
+            try:
+                g = np.interp(rho_portals, neo_exb.profiles_vgen.profiles['rho(-)'],
+                              np.abs(neo_exb.profiles_vgen.derived['gamma_exb']))
+                med = np.median(g[:-1])
+                if med > 0 and g[-1] > 10.0 * med:
+                    print(f"\t\t- WARNING: |gamma_exb| at the last predicted radius "
+                          f"({g[-1]:.3g}) exceeds 10x the median over the others ({med:.3g}); "
+                          f"possible residual edge-construct artifact in VEXB_SHEAR", typeMsg="w")
+            except Exception:
+                pass
             
             # Insert w0 by interpolating
             if rho_range is not None:
