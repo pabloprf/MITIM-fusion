@@ -114,19 +114,19 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     
     [ax00, ax10, ax20, ax01, ax11, ax21, ax02, ax12, ax22] = axs1
     
-    rho = self.profiles["rho(-)"]
+    rho = self.get_profiles()["rho(-)"]
 
     lines = GRAPHICStools.listLS()
 
     ax=ax00
-    var = self.profiles["te(keV)"]
+    var = self.get_profiles()["te(keV)"]
     varL = "$T_e$ , $T_i$ (keV)"
     if legYN:
         lab = extralab + "e"
     else:
         lab = ""
     ax.plot(rho, var, lw=lw, ls="-", label=lab, c=color)
-    var = self.profiles["ti(keV)"][:, 0]
+    var = self.get_profiles()["ti(keV)"][:, 0]
     if legYN:
         lab = extralab + "i"
     else:
@@ -142,7 +142,7 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
 
 
     ax=ax01
-    var = self.profiles["ne(10^19/m^3)"] * 1e-1
+    var = self.get_profiles()["ne(10^19/m^3)"] * 1e-1
     varL = "$n_e$ ($10^{20}/m^3$)"
     if legYN:
         lab = extralab + "e"
@@ -161,14 +161,14 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     cont = 0
     for i in range(len(self.Species)):
         if self.Species[i]["S"] == "therm":
-            var = self.profiles["ti(keV)"][:, i]
+            var = self.get_profiles()["ti(keV)"][:, i]
             ax.plot(
                 rho,
                 var,
                 lw=lw,
                 ls=lines[cont],
                 c=color,
-                label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+                label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
             )
             cont += 1
     varL = "Thermal $T_i$ (keV)"
@@ -186,20 +186,20 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     cont = 0
     for i in range(len(self.Species)):
         if self.Species[i]["S"] == "fast":
-            var = self.profiles["ti(keV)"][:, i]
+            var = self.get_profiles()["ti(keV)"][:, i]
             ax.plot(
                 rho,
                 var,
                 lw=lw,
                 ls=lines[cont],
                 c=color,
-                label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+                label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
             )
             cont += 1
     varL = "Fast $T_i$ (keV)"
     ax.plot(
         rho,
-        self.profiles["ti(keV)"][:, 0],
+        self.get_profiles()["ti(keV)"][:, 0],
         lw=0.5,
         ls="-",
         alpha=0.5,
@@ -220,14 +220,14 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     cont = 0
     for i in range(len(self.Species)):
         if self.Species[i]["S"] == "therm":
-            var = self.profiles["ni(10^19/m^3)"][:, i] * 1e-1
+            var = self.get_profiles()["ni(10^19/m^3)"][:, i] * 1e-1
             ax.plot(
                 rho,
                 var,
                 lw=lw,
                 ls=lines[cont],
                 c=color,
-                label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+                label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
             )
             cont += 1
     varL = "Thermal $n_i$ ($10^{20}/m^3$)"
@@ -245,14 +245,14 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     cont = 0
     for i in range(len(self.Species)):
         if self.Species[i]["S"] == "fast":
-            var = self.profiles["ni(10^19/m^3)"][:, i] * 1e-1 * 1e5
+            var = self.get_profiles()["ni(10^19/m^3)"][:, i] * 1e-1 * 1e5
             ax.plot(
                 rho,
                 var,
                 lw=lw,
                 ls=lines[cont],
                 c=color,
-                label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+                label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
             )
             cont += 1
     varL = "Fast $n_i$ ($10^{15}/m^3$)"
@@ -267,7 +267,7 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = ax02
-    var = self.profiles["w0(rad/s)"]
+    var = self.get_profiles()["w0(rad/s)"]
     ax.plot(rho, var, lw=lw, ls="-", c=color)
     varL = "$\\omega_{0}$ (rad/s)"
     ax.set_xlim([0, 1])
@@ -278,12 +278,12 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     GRAPHICStools.autoscale_y(ax)
 
     ax = ax12
-    var = self.profiles["ptot(Pa)"] * 1e-6
+    var = self.get_profiles()["ptot(Pa)"] * 1e-6
     ax.plot(rho, var, lw=lw, ls="-", c=color, label=extralab + "ptot")
-    if "ptot_manual" in self.derived:
+    if "ptot_manual" in self.get_derived():
         ax.plot(
             rho,
-            self.derived["ptot_manual"],
+            self.get_derived()["ptot_manual"],
             lw=lw,
             ls="--",
             c=color,
@@ -291,7 +291,7 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
         )
         ax.plot(
             rho,
-            self.derived["pthr_manual"],
+            self.get_derived()["pthr_manual"],
             lw=lw,
             ls="-.",
             c=color,
@@ -310,7 +310,7 @@ def plot_profiles(self, axs1, color="b", legYN=True, extralab="", lw=1, fs=6):
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = ax22
-    var = self.profiles["q(-)"]
+    var = self.get_profiles()["q(-)"]
     ax.plot(rho, var, lw=lw, ls="-", c=color)
     varL = "$q$ profile"
     ax.axhline(y=1.0, lw=0.5, ls="--", c="k")
@@ -326,36 +326,36 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     [ax00b, ax01b, ax10b, ax11b, ax20b, ax21b, ax30b, ax31b] = axs2
 
-    rho = self.profiles["rho(-)"]
+    rho = self.get_profiles()["rho(-)"]
 
     lines = GRAPHICStools.listLS()
 
     ax = ax00b
     varL = "$MW/m^3$"
     cont = 0
-    var = -self.profiles["qei(MW/m^3)"]
+    var = -self.get_profiles()["qei(MW/m^3)"]
     ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "i->e", c=color)
     cont += 1
-    if "qrfe(MW/m^3)" in self.profiles:
-        var = self.profiles["qrfe(MW/m^3)"]
+    if "qrfe(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qrfe(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "rf", c=color)
         cont += 1
-    if "qfuse(MW/m^3)" in self.profiles:
-        var = self.profiles["qfuse(MW/m^3)"]
+    if "qfuse(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qfuse(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "fus", c=color)
         cont += 1
-    if "qbeame(MW/m^3)" in self.profiles:
-        var = self.profiles["qbeame(MW/m^3)"]
+    if "qbeame(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qbeame(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "beam", c=color)
         cont += 1
-    if "qione(MW/m^3)" in self.profiles:
-        var = self.profiles["qione(MW/m^3)"]
+    if "qione(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qione(MW/m^3)"]
         ax.plot(
             rho, var, lw=lw / 2, ls=lines[cont], label=extralab + "extra", c=color
         )
         cont += 1
-    if "qohme(MW/m^3)" in self.profiles:
-        var = self.profiles["qohme(MW/m^3)"]
+    if "qohme(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qohme(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "ohmic", c=color)
         cont += 1
 
@@ -371,7 +371,7 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     ax = ax01b
 
-    ax.plot(rho, self.profiles["qmom(N/m^2)"], lw=lw, ls="-", c=color)
+    ax.plot(rho, self.get_profiles()["qmom(N/m^2)"], lw=lw, ls="-", c=color)
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho$")
     ax.set_ylabel("$N/m^2$, $J/m^3$")
@@ -383,23 +383,23 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
     ax = ax10b
     varL = "$MW/m^3$"
     cont = 0
-    var = self.profiles["qei(MW/m^3)"]
+    var = self.get_profiles()["qei(MW/m^3)"]
     ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "e->i", c=color)
     cont += 1
-    if "qrfi(MW/m^3)" in self.profiles:
-        var = self.profiles["qrfi(MW/m^3)"]
+    if "qrfi(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qrfi(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "rf", c=color)
         cont += 1
-    if "qfusi(MW/m^3)" in self.profiles:
-        var = self.profiles["qfusi(MW/m^3)"]
+    if "qfusi(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qfusi(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "fus", c=color)
         cont += 1
-    if "qbeami(MW/m^3)" in self.profiles:
-        var = self.profiles["qbeami(MW/m^3)"]
+    if "qbeami(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qbeami(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=lines[cont], label=extralab + "beam", c=color)
         cont += 1
-    if "qioni(MW/m^3)" in self.profiles:
-        var = self.profiles["qioni(MW/m^3)"]
+    if "qioni(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qioni(MW/m^3)"]
         ax.plot(
             rho, var, lw=lw / 2, ls=lines[cont], label=extralab + "extra", c=color
         )
@@ -418,9 +418,9 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     ax = ax11b
     cont = 0
-    var = self.profiles["qpar_beam(1/m^3/s)"] * 1e-20
+    var = self.get_profiles()["qpar_beam(1/m^3/s)"] * 1e-20
     ax.plot(rho, var, lw=lw, ls=lines[0], c=color, label=extralab + "beam")
-    var = self.profiles["qpar_wall(1/m^3/s)"] * 1e-20
+    var = self.get_profiles()["qpar_wall(1/m^3/s)"] * 1e-20
     ax.plot(rho, var, lw=lw, ls=lines[1], c=color, label=extralab + "wall")
 
     ax.set_xlim([0, 1])
@@ -438,17 +438,17 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     ax = ax20b
     varL = "$Q_{rad}$ ($MW/m^3$)"
-    if "qbrem(MW/m^3)" in self.profiles:
-        var = self.profiles["qbrem(MW/m^3)"]
+    if "qbrem(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qbrem(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls="-", label=extralab + "brem", c=color)
-    if "qline(MW/m^3)" in self.profiles:
-        var = self.profiles["qline(MW/m^3)"]
+    if "qline(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qline(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls="--", label=extralab + "line", c=color)
-    if "qsync(MW/m^3)" in self.profiles:
-        var = self.profiles["qsync(MW/m^3)"]
+    if "qsync(MW/m^3)" in self.get_profiles():
+        var = self.get_profiles()["qsync(MW/m^3)"]
         ax.plot(rho, var, lw=lw, ls=":", label=extralab + "sync", c=color)
 
-    var = self.derived["qrad"]
+    var = self.get_derived()["qrad"]
     ax.plot(rho, var, lw=lw * 1.5, ls="-", label=extralab + "Total", c=color)
 
     ax.set_xlim([0, 1])
@@ -464,8 +464,8 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
 
 
     ax = ax30b
-    ax.plot(rho, self.derived["qe_MWm2"], lw=lw, ls="-", label=extralab + "qe", c=color)
-    ax.plot(rho, self.derived["qi_MWm2"], lw=lw, ls="--", label=extralab + "qi", c=color)
+    ax.plot(rho, self.get_derived()["qe_MWm2"], lw=lw, ls="-", label=extralab + "qe", c=color)
+    ax.plot(rho, self.get_derived()["qi_MWm2"], lw=lw, ls="--", label=extralab + "qi", c=color)
     
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho$")
@@ -481,7 +481,7 @@ def plot_powers(self, axs2, legYN=True, extralab="", color="b", lw=1, fs=6):
     ax = ax31b
     ax.plot(
         rho,
-        self.derived["ge_10E20m2"],
+        self.get_derived()["ge_10E20m2"],
         lw=lw,
         ls="-.",
         label=extralab + "$\\Gamma_e$",
@@ -532,15 +532,15 @@ def plot_gradients(
             axs4.append(axs[0, i])
             axs4.append(axs[1, i])
 
-    ix = np.argmin(np.abs(self.profiles["rho(-)"] - lastRho)) + 1
+    ix = np.argmin(np.abs(self.get_profiles()["rho(-)"] - lastRho)) + 1
 
-    xcoord = self.profiles["rho(-)"] if (not useRoa) else self.derived["roa"]
+    xcoord = self.get_profiles()["rho(-)"] if (not useRoa) else self.get_derived()["roa"]
     labelx = "$\\rho$" if (not useRoa) else "$r/a$"
 
     ax = axs4[0]
     ax.plot(
         xcoord,
-        self.profiles["te(keV)"],
+        self.get_profiles()["te(keV)"],
         ls,
         c=color,
         lw=lw,
@@ -551,7 +551,7 @@ def plot_gradients(
     ax = axs4[2]
     ax.plot(
         xcoord,
-        self.profiles["ti(keV)"][:, 0],
+        self.get_profiles()["ti(keV)"][:, 0],
         ls,
         c=color,
         lw=lw,
@@ -561,7 +561,7 @@ def plot_gradients(
     ax = axs4[4]
     ax.plot(
         xcoord,
-        self.profiles["ne(10^19/m^3)"] * 1e-1,
+        self.get_profiles()["ne(10^19/m^3)"] * 1e-1,
         ls,
         c=color,
         lw=lw,
@@ -573,7 +573,7 @@ def plot_gradients(
         ax = axs4[1]
         ax.plot(
             xcoord[:ix],
-            self.derived["aLTe"][:ix],
+            self.get_derived()["aLTe"][:ix],
             ls,
             c=color,
             lw=lw,
@@ -583,7 +583,7 @@ def plot_gradients(
         ax = axs4[3]
         ax.plot(
             xcoord[:ix],
-            self.derived["aLTi"][:ix, 0],
+            self.get_derived()["aLTi"][:ix, 0],
             ls,
             c=color,
             lw=lw,
@@ -596,7 +596,7 @@ def plot_gradients(
                 if self.Species[i]["S"] != "therm":
                                 ax.plot(
                                 xcoord[:ix],
-                                self.derived["aLTi"][:ix, i],
+                                self.get_derived()["aLTi"][:ix, i],
                                 ls,
                                 c=fast_color,
                                 lw=lw,
@@ -609,7 +609,7 @@ def plot_gradients(
         ax = axs4[5]
         ax.plot(
             xcoord[:ix],
-            self.derived["aLne"][:ix],
+            self.get_derived()["aLne"][:ix],
             ls,
             c=color,
             lw=lw,
@@ -658,7 +658,7 @@ def plot_gradients(
     if plotImpurity is not None:
         axs4[6 + cont].plot(
             xcoord,
-            self.profiles["ni(10^19/m^3)"][:, plotImpurity] * 1e-1,
+            self.get_profiles()["ni(10^19/m^3)"][:, plotImpurity] * 1e-1,
             ls,
             c=color,
             lw=lw,
@@ -672,7 +672,7 @@ def plot_gradients(
         if "derived" in self.__dict__:
             axs4[7 + cont].plot(
                 xcoord[:ix],
-                self.derived["aLni"][:ix, plotImpurity],
+                self.get_derived()["aLni"][:ix, plotImpurity],
                 ls,
                 c=color,
                 lw=lw,
@@ -689,7 +689,7 @@ def plot_gradients(
     if plotRotation:
         axs4[6 + cont].plot(
             xcoord,
-            self.profiles["w0(rad/s)"] * 1e-3,
+            self.get_profiles()["w0(rad/s)"] * 1e-3,
             ls,
             c=color,
             lw=lw,
@@ -699,10 +699,10 @@ def plot_gradients(
         axs4[6 + cont].set_ylabel("$w_0$ (krad/s)")
         axs4[6 + cont].set_xlabel(labelx)
         
-        var = -self.derived["dw0dr"][:ix] * 1e-5
+        var = -self.get_derived()["dw0dr"][:ix] * 1e-5
         varlab = "-$d\\omega_0/dr$ (krad/s/cm)"
         
-        # var = self.derived["dw0dr"][:ix] * self.derived["a"] / self.profiles['w0(rad/s)'][:ix]
+        # var = self.get_derived()["dw0dr"][:ix] * self.get_derived()["a"] / self.get_profiles()['w0(rad/s)'][:ix]
         # varlab = "a/$L_{w0}$"
         
         if "derived" in self.__dict__:
@@ -723,7 +723,7 @@ def plot_gradients(
         cont += 2
 
     for x0 in predicted_rhoPlot:
-        ix = np.argmin(np.abs(self.profiles["rho(-)"] - x0))
+        ix = np.argmin(np.abs(self.get_profiles()["rho(-)"] - x0))
         for ax in axs4:
             ax.axvline(x=xcoord[ix], ls="--", lw=0.5, c=color)
 
@@ -733,12 +733,12 @@ def plot_gradients(
 
 def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     
-    rho = self.profiles["rho(-)"]
+    rho = self.get_profiles()["rho(-)"]
     lines = GRAPHICStools.listLS()
     
     # Others
     ax = axs6[0]
-    ax.plot(self.profiles["rho(-)"], self.derived["dw0dr"] * 1e-5, c=color, lw=lw)
+    ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["dw0dr"] * 1e-5, c=color, lw=lw)
     ax.set_ylabel("$-d\\omega_0/dr$ (krad/s/cm)")
     ax.set_xlabel("$\\rho$")
     ax.set_xlim([0, 1])
@@ -748,7 +748,7 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     ax.axhline(y=0, lw=1.0, c="k", ls="--")
 
     ax = axs6[2]
-    ax.plot(self.profiles["rho(-)"], self.derived["q_fus"], c=color, lw=lw)
+    ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["q_fus"], c=color, lw=lw)
     ax.set_ylabel("$q_{fus}$ ($MW/m^3$)")
     ax.set_xlabel("$\\rho$")
     ax.set_xlim([0, 1])
@@ -757,7 +757,7 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = axs6[3]
-    ax.plot(self.profiles["rho(-)"], self.derived["q_fus_MW"], c=color, lw=lw)
+    ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["q_fus_MW"], c=color, lw=lw)
     ax.set_ylabel("$P_{fus}$ ($MW$)")
     ax.set_xlim([0, 1])
 
@@ -765,7 +765,7 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = axs6[4]
-    ax.plot(self.profiles["rho(-)"], self.derived["tite"], c=color, lw=lw)
+    ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["tite"], c=color, lw=lw)
     ax.set_ylabel("$T_i/T_e$")
     ax.set_xlabel("$\\rho$")
     ax.set_xlim([0, 1])
@@ -775,8 +775,8 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     GRAPHICStools.autoscale_y(ax)
 
     ax = axs6[5]
-    if "MachNum" in self.derived:
-        ax.plot(self.profiles["rho(-)"], self.derived["MachNum"], c=color, lw=lw)
+    if "MachNum" in self.get_derived():
+        ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["MachNum"], c=color, lw=lw)
     ax.set_ylabel("Mach Number")
     ax.set_xlabel("$\\rho$")
     ax.set_xlim([0, 1])
@@ -788,26 +788,26 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
 
     ax = axs6[6]
     safe_division = np.divide(
-        self.derived["qi_MWm2"],
-        self.derived["qe_MWm2"],
-        where=self.derived["qe_MWm2"] != 0,
-        out=np.full_like(self.derived["qi_MWm2"], np.nan),
+        self.get_derived()["qi_MWm2"],
+        self.get_derived()["qe_MWm2"],
+        where=self.get_derived()["qe_MWm2"] != 0,
+        out=np.full_like(self.get_derived()["qi_MWm2"], np.nan),
     )
     ax.plot(
-        self.profiles["rho(-)"],
+        self.get_profiles()["rho(-)"],
         safe_division,
         c=color,
         lw=lw,
         label=extralab + "$Q_i/Q_e$",
     )
     safe_division = np.divide(
-        self.derived["qi_aux_MW"],
-        self.derived["qe_aux_MW"],
-        where=self.derived["qe_aux_MW"] != 0,
-        out=np.full_like(self.derived["qi_aux_MW"], np.nan),
+        self.get_derived()["qi_aux_MW"],
+        self.get_derived()["qe_aux_MW"],
+        where=self.get_derived()["qe_aux_MW"] != 0,
+        out=np.full_like(self.get_derived()["qi_aux_MW"], np.nan),
     )
     ax.plot(
-        self.profiles["rho(-)"],
+        self.get_profiles()["rho(-)"],
         safe_division,
         c=color,
         lw=lw,
@@ -815,13 +815,13 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
         label=extralab + "$P_{aux,i}/P_{aux,e}$",
     )
     safe_division = np.divide(
-        self.derived["qi_aux_MW"]+self.derived['qi_fus_MW'],
-        self.derived["qe_aux_MW"]+self.derived['qe_fus_MW'],
-        where=(self.derived["qe_aux_MW"]+self.derived['qe_fus_MW']) != 0,
-        out=np.full_like(self.derived["qi_aux_MW"], np.nan),
+        self.get_derived()["qi_aux_MW"]+self.get_derived()['qi_fus_MW'],
+        self.get_derived()["qe_aux_MW"]+self.get_derived()['qe_fus_MW'],
+        where=(self.get_derived()["qe_aux_MW"]+self.get_derived()['qe_fus_MW']) != 0,
+        out=np.full_like(self.get_derived()["qi_aux_MW"], np.nan),
     )
     ax.plot(
-        self.profiles["rho(-)"],
+        self.get_profiles()["rho(-)"],
         safe_division,
         c=color,
         lw=lw,
@@ -840,12 +840,16 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
     
     ax = axs6[1]
     
-    var = self.profiles["johm(MA/m^2)"]
+    var = self.get_profiles()["johm(MA/m^2)"]
     ax.plot(rho, var, "-", lw=lw, c=color, label=extralab + "$J_{OH}$")
-    var = self.profiles["jbs(MA/m^2)"]
+    var = self.get_profiles()["jbs(MA/m^2)"]
     ax.plot(rho, var, "--", lw=lw, c=color, label=extralab + "$J_{BS,par}$")
-    var = self.profiles["jbstor(MA/m^2)"]
-    ax.plot(rho, var, "-.", lw=lw, c=color, label=extralab + "$J_{BS,tor}$")
+    # jbstor(MA/m^2) (toroidal bootstrap current component) is not populated by fusio's
+    # plasma_io -> gacode dict conversion (unlike jbs/johm) -- narrow, display-only gap, not
+    # used anywhere in the physics/evaluation path. Skip the line rather than crash.
+    if "jbstor(MA/m^2)" in self.get_profiles():
+        var = self.get_profiles()["jbstor(MA/m^2)"]
+        ax.plot(rho, var, "-.", lw=lw, c=color, label=extralab + "$J_{BS,tor}$")
 
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho$")
@@ -857,17 +861,17 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
 
     ax = axs6[7]
     cont = 0
-    if "vtor(m/s)" in self.profiles:
+    if "vtor(m/s)" in self.get_profiles():
         for i in range(len(self.Species)):
             try:  # REMOVE FOR FUTURE
-                var = self.profiles["vtor(m/s)"][:, i] * 1e-3
+                var = self.get_profiles()["vtor(m/s)"][:, i] * 1e-3
                 ax.plot(
                     rho,
                     var,
                     lw=lw,
                     ls=lines[cont],
                     c=color,
-                    label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+                    label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
                 )
                 cont += 1
             except:
@@ -882,9 +886,9 @@ def plot_other(self, axs6, color="b", lw=1.0, extralab="", fs=6):
 
     ax = axs6[8]
     
-    ax.plot(rho, self.derived["B_unit"], "-", lw=lw, c=color, label=extralab + "$B_{unit}$")
-    ax.plot(rho, self.derived["B_ref"], "--", lw=lw, c=color, label=extralab + "$B_{ref}$")
-    ax.axhline(y=self.profiles["bcentr(T)"][0], lw=lw, ls=":", c=color, label=extralab + "$B_{centr}$")
+    ax.plot(rho, self.get_derived()["B_unit"], "-", lw=lw, c=color, label=extralab + "$B_{unit}$")
+    ax.plot(rho, self.get_derived()["B_ref"], "--", lw=lw, c=color, label=extralab + "$B_{ref}$")
+    ax.axhline(y=self.get_profiles()["bcentr(T)"][0], lw=lw, ls=":", c=color, label=extralab + "$B_{centr}$")
     ax.set_xlim([0, 1])
     ax.set_xlabel("$\\rho$")
     ax.set_ylabel("$B$ (T)")
@@ -914,12 +918,12 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
 
     ax = axs[0]
     axT = axs[1]
-    roa = self.derived['roa']
-    Te = self.profiles["te(keV)"]
-    ne = self.profiles["ne(10^19/m^3)"] * 1e-1
-    ni = self.profiles["ni(10^19/m^3)"] * 1e-1
+    roa = self.get_derived()['roa']
+    Te = self.get_profiles()["te(keV)"]
+    ne = self.get_profiles()["ne(10^19/m^3)"] * 1e-1
+    ni = self.get_profiles()["ni(10^19/m^3)"] * 1e-1
     niT = np.sum(ni, axis=1)
-    Ti = self.profiles["ti(keV)"][:, 0]
+    Ti = self.get_profiles()["ti(keV)"][:, 0]
     ax.plot(roa, Te, lw=2, c="r", label="$T_e$" if leg else "", ls=ls)
     ax.plot(roa, Ti, lw=2, c="b", label="$T_i$" if leg else "", ls=ls)
     axT.plot(roa, ne, lw=2, c="m", label="$n_e$" if leg else "", ls=ls)
@@ -954,11 +958,11 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     GRAPHICStools.autoscale_y(axT, bottomy=0)
 
     if showtexts:
-        if self.derived["Q"] > 0.005:
+        if self.get_derived()["Q"] > 0.005:
             ax.text(
                 0.05,
                 0.05,
-                f"Pfus = {self.derived['Pfus']:.1f}MW, Q = {self.derived['Q']:.2f}",
+                f"Pfus = {self.get_derived()['Pfus']:.1f}MW, Q = {self.get_derived()['Q']:.2f}",
                 color="k",
                 fontsize=10,
                 fontweight="normal",
@@ -972,9 +976,9 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
             0.05,
             0.4,
             "ne_20 = {0:.1f} (fG = {1:.2f}), Zeff = {2:.1f}".format(
-                self.derived["ne_vol20"],
-                self.derived["fG"],
-                self.derived["Zeff_vol"],
+                self.get_derived()["ne_vol20"],
+                self.get_derived()["fG"],
+                self.get_derived()["Zeff_vol"],
             ),
             color="k",
             fontsize=10,
@@ -988,15 +992,15 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     # F
     ax = axs[2]
     P = (
-        self.derived["qe_fus_MW"]
-        + self.derived["qe_aux_MW"]
-        + -self.derived["qe_rad_MW"]
-        + -self.derived["qe_exc_MW"]
+        self.get_derived()["qe_fus_MW"]
+        + self.get_derived()["qe_aux_MW"]
+        + -self.get_derived()["qe_rad_MW"]
+        + -self.get_derived()["qe_exc_MW"]
     )
 
     ax.plot(
         roa,
-        -self.derived["qe_MW"],
+        -self.get_derived()["qe_MW"],
         c="g",
         lw=2,
         label="$P_{e}$" if leg else "",
@@ -1004,7 +1008,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qe_fus_MW"],
+        self.get_derived()["qe_fus_MW"],
         c="r",
         lw=2,
         label="$P_{fus,e}$" if leg else "",
@@ -1012,7 +1016,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qe_aux_MW"],
+        self.get_derived()["qe_aux_MW"],
         c="b",
         lw=2,
         label="$P_{aux,e}$" if leg else "",
@@ -1020,7 +1024,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        -self.derived["qe_exc_MW"],
+        -self.get_derived()["qe_exc_MW"],
         c="m",
         lw=2,
         label="$P_{exc,e}$" if leg else "",
@@ -1028,7 +1032,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        -self.derived["qe_rad_MW"],
+        -self.get_derived()["qe_rad_MW"],
         c="c",
         lw=2,
         label="$P_{rad,e}$" if leg else "",
@@ -1036,12 +1040,12 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(roa, -P, lw=1, c="y", label="sum" if leg else "", ls=ls)
 
-    # Pe = self.profiles['te(keV)']*1E3*e_J*self.profiles['ne(10^19/m^3)']*1E-1*1E20 *1E-6
+    # Pe = self.get_profiles()['te(keV)']*1E3*e_J*self.get_profiles()['ne(10^19/m^3)']*1E-1*1E20 *1E-6
     # ax.plot(roa,Pe,ls='-',lw=3,alpha=0.1,c='k',label='$W_e$ (MJ/m^3)')
 
     ax.plot(
         roa,
-        -self.derived["ce_MW"],
+        -self.get_derived()["ce_MW"],
         c="k",
         lw=1,
         label="($P_{conv,e}$)" if leg else "",
@@ -1062,14 +1066,14 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
 
     ax = axs[3]
     P = (
-        self.derived["qi_fus_MW"]
-        + self.derived["qi_aux_MW"]
-        + self.derived["qe_exc_MW"]
+        self.get_derived()["qi_fus_MW"]
+        + self.get_derived()["qi_aux_MW"]
+        + self.get_derived()["qe_exc_MW"]
     )
 
     ax.plot(
         roa,
-        -self.derived["qi_MW"],
+        -self.get_derived()["qi_MW"],
         c="g",
         lw=2,
         label="$P_{i}$" if leg else "",
@@ -1077,7 +1081,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qi_fus_MW"],
+        self.get_derived()["qi_fus_MW"],
         c="r",
         lw=2,
         label="$P_{fus,i}$" if leg else "",
@@ -1085,7 +1089,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qi_aux_MW"],
+        self.get_derived()["qi_aux_MW"],
         c="b",
         lw=2,
         label="$P_{aux,i}$" if leg else "",
@@ -1093,7 +1097,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qe_exc_MW"],
+        self.get_derived()["qe_exc_MW"],
         c="m",
         lw=2,
         label="$P_{exc,i}$" if leg else "",
@@ -1101,7 +1105,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(roa, -P, lw=1, c="y", label="sum" if leg else "", ls=ls)
 
-    # Pi = self.profiles['ti(keV)'][:,0]*1E3*e_J*self.profiles['ni(10^19/m^3)'][:,0]*1E-1*1E20 *1E-6
+    # Pi = self.get_profiles()['ti(keV)'][:,0]*1E3*e_J*self.get_profiles()['ni(10^19/m^3)'][:,0]*1E-1*1E20 *1E-6
     # ax.plot(roa,Pi,ls='-',lw=3,alpha=0.1,c='k',label='$W_$ (MJ/m^3)')
 
     ax.set_xlabel("r/a")
@@ -1122,13 +1126,13 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
 
     ax.plot(
         roa,
-        self.derived["ge_10E20"],
+        self.get_derived()["ge_10E20"],
         c="g",
         lw=2,
         label="$\\Gamma_{e}$" if leg else "",
         ls=ls,
     )
-    # ax.plot(roa,self.profiles['ne(10^19/m^3)']*1E-1,lw=3,alpha=0.1,c='k',label='$n_e$ ($10^{20}/m^3$)' if leg else '',ls=ls)
+    # ax.plot(roa,self.get_profiles()['ne(10^19/m^3)']*1E-1,lw=3,alpha=0.1,c='k',label='$n_e$ ($10^{20}/m^3$)' if leg else '',ls=ls)
 
     ax.set_xlabel("r/a")
     ax.set_xlim([0, 1])
@@ -1145,17 +1149,17 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     # TOTAL
     ax = axs[5]
     P = (
-        self.derived["qOhm_MW"]
-        + self.derived["qRF_MW"]
-        + self.derived["qFus_MW"]
-        + -self.derived["qe_rad_MW"]
-        + self.derived["qz_MW"]
-        + self.derived["qBEAM_MW"]
+        self.get_derived()["qOhm_MW"]
+        + self.get_derived()["qRF_MW"]
+        + self.get_derived()["qFus_MW"]
+        + -self.get_derived()["qe_rad_MW"]
+        + self.get_derived()["qz_MW"]
+        + self.get_derived()["qBEAM_MW"]
     )
 
     ax.plot(
         roa,
-        -self.derived["q_MW"],
+        -self.get_derived()["q_MW"],
         c="g",
         lw=2,
         label="$P$" if leg else "",
@@ -1163,7 +1167,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qOhm_MW"],
+        self.get_derived()["qOhm_MW"],
         c="k",
         lw=2,
         label="$P_{Oh}$" if leg else "",
@@ -1171,7 +1175,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qRF_MW"],
+        self.get_derived()["qRF_MW"],
         c="b",
         lw=2,
         label="$P_{RF}$" if leg else "",
@@ -1179,7 +1183,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qBEAM_MW"],
+        self.get_derived()["qBEAM_MW"],
         c="pink",
         lw=2,
         label="$P_{NBI}$" if leg else "",
@@ -1187,7 +1191,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qFus_MW"],
+        self.get_derived()["qFus_MW"],
         c="r",
         lw=2,
         label="$P_{fus}$" if leg else "",
@@ -1195,7 +1199,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        -self.derived["qe_rad_MW"],
+        -self.get_derived()["qe_rad_MW"],
         c="c",
         lw=2,
         label="$P_{rad}$" if leg else "",
@@ -1203,7 +1207,7 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
     )
     ax.plot(
         roa,
-        self.derived["qz_MW"],
+        self.get_derived()["qz_MW"],
         c="orange",
         lw=1,
         label="$P_{ionz.}$" if leg else "",
@@ -1236,15 +1240,15 @@ def plot_flows(self, axs=None, limits=None, ls="-", leg=True, showtexts=True):
 
 def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
 
-    rho = self.profiles["rho(-)"]
+    rho = self.get_profiles()["rho(-)"]
     lines = GRAPHICStools.listLS()
 
     # Impurities
     ax = axsImps[0]
     for i in range(len(self.Species)):
         var = (
-            self.profiles["ni(10^19/m^3)"][:, i]
-            / self.profiles["ni(10^19/m^3)"][0, i]
+            self.get_profiles()["ni(10^19/m^3)"][:, i]
+            / self.get_profiles()["ni(10^19/m^3)"][0, i]
         )
         ax.plot(
             rho,
@@ -1252,7 +1256,7 @@ def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
             lw=lw,
             ls=lines[i],
             c=color,
-            label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+            label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
         )
     varL = "$n_i/n_{i,0}$"
     ax.set_xlim([0, 1])
@@ -1266,14 +1270,14 @@ def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     ax = axsImps[1]
     for i in range(len(self.Species)):
-        var = self.derived["fi"][:, i]
+        var = self.get_derived()["fi"][:, i]
         ax.plot(
             rho,
             var,
             lw=lw,
             ls=lines[i],
             c=color,
-            label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+            label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
         )
     varL = "$f_i$"
     ax.set_xlim([0, 1])
@@ -1290,19 +1294,19 @@ def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
 
     lastRho = 0.9
 
-    ix = np.argmin(np.abs(self.profiles["rho(-)"] - lastRho)) + 1
+    ix = np.argmin(np.abs(self.get_profiles()["rho(-)"] - lastRho)) + 1
     ax.plot(
-        rho[:ix], self.derived["aLne"][:ix], lw=lw * 3, ls="-", c=color, label="e"
+        rho[:ix], self.get_derived()["aLne"][:ix], lw=lw * 3, ls="-", c=color, label="e"
     )
     for i in range(len(self.Species)):
-        var = self.derived["aLni"][:, i]
+        var = self.get_derived()["aLni"][:, i]
         ax.plot(
             rho[:ix],
             var[:ix],
             lw=lw,
             ls=lines[i],
             c=color,
-            label=extralab + f"{i + 1} = {self.profiles['name'][i]}",
+            label=extralab + f"{i + 1} = {self.get_profiles()['name'][i]}",
         )
     varL = "$a/L_{ni}$"
     ax.set_xlim([0, 1])
@@ -1318,7 +1322,7 @@ def plot_ions(self, axsImps, legYN=True, extralab="", color="b", lw=1, fs=6):
     GRAPHICStools.autoscale_y(ax, bottomy=0)
 
     ax = axsImps[3]
-    ax.plot(self.profiles["rho(-)"], self.derived["Zeff"], c=color, lw=lw)
+    ax.plot(self.get_profiles()["rho(-)"], self.get_derived()["Zeff"], c=color, lw=lw)
     ax.set_ylabel("$Z_{eff}$")
     ax.set_xlabel("$\\rho$")
     ax.set_xlim([0, 1])
