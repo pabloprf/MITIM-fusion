@@ -104,6 +104,12 @@ DESCRIPTION
     beats (the bc beat) a physics-based Tsep scale instead of the namelist constant;
     PORTALS surrogate data stays reusable. Test chain: `tests/dev_tests/test_lengyel_clean_beat.py`.
 
+*   💥 **MAESTRO lengyel beat supports multiple diluting impurities**: `parameters_prepare`
+    now accepts list-valued `dilution_impurity_species`, `dilution_impurity_charges`,
+    `dilution_impurity_masses`, and `dilution_impurity_min_concentrations` (same length required).
+    Each species is checked independently, added as thermal if missing, and floored to its
+    per-species minimum concentration; `dilution_impurity_species: null` keeps dilution disabled.
+
 *   💥 **BC beats support Te_bc under-relaxation** (`relaxation` knob in the bc beat's
     `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
     is blended with the value applied by the previous bc beat (shared trans-beat
