@@ -811,7 +811,9 @@ class MITIM_BO:
 
                 if current_step is None:
                     print("\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",typeMsg="w")
-                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q")
+                    # The answer is not used (cold_start is forced either way); in a batch job (askQuestions=False)
+                    # the interactive prompt would kill the run
+                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q" if self.askQuestions else "w")
 
                     self.cold_start = True
 
