@@ -735,6 +735,10 @@ class portals_beat(beat):
         if use_previous_ranges and 'portals_ymin' in self.maestro_instance.parameters_trans_beat:
             print('\t\t- Freezing original ranges for PORTALS optimization from previous beat')
 
+            # These go into the PORTALS namelist overlay (portals_parameters['solution']), which is what
+            # PORTALSmain.prep reads the ranges from -- NOT into optimization_options, where they are
+            # silently ignored and every beat re-boxes relative to its own seed gradients.
+            # Deep-copied so the maestro namelist dict shared by the portals beats is never mutated.
             solution = {
                 'exploration_ranges': {
                     'limits_are_relative': False,
@@ -742,11 +746,8 @@ class portals_beat(beat):
                     'ymax': self.maestro_instance.parameters_trans_beat['portals_ymax'],
                 }
             }
-            
-            if 'solution' not in self.optimization_options_additional:
-                self.optimization_options_additional['solution'] = solution
-            else:
-                self.optimization_options_additional['solution'] = IOtools.deep_dict_update(self.optimization_options_additional['solution'], solution)
+
+            self.portals_parameters = IOtools.deep_dict_update(copy.deepcopy(self.portals_parameters), {'solution': solution})
 
     def _inform_save(self):
 

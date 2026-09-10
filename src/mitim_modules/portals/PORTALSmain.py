@@ -108,8 +108,10 @@ class portals(STRATEGYtools.opt_evaluator):
     ):
 
         # Grab exploration ranges
-        ymax = float(self.portals_parameters["solution"]["exploration_ranges"]["ymax"])
-        ymin = float(self.portals_parameters["solution"]["exploration_ranges"]["ymin"])
+        # float (common to all radii/channels) or dict {channel: [per-radius]} -- e.g. absolute ranges
+        # frozen from a previous MAESTRO beat; the dict form is expanded/consumed below as-is
+        ymax = self.portals_parameters["solution"]["exploration_ranges"]["ymax"]
+        ymin = self.portals_parameters["solution"]["exploration_ranges"]["ymin"]
         limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
         fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
         yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
@@ -168,7 +170,9 @@ class portals(STRATEGYtools.opt_evaluator):
             for prof in self.portals_parameters["solution"]["predicted_channels"]:
                 ymin[prof] = np.array( [ymin0] * len(self.portals_parameters["solution"][key_rhos]) )
 
-        if enforce_finite_aLT is not None:
+        # enforce_finite_aLT caps the RELATIVE lower excursion (1.0 = down to zero gradient); it has no
+        # meaning for absolute ranges, which already carry the bound values
+        if (enforce_finite_aLT is not None) and limits_are_relative:
             for prof in ['te', 'ti']:
                 if prof in ymin:
                     ymin[prof] = np.array(ymin[prof]).clip(min=None,max=enforce_finite_aLT)
