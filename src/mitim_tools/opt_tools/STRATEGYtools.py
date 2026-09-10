@@ -438,11 +438,11 @@ class MITIM_BO:
                     exists = False
                     print('Problem loading "optimization_extra.pkl"',typeMsg="w")
             
-            # nans if not
+            # None if not (consumers test `is None`; a float sentinel becomes a TypeError deep inside the analyzer)
             if not exists:
                 dictStore = {}
                 for i in range(200):
-                    dictStore[i] = np.nan
+                    dictStore[i] = None
 
             # Write atomically: a kill mid-write (e.g. SLURM wall) must not leave a truncated pickle
             file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
