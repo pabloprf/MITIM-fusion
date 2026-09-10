@@ -756,25 +756,40 @@ class portals_beat(beat):
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()
 
-        # Standard PORTALS output
-        try:
-            stepSettings = portals_output.step.stepSettings
+        # standard -> converged-in-training -> degraded. The degraded case is from_folder having fallen
+        # back to PORTALSinitializer (unreadable/pruned pickle): its opt_fun_full never gets a mitim_model
+        # (read_optimization_results assigns it only on success), so the old `except AttributeError`
+        # branch dereferenced an attribute that cannot exist and killed the chain. Hand over what is
+        # still valid (the surrogate data file) and skip the residual/ranges handoff; the next beat
+        # then reuses the previous frozen ranges (if any) and warns.
+        step = getattr(portals_output, 'step', None)
+        mitim_model = getattr(getattr(portals_output, 'opt_fun_full', None), 'mitim_model', None)
+        if step is not None:
+            stepSettings = step.stepSettings
             portals_parameters = portals_output.portals_parameters
-        # Converged in training case
-        except AttributeError:
-            stepSettings = portals_output.opt_fun_full.mitim_model.stepSettings
-            portals_parameters = portals_output.opt_fun_full.mitim_model.optimization_object.portals_parameters
+        elif mitim_model is not None:
+            stepSettings = mitim_model.stepSettings
+            portals_parameters = mitim_model.optimization_object.portals_parameters
+        else:
+            print('\t\t- PORTALS results unreadable (pruned/truncated pickle): skipping the residual and ranges '
+                  'handoff; the next beat still reuses surrogate_data.csv', typeMsg='w')
+            self.maestro_instance.parameters_trans_beat['portals_last_run_folder'] = self.folder_output
+            self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] = self.folder_output / 'Outputs' / 'surrogate_data.csv'
+            return
 
         '''
         -------------------------------------------------------------------------------------------
         Store residual for convergence
         -------------------------------------------------------------------------------------------
         '''
-        
+
         # Get maximum value of negative residual (absolute)
-        original_residual = -portals_output.step.BOmetrics["overall"]["Residual"][0].item()
-        self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
-        print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
+        if step is not None:
+            original_residual = -step.BOmetrics["overall"]["Residual"][0].item()
+            self.maestro_instance.parameters_trans_beat['original_residual'] = original_residual
+            print(f'\t\t* Original value of negative residual (absolute) saved for future beats: {original_residual}')
+        else:
+            print('\t\t- PORTALS converged in training (no BO step): residual not saved for future beats', typeMsg='w')
 
         '''
         -------------------------------------------------------------------------------------------
