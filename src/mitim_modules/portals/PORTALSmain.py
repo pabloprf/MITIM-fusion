@@ -287,8 +287,12 @@ class portals(STRATEGYtools.opt_evaluator):
             dictStore["profiles_modified"] = PROFILEStools.gacode_state(self.folder / "Initialization" / "input.gacode_modified")
             dictStore["profiles_original"] = PROFILEStools.gacode_state( self.folder / "Initialization" / "input.gacode_original")
             cm = _dropped_derived(dictStore) if drop_derived else contextlib.nullcontext()
-            with cm, open(self.optimization_extra, "wb") as handle:
+            # Rewritten in full after every evaluation: write atomically so a kill mid-write (e.g. SLURM
+            # wall) cannot leave a truncated pickle that then breaks the resume
+            file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
+            with cm, open(file_tmp, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
+            file_tmp.replace(self.optimization_extra)
 
     def scalarized_objective(self, Y):
         """

@@ -444,9 +444,11 @@ class MITIM_BO:
                 for i in range(200):
                     dictStore[i] = np.nan
 
-            # Write
-            with open(self.optimization_extra, "wb") as handle:
+            # Write atomically: a kill mid-write (e.g. SLURM wall) must not leave a truncated pickle
+            file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
+            with open(file_tmp, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
+            file_tmp.replace(self.optimization_extra)
 
             # Write the class into the optimization_object
             optimization_object.optimization_extra = self.optimization_extra
