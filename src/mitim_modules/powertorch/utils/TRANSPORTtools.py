@@ -612,6 +612,10 @@ class power_transport:
         if vgen_exb_options not in (None, False):
             print("\t- Computing neoclassical ExB shear via NEO VGEN (zero toroidal rotation)", typeMsg="i")
             vgenOptions = {} if vgen_exb_options is True else dict(vgen_exb_options)
+            # MITIM-side knobs (not VGEN flags, popped before the call): how the profiles VGEN sees are
+            # built beyond the last predicted radius. See _profiles_for_vgen().
+            edge_treatment  = vgenOptions.pop("edge_treatment", "prescribed")
+            smooth_for_vgen = vgenOptions.pop("smooth_profiles", None)
 
             # Limit VGEN to the region PORTALS predicts, with a 0.05 margin on each side
             rho_portals = self.powerstate.plasma["rho"][0, 1:].cpu().numpy()
@@ -632,34 +636,15 @@ class power_transport:
 
             neo_exb = NEOtools.NEO(rhos=[])
             neo_exb.FolderGACODE = self.folder
-            # VGEN must see a profile smooth across the last predicted radius. The BC beat
-            # writes a steep prescribed (linear-in-psi_n) edge beyond it; that corner makes
-            # the neoclassical Er — and, one derivative further, VEXB_SHEAR — spike at the
-            # boundary control point. Run VGEN on a COPY whose edge beyond the last predicted
-            # radius is a C1 continuation of the core (no kink); only w0 inside the band is
-            # kept below. This replaces the old smoothing spline, which itself rang on the
-            # corner and amplified the spike. See MITIMstate.continue_edge_constant_aLx.
-            import copy as _copy
-            profiles_for_vgen = _copy.deepcopy(self.powerstate.profiles_transport)
-            profiles_for_vgen.continue_edge_constant_aLx(float(rho_portals.max()))
-            neo_exb.profiles = profiles_for_vgen
+            neo_exb.profiles, smooth_for_vgen = self._profiles_for_vgen(edge_treatment, smooth_for_vgen, float(rho_portals.max()))
             # numcores=None → run_vgen() resolves from machineSettings (same logic as SIMtools._run())
             neo_exb.run_vgen(subfolder="vgen_neo_exb", vgenOptions=vgenOptions, cold_start=self.cold_start,
-                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=False,
+                             rho_range=rho_range, minutes=minutes_vgen, smooth_profiles=smooth_for_vgen,
                              in_process=in_process_vgen)
             neo_exb.read_vgen()
 
-            # Guard: flag a residual boundary spike in the ExB shear at the control points.
-            try:
-                g = np.interp(rho_portals, neo_exb.profiles_vgen.profiles['rho(-)'],
-                              np.abs(neo_exb.profiles_vgen.derived['gamma_exb']))
-                med = np.median(g[:-1])
-                if med > 0 and g[-1] > 10.0 * med:
-                    print(f"\t\t- WARNING: |gamma_exb| at the last predicted radius "
-                          f"({g[-1]:.3g}) exceeds 10x the median over the others ({med:.3g}); "
-                          f"possible residual edge-construct artifact in VEXB_SHEAR", typeMsg="w")
-            except Exception:
-                pass
+            if edge_treatment == "continue_core":
+                self._warn_residual_edge_shear(neo_exb, rho_portals)
             
             # Insert w0 by interpolating
             if rho_range is not None:
@@ -689,6 +674,54 @@ class power_transport:
             neo_state = getattr(self.powerstate, "profiles_transport_neo", None)
             if neo_state is not None and neo_state is not self.powerstate.profiles_transport:
                 neo_state.profiles['w0(rad/s)'] = w0
+
+    def _profiles_for_vgen(self, edge_treatment, smooth_profiles, rho_bc):
+        """
+        Build the state VGEN sees when computing the neoclassical Er (-> w0 -> VEXB_SHEAR for TGLF).
+
+        Beyond the last predicted radius rho_bc the profiles are prescribed (BC beat: linear-in-psi_n
+        edge), so a/Lx generally jumps there. With Er ~ (1/Zen) dp_i/dr and VEXB_SHEAR ~ d(Er)/dr, that
+        jump shows up as a shear at rho_bc whose magnitude scales as Delta(a/Lp) / (grid spacing).
+
+          "prescribed"    : VGEN sees the state as is (jump included). The shear at rho_bc carries the
+                            edge steepening, resolved over one grid cell (plus the pre-VGEN spline).
+          "continue_core" : VGEN sees a copy whose edge beyond rho_bc is a C1 continuation of the core
+                            (a/Lx frozen at rho_bc, mitim_state.continue_edge_constant_aLx). The shear
+                            at rho_bc is the smooth core-like value; the edge steepening does not enter.
+                            Only w0 inside the predicted band is kept by the caller.
+
+        smooth_profiles=None resolves to True for "prescribed" and False for "continue_core" (the spline
+        rings on the corner, so it is off when the corner has been removed).
+        Returns (state_for_vgen, smooth_profiles).
+        """
+        if edge_treatment == "prescribed":
+            state = self.powerstate.profiles_transport
+            smooth_default = True
+        elif edge_treatment == "continue_core":
+            state = copy.deepcopy(self.powerstate.profiles_transport)
+            state.continue_edge_constant_aLx(rho_bc)
+            smooth_default = False
+        else:
+            raise ValueError(f"vgen_exb_shear.edge_treatment = {edge_treatment!r} not recognized (use 'prescribed' or 'continue_core')")
+
+        if smooth_profiles is None:
+            smooth_profiles = smooth_default
+
+        print(f"\t\t- VGEN edge treatment beyond rho={rho_bc:.3f}: {edge_treatment} (pre-VGEN smoothing spline: {smooth_profiles})", typeMsg="i")
+
+        return state, smooth_profiles
+
+    def _warn_residual_edge_shear(self, neo_exb, rho_portals, ratio=10.0, floor=0.05):
+        """
+        Warn if |gamma_exb| (c_s/a) at the last predicted radius still spikes after the edge continuation:
+        relative test (> ratio x median over the inner control points) AND an absolute floor, so that
+        near-zero core values do not trigger it.
+        """
+        g   = np.interp(rho_portals, neo_exb.profiles_vgen.profiles['rho(-)'], np.abs(neo_exb.profiles_vgen.derived['gamma_exb']))
+        med = np.median(g[:-1])
+        if g[-1] > max(ratio * med, floor):
+            print(f"\t\t- WARNING: |gamma_exb| at the last predicted radius ({g[-1]:.3g}) exceeds {ratio:.0f}x the median over "
+                  f"the others ({med:.3g}) and the {floor} c_s/a floor; possible residual edge artifact in VEXB_SHEAR", typeMsg="w")
 
     def _profiles_to_store(self):
 
