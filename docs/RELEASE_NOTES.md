@@ -171,10 +171,13 @@ DESCRIPTION
     further, the `VEXB_SHEAR` handed to TGLF — spiked at the boundary control point (O(0.3-1)
     c_s/a vs O(1e-3) in the core), suppressing the boundary turbulent flux several-fold and
     biasing the flux-matched edge gradient; the pre-VGEN smoothing spline amplified it further.
-    VGEN now runs on a copy whose edge beyond the last predicted radius is a C1 continuation of
-    the core (`mitim_state.continue_edge_constant_aLx`), with the smoothing spline off, and a
-    warning fires if `|gamma_exb|` at the last predicted radius still exceeds 10x the median over
-    the others. Only affects runs using `vgen_exb_shear` (default off).
+    New MITIM-side knobs in `vgen_exb_shear`: `edge_treatment: continue_core` runs VGEN on a copy
+    whose edge beyond the last predicted radius is a C1 continuation of the core
+    (`mitim_state.continue_edge_constant_aLx`), and `smooth_profiles` (null -> on for
+    `prescribed`, off for `continue_core`) controls the pre-VGEN spline; a warning fires if
+    `|gamma_exb|` at the last predicted radius still exceeds 10x the median over the others.
+    The default `edge_treatment: prescribed` keeps the previous behavior. Only affects runs
+    using `vgen_exb_shear` (default off).
 
 *   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
     fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
@@ -306,11 +309,19 @@ DESCRIPTION
     now keeps one row per evaluation (`Iteration` = index in the training set) and the evaluator
     writes y by evaluation index.
 
-*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now applies on `predicted_roa` grids**: the
-    frozen ranges were built by looping over the template's `predicted_rho` even when the beat
-    ran on `predicted_roa`, giving wrong-length, channel-misaligned bounds that PORTALS silently
-    replaced by the relative box. Ranges are now expanded on the active grid and validated
-    (`_expand_range`) so a mismatch raises instead of falling back.
+*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now actually freezes the exploration
+    ranges**: the frozen ranges were written to a key PORTALS never reads, so every beat silently
+    re-boxed relative to its own seed gradients (up to a/LT ~ 1700 at rho=0.9 for ITER-size cases,
+    letting `sr` walk to negative a/LTe and crash the chain); and on `predicted_roa` grids they
+    were built over the template's `predicted_rho`, giving misaligned bounds. Ranges now go into
+    the portals namelist overlay, expanded on the active grid and validated (`_expand_range`) so a
+    mismatch raises instead of falling back.
+
+*   🐛 **MAESTRO PORTALS beats no longer die on resume after a mid-write SLURM kill**:
+    `optimization_extra.pkl` is written atomically (a truncated pickle broke the resume of that
+    beat), a missing/unreadable `optimization_object.pkl` warns instead of raising an interactive
+    prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
+    the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
 
 ### Changes for developers (internal execution)
 
@@ -326,6 +337,12 @@ DESCRIPTION
 *   🔮 **`maestro.keep_all_files` is deprecated** in favor of `prune_level` (true -> 0, false -> 3).
     The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,
     `--no-keep-all-files`) with a deprecation notice; the default remains keep-everything.
+
+*   🔮 **MAESTRO PORTALS beats default to `first_point: previous_best`**: a PORTALS beat that follows
+    another one now starts from the previous beat's best solution instead of a flux match against
+    the previous surrogate (`try_flux_match_only_for_first_point: true`); set
+    `first_point: flux_match` to recover the old seed. The old key is still accepted with a notice
+    (true -> `flux_match`, false -> `namelist`).
 
 *   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
     exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
