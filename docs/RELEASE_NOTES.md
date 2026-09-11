@@ -185,6 +185,14 @@ DESCRIPTION
     The default `edge_treatment: prescribed` keeps the previous behavior. Only affects runs
     using `vgen_exb_shear` (default off).
 
+*   🐛 **TRANSP `to_profiles` now carries the NBI fast ions and thermal hydrogen**: `getSpecies`
+    built no beam species at all (only fusion products and ICRF minorities were `[fast]`) and skipped
+    NH, so NBI-heated extractions lost the beam dilution and pressure and the H fraction (JET DT
+    42847V04: quasineutrality off by 1.6% at mid-radius, ~12% of the pressure missing). One `[fast]`
+    species per injected isotope (BDENS_D/T/H) is now written, each with its own pressure-consistent
+    T = 2/3 (W_perp+W_par)/n from UBPRP_X/UBPAR_X (fast alphas likewise from UFPRP_4/UFPAR_4), so the
+    state's fast pressure reproduces TRANSP's PMHDF_IN. Tests: `tests/dev_tests/test_transp_fast_ions_time_averaging.py`.
+
 *   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
     fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
     left at zero in the extracted `input.gacode`, so downstream PORTALS density predictions ran
@@ -355,6 +363,13 @@ DESCRIPTION
     `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
     matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
     (`namelist.portals.yaml`) is unchanged.
+
+*   🔮 **TRANSP `to_profiles(time_window>0)` is now a true time average**: window averages are
+    trapezoidal in time over the CDF output slices (the plain mean over-weighted densely sampled
+    stretches), fast-ion temperatures come from the window-averaged energy and density (2/3 <W>/<n>,
+    not <T>), and the flux surfaces are averaged slice by slice before the MXH fit instead of taken
+    at the slice nearest the mean time. `time_window=0` (the default) is unchanged. Any CDF with a
+    thermal H population above 1e15 m^-3 now also gets an `H` thermal species in the extracted state.
 
 ---
 

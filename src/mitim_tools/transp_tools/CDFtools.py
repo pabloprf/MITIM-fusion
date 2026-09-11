@@ -15330,7 +15330,20 @@ class transp_output:
 
         return transp
 
-    def _radiation_for_profiles(self, it_range):
+    def _time_window_weights(self, it_range):
+        """Trapezoidal weights over the CDF output slices in it_range, normalised to sum 1, so that
+        sum(w*f) is the time integral of f over the window divided by its duration. TRANSP's output
+        grid is not uniform (steps jitter, get denser around sawteeth, and the last step is short),
+        so a plain mean over slices would over-weight the densely sampled stretches."""
+        if len(it_range) == 1:
+            return np.array([1.0])
+        t = self.t[it_range]
+        w = np.zeros(len(t))
+        w[:-1] += 0.5 * np.diff(t)
+        w[1:] += 0.5 * np.diff(t)
+        return w / w.sum()
+
+    def _radiation_for_profiles(self, it_range, w):
         """Radiation channels for the gacode state, on the TRANSP zone-centre grid, averaged over it_range.
 
         The gacode state radiates qbrem+qsync+qline and that sum is what gets subtracted from the
@@ -15349,7 +15362,7 @@ class transp_output:
         """
 
         def _p(arr):
-            return np.mean(arr[it_range, :], axis=0)
+            return np.tensordot(w, arr[it_range, :], axes=1)
 
         qbrem, qsync = _p(self.Prad_b), _p(self.Prad_c)
 
@@ -15386,6 +15399,8 @@ class transp_output:
             time_extraction = self.t[-1] + time_extraction
 
         it = np.argmin(np.abs(self.t - time_extraction))
+        if (time_extraction < self.t[0]) or (time_extraction > self.t[-1]):
+            print(f"\t- Requested t={time_extraction:.3f}s is outside the run [{self.t[0]:.3f}, {self.t[-1]:.3f}]s; using nearest slice t={self.t[it]:.3f}s", typeMsg='w')
 
         # Time indices to average over (single point when time_window == 0)
         if time_window == 0.0:
@@ -15395,23 +15410,29 @@ class transp_output:
             it_range = np.where(mask)[0]
             if len(it_range) == 0:
                 it_range = np.array([it])
+            if len(it_range) == 1:
+                print(f"\t- time_window={time_window:.3f}s contains a single output slice (t={self.t[it_range[0]]:.3f}s); no averaging performed", typeMsg='w')
 
         if time_window == 0.0:
             print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
             print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: single slice at t={self.t[it]:.3f}s", typeMsg='i')
         else:
             t_lo, t_hi = self.t[it_range[0]], self.t[it_range[-1]]
-            print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices)")
+            print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices, trapezoidal in time)")
             print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: averaged over {len(it_range)} slices", typeMsg='i')
+            if (time_extraction - time_window / 2 < self.t[0]) or (time_extraction + time_window / 2 > self.t[-1]):
+                print(f"\t\t* Requested window exceeds the run limits [{self.t[0]:.3f}, {self.t[-1]:.3f}]s: truncated to [{t_lo:.3f}, {t_hi:.3f}]s, so its centre is not t={time_extraction:.3f}s", typeMsg='w')
             print(f"\t\t* Fast-ion temperatures: 2/3 <W>/<n> from window-averaged energy and density (not <T>)", typeMsg='i')
         print("\t\t* Extrapolating using cubic spline", typeMsg='i')
 
-        # Helpers: average a scalar (time,) or profile (time, x) over it_range
+        # Helpers: time-average a scalar (time,) or profile (time, x) over it_range with trapezoidal weights
+        w = self._time_window_weights(it_range)
+
         def _s(arr):
-            return float(np.mean(arr[it_range]))
+            return float(np.dot(w, arr[it_range]))
 
         def _p(arr):
-            return np.mean(arr[it_range, :], axis=0)
+            return np.tensordot(w, arr[it_range, :], axes=1)
 
         #TODO: I should be looking at the extrapolated quantities in TRANSP?
         from mitim_tools.misc_tools.MATHtools import extrapolateCubicSpline as extrapolation_routine
@@ -15423,8 +15444,8 @@ class transp_output:
         profiles = {}
 
         # Radial grids — averaged over time window (zone boundaries = output grid, zone centres = where TRANSP profiles live)
-        rho_grid = np.mean(self.xb[it_range, :], axis=0)
-        x_grid = np.mean(self.x[it_range, :], axis=0)
+        rho_grid = _p(self.xb)
+        x_grid = _p(self.x)
 
         # Info
         nion = len(self.Species) - 1
@@ -15493,8 +15514,8 @@ class transp_output:
         Rs, Zs = [], []
         for rho in profiles['rho(-)']:
             RZ = [getFluxSurface(self.f, self.t[j], rho, rhoPol=False, sqrt=True) for j in it_range]
-            Rs.append(np.mean([R for R, _ in RZ], axis=0))
-            Zs.append(np.mean([Z for _, Z in RZ], axis=0))
+            Rs.append(np.tensordot(w, np.array([R for R, _ in RZ]), axes=1))
+            Zs.append(np.tensordot(w, np.array([Z for _, Z in RZ]), axes=1))
         Rs = np.array(Rs)
         Zs = np.array(Zs)
 
@@ -15554,7 +15575,7 @@ class transp_output:
         profiles['qbeami(MW/m^3)'] = _p(self.Pnbii)
 
         # Radiation  (time-averaged): total pinned to TRANSP's PRAD, not the PRAD_BR/CY/LI subset
-        profiles['qbrem(MW/m^3)'], profiles['qsync(MW/m^3)'], profiles['qline(MW/m^3)'] = self._radiation_for_profiles(it_range)
+        profiles['qbrem(MW/m^3)'], profiles['qsync(MW/m^3)'], profiles['qline(MW/m^3)'] = self._radiation_for_profiles(it_range, w)
 
         # Rotation  (time-averaged)
         profiles['w0(rad/s)'] = _p(self.TGLF_w0)
