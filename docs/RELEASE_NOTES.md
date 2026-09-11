@@ -279,6 +279,26 @@ DESCRIPTION
     tiny boundary — with a loud guard refusing to freeze a curve inconsistent with the plasma
     minor radius.
 
+*   🐛 **MAESTRO PORTALS beats hand forward the best evaluation when only the Ricci stop is active**:
+    with `maximum_value: null` and `minimum_inputs_variation: null` the default stopping criteria
+    returned no per-evaluation values, `getBest()` failed silently (`Problem retrieving best
+    evaluation`) and the LAST evaluation of an unconverged beat was carried to the next beat
+    (median 1.17x worse residual than the best point over the lmodes_v6 campaign). The default
+    criteria now always return the residuals, so the min-residual point is the one handed forward.
+
+*   🐛 **`optimization_data.csv` no longer corrupts after a re-evaluated point**: rows were
+    addressed by their `Iteration` value through a DataFrame label, and a candidate coincident
+    with an earlier evaluation got no row, after which every later write landed on the wrong row
+    (blank-y rows, y under the wrong x, missing evaluations; 388 of 535 lmodes_v6 beats). The table
+    now keeps one row per evaluation (`Iteration` = index in the training set) and the evaluator
+    writes y by evaluation index.
+
+*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now applies on `predicted_roa` grids**: the
+    frozen ranges were built by looping over the template's `predicted_rho` even when the beat
+    ran on `predicted_roa`, giving wrong-length, channel-misaligned bounds that PORTALS silently
+    replaced by the relative box. Ranges are now expanded on the active grid and validated
+    (`_expand_range`) so a mismatch raises instead of falling back.
+
 ### Changes for developers (internal execution)
 
 *   🔎 **NEW CHANGE**, description

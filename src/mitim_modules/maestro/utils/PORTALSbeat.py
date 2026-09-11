@@ -827,12 +827,16 @@ class portals_beat(beat):
         Store ranges
         -------------------------------------------------------------------------------------------
         '''
+        # dvs are ordered channel-major over the ACTIVE grid (predicted_roa wins when provided, as in
+        # PORTALSmain.prep); looping over predicted_rho when predicted_roa was in use gave lists of the
+        # template's length, misaligned across channels
+        key_rhos = 'predicted_roa' if portals_parameters['solution'].get('predicted_roa') is not None else 'predicted_rho'
         ymin, ymax = {}, {}
         cont = 0
         for channel in portals_parameters['solution']['predicted_channels']:
             ymin0 = []
             ymax0 = []
-            for rho in portals_parameters['solution']['predicted_rho']:
+            for rho in portals_parameters['solution'][key_rhos]:
                 ymin0.append(stepSettings['optimization_options']['problem_options']['dvs_min'][cont])
                 ymax0.append(stepSettings['optimization_options']['problem_options']['dvs_max'][cont])
                 cont += 1
