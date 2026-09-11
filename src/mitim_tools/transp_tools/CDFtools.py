@@ -13743,6 +13743,8 @@ class transp_output:
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nminiH,
                 "T": self.Tmini,
+                "Wperp": None,  # UMINPP/UMINPA are the whole minority population, not per isotope
+                "Wpar": None,
             }
         if self.nminiHe3.max() > 1e-5:
             self.Species["He3_mini"] = {
@@ -13752,13 +13754,15 @@ class transp_output:
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nminiHe3,
                 "T": self.Tmini,
+                "Wperp": None,
+                "Wpar": None,
             }
 
         # ~~~~~~ Beams (one fast species per injected isotope)
-        for key, name, mass, n, n_avol, T in [
-            ("D_beam", "D", self.mD, self.nbD, self.nbD_avol, self.TbD),
-            ("T_beam", "T", self.mT, self.nbT, self.nbT_avol, self.TbT),
-            ("H_beam", "H", self.mH, self.nbH, self.nbH_avol, self.TbH),
+        for key, name, mass, n, n_avol, T, Wperp, Wpar in [
+            ("D_beam", "D", self.mD, self.nbD, self.nbD_avol, self.TbD, self.Wperpx_bD, self.Wparx_bD),
+            ("T_beam", "T", self.mT, self.nbT, self.nbT_avol, self.TbT, self.Wperpx_bT, self.Wparx_bT),
+            ("H_beam", "H", self.mH, self.nbH, self.nbH_avol, self.TbH, self.Wperpx_bH, self.Wparx_bH),
         ]:
             if n_avol.max() > 1e-5:
                 self.Species[key] = {
@@ -13768,6 +13772,8 @@ class transp_output:
                     "Z": 1*np.ones(len(self.t)),
                     "n": n,
                     "T": T,
+                    "Wperp": Wperp,
+                    "Wpar": Wpar,
                 }
         if (self.nb_avol.max() > 1e-5) and not any(k.endswith("_beam") for k in self.Species):
             print("\t- Beam ions present (BDENS) but no per-isotope BDENS_D/T/H in CDF: beam species NOT added to Species", typeMsg="w")
@@ -13781,6 +13787,8 @@ class transp_output:
                 "Z": 1*np.ones(len(self.t)),
                 "n": self.nfusT,
                 "T": self.Tfus,
+                "Wperp": None,  # UFIPP/UFIPA are all fusion products together
+                "Wpar": None,
             }
         if self.nfusHe4.max() > 1e-5:
             self.Species["He4_fus"] = {
@@ -13790,6 +13798,8 @@ class transp_output:
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe4,
                 "T": self.TfusHe4,
+                "Wperp": self.Wperpx_fusHe4,
+                "Wpar": self.Wparx_fusHe4,
             }
         if self.nfusHe3.max() > 1e-5:
             self.Species["He3_fus"] = {
@@ -13799,6 +13809,8 @@ class transp_output:
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe3,
                 "T": self.Tfus,
+                "Wperp": None,
+                "Wpar": None,
             }
 
     # --------------------------- Convergence ------------------
@@ -15367,6 +15379,9 @@ class transp_output:
 
         if time_extraction is None:
             time_extraction = self.t[self.ind_saw]
+            if time_window > 0.0:
+                print(f"\t- time_extraction=None resolves to the slice before the last sawtooth (t={time_extraction:.3f}s); a window "
+                      f"centred there averages pre- and post-crash slices. Pass time_extraction explicitly to control this", typeMsg='w')
         elif time_extraction < 0:
             time_extraction = self.t[-1] + time_extraction
 
@@ -15383,14 +15398,12 @@ class transp_output:
 
         if time_window == 0.0:
             print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
-            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: single slice at t={self.t[it]:.3f}s", typeMsg='i')
-            print(f"\t\t* Flux surfaces: evaluated at t={self.t[it]:.3f}s", typeMsg='i')
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: single slice at t={self.t[it]:.3f}s", typeMsg='i')
         else:
             t_lo, t_hi = self.t[it_range[0]], self.t[it_range[-1]]
-            t_mean = float(np.mean(self.t[it_range]))
             print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices)")
-            print(f"\t\t* Kinetic profiles, power, rotation, torque, and equilibrium: averaged over {len(it_range)} slices", typeMsg='i')
-            print(f"\t\t* Flux surfaces: evaluated at mean time t={t_mean:.3f}s", typeMsg='i')
+            print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: averaged over {len(it_range)} slices", typeMsg='i')
+            print(f"\t\t* Fast-ion temperatures: 2/3 <W>/<n> from window-averaged energy and density (not <T>)", typeMsg='i')
         print("\t\t* Extrapolating using cubic spline", typeMsg='i')
 
         # Helpers: average a scalar (time,) or profile (time, x) over it_range
@@ -15409,8 +15422,9 @@ class transp_output:
 
         profiles = {}
 
-        # Radial grid — averaged over time window
+        # Radial grids — averaged over time window (zone boundaries = output grid, zone centres = where TRANSP profiles live)
         rho_grid = np.mean(self.xb[it_range, :], axis=0)
+        x_grid = np.mean(self.x[it_range, :], axis=0)
 
         # Info
         nion = len(self.Species) - 1
@@ -15471,15 +15485,16 @@ class transp_output:
         # -------------------------------------------------------------------------------------------------------
         # Flux surfaces  (R,Z averaged over time window, then MXH fitted once)
         # -------------------------------------------------------------------------------------------------------
+        # getFluxSurface evaluates the TRANSP moment expansion on the same uniform theta grid at every slice, so
+        # averaging R(theta), Z(theta) point by point is the same as averaging the moments themselves
 
         coeffs_MXH = 7
 
-        t_mean = float(np.mean(self.t[it_range]))
         Rs, Zs = [], []
         for rho in profiles['rho(-)']:
-            R, Z = getFluxSurface(self.f, t_mean, rho, rhoPol=False, sqrt=True)
-            Rs.append(R)
-            Zs.append(Z)
+            RZ = [getFluxSurface(self.f, self.t[j], rho, rhoPol=False, sqrt=True) for j in it_range]
+            Rs.append(np.mean([R for R, _ in RZ], axis=0))
+            Zs.append(np.mean([Z for _, Z in RZ], axis=0))
         Rs = np.array(Rs)
         Zs = np.array(Zs)
 
@@ -15511,8 +15526,14 @@ class transp_output:
                 profiles['te(keV)'] = _p(self.Te)
                 profiles['ne(10^19/m^3)'] = _p(self.ne) * 1E1
             else:
-                profiles['ni(10^19/m^3)'].append(_p(self.Species[specie]['n']) * 1E1)
-                profiles['ti(keV)'].append(_p(self.Species[specie]['T']))
+                n_avg = _p(self.Species[specie]['n'])
+                T_avg = _p(self.Species[specie]['T'])
+                if self.Species[specie].get('Wperp') is not None:
+                    # Fast species: T = 2/3 <W>/<n> so that <n>*T reproduces the window-averaged stored fast
+                    # pressure; <T> = <W/n> does not. Identical to T at the slice when time_window == 0
+                    T_avg = self._fast_temperature(_p(self.Species[specie]['Wperp']), _p(self.Species[specie]['Wpar']), n_avg, T_avg)
+                profiles['ni(10^19/m^3)'].append(n_avg * 1E1)
+                profiles['ti(keV)'].append(T_avg)
         profiles['ni(10^19/m^3)'] = np.array(profiles['ni(10^19/m^3)']).T
         profiles['ti(keV)'] = np.array(profiles['ti(keV)']).T
 
@@ -15565,9 +15586,9 @@ class transp_output:
         keys_in_x = ['te(keV)', 'ne(10^19/m^3)', 'ni(10^19/m^3)', 'ti(keV)', 'qei(MW/m^3)', 'qrfe(MW/m^3)', 'qrfi(MW/m^3)', 'qioni(MW/m^3)', 'qbrem(MW/m^3)', 'qsync(MW/m^3)', 'qline(MW/m^3)', 'qohme(MW/m^3)', 'qfuse(MW/m^3)', 'qfusi(MW/m^3)', 'qbeame(MW/m^3)', 'qbeami(MW/m^3)', 'w0(rad/s)', 'qmom(N/m^2)', 'qpar_beam(1/m^3/s)', 'qpar_wall(1/m^3/s)']
         for key in keys_in_x:
             if (profiles[key].ndim == 1):
-                profiles[key] = grid_interpolation_method_to_one(self.x[it], profiles[key], profiles['rho(-)'])
+                profiles[key] = grid_interpolation_method_to_one(x_grid, profiles[key], profiles['rho(-)'])
             elif (profiles[key].ndim == 2):
-                profiles[key] = np.vstack([grid_interpolation_method_to_one(self.x[it], profiles[key][:,i], profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
+                profiles[key] = np.vstack([grid_interpolation_method_to_one(x_grid, profiles[key][:,i], profiles['rho(-)']) for i in range(profiles[key].shape[1])]).T
 
         # -------------------------------------------------------------------------------------------------------
         # Postprocessing: Add zero at the beginning
