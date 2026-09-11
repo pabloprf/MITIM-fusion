@@ -203,6 +203,10 @@ maestro:
   # the global one (e.g. transp: {prune_level: 0, ...} while portals: {prune_level: 3, ...}).
   # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
+  # Stop the chain (skip the remaining beats, still finalize) once this many PORTALS beats have
+  # ended without meeting their convergence criteria; null = never stop on unconvergence
+  max_unconverged_portals_beats: null
+
   # WHEN the 99.5% shaping fed to EPED is (re)frozen (HOW it is extracted is
   # plasma.parameters.separatrix.freeze_995_from). Options:
   #   0    : freeze at initialization and reuse for the whole run (default)
@@ -528,11 +532,17 @@ maestro:
       # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
       use_previous_surrogate_data: true
 
+
       # Use previous exploration ranges to limit the new exploration ranges (good to avoid cases in which a portals beat reports a zero gradient)
       use_previous_ranges: true 
 
-      # If surrogates exist, use them to find the first training point (and limit to only one point)
-      try_flux_match_only_for_first_point: true
+      # First training point of a beat that follows another PORTALS beat:
+      #   previous_best -> the previous beat's best solution, as the only training point (the incoming
+      #                    state already carries those gradients)
+      #   flux_match    -> flux match against the previous beat's surrogate, as the only training point
+      #   namelist      -> the PORTALS namelist initialization (initial_training simple-relax points)
+      # (try_flux_match_only_for_first_point true/false is the retired alias for flux_match/namelist)
+      first_point: previous_best
 
       # If element is not exactly in radiation database, search for closest one
       enforce_impurity_radiation_existence: true

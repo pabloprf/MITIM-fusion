@@ -39,7 +39,8 @@ class portals_beat(beat):
             use_previous_residual = True,
             use_previous_surrogate_data = True,
             use_previous_ranges = True,
-            try_flux_match_only_for_first_point = True,
+            first_point = 'previous_best',
+            try_flux_match_only_for_first_point = None,
             change_last_radial_call = True,
             portals_namelist_location = None,
             portals_parameters = None,
@@ -89,7 +90,18 @@ class portals_beat(beat):
         self.change_last_radial_call = change_last_radial_call
         self.use_previous_ranges = use_previous_ranges
 
-        self.try_flux_match_only_for_first_point = try_flux_match_only_for_first_point
+        # first_point: how a beat that follows another PORTALS beat starts
+        #   'previous_best' -> one training point = the previous beat's best solution (the incoming state
+        #                      already carries those gradients: bc beats rescale T at frozen a/L)
+        #   'flux_match'    -> one training point = flux match against the previous beat's surrogate
+        #   'namelist'      -> the PORTALS namelist initialization (initial_training simple-relax points)
+        # try_flux_match_only_for_first_point is the retired boolean alias (True -> 'flux_match', False -> 'namelist')
+        if try_flux_match_only_for_first_point is not None:
+            first_point = 'flux_match' if try_flux_match_only_for_first_point else 'namelist'
+            print(f"\t\t- try_flux_match_only_for_first_point is retired, use first_point: '{first_point}'", typeMsg='w')
+        if first_point not in ('previous_best', 'flux_match', 'namelist'):
+            raise ValueError(f"first_point must be 'previous_best', 'flux_match' or 'namelist', got {first_point!r}")
+        self.first_point = first_point
 
 
         # Initializat optimization options to empty, but may be filled in _inform, from previous beats information
@@ -98,7 +110,7 @@ class portals_beat(beat):
         self._inform(use_previous_residual = self.use_previous_residual, 
                      use_previous_surrogate_data = self.use_previous_surrogate_data,
                      change_last_radial_call = self.change_last_radial_call,
-                     use_previous_ranges = self.use_previous_ranges
+                     use_previous_ranges = self.use_previous_ranges,
                      )
 
     def run(self, **kwargs):
@@ -126,8 +138,22 @@ class portals_beat(beat):
 
         self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed = self.maestro_instance.master_seed, cold_start = cold_start, askQuestions = False, ENABLE_EMBED=ENABLE_EMBED)
 
-        if self.use_previous_surrogate_data and \
-            self.try_flux_match_only_for_first_point and \
+        has_previous_portals = self.maestro_instance.parameters_trans_beat.get('portals_last_run_folder') is not None
+
+        if has_previous_portals and self.first_point == 'previous_best':
+
+            # The incoming state carries the previous beat's best gradients, so the single
+            # simple-relax initialization point (x0 = base, no perturbation) IS that solution
+            print('\t- Seeding this beat with the previous PORTALS best solution as its only training point')
+            portals_fun.optimization_options['initialization_options']['initial_training'] = 1
+
+            portals_fun.prep(p,askQuestions=False)
+
+            self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
+
+        elif has_previous_portals and \
+            self.first_point == 'flux_match' and \
+            self.use_previous_surrogate_data and \
             self.folder_starting_point is not None and \
             ('portals_surrogate_data_file' in self.maestro_instance.parameters_trans_beat) and \
             self.maestro_instance.parameters_trans_beat['portals_surrogate_data_file'] is not None:
@@ -152,6 +178,8 @@ class portals_beat(beat):
                 self.mitim_bo = STRATEGYtools.MITIM_BO(portals_fun, seed=self.maestro_instance.master_seed,cold_start = cold_start, askQuestions = False)
 
         self.mitim_bo.run()
+
+        self.converged = getattr(self.mitim_bo, 'converged', False)
 
     def _flux_match_for_first_point(self):
         '''Seed this beat's first evaluation by flux-matching against the previous PORTALS beat's
@@ -208,6 +236,10 @@ class portals_beat(beat):
                     item.unlink(missing_ok=True)
                 elif item.is_dir():
                     IOtools.shutil_rmtree(item)
+
+            # Persist the convergence verdict next to the results (read back on skipped/re-run beats)
+            if hasattr(self, 'converged'):
+                (self.folder_output / 'portals_converged.txt').write_text(str(self.converged))
 
             self._persist(self.folder / 'Outputs', self.folder_output / 'Outputs')
 
@@ -727,7 +759,9 @@ class portals_beat(beat):
         if last_radial_location_moved and reusing_surrogate_data:
             print('\t\t- Last radial location was moved, so surrogate data will not be reused for that specific location')
             self.optimization_options_additional['surrogate_options']["extrapointsModelsAvoidContent"] = ['_tar',f"_{len(self.portals_parameters['solution'][strKeys])}"]
-            self.try_flux_match_only_for_first_point = False
+            if self.first_point == 'flux_match':
+                print('\t\t- No surrogate at the moved location: first_point flux_match -> previous_best')
+                self.first_point = 'previous_best'
 
         # ----------------------------------------------------------------------------------------------
         # Change ranges
@@ -752,6 +786,16 @@ class portals_beat(beat):
     def _inform_save(self):
 
         print('\t- Saving PORTALS beat parameters for future beats')
+
+        # Convergence history of the PORTALS beats (drives maestro.max_unconverged_portals_beats)
+        verdict_file = self.folder_output / 'portals_converged.txt'
+        converged = getattr(self, 'converged', None)
+        if converged is None and verdict_file.exists():
+            converged = verdict_file.read_text().strip() == 'True'
+        history = list(self.maestro_instance.parameters_trans_beat.get('portals_converged_history', []))
+        history.append(bool(converged) if converged is not None else None)
+        self.maestro_instance.parameters_trans_beat['portals_converged_history'] = history
+        print(f'\t\t* PORTALS convergence history: {history}')
 
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()
