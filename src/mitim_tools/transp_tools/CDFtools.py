@@ -1598,6 +1598,25 @@ class transp_output:
             self.fb_avolAVE_Z = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
             self.fb_avolAVE = copy.deepcopy(self.ne_avol) * 0.0 + self.eps00
 
+    def _read_energy_pair(self, key_perp, key_par):
+        # Perpendicular and parallel energy densities in MJ/m^3 (TRANSP J/cm^3 == MJ/m^3, no conversion);
+        # eps00 floor when the CDF does not have them
+        try:
+            return self.f[key_perp][:], self.f[key_par][:]
+        except (KeyError, IndexError):
+            floor = copy.deepcopy(self.Wperp_x) * 0.0 + self.eps00
+            return floor, copy.deepcopy(floor)
+
+    def _fast_temperature(self, Wperp, Wpar, n, fallback):
+        # T = 2/3 (Wperp+Wpar)/n in keV, with W in MJ/m^3 and n in 10^20 m^-3. Falls back (per zone)
+        # where the energies are missing from the CDF or the density is zero, to avoid 0/0 at the edge
+        if np.all(Wperp + Wpar <= 2 * self.eps00):
+            return copy.deepcopy(fallback)
+        T = copy.deepcopy(fallback)
+        valid = n > self.eps00
+        T[valid] = 2.0 / 3.0 * (Wperp[valid] + Wpar[valid]) * 1e6 / (n[valid] * 1e20) / self.e_J * 1e-3
+        return T
+
     def getFastIons(self):
         # ~~~~~~~~~~~~~~~~~~~~~ Densities ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1718,6 +1737,12 @@ class transp_output:
             volumeIntegralTot_var(self.f, self.Wperpx_b + self.Wparx_b) * 1e-6
         )
 
+        # Per-isotope beam energy densities (UBPRP_D/UBPAR_D, ...), so that each beam species in
+        # getSpecies() carries its own pressure-consistent temperature rather than the species-averaged Tb
+        self.Wperpx_bD, self.Wparx_bD = self._read_energy_pair("UBPRP_D", "UBPAR_D")
+        self.Wperpx_bT, self.Wparx_bT = self._read_energy_pair("UBPRP_T", "UBPAR_T")
+        self.Wperpx_bH, self.Wparx_bH = self._read_energy_pair("UBPRP_H", "UBPAR_H")
+
         # ~~~~~~~~~~~~~~~~~~~~~ Temperatures ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # Minority temperatures -- two DISTINCT quantities, do NOT conflate:
@@ -1792,6 +1817,14 @@ class transp_output:
         self.Tfus_avol = volumeAverage_var(self.f, self.Tfus)
         self.Tb_avol = volumeAverage_var(self.f, self.Tb)
         self.Tfast_avol = volumeAverage_var(self.f, self.Tfast)
+
+        # Per-species fast temperatures (same 2/3*(Wperp+Wpar)/n definition as Tb/Tfus, i.e. the
+        # Maxwellian-equivalent temperature that reproduces the stored fast pressure). Where TRANSP did
+        # not write the per-species energies, the population-averaged Tb/Tfus is used instead
+        self.TbD = self._fast_temperature(self.Wperpx_bD, self.Wparx_bD, self.nbD, self.Tb)
+        self.TbT = self._fast_temperature(self.Wperpx_bT, self.Wparx_bT, self.nbT, self.Tb)
+        self.TbH = self._fast_temperature(self.Wperpx_bH, self.Wparx_bH, self.nbH, self.Tb)
+        self.TfusHe4 = self._fast_temperature(self.Wperpx_fusHe4, self.Wparx_fusHe4, self.nfusHe4, self.Tfus)
 
         # ~~~~~~ Average energy (ends up being 3/2*Tfast) ~~~~~~~~~~~
 
@@ -13658,6 +13691,15 @@ class transp_output:
                 "n": self.nT,
                 "T": self.Ti,
             }
+        if self.nH_avol.max() > 1e-5:
+            self.Species["H"] = {
+                "name": "H",
+                "type": "thermal",
+                "m": self.mH,
+                "Z": 1*np.ones(len(self.t)),
+                "n": self.nH,
+                "T": self.Ti,
+            }
         if self.nHe4_avol.max() > 1e-5:
             self.Species["He4_ash"] = {
                 "name": "He",
@@ -13712,6 +13754,24 @@ class transp_output:
                 "T": self.Tmini,
             }
 
+        # ~~~~~~ Beams (one fast species per injected isotope)
+        for key, name, mass, n, n_avol, T in [
+            ("D_beam", "D", self.mD, self.nbD, self.nbD_avol, self.TbD),
+            ("T_beam", "T", self.mT, self.nbT, self.nbT_avol, self.TbT),
+            ("H_beam", "H", self.mH, self.nbH, self.nbH_avol, self.TbH),
+        ]:
+            if n_avol.max() > 1e-5:
+                self.Species[key] = {
+                    "name": name,
+                    "type": "fast",
+                    "m": mass,
+                    "Z": 1*np.ones(len(self.t)),
+                    "n": n,
+                    "T": T,
+                }
+        if (self.nb_avol.max() > 1e-5) and not any(k.endswith("_beam") for k in self.Species):
+            print("\t- Beam ions present (BDENS) but no per-isotope BDENS_D/T/H in CDF: beam species NOT added to Species", typeMsg="w")
+
         # ~~~~~~ Fusion
         if self.nfusT.max() > 1e-5:
             self.Species["T_fus"] = {
@@ -13729,7 +13789,7 @@ class transp_output:
                 "m": self.mHe4,
                 "Z": 2*np.ones(len(self.t)),
                 "n": self.nfusHe4,
-                "T": self.Tfus,
+                "T": self.TfusHe4,
             }
         if self.nfusHe3.max() > 1e-5:
             self.Species["He3_fus"] = {
