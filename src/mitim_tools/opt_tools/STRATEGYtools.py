@@ -2110,7 +2110,11 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
         converged_by_value, yvals = stopping_criteria_by_value(mitim_bo, maximum_value)
     else:
         converged_by_value = False
-        yvals = None
+        if yvals is None:
+            # No default criterion active (e.g. Ricci-only stop): still hand back the residuals,
+            # otherwise getBest() has nothing to argmin and the LAST evaluation is carried forward
+            _, _, maximization_value = mitim_bo.scalarized_objective(torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT))
+            yvals = -maximization_value.cpu().numpy()
 
     converged = converged_by_value or converged_by_dvs
     
