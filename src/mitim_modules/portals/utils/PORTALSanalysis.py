@@ -191,17 +191,24 @@ class PORTALSanalyzer:
 
         # Store indeces
         self.ibest = self.opt_fun.res.best_absolute_index
-        self.i0 = 0
 
         self.iextra = None if self.ilast == self.ibest else self.ilast
 
-        if self.mitim_runs[0] is None:
-            print("* Issue with reading mitim_run 0, likely due to a cold_start of PORTALS simulation that took values from optimization_data.csv but did not generate powerstates", typeMsg="w")
-            print("* This issue should be fixed in the future, have you contacted P. Rodriguez-Fernandez for help?", typeMsg="q")
+        # A resume that took its points from optimization_data.csv never re-runs those evaluations, so their
+        # powerstates are absent (None); use the first index that actually carries one. If none does
+        # (e.g. truncated optimization_extra.pkl), raise AttributeError so from_folder degrades to the
+        # initializer view instead of a TypeError
+        self.i0 = next((i for i in sorted(k for k in self.mitim_runs if isinstance(k, int))
+                        if isinstance(self.mitim_runs[i], dict)), None)
+        if self.i0 is None:
+            print("* No powerstate stored in optimization_extra.pkl (resume from csv, or truncated pickle)", typeMsg="w")
+            raise AttributeError("optimization_extra.pkl carries no powerstates")
+        if self.i0 != 0:
+            print(f"* mitim_run 0 has no powerstate (cold_start from optimization_data.csv); using run {self.i0} as the initial one", typeMsg="w")
 
         # Store setup of TGYRO run
-        self.rhos   = self.mitim_runs[0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
-        self.roa    = self.mitim_runs[0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
+        self.rhos   = self.mitim_runs[self.i0]['powerstate'].plasma['rho'][0,1:].cpu().numpy()
+        self.roa    = self.mitim_runs[self.i0]['powerstate'].plasma['roa'][0,1:].cpu().numpy()
 
         self.portals_parameters = self.opt_fun.mitim_model.optimization_object.portals_parameters
 

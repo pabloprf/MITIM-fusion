@@ -1476,6 +1476,73 @@ class mitim_state:
 
         print(f"\t\t- Resolution of profiles changed to {n} points with function {interpolation_function}")
 
+    def continue_edge_constant_aLx(self, rho_bc, variables=None):
+        """
+        Replace the profiles OUTSIDE rho_bc by a C1 continuation of the core: beyond
+        rho_bc each kinetic profile decays with its log-gradient a/Lx frozen at its
+        value at rho_bc, anchored at the rho_bc value. Profiles at rho <= rho_bc are
+        untouched, so the gradient is continuous across rho_bc (no kink).
+
+        Purpose: build a kink-free copy of the state before a NEO-VGEN Er run. The
+        confinement/BC beat writes a steep, prescribed (linear-in-psi_n) edge beyond
+        the last predicted radius; that corner makes the neoclassical Er — and, one
+        derivative further, VEXB_SHEAR — spike at the boundary control point. VGEN only
+        needs a smooth profile inside the predicted band, so the prescribed outer edge
+        is replaced here by the physics-agnostic continuation and only the resulting w0
+        inside the band is kept by the caller. Operate on a COPY (never the real state).
+
+        Parameters
+        ----------
+        rho_bc : float
+            rho_tor beyond which the continuation is applied (the last predicted radius).
+        variables : list of str, optional
+            Profile keys to continue. Defaults to Te, Ti, ne, ni.
+        """
+        from scipy.integrate import cumulative_trapezoid
+
+        if variables is None:
+            variables = ["te(keV)", "ti(keV)", "ne(10^19/m^3)", "ni(10^19/m^3)"]
+
+        rho = self.profiles["rho(-)"]
+        r   = self.derived["r"]
+        a   = float(self.derived["a"])
+        ibc = int(np.argmin(np.abs(rho - rho_bc)))
+        _grad_map = {"te(keV)": "aLTe", "ti(keV)": "aLTi",
+                     "ne(10^19/m^3)": "aLne", "ni(10^19/m^3)": "aLni"}
+
+        def _continue_1d(X, aLX):
+            # d(ln X)/dr = -aLX/a; freeze aLX at its rho_bc value beyond rho_bc,
+            # integrate outward from the (kept) rho_bc value.
+            aLX_c = aLX.copy()
+            aLX_c[ibc + 1:] = aLX[ibc]
+            dlnX_dr = -aLX_c / a
+            cum = cumulative_trapezoid(dlnX_dr, r, initial=0.0)
+            lnX = np.log(np.maximum(X[ibc], 1e-30)) + (cum - cum[ibc])
+            Xn = X.copy()
+            Xn[ibc + 1:] = np.exp(lnX[ibc + 1:])
+            return Xn
+
+        for key in variables:
+            if key not in self.profiles:
+                continue
+            grad_key = _grad_map.get(key)
+            if grad_key is None or grad_key not in self.derived:
+                continue
+            arr  = self.profiles[key]
+            aLXX = self.derived[grad_key]
+            if arr.ndim == 1:
+                self.profiles[key] = _continue_1d(arr, aLXX)
+            else:
+                out = arr.copy()
+                for col in range(arr.shape[1]):
+                    aLXX_col = aLXX[:, col] if np.ndim(aLXX) == 2 else aLXX
+                    out[:, col] = _continue_1d(arr[:, col], aLXX_col)
+                self.profiles[key] = out
+
+        self.derive_quantities()
+        print(f"\t\t- Edge continued with constant a/Lx beyond rho={rho_bc:.3f} "
+              f"(kink-free copy for VGEN): {variables}", typeMsg="i")
+
     def smooth_profiles(self, variables=None, relative_smoothing=0.005):
         """
         Smooth kinetic profiles in-place by:

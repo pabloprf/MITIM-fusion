@@ -33,6 +33,11 @@ MAESTRO:
 ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
 
+class MAESTROStop(Exception):
+    '''Raised by maestro.run() when the chain must stop early (e.g. max_unconverged_portals_beats reached);
+    run_maestro catches it, skips the remaining beats and still finalizes the run.'''
+
+
 def _resolve_prune_level(prune_level, keep_all_files = None):
     '''
     Resolve the effective prune level, honoring the deprecated `keep_all_files` boolean
@@ -63,7 +68,8 @@ class maestro:
             keep_all_files = None,
             prune_level = None,
             master_seed = 0,
-            maestro_namelist = {}
+            maestro_namelist = {},
+            max_unconverged_portals_beats = None,
             ):
         '''
         Inputs:
@@ -79,6 +85,7 @@ class maestro:
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
         self.prune_level = _resolve_prune_level(prune_level, keep_all_files)
         self.master_seed = master_seed
+        self.max_unconverged_portals_beats = max_unconverged_portals_beats   # None -> never stop on unconvergence
 
         self.maestro_namelist = maestro_namelist
 
@@ -390,9 +397,25 @@ class maestro:
         # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
         self._maybe_refreeze_995()
 
+        # Stop the chain once enough PORTALS beats failed to converge (both paths, so a re-run of a
+        # stopped case stops again at the same beat instead of running the remaining beats)
+        self._check_unconverged_portals_stop()
+
         # To save space, prune this beat's run_ folder according to its effective prune level.
         # Everything needed downstream is already in beat_results/, which pruning never touches.
         self.beat.prune_run_folder()
+
+    def _check_unconverged_portals_stop(self):
+        if self.max_unconverged_portals_beats is None:
+            return
+        history = self.parameters_trans_beat.get('portals_converged_history', [])
+        n_unconverged = sum(1 for c in history if c is False)
+        if n_unconverged >= self.max_unconverged_portals_beats:
+            msg = (f'{n_unconverged} PORTALS beats did not converge (history {history}); '
+                   f'maestro.max_unconverged_portals_beats = {self.max_unconverged_portals_beats} -> stopping the chain after beat {self.counter_current}')
+            print(f'\t- {msg}', typeMsg='w')
+            (self.folder_output / 'maestro_stopped.txt').write_text(msg + '\n')
+            raise MAESTROStop(msg)
 
     # --------------------------------------------------------------------------------------------
     # Cross-beat parameters (parameters_trans_beat) persistence

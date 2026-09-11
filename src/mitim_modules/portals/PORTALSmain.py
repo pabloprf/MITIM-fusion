@@ -108,8 +108,10 @@ class portals(STRATEGYtools.opt_evaluator):
     ):
 
         # Grab exploration ranges
-        ymax = float(self.portals_parameters["solution"]["exploration_ranges"]["ymax"])
-        ymin = float(self.portals_parameters["solution"]["exploration_ranges"]["ymin"])
+        # float (common to all radii/channels) or dict {channel: [per-radius]} -- e.g. absolute ranges
+        # frozen from a previous MAESTRO beat; the dict form is expanded/consumed below as-is
+        ymax = self.portals_parameters["solution"]["exploration_ranges"]["ymax"]
+        ymin = self.portals_parameters["solution"]["exploration_ranges"]["ymin"]
         limits_are_relative = self.portals_parameters["solution"]["exploration_ranges"]["limits_are_relative"]
         fixed_gradients = self.portals_parameters["solution"]["exploration_ranges"]["fixed_gradients"]
         yminymax_atleast = self.portals_parameters["solution"]["exploration_ranges"]["yminymax_atleast"]
@@ -154,21 +156,12 @@ class portals(STRATEGYtools.opt_evaluator):
         # Initialization
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if IOtools.isfloat(ymax):
-            ymax0 = copy.deepcopy(ymax)
+        ymax = self._expand_range(ymax, "ymax", key_rhos)
+        ymin = self._expand_range(ymin, "ymin", key_rhos)
 
-            ymax = {}
-            for prof in self.portals_parameters["solution"]["predicted_channels"]:
-                ymax[prof] = np.array( [ymax0] * len(self.portals_parameters["solution"][key_rhos]) )
-        
-        if IOtools.isfloat(ymin):
-            ymin0 = copy.deepcopy(ymin)
-
-            ymin = {}
-            for prof in self.portals_parameters["solution"]["predicted_channels"]:
-                ymin[prof] = np.array( [ymin0] * len(self.portals_parameters["solution"][key_rhos]) )
-
-        if enforce_finite_aLT is not None:
+        # enforce_finite_aLT caps the RELATIVE lower excursion (1.0 = down to zero gradient); it has no
+        # meaning for absolute ranges, which already carry the bound values
+        if (enforce_finite_aLT is not None) and limits_are_relative:
             for prof in ['te', 'ti']:
                 if prof in ymin:
                     ymin[prof] = np.array(ymin[prof]).clip(min=None,max=enforce_finite_aLT)
@@ -283,8 +276,37 @@ class portals(STRATEGYtools.opt_evaluator):
             dictStore["profiles_modified"] = PROFILEStools.gacode_state(self.folder / "Initialization" / "input.gacode_modified")
             dictStore["profiles_original"] = PROFILEStools.gacode_state( self.folder / "Initialization" / "input.gacode_original")
             cm = _dropped_derived(dictStore) if drop_derived else contextlib.nullcontext()
-            with cm, open(self.optimization_extra, "wb") as handle:
+            # Rewritten in full after every evaluation: write atomically so a kill mid-write (e.g. SLURM
+            # wall) cannot leave a truncated pickle that then breaks the resume
+            file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
+            with cm, open(file_tmp, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
+            file_tmp.replace(self.optimization_extra)
+
+    def _expand_range(self, y, name, key_rhos):
+        """
+        Exploration range as {channel: array over the predicted radii}. A scalar (int or float) applies
+        to all channels and radii; a dict is taken as is, but each predicted channel must be present
+        with one value per predicted radius (a frozen range from a previous MAESTRO beat built on a
+        different grid would otherwise give wrong-length bounds silently).
+        """
+        channels = self.portals_parameters["solution"]["predicted_channels"]
+        n_rhos = len(self.portals_parameters["solution"][key_rhos])
+
+        if IOtools.isfloat(y) or IOtools.isint(y):
+            return {prof: np.array([float(y)] * n_rhos) for prof in channels}
+
+        if not isinstance(y, dict):
+            raise TypeError(f"exploration_ranges.{name} must be a number or a dict {{channel: [per-radius values]}}, got {type(y).__name__}")
+
+        missing = [prof for prof in channels if prof not in y]
+        if missing:
+            raise KeyError(f"exploration_ranges.{name} lacks predicted channels {missing}")
+        for prof in channels:
+            if len(y[prof]) != n_rhos:
+                raise ValueError(f"exploration_ranges.{name}['{prof}'] has {len(y[prof])} values but {key_rhos} has {n_rhos} radii")
+
+        return {prof: np.array(y[prof], dtype=float) for prof in channels}
 
     def scalarized_objective(self, Y):
         """

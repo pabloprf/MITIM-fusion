@@ -155,7 +155,35 @@ DESCRIPTION
     enabled. Lengyel adds optional `parameters_prepare.lengyel_fixed_helium_ash` (bool): when true,
     helium is added as a second fixed impurity species; defaults preserve legacy behavior.
 
+*   🎯 **MAESTRO PORTALS beats seed from the previous beat's best solution**: new `first_point`
+    knob in the portals beat (`previous_best` default, `flux_match`, `namelist`). The flux-match
+    seed against the previous surrogate landed subcritical (zero TGLF edge flux) in nearly every
+    unconverged lmodes_v6 chain; the incoming state already carries the previous best gradients,
+    so the beat now starts there with a single training point.
+    `try_flux_match_only_for_first_point` is kept as a retired alias.
+
+*   🛑 **`maestro.max_unconverged_portals_beats`**: stop a MAESTRO chain (skip the remaining
+    beats, still finalize, `Outputs/maestro_stopped.txt`) once that many PORTALS beats ended
+    without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
+    beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
+    `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+
 ### Bug Fixes
+
+*   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
+    `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
+    prescribed (linear-in-psi_n) edge, written by the BC beat beyond the outermost predicted
+    radius, put a gradient kink one grid point out. The neoclassical Er — and, one derivative
+    further, the `VEXB_SHEAR` handed to TGLF — spiked at the boundary control point (O(0.3-1)
+    c_s/a vs O(1e-3) in the core), suppressing the boundary turbulent flux several-fold and
+    biasing the flux-matched edge gradient; the pre-VGEN smoothing spline amplified it further.
+    New MITIM-side knobs in `vgen_exb_shear`: `edge_treatment: continue_core` runs VGEN on a copy
+    whose edge beyond the last predicted radius is a C1 continuation of the core
+    (`mitim_state.continue_edge_constant_aLx`), and `smooth_profiles` (null -> on for
+    `prescribed`, off for `continue_core`) controls the pre-VGEN spline; a warning fires if
+    `|gamma_exb|` at the last predicted radius still exceeds 10x the median over the others.
+    The default `edge_treatment: prescribed` keeps the previous behavior. Only affects runs
+    using `vgen_exb_shear` (default off).
 
 *   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
     fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
@@ -273,6 +301,34 @@ DESCRIPTION
     tiny boundary — with a loud guard refusing to freeze a curve inconsistent with the plasma
     minor radius.
 
+*   🐛 **MAESTRO PORTALS beats hand forward the best evaluation when only the Ricci stop is active**:
+    with `maximum_value: null` and `minimum_inputs_variation: null` the default stopping criteria
+    returned no per-evaluation values, `getBest()` failed silently (`Problem retrieving best
+    evaluation`) and the LAST evaluation of an unconverged beat was carried to the next beat
+    (median 1.17x worse residual than the best point over the lmodes_v6 campaign). The default
+    criteria now always return the residuals, so the min-residual point is the one handed forward.
+
+*   🐛 **`optimization_data.csv` no longer corrupts after a re-evaluated point**: rows were
+    addressed by their `Iteration` value through a DataFrame label, and a candidate coincident
+    with an earlier evaluation got no row, after which every later write landed on the wrong row
+    (blank-y rows, y under the wrong x, missing evaluations; 388 of 535 lmodes_v6 beats). The table
+    now keeps one row per evaluation (`Iteration` = index in the training set) and the evaluator
+    writes y by evaluation index.
+
+*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now actually freezes the exploration
+    ranges**: the frozen ranges were written to a key PORTALS never reads, so every beat silently
+    re-boxed relative to its own seed gradients (up to a/LT ~ 1700 at rho=0.9 for ITER-size cases,
+    letting `sr` walk to negative a/LTe and crash the chain); and on `predicted_roa` grids they
+    were built over the template's `predicted_rho`, giving misaligned bounds. Ranges now go into
+    the portals namelist overlay, expanded on the active grid and validated (`_expand_range`) so a
+    mismatch raises instead of falling back.
+
+*   🐛 **MAESTRO PORTALS beats no longer die on resume after a mid-write SLURM kill**:
+    `optimization_extra.pkl` is written atomically (a truncated pickle broke the resume of that
+    beat), a missing/unreadable `optimization_object.pkl` warns instead of raising an interactive
+    prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
+    the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
+
 ### Changes for developers (internal execution)
 
 *   🔎 **NEW CHANGE**, description
@@ -287,6 +343,12 @@ DESCRIPTION
 *   🔮 **`maestro.keep_all_files` is deprecated** in favor of `prune_level` (true -> 0, false -> 3).
     The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,
     `--no-keep-all-files`) with a deprecation notice; the default remains keep-everything.
+
+*   🔮 **MAESTRO PORTALS beats default to `first_point: previous_best`**: a PORTALS beat that follows
+    another one now starts from the previous beat's best solution instead of a flux match against
+    the previous surrogate (`try_flux_match_only_for_first_point: true`); set
+    `first_point: flux_match` to recover the old seed. The old key is still accepted with a notice
+    (true -> `flux_match`, false -> `namelist`).
 
 *   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
     exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,

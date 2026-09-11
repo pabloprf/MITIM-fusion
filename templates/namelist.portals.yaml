@@ -310,6 +310,19 @@ transport:
       #     vel: 1         # Velocity method: 1 = NEO weak rotation limit
       #     nth: "17,39"   # Min,max poloidal theta resolution
       #     matched_ion: 1 # Ion species index to match (1-indexed)
+      #     # MITIM-side knobs (not passed to VGEN): what VGEN sees beyond the last predicted radius, where
+      #     # the prescribed edge (e.g. linear-in-psi_n from the BC beat) makes a/Lx jump. Since Er ~ dp_i/dr
+      #     # and VEXB_SHEAR ~ d(Er)/dr, that jump is a shear at the boundary control point whose size scales
+      #     # with 1/(grid spacing).
+      #     edge_treatment: prescribed    # 'prescribed' (default): state as is, the jump enters the shear at
+      #                                   #   the last predicted radius (resolved over one grid cell).
+      #                                   # 'continue_core': copy whose edge beyond the last predicted radius
+      #                                   #   is a C1 continuation of the core (a/Lx frozen there); the shear
+      #                                   #   at the boundary is the smooth core-like value, edge steepening
+      #                                   #   does not enter. Warns if the boundary shear still spikes.
+      #     smooth_profiles: null         # Pre-VGEN smoothing spline on Te/Ti/ne/ni (removes gradient kinks
+      #                                   #   at ALL control points). null -> true for 'prescribed', false for
+      #                                   #   'continue_core' (the spline rings on the edge corner).
       vgen_exb_shear: null
 
     # *********************************************************************************************************
