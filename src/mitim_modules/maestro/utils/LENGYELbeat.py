@@ -8,10 +8,10 @@ from mitim_modules.maestro.utils.MAESTRObeat import beat
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
 from IPython import embed
 from mitim_modules.powertorch.utils import CALCtools
+import periodictable as pt
 
 def element_to_lengyel(symbol):
-    
-    import periodictable as pt
+
     e = pt.elements.symbol(symbol)                      # 'W'
     
     name = e.name                                       # 'tungsten'
@@ -170,14 +170,22 @@ class lengyel_beat(beat):
         # ----------------------------------------------------
         # To pass to the run
         # ----------------------------------------------------
+
+        # Have Lengyel model consider both the fixed impurity and any diluting impurities as fixed impurities for it
+        if self.dilution_impurity_species != None:
+            all_fixed_impurity_species = [fixed_impurity_name] + [element_to_lengyel(symbol)[0] for symbol in (self.dilution_impurity_species or [])]
+            all_fixed_impurity_weights = [fixed_impurity_weights] + self.dilution_impurity_min_concentrations
+        else:
+            all_fixed_impurity_species = [fixed_impurity_name]
+            all_fixed_impurity_weights = [fixed_impurity_weights]
         
         self.lengyel_args = {
             'seed_impurity_species': [ seed_impurity_name ],
             'seed_impurity_weights': [ 1.0 ],
-            'fixed_impurity_species': [fixed_impurity_name],
-            'fixed_impurity_weights': [fixed_impurity_weights]
+            'fixed_impurity_species': all_fixed_impurity_species,
+            'fixed_impurity_weights': all_fixed_impurity_weights
         }
-        
+
         # ----------------------------------------------------
         # Other impurity information for post-processing
         # ----------------------------------------------------
