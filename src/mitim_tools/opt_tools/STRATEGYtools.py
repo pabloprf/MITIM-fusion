@@ -693,6 +693,7 @@ class MITIM_BO:
 
         # Has the problem reached convergence in the training?
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        self.converged = bool(converged)
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = 0
@@ -1292,6 +1293,8 @@ class MITIM_BO:
         # ~~~~~~~~~~~~~~~~~~
 
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+
+        self.converged = bool(converged)   # last verdict; read by MAESTRO to count unconverged PORTALS beats
 
         if converged:
             self.hard_finish = self.hard_finish or True

@@ -149,6 +149,19 @@ DESCRIPTION
     enabled. Lengyel adds optional `parameters_prepare.lengyel_fixed_helium_ash` (bool): when true,
     helium is added as a second fixed impurity species; defaults preserve legacy behavior.
 
+*   🎯 **MAESTRO PORTALS beats seed from the previous beat's best solution**: new `first_point`
+    knob in the portals beat (`previous_best` default, `flux_match`, `namelist`). The flux-match
+    seed against the previous surrogate landed subcritical (zero TGLF edge flux) in nearly every
+    unconverged lmodes_v6 chain; the incoming state already carries the previous best gradients,
+    so the beat now starts there with a single training point.
+    `try_flux_match_only_for_first_point` is kept as a retired alias.
+
+*   🛑 **`maestro.max_unconverged_portals_beats`**: stop a MAESTRO chain (skip the remaining
+    beats, still finalize, `Outputs/maestro_stopped.txt`) once that many PORTALS beats ended
+    without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
+    beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
+    `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+
 ### Bug Fixes
 
 *   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when

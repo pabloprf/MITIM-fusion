@@ -17,7 +17,7 @@ import numpy as np
 from pathlib import Path
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools, GUItools, PLASMAtools
-from mitim_modules.maestro.MAESTROmain import maestro, _resolve_prune_level
+from mitim_modules.maestro.MAESTROmain import maestro, _resolve_prune_level, MAESTROStop
 from mitim_modules.maestro.utils import MAESTROplot
 from mitim_tools.misc_tools.IOtools import mitim_timer
 from mitim_tools.opt_tools.scripts.slurm import run_slurm
@@ -349,7 +349,8 @@ def run_maestro_local(
         overall_log_file = True,
         master_cold_start = force_cold_start,
         prune_level = prune_level,
-        maestro_namelist = maestro_namelist
+        maestro_namelist = maestro_namelist,
+        max_unconverged_portals_beats = maestro_namelist.get("maestro", {}).get("max_unconverged_portals_beats", None),
         )
 
     # -------------------------------------------------------------------------
@@ -425,7 +426,12 @@ def run_maestro_local(
         # Run beat
         # ****************************************************************************
         
-        m.run(**beat_run_namelists[beat])
+        try:
+            m.run(**beat_run_namelists[beat])
+        except MAESTROStop as e:
+            print(f'\t- MAESTRO chain stopped early: {e}', typeMsg='w')
+            m.interpret()
+            break
         
         # ****************************************************************************
         # Post-process beat
