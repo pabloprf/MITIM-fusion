@@ -338,7 +338,7 @@ transport:
       profiles_postprocessing_fun: null
 
       run:
-        code_settings: "Nonlinear"
+        code_settings: "Nonlinear_reduced1"
         extraOptions: {}
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
