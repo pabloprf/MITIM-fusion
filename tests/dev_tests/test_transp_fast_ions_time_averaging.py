@@ -14,7 +14,7 @@ Tests for the TRANSP -> input.gacode extraction (CDFtools.transp_output.to_profi
      UFPRP_4/UFPAR_4), so sum_fast n*T reproduces TRANSP's stored fast pressure
      (2/3 (UFASTPP+UFASTPA), and PMHDF_IN for near-isotropic populations).
 
-  3. Time windows (time_window > 0) are a trapezoidal integral over the output slices
+  3. Time windows (time_window > 0, the half-width) are a trapezoidal integral over the output slices
      divided by the window duration (TRANSP's output grid is not uniform); the fast
      temperature is formed from the window-averaged W and n (not <T>), and the flux
      surfaces are averaged slice by slice before the MXH fit.
@@ -89,6 +89,13 @@ def test_species_and_fast_pressure():
     err = np.max(np.abs(pf_state - pf_transp)) / pf_transp.max()
     assert err < 1e-2, f"fast pressure mismatch {err:.2e}"
 
+    # ptot is written from the kinetic species (thermal + fast): must match TRANSP's PPLAS + PMHDF_IN at the slice
+    ptot_transp = np.interp(p.profiles["rho(-)"], c.x[it, :], c.f["PPLAS"][it, :] + c.f["PMHDF_IN"][it, :])
+    ptot_state = p.profiles["ptot(Pa)"]
+    inner = p.profiles["rho(-)"] < 0.9
+    err_p = np.max(np.abs(ptot_state[inner] - ptot_transp[inner])) / ptot_transp.max()
+    assert err_p < 3e-2, f"ptot vs TRANSP PPLAS+PMHDF_IN mismatch {err_p:.2e}"
+
     # per-isotope beam temperature vs TRANSP's own mean beam energy (<E> = 3/2 T for the same n and W)
     for iso in ["D", "T"]:
         E = c.f[f"EBEAM_{iso}"][it, :25] * 1e-3
@@ -104,7 +111,7 @@ def test_time_window():
         print("SKIP: JET 42847V04 CDF not available")
         return
     c = _cdf()
-    tw = 0.1
+    tw = 0.05  # half-width
     p = c.to_profiles(time_extraction=T_EXTRACT, time_window=tw)
     it_range = np.where(np.abs(c.t - T_EXTRACT) <= tw / 2)[0]
     assert len(it_range) > 1

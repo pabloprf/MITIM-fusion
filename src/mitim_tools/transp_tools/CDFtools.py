@@ -15389,6 +15389,8 @@ class transp_output:
         return qbrem, qsync, qline
 
     def to_profiles(self, time_extraction=None, time_window=0.0):
+        """time_window is the HALF-width [s]: slices with |t - time_extraction| <= time_window are averaged
+        (trapezoidal in time); time_window=0 extracts the single slice nearest time_extraction."""
 
         if time_extraction is None:
             time_extraction = self.t[self.ind_saw]
@@ -15406,12 +15408,12 @@ class transp_output:
         if time_window == 0.0:
             it_range = np.array([it])
         else:
-            mask = np.abs(self.t - time_extraction) <= time_window / 2
+            mask = np.abs(self.t - time_extraction) <= time_window
             it_range = np.where(mask)[0]
             if len(it_range) == 0:
                 it_range = np.array([it])
             if len(it_range) == 1:
-                print(f"\t- time_window={time_window:.3f}s contains a single output slice (t={self.t[it_range[0]]:.3f}s); no averaging performed", typeMsg='w')
+                print(f"\t- time_window (+-{time_window:.3f}s) contains a single output slice (t={self.t[it_range[0]]:.3f}s); no averaging performed", typeMsg='w')
 
         if time_window == 0.0:
             print(f"\t- Converting to input.gacode class, extracting at t={time_extraction:.3f}s")
@@ -15420,7 +15422,7 @@ class transp_output:
             t_lo, t_hi = self.t[it_range[0]], self.t[it_range[-1]]
             print(f"\t- Converting to input.gacode class, time-averaging over t=[{t_lo:.3f}, {t_hi:.3f}]s ({len(it_range)} slices, trapezoidal in time)")
             print(f"\t\t* Kinetic profiles, power, rotation, torque, equilibrium and flux surfaces: averaged over {len(it_range)} slices", typeMsg='i')
-            if (time_extraction - time_window / 2 < self.t[0]) or (time_extraction + time_window / 2 > self.t[-1]):
+            if (time_extraction - time_window < self.t[0]) or (time_extraction + time_window > self.t[-1]):
                 print(f"\t\t* Requested window exceeds the run limits [{self.t[0]:.3f}, {self.t[-1]:.3f}]s: truncated to [{t_lo:.3f}, {t_hi:.3f}]s, so its centre is not t={time_extraction:.3f}s", typeMsg='w')
             print(f"\t\t* Fast-ion temperatures: 2/3 <W>/<n> from window-averaged energy and density (not <T>)", typeMsg='i')
         print("\t\t* Extrapolating using cubic spline", typeMsg='i')
@@ -15636,6 +15638,10 @@ class transp_output:
             profiles[key] = profiles[key].clip(min=minimum)
 
         p = PROFILEStools.gacode_state.scratch(profiles)
+
+        # ptot from the kinetic species written above (thermal + fast, the latter with their Maxwellian-equivalent T),
+        # i.e. TRANSP's PPLAS + PMHDF_IN; TRANSP's own total-pressure variables are not read
+        p.selfconsistentPTOT()
 
         return p
 

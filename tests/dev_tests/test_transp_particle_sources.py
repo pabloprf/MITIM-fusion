@@ -60,7 +60,7 @@ DECKS = Path("/Users/pablorf/PROJECTS/project_2026_DIIIDexperiment/04_transp_int
 CDF_207958 = DECKS / "207958Z01_ida_v4/deck/207958Z01.CDF"
 CDF_207965 = DECKS / "207965Z01_ida_v4/deck/207965Z01.CDF"
 
-T_EXTRACT, T_WINDOW = 3.6, 0.2
+T_EXTRACT, T_WINDOW = 3.6, 0.1  # half-width
 
 # 207958 @ 3.6 s (window 0.2 s): TRANSP BSTH = 2.351e20 N/s; validated state integral 2.357e20 N/s
 REF_BEAM_207958 = 2.357e20

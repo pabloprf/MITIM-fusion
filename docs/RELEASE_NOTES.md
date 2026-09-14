@@ -364,12 +364,14 @@ DESCRIPTION
     matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
     (`namelist.portals.yaml`) is unchanged.
 
-*   🔮 **TRANSP `to_profiles(time_window>0)` is now a true time average**: window averages are
-    trapezoidal in time over the CDF output slices (the plain mean over-weighted densely sampled
-    stretches), fast-ion temperatures come from the window-averaged energy and density (2/3 <W>/<n>,
-    not <T>), and the flux surfaces are averaged slice by slice before the MXH fit instead of taken
-    at the slice nearest the mean time. `time_window=0` (the default) is unchanged. Any CDF with a
-    thermal H population above 1e15 m^-3 now also gets an `H` thermal species in the extracted state.
+*   🔮 **TRANSP `to_profiles(time_window>0)` is now a true time average**: `time_window` is the
+    HALF-width (slices with |t - time_extraction| <= time_window), averages are trapezoidal in time
+    over the CDF output slices (the plain mean over-weighted densely sampled stretches), fast-ion
+    temperatures come from the window-averaged energy and density (2/3 <W>/<n>, not <T>), and the
+    flux surfaces are averaged slice by slice before the MXH fit instead of taken at the slice nearest
+    the mean time. `time_window=0` (the default) is unchanged. Any CDF with a thermal H population
+    above 1e15 m^-3 now also gets an `H` thermal species in the extracted state, and `ptot(Pa)`
+    (previously left at zero) is now the kinetic thermal + fast pressure of the written species.
 
 ---
 
