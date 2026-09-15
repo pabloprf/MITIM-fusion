@@ -547,6 +547,21 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 f"export OMP_NUM_THREADS={mpi['nomp']}\n"
                 f"export OMP_STACKSIZE=1G\n"
             )
+            # Bash mode inside an existing SLURM allocation (driver under salloc/sbatch):
+            # the gacode launcher (platform/exec/exec.<PLATFORM>) runs `srun` with no
+            # node/GPU flags, and srun reads the allocation-wide SLURM_NNODES as -N.
+            # Pin every radial call to exactly one node holding its own GPUs, so the
+            # concurrent calls that the bash builder backgrounds land on different nodes
+            # (a shared node would map two calls onto the same GPUs via SLURM_LOCALID).
+            # srun honors these as input environment variables (-N, --gpus-per-node);
+            # the node count is read from SLURM_JOB_NUM_NODES (SLURM_NNODES alone is
+            # ignored, verified on Perlmutter 2026-09-15), both are set for safety.
+            if resolved.submission_type == "bash" and mpi.get("numa") is not None:
+                omp_prefix += (
+                    "export SLURM_JOB_NUM_NODES=1\n"
+                    "export SLURM_NNODES=1\n"
+                    f"export SLURM_GPUS_PER_NODE={mpi['n']}\n"
+                )
             if mpi.get("numa") is not None:
                 cgyro_cmd = (omp_prefix +
                              f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "

@@ -30,6 +30,7 @@ Callers pass the user-facing `allocation` dict:
      'mem': str|None}             # sbatch --mem string, optional
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -140,7 +141,10 @@ def resolve(
     gpus_per_node = int(machine_settings.get("gpus_per_node") or 0)
     code_cores_per_mpi = hints.get("cores_per_mpi")
     machine_slurm = machine_settings.get("slurm", {}) or {}
-    has_slurm = bool(machine_slurm.get("partition"))
+    # Any non-empty slurm block makes the machine SLURM-capable (same rule as
+    # FARMINGtools.mitim_job). `partition` is optional: NERSC Perlmutter selects
+    # queues with --qos/--constraint only, and used to fall through to bash mode here.
+    has_slurm = bool(machine_slurm)
 
     # --- User knobs ---------------------------------------------------------
     resources_per_call = int(allocation.get("resources_per_call", hints["default_resources_per_call"]))
@@ -172,6 +176,12 @@ def resolve(
     if submission_type == "bash":
         # Cap based on local cores (or GPU count for GPU codes).
         local_capacity = gpus_per_node if (hints["uses_gpu"] and gpus_per_node > 0) else cores_per_node
+        # Driver launched inside a multi-node SLURM allocation (salloc/sbatch): full-node
+        # GPU codes launch each radial call as its own srun step (pinned to one node in
+        # code_call), so the usable capacity is the whole allocation, not one node.
+        n_alloc_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES") or 1)
+        if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and n_alloc_nodes > 1:
+            local_capacity *= n_alloc_nodes
         if local_capacity <= 0:
             local_capacity = resources_per_call  # last resort: one at a time
         concurrency = max(1, local_capacity // max(1, resources_per_call))

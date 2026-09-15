@@ -588,7 +588,10 @@ class mitim_simulation:
                 # Background each launch in a brace group (see _background_job_block
                 # for why a bare '<cmd> &' breaks for multi-line / no-trailing-newline code_calls).
                 GACODEcommand += _background_job_block(code_call(folder=folder_str, n=resources_per_call, p=self.simulation_job.folderExecution))
-                GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
+                # `jobs -rp` (PIDs only, one per line): plain `jobs -r` echoes the job's command
+                # text, which for the multi-line CGYRO brace group spans several lines and
+                # inflated the count, serializing the radii (seen on Perlmutter 2026-09-15).
+                GACODEcommand += "    while (( $(jobs -rp | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
 
