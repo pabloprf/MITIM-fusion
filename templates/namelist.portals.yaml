@@ -476,6 +476,18 @@ transport:
         # flaps. Defaults below match the historical 5 s / 3-attempt cap.
         ssh_retry_wait_seconds: 5
         ssh_retry_attempts: 3
+        # Continue interrupted CGYRO runs in place. When an evaluation is re-run (driver
+        # killed, allocation expired, relaunch with cold_start=False) and its scratch
+        # folder on the CGYRO machine still holds, for a radius, bin.cgyro.restart +
+        # out.cgyro.tag and a byte-identical input.cgyro, that radius is NOT wiped and
+        # re-staged: `cgyro -e` runs again in the same folder and CGYRO itself continues
+        # the time integration from the last restart write for the REMAINING time
+        # (MAX_TIME minus the last simulated time; true restart, restart_flag=1; traces
+        # stay continuous). Radii without a
+        # usable orphan, or whose input.cgyro changed, follow the normal path
+        # (restart_from_cases warm start or cold start). Requires the scratch folder
+        # to survive between launches (same machine; mind scratch purge policies).
+        rescue_interrupted: True
 
         # Auto stall-detect-and-resubmit. The custom checker classifies each
         # rho on every poll; when a rho has been STALLED (no out.cgyro.timing

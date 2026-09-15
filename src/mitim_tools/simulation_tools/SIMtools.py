@@ -164,6 +164,7 @@ class mitim_simulation:
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
         job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_ev{evaluation_number}" to tag submissions by iteration.
+        rescue_interrupted=False, # If True, radii whose previous execution was interrupted in the scratch folder (restart + tag files present, identical input) are continued in place instead of wiped and re-run (codes that declare `rescue_spec`, e.g. CGYRO)
     ):
 
         run_type = _normalize_run_type(run_type)
@@ -226,6 +227,7 @@ class mitim_simulation:
             helper_lostconnection=helper_lostconnection,
             base_subfolder=subfolder,
             job_name_suffix=job_name_suffix,
+            rescue_interrupted=rescue_interrupted,
         )
 
         return code_executor_full
@@ -381,6 +383,81 @@ class mitim_simulation:
         print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {allocation["cores"]} cores/radius)',
             typeMsg="" if expected_allocated_cores < warning else "q",)
 
+    def _rescue_interrupted_runs(self, kwargs_run, tmpFolder, folders, folders_red, input_file):
+        '''
+        Continue, in place, radial runs that a previous execution left unfinished in
+        the scratch folder (driver killed, allocation expired). Enabled by
+        run(rescue_interrupted=True) for codes declaring `run_specifications["rescue_spec"]`:
+            {"required": [files that must exist, e.g. restart blob + tag],
+             "progress_file": file whose last line's first token is the simulated time,
+             "time_key": input-file key holding the run length (e.g. "MAX_TIME")}
+        A rho sub-folder is rescued only if the required files are there and its
+        input file is byte-identical (md5) to the one just generated, so a changed
+        namelist, preset or gradient never continues a stale run. Rescued folders
+        are kept across the scratch wipe (mitim_job.preserve_subfolders) and receive
+        no staged restart file, so the code's own continuation logic takes over
+        (CGYRO: restart + out.cgyro.tag -> restart_flag=1, t continues). Codes take
+        `time_key` as a number of steps to ADD (CGYRO: n_time = MAX_TIME/DELTA_T), so
+        for rescued radii that key is rewritten in the staged input to the remaining
+        time (original minus last simulated time) and excluded from the identity md5.
+        Everything else is staged and run as usual.
+        '''
+        spec = self.run_specifications.get("rescue_spec")
+        self.simulation_job.preserve_subfolders = []
+        if not (kwargs_run.get("rescue_interrupted", False) and spec):
+            return
+        if getattr(self.simulation_job, "run_in_place", False):
+            print("\t- rescue_interrupted requested but the run is in-place (no scratch folder): nothing to rescue", typeMsg="i")
+            return
+
+        time_key = spec.get("time_key")
+        found = self.simulation_job.probe_interrupted_runs(
+            folders_red, spec.get("required", []), input_file,
+            progress_file=spec.get("progress_file"), checksum_ignore_prefix=time_key,
+        )
+        if not found:
+            return
+
+        import hashlib, re
+        rescued = []
+        for folder_sim_this, rel in zip(folders, folders_red):
+            if rel not in found:
+                continue
+            md5_remote, progress = found[rel]
+            text = (folder_sim_this / input_file).read_text()
+            kept = "".join(l for l in text.splitlines(keepends=True) if not (time_key and l.startswith(time_key)))
+            if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
+                print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                continue
+            # Keep only the input file locally: staged restarts would overwrite the
+            # orphan's own (more advanced) restart on extraction
+            for f in folder_sim_this.iterdir():
+                if f.name != input_file:
+                    f.unlink()
+            # Trim the run length to what is left (the code counts steps from the restart)
+            remaining_msg = ""
+            m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
+            if m is not None:
+                try:
+                    total = float(m.group(2)); done = float(progress)
+                    # The restart blob may predate the last printed time by up to one
+                    # restart interval (CGYRO: RESTART_STEP outputs of 1 a/cs each after the
+                    # PRINT_STEP coercion); overshoot by that margin rather than undershoot.
+                    margin = 0.0
+                    if spec.get("restart_interval_key"):
+                        mr = re.search(rf"^{spec['restart_interval_key']}\s*=\s*(\S+)", text, flags=re.M)
+                        margin = float(mr.group(1)) if mr else 0.0
+                    remaining = max(total - done + margin, 1.0)
+                    text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
+                    (folder_sim_this / input_file).write_text(text)
+                    remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
+                except (TypeError, ValueError):
+                    pass
+            rescued.append(rel)
+            print(f"\t- [rescue] {rel}: continuing interrupted run in place (last simulated time {progress}{remaining_msg})", typeMsg="i")
+
+        self.simulation_job.preserve_subfolders = rescued
+
     def _run(
         self,
         code_executor,
@@ -503,6 +580,11 @@ class mitim_simulation:
                             else:
                                 src, dst_name = entry, Path(entry).name
                             shutil.copy(src, folder_sim_this / dst_name)
+
+            # ---------------------------------------------
+            # Rescue interrupted runs left in the scratch folder
+            # ---------------------------------------------
+            self._rescue_interrupted_runs(kwargs_run, tmpFolder, folders, folders_red, input_file)
 
             # ---------------------------------------------
             # Prepare command

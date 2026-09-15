@@ -613,6 +613,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'default_cores': 16,  # Default cores to use in the simulation
             'output_class': CGYROutils.CGYROoutput,
             'force_submission_type': _force_submission_type,
+            # Interrupted-run rescue (SIMtools._rescue_interrupted_runs): with both the
+            # restart blob and out.cgyro.tag present, re-running `cgyro -e` in the same
+            # folder continues the time integration (restart_flag=1) up to MAX_TIME.
+            'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.time', 'time_key': 'MAX_TIME', 'restart_interval_key': 'RESTART_STEP'},
         }
         
         print("\n-----------------------------------------------------------------------------------------")

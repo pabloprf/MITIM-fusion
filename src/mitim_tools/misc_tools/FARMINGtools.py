@@ -83,6 +83,9 @@ class mitim_job:
         # means retry forever. When self.connection_retry_settings is None,
         # connect_ssh() falls back to the historical defaults.
         self.connection_retry_settings = None
+        # Sub-folders (relative to folderExecution) that remove_scratch_folder() must
+        # keep across the going-in wipe: interrupted runs being rescued in place.
+        self.preserve_subfolders = []
 
     def define_machine(
         self,
@@ -1227,11 +1230,69 @@ class mitim_job:
             print("\t* Skipping scratch-folder removal (in-place local execution)")
             return None, None
 
+        preserve = [str(p) for p in (self.preserve_subfolders or [])]
+        if preserve:
+            # Move the rescued sub-folders aside, wipe, and move them back: the
+            # rest of the scratch tree is rebuilt from a fresh stage-in.
+            print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder, preserving {len(preserve)} rescued sub-folder(s)')
+            fe = shlex.quote(str(self.folderExecution))
+            aside = shlex.quote(str(self.folderExecution) + '.rescue')
+            cmd = f"rm -rf {aside} && mkdir -p {aside}"
+            for rel in preserve:
+                r = shlex.quote(rel)
+                cmd += f" && mkdir -p $(dirname {aside}/{r}) && mv {fe}/{r} {aside}/{r}"
+            cmd += f" && rm -rf {fe} && mkdir -p {fe}"
+            for rel in preserve:
+                r = shlex.quote(rel)
+                cmd += f" && mkdir -p $(dirname {fe}/{r}) && mv {aside}/{r} {fe}/{r}"
+            cmd += f" && rm -rf {aside}"
+            # One-shot: the going-out wipe after a successful run must remove everything
+            self.preserve_subfolders = []
+            return self.execute(cmd)
+
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
         output, error = self.execute(f"rm -rf {self.folderExecution}")
 
         return output, error
+
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, checksum_ignore_prefix=None):
+        '''
+        Look inside the (possibly remote) scratch folder for sub-folders left by an
+        interrupted execution. For each entry of `rel_folders` (relative to
+        folderExecution) returns {rel: (md5_of_checksum_file, last_progress_token)}
+        when every file in `required_files` exists there, and nothing otherwise.
+        `last_progress_token` is the first column of the last line of `progress_file`
+        (e.g. the last simulated time), or None. Lines of `checksum_file` starting
+        with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from the md5, so
+        a value the caller rewrites on rescue does not defeat the identity check.
+        One shell round-trip in total.
+        '''
+        if getattr(self, 'run_in_place', False) or not rel_folders:
+            return {}
+        fe = str(self.folderExecution)
+        checks = ' && '.join(f'[ -f "$d/{f}" ]' for f in list(required_files) + [checksum_file])
+        prog = f'$(tail -n 1 "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        filt = f"grep -v '^{checksum_ignore_prefix}'" if checksum_ignore_prefix else 'cat'
+        lines = []
+        for rel in rel_folders:
+            d = f'{fe}/{rel}'
+            lines.append(
+                f'd={shlex.quote(d)}; if {checks}; then '
+                f'h=$( {filt} "$d/{checksum_file}" | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
+                f'echo "MITIM_RESCUE {rel} $h {prog}"; fi'
+            )
+        self.connect(log_file=self.folder_local / 'paramiko.log')
+        try:
+            output, _ = self.execute('; '.join(lines))
+        finally:
+            self.close()
+        found = {}
+        for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == 'MITIM_RESCUE':
+                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None)
+        return found
 
     def close(self, *args, **kwargs):
         if self.machineSettings["machine"] != "local":

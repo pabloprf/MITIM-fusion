@@ -1422,6 +1422,7 @@ class cgyro_model(gyrokinetic_model):
                 "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
                 "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation",
                 "run_type", "additional_files_to_send", "helper_lostconnection",
+                "rescue_interrupted",
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}
 
