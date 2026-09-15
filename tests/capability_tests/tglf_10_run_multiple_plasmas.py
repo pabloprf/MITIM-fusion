@@ -23,6 +23,7 @@ Key teaching points:
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.gacode_tools import TGLFtools, PROFILEStools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools, GRAPHICStools
 
@@ -100,5 +101,5 @@ for ax in axs:
     GRAPHICStools.addDenseAxis(ax)
 fig.suptitle("TGLF over two plasmas, shared radii, one parallel submission")
 fig.tight_layout()
-plt.show()
+GUItools.show_figures("tglf_10_run_multiple_plasmas")   # plt.show() with a display; saves PNGs to tests/figures/ when headless
 

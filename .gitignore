@@ -2,6 +2,7 @@
 .nfs*
 *.swp
 */scratch/*
+tests/figures/
 *.DS_Store*
 config_user.json
 *.egg-info/
