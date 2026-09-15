@@ -660,6 +660,14 @@ def _iteration_matches_spec_key(key, iteration):
     False and a warning is printed.
     '''
     key = str(key).strip()
+    # PORTALS sources the evaluation number from the Dakota-style filename, a
+    # *string* in the Execution phase ("3") and an int during the SR initializer;
+    # a str-vs-int comparison raised TypeError on the first BO iteration.
+    try:
+        iteration = int(iteration)
+    except (TypeError, ValueError):
+        print(f"\t- [CGYRO *_special] Non-integer evaluation number {iteration!r}; no per-iteration override applied", typeMsg='w')
+        return False
     for op, cmp in (
         (">=", lambda a, b: a >= b),
         ("<=", lambda a, b: a <= b),
