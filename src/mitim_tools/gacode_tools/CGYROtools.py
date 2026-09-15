@@ -557,10 +557,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # the node count is read from SLURM_JOB_NUM_NODES (SLURM_NNODES alone is
             # ignored, verified on Perlmutter 2026-09-15), both are set for safety.
             if resolved.submission_type == "bash" and mpi.get("numa") is not None:
+                _nodes = mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
                 omp_prefix += (
-                    "export SLURM_JOB_NUM_NODES=1\n"
-                    "export SLURM_NNODES=1\n"
-                    f"export SLURM_GPUS_PER_NODE={mpi['n']}\n"
+                    f"export SLURM_JOB_NUM_NODES={_nodes}\n"
+                    f"export SLURM_NNODES={_nodes}\n"
+                    f"export SLURM_GPUS_PER_NODE={mpi['numa']}\n"
                 )
             if mpi.get("numa") is not None:
                 cgyro_cmd = (omp_prefix +

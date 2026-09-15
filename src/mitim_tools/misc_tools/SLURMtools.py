@@ -273,15 +273,20 @@ def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node
         rpc=4 -> n=4 / nomp=16 / numa=4 / mpinuma=1   (full-node, 1 rank/GPU)
     """
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and cores_per_node > 0:
-        n_ranks = max(1, min(int(resources_per_call), gpus_per_node))
+        rpc = max(1, int(resources_per_call))
         nomp = int(code_cores_per_mpi) if code_cores_per_mpi else max(1, cores_per_node // gpus_per_node)
-        return {
-            "n": n_ranks,
-            "nomp": nomp,
-            "numa": n_ranks,
-            "mpinuma": 1,
-        }
-    return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None}
+        if rpc <= gpus_per_node:
+            # Sub-node or single full node: one rank per GPU, one NUMA per rank
+            return {"n": rpc, "nomp": nomp, "numa": rpc, "mpinuma": 1, "nodes": 1}
+        # Multi-node radial call (e.g. 48 GPUs = 12 Perlmutter nodes): whole nodes only.
+        # `-numa` is NUMAs (= GPUs) active per node, so nodes = n / numa.
+        if rpc % gpus_per_node != 0:
+            raise ValueError(
+                f"[MITIM] resources_per_call={rpc} GPUs exceeds one node ({gpus_per_node} GPUs) "
+                f"and is not a multiple of it; use a whole number of nodes (e.g. {gpus_per_node * (rpc // gpus_per_node + 1)})"
+            )
+        return {"n": rpc, "nomp": nomp, "numa": gpus_per_node, "mpinuma": 1, "nodes": rpc // gpus_per_node}
+    return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None, "nodes": 1}
 
 
 def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
@@ -292,15 +297,18 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
         # CGYRO GPU path: 1 MPI rank per requested GPU. ntasks-per-node tracks
         # n_gpus_requested so ntasks × cpus-per-task = the actual CPU slice
         # that matches the cgyro `-n × -nomp` layout.
-        n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))
+        n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))   # GPUs (= ranks) per node
+        n_nodes_per_call = max(1, int(resources_per_call) // gpus_per_node)      # whole nodes per radial call (multi-node)
         omp_per_task = int(code_cores_per_mpi) if code_cores_per_mpi else (
             cores_per_node // gpus_per_node if cores_per_node else 1)
 
         if submission_type == "slurm_standard":
             n_radii = n_rhos * n_subfolders
-            sbatch["ntasks"] = n_gpus_requested * n_radii
+            sbatch["ntasks"] = n_gpus_requested * n_nodes_per_call * n_radii
+            if n_nodes_per_call > 1:
+                sbatch["nodes"] = n_nodes_per_call * n_radii
         elif submission_type == "slurm_array":
-            sbatch["nodes"] = 1
+            sbatch["nodes"] = n_nodes_per_call
             sbatch["ntasks-per-node"] = n_gpus_requested
             sbatch["array"] = ",".join(array_list or [])
 

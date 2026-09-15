@@ -29,8 +29,13 @@ How to run it on NERSC Perlmutter (2 radii -> 2 nodes, one radius per node):
 Verify the placement afterwards: the two files
     Execution/Evaluation.3/transport_simulation_folder/base_cgyro/out.cgyro.hosts_<rho>
 must name two DIFFERENT nodes, and slurm_output/mitim.out must show no GPU OOM.
-Scale-up: allocation nodes = n_radii x (resources_per_call / gpus_per_node).
+Scale-up: allocation nodes = n_radii x (resources_per_call / gpus_per_node). A radial
+call larger than one node (e.g. the 48-GPU / 12-node layout of production CGYRO) is
+requested the same way, resources_per_call = 48; MITIM spreads the ranks over whole
+nodes (4 per node) and pins each call to that many nodes. To try it here at small scale,
+    export MITIM_TEST_GPUS_PER_RADIUS=8      # 2 nodes per radius -> salloc -N 4
 """
+import os
 
 from mitim_tools.opt_tools import STRATEGYtools
 from mitim_modules.portals import PORTALSmain
@@ -81,7 +86,7 @@ run["run_type"] = "normal"
 
 # 4 GPUs per radius = one full Perlmutter GPU node per radius. `minutes` is unused in
 # bash mode (no sbatch) but harmless.
-run["allocation"] = {"resources_per_call": 4, "minutes": 30}
+run["allocation"] = {"resources_per_call": int(os.environ.get("MITIM_TEST_GPUS_PER_RADIUS", 4)), "minutes": 30}
 
 cgyro["keep_files"] = "all"
 cgyro["read"] = {"tmin": -0.3, "tmin_is_rel": True}
