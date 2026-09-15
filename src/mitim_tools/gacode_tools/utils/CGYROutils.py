@@ -413,15 +413,24 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         original_dir = os.getcwd()
         self.temp_links = []
+        self._read_tmpdir = None
+        self.folder_read = Path(folder)
 
         # With job arrays, CGYRO output files for each rho live side-by-side in
         # the parent folder with a per-rho suffix (e.g. out.cgyro.info_0.8519).
-        # pygacode expects canonical names, so we stage symlinks from canonical
-        # -> suffixed for the duration of the read and clean them up after.
+        # pygacode expects canonical names, so we stage symlinks canonical ->
+        # suffixed. They live in a PRIVATE temporary directory (not in the run
+        # folder): two readers of the same folder at once (e.g. the PORTALS
+        # driver and a concurrent mitim_plot_portals) used to create and delete
+        # the same links under each other's feet, and one of them then failed
+        # with a missing out.cgyro.* file (Perlmutter, 2026-09-15).
         if suffix:
             import glob
+            import tempfile
 
             folder_abs = folder.resolve()
+            self._read_tmpdir = tempfile.mkdtemp(prefix=f".mitim_read{suffix}_", dir=folder_abs)
+            self.folder_read = Path(self._read_tmpdir)
             pattern = f"{folder_abs}{os.sep}*{suffix}"
 
             for suffixed_file in glob.glob(pattern):
@@ -429,46 +438,37 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 # Strip suffix only from the basename, and only if it is a true
                 # trailing suffix — avoids collateral damage when the suffix
                 # substring happens to appear elsewhere in the path.
-                if not basename.endswith(suffix):
+                if not basename.endswith(suffix) or os.path.isdir(suffixed_file):
                     continue
-                original_name = os.path.join(folder_abs, basename[:-len(suffix)])
-
-                # Sweep any stale symlink from a previous (possibly crashed)
-                # read so that symlink creation below is idempotent.
-                if os.path.islink(original_name):
-                    try:
-                        os.unlink(original_name)
-                    except OSError:
-                        pass
-
-                # Skip if a real file already sits at the canonical name.
-                if os.path.exists(original_name) and not os.path.islink(original_name):
-                    continue
-
+                link_name = os.path.join(self._read_tmpdir, basename[:-len(suffix)])
                 try:
-                    os.symlink(suffixed_file, original_name)
-                    self.temp_links.append(original_name)
-                    print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {basename}")
+                    os.symlink(suffixed_file, link_name)
+                    self.temp_links.append(link_name)
                 except OSError as e:
                     print(f"\t- Warning: Could not create symlink for {basename}: {e}", typeMsg='w')
+            print(f"\t- Staged {len(self.temp_links)} temporary links for suffix {suffix} in a private read directory")
 
         try:
+            if "cgyrodata_plot" not in globals():
+                raise ImportError(
+                    "[MITIM] pygacode is not importable in this environment, so CGYRO outputs cannot be read. "
+                    "Set GACODE_ROOT and source $GACODE_ROOT/shared/bin/gacode_setup (adds $GACODE_ROOT/f2py to PYTHONPATH)."
+                )
             try:
                 print(f"\t- Reading CGYRO data from {folder.resolve()}")
-                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                cgyrodata = cgyrodata_plot(f"{self.folder_read.resolve()}{os.sep}")
             except FileNotFoundError:
                 raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
             except Exception as e:
                 print(f"\t- Error reading CGYRO data: {e}")
                 if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
                     try:
-                        subprocess.run(["cgyro", "-t"], cwd=str(folder))
+                        subprocess.run(["cgyro", "-t"], cwd=str(self.folder_read))
                     except FileNotFoundError:
                         print("\t- 'cgyro' executable not found in PATH", typeMsg='w')
-                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                cgyrodata = cgyrodata_plot(f"{self.folder_read.resolve()}{os.sep}")
         except Exception:
-            # Guarantee cleanup if the read raises so a subsequent re-read
-            # doesn't trip over stale symlinks.
+            # Guarantee cleanup if the read raises
             self.remove_symlinks()
             raise
         finally:
@@ -477,23 +477,20 @@ class CGYROoutput(SIMtools.GACODEoutput):
         return cgyrodata
 
     def remove_symlinks(self):
-        # Remove temporary symbolic links (idempotent).
-        remaining = []
-        for temp_link in self.temp_links:
-            try:
-                if os.path.islink(temp_link):
-                    os.unlink(temp_link)
-                    print(f"\t- Removed temporary link: {os.path.basename(temp_link)}")
-            except OSError as e:
-                print(f"\t- Warning: Could not remove temporary link {os.path.basename(temp_link)}: {e}", typeMsg='w')
-                remaining.append(temp_link)
-        self.temp_links = remaining
+        # Remove the private read directory with its temporary links (idempotent).
+        tmpdir = getattr(self, "_read_tmpdir", None)
+        if tmpdir is not None and os.path.isdir(tmpdir):
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            print(f"\t- Removed private read directory ({len(self.temp_links)} temporary links)")
+        self._read_tmpdir = None
+        self.temp_links = []
 
     def _process_linear(self):
 
         # check for convergence 
         self.linear_converged = False
-        info_file = f"{self.folder.resolve()}/out.cgyro.info"
+        info_file = f"{self.folder_read.resolve()}/out.cgyro.info"
         if not os.path.exists(info_file):
             raise FileNotFoundError(f"[MITIM] Could not find CGYRO info file at {info_file}. Please check the folder path or run CGYRO first.")
         else:
