@@ -360,7 +360,7 @@ class mitim_job:
         '''
         if not self.launchSlurm:
             raise RuntimeError("resubmit_single_task requires launchSlurm=True")
-        if self.ssh is None:
+        if self.ssh is None and self.machineSettings["machine"] != "local":
             raise RuntimeError("resubmit_single_task requires a live self.ssh; call self.connect() first")
 
         # Drop --array on a deep copy so the parent slurm_settings stays intact
@@ -407,7 +407,10 @@ class mitim_job:
         sbatch_basename = Path(fileSBATCH).name
         remote_sbatch_path = f"{self.folderExecution}/{sbatch_basename}"
         try:
-            self._sftp_transfer_with_retry('put', str(fileSBATCH), remote_sbatch_path)
+            if self.ssh is None:
+                shutil.copy2(str(fileSBATCH), remote_sbatch_path)   # local machine: plain copy
+            else:
+                self._sftp_transfer_with_retry('put', str(fileSBATCH), remote_sbatch_path)
         except Exception as e:
             print(f"\t- resubmit_single_task: failed to upload {sbatch_basename} ({type(e).__name__}: {e})", typeMsg='w')
             return None

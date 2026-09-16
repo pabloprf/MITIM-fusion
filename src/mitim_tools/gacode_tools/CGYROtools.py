@@ -125,9 +125,10 @@ def cgyro_per_task_status(sim):
         "            tk=$(awk 'NF>0 {print $1; exit}' \"$tag\")\n"
         '            [ -n "$tk" ] && tag_token="$tk"\n'
         '        fi\n'
-        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token"\n'
+        '        exited=$(grep -c "^EXIT" "$info")\n'
+        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token|$exited"\n'
         '    else\n'
-        '        echo "$folder|NOT_STARTED|NA|0|0|0|-"\n'
+        '        echo "$folder|NOT_STARTED|NA|0|0|0|-|0"\n'
         '    fi\n'
         "done"
     )
@@ -150,6 +151,7 @@ def cgyro_per_task_status(sim):
         if len(parts) < 7:
             continue
         folder, state, avg, steps, wall, since_update, tag_token = parts[:7]
+        exited = parts[7] if len(parts) > 7 else "0"   # "1" when out.cgyro.info carries CGYRO's EXIT line
 
         try:
             wall_i = max(0, int(wall))
@@ -189,8 +191,8 @@ def cgyro_per_task_status(sim):
         tag_suffix = ""
         tk = tag_token.upper() if (tag_token and tag_token != "-") else ""
 
-        if tk == "FINISHED":
-            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
+        if tk == "FINISHED" or exited == "1":
+            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)" if tk == "FINISHED" else " (EXIT line in out.cgyro.info)"
         elif tk == "TIMEOUT":
             effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
         elif tk == "ERROR":
@@ -426,6 +428,12 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                     f"skipping rescue for {folder} -- detector classification was a false positive",
                     typeMsg='i',
                 )
+                continue
+            elif slurm_state in ("PENDING", "CONFIGURING", "REQUEUED", "SUSPENDED"):
+                # Not running yet: whatever the probe saw in that rho's folder predates
+                # this job (e.g. an interrupted run preserved for an in-place rescue).
+                # Cancelling the element here killed pending rescued radii (2026-09-16).
+                print(f"\t    * slurm reports {scancel_target} is {slurm_state} (not started); ignoring stale files, no rescue", typeMsg='i')
                 continue
             elif slurm_state is not None:
                 print(f"\t    * slurm reports {scancel_target} is {slurm_state}; proceeding with rescue", typeMsg='i')

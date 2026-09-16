@@ -826,11 +826,15 @@ class mitim_simulation:
                             )
                         run_status_int = 2
                     except LOGtools.InteractiveTerminalError:
-                        # TODO: this re-run executes in a scratch whose staged inputs may
-                        # already be gone (observed: NEO retried with input.neo missing and
-                        # its early open of out.neo.run truncated the first attempt's error
-                        # message). A correct retry must re-stage inputs or skip execution;
-                        # until then the retry can destroy the failure diagnostic.
+                        # A failed retrieval already removed the local rho folders (they are
+                        # both the staged inputs and the retrieval targets), so a repeat would
+                        # die in the tarball step with a confusing FileNotFoundError.
+                        if any(not Path(f).exists() for f in folders):
+                            raise RuntimeError(
+                                f"[MITIM] {code.upper()} run did not return its expected outputs and the staged "
+                                f"inputs under {tmpFolder} are gone; not retrying. Check {tmpFolder}/mitim_farming.err "
+                                f"and the code's own logs in the scratch folder."
+                            )
                         print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
                         run_status_int += 1
                     
