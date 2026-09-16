@@ -663,6 +663,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # restart blob and out.cgyro.tag present, re-running `cgyro -e` in the same
             # folder continues the time integration (restart_flag=1) up to MAX_TIME.
             'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.time', 'time_key': 'MAX_TIME', 'restart_interval_key': 'RESTART_STEP'},
+            # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)
+            'completion_marker': ('out.cgyro.info', 'EXIT'),
         }
         
         print("\n-----------------------------------------------------------------------------------------")

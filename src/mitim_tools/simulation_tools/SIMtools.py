@@ -338,6 +338,7 @@ class mitim_simulation:
             filesToRetrieve,
             Folder_sim,
             cold_start=cold_start,
+            completion_marker=self.run_specifications.get("completion_marker"),
         )
 
         if len(rhosEvaluate) == len(rhos):
@@ -1887,9 +1888,16 @@ def cold_start_checker(
     Folder_sim,
     cold_start=False,
     print_each_time=False,
+    completion_marker=None,
 ):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
+
+    completion_marker: optional (file, substring). A radius counts as done only if
+    `<file>_<rho>` also CONTAINS the substring — e.g. ('out.cgyro.info', 'EXIT') for
+    CGYRO, whose output files exist from the first step on: a run killed mid-way
+    (job cancelled or timed out) leaves a complete-looking file set with a few a/cs
+    of data, which used to be accepted as a finished evaluation.
     """
     cont_each = 0
     if cold_start:
@@ -1907,6 +1915,15 @@ def cold_start_checker(
                         print(f"\t* {ffi} does not exist")
                     else:
                         cont_each += 1
+            if existsRho and completion_marker is not None:
+                mfile = Folder_sim / f"{completion_marker[0]}_{ir:.4f}"
+                try:
+                    finished = completion_marker[1] in mfile.read_text(errors="ignore")
+                except OSError:
+                    finished = False
+                if not finished:
+                    print(f"\t* {mfile.name} has no '{completion_marker[1]}' marker: run was interrupted, re-running this radius", typeMsg='w')
+                    existsRho = False
             if not existsRho:
                 rhosEvaluate.append(ir)
 
