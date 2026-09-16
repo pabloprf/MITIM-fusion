@@ -227,7 +227,7 @@ def resolve(
             code_cores_per_mpi=code_cores_per_mpi,
             n_rhos=n_rhos,
             n_subfolders=n_subfolders,
-            array_list=array_list,
+            array_list=array_list, max_concurrent_calls=allocation.get('max_concurrent_calls'),
         )
 
         # Explicit user override for --exclusive (e.g. force whole-node
@@ -291,7 +291,7 @@ def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node
 
 def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
                         cores_per_node, gpus_per_node, code_cores_per_mpi,
-                        n_rhos, n_subfolders, array_list):
+                        n_rhos, n_subfolders, array_list, max_concurrent_calls=None):
     """Populate nodes/ntasks/cpus-per-task/gpus-per-node etc. using native names."""
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0:
         # CGYRO GPU path: 1 MPI rank per requested GPU. ntasks-per-node tracks
@@ -311,6 +311,8 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
             sbatch["nodes"] = n_nodes_per_call
             sbatch["ntasks-per-node"] = n_gpus_requested
             sbatch["array"] = ",".join(array_list or [])
+            if max_concurrent_calls:
+                sbatch["array_limit"] = int(max_concurrent_calls)   # sbatch --array=...%N
 
         sbatch["cpus-per-task"] = omp_per_task
         sbatch["gpus-per-node"] = n_gpus_requested

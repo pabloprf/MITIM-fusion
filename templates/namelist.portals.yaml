@@ -525,6 +525,8 @@ transport:
         #                        element per rho, whole node per element on
         #                        OverSubscribe=NO partitions) or "slurm_standard"
         #                        (single allocation, parallel '&' body).
+        #   max_concurrent_calls : (slurm_array only) at most N radii running at once
+        #                        (sbatch --array=...%N); the rest queue behind them.
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
 
