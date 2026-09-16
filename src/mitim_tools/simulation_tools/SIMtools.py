@@ -640,7 +640,7 @@ class mitim_simulation:
             resolved = SLURMtools.resolve(
                 code=code,
                 allocation={"resources_per_call": resources_per_call, "minutes": minutes,
-                            "mem": allocation.get("mem")},
+                            "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
                 n_rhos=len(rhos), n_subfolders=len(code_executor),
                 machine_settings=machineSettings,
                 launch_slurm=launchSlurm,
@@ -765,7 +765,7 @@ class mitim_simulation:
                 resolved = SLURMtools.resolve(
                     code=code,
                     allocation={"resources_per_call": resources_per_call, "minutes": minutes,
-                                "mem": allocation.get("mem")},
+                                "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
                     n_rhos=len(rhos), n_subfolders=len(code_executor),
                     machine_settings=machineSettings,
                     launch_slurm=launchSlurm,
