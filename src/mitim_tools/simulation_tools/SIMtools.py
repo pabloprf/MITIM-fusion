@@ -41,6 +41,19 @@ def _background_job_block(command, indent="    "):
     '''
     return f"{indent}{{\n{command.rstrip(chr(10))}\n{indent}}} &\n"
 
+def slurm_allocation_hostnames():
+    '''Nodes of the SLURM allocation this process runs in ([] outside SLURM).'''
+    nodelist = os.environ.get("SLURM_JOB_NODELIST") or os.environ.get("SLURM_NODELIST")
+    if not nodelist:
+        return []
+    try:
+        import subprocess
+        out = subprocess.run(["scontrol", "show", "hostnames", nodelist], capture_output=True, text=True, timeout=30)
+        return [h for h in out.stdout.split() if h] if out.returncode == 0 else []
+    except Exception:
+        return []
+
+
 class mitim_simulation:
     '''
     Main class for running GACODE simulations.
@@ -665,7 +678,15 @@ class mitim_simulation:
                 GACODEcommand += ")\n\n"
 
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
+                # Inside a SLURM allocation, expose the node list and a 1-based call counter
+                # to the per-call body, so a code_call can pin call k to its own node(s)
+                # (CGYRO does; see CGYROtools.code_call).
+                _hosts = slurm_allocation_hostnames()
+                if _hosts:
+                    GACODEcommand += "MITIM_HOSTS=( " + " ".join(_hosts) + " )\nMITIM_CALL=0\n\n"
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
+                if _hosts:
+                    GACODEcommand += "    MITIM_CALL=$((MITIM_CALL+1))\n"
                 folder_str = '"$folder"'  # literal double quotes around $folder
                 # Background each launch in a brace group (see _background_job_block
                 # for why a bare '<cmd> &' breaks for multi-line / no-trailing-newline code_calls).

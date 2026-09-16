@@ -1,3 +1,5 @@
+import os
+import subprocess
 import math
 import datetime
 from pathlib import Path
@@ -546,6 +548,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             omp_prefix = (
                 f"export OMP_NUM_THREADS={mpi['nomp']}\n"
                 f"export OMP_STACKSIZE=1G\n"
+                # OpenMPI MPI-IO backend: OMPIO on NFS (engaging /orcd) spent 30-100 s per output
+                # step; ROMIO brings it to <1 s. Ignored by MPICH-based builds (Perlmutter).
+                "export OMPI_MCA_io=romio321\n"
             )
             # Bash mode inside an existing SLURM allocation (driver under salloc/sbatch):
             # the gacode launcher (platform/exec/exec.<PLATFORM>) runs `srun` with no
@@ -556,14 +561,54 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # srun honors these as input environment variables (-N, --gpus-per-node);
             # the node count is read from SLURM_JOB_NUM_NODES (SLURM_NNODES alone is
             # ignored, verified on Perlmutter 2026-09-15), both are set for safety.
-            if resolved.submission_type == "bash" and mpi.get("numa") is not None:
-                _nodes = mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
+            _wrap = bool(CONFIGread.machineSettings(code='cgyro').get("srun_wrap_calls", False)) and resolved.submission_type == "bash" and mpi.get("numa") is not None
+            if _wrap and mpi.get("nodes", 1) > 1:
+                raise ValueError("[MITIM] srun_wrap_calls supports single-node radial calls only (resources_per_call <= gpus_per_node)")
+            _hosts = SIMtools.slurm_allocation_hostnames() if (resolved.submission_type == "bash" and mpi.get("numa") is not None) else []
+            _nodes = mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
+            if _hosts:
+                # Node choice happens in bash: the builder runs ONE body for every radius in a
+                # loop; SIMtools exports the allocation as MITIM_HOSTS and a 1-based MITIM_CALL
+                # counter, and call k takes hosts [(k-1)*nodes, k*nodes).
+                omp_prefix += (
+                    f"_npc={_nodes}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=\"\"\n"
+                    f"for _j in $(seq 0 $((_npc-1))); do _h=${{MITIM_HOSTS[$(( (_k*_npc+_j) % _nh ))]}}; _sel=\"${{_sel}}${{_sel:+,}}${{_h}}\"; done\n"
+                )
+            if _wrap:
+                # Machines whose gacode launcher is OpenMPI `mpirun` (engaging PSFCR8_GPU):
+                # inside a multi-node allocation mpirun launches its daemons wherever SLURM
+                # puts them and ignores hostfiles. Instead run each radial call as an srun
+                # step ON its node (4 tasks so the step owns the node's CPUs and GPUs; only
+                # task 0 runs mpirun) with the SLURM view narrowed to that node, so mpirun
+                # spawns its ranks locally with no daemons. Enabled per machine with
+                # `srun_wrap_calls: true` (single-node calls only). Verified on engaging
+                # 2026-09-16. No SLURM_* exports here: srun would read them as options.
+                inner = (
+                    "if [ \"$SLURM_PROCID\" != \"0\" ]; then exit 0; fi; "
+                    "export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 "
+                    f"SLURM_TASKS_PER_NODE={mpi['numa']} SLURM_NTASKS={mpi['numa']} SLURM_NPROCS={mpi['numa']} SLURM_JOB_CPUS_PER_NODE={mpi['nomp'] * mpi['numa']}; "
+                    f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=romio321; "   # ROMIO: OMPIO on NFS spent ~100 s per output step
+                    f"cgyro -e \"$MITIM_FOLDER\" -n {mpi['n']} -nomp {mpi['nomp']} -numa {mpi['numa']} -mpinuma {mpi['mpinuma']} -p {p}"
+                )
+                cgyro_cmd = (omp_prefix +
+                             f"export MITIM_FOLDER={folder}\n"
+                             f"srun -N1 -n{mpi['numa']} -c{mpi['nomp']} --gpus-per-node={mpi['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
+                             f"bash -c '{inner}' {additional_command}")
+            elif resolved.submission_type == "bash" and mpi.get("numa") is not None:
+                # srun-based launchers (Perlmutter): pin the step via SLURM input variables
+                # (node count from SLURM_JOB_NUM_NODES; SLURM_NNODES alone is ignored).
                 omp_prefix += (
                     f"export SLURM_JOB_NUM_NODES={_nodes}\n"
                     f"export SLURM_NNODES={_nodes}\n"
                     f"export SLURM_GPUS_PER_NODE={mpi['numa']}\n"
                 )
-            if mpi.get("numa") is not None:
+                if _hosts:
+                    omp_prefix += "export SLURM_JOB_NODELIST=$_sel; export SLURM_NODELIST=$_sel\n"
+                cgyro_cmd = (omp_prefix +
+                             f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                             f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
+                             f"-p {p} {additional_command}")
+            elif mpi.get("numa") is not None:
                 cgyro_cmd = (omp_prefix +
                              f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
                              f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
@@ -701,6 +746,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
 
     # Thin wrapper: capture preprocess_options and delegate to the generic run()
+    @staticmethod
+    def _allocation_cpus_per_node():
+        '''Per-node CPU count of the allocation (first entry of SLURM_JOB_CPUS_PER_NODE, e.g. "128(x5)" -> 128).'''
+        raw = os.environ.get("SLURM_JOB_CPUS_PER_NODE", "")
+        digits = "".join(ch for ch in raw.split("(")[0].split(",")[0] if ch.isdigit())
+        return int(digits) if digits else 1
+
     def run(self, *args, preprocess_options=None, **kwargs):
         self._preprocess_options = preprocess_options
         try:

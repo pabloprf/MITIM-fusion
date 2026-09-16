@@ -228,7 +228,7 @@ def machineSettings(
             f'{machineSettings["modules"]}\n{s[machine]["modules"]}'
         )
 
-    checkers = ["slurm", "identity", "tunnel", "port"]
+    checkers = ["slurm", "identity", "tunnel", "port", "srun_wrap_calls"]   # srun_wrap_calls: CGYRO bash-mode launcher option (see CGYROtools.code_call)
     for i in checkers:
         if i in s[machine]:
             machineSettings[i] = s[machine][i]
