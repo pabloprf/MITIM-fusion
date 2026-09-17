@@ -7,6 +7,19 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
+def _check_exchange_moment(outputs, labels):
+    '''
+    Either every radius carries the exchange moment (Se_mean) or none does (old CGYRO,
+    n_flux=3). A mix means the output files of the odd radii are inconsistent (time
+    rows vs flux records), which must not be silently passed on as Qie = 0.
+    '''
+    missing = [f"{l:.4f}" if isinstance(l, float) else str(l) for l, o in zip(labels, outputs) if not hasattr(o, 'Se_mean')]
+    if missing and len(missing) < len(outputs):
+        raise RuntimeError(
+            f"CGYRO exchange moment missing at {missing} but present elsewhere: "
+            "out.cgyro.time and bin.cgyro.ky_flux disagree there (interrupted/continued run?)"
+        )
+
 def _all_child_jobids(gk_object):
     '''
     Flatten the auto-resubmit ledger into a deduplicated list of child jobids
@@ -1213,6 +1226,8 @@ class gyrokinetic_model:
 
             # Qie: electron turbulent energy exchange (the quantity TGLF passes as Se).
             # Older CGYRO outputs carry no exchange moment (n_flux=3) -> zero + warning.
+            # Only SOME radii lacking it means inconsistent output files at those radii.
+            _check_exchange_moment(outputs, rho_locations)
             if hasattr(outputs[0], 'Se_mean'):
                 self.QieGB_turb = np.array([outputs[i].Se_mean for i in range(len(rho_locations))])
                 self.QieGB_turb_stds = np.array([outputs[i].Se_std for i in range(len(rho_locations))])
@@ -1684,6 +1699,7 @@ class cgyro_model(gyrokinetic_model):
             GZ_std_batch[p, :] = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(nrho)])
             Mt_batch[p, :]     = np.array([outputs[i].Mt_mean for i in range(nrho)])
             Mt_std_batch[p, :] = np.array([outputs[i].Mt_std for i in range(nrho)])
+            _check_exchange_moment(outputs, list(range(nrho)))
             if hasattr(outputs[0], 'Se_mean'):
                 S_batch[p, :]      = np.array([outputs[i].Se_mean for i in range(nrho)])
                 S_std_batch[p, :]  = np.array([outputs[i].Se_std for i in range(nrho)])

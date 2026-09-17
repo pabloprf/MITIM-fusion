@@ -1259,23 +1259,27 @@ class mitim_job:
 
         return output, error
 
-    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, checksum_ignore_prefix=None):
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None):
         '''
         Look inside the (possibly remote) scratch folder for sub-folders left by an
         interrupted execution. For each entry of `rel_folders` (relative to
-        folderExecution) returns {rel: (md5_of_checksum_file, last_progress_token)}
+        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report)}
         when every file in `required_files` exists there, and nothing otherwise.
-        `last_progress_token` is the first column of the last line of `progress_file`
-        (e.g. the last simulated time), or None. Lines of `checksum_file` starting
-        with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from the md5, so
-        a value the caller rewrites on rescue does not defeat the identity check.
-        One shell round-trip in total.
+        `progress_token` is the first column of line `progress_line` (1-based; None =
+        last line) of `progress_file` (e.g. the time the code will resume from), or
+        None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        (forensics for the log; missing files are skipped). Lines of `checksum_file`
+        starting with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from
+        the md5, so a value the caller rewrites on rescue does not defeat the
+        identity check. One shell round-trip in total.
         '''
         if getattr(self, 'run_in_place', False) or not rel_folders:
             return {}
         fe = str(self.folderExecution)
         checks = ' && '.join(f'[ -f "$d/{f}" ]' for f in list(required_files) + [checksum_file])
-        prog = f'$(tail -n 1 "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
+        prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
         filt = f"grep -v '^{checksum_ignore_prefix}'" if checksum_ignore_prefix else 'cat'
         lines = []
         for rel in rel_folders:
@@ -1283,7 +1287,7 @@ class mitim_job:
             lines.append(
                 f'd={shlex.quote(d)}; if {checks}; then '
                 f'h=$( {filt} "$d/{checksum_file}" | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
-                f'echo "MITIM_RESCUE {rel} $h {prog}"; fi'
+                f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
             )
         self.connect(log_file=self.folder_local / 'paramiko.log')
         try:
@@ -1292,9 +1296,10 @@ class mitim_job:
             self.close()
         found = {}
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
-            parts = line.split()
+            head, _, report_str = line.partition('|')
+            parts = head.split()
             if len(parts) >= 3 and parts[0] == 'MITIM_RESCUE':
-                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None)
+                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None, report_str.strip())
         return found
 
     def close(self, *args, **kwargs):

@@ -403,17 +403,23 @@ class mitim_simulation:
         the scratch folder (driver killed, allocation expired). Enabled by
         run(rescue_interrupted=True) for codes declaring `run_specifications["rescue_spec"]`:
             {"required": [files that must exist, e.g. restart blob + tag],
-             "progress_file": file whose last line's first token is the simulated time,
-             "time_key": input-file key holding the run length (e.g. "MAX_TIME")}
+             "progress_file": file holding the time the code will resume from,
+             "progress_line": its 1-based line number (None = last line); first token is read,
+             "time_key": input-file key holding the run length (e.g. "MAX_TIME"),
+             "report_files": files whose sizes are logged for forensics (optional)}
         A rho sub-folder is rescued only if the required files are there and its
         input file is byte-identical (md5) to the one just generated, so a changed
         namelist, preset or gradient never continues a stale run. Rescued folders
         are kept across the scratch wipe (mitim_job.preserve_subfolders) and receive
         no staged restart file, so the code's own continuation logic takes over
         (CGYRO: restart + out.cgyro.tag -> restart_flag=1, t continues). Codes take
-        `time_key` as a number of steps to ADD (CGYRO: n_time = MAX_TIME/DELTA_T), so
-        for rescued radii that key is rewritten in the staged input to the remaining
-        time (original minus last simulated time) and excluded from the identity md5.
+        `time_key` as a number of steps to ADD from the restart point (CGYRO:
+        n_time = MAX_TIME/DELTA_T), so for rescued radii that key is rewritten in the
+        staged input to the remaining time (original minus the resume time) and
+        excluded from the identity md5. The resume time must be the one the code
+        restarts from (CGYRO: t_current in out.cgyro.tag, second line), NOT the last
+        printed time: the restart blob predates the last output by up to one restart
+        interval, and counting from the wrong point over- or under-shoots the target.
         Everything else is staged and run as usual.
         '''
         spec = self.run_specifications.get("rescue_spec")
@@ -427,7 +433,8 @@ class mitim_simulation:
         time_key = spec.get("time_key")
         found = self.simulation_job.probe_interrupted_runs(
             folders_red, spec.get("required", []), input_file,
-            progress_file=spec.get("progress_file"), checksum_ignore_prefix=time_key,
+            progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
+            checksum_ignore_prefix=time_key, report_files=spec.get("report_files"),
         )
         if not found:
             return
@@ -437,7 +444,7 @@ class mitim_simulation:
         for folder_sim_this, rel in zip(folders, folders_red):
             if rel not in found:
                 continue
-            md5_remote, progress = found[rel]
+            md5_remote, progress, report = found[rel]
             text = (folder_sim_this / input_file).read_text()
             kept = "".join(l for l in text.splitlines(keepends=True) if not (time_key and l.startswith(time_key)))
             if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
@@ -448,27 +455,20 @@ class mitim_simulation:
             for f in folder_sim_this.iterdir():
                 if f.name != input_file:
                     f.unlink()
-            # Trim the run length to what is left (the code counts steps from the restart)
+            # Trim the run length to what is left (the code counts steps from the restart point)
             remaining_msg = ""
             m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
             if m is not None:
                 try:
                     total = float(m.group(2)); done = float(progress)
-                    # The restart blob may predate the last printed time by up to one
-                    # restart interval (CGYRO: RESTART_STEP outputs of 1 a/cs each after the
-                    # PRINT_STEP coercion); overshoot by that margin rather than undershoot.
-                    margin = 0.0
-                    if spec.get("restart_interval_key"):
-                        mr = re.search(rf"^{spec['restart_interval_key']}\s*=\s*(\S+)", text, flags=re.M)
-                        margin = float(mr.group(1)) if mr else 0.0
-                    remaining = max(total - done + margin, 1.0)
+                    remaining = max(total - done, 1.0)
                     text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
                     (folder_sim_this / input_file).write_text(text)
                     remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
                 except (TypeError, ValueError):
                     pass
             rescued.append(rel)
-            print(f"\t- [rescue] {rel}: continuing interrupted run in place (last simulated time {progress}{remaining_msg})", typeMsg="i")
+            print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
 
         self.simulation_job.preserve_subfolders = rescued
 

@@ -669,8 +669,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'force_submission_type': _force_submission_type,
             # Interrupted-run rescue (SIMtools._rescue_interrupted_runs): with both the
             # restart blob and out.cgyro.tag present, re-running `cgyro -e` in the same
-            # folder continues the time integration (restart_flag=1) up to MAX_TIME.
-            'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.time', 'time_key': 'MAX_TIME', 'restart_interval_key': 'RESTART_STEP'},
+            # folder continues the time integration (restart_flag=1) for MAX_TIME more
+            # a/cs from the tag time (out.cgyro.tag: line 1 i_current, line 2 t_current).
+            'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.tag', 'progress_line': 2, 'time_key': 'MAX_TIME',
+                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)
             'completion_marker': ('out.cgyro.info', 'EXIT'),
         }

@@ -482,8 +482,8 @@ transport:
         # out.cgyro.tag and a byte-identical input.cgyro, that radius is NOT wiped and
         # re-staged: `cgyro -e` runs again in the same folder and CGYRO itself continues
         # the time integration from the last restart write for the REMAINING time
-        # (MAX_TIME minus the last simulated time; true restart, restart_flag=1; traces
-        # stay continuous). Radii without a
+        # (MAX_TIME minus the restart time in out.cgyro.tag; true restart, restart_flag=1;
+        # traces stay continuous). Radii without a
         # usable orphan, or whose input.cgyro changed, follow the normal path
         # (restart_from_cases warm start or cold start). Requires the scratch folder
         # to survive between launches (same machine; mind scratch purge policies).

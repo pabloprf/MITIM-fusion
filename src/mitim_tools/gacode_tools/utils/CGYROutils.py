@@ -409,6 +409,41 @@ class CGYROoutput(SIMtools.GACODEoutput):
         if setup_names and len(setup_vals) == len(setup_names):
             self.timing_setup = dict(zip(setup_names, setup_vals))
 
+    def _reconcile_time_vector(self):
+        '''
+        pygacode infers the number of flux moments as size(bin.cgyro.ky_flux) //
+        (records per row * rows of out.cgyro.time). A run continued in place after a
+        kill (rescue) can leave the time file one or two rows longer than the flux
+        binary, which floors that count from 4 to 3 and silently drops the exchange
+        moment (Se). When the two disagree, read only the rows the binary holds:
+        the private read directory gets a trimmed regular copy of out.cgyro.time in
+        place of its link (a bare run folder is never modified, only warned about).
+        '''
+        d = self.folder_read
+        ftime, fflux, fgrid = d / "out.cgyro.time", d / "bin.cgyro.ky_flux", d / "out.cgyro.grids"
+        if not (ftime.exists() and fflux.exists() and fgrid.exists()):
+            return
+        rows = np.fromfile(ftime, dtype='float', sep=' ')
+        nt = len(rows) // 4
+        n_n, n_species, n_field = np.loadtxt(fgrid)[:3].astype(int)
+        rec = int(n_n * n_species * n_field)
+        size = fflux.stat().st_size
+        # (rows held by the binary) for each precision (4/8 bytes) and moment count (3/4)
+        # that divides the file exactly; the true combination is the one nearest nt
+        cands = [size // (b * rec * m) for b in (4, 8) for m in (3, 4) if size % (b * rec * m) == 0]
+        if nt == 0 or not cands:
+            return
+        nt_eff = min(cands, key=lambda n: abs(n - nt))
+        if nt_eff >= nt:
+            return
+        msg = f"out.cgyro.time has {nt} rows but bin.cgyro.ky_flux holds {nt_eff} (run continued in place after an interruption?)"
+        if self._read_tmpdir is None:
+            print(f"\t- {msg}; reading as is, the flux-moment count may be wrong", typeMsg='w')
+            return
+        print(f"\t- {msg}; reading the first {nt_eff} rows", typeMsg='w')
+        ftime.unlink()
+        np.savetxt(ftime, rows[:4 * nt_eff].reshape(nt_eff, 4), fmt='%.8E')
+
     def read_using_cgyroplot(self, folder, suffix):
 
         original_dir = os.getcwd()
@@ -447,6 +482,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 except OSError as e:
                     print(f"\t- Warning: Could not create symlink for {basename}: {e}", typeMsg='w')
             print(f"\t- Staged {len(self.temp_links)} temporary links for suffix {suffix} in a private read directory")
+
+        self._reconcile_time_vector()
 
         try:
             if "cgyrodata_plot" not in globals():
