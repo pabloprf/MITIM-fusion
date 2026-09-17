@@ -2537,7 +2537,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     try:
         _cgyro_read_cfg = self.powerstate.transport_options['options'][cgyro_key]['read']
         _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
-                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
+                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
     except Exception:
         _read_kwargs = {}
 

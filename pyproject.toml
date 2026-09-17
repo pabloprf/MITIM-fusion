@@ -76,6 +76,9 @@ test = [
   "pytest",
   "coverage",
 ]
+quends = [
+  "quends",    # Sandia QUENDS, for the "quends" GK flux-averaging method (GKaveraging.py)
+]
 
 [project.urls]
 "Homepage" = "https://mitim-fusion.readthedocs.io/"

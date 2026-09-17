@@ -4,10 +4,10 @@ import subprocess
 import scipy
 import numpy as np
 from pathlib import Path
-import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, apply_ac, _grab_ncorrelation, resolve_fixed_tmin  # noqa: F401 (apply_ac/_grab_ncorrelation re-exported for callers)
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 try:
     from pygacode.cgyro.data_plot import cgyrodata_plot
@@ -15,7 +15,6 @@ try:
 except ModuleNotFoundError:
     print("\t- Could not find pygacode module in this environment. Please install it if you need CGYRO capabilities", typeMsg='w')
 from IPython import embed
-import pandas as pd
 
 
 def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
@@ -170,9 +169,9 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, **kwargs):
         '''
-        tmin sets the left edge of the window used for signal analysis.
+        tmin sets the left edge of the window used for signal analysis (averaging method "fixed").
           tmin >= 0                    : absolute time (a/cs).
           tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
                                          counted from the end. e.g. tmin=-0.25
@@ -180,9 +179,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
           tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
                                          e.g. tmin=-200 -> the last 200 a/cs
                                          of the run (self.tmin = t[-1] - 200).
+        averaging: dict selecting how the saturated window and the uncertainties are obtained,
+          e.g. {'method': 'fixed' | 'quends' | 'howard_gkav', 'quends': {...}}. See GKaveraging.py.
+          The fixed window above is the default and the fallback of the other methods.
+          Linear runs always use the last time point.
         '''
         
         super().__init__()
+        self._averaging_options = {'method': 'fixed', **(averaging or {})}
 
         self.folder = folder
         
@@ -254,16 +258,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         self.t = self.cgyrodata.tnorm
         
-        if tmin >= 0.0:
-            self.tmin = tmin
-        elif tmin_is_rel:
-            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
-            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
-        else:
-            self.tmin = self.t[-1] + tmin
-            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
-            if self.tmin < self.t[0]:
-                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
+        self.tmin = resolve_fixed_tmin(self.t, tmin=tmin, tmin_is_rel=tmin_is_rel)
+        self._tmin_fixed_request = (tmin, tmin_is_rel)
         
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
@@ -323,6 +319,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         self._process_linear()
 
+        # Fluxes first: the averaging window is selected from Qi/Qe/Ge and then reused by
+        # every other signal (including the fluctuation analysis below)
+        try:
+            self._process_fluxes()
+        except Exception as e:
+                print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
+        self._build_averager()
+
         if (not minimal): # and (self.linear == False):
             self.cgyrodata.getbigfield()
 
@@ -336,11 +340,6 @@ class CGYROoutput(SIMtools.GACODEoutput):
         else:
             print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
 
-        try:
-            self._process_fluxes()
-        except Exception as e:
-                print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
-        #self._process_fluxes()        
         self._saturate_signals()
         
         self.remove_symlinks()
@@ -829,6 +828,24 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.Qi_allMWm2 = self.Qi_all * self.Qgb
         self.MtJm2 = self.Mt * self.Pgb
         
+    def _build_averager(self):
+        '''
+        Selects the saturated window from the primary fluxes (GB) and updates self.tmin to it.
+        Linear runs keep the fixed window (last time point, see __init__).
+        '''
+        options = dict(self._averaging_options)
+        method = options.pop('method')
+        if self.linear and method != 'fixed':
+            print(f"\t- Linear run: averaging method '{method}' ignored, using the last time point", typeMsg='i')
+            method = 'fixed'
+
+        traces = {k: self.__dict__[k] for k in PRIMARY_CHANNELS if k in self.__dict__}
+        tmin, tmin_is_rel = (self.tmin, True) if self.linear else self._tmin_fixed_request
+
+        self.averaging = GKaverager(self.t, traces, method=method, tmin=tmin, tmin_is_rel=tmin_is_rel,
+                                    label=IOtools.clipstr(self.folder) if hasattr(self, 'folder') else '', **options)
+        self.tmin = self.averaging.t_start
+
     def _saturate_signals(self):
         
         # ************************
@@ -922,102 +939,20 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         for iflag in flags:
             if iflag in self.__dict__:
-                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
-                        self.t,
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = self.averaging.mean_std(
                         self.__dict__[iflag],
-                        tmin=self.tmin,
                         label_print=iflag,
                         print_msg=iflag in ['Qi', 'Qe', 'Ge'],
                         )
                 
         for iflag in flags_fluctuations:
             if iflag in self.__dict__:
-                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
-                        self.t,
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = self.averaging.mean_std(
                         self.__dict__[iflag],
-                        tmin=self.tmin,
                         tmax=self.tmax_fluct,
                         label_print=iflag,
                         )     
             
-def _grab_ncorrelation(S, debug=False):
-    # Calculate the autocorrelation function
-    i_acf = sm.tsa.acf(S, nlags=len(S))
-
-    if i_acf.min() > 1/np.e:
-        print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
-
-    # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
-    icor = np.abs(i_acf-1/np.e).argmin()
-    
-    # Define number of samples
-    n_corr = len(S) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
-    
-    if debug:
-        fig, ax = plt.subplots()
-        ax.plot(i_acf, '-o', label='ACF')
-        ax.axhline(1/np.e, color='r', linestyle='--', label='1/e')
-        ax.set_xlabel('Lags'); ax.set_xlim([0, icor+20])
-        ax.set_ylabel('ACF')
-        ax.legend()
-        plt.show()
-        embed()
-    
-    return n_corr, icor
-
-def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
-    
-    it0 = np.argmin(np.abs(t - tmin))
-    it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
-    
-    if it1 <= it0:
-        it0 = it1
-
-    # Calculate the mean and std of the signal after tmin (last dimension is time)
-    S_mean = np.mean(S[..., it0:it1+1], axis=-1)
-    S_std = np.std(S[..., it0:it1+1], axis=-1)
-
-    if S.ndim == 1:
-        # 1D case: single time series
-        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug)
-        S_std = S_std / np.sqrt(n_corr)
-        
-        if print_msg:
-            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
-        
-    else:
-        # Multi-dimensional case: flatten all dimensions except the last one
-        shape_orig = S.shape[:-1]  # Original shape without time dimension
-        S_reshaped = S.reshape(-1, S.shape[-1])  # Flatten to (n_series, n_time)
-        
-        n_series = S_reshaped.shape[0]
-        n_corr = np.zeros(n_series)
-        icor = np.zeros(n_series)
-        
-        # Calculate correlation for each flattened time series
-        for i in range(n_series):
-            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug)
-        
-        # Reshape correlation arrays back to original shape (without time dimension)
-        n_corr = n_corr.reshape(shape_orig)
-        icor = icor.reshape(shape_orig)
-        
-        # Apply correlation correction to standard deviation
-        S_std = S_std / np.sqrt(n_corr)
-
-        # Print results - handle different dimensionalities
-        if print_msg:
-            if S.ndim == 2:
-                # 2D case: print each series
-                for i in range(S.shape[0]):
-                    print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
-            else:
-                # Higher dimensional case: print summary statistics
-                print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
-
-    return S_mean, S_std
-
-
 def _cross_phase(t, f1, f2):
     """
     Calculate the cross-phase between two complex signals.
@@ -1081,33 +1016,6 @@ def calculate_lcorr(phim, kx, nx, debug=False):
 
     return l_corr[0]  # Return the correlation length in the radial direction
 
-
-def quends_analysis(t, S, debug = False):
-    
-    import quends as qnds
-    
-    time_dependent_data = {'time': t, 'signal': S}
-    df = pd.DataFrame(time_dependent_data, index = pd.RangeIndex(len(t)))
-    
-    dst = qnds.DataStream(df)
-
-    window_size = 10
-    
-    trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
-    mean = trimmed_df.mean(window_size=window_size)['signal']
-    std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
-    
-    stats = trimmed_df.compute_statistics(window_size=window_size)
-    
-    if debug:
-        plotter = qnds.Plotter()
-        plotter.steady_state_automatic_plot(dst, ["signal"])
-        plotter.plot_acf(trimmed_df)
-        print(stats)
-        plt.show()
-        embed()
-        
-    return mean, std, stats
 
 def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delete_local=False):
     '''This is a helper function to bring back only the python object from a remote CGYRO run

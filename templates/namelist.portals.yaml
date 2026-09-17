@@ -525,6 +525,39 @@ transport:
         #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
         tmin: -0.3
         tmin_is_rel: true
+        # averaging: how the saturated window and the flux uncertainties are obtained
+        #   (src/mitim_tools/simulation_tools/utils/GKaveraging.py). The window is chosen
+        #   from Qi, Qe, Ge (GB) and then applied to every signal of the run. In all
+        #   methods the reported std is the 1-sigma standard error of the mean.
+        #   method: "fixed"       -> the tmin/tmin_is_rel window above; ACF-based standard error
+        #                            (1/e decorrelation lag, one independent sample per 3 lags).
+        #           "quends"      -> Sandia QUENDS (pip install mitim[quends]): trims the transient
+        #                            per channel (window starts when ALL of Qi/Qe/Ge are stationary)
+        #                            and uses block-mean statistics with an autotuned block size.
+        #                            Falls back to the fixed window (flag "fallback") if no steady
+        #                            state is found or the package is missing.
+        #           "howard_gkav" -> N.T. Howard's stationarity scan (trend + hump tests on block
+        #                            medians, thresholds tuned for a/cs time units): earliest start
+        #                            from which the three traces are stationary. If none is found
+        #                            it proceeds with the second half of the run and flags
+        #                            "fallback"/"failure"; nothing else is inflated.
+        #   uncertainty: "acf"    -> ACF standard error (default for fixed / howard_gkav)
+        #                "quends" -> QUENDS block-mean standard error over the selected window
+        #                            (default for method "quends"; usable with any method)
+        #   The per-rho window, flag and provenance are written to fluxes_turb.json.
+        #   Caveat (local CGYRO tests, Sep 2026): QUENDS's trim strategies rarely accept bursty
+        #   local fluxes as steady state, so method "quends" often ends in "fallback"; its
+        #   block-mean uncertainty, however, works with any window.
+        averaging:
+          method: "fixed"
+          uncertainty: null            # null -> method default (see above)
+          # quends options (trim strategy of method "quends"; statistics block size for uncertainty "quends")
+          quends:
+            trim_method: "std"         # std | threshold | rolling_variance | self_consistent | iqr | mean_variation
+            window_size: 10            # samples (trim window / minimum remaining length)
+            threshold: null            # threshold / rolling_variance / iqr strategies only
+            start_time: "onset"        # ignore data before this time (a/cs); "onset" = turbulence onset of each trace
+            stats_window_size: null    # block size for the statistics; null = autotune (Ljung-Box)
 
       # For CGYRO runs, MW/m^2 of Qi below which the case is considered stable.
       # Set to null to disable the stable-flux check entirely (no std inflation).
@@ -571,6 +604,11 @@ transport:
         #                                  (e.g. tmin: -200 -> last 200 a/cs of the run).
         tmin: -0.3
         tmin_is_rel: true
+        # averaging: same options as for CGYRO ("fixed" | "quends" | "howard_gkav", see above).
+        #   GX time is normalized to a/v_ti, not a/cs: the howard_gkav thresholds were tuned
+        #   for CGYRO cadence, so check the window on the trace plots.
+        averaging:
+          method: "fixed"
 
       # Files to keep from simulation
       #     none: all runs will only keep minimal files
