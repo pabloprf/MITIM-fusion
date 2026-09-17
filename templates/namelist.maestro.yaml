@@ -256,6 +256,11 @@ maestro:
       # (if full EPED) SLURM time limit (minutes) of each EPED case (needs generous wall-time)
       minutes_slurm: 240
 
+      # (if full EPED) Keep the per-height TOQ/ELITE work dirs in run_eped/case1/run1/ for
+      # post-mortems (GBs per beat). Only honored at prune_level 0: at any higher level EPED
+      # deletes them on the runner as it goes, since pruning would drop them right after the beat
+      keep_eped_intermediate_files: false
+
       # (if full EPED) [rule, threshold]: 'G' = flat gamma/omega_A cut; 'W' = EPED1 gamma > C*omega_*i(n)/2 (threshold = calibration C)
       # stability_rule: ['G', 0.03]
 

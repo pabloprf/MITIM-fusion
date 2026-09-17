@@ -148,6 +148,9 @@ DESCRIPTION
     `mitim_prune_maestro --level N` applies any level post-hoc to a finished run, importing the
     same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
     pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
+    The EPED beat now has EPED delete its per-height TOQ/ELITE work dirs on the runner as it
+    goes, at every level; `eped.keep_eped_intermediate_files: true` retains them for
+    post-mortems and is honored at level 0 only.
 
 *   💥 **MAESTRO fixed thermal helium-ash support with explicit gates**: `plasma.species.mix`
     now accepts `fixed_helium_ash` with `fHe/ZHe/AHe`, and TRANSP applies helium as a separate
