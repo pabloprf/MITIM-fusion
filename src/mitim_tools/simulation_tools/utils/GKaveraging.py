@@ -419,6 +419,12 @@ def _grab_ncorrelation(S, debug=False):
 
     # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
     icor = np.abs(i_acf-1/np.e).argmin()
+    if icor < 1:
+        # Window too short (or signal too noisy) for the ACF to be resolved: the
+        # closest-to-1/e lag is 0 and n_corr would be infinite (std -> 0). Treat
+        # every sample as correlated to the next one, i.e. one decorrelation lag.
+        print("Autocorrelation lag resolved as 0 (signal window too short); using 1 lag for n_corr — flux uncertainty is unreliable.", typeMsg='w')
+        icor = 1
 
     # Define number of samples
     n_corr = len(S) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
