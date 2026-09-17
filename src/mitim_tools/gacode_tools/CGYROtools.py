@@ -598,9 +598,14 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                     f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=romio321; "   # ROMIO: OMPIO on NFS spent ~100 s per output step
                     f"cgyro -e \"$MITIM_FOLDER\" -n {mpi['n']} -nomp {mpi['nomp']} -numa {mpi['numa']} -mpinuma {mpi['mpinuma']} -p {p}"
                 )
+                # The step takes the node's whole CPU share of its GPUs (128 cores / 4 GPUs
+                # -> 32 per task on engaging R8), not just nomp: a whole-node cpuset is what
+                # lets the NUMA platform (exec.PSFCR8_GPU_NUMA) place ranks by rankfile.
+                _gpn = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or mpi['numa'])
+                _cpt = max(mpi['nomp'], self._allocation_cpus_per_node() // max(_gpn, 1))
                 cgyro_cmd = (omp_prefix +
                              f"export MITIM_FOLDER={folder}\n"
-                             f"srun -N1 -n{mpi['numa']} -c{mpi['nomp']} --gpus-per-node={mpi['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
+                             f"srun -N1 -n{mpi['numa']} -c{_cpt} --gpus-per-node={mpi['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
                              f"bash -c '{inner}' {additional_command}")
             elif resolved.submission_type == "bash" and mpi.get("numa") is not None:
                 # srun-based launchers (Perlmutter): pin the step via SLURM input variables
