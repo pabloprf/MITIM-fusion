@@ -827,6 +827,11 @@ _resolve_cgyro_extra_options_first = _resolve_cgyro_extra_options_special
 _resolve_cgyro_allocation_first = _resolve_cgyro_allocation_special
 
 
+def _averaging_records(outputs):
+    '''Per-rho GKaverager.to_dict() (window, flag, provenance) of the read outputs, for the fluxes JSON.'''
+    return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
+
+
 class gyrokinetic_model:
 
     def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
@@ -1235,6 +1240,9 @@ class gyrokinetic_model:
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 self.QieGB_turb = self.QeGB_turb*0.0
                 self.QieGB_turb_stds = self.QeGB_turb*0.0
+
+            # Averaging-window record per rho (method, t_start, flag, ...) -> fluxes_turb.json
+            self.averaging_info_turb = _averaging_records(outputs)
 
         elif run_type == 'prep':
             
@@ -1675,6 +1683,7 @@ class cgyro_model(gyrokinetic_model):
         Mt_std_batch = np.zeros((N, nrho))
         S_batch      = np.zeros((N, nrho))
         S_std_batch  = np.zeros((N, nrho))
+        averaging_batch = {}
 
         for p, label in plasma_labels.items():
             if not cgyro_unpickled:
@@ -1707,6 +1716,8 @@ class cgyro_model(gyrokinetic_model):
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 S_batch[p, :]      = 0.0
                 S_std_batch[p, :]  = 0.0
+
+            averaging_batch[p] = _averaging_records(outputs)
 
         # Optional remote scratch cleanup on the submit path — see the
         # single-plasma branch for the rationale. Same try/except shape so
@@ -1750,6 +1761,7 @@ class cgyro_model(gyrokinetic_model):
         if pass_info:
             self.QeGB_turb      = Qe_batch
             self.QeGB_turb_stds = Qe_std_batch
+            self.averaging_info_turb = [averaging_batch.get(p, None) for p in range(N)]   # per plasma, per rho
 
             self.QiGB_turb      = Qi_batch
             self.QiGB_turb_stds = Qi_std_batch

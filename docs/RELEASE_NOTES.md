@@ -4,6 +4,14 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
+    (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
+    `tmin` window, Sandia QUENDS transient trim, or N.T. Howard's stationarity scan) and
+    `uncertainty: acf | quends` (autocorrelation vs block-mean standard error). Implemented by the
+    reusable `GKaverager` (`simulation_tools/utils/GKaveraging.py`), with per-rho window/flag/provenance
+    written to `fluxes_turb.json`, an "Averaging" tab in the CGYRO/GX notebooks, `mitim_plot_cgyro --averaging`,
+    the optional `mitim[quends]` extra and `tests/capability_tests/cgyro_07_flux_averaging_methods.py`.
+
 *   💥 **Thermal D-D neutron rate**: new `PLASMAtools.sigmav_dd_neutron` (Bosch-Hale
     D(d,n)3He parametrization [Bosch & Hale, Nucl. Fusion 32 (1992) 611, Table VII]) and
     `mitim_state.derived['ndd_thermal']` — volume-integrated thermal D(d,n)3He neutron rate (n/s)
@@ -148,6 +156,9 @@ DESCRIPTION
     `mitim_prune_maestro --level N` applies any level post-hoc to a finished run, importing the
     same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
     pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
+    The EPED beat now has EPED delete its per-height TOQ/ELITE work dirs on the runner as it
+    goes, at every level; `eped.keep_eped_intermediate_files: true` retains them for
+    post-mortems and is honored at level 0 only.
 
 *   💥 **MAESTRO fixed thermal helium-ash support with explicit gates**: `plasma.species.mix`
     now accepts `fixed_helium_ash` with `fHe/ZHe/AHe`, and TRANSP applies helium as a separate

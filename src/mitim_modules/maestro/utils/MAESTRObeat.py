@@ -20,7 +20,9 @@ from IPython import embed
 #       - transp:  the `results/` tree (a second copy of the multi-GB CDF, already surfaced into
 #         run_transp/), `*PH.CDF`, job logs. The main CDF and AC folders are kept.
 #       - eped:    the per-height TOQ/ELITE work dirs under `case1/run1/` ("enormous"; see
-#         EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept.
+#         EPEDtools.EPED.run's clean_intermediate_files). `output_run1.nc` is kept. In practice
+#         a no-op: the EPED beat has EPED delete those dirs on the runner whenever the level is
+#         above 0 (eped.keep_eped_intermediate_files is only honored at level 0).
 #       - portals: `Execution/` (per-iteration model trees, incl. CGYRO restart binaries),
 #         `Initialization/`, `flux_match/`. `run_portals/Outputs` is kept.
 #       - lengyel / bc: nothing (KB-scale).

@@ -493,7 +493,7 @@ class PORTALSanalyzer:
             try:
                 _cgyro_read_cfg = self.powerstate.transport_options['options'][turb_key]['read']
                 cgyro_read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
-                                     if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
+                                     if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
             except Exception:
                 cgyro_read_kwargs = {}
 

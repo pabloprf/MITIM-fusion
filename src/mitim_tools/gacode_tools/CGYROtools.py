@@ -1387,7 +1387,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             BD
             """
         )
-      
+
+        # One "Averaging" figure per case: window selection diagnostics of the primary fluxes
+        for i, label in enumerate(labels):
+            if hasattr(self.results[label], 'averaging'):
+                fig = self.fn.add_figure(label=f"Averaging, {label}")
+                self.results[label].averaging.plot(fig=fig, color=GRAPHICStools.listColors()[i % len(GRAPHICStools.listColors())], label_plot=label)
+
         create_ballooning = False
         for label in labels:
             if 'phi_ballooning' in self.results[label].__dict__:

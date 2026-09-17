@@ -5,6 +5,7 @@ from mitim_tools.misc_tools import GRAPHICStools, IOtools, GUItools, CONFIGread
 from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.utils import SIMplot
+from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, resolve_fixed_tmin
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
 from mitim_tools import __version__ as mitim_version
@@ -195,6 +196,12 @@ class GX(SIMtools.mitim_simulation, SIMplot.GKplotting):
         )
 
         # Turbulence
+        # One "Averaging" figure per case: window selection diagnostics of the primary fluxes
+        for i, label in enumerate(labels):
+            if hasattr(self.results[label], 'averaging'):
+                fig = self.fn.add_figure(label=f"Averaging, {label}")
+                self.results[label].averaging.plot(fig=fig, color=GRAPHICStools.listColors()[i % len(GRAPHICStools.listColors())], label_plot=label)
+
         fig = self.fn.add_figure(label="Turbulence (linear)")
         axsTurbulence = fig.subplot_mosaic(
             """
@@ -398,9 +405,9 @@ class GXinput(SIMtools.GACODEinput):
         return param_written
 
 class GXoutput(SIMtools.GACODEoutput):
-    def __init__(self, FolderGACODE, suffix="", tmin = 0.0, tmin_is_rel=True, minimal = False,  **kwargs):
+    def __init__(self, FolderGACODE, suffix="", tmin = 0.0, tmin_is_rel=True, minimal = False, averaging=None, **kwargs):
         '''
-        tmin sets the left edge of the window used for signal analysis.
+        tmin sets the left edge of the window used for signal analysis (averaging method "fixed").
           tmin >= 0                    : absolute time (a/cs).
           tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
                                          counted from the end. e.g. tmin=-0.25
@@ -408,6 +415,8 @@ class GXoutput(SIMtools.GACODEoutput):
           tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
                                          e.g. tmin=-200 -> the last 200 a/cs
                                          of the run (self.tmin = t[-1] - 200).
+        averaging: dict selecting the window/uncertainty method, {'method': 'fixed' | 'quends' | 'howard_gkav', ...};
+          see GKaveraging.py. Linear runs always use the last time point.
         '''
         super().__init__()
 
@@ -462,22 +471,30 @@ class GXoutput(SIMtools.GACODEoutput):
         self.all_names = [f'i{i}' for i in range(1, self.Qi_all.shape[0]+1)]
         
         # If linear, last tmin
-        if not bool(data.groups['Inputs'].groups['Controls'].variables['nonlinear_mode'][:]):
+        self.linear = not bool(data.groups['Inputs'].groups['Controls'].variables['nonlinear_mode'][:])
+
+        self.tmin = resolve_fixed_tmin(self.t, tmin=tmin, tmin_is_rel=tmin_is_rel)
+        if self.linear:
             self.tmin = self.t[-1]
             print(f"\t- Linear simulation, setting tmin to last time", typeMsg='i')
-        
-        if tmin >= 0.0:
-            self.tmin = tmin
-        elif tmin_is_rel:
-            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
-            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
-        else:
-            self.tmin = self.t[-1] + tmin
-            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
-            if self.tmin < self.t[0]:
-                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
 
+        self._build_averager(averaging, tmin, tmin_is_rel)
         self._signal_analysis()
+
+    def _build_averager(self, averaging, tmin, tmin_is_rel):
+        '''
+        Selects the saturated window from Qi/Qe/Ge (GB) and updates self.tmin to it (see GKaveraging.py).
+        Note: GX time is in its own normalization (a/v_ti), not a/cs; the howard_gkav thresholds were tuned for CGYRO time units.
+        '''
+        options = {'method': 'fixed', **(averaging or {})}
+        method = options.pop('method')
+        if self.linear and method != 'fixed':
+            print(f"\t- Linear run: averaging method '{method}' ignored, using the last time point", typeMsg='i')
+            method = 'fixed'
+        traces = {k: self.__dict__[k] for k in PRIMARY_CHANNELS if k in self.__dict__}
+        tmin, tmin_is_rel = (self.tmin, True) if self.linear else (tmin, tmin_is_rel)
+        self.averaging = GKaverager(self.t, traces, method=method, tmin=tmin, tmin_is_rel=tmin_is_rel, label=IOtools.clipstr(self.FolderGACODE), **options)
+        self.tmin = self.averaging.t_start
 
     def _signal_analysis(self):
         
@@ -495,10 +512,8 @@ class GXoutput(SIMtools.GACODEoutput):
         ]
         
         for iflag in flags:
-            self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = CGYROutils.apply_ac(
-                    self.t,
+            self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = self.averaging.mean_std(
                     self.__dict__[iflag],
-                    tmin=self.tmin,
                     label_print=iflag,
                     print_msg=True,
                     )
