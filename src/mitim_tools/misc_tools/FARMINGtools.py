@@ -83,6 +83,14 @@ class mitim_job:
         # means retry forever. When self.connection_retry_settings is None,
         # connect_ssh() falls back to the historical defaults.
         self.connection_retry_settings = None
+        # Sub-folders (relative to folderExecution) that remove_scratch_folder() must
+        # keep across the going-in wipe: interrupted runs being rescued in place.
+        self.preserve_subfolders = []
+        # Optional SCHEDULERtools.InAllocationScheduler: when set (local machine, bash
+        # mode) full_process() runs the per-call bodies through it instead of executing
+        # mitim_bash.src, and its accepted extra folders are added to the retrieval.
+        self.scheduler = None
+        self.scheduler_result = None
 
     def define_machine(
         self,
@@ -357,7 +365,7 @@ class mitim_job:
         '''
         if not self.launchSlurm:
             raise RuntimeError("resubmit_single_task requires launchSlurm=True")
-        if self.ssh is None:
+        if self.ssh is None and self.machineSettings["machine"] != "local":
             raise RuntimeError("resubmit_single_task requires a live self.ssh; call self.connect() first")
 
         # Drop --array on a deep copy so the parent slurm_settings stays intact
@@ -404,7 +412,10 @@ class mitim_job:
         sbatch_basename = Path(fileSBATCH).name
         remote_sbatch_path = f"{self.folderExecution}/{sbatch_basename}"
         try:
-            self._sftp_transfer_with_retry('put', str(fileSBATCH), remote_sbatch_path)
+            if self.ssh is None:
+                shutil.copy2(str(fileSBATCH), remote_sbatch_path)   # local machine: plain copy
+            else:
+                self._sftp_transfer_with_retry('put', str(fileSBATCH), remote_sbatch_path)
         except Exception as e:
             print(f"\t- resubmit_single_task: failed to upload {sbatch_basename} ({type(e).__name__}: {e})", typeMsg='w')
             return None
@@ -489,7 +500,20 @@ class mitim_job:
 
         while execution_counter < attempts_execution:
             
-            if execute_flag:
+            if execute_flag and self.scheduler is not None and self.ssh is None:
+                output, error = b"", b""
+                prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
+                print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
+                self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
+                # accepted extras come back best-effort: tarred with the same file patterns as
+                # the main folders, never part of the mandatory check
+                patterns = next(iter(self.output_folders_selective.values()), None) if self.output_folders_selective else None
+                for rel in self.scheduler_result["accepted"]:
+                    if rel not in self.output_folders:
+                        self.output_folders.append(rel)
+                    if patterns is not None:
+                        self.output_folders_selective[rel] = list(patterns)
+            elif execute_flag:
                 output, error = self.execute(
                     comm,
                     wait_for_all_commands=wait_for_all_commands,
@@ -1227,11 +1251,74 @@ class mitim_job:
             print("\t* Skipping scratch-folder removal (in-place local execution)")
             return None, None
 
+        preserve = [str(p) for p in (self.preserve_subfolders or [])]
+        if preserve:
+            # Move the rescued sub-folders aside, wipe, and move them back: the
+            # rest of the scratch tree is rebuilt from a fresh stage-in.
+            print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder, preserving {len(preserve)} rescued sub-folder(s)')
+            fe = shlex.quote(str(self.folderExecution))
+            aside = shlex.quote(str(self.folderExecution) + '.rescue')
+            cmd = f"rm -rf {aside} && mkdir -p {aside}"
+            for rel in preserve:
+                r = shlex.quote(rel)
+                cmd += f" && mkdir -p $(dirname {aside}/{r}) && mv {fe}/{r} {aside}/{r}"
+            cmd += f" && rm -rf {fe} && mkdir -p {fe}"
+            for rel in preserve:
+                r = shlex.quote(rel)
+                cmd += f" && mkdir -p $(dirname {fe}/{r}) && mv {aside}/{r} {fe}/{r}"
+            cmd += f" && rm -rf {aside}"
+            # One-shot: the going-out wipe after a successful run must remove everything
+            self.preserve_subfolders = []
+            return self.execute(cmd)
+
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
         output, error = self.execute(f"rm -rf {self.folderExecution}")
 
         return output, error
+
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None):
+        '''
+        Look inside the (possibly remote) scratch folder for sub-folders left by an
+        interrupted execution. For each entry of `rel_folders` (relative to
+        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report)}
+        when every file in `required_files` exists there, and nothing otherwise.
+        `progress_token` is the first column of line `progress_line` (1-based; None =
+        last line) of `progress_file` (e.g. the time the code will resume from), or
+        None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        (forensics for the log; missing files are skipped). Lines of `checksum_file`
+        starting with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from
+        the md5, so a value the caller rewrites on rescue does not defeat the
+        identity check. One shell round-trip in total.
+        '''
+        if getattr(self, 'run_in_place', False) or not rel_folders:
+            return {}
+        fe = str(self.folderExecution)
+        checks = ' && '.join(f'[ -f "$d/{f}" ]' for f in list(required_files) + [checksum_file])
+        pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
+        prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
+        report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
+        filt = f"grep -v '^{checksum_ignore_prefix}'" if checksum_ignore_prefix else 'cat'
+        lines = []
+        for rel in rel_folders:
+            d = f'{fe}/{rel}'
+            lines.append(
+                f'd={shlex.quote(d)}; if {checks}; then '
+                f'h=$( {filt} "$d/{checksum_file}" | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
+                f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
+            )
+        self.connect(log_file=self.folder_local / 'paramiko.log')
+        try:
+            output, _ = self.execute('; '.join(lines))
+        finally:
+            self.close()
+        found = {}
+        for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
+            head, _, report_str = line.partition('|')
+            parts = head.split()
+            if len(parts) >= 3 and parts[0] == 'MITIM_RESCUE':
+                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None, report_str.strip())
+        return found
 
     def close(self, *args, **kwargs):
         if self.machineSettings["machine"] != "local":

@@ -7,6 +7,129 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
+def _check_exchange_moment(outputs, labels):
+    '''
+    Either every radius carries the exchange moment (Se_mean) or none does (old CGYRO,
+    n_flux=3). A mix means the output files of the odd radii are inconsistent (time
+    rows vs flux records), which must not be silently passed on as Qie = 0.
+    '''
+    missing = [f"{l:.4f}" if isinstance(l, float) else str(l) for l, o in zip(labels, outputs) if not hasattr(o, 'Se_mean')]
+    if missing and len(missing) < len(outputs):
+        raise RuntimeError(
+            f"CGYRO exchange moment missing at {missing} but present elsewhere: "
+            "out.cgyro.time and bin.cgyro.ky_flux disagree there (interrupted/continued run?)"
+        )
+
+
+# ----------------------------------------------------------------------------------------
+# load_balance strategy 'extra_points': perturbed cases on nodes freed by early radii
+# (bash mode; scheduler in SIMtools/SCHEDULERtools, hooks in CGYROtools)
+# ----------------------------------------------------------------------------------------
+_EXTRA_X_VARIABLES = ["aLte", "aLti", "aLne", "aLnZ", "aLw0_n", "nuei", "tite", "w0_n", "beta_e"]
+# channel -> (gradient variable, target key [MW/m2 or 1E20/m2/s], GB normalization key, flux prefix)
+_EXTRA_CHANNELS = {"te": ("aLte", "QeMWm2", "Qgb", "Qe"), "ti": ("aLti", "QiMWm2", "Qgb", "Qi"), "ne": ("aLne", "Ge1E20m2", "Ggb", "Ge")}
+
+def _make_extra_point_builder(self, code, rho_locations, run_kwargs, read_kwargs):
+    '''
+    Returns builder(rho, finished_scratch_dir, local_dir) -> input.cgyro path (or None), called by
+    CGYROtools when the scheduler frees a node. The extra case is the finished radius with the
+    gradient of its largest-residual channel scaled by (1 -/+ perturbation) toward reducing the
+    residual (turbulent flux of the finished run + neoclassical flux of this evaluation - target,
+    in GB units). Profiles are rebuilt from a copy of the powerstate, post-processed like the
+    main call, and turned into a single-radius input.cgyro through the normal prep chain. The
+    surrogate x-vector at that radius and the normalizations go to local_dir/mitim_extra_point.json.
+    '''
+    from mitim_tools.gacode_tools import CGYROtools
+    from mitim_tools.gacode_tools.utils import CGYROutils
+    lb = run_kwargs.get("load_balance") or {}
+    perturbation = float((lb.get("extra_points") or {}).get("perturbation", 0.15))
+    postproc = self._resolve_postproc_fun(code)
+    channels = [c for c in self.powerstate.predicted_channels if c in _EXTRA_CHANNELS]
+
+    def builder(rho, scratch_dir, local_dir):
+        if not channels:
+            return None
+        k = int(np.argmin([abs(r - rho) for r in rho_locations])); ir = k + 1
+        out = CGYROutils.CGYROoutput(Path(scratch_dir), suffix=None, minimal=True, **read_kwargs)
+        residual = {}
+        for ch in channels:
+            aL, tar_key, gb_key, flux = _EXTRA_CHANNELS[ch]
+            gb = float(self.powerstate.plasma[gb_key][0, ir])
+            target = float(self.powerstate.plasma[tar_key][0, ir]) / gb
+            neoc = float(getattr(self, f"{flux}GB_neoc", np.zeros(len(rho_locations)))[k])
+            residual[ch] = (float(getattr(out, f"{flux}_mean")) + neoc - target, abs(target))
+        ch = max(residual, key=lambda c: abs(residual[c][0]) / (residual[c][1] + 1.0))
+        factor = (1.0 - perturbation) if residual[ch][0] > 0 else (1.0 + perturbation)
+        aL = _EXTRA_CHANNELS[ch][0]
+
+        ps = self.powerstate.copy_state()
+        ps.plasma[aL][:, ir] = ps.plasma[aL][:, ir] * factor
+        ps.update_var(ch)
+        ps.calculateProfileFunctions()
+        x = {v: float(ps.plasma[v][0, ir]) for v in _EXTRA_X_VARIABLES if v in ps.plasma}
+
+        local_dir = Path(local_dir); local_dir.mkdir(parents=True, exist_ok=True)
+        file_profs = local_dir / "input.gacode"
+        ps.copy_state().from_powerstate(write_input_gacode=file_profs, postprocess_input_gacode=self.powerstate.transport_options["applyCorrections"],
+                                        rederive_profiles=True, insert_highres_powers=True)
+        if postproc is not None:
+            postproc(file_profs)
+        cg = CGYROtools.CGYRO(rhos=[rho])
+        cg.prep(file_profs, local_dir)
+        cg._preprocess_options = run_kwargs.get("preprocess_options")
+        cg._run_prepare("base_cgyro", extraOptions=run_kwargs.get("extraOptions", {}), multipliers=run_kwargs.get("multipliers", {}),
+                        code_settings=run_kwargs.get("code_settings"), allocation=run_kwargs.get("allocation"),
+                        ApplyCorrections=run_kwargs.get("ApplyCorrections", True), Quasineutral=run_kwargs.get("Quasineutral", False),
+                        cold_start=True, forceIfcold_start=True, launchSlurm=False)
+        input_cgyro = local_dir / "base_cgyro" / f"input.cgyro_{rho:.4f}"
+        meta = {"rho": rho, "radius_index": ir, "channel": ch, "variable": aL, "factor": factor, "residual_GB": residual[ch][0],
+                "parent_fluxes_GB": {c: float(getattr(out, f"{_EXTRA_CHANNELS[c][3]}_mean")) for c in channels},
+                "x": x, "Qgb": float(ps.plasma["Qgb"][0, ir]), "Ggb": float(ps.plasma["Ggb"][0, ir]), "Pgb": float(ps.plasma["Pgb"][0, ir]),
+                "evaluation_number": int(getattr(self, "evaluation_number", 0))}
+        (local_dir / "mitim_extra_point.json").write_text(json.dumps(meta, indent=2))
+        print(f"\t- [extra point] rho={rho:.4f}: {aL} x {factor:.3f} ({ch} residual {residual[ch][0]:+.2f} GB)", typeMsg="i")
+        return input_cgyro
+
+    return builder
+
+
+def _harvest_extra_points(self, read_kwargs):
+    '''
+    Accepted extra cases (mitim_budget.tag) under <folder>/extra_cgyro/rho_*/ are read with the
+    same averaging as the main radii and appended, one row per model (Qe/Qi/Ge_tr_turb_<k>), to
+    Outputs/extra_points.csv of the PORTALS run with named x columns (SURROGATEtools assembles
+    the x-vector from the model's current x_names). Each folder is harvested once.
+    '''
+    import pandas as pd
+    from mitim_tools.gacode_tools.utils import CGYROutils
+    root = Path(self.folder) / "extra_cgyro"
+    csv = Path(self.powerstate.transport_options["folder"]) / "Outputs" / "extra_points.csv"
+    rows = []
+    for d in (sorted(root.glob("rho_*")) if root.is_dir() else []):
+        meta_f, done = d / "mitim_extra_point.json", d / "mitim_harvested"
+        if done.exists() or not (meta_f.exists() and (d / "mitim_budget.tag").exists() and (d / "out.cgyro.time").exists()):
+            continue
+        meta = json.loads(meta_f.read_text())
+        try:
+            out = CGYROutils.CGYROoutput(d, suffix=None, minimal=True, **read_kwargs)
+        except Exception as e:
+            print(f"\t- [extra point] {d.name} could not be read ({type(e).__name__}: {e}); skipped", typeMsg="w")
+            continue
+        base = {"x_names": repr(list(meta["x"].keys())), **meta["x"], "evaluation": meta["evaluation_number"], "rho": meta["rho"],
+                "channel": meta["channel"], "factor": meta["factor"], "t_end": float(out.t[-1]) if hasattr(out, "t") else None, "source": str(d)}
+        for flux in ("Qe", "Qi", "Ge"):
+            mean, std = getattr(out, f"{flux}_mean", None), getattr(out, f"{flux}_std", None)
+            if mean is not None:
+                rows.append({"Model": f"{flux}_tr_turb_{meta['radius_index']}", "y": float(mean), "yvar": float(std) ** 2, **base})
+        done.write_text("harvested\n")
+    if rows:
+        df = pd.DataFrame(rows)
+        if csv.exists():
+            df = pd.concat([pd.read_csv(csv), df], ignore_index=True)
+        csv.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(csv, index=False)
+        print(f"\t- [extra point] {len(rows)} surrogate row(s) appended to {csv}", typeMsg="i")
+
 def _all_child_jobids(gk_object):
     '''
     Flatten the auto-resubmit ledger into a deduplicated list of child jobids
@@ -660,6 +783,14 @@ def _iteration_matches_spec_key(key, iteration):
     False and a warning is printed.
     '''
     key = str(key).strip()
+    # PORTALS sources the evaluation number from the Dakota-style filename, a
+    # *string* in the Execution phase ("3") and an int during the SR initializer;
+    # a str-vs-int comparison raised TypeError on the first BO iteration.
+    try:
+        iteration = int(iteration)
+    except (TypeError, ValueError):
+        print(f"\t- [CGYRO *_special] Non-integer evaluation number {iteration!r}; no per-iteration override applied", typeMsg='w')
+        return False
     for op, cmp in (
         (">=", lambda a, b: a >= b),
         ("<=", lambda a, b: a <= b),
@@ -804,6 +935,11 @@ def _resolve_cgyro_allocation_special(run_options, evaluation_number, existing_a
 # external import paths keep working while callers migrate.
 _resolve_cgyro_extra_options_first = _resolve_cgyro_extra_options_special
 _resolve_cgyro_allocation_first = _resolve_cgyro_allocation_special
+
+
+def _averaging_records(outputs):
+    '''Per-rho GKaverager.to_dict() (window, flag, provenance) of the read outputs, for the fluxes JSON.'''
+    return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
 
 
 class gyrokinetic_model:
@@ -970,6 +1106,8 @@ class gyrokinetic_model:
                 self._profiles_transport_for("turb"),
                 self.folder,
                 )
+            if (run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points":
+                gk_object.extra_point_builder = _make_extra_point_builder(self, code, rho_locations, run_kwargs, simulation_options["read"])
 
         # Set on gk_object regardless of pickle status, so both the freshly-
         # constructed and the unpickled instance carry the retry config.
@@ -979,6 +1117,7 @@ class gyrokinetic_model:
         # simulation_job may already exist on the loaded gk_object.
         gk_object.connection_retry_settings = connection_retry_settings
         gk_object.auto_resubmit_settings = auto_resubmit_settings
+        self._harvest_attach(gk_object)   # both the fresh and the unpickled instance
         # Restart-sources payload captured from the just-written
         # restart_sources.json (or None on re-attach / no-restart paths).
         # _write_submission_metadata embeds it; load_submission_state
@@ -1205,6 +1344,8 @@ class gyrokinetic_model:
 
             # Qie: electron turbulent energy exchange (the quantity TGLF passes as Se).
             # Older CGYRO outputs carry no exchange moment (n_flux=3) -> zero + warning.
+            # Only SOME radii lacking it means inconsistent output files at those radii.
+            _check_exchange_moment(outputs, rho_locations)
             if hasattr(outputs[0], 'Se_mean'):
                 self.QieGB_turb = np.array([outputs[i].Se_mean for i in range(len(rho_locations))])
                 self.QieGB_turb_stds = np.array([outputs[i].Se_std for i in range(len(rho_locations))])
@@ -1212,6 +1353,11 @@ class gyrokinetic_model:
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 self.QieGB_turb = self.QeGB_turb*0.0
                 self.QieGB_turb_stds = self.QeGB_turb*0.0
+
+            # Averaging-window record per rho (method, t_start, flag, ...) -> fluxes_turb.json
+            self.averaging_info_turb = _averaging_records(outputs)
+            if (run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points":
+                _harvest_extra_points(self, simulation_options["read"])
 
         elif run_type == 'prep':
             
@@ -1401,6 +1547,7 @@ class cgyro_model(gyrokinetic_model):
         # paths where simulation_job already exists).
         cgyro.connection_retry_settings = connection_retry_settings
         cgyro.auto_resubmit_settings = auto_resubmit_settings
+        self._harvest_attach(cgyro)   # both the fresh and the unpickled instance
         if getattr(cgyro, "simulation_job", None) is not None:
             cgyro.simulation_job.connection_retry_settings = connection_retry_settings
 
@@ -1412,8 +1559,9 @@ class cgyro_model(gyrokinetic_model):
             # restart_from_folder is resolved below into additional_files_to_send.
             _run_over_plasmas_keys = {
                 "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
-                "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation",
+                "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation", "load_balance",
                 "run_type", "additional_files_to_send", "helper_lostconnection",
+                "rescue_interrupted",
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}
 
@@ -1651,6 +1799,7 @@ class cgyro_model(gyrokinetic_model):
         Mt_std_batch = np.zeros((N, nrho))
         S_batch      = np.zeros((N, nrho))
         S_std_batch  = np.zeros((N, nrho))
+        averaging_batch = {}
 
         for p, label in plasma_labels.items():
             if not cgyro_unpickled:
@@ -1675,6 +1824,7 @@ class cgyro_model(gyrokinetic_model):
             GZ_std_batch[p, :] = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(nrho)])
             Mt_batch[p, :]     = np.array([outputs[i].Mt_mean for i in range(nrho)])
             Mt_std_batch[p, :] = np.array([outputs[i].Mt_std for i in range(nrho)])
+            _check_exchange_moment(outputs, list(range(nrho)))
             if hasattr(outputs[0], 'Se_mean'):
                 S_batch[p, :]      = np.array([outputs[i].Se_mean for i in range(nrho)])
                 S_std_batch[p, :]  = np.array([outputs[i].Se_std for i in range(nrho)])
@@ -1682,6 +1832,8 @@ class cgyro_model(gyrokinetic_model):
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 S_batch[p, :]      = 0.0
                 S_std_batch[p, :]  = 0.0
+
+            averaging_batch[p] = _averaging_records(outputs)
 
         # Optional remote scratch cleanup on the submit path — see the
         # single-plasma branch for the rationale. Same try/except shape so
@@ -1725,6 +1877,7 @@ class cgyro_model(gyrokinetic_model):
         if pass_info:
             self.QeGB_turb      = Qe_batch
             self.QeGB_turb_stds = Qe_std_batch
+            self.averaging_info_turb = [averaging_batch.get(p, None) for p in range(N)]   # per plasma, per rho
 
             self.QiGB_turb      = Qi_batch
             self.QiGB_turb_stds = Qi_std_batch

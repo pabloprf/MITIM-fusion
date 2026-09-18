@@ -30,6 +30,7 @@ Callers pass the user-facing `allocation` dict:
      'mem': str|None}             # sbatch --mem string, optional
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -140,7 +141,10 @@ def resolve(
     gpus_per_node = int(machine_settings.get("gpus_per_node") or 0)
     code_cores_per_mpi = hints.get("cores_per_mpi")
     machine_slurm = machine_settings.get("slurm", {}) or {}
-    has_slurm = bool(machine_slurm.get("partition"))
+    # Any non-empty slurm block makes the machine SLURM-capable (same rule as
+    # FARMINGtools.mitim_job). `partition` is optional: NERSC Perlmutter selects
+    # queues with --qos/--constraint only, and used to fall through to bash mode here.
+    has_slurm = bool(machine_slurm)
 
     # --- User knobs ---------------------------------------------------------
     resources_per_call = int(allocation.get("resources_per_call", hints["default_resources_per_call"]))
@@ -172,6 +176,12 @@ def resolve(
     if submission_type == "bash":
         # Cap based on local cores (or GPU count for GPU codes).
         local_capacity = gpus_per_node if (hints["uses_gpu"] and gpus_per_node > 0) else cores_per_node
+        # Driver launched inside a multi-node SLURM allocation (salloc/sbatch): full-node
+        # GPU codes launch each radial call as its own srun step (pinned to one node in
+        # code_call), so the usable capacity is the whole allocation, not one node.
+        n_alloc_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES") or 1)
+        if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and n_alloc_nodes > 1:
+            local_capacity *= n_alloc_nodes
         if local_capacity <= 0:
             local_capacity = resources_per_call  # last resort: one at a time
         concurrency = max(1, local_capacity // max(1, resources_per_call))
@@ -217,7 +227,7 @@ def resolve(
             code_cores_per_mpi=code_cores_per_mpi,
             n_rhos=n_rhos,
             n_subfolders=n_subfolders,
-            array_list=array_list,
+            array_list=array_list, max_concurrent_calls=allocation.get('max_concurrent_calls'),
         )
 
         # Explicit user override for --exclusive (e.g. force whole-node
@@ -263,36 +273,46 @@ def _resolve_mpi_layout(hints, resources_per_call, cores_per_node, gpus_per_node
         rpc=4 -> n=4 / nomp=16 / numa=4 / mpinuma=1   (full-node, 1 rank/GPU)
     """
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0 and cores_per_node > 0:
-        n_ranks = max(1, min(int(resources_per_call), gpus_per_node))
+        rpc = max(1, int(resources_per_call))
         nomp = int(code_cores_per_mpi) if code_cores_per_mpi else max(1, cores_per_node // gpus_per_node)
-        return {
-            "n": n_ranks,
-            "nomp": nomp,
-            "numa": n_ranks,
-            "mpinuma": 1,
-        }
-    return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None}
+        if rpc <= gpus_per_node:
+            # Sub-node or single full node: one rank per GPU, one NUMA per rank
+            return {"n": rpc, "nomp": nomp, "numa": rpc, "mpinuma": 1, "nodes": 1}
+        # Multi-node radial call (e.g. 48 GPUs = 12 Perlmutter nodes): whole nodes only.
+        # `-numa` is NUMAs (= GPUs) active per node, so nodes = n / numa.
+        if rpc % gpus_per_node != 0:
+            raise ValueError(
+                f"[MITIM] resources_per_call={rpc} GPUs exceeds one node ({gpus_per_node} GPUs) "
+                f"and is not a multiple of it; use a whole number of nodes (e.g. {gpus_per_node * (rpc // gpus_per_node + 1)})"
+            )
+        return {"n": rpc, "nomp": nomp, "numa": gpus_per_node, "mpinuma": 1, "nodes": rpc // gpus_per_node}
+    return {"n": resources_per_call, "nomp": 1, "numa": None, "mpinuma": None, "nodes": 1}
 
 
 def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
                         cores_per_node, gpus_per_node, code_cores_per_mpi,
-                        n_rhos, n_subfolders, array_list):
+                        n_rhos, n_subfolders, array_list, max_concurrent_calls=None):
     """Populate nodes/ntasks/cpus-per-task/gpus-per-node etc. using native names."""
     if hints["uses_gpu"] and hints["full_node_mpi"] and gpus_per_node > 0:
         # CGYRO GPU path: 1 MPI rank per requested GPU. ntasks-per-node tracks
         # n_gpus_requested so ntasks × cpus-per-task = the actual CPU slice
         # that matches the cgyro `-n × -nomp` layout.
-        n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))
+        n_gpus_requested = max(1, min(int(resources_per_call), gpus_per_node))   # GPUs (= ranks) per node
+        n_nodes_per_call = max(1, int(resources_per_call) // gpus_per_node)      # whole nodes per radial call (multi-node)
         omp_per_task = int(code_cores_per_mpi) if code_cores_per_mpi else (
             cores_per_node // gpus_per_node if cores_per_node else 1)
 
         if submission_type == "slurm_standard":
             n_radii = n_rhos * n_subfolders
-            sbatch["ntasks"] = n_gpus_requested * n_radii
+            sbatch["ntasks"] = n_gpus_requested * n_nodes_per_call * n_radii
+            if n_nodes_per_call > 1:
+                sbatch["nodes"] = n_nodes_per_call * n_radii
         elif submission_type == "slurm_array":
-            sbatch["nodes"] = 1
+            sbatch["nodes"] = n_nodes_per_call
             sbatch["ntasks-per-node"] = n_gpus_requested
             sbatch["array"] = ",".join(array_list or [])
+            if max_concurrent_calls:
+                sbatch["array_limit"] = int(max_concurrent_calls)   # sbatch --array=...%N
 
         sbatch["cpus-per-task"] = omp_per_task
         sbatch["gpus-per-node"] = n_gpus_requested

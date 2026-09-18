@@ -1038,21 +1038,26 @@ class optimization_data:
 
         return X, Y, Ystd
 
-    def update_data_point(self,x,y,ystd,objective=np.nan):
+    def update_data_point(self,x,y,ystd,objective=np.nan,iteration=None):
+        """Write the evaluated y of one point. Rows are addressed by their Iteration value
+        (the evaluation index), never by DataFrame label: after any dropped row the two differ."""
 
         # Read again?
         self.data = pd.read_csv(self.file)
 
-        # Find x in the table
-        _, point = self.find_point(x)
+        # Find the row: by evaluation index when given, otherwise by x
+        if iteration is None:
+            _, iteration = self.find_point(x)
 
-        if point is None:
+        mask = self.data['Iteration'] == iteration
+
+        if iteration is None or not mask.any():
             print("Point not found", typeMsg="q")
         else:
-            self.data.loc[point, self.outputs] = y
-            self.data.loc[point, [i + "_std" for i in self.outputs]] = ystd
+            self.data.loc[mask, self.outputs] = y
+            self.data.loc[mask, [i + "_std" for i in self.outputs]] = ystd
 
-            self.data.loc[point, "maximization_objective"] = objective
+            self.data.loc[mask, "maximization_objective"] = objective
 
             # Update file
             self.data.to_csv(self.file, index=False)
@@ -1063,11 +1068,10 @@ class optimization_data:
 
         for i in range(X.shape[0]):
 
-            # Does this point exist?
-            _, point = self.find_point(X[i,:])
-            
-            # If it does not exist, create a new one
-            if point is None:
+            # One row per evaluation, Iteration == index in X. Rows are never matched by x here:
+            # a re-evaluated (coincident) point used to get no row, and from then on Iteration
+            # values and row labels diverged and later writes landed on the wrong rows
+            if i >= len(data_new):
                 data_point = copy.deepcopy(self.data_point_dictionary)
                 data_point['Iteration'] = i
 

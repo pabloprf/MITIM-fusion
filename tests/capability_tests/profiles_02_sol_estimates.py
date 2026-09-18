@@ -36,6 +36,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from mitim_tools.gacode_tools import PROFILEStools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools.misc_tools import GRAPHICStools, IOtools
 from mitim_tools import __mitimroot__
 
@@ -118,4 +119,4 @@ ax.set_title("Separatrix temperature estimates (calculate_sol)")
 ax.legend(loc="best", fontsize=8)
 GRAPHICStools.addDenseAxis(ax)
 
-plt.show()
+GUItools.show_figures("profiles_02_sol_estimates")   # plt.show() with a display; saves PNGs to tests/figures/ when headless

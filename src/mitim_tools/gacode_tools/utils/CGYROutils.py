@@ -1,13 +1,14 @@
 import os
+import json
 import math
 import subprocess
 import scipy
 import numpy as np
 from pathlib import Path
-import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.simulation_tools import SIMtools
+from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager, PRIMARY_CHANNELS, apply_ac, _grab_ncorrelation, resolve_fixed_tmin  # noqa: F401 (apply_ac/_grab_ncorrelation re-exported for callers)
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 try:
     from pygacode.cgyro.data_plot import cgyrodata_plot
@@ -15,7 +16,6 @@ try:
 except ModuleNotFoundError:
     print("\t- Could not find pygacode module in this environment. Please install it if you need CGYRO capabilities", typeMsg='w')
 from IPython import embed
-import pandas as pd
 
 
 def _resolve_rho_star_norm_from_input_gacode(folder, roa, max_parents=3):
@@ -170,9 +170,9 @@ class CGYROlinear_scan:
         
 
 class CGYROoutput(SIMtools.GACODEoutput):
-    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, **kwargs):
+    def __init__(self, folder, suffix = None, tmin=0.0, tmin_is_rel=True, minimal=False, last_tmin_for_linear=True, averaging=None, **kwargs):
         '''
-        tmin sets the left edge of the window used for signal analysis.
+        tmin sets the left edge of the window used for signal analysis (averaging method "fixed").
           tmin >= 0                    : absolute time (a/cs).
           tmin <  0, tmin_is_rel=True  : fraction of the total simulation time
                                          counted from the end. e.g. tmin=-0.25
@@ -180,9 +180,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
           tmin <  0, tmin_is_rel=False : absolute offset (a/cs) from the end.
                                          e.g. tmin=-200 -> the last 200 a/cs
                                          of the run (self.tmin = t[-1] - 200).
+        averaging: dict selecting how the saturated window and the uncertainties are obtained,
+          e.g. {'method': 'fixed' | 'quends' | 'howard_gkav', 'quends': {...}}. See GKaveraging.py.
+          The fixed window above is the default and the fallback of the other methods.
+          Linear runs always use the last time point.
         '''
         
         super().__init__()
+        self._averaging_options = {'method': 'fixed', **(averaging or {})}
 
         self.folder = folder
         
@@ -196,6 +201,11 @@ class CGYROoutput(SIMtools.GACODEoutput):
         # --------------------------------------------------------------
 
         self._read_timing(suffix)
+
+        # CGYRO version line (timestamp [gacode hash [date]][platform][tag]); always in the minimal retrieval
+        candidates = ([self.folder / f"out.cgyro.version{suffix}"] if suffix else []) + [self.folder / "out.cgyro.version"]
+        version_file = next((f for f in candidates if f.exists()), None)
+        self.cgyro_version = version_file.read_text().strip() if version_file is not None else ""
 
         # --------------------------------------------------------------
         # Read inputs
@@ -254,16 +264,8 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         self.t = self.cgyrodata.tnorm
         
-        if tmin >= 0.0:
-            self.tmin = tmin
-        elif tmin_is_rel:
-            self.tmin = self.t[-1] + tmin * (self.t[-1] - self.t[0])
-            print(f"\t- Negative relative tmin provided ({tmin}), setting tmin to {self.tmin:.3f} (last {-tmin*100:.1f}% of run)", typeMsg='i')
-        else:
-            self.tmin = self.t[-1] + tmin
-            print(f"\t- Negative absolute tmin provided ({tmin} a/cs), setting tmin to {self.tmin:.3f} (= t[-1]={self.t[-1]:.3f} + {tmin})", typeMsg='i')
-            if self.tmin < self.t[0]:
-                print(f"\t  Warning: computed tmin ({self.tmin:.3f}) is before the start of the run (t[0]={self.t[0]:.3f}); the full time series will be used", typeMsg='w')
+        self.tmin = resolve_fixed_tmin(self.t, tmin=tmin, tmin_is_rel=tmin_is_rel)
+        self._tmin_fixed_request = (tmin, tmin_is_rel)
         
         self.ky = self.cgyrodata.kynorm
         self.kx = self.cgyrodata.kxnorm
@@ -323,6 +325,14 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         self._process_linear()
 
+        # Fluxes first: the averaging window is selected from Qi/Qe/Ge and then reused by
+        # every other signal (including the fluctuation analysis below)
+        try:
+            self._process_fluxes()
+        except Exception as e:
+                print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
+        self._build_averager()
+
         if (not minimal): # and (self.linear == False):
             self.cgyrodata.getbigfield()
 
@@ -336,14 +346,37 @@ class CGYROoutput(SIMtools.GACODEoutput):
         else:
             print('\t- Minimal mode, skipping fluctuations processing', typeMsg='i')
 
-        try:
-            self._process_fluxes()
-        except Exception as e:
-                print(f'\t- Error processing fluxes: {e}', typeMsg='w')    
-        #self._process_fluxes()        
         self._saturate_signals()
         
         self.remove_symlinks()
+
+    # ---- harvest interface (SIMtools.GACODEoutput): inputs live in params1D, fluxes are time averages by self.averaging
+    def harvest_inputs(self):
+        return {k: (int(v) if isinstance(v, (bool, np.bool_)) else v) for k, v in self.params1D.items()}
+
+    def harvest_outputs(self):
+        out = {}
+        for k in ('Qe', 'Qi', 'Ge', 'Mt', 'Se'):
+            for s in ('mean', 'std'):
+                v = getattr(self, f'{k}_{s}', None)
+                if v is not None:
+                    out[f'{k}_{s}'] = float(v)
+        for name, arr in (('mean', 'Gi_all_mean'), ('std', 'Gi_all_std')):
+            vals = getattr(self, arr, None)
+            if vals is not None:
+                for i, v in enumerate(np.atleast_1d(vals)):
+                    out[f'Gi_{i+1}_{name}'] = float(v)
+        out.update(harvest_averaging_fields(self, ('Qe', 'Qi', 'Ge', 'Mt', 'Se')))
+        out['tmax_fluct'] = float(getattr(self, 'tmax_fluct', np.nan))   # only set by the non-minimal read
+        out['linear'] = int(bool(getattr(self, 'linear', False)))
+        return out
+
+    def harvest_provenance(self):
+        return {'averaging': harvest_averaging_provenance(self)}
+
+    def harvest_hash_extra(self):
+        '''A warm-started re-run with identical inputs but a longer trace is a different record'''
+        return {'t_last': float(self.t[-1]) if getattr(self, 't', None) is not None and len(self.t) else None}
 
     def _read_timing(self, suffix=None):
         """
@@ -409,19 +442,63 @@ class CGYROoutput(SIMtools.GACODEoutput):
         if setup_names and len(setup_vals) == len(setup_names):
             self.timing_setup = dict(zip(setup_names, setup_vals))
 
+    def _reconcile_time_vector(self):
+        '''
+        pygacode infers the number of flux moments as size(bin.cgyro.ky_flux) //
+        (records per row * rows of out.cgyro.time). A run continued in place after a
+        kill (rescue) can leave the time file one or two rows longer than the flux
+        binary, which floors that count from 4 to 3 and silently drops the exchange
+        moment (Se). When the two disagree, read only the rows the binary holds:
+        the private read directory gets a trimmed regular copy of out.cgyro.time in
+        place of its link (a bare run folder is never modified, only warned about).
+        '''
+        d = self.folder_read
+        ftime, fflux, fgrid = d / "out.cgyro.time", d / "bin.cgyro.ky_flux", d / "out.cgyro.grids"
+        if not (ftime.exists() and fflux.exists() and fgrid.exists()):
+            return
+        rows = np.fromfile(ftime, dtype='float', sep=' ')
+        nt = len(rows) // 4
+        n_n, n_species, n_field = np.loadtxt(fgrid)[:3].astype(int)
+        rec = int(n_n * n_species * n_field)
+        size = fflux.stat().st_size
+        # (rows held by the binary) for each precision (4/8 bytes) and moment count (3/4)
+        # that divides the file exactly; the true combination is the one nearest nt
+        cands = [size // (b * rec * m) for b in (4, 8) for m in (3, 4) if size % (b * rec * m) == 0]
+        if nt == 0 or not cands:
+            return
+        nt_eff = min(cands, key=lambda n: abs(n - nt))
+        if nt_eff >= nt:
+            return
+        msg = f"out.cgyro.time has {nt} rows but bin.cgyro.ky_flux holds {nt_eff} (run continued in place after an interruption?)"
+        if self._read_tmpdir is None:
+            print(f"\t- {msg}; reading as is, the flux-moment count may be wrong", typeMsg='w')
+            return
+        print(f"\t- {msg}; reading the first {nt_eff} rows", typeMsg='w')
+        ftime.unlink()
+        np.savetxt(ftime, rows[:4 * nt_eff].reshape(nt_eff, 4), fmt='%.8E')
+
     def read_using_cgyroplot(self, folder, suffix):
 
         original_dir = os.getcwd()
         self.temp_links = []
+        self._read_tmpdir = None
+        self.folder_read = Path(folder)
 
         # With job arrays, CGYRO output files for each rho live side-by-side in
         # the parent folder with a per-rho suffix (e.g. out.cgyro.info_0.8519).
-        # pygacode expects canonical names, so we stage symlinks from canonical
-        # -> suffixed for the duration of the read and clean them up after.
+        # pygacode expects canonical names, so we stage symlinks canonical ->
+        # suffixed. They live in a PRIVATE temporary directory (not in the run
+        # folder): two readers of the same folder at once (e.g. the PORTALS
+        # driver and a concurrent mitim_plot_portals) used to create and delete
+        # the same links under each other's feet, and one of them then failed
+        # with a missing out.cgyro.* file (Perlmutter, 2026-09-15).
         if suffix:
             import glob
+            import tempfile
 
             folder_abs = folder.resolve()
+            self._read_tmpdir = tempfile.mkdtemp(prefix=f".mitim_read{suffix}_", dir=folder_abs)
+            self.folder_read = Path(self._read_tmpdir)
             pattern = f"{folder_abs}{os.sep}*{suffix}"
 
             for suffixed_file in glob.glob(pattern):
@@ -429,46 +506,39 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 # Strip suffix only from the basename, and only if it is a true
                 # trailing suffix — avoids collateral damage when the suffix
                 # substring happens to appear elsewhere in the path.
-                if not basename.endswith(suffix):
+                if not basename.endswith(suffix) or os.path.isdir(suffixed_file):
                     continue
-                original_name = os.path.join(folder_abs, basename[:-len(suffix)])
-
-                # Sweep any stale symlink from a previous (possibly crashed)
-                # read so that symlink creation below is idempotent.
-                if os.path.islink(original_name):
-                    try:
-                        os.unlink(original_name)
-                    except OSError:
-                        pass
-
-                # Skip if a real file already sits at the canonical name.
-                if os.path.exists(original_name) and not os.path.islink(original_name):
-                    continue
-
+                link_name = os.path.join(self._read_tmpdir, basename[:-len(suffix)])
                 try:
-                    os.symlink(suffixed_file, original_name)
-                    self.temp_links.append(original_name)
-                    print(f"\t- Created temporary link: {os.path.basename(original_name)} -> {basename}")
+                    os.symlink(suffixed_file, link_name)
+                    self.temp_links.append(link_name)
                 except OSError as e:
                     print(f"\t- Warning: Could not create symlink for {basename}: {e}", typeMsg='w')
+            print(f"\t- Staged {len(self.temp_links)} temporary links for suffix {suffix} in a private read directory")
+
+        self._reconcile_time_vector()
 
         try:
+            if "cgyrodata_plot" not in globals():
+                raise ImportError(
+                    "[MITIM] pygacode is not importable in this environment, so CGYRO outputs cannot be read. "
+                    "Set GACODE_ROOT and source $GACODE_ROOT/shared/bin/gacode_setup (adds $GACODE_ROOT/f2py to PYTHONPATH)."
+                )
             try:
                 print(f"\t- Reading CGYRO data from {folder.resolve()}")
-                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                cgyrodata = cgyrodata_plot(f"{self.folder_read.resolve()}{os.sep}")
             except FileNotFoundError:
                 raise Exception(f"[MITIM] Could not find CGYRO data in {folder.resolve()}. Please check the folder path or run CGYRO first.")
             except Exception as e:
                 print(f"\t- Error reading CGYRO data: {e}")
                 if print('- Could not read data, do you want me to try do "cgyro -t" in the folder?', typeMsg='q'):
                     try:
-                        subprocess.run(["cgyro", "-t"], cwd=str(folder))
+                        subprocess.run(["cgyro", "-t"], cwd=str(self.folder_read))
                     except FileNotFoundError:
                         print("\t- 'cgyro' executable not found in PATH", typeMsg='w')
-                cgyrodata = cgyrodata_plot(f"{folder.resolve()}{os.sep}")
+                cgyrodata = cgyrodata_plot(f"{self.folder_read.resolve()}{os.sep}")
         except Exception:
-            # Guarantee cleanup if the read raises so a subsequent re-read
-            # doesn't trip over stale symlinks.
+            # Guarantee cleanup if the read raises
             self.remove_symlinks()
             raise
         finally:
@@ -477,23 +547,20 @@ class CGYROoutput(SIMtools.GACODEoutput):
         return cgyrodata
 
     def remove_symlinks(self):
-        # Remove temporary symbolic links (idempotent).
-        remaining = []
-        for temp_link in self.temp_links:
-            try:
-                if os.path.islink(temp_link):
-                    os.unlink(temp_link)
-                    print(f"\t- Removed temporary link: {os.path.basename(temp_link)}")
-            except OSError as e:
-                print(f"\t- Warning: Could not remove temporary link {os.path.basename(temp_link)}: {e}", typeMsg='w')
-                remaining.append(temp_link)
-        self.temp_links = remaining
+        # Remove the private read directory with its temporary links (idempotent).
+        tmpdir = getattr(self, "_read_tmpdir", None)
+        if tmpdir is not None and os.path.isdir(tmpdir):
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            print(f"\t- Removed private read directory ({len(self.temp_links)} temporary links)")
+        self._read_tmpdir = None
+        self.temp_links = []
 
     def _process_linear(self):
 
         # check for convergence 
         self.linear_converged = False
-        info_file = f"{self.folder.resolve()}/out.cgyro.info"
+        info_file = f"{self.folder_read.resolve()}/out.cgyro.info"
         if not os.path.exists(info_file):
             raise FileNotFoundError(f"[MITIM] Could not find CGYRO info file at {info_file}. Please check the folder path or run CGYRO first.")
         else:
@@ -829,6 +896,24 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self.Qi_allMWm2 = self.Qi_all * self.Qgb
         self.MtJm2 = self.Mt * self.Pgb
         
+    def _build_averager(self):
+        '''
+        Selects the saturated window from the primary fluxes (GB) and updates self.tmin to it.
+        Linear runs keep the fixed window (last time point, see __init__).
+        '''
+        options = dict(self._averaging_options)
+        method = options.pop('method')
+        if self.linear and method != 'fixed':
+            print(f"\t- Linear run: averaging method '{method}' ignored, using the last time point", typeMsg='i')
+            method = 'fixed'
+
+        traces = {k: self.__dict__[k] for k in PRIMARY_CHANNELS if k in self.__dict__}
+        tmin, tmin_is_rel = (self.tmin, True) if self.linear else self._tmin_fixed_request
+
+        self.averaging = GKaverager(self.t, traces, method=method, tmin=tmin, tmin_is_rel=tmin_is_rel,
+                                    label=IOtools.clipstr(self.folder) if hasattr(self, 'folder') else '', **options)
+        self.tmin = self.averaging.t_start
+
     def _saturate_signals(self):
         
         # ************************
@@ -922,101 +1007,67 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         for iflag in flags:
             if iflag in self.__dict__:
-                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
-                        self.t,
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = self.averaging.mean_std(
                         self.__dict__[iflag],
-                        tmin=self.tmin,
                         label_print=iflag,
                         print_msg=iflag in ['Qi', 'Qe', 'Ge'],
                         )
                 
         for iflag in flags_fluctuations:
             if iflag in self.__dict__:
-                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
-                        self.t,
+                self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = self.averaging.mean_std(
                         self.__dict__[iflag],
-                        tmin=self.tmin,
                         tmax=self.tmax_fluct,
                         label_print=iflag,
                         )     
             
-def _grab_ncorrelation(S, debug=False):
-    # Calculate the autocorrelation function
-    i_acf = sm.tsa.acf(S, nlags=len(S))
 
-    if i_acf.min() > 1/np.e:
-        print("Autocorrelation function does not reach 1/e, will use full length of time series for n_corr.", typeMsg='w')
+def harvest_averaging_fields(obj, names):
+    '''
+    Per-record description of how the fluxes of a CGYRO/GX output were averaged (harvest): the window
+    [avg_tmin, avg_tmax] selected by obj.averaging (GKaverager), its sample count, the output spacing,
+    the averager flag, and per flux the uncertainty diagnostics: ACF estimator -> <flux>_ncorr
+    (effective samples) and <flux>_icor (decorrelation lag, in outputs); QUENDS -> <flux>_ess.
+    '''
+    t = getattr(obj, 't', None)
+    av = getattr(obj, 'averaging', None)
+    out = {'avg_tmin': np.nan, 'avg_tmax': np.nan, 'avg_npoints': np.nan, 'avg_dt': np.nan, 't_last': np.nan, 'avg_flag': ''}
+    if t is None or len(t) == 0:
+        return out
+    out['t_last'] = float(t[-1])
+    out['avg_dt'] = float(np.median(np.diff(t))) if len(t) > 1 else np.nan
+    if av is None:
+        return out
+    out.update({'avg_tmin': float(av.t_start), 'avg_tmax': float(av.t_end), 'avg_npoints': float(av.n_window), 'avg_flag': str(av.flag)})
+    it0 = int(np.argmin(np.abs(np.asarray(t) - av.t_start)))
+    for k in names:
+        S = getattr(obj, k, None)
+        if S is None or np.ndim(S) != 1 or len(S) != len(t):
+            continue
+        if av.uncertainty == 'acf':
+            try:
+                n_corr, icor = _grab_ncorrelation(np.asarray(S, dtype=float)[it0:])
+                out[f'{k}_ncorr'], out[f'{k}_icor'] = float(n_corr), float(icor)
+            except Exception:
+                pass
+        else:
+            ess = (av.diagnostics.get('stats', {}).get(k, {}) or {}).get('effective_sample_size', None)
+            if ess is not None:
+                out[f'{k}_ess'] = float(ess)
+    return out
 
-    # Calculate how many time slices make the autocorrelation function is 1/e (conventional decorrelation level)
-    icor = np.abs(i_acf-1/np.e).argmin()
-    
-    # Define number of samples
-    n_corr = len(S) / ( 3.0 * icor ) #Define "sample" as 3 x autocor time
-    
-    if debug:
-        fig, ax = plt.subplots()
-        ax.plot(i_acf, '-o', label='ACF')
-        ax.axhline(1/np.e, color='r', linestyle='--', label='1/e')
-        ax.set_xlabel('Lags'); ax.set_xlim([0, icor+20])
-        ax.set_ylabel('ACF')
-        ax.legend()
-        plt.show()
-        embed()
-    
-    return n_corr, icor
-
-def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
-    
-    it0 = np.argmin(np.abs(t - tmin))
-    it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
-    
-    if it1 <= it0:
-        it0 = it1
-
-    # Calculate the mean and std of the signal after tmin (last dimension is time)
-    S_mean = np.mean(S[..., it0:it1+1], axis=-1)
-    S_std = np.std(S[..., it0:it1+1], axis=-1)
-
-    if S.ndim == 1:
-        # 1D case: single time series
-        n_corr, icor = _grab_ncorrelation(S[it0:it1+1], debug=debug)
-        S_std = S_std / np.sqrt(n_corr)
-        
-        if print_msg:
-            print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor:.1f} -> {n_corr:.1f} samples -> {S_mean:.2e} +-{S_std:.2e}")
-        
-    else:
-        # Multi-dimensional case: flatten all dimensions except the last one
-        shape_orig = S.shape[:-1]  # Original shape without time dimension
-        S_reshaped = S.reshape(-1, S.shape[-1])  # Flatten to (n_series, n_time)
-        
-        n_series = S_reshaped.shape[0]
-        n_corr = np.zeros(n_series)
-        icor = np.zeros(n_series)
-        
-        # Calculate correlation for each flattened time series
-        for i in range(n_series):
-            n_corr[i], icor[i] = _grab_ncorrelation(S_reshaped[i, it0:it1+1], debug=debug)
-        
-        # Reshape correlation arrays back to original shape (without time dimension)
-        n_corr = n_corr.reshape(shape_orig)
-        icor = icor.reshape(shape_orig)
-        
-        # Apply correlation correction to standard deviation
-        S_std = S_std / np.sqrt(n_corr)
-
-        # Print results - handle different dimensionalities
-        if print_msg:
-            if S.ndim == 2:
-                # 2D case: print each series
-                for i in range(S.shape[0]):
-                    print(f"\t- {(label_print + f'_{i}: a') if len(label_print)>0 else 'A'}utocorr: {icor[i]:.1f} -> {n_corr[i]:.1f} samples -> {S_mean[i]:.2e} +-{S_std[i]:.2e}")
-            else:
-                # Higher dimensional case: print summary statistics
-                print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
-
-    return S_mean, S_std
-
+def harvest_averaging_provenance(obj):
+    '''One string per (run, code) for the harvest runs table: averaging method, uncertainty estimator and their parameters'''
+    av = getattr(obj, 'averaging', None)
+    if av is None:
+        return ''
+    window = {'fixed': 'mean over the fixed window [avg_tmin, avg_tmax]',
+              'howard_gkav': "window [avg_tmin, avg_tmax] from N.T. Howard's stationarity scan (avg_flag)",
+              'quends': 'window [avg_tmin, avg_tmax] from QUENDS transient trimming (avg_flag)'}.get(av.method, av.method)
+    std = {'acf': 'std = sample std / sqrt(<flux>_ncorr), <flux>_ncorr = N / (3 <flux>_icor), <flux>_icor = lag at which the ACF drops to 1/e',
+           'quends': 'std = QUENDS block-mean standard error over the window (<flux>_ess effective samples)'}.get(av.uncertainty, av.uncertainty)
+    prov = {k: v for k, v in dict(getattr(av, 'provenance', {}) or {}).items() if k not in ('method', 'uncertainty')}
+    return json.dumps({'method': av.method, 'window': window, 'uncertainty': av.uncertainty, 'std': std, **prov}, default=str)
 
 def _cross_phase(t, f1, f2):
     """
@@ -1081,33 +1132,6 @@ def calculate_lcorr(phim, kx, nx, debug=False):
 
     return l_corr[0]  # Return the correlation length in the radial direction
 
-
-def quends_analysis(t, S, debug = False):
-    
-    import quends as qnds
-    
-    time_dependent_data = {'time': t, 'signal': S}
-    df = pd.DataFrame(time_dependent_data, index = pd.RangeIndex(len(t)))
-    
-    dst = qnds.DataStream(df)
-
-    window_size = 10
-    
-    trimmed_df = dst.trim(column_name="signal", method="std") #, window_size=10)
-    mean = trimmed_df.mean(window_size=window_size)['signal']
-    std = trimmed_df.mean_uncertainty(window_size=window_size)['signal']
-    
-    stats = trimmed_df.compute_statistics(window_size=window_size)
-    
-    if debug:
-        plotter = qnds.Plotter()
-        plotter.steady_state_automatic_plot(dst, ["signal"])
-        plotter.plot_acf(trimmed_df)
-        print(stats)
-        plt.show()
-        embed()
-        
-    return mean, std, stats
 
 def fetch_CGYROoutput(folder_local, folders_remote, machine, minimal=True, delete_local=False):
     '''This is a helper function to bring back only the python object from a remote CGYRO run

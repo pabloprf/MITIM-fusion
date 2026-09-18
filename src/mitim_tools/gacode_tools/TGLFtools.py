@@ -87,6 +87,7 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
             
             self.output_files_simulation["minimal"] = [
                 "out.tglf.gbflux",
+                "out.tglf.version",   # 3 lines; the only provenance of the TGLF build (harvest code_version)
             ]
             
             self.output_files_simulation["complete"] = self.output_files_simulation["minimal"] + [
@@ -100,7 +101,6 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
                 "out.tglf.nete_crossphase_spectrum",
                 "out.tglf.nsts_crossphase_spectrum",
                 "out.tglf.width_spectrum",
-                "out.tglf.version",
                 "out.tglf.scalar_saturation_parameters",
                 "out.tglf.spectral_shift_spectrum",
                 "out.tglf.ave_p0_spectrum",
@@ -968,7 +968,9 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         # mixin, which builds results entirely from the in-process cache.
         # ------------------------------------------------------------------
         if self.in_process:
-            return self.read_inprocess(label=label, folder=folder)
+            out = self.read_inprocess(label=label, folder=folder)
+            self._harvest(label, folder=folder)
+            return out
 
         print("> Reading TGLF results")
 
@@ -1066,6 +1068,8 @@ class TGLF(SIMtools.mitim_simulation, GACODEinprocess.TGLFInProcess):
         # After read, go back to no waveforms in case I want to read another case without it
         if cold_startWF:
             self.ky_single = None
+
+        self._harvest(label, folder=folder)
 
         if save_and_cleanup is not None:
             self.save_npz(save_and_cleanup)
@@ -5469,6 +5473,14 @@ class TGLFoutput(SIMtools.GACODEoutput):
             lines = fi.readlines()
         self.inputFile = "".join(lines)
 
+        # TGLF version string (in the minimal retrieval list too: build provenance for harvesting)
+        version_path = self.FolderGACODE / ("out.tglf.version" + self.suffix)
+        if version_path.exists():
+            with open(version_path, "r") as fi:
+                self.tglf_version = fi.read().strip()
+        else:
+            self.tglf_version = ""
+
         if require_all_files:
 
             # Generated input file (defaults filled in by TGLF)
@@ -5478,14 +5490,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
                     self.inputFile_gen = fi.read()
             else:
                 self.inputFile_gen = ""
-
-            # TGLF version string
-            version_path = self.FolderGACODE / ("out.tglf.version" + self.suffix)
-            if version_path.exists():
-                with open(version_path, "r") as fi:
-                    self.tglf_version = fi.read().strip()
-            else:
-                self.tglf_version = ""
 
             # Scalar saturation parameters
             self.scalar_sat_params = {}
@@ -5510,7 +5514,6 @@ class TGLFoutput(SIMtools.GACODEoutput):
 
         else:
             self.inputFile_gen = ""
-            self.tglf_version = ""
             self.scalar_sat_params = {}
 
     def unnormalize(self, normalization, rho=None, convolution_fun_fluct=None, factorTot_to_Perp=1.0):

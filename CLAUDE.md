@@ -209,6 +209,7 @@ ignored.
     optimization_results.out    # human-readable summary
     timing.jsonl                # per-iter wallclock
     portals_profiles/           # input.gacode.<iter> snapshots
+    harvest/                    # (harvest.enabled) staged <code>.jsonl records, pushed at the end (§5.7)
   Initialization/
     initialization_simple_relax/portals_sr_ev_<i>/  # SR seed evaluations
   Execution/
@@ -340,7 +341,7 @@ mitim_run_maestro <folder> --namelist nl.yaml \
 Re-running with the same folder is idempotent: each beat checks for its output
 file and skips when present. The *first* beat that needs to run forces every
 later beat to cold-start (state has changed). To force a particular beat to
-re-run, delete its `Beats/<n>_*/beat_results/` output file.
+re-run, delete its `Beats/Beat_<n>/beat_results/` output file.
 
 ### 4.4 Folder layout produced
 
@@ -351,12 +352,13 @@ re-run, delete its `Beats/<n>_*/beat_results/` output file.
     warnings.log
     Logs/                       # per-beat stdout
     Performance/                # per-beat timing
+    harvest/                    # (maestro.harvest.enabled) staged EPED records; pushed with all beats at finalize (§5.7)
   Beats/
-    1_transp/                   # ufiles, namelist.dat, run_transp/, beat_results/
-    2_eped/                     # eped run + beat_results/input.gacode
-    3_portals/                  # full PORTALS run subtree (see §3.4) + beat_results/
-    4_eped/
-    5_portals/
+    Beat_1/                     # transp: ufiles, namelist.dat, run_transp/, beat_results/
+    Beat_2/                     # eped: run_eped/ + beat_results/input.gacode
+    Beat_3/                     # portals: run_portals/ (full PORTALS subtree, see §3.4) + beat_results/
+    Beat_4/
+    Beat_5/
   maestro.namelist.actual.yaml  # exact namelist used (post-preprocess)
 ```
 
@@ -372,7 +374,7 @@ mitim_check_maestro <folder>                    # quick textual progress check
 ```
 
 The interesting per-beat output for downstream beats and external use is
-`Beats/<n>_<type>/beat_results/input.gacode` (PORTALS, EPED) or
+`Beats/Beat_<n>/beat_results/input.gacode` (PORTALS, EPED) or
 `run_transp/*.cdf` (TRANSP).
 
 ---
@@ -427,6 +429,29 @@ and GX have their own multi-task allocators (`slurm_array` for one element
 per rho on GPU partitions; `slurm_standard` for a single allocation with `&`
 parallelism). Per-iteration overrides (`extraOptions_special`,
 `allocation_special`) accept selectors like `"0"`, `">5"`, `"<=10"`.
+
+### 5.7 Harvest (archiving every code evaluation)
+
+`harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist (or
+`maestro.harvest`) records every individual TGLF/NEO/CGYRO/GX/QuaLiKiz
+evaluation (base point AND each member of the TGLF std scan trick unless
+`scan_trick_members: false`) and every full-EPED evaluation. A record is only
+`in_<KEY>` (full input file) -> `out_<name>` (scalar fluxes) plus `run` and
+`hash`; provenance (folder, user, MITIM commit, machine, modules, code version,
+and for CGYRO/GX the flux-averaging method) lives once per run and code in the
+`runs` group, joined on load. Averaged codes also store per record the window
+(`avg_tmin`, `avg_tmax`, `avg_npoints`, `avg_dt`), the std, and per flux the
+effective sample count and autocorrelation time (`<flux>_ncorr`, `<flux>_icor`). Staged as
+`Outputs/harvest/<code>.jsonl` with rolling gzip compression (a run never holds
+more than a few MB) and appended at the end of the outermost driver into a
+per-user netCDF-4 file (one group per code) under an NFS-safe mkdir lock.
+Pushed archives are kept, so `mitim_harvest --rebuild` can regenerate the file.
+Implementation: `mitim_tools/harvest_tools/HARVESTtools.py` (`harvest_recorder`
+attached to simulation objects by `power_transport._harvest_attach`; the
+per-code extraction is `harvest_records` / `harvest_outputs` on the
+simulation/output classes; `harvest_database` loads, interprets, plots and
+pushes). CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
+`mitim_plot_harvest [file]`.
 
 ### 5.6 Logging conventions
 

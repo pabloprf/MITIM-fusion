@@ -13,7 +13,7 @@ from mitim_tools import __mitimroot__
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import FunctionalForms
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds
+from mitim_modules.maestro.utils.MAESTRObeat import beat, _format_seconds, PRUNE_NOTHING
 from mitim_modules.powertorch.utils import CALCtools
 from IPython import embed
 
@@ -40,6 +40,10 @@ class eped_beat(beat):
         and read only while the beat is live. Directories only: the sibling files (eped.input.1,
         eped.config) are tiny provenance. output_run1.nc, which the stability plot needs, lives
         one level up in case1/ and is persisted to beat_results/ anyway.
+
+        Normally a no-op: EPED itself deletes these dirs on the runner as each stage is collected
+        (see _keep_eped_intermediate_files), so they only exist here when the user asked to keep
+        them at prune level 0.
         '''
         return [p for p in sorted(self.folder.glob('case1/run1/*')) if p.is_dir()]
 
@@ -70,6 +74,10 @@ class eped_beat(beat):
                                            # 'G' (default): flat cut on gamma/omega_A. 'W': EPED1 diamagnetic criterion
                                            # gamma > C*omega_*pi(n)/2, threshold = the O(1) calibration factor C
                                            # (C = 1 is EPED1 as published). ['W'] alone uses the nominal C = 1.
+            keep_eped_intermediate_files = False, # (full EPED) True keeps the per-height TOQ/ELITE work dirs in run_eped/case1/run1/
+                                                  # for post-mortems (GBs per beat). Only honored at prune level 0: at any higher
+                                                  # level they would be pruned right after the beat, so EPED deletes them on the
+                                                  # runner instead (see _keep_eped_intermediate_files).
             **kwargs
             ):
         self.use_full_EPED = use_full_EPED
@@ -119,6 +127,7 @@ class eped_beat(beat):
         self.forceifcold_start = forceifcold_start
         self.zeff_location = zeff_location
         self.stability_rule = stability_rule
+        self.keep_eped_intermediate_files = keep_eped_intermediate_files
 
         self.ptop_multiplier = ptop_multiplier
         self.TioverTe = TioverTe
@@ -728,6 +737,23 @@ class eped_beat(beat):
                 return [float(v) for v in stripped.split("=", 1)[1].split()]
         return [0.4, 1.4, 0.01]
 
+    def _keep_eped_intermediate_files(self):
+        '''
+        Whether EPED should leave the per-height TOQ/ELITE work dirs on disk (CLEAN_AFTER=0)
+        instead of deleting each one on the runner as its stage is collected (CLEAN_AFTER=1).
+
+        The user's keep_eped_intermediate_files is only meaningful at prune level 0. At any higher
+        level prune_run_folder would delete those dirs right after the beat anyway, so producing
+        them is pure waste of scratch and I/O; EPED cleans as it goes regardless of the flag.
+        In-place local execution (scratch: null) matters here: the runner's work dir IS
+        run_eped/case1/run1/, so whatever EPED leaves behind lands straight in the MAESTRO folder.
+        '''
+        keep = getattr(self, 'keep_eped_intermediate_files', False)
+        if keep and self.prune_level != PRUNE_NOTHING:
+            print(f'\t\t- keep_eped_intermediate_files ignored at prune level {self.prune_level}: EPED cleans its work dirs as it goes', typeMsg='i')
+            keep = False
+        return keep
+
     def _run_full_eped(self, folder, Ip, Bt, R, a, kappa995, delta995, neped19, BetaN, zeff, Tesep_eV, nesep_ratio, *args, eped_params_override=None, nproc_per_run=64, cold_start=True):
         '''
             Run the full EPED code with the given inputs.
@@ -821,6 +847,7 @@ class eped_beat(beat):
             minutes_slurm = getattr(self, 'minutes_slurm', 240),
             cold_start = cold_start,
             forceifcold_start = getattr(self, 'forceifcold_start', True),
+            clean_intermediate_files = not self._keep_eped_intermediate_files(),
             eped_params_override = eped_params_override,
             m = m, z = z, mi = mi, zi = zi,
         )
@@ -838,7 +865,28 @@ class eped_beat(beat):
         # recomputed later from that retained file.
         self.limiting_mode_info = EPEDtools.limiting_mode_from_dataset(eped.results['case1']['run1'])
 
+        self._harvest_eped(eped, input_params, dict(m=m, z=z, mi=mi, zi=zi), eped_params_override, ptop_kPa, wtop_psipol)
+
         return ptop_kPa, wtop_psipol
+
+    def _harvest_eped(self, eped, input_params, composition, eped_params_override, ptop_kPa, wtop_psipol):
+        '''
+        One harvest record per full-EPED evaluation (retries included; EPED-NN never). Also covers the
+        eped_initializer creator, which builds an eped_beat on the same maestro instance (maestro_beat 0).
+        '''
+        harvest = getattr(self.maestro_instance, 'harvest', None)
+        if not harvest or not harvest.get('enabled', False):
+            return
+        from mitim_tools.harvest_tools.HARVESTtools import harvest_recorder
+        beats = getattr(self.maestro_instance, 'beats', {})
+        maestro_beat = next((int(c) for c, b in beats.items() if b is self), 0)
+        case_folder = eped.folder_run / 'run1'   # eped.input.1 / eped.config1 as written for this evaluation
+        harvest_recorder(harvest).with_context(maestro_beat=maestro_beat).record_eped(
+            input_params=input_params, composition=composition, eped_params_override=eped_params_override,
+            toq_eq_choice=getattr(self, 'toq_eq_choice', ''), dataset=eped.results['case1']['run1'],
+            ptop_kPa=ptop_kPa, wtop_psipol=wtop_psipol, limiting_mode_info=self.limiting_mode_info,
+            eped_folder=eped.folder, job=getattr(eped, 'eped_job', None),
+            eped_input_file=case_folder / 'eped.input.1', eped_config_file=case_folder / 'eped.config1')
         
     def finalize(self, **kwargs):
 

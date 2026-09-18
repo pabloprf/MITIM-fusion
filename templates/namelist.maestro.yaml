@@ -219,6 +219,23 @@ maestro:
   # the global one (e.g. transp: {prune_level: 0, ...} while portals: {prune_level: 3, ...}).
   # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
+  # Stop the chain (skip the remaining beats, still finalize) once this many PORTALS beats have
+  # ended without meeting their convergence criteria; null = never stop on unconvergence
+  max_unconverged_portals_beats: null
+
+  # Harvest: archive every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of all PORTALS beats and every
+  # full-EPED evaluation (EPED-NN is not harvested). All beats stage into <run>/Outputs/harvest/ as the run
+  # goes (each record tagged with its maestro_beat; survives every prune level) and MAESTRO pushes ONCE
+  # at finalize into the central per-user netCDF file;
+  # `mitim_harvest <folder>` pushes a run that died, `mitim_plot_harvest` inspects the file
+  harvest:
+    enabled: false
+    # null -> config_user.json preferences.harvest_file, else ~/mitim_harvest/mitim_harvest.nc
+    file: null
+    # Also record the perturbed members of the TGLF std scan trick (most of the volume); false keeps
+    # only the base point of each PORTALS evaluation
+    scan_trick_members: true
+
   # WHEN the 99.5% shaping fed to EPED is (re)frozen (HOW it is extracted is
   # plasma.parameters.separatrix.freeze_995_from). Options:
   #   0    : freeze at initialization and reuse for the whole run (default)
@@ -267,6 +284,11 @@ maestro:
 
       # (if full EPED) SLURM time limit (minutes) of each EPED case (needs generous wall-time)
       minutes_slurm: 240
+
+      # (if full EPED) Keep the per-height TOQ/ELITE work dirs in run_eped/case1/run1/ for
+      # post-mortems (GBs per beat). Only honored at prune_level 0: at any higher level EPED
+      # deletes them on the runner as it goes, since pruning would drop them right after the beat
+      keep_eped_intermediate_files: false
 
       # (if full EPED) [rule, threshold]: 'G' = flat gamma/omega_A cut; 'W' = EPED1 gamma > C*omega_*i(n)/2 (threshold = calibration C)
       # stability_rule: ['G', 0.03]
@@ -448,10 +470,19 @@ maestro:
 
       fixed_impurity_species: 'W' # It will try find this element in the ions available in input.gacode, keeping their concentration fixed
 
-      dilution_impurity_species: None
-      dilution_impurity_charge: 2
-      dilution_impurity_mass: 3.9746
-      dilution_impurity_min_concentration: 0
+      # Optional diluting impurities (all four entries must have the SAME list length).
+      # - null: disables this feature entirely (legacy behavior; no dilution handling)
+      # - string/list: species names searched in input.gacode; if missing or non-thermal,
+      #   they are added as thermal species in run() and then floored to the minimum concentration.
+      # Example:
+      #   dilution_impurity_species: ['He', 'Li']
+      #   dilution_impurity_charge: [2, 3]
+      #   dilution_impurity_mass: [3.9746, 6.892]
+      #   dilution_impurity_min_concentration: [0.00, 0.01]
+      dilution_impurity_species: null
+      dilution_impurity_charges: null
+      dilution_impurity_masses: null
+      dilution_impurity_min_concentrations: null
 
       # Relaxation w in [0, 1] of the Zeff update: realized Zeff = w*imposed + (1-w)*incoming.
       # 1.0 = full update every beat; lower damps beat-to-beat Zeff swings (see LENGYELbeat.py)
@@ -544,11 +575,17 @@ maestro:
       # Later beats to utilize past beats surrogate data if available (e.g. if position has not changed)
       use_previous_surrogate_data: true
 
+
       # Use previous exploration ranges to limit the new exploration ranges (good to avoid cases in which a portals beat reports a zero gradient)
       use_previous_ranges: true 
 
-      # If surrogates exist, use them to find the first training point (and limit to only one point)
-      try_flux_match_only_for_first_point: true
+      # First training point of a beat that follows another PORTALS beat:
+      #   previous_best -> the previous beat's best solution, as the only training point (the incoming
+      #                    state already carries those gradients)
+      #   flux_match    -> flux match against the previous beat's surrogate, as the only training point
+      #   namelist      -> the PORTALS namelist initialization (initial_training simple-relax points)
+      # (try_flux_match_only_for_first_point true/false is the retired alias for flux_match/namelist)
+      first_point: previous_best
 
       # If element is not exactly in radiation database, search for closest one
       enforce_impurity_radiation_existence: true

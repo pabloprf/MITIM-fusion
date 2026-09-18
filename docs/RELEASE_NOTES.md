@@ -4,6 +4,28 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Harvest: archive every code evaluation of PORTALS/MAESTRO runs into a per-user database**
+    (opt-in `harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`).
+    Every individual TGLF/NEO/CGYRO/GX/QuaLiKiz run (base points AND each TGLF std scan-trick member)
+    and every full-EPED evaluation is stored as an input -> output record (full input file, scalar
+    fluxes, for CGYRO/GX the averaging window and uncertainty diagnostics; for EPED the eped.input as
+    run, NMODES/WIDTHS/TEPED_BOUND and the stability rule) with its provenance (machine, modules, code
+    version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
+    compression and pushed once at the end (MAESTRO: all beats share `Outputs/harvest`, records tagged
+    with `maestro_beat`, one push at finalize) into a netCDF-4 file
+    (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
+    `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
+    `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
+    `portals_04_harvest.py` and `maestro_02_harvest.py`.
+
+*   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
+    (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
+    `tmin` window, Sandia QUENDS transient trim, or N.T. Howard's stationarity scan) and
+    `uncertainty: acf | quends` (autocorrelation vs block-mean standard error). Implemented by the
+    reusable `GKaverager` (`simulation_tools/utils/GKaveraging.py`), with per-rho window/flag/provenance
+    written to `fluxes_turb.json`, an "Averaging" tab in the CGYRO/GX notebooks, `mitim_plot_cgyro --averaging`,
+    the optional `mitim[quends]` extra and `tests/capability_tests/cgyro_07_flux_averaging_methods.py`.
+
 *   💥 **Thermal D-D neutron rate**: new `PLASMAtools.sigmav_dd_neutron` (Bosch-Hale
     D(d,n)3He parametrization [Bosch & Hale, Nucl. Fusion 32 (1992) 611, Table VII]) and
     `mitim_state.derived['ndd_thermal']` — volume-integrated thermal D(d,n)3He neutron rate (n/s)
@@ -121,6 +143,12 @@ DESCRIPTION
     beats (the bc beat) a physics-based Tsep scale instead of the namelist constant;
     PORTALS surrogate data stays reusable. Test chain: `tests/dev_tests/test_lengyel_clean_beat.py`.
 
+*   💥 **MAESTRO lengyel beat supports multiple diluting impurities**: `parameters_prepare`
+    now accepts list-valued `dilution_impurity_species`, `dilution_impurity_charges`,
+    `dilution_impurity_masses`, and `dilution_impurity_min_concentrations` (same length required).
+    Each species is checked independently, added as thermal if missing, and floored to its
+    per-species minimum concentration; `dilution_impurity_species: null` keeps dilution disabled.
+
 *   💥 **BC beats support Te_bc under-relaxation** (`relaxation` knob in the bc beat's
     `parameters_prepare`, default 1.0 = previous behavior): the applied boundary temperature
     is blended with the value applied by the previous bc beat (shared trans-beat
@@ -159,6 +187,9 @@ DESCRIPTION
     `mitim_prune_maestro --level N` applies any level post-hoc to a finished run, importing the
     same per-beat tables so the two cannot drift. `mitim_plot_maestro` degrades gracefully on
     pruned runs (placeholder tabs + an aggregated "skipped" report instead of failures).
+    The EPED beat now has EPED delete its per-height TOQ/ELITE work dirs on the runner as it
+    goes, at every level; `eped.keep_eped_intermediate_files: true` retains them for
+    post-mortems and is honored at level 0 only.
 
 *   💥 **MAESTRO fixed thermal helium-ash support with explicit gates**: `plasma.species.mix`
     now accepts `fixed_helium_ash` with `fHe/ZHe/AHe`, and TRANSP applies helium as a separate
@@ -166,7 +197,43 @@ DESCRIPTION
     enabled. Lengyel adds optional `parameters_prepare.lengyel_fixed_helium_ash` (bool): when true,
     helium is added as a second fixed impurity species; defaults preserve legacy behavior.
 
+*   🎯 **MAESTRO PORTALS beats seed from the previous beat's best solution**: new `first_point`
+    knob in the portals beat (`previous_best` default, `flux_match`, `namelist`). The flux-match
+    seed against the previous surrogate landed subcritical (zero TGLF edge flux) in nearly every
+    unconverged lmodes_v6 chain; the incoming state already carries the previous best gradients,
+    so the beat now starts there with a single training point.
+    `try_flux_match_only_for_first_point` is kept as a retired alias.
+
+*   🛑 **`maestro.max_unconverged_portals_beats`**: stop a MAESTRO chain (skip the remaining
+    beats, still finalize, `Outputs/maestro_stopped.txt`) once that many PORTALS beats ended
+    without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
+    beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
+    `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+
 ### Bug Fixes
+
+*   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
+    `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
+    prescribed (linear-in-psi_n) edge, written by the BC beat beyond the outermost predicted
+    radius, put a gradient kink one grid point out. The neoclassical Er — and, one derivative
+    further, the `VEXB_SHEAR` handed to TGLF — spiked at the boundary control point (O(0.3-1)
+    c_s/a vs O(1e-3) in the core), suppressing the boundary turbulent flux several-fold and
+    biasing the flux-matched edge gradient; the pre-VGEN smoothing spline amplified it further.
+    New MITIM-side knobs in `vgen_exb_shear`: `edge_treatment: continue_core` runs VGEN on a copy
+    whose edge beyond the last predicted radius is a C1 continuation of the core
+    (`mitim_state.continue_edge_constant_aLx`), and `smooth_profiles` (null -> on for
+    `prescribed`, off for `continue_core`) controls the pre-VGEN spline; a warning fires if
+    `|gamma_exb|` at the last predicted radius still exceeds 10x the median over the others.
+    The default `edge_treatment: prescribed` keeps the previous behavior. Only affects runs
+    using `vgen_exb_shear` (default off).
+
+*   🐛 **TRANSP `to_profiles` now carries the NBI fast ions and thermal hydrogen**: `getSpecies`
+    built no beam species at all (only fusion products and ICRF minorities were `[fast]`) and skipped
+    NH, so NBI-heated extractions lost the beam dilution and pressure and the H fraction (JET DT
+    42847V04: quasineutrality off by 1.6% at mid-radius, ~12% of the pressure missing). One `[fast]`
+    species per injected isotope (BDENS_D/T/H) is now written, each with its own pressure-consistent
+    T = 2/3 (W_perp+W_par)/n from UBPRP_X/UBPAR_X (fast alphas likewise from UFPRP_4/UFPAR_4), so the
+    state's fast pressure reproduces TRANSP's PMHDF_IN. Tests: `tests/dev_tests/test_transp_fast_ions_time_averaging.py`.
 
 *   🐛 **TRANSP `to_profiles` now carries the particle sources**: `qpar_beam` (from SBTH,
     fast-ion thermalization) and `qpar_wall` (from SWD, wall/recycled neutrals) were previously
@@ -174,6 +241,14 @@ DESCRIPTION
     against a Gamma=0 target. Also fixed the impurity-mass namelist lookup, which could not parse
     multi-valued `AIMPS = 12.0, 40.0` lines and silently fell back to `2*Zave` (Ar came out A~36
     instead of 40). Tests: `tests/dev_tests/test_transp_particle_sources.py`.
+
+*   🐛 **TRANSP `to_profiles` power channels (radiation, RF, charge exchange)**: total radiation is
+    now pinned to TRANSP's `PRAD` instead of the internally-computed `PRAD_BR/CY/LI` split — on decks
+    that prescribe measured radiation (`.QRA` ufile) that split is only 5-20% of `PRAD`, so every
+    extracted state under-radiated and biased the electron target flux high (the remainder goes into
+    `qline`; where `PRAD` sits below brems+sync those two are rescaled instead, and it is reported).
+    `qrfe`/`qrfi` now sum ICRH+ECH+LH rather than ICRH alone, and `qioni` carries `-P0NET` (a loss in
+    TRANSP, but gacode sums `qioni` into `qi`), worth ~2% of `qHeat` on these DIII-D runs.
 
 *   🐛 **Headless MAESTRO `--save` no longer killed by matplotlib's Qt backend**: on SLURM
     nodes without a display, matplotlib could pick Qt/xcb and SIGABRT the whole process
@@ -276,6 +351,34 @@ DESCRIPTION
     tiny boundary — with a loud guard refusing to freeze a curve inconsistent with the plasma
     minor radius.
 
+*   🐛 **MAESTRO PORTALS beats hand forward the best evaluation when only the Ricci stop is active**:
+    with `maximum_value: null` and `minimum_inputs_variation: null` the default stopping criteria
+    returned no per-evaluation values, `getBest()` failed silently (`Problem retrieving best
+    evaluation`) and the LAST evaluation of an unconverged beat was carried to the next beat
+    (median 1.17x worse residual than the best point over the lmodes_v6 campaign). The default
+    criteria now always return the residuals, so the min-residual point is the one handed forward.
+
+*   🐛 **`optimization_data.csv` no longer corrupts after a re-evaluated point**: rows were
+    addressed by their `Iteration` value through a DataFrame label, and a candidate coincident
+    with an earlier evaluation got no row, after which every later write landed on the wrong row
+    (blank-y rows, y under the wrong x, missing evaluations; 388 of 535 lmodes_v6 beats). The table
+    now keeps one row per evaluation (`Iteration` = index in the training set) and the evaluator
+    writes y by evaluation index.
+
+*   🐛 **`use_previous_ranges` in MAESTRO PORTALS beats now actually freezes the exploration
+    ranges**: the frozen ranges were written to a key PORTALS never reads, so every beat silently
+    re-boxed relative to its own seed gradients (up to a/LT ~ 1700 at rho=0.9 for ITER-size cases,
+    letting `sr` walk to negative a/LTe and crash the chain); and on `predicted_roa` grids they
+    were built over the template's `predicted_rho`, giving misaligned bounds. Ranges now go into
+    the portals namelist overlay, expanded on the active grid and validated (`_expand_range`) so a
+    mismatch raises instead of falling back.
+
+*   🐛 **MAESTRO PORTALS beats no longer die on resume after a mid-write SLURM kill**:
+    `optimization_extra.pkl` is written atomically (a truncated pickle broke the resume of that
+    beat), a missing/unreadable `optimization_object.pkl` warns instead of raising an interactive
+    prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
+    the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
+
 ### Changes for developers (internal execution)
 
 *   🔎 **NEW CHANGE**, description
@@ -291,11 +394,26 @@ DESCRIPTION
     The boolean still works everywhere it did (YAML, `maestro(keep_all_files=...)`,
     `--no-keep-all-files`) with a deprecation notice; the default remains keep-everything.
 
+*   🔮 **MAESTRO PORTALS beats default to `first_point: previous_best`**: a PORTALS beat that follows
+    another one now starts from the previous beat's best solution instead of a flux match against
+    the previous surrogate (`try_flux_match_only_for_first_point: true`); set
+    `first_point: flux_match` to recover the old seed. The old key is still accepted with a notice
+    (true -> `flux_match`, false -> `namelist`).
+
 *   🔮 **MAESTRO template PORTALS exploration ranges widened**: `portals_parameters.solution.
     exploration_ranges` in `namelist.maestro.yaml` now defaults to `ymax: 4.0`,
     `yminymax_atleast: [null, 4]` (previously inheriting the PORTALS defaults 3.0 / [0, 2]),
     matching what the ARC MAESTRO scans have been overriding successfully. Standalone PORTALS
     (`namelist.portals.yaml`) is unchanged.
+
+*   🔮 **TRANSP `to_profiles(time_window>0)` is now a true time average**: `time_window` is the
+    HALF-width (slices with |t - time_extraction| <= time_window), averages are trapezoidal in time
+    over the CDF output slices (the plain mean over-weighted densely sampled stretches), fast-ion
+    temperatures come from the window-averaged energy and density (2/3 <W>/<n>, not <T>), and the
+    flux surfaces are averaged slice by slice before the MXH fit instead of taken at the slice nearest
+    the mean time. `time_window=0` (the default) is unchanged. Any CDF with a thermal H population
+    above 1e15 m^-3 now also gets an `H` thermal species in the extracted state, and `ptot(Pa)`
+    (previously left at zero) is now the kinetic thermal + fast pressure of the written species.
 
 ---
 

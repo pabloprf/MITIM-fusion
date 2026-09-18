@@ -2,6 +2,7 @@
     "preferences": {
         "verbose_level":    "5",
         "dpi_notebook":     "80",
+        "harvest_file":     "~/mitim_harvest/mitim_harvest.nc",
         "trxpl":            "mfews",
         "profiles_gen":     "engaging",
         "tgyro":            "engaging",

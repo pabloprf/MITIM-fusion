@@ -53,7 +53,8 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
         print("\t\t\t NEO class module")
         print("-----------------------------------------------------------------------------------------\n")
 
-        self.output_files_simulation["minimal"] = ['out.neo.transport_flux']
+        self.output_files_simulation["minimal"] = ['out.neo.transport_flux',
+                                                   'out.neo.version']   # 3 lines; NEO build provenance (harvest code_version)
         self.output_files_simulation["complete"] = [
             'out.neo.transport_flux',
             'out.neo.transport',
@@ -103,7 +104,9 @@ class NEO(SIMtools.mitim_simulation, GACODEinprocess.NEOInProcess):
 
     def read(self, label="run1", folder=None, **kwargs):
         if self.in_process:
-            return self.read_inprocess(label=label, folder=folder)
+            out = self.read_inprocess(label=label, folder=folder)
+            self._harvest(label, folder=folder)
+            return out
         return super().read(label=label, folder=folder, **kwargs)
 
     def prep_from_file(
@@ -1174,6 +1177,10 @@ class NEOoutput(SIMtools.GACODEoutput):
         # ---- Input file text ----
         with open(self.FolderGACODE / ("input.neo" + self.suffix), "r") as fi:
             self.inputFile = fi.read()
+
+        # ---- NEO version string (gacode hash + date, platform, timestamp), if retrieved ----
+        version_path = self.FolderGACODE / ("out.neo.version" + self.suffix)
+        self.neo_version = version_path.read_text().strip() if version_path.exists() else ""
 
     # ------------------------------------------------------------------
     # Private readers

@@ -438,15 +438,17 @@ class MITIM_BO:
                     exists = False
                     print('Problem loading "optimization_extra.pkl"',typeMsg="w")
             
-            # nans if not
+            # None if not (consumers test `is None`; a float sentinel becomes a TypeError deep inside the analyzer)
             if not exists:
                 dictStore = {}
                 for i in range(200):
-                    dictStore[i] = np.nan
+                    dictStore[i] = None
 
-            # Write
-            with open(self.optimization_extra, "wb") as handle:
+            # Write atomically: a kill mid-write (e.g. SLURM wall) must not leave a truncated pickle
+            file_tmp = self.optimization_extra.with_name(self.optimization_extra.name + "_tmp")
+            with open(file_tmp, "wb") as handle:
                 pickle_dill.dump(dictStore, handle, protocol=4)
+            file_tmp.replace(self.optimization_extra)
 
             # Write the class into the optimization_object
             optimization_object.optimization_extra = self.optimization_extra
@@ -691,6 +693,7 @@ class MITIM_BO:
 
         # Has the problem reached convergence in the training?
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+        self.converged = bool(converged)
         if converged:
             print("- Optimization has converged in training!",typeMsg="i")
             self.numIterations = 0
@@ -811,7 +814,9 @@ class MITIM_BO:
 
                 if current_step is None:
                     print("\t* Because reading pkl step had problems, disabling cold_starting-from-previous from this point on",typeMsg="w")
-                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q")
+                    # The answer is not used (cold_start is forced either way); in a batch job (askQuestions=False)
+                    # the interactive prompt would kill the run
+                    print("\t* Are you aware of the consequences of continuing?",typeMsg="q" if self.askQuestions else "w")
 
                     self.cold_start = True
 
@@ -1288,6 +1293,8 @@ class MITIM_BO:
         # ~~~~~~~~~~~~~~~~~~
 
         converged,_ = self.optimization_options['convergence_options']['stopping_criteria'](self, parameters = self.optimization_options['convergence_options']['stopping_criteria_parameters'])
+
+        self.converged = bool(converged)   # last verdict; read by MAESTRO to count unconverged PORTALS beats
 
         if converged:
             self.hard_finish = self.hard_finish or True
@@ -2106,7 +2113,11 @@ def stopping_criteria_default(mitim_bo, parameters = {}):
         converged_by_value, yvals = stopping_criteria_by_value(mitim_bo, maximum_value)
     else:
         converged_by_value = False
-        yvals = None
+        if yvals is None:
+            # No default criterion active (e.g. Ricci-only stop): still hand back the residuals,
+            # otherwise getBest() has nothing to argmin and the LAST evaluation is carried forward
+            _, _, maximization_value = mitim_bo.scalarized_objective(torch.from_numpy(mitim_bo.train_Y).to(mitim_bo.dfT))
+            yvals = -maximization_value.cpu().numpy()
 
     converged = converged_by_value or converged_by_dvs
     

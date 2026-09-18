@@ -35,7 +35,7 @@ class qualikiz_model:
             for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
         ]
 
-        qlk = QLKtools.QuaLiKiz(rhos=rho_locations)
+        qlk = self._harvest_attach(QLKtools.QuaLiKiz(rhos=rho_locations))
 
         qlk.prep(
             self._profiles_transport_for("turb"),

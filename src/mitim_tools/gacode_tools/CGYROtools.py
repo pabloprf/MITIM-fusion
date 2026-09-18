@@ -1,3 +1,6 @@
+import os
+import shutil
+import subprocess
 import math
 import datetime
 from pathlib import Path
@@ -123,9 +126,10 @@ def cgyro_per_task_status(sim):
         "            tk=$(awk 'NF>0 {print $1; exit}' \"$tag\")\n"
         '            [ -n "$tk" ] && tag_token="$tk"\n'
         '        fi\n'
-        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token"\n'
+        '        exited=$(grep -c "^EXIT" "$info"); [ -f "$folder/mitim_budget.tag" ] && exited=1\n'
+        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token|$exited"\n'
         '    else\n'
-        '        echo "$folder|NOT_STARTED|NA|0|0|0|-"\n'
+        '        echo "$folder|NOT_STARTED|NA|0|0|0|-|0"\n'
         '    fi\n'
         "done"
     )
@@ -148,6 +152,7 @@ def cgyro_per_task_status(sim):
         if len(parts) < 7:
             continue
         folder, state, avg, steps, wall, since_update, tag_token = parts[:7]
+        exited = parts[7] if len(parts) > 7 else "0"   # "1" when out.cgyro.info carries CGYRO's EXIT line
 
         try:
             wall_i = max(0, int(wall))
@@ -187,8 +192,8 @@ def cgyro_per_task_status(sim):
         tag_suffix = ""
         tk = tag_token.upper() if (tag_token and tag_token != "-") else ""
 
-        if tk == "FINISHED":
-            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
+        if tk == "FINISHED" or exited == "1":
+            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)" if tk == "FINISHED" else " (EXIT line in out.cgyro.info)"
         elif tk == "TIMEOUT":
             effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
         elif tk == "ERROR":
@@ -425,6 +430,12 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                     typeMsg='i',
                 )
                 continue
+            elif slurm_state in ("PENDING", "CONFIGURING", "REQUEUED", "SUSPENDED"):
+                # Not running yet: whatever the probe saw in that rho's folder predates
+                # this job (e.g. an interrupted run preserved for an in-place rescue).
+                # Cancelling the element here killed pending rescued radii (2026-09-16).
+                print(f"\t    * slurm reports {scancel_target} is {slurm_state} (not started); ignoring stale files, no rescue", typeMsg='i')
+                continue
             elif slurm_state is not None:
                 print(f"\t    * slurm reports {scancel_target} is {slurm_state}; proceeding with rescue", typeMsg='i')
 
@@ -546,8 +557,72 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             omp_prefix = (
                 f"export OMP_NUM_THREADS={mpi['nomp']}\n"
                 f"export OMP_STACKSIZE=1G\n"
+                # OpenMPI MPI-IO backend: OMPIO on NFS (engaging /orcd) spent 30-100 s per output
+                # step; ROMIO brings it to <1 s. Ignored by MPICH-based builds (Perlmutter).
+                "export OMPI_MCA_io=romio321\n"
             )
-            if mpi.get("numa") is not None:
+            # Bash mode inside an existing SLURM allocation (driver under salloc/sbatch):
+            # the gacode launcher (platform/exec/exec.<PLATFORM>) runs `srun` with no
+            # node/GPU flags, and srun reads the allocation-wide SLURM_NNODES as -N.
+            # Pin every radial call to exactly one node holding its own GPUs, so the
+            # concurrent calls that the bash builder backgrounds land on different nodes
+            # (a shared node would map two calls onto the same GPUs via SLURM_LOCALID).
+            # srun honors these as input environment variables (-N, --gpus-per-node);
+            # the node count is read from SLURM_JOB_NUM_NODES (SLURM_NNODES alone is
+            # ignored, verified on Perlmutter 2026-09-15), both are set for safety.
+            _wrap = bool(CONFIGread.machineSettings(code='cgyro').get("srun_wrap_calls", False)) and resolved.submission_type == "bash" and mpi.get("numa") is not None
+            if _wrap and mpi.get("nodes", 1) > 1:
+                raise ValueError("[MITIM] srun_wrap_calls supports single-node radial calls only (resources_per_call <= gpus_per_node)")
+            _hosts = SIMtools.slurm_allocation_hostnames() if (resolved.submission_type == "bash" and mpi.get("numa") is not None) else []
+            _nodes = mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
+            if _hosts:
+                # Node choice happens in bash: the builder runs ONE body for every radius in a
+                # loop; SIMtools exports the allocation as MITIM_HOSTS and a 1-based MITIM_CALL
+                # counter, and call k takes hosts [(k-1)*nodes, k*nodes).
+                omp_prefix += (
+                    f"_npc={_nodes}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=\"\"\n"
+                    f"for _j in $(seq 0 $((_npc-1))); do _h=${{MITIM_HOSTS[$(( (_k*_npc+_j) % _nh ))]}}; _sel=\"${{_sel}}${{_sel:+,}}${{_h}}\"; done\n"
+                )
+            if _wrap:
+                # Machines whose gacode launcher is OpenMPI `mpirun` (engaging PSFCR8_GPU):
+                # inside a multi-node allocation mpirun launches its daemons wherever SLURM
+                # puts them and ignores hostfiles. Instead run each radial call as an srun
+                # step ON its node (4 tasks so the step owns the node's CPUs and GPUs; only
+                # task 0 runs mpirun) with the SLURM view narrowed to that node, so mpirun
+                # spawns its ranks locally with no daemons. Enabled per machine with
+                # `srun_wrap_calls: true` (single-node calls only). Verified on engaging
+                # 2026-09-16. No SLURM_* exports here: srun would read them as options.
+                inner = (
+                    "if [ \"$SLURM_PROCID\" != \"0\" ]; then exit 0; fi; "
+                    "export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 "
+                    f"SLURM_TASKS_PER_NODE={mpi['numa']} SLURM_NTASKS={mpi['numa']} SLURM_NPROCS={mpi['numa']} SLURM_JOB_CPUS_PER_NODE={mpi['nomp'] * mpi['numa']}; "
+                    f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=romio321; "   # ROMIO: OMPIO on NFS spent ~100 s per output step
+                    f"cgyro -e \"$MITIM_FOLDER\" -n {mpi['n']} -nomp {mpi['nomp']} -numa {mpi['numa']} -mpinuma {mpi['mpinuma']} -p {p}"
+                )
+                # The step takes the node's whole CPU share of its GPUs (128 cores / 4 GPUs
+                # -> 32 per task on engaging R8), not just nomp: a whole-node cpuset is what
+                # lets the NUMA platform (exec.PSFCR8_GPU_NUMA) place ranks by rankfile.
+                _gpn = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or mpi['numa'])
+                _cpt = max(mpi['nomp'], self._allocation_cpus_per_node() // max(_gpn, 1))
+                cgyro_cmd = (omp_prefix +
+                             f"export MITIM_FOLDER={folder}\n"
+                             f"srun -N1 -n{mpi['numa']} -c{_cpt} --gpus-per-node={mpi['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
+                             f"bash -c '{inner}' {additional_command}")
+            elif resolved.submission_type == "bash" and mpi.get("numa") is not None:
+                # srun-based launchers (Perlmutter): pin the step via SLURM input variables
+                # (node count from SLURM_JOB_NUM_NODES; SLURM_NNODES alone is ignored).
+                omp_prefix += (
+                    f"export SLURM_JOB_NUM_NODES={_nodes}\n"
+                    f"export SLURM_NNODES={_nodes}\n"
+                    f"export SLURM_GPUS_PER_NODE={mpi['numa']}\n"
+                )
+                if _hosts:
+                    omp_prefix += "export SLURM_JOB_NODELIST=$_sel; export SLURM_NODELIST=$_sel\n"
+                cgyro_cmd = (omp_prefix +
+                             f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                             f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
+                             f"-p {p} {additional_command}")
+            elif mpi.get("numa") is not None:
                 cgyro_cmd = (omp_prefix +
                              f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
                              f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
@@ -573,12 +648,17 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # doesn't break chaining.
             restart_path = f"{p}/{folder}/bin.cgyro.restart"
             marker_path = f"{p}/{folder}/.mitim_run_started"
-            marker_cmd = f'touch "{marker_path}"'
+            # .mitim_t0: simulated time already in out.cgyro.time when this launch starts (0 for a
+            # fresh/warm start, the tag time for an in-place rescue), so the scheduler can estimate
+            # the remaining a/cs of a running call as MAX_TIME - (t - t0)
+            marker_cmd = f'touch "{marker_path}"; _t0=$(tail -n1 "{p}/{folder}/out.cgyro.time" 2>/dev/null | awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{p}/{folder}/.mitim_t0"'
             cleanup_cmd = (
                 f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
                 f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
                 f'rm -f "{restart_path}"; fi; rm -f "{marker_path}"'
             )
+
+            cgyro_cmd = self._wall_budget_wrap(cgyro_cmd, f"{p}/{folder}", mode=kwargs.get("watchdog"))
 
             return marker_cmd + "\n" + cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
 
@@ -598,6 +678,16 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'default_cores': 16,  # Default cores to use in the simulation
             'output_class': CGYROutils.CGYROoutput,
             'force_submission_type': _force_submission_type,
+            # Interrupted-run rescue (SIMtools._rescue_interrupted_runs): with both the
+            # restart blob and out.cgyro.tag present, re-running `cgyro -e` in the same
+            # folder continues the time integration (restart_flag=1) for MAX_TIME more
+            # a/cs from the tag time (out.cgyro.tag: line 1 i_current, line 2 t_current).
+            'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.tag', 'progress_line': 2, 'time_key': 'MAX_TIME',
+                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
+            # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
+            'completion_marker': ('out.cgyro.info', 'EXIT'),
+            # ...or the wall-budget watchdog stopped it past min_time (load_balance 'wall_budget')
+            'completion_alt_file': 'mitim_budget.tag',
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -645,6 +735,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             "bin.cgyro.kxky_n",
             "bin.cgyro.kxky_phi",
             "bin.cgyro.kxky_v",
+            "mitim_budget.tag",
         ]
 
         # Nonlinear sim
@@ -681,12 +772,151 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
 
     # Thin wrapper: capture preprocess_options and delegate to the generic run()
-    def run(self, *args, preprocess_options=None, **kwargs):
+    @staticmethod
+    def _allocation_cpus_per_node():
+        '''Per-node CPU count of the allocation (first entry of SLURM_JOB_CPUS_PER_NODE, e.g. "128(x5)" -> 128).'''
+        raw = os.environ.get("SLURM_JOB_CPUS_PER_NODE", "")
+        digits = "".join(ch for ch in raw.split("(")[0].split(",")[0] if ch.isdigit())
+        return int(digits) if digits else 1
+
+    def run(self, *args, preprocess_options=None, load_balance=None, **kwargs):
+        '''
+        load_balance: {'strategy': None | 'wall_budget', 'minutes_per_call': float, 'min_time': float}
+        (namelist transport.options.cgyro.run.load_balance); see _wall_budget_wrap.
+        '''
         self._preprocess_options = preprocess_options
+        self._load_balance = load_balance
         try:
             return super().run(*args, **kwargs)
         finally:
             self._preprocess_options = None
+            self._load_balance = None
+
+    _WALL_BUDGET_WATCHDOG = r"""_lb_dir="RHODIR"; _lb_budget=BUDGET_S; _lb_min=MIN_TIME
+set -m 2>/dev/null
+(
+CGYRO_CMD
+) & _lb_pid=$!
+_lb_t0=$(date +%s)
+_lb_mt() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+while kill -0 $_lb_pid 2>/dev/null; do
+    sleep 20
+    # stop request: the wall budget (if any) is spent, or the scheduler dropped mitim_stop
+    _lb_stop=0; [ -f "$_lb_dir/mitim_stop" ] && _lb_stop=1
+    if (( _lb_stop == 0 )); then (( _lb_budget > 0 )) || continue; (( $(date +%s) - _lb_t0 < _lb_budget )) && continue; fi
+    _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
+    if ! awk -v t="${_lb_t:-0}" -v m="$_lb_min" 'BEGIN{exit !(t>=m)}'; then
+        (( _lb_stop == 0 )) && continue
+        echo "DISCARD t=${_lb_t:-0} min_time=$_lb_min elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_discard.tag"
+        kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
+        for _lb_i in $(seq 1 60); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done; kill -KILL -- -$_lb_pid 2>/dev/null
+        break
+    fi
+    # past min_time: stop right after the next restart write (out.cgyro.tag is rewritten with
+    # every bin.cgyro.restart) so the blob a later iteration warm-starts from is whole
+    _lb_m0=$(_lb_mt "$_lb_dir/out.cgyro.tag")
+    while kill -0 $_lb_pid 2>/dev/null && [ "$(_lb_mt "$_lb_dir/out.cgyro.tag")" = "$_lb_m0" ]; do sleep 5; done
+    sleep 5
+    _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
+    echo "$([ $_lb_stop = 1 ] && echo STOP || echo BUDGET) t=$_lb_t elapsed=$(( $(date +%s) - _lb_t0 ))s budget=${_lb_budget}s min_time=$_lb_min" > "$_lb_dir/mitim_budget.tag"
+    kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
+    for _lb_i in $(seq 1 60); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done; kill -KILL -- -$_lb_pid 2>/dev/null
+    break
+done
+wait $_lb_pid 2>/dev/null
+"""
+
+    def _wall_budget_wrap(self, cgyro_cmd, rho_dir, mode=None):
+        '''
+        Watchdog around a radial launch (own process group). mode 'budget' (load_balance
+        strategy 'wall_budget'): stop once the wall budget is spent AND out.cgyro.time shows
+        >= min_time a/cs, waiting first for the next restart write. mode 'stop' (scheduler
+        extras): no budget, stop when a mitim_stop file appears; graceful past min_time
+        (mitim_budget.tag, accepted) or immediate below it (mitim_discard.tag). mode None
+        picks 'budget' if the strategy asks for it, else returns the command untouched.
+        '''
+        lb = getattr(self, "_load_balance", None) or {}
+        if mode is None:
+            mode = "budget" if lb.get("strategy") == "wall_budget" else None
+        if mode is None:
+            return cgyro_cmd
+        budget_s = int(float(lb["minutes_per_call"]) * 60) if mode == "budget" else 0
+        return (self._WALL_BUDGET_WATCHDOG
+                .replace("RHODIR", rho_dir)
+                .replace("BUDGET_S", str(budget_s))
+                .replace("MIN_TIME", f"{float(lb.get('min_time', 0.0)):g}")
+                .replace("CGYRO_CMD", cgyro_cmd.rstrip("\n")))
+
+    # ------------------------------------------------------------------
+    # load_balance strategy 'extra_points' (bash mode): hooks for the in-allocation
+    # scheduler (SCHEDULERtools). The transport layer registers `extra_point_builder`,
+    # a callable (rho, finished_scratch_dir, local_dir) -> path of a ready input.cgyro
+    # for a perturbed case at that radius (or None); everything else is generic here.
+    # ------------------------------------------------------------------
+    extra_point_builder = None
+
+    def _extra_point_hooks(self, resources_per_call):
+        lb = getattr(self, "_load_balance", None) or {}
+        if lb.get("strategy") != "extra_points":
+            return None
+        if self.extra_point_builder is None:
+            print("\t- load_balance 'extra_points' requested but no extra_point_builder is registered (standalone CGYRO run?); waiting for the slowest radius instead", typeMsg="w")
+            return None
+        self._extra_point_n = int(resources_per_call)
+        return {"on_call_finished": self._launch_extra_point,
+                "estimate_remaining": self._estimate_remaining,
+                "estimate_to_accept": self._estimate_to_accept}
+
+    def _scratch(self, rel):
+        return Path(self.simulation_job.folderExecution) / rel
+
+    @staticmethod
+    def _last_col(path, col=None):
+        try:
+            row = path.read_text().strip().splitlines()[-1].split()
+            return float(row[-1] if col is None else row[col])
+        except (OSError, IndexError, ValueError):
+            return None
+
+    def _cost_per_acs(self, rel):
+        '''Seconds per a/cs from the last TOTAL of out.cgyro.timing (one row per PRINT_STEP = 1 a/cs).'''
+        return self._last_col(self._scratch(rel) / "out.cgyro.timing")
+
+    def _estimate_remaining(self, rel):
+        d = self._scratch(rel)
+        cost, t = self._cost_per_acs(rel), self._last_col(d / "out.cgyro.time", col=0)
+        if cost is None or t is None:
+            return None
+        try:
+            t0 = float((d / ".mitim_t0").read_text().strip() or 0.0)
+            max_time = float(next(l.split("=")[1] for l in (d / "input.cgyro").read_text().splitlines() if l.strip().startswith("MAX_TIME")))
+        except (OSError, StopIteration, ValueError):
+            return None
+        return max(max_time - (t - t0), 0.0) * cost
+
+    def _estimate_to_accept(self, rel):
+        cost = self._cost_per_acs(rel)
+        lb = getattr(self, "_load_balance", None) or {}
+        return None if cost is None else float(lb.get("min_time", 0.0)) * cost + 300.0
+
+    def _launch_extra_point(self, rel):
+        '''Scheduler hook: prepare extra_cgyro/rho_<rho> in scratch (perturbed input.cgyro +
+        the finished run's restart blob as warm start) and return (rel_extra, bash body).'''
+        rho = float(rel.rsplit("rho_", 1)[-1])
+        rel_extra = f"extra_cgyro/rho_{rho:.4f}"
+        local_dir = Path(self.FolderGACODE) / rel_extra
+        local_dir.mkdir(parents=True, exist_ok=True)
+        input_cgyro = self.extra_point_builder(rho, self._scratch(rel), local_dir)
+        if input_cgyro is None:
+            return None
+        dst = self._scratch(rel_extra)
+        dst.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(input_cgyro, dst / "input.cgyro")
+        restart = self._scratch(rel) / "bin.cgyro.restart"
+        if restart.exists():
+            shutil.copy2(restart, dst / "bin.cgyro.restart")   # no out.cgyro.tag: warm start, t from 0
+        body = self.run_specifications["code_call"](folder=rel_extra, p=str(self.simulation_job.folderExecution), n=self._extra_point_n, watchdog="stop")
+        return rel_extra, body
 
     # Redefine to raise warning and allow selection of output files
     def _run_prepare(
@@ -1303,7 +1533,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             BD
             """
         )
-      
+
+        # One "Averaging" figure per case: window selection diagnostics of the primary fluxes
+        for i, label in enumerate(labels):
+            if hasattr(self.results[label], 'averaging'):
+                fig = self.fn.add_figure(label=f"Averaging, {label}")
+                self.results[label].averaging.plot(fig=fig, color=GRAPHICStools.listColors()[i % len(GRAPHICStools.listColors())], label_plot=label)
+
         create_ballooning = False
         for label in labels:
             if 'phi_ballooning' in self.results[label].__dict__:

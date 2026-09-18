@@ -2537,9 +2537,10 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     try:
         _cgyro_read_cfg = self.powerstate.transport_options['options'][cgyro_key]['read']
         _read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
-                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear")}
-    except Exception:
+                        if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
+    except Exception as _e:
         _read_kwargs = {}
+        print(f"\t- Could not read the CGYRO 'read' settings (tmin/averaging) from the powerstate ({type(_e).__name__}); trace windows will be the full trace with method 'fixed', NOT what the run used", typeMsg='w')
 
     base_subfolder = f"base_{cgyro_key}"
 

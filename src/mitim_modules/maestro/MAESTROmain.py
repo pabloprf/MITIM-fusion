@@ -34,6 +34,11 @@ MAESTRO:
 ENABLE_EMBED = False # If True, will enable IPython embed, useful for debugging (but won't write maestro.log or Logs/ files... so only use for debugging a run)
 
 
+class MAESTROStop(Exception):
+    '''Raised by maestro.run() when the chain must stop early (e.g. max_unconverged_portals_beats reached);
+    run_maestro catches it, skips the remaining beats and still finalizes the run.'''
+
+
 def _resolve_prune_level(prune_level, keep_all_files = None):
     '''
     Resolve the effective prune level, honoring the deprecated `keep_all_files` boolean
@@ -64,7 +69,8 @@ class maestro:
             keep_all_files = None,
             prune_level = None,
             master_seed = 0,
-            maestro_namelist = {}
+            maestro_namelist = {},
+            max_unconverged_portals_beats = None,
             ):
         '''
         Inputs:
@@ -80,6 +86,7 @@ class maestro:
         self.master_cold_start = master_cold_start        # If True, all beats will be cold_started
         self.prune_level = _resolve_prune_level(prune_level, keep_all_files)
         self.master_seed = master_seed
+        self.max_unconverged_portals_beats = max_unconverged_portals_beats   # None -> never stop on unconvergence
 
         self.maestro_namelist = maestro_namelist
 
@@ -144,6 +151,13 @@ class maestro:
         #   null : never freeze -- each EPED beat recomputes from its own current equilibrium
         #          (the null case is enforced in the EPED beat's _inform)
         self.refreeze_995_after_beat = self.maestro_namelist.get('maestro', {}).get('refreeze_995_after_beat', 0)
+
+        # Harvest options (maestro.harvest): plain dict; EPED and PORTALS beats all stage into Outputs/harvest/
+        # with this run_id (each record carries its maestro_beat), and finalize() pushes everything once
+        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist
+        self.harvest = options_from_namelist(self.maestro_namelist.get('maestro', {}).get('harvest', {}),
+                                             staging_folder=self.folder_output / 'harvest',
+                                             run_meta_extra={'run_folder': str(self.folder)})
 
         # Whether this instance has already stashed a previous run's finalization
         # artifacts (done automatically at the first beat run())
@@ -394,9 +408,25 @@ class maestro:
         # run and skip paths, right after the snapshot is written/restored, so it stays restart-safe)
         self._maybe_refreeze_995()
 
+        # Stop the chain once enough PORTALS beats failed to converge (both paths, so a re-run of a
+        # stopped case stops again at the same beat instead of running the remaining beats)
+        self._check_unconverged_portals_stop()
+
         # To save space, prune this beat's run_ folder according to its effective prune level.
         # Everything needed downstream is already in beat_results/, which pruning never touches.
         self.beat.prune_run_folder()
+
+    def _check_unconverged_portals_stop(self):
+        if self.max_unconverged_portals_beats is None:
+            return
+        history = self.parameters_trans_beat.get('portals_converged_history', [])
+        n_unconverged = sum(1 for c in history if c is False)
+        if n_unconverged >= self.max_unconverged_portals_beats:
+            msg = (f'{n_unconverged} PORTALS beats did not converge (history {history}); '
+                   f'maestro.max_unconverged_portals_beats = {self.max_unconverged_portals_beats} -> stopping the chain after beat {self.counter_current}')
+            print(f'\t- {msg}', typeMsg='w')
+            (self.folder_output / 'maestro_stopped.txt').write_text(msg + '\n')
+            raise MAESTROStop(msg)
 
     # --------------------------------------------------------------------------------------------
     # Cross-beat parameters (parameters_trans_beat) persistence
@@ -632,6 +662,20 @@ class maestro:
             # The initializer prune goes here too: the engineering-parameter freeze reads
             # initializer_*/input.gacode on every invocation, so it can only be safe once the run
             # is over (and that file is never a target -- see beat.prune_initializer).
+            # Harvest push (once per run, all beats). Everything is staged in Outputs/harvest, outside Beats/,
+            # so it survives every prune level; the per-beat folders are only there for chains started before
+            # the staging was centralized.
+            if self.harvest.get('enabled', False):
+                from mitim_tools.harvest_tools import HARVESTtools
+                folders = [self.folder_output / 'harvest']
+                for beat_obj in self.beats.values():
+                    if getattr(beat_obj, 'name', None) == 'portals':
+                        folders += [beat_obj.folder_output / 'Outputs' / 'harvest', beat_obj.folder / 'Outputs' / 'harvest']
+                try:
+                    HARVESTtools.harvest_database(self.harvest.get('file')).push([f for f in folders if f.is_dir()])
+                except Exception as e:
+                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvest {self.folder}`', typeMsg='w')
+
             for beat_obj in self.beats.values():
                 beat_obj.optional_postprocessing()
                 beat_obj.prune_initializer()

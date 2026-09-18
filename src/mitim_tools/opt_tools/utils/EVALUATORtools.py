@@ -172,7 +172,7 @@ def mitimRun(
         if lock is not None:
             lock.acquire()
         _,_,objective = optimization_object.scalarized_objective(torch.from_numpy(y))
-        optimization_data.update_data_point(x,y,yE,objective=objective.detach().cpu().numpy())
+        optimization_data.update_data_point(x,y,yE,objective=objective.detach().cpu().numpy(),iteration=numEval)
         
         # Release lock so that other processes can write
         if lock is not None:
