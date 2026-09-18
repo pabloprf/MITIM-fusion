@@ -1147,8 +1147,11 @@ class mitim_simulation:
         # staged input files on disk and re-prep on rehydration.
         code_executor_serial = {}
         for sub, rhos in self.kwargs_organize["code_executor"].items():
+            # Full precision (repr): radius folders are named rho_{rho:.4f}, and a rho rounded to
+            # 6 decimals can land on a .4f tie that formats differently after reload
+            # (0.29434978 -> "0.294350" -> rho_0.2944 instead of rho_0.2943)
             code_executor_serial[sub] = {
-                f"{float(rho):.6f}": {"folder": str(v["folder"])}
+                repr(float(rho)): {"folder": str(v["folder"])}
                 for rho, v in rhos.items()
             }
 
@@ -1214,6 +1217,18 @@ class mitim_simulation:
             json.dump(payload, f, indent=2, default=str)
         print(f"\t- Submission metadata written to {path}", typeMsg="i")
 
+    def _exact_rho(self, rho):
+        '''
+        Radius as this object knows it (self.rhos, set from the caller's exact rho list), matched
+        within 1e-5: submission files written before full-precision keys stored rho with 6
+        decimals, which can format to a different rho_{:.4f} folder name than the one the run used.
+        '''
+        if self.rhos is not None and len(self.rhos) > 0:
+            k = int(np.argmin(np.abs(np.asarray(self.rhos, dtype=float) - rho)))
+            if abs(float(self.rhos[k]) - rho) < 1e-5:
+                return float(self.rhos[k])
+        return rho
+
     def load_submission_state(self, path):
         '''
         Rehydrate `self.simulation_job`, `self.kwargs_organize`, `self.slurm_output`,
@@ -1253,7 +1268,7 @@ class mitim_simulation:
         code_executor_rehydrated = {}
         for sub, rhos in data["kwargs_organize"]["code_executor"].items():
             code_executor_rehydrated[sub] = {
-                float(rho): {"folder": Path(v["folder"])} for rho, v in rhos.items()
+                self._exact_rho(float(rho)): {"folder": Path(v["folder"])} for rho, v in rhos.items()
             }
         self.kwargs_organize = {
             "code_executor": code_executor_rehydrated,
