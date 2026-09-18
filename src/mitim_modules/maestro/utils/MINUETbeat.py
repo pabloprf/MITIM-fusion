@@ -260,7 +260,7 @@ class minuet_beat(beat):
     def finalize(self, force_auxiliary_heating_at_output = None, **kwargs):
 
         # Refresh folder_output from self.folder only if the source still exists.
-        # On a re-invocation after `maestro.keep_all_files: false` wiped self.folder,
+        # On a re-invocation after pruning (`maestro.prune_level` >= run-folder level) wiped self.folder,
         # folder_output already has the authoritative content from the prior run.
         if (self.folder / 'input.gacode_minuet').exists():
 
@@ -269,7 +269,7 @@ class minuet_beat(beat):
                 if item.is_file():
                     item.unlink(missing_ok=True)
 
-            # Persist sidecar + discharge object (copy under keep_all_files: true; move otherwise),
+            # Persist sidecar + discharge object (copy when the run folder is kept; move when prune_level wipes it),
             # so plotting and _inform_save survive the cleanup loop
             self._persist(self.folder / 'minuet_results.npy', self.folder_output / 'minuet_results.npy')
             if (self.folder / 'run.minuet').exists():
