@@ -80,6 +80,8 @@ def write_json(self, file_name = 'fluxes_turb.json', suffix= 'turb'):
                     'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),
                     'aLne': self.powerstate.plasma["aLne"][0, 1:].cpu().numpy().tolist(),
                     'targets_GB': targets_GB,
+                    # GK time-averaging record per rho (method, window, flag, provenance); None for non-GK models
+                    'averaging': getattr(self, f'averaging_info_{suffix}', None),
                 }
             }
 
@@ -418,6 +420,7 @@ class power_transport:
             'additional_info': {
                 'rho': rho_arr,
                 'roa': roa_arr,
+                'averaging': (getattr(self, f'averaging_info_{suffix}', None) or [None]*(batch_index+1))[batch_index],
                 'Qgb':  self.powerstate.plasma["Qgb"][0, 1:].cpu().numpy().tolist(),
                 'aLte': self.powerstate.plasma["aLte"][0, 1:].cpu().numpy().tolist(),
                 'aLti': self.powerstate.plasma["aLti"][0, 1:].cpu().numpy().tolist(),

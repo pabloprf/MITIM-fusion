@@ -31,6 +31,7 @@ Key teaching points:
 import os
 import matplotlib.pyplot as plt
 from mitim_tools.simulation_tools.physics.LENGYELtools import Lengyel
+from mitim_tools.misc_tools import GUItools
 from mitim_tools import __mitimroot__
 from mitim_tools.misc_tools import IOtools
 
@@ -92,4 +93,4 @@ lengyel.run_scan(
     plotYN=True,
 )
 
-plt.show()
+GUItools.show_figures("lengyel_01_run")   # plt.show() with a display; saves PNGs to tests/figures/ when headless

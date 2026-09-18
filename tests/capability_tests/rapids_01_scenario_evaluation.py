@@ -34,6 +34,7 @@ analog of eped_01 needing the EPED machine, or maestro_01 needing TRANSP).
 
 import numpy as np
 from mitim_tools.misc_tools import IOtools, PLASMAtools
+from mitim_tools.misc_tools import GUItools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.surrogate_tools import NNtools
 from mitim_tools.popcon_tools import RAPIDStools
@@ -117,4 +118,4 @@ print(f"Scan BetaN:     {[round(v, 2) for v in results['betaN']]}")
 
 import matplotlib.pyplot as plt
 plt.ioff()   # scan_parameter enables interactive mode (plt.ion); turn it off so that
-plt.show()   # show() blocks and the figure stays open under a plain `python script.py`
+GUItools.show_figures("rapids_01_scenario_evaluation")   # plt.show() with a display, PNGs in tests/figures/ when headless; show() blocks and the figure stays open under a plain `python script.py`

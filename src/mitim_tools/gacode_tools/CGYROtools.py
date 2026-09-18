@@ -1,3 +1,5 @@
+import os
+import subprocess
 import math
 import datetime
 from pathlib import Path
@@ -123,9 +125,10 @@ def cgyro_per_task_status(sim):
         "            tk=$(awk 'NF>0 {print $1; exit}' \"$tag\")\n"
         '            [ -n "$tk" ] && tag_token="$tk"\n'
         '        fi\n'
-        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token"\n'
+        '        exited=$(grep -c "^EXIT" "$info")\n'
+        '        echo "$folder|$state|$avg|$steps|$wall|$since_update|$tag_token|$exited"\n'
         '    else\n'
-        '        echo "$folder|NOT_STARTED|NA|0|0|0|-"\n'
+        '        echo "$folder|NOT_STARTED|NA|0|0|0|-|0"\n'
         '    fi\n'
         "done"
     )
@@ -148,6 +151,7 @@ def cgyro_per_task_status(sim):
         if len(parts) < 7:
             continue
         folder, state, avg, steps, wall, since_update, tag_token = parts[:7]
+        exited = parts[7] if len(parts) > 7 else "0"   # "1" when out.cgyro.info carries CGYRO's EXIT line
 
         try:
             wall_i = max(0, int(wall))
@@ -187,8 +191,8 @@ def cgyro_per_task_status(sim):
         tag_suffix = ""
         tk = tag_token.upper() if (tag_token and tag_token != "-") else ""
 
-        if tk == "FINISHED":
-            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)"
+        if tk == "FINISHED" or exited == "1":
+            effective, reason = "FINISHED", " (out.cgyro.tag=FINISHED)" if tk == "FINISHED" else " (EXIT line in out.cgyro.info)"
         elif tk == "TIMEOUT":
             effective, reason = "TIMED_OUT", " (out.cgyro.tag=TIMEOUT)"
         elif tk == "ERROR":
@@ -425,6 +429,12 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                     typeMsg='i',
                 )
                 continue
+            elif slurm_state in ("PENDING", "CONFIGURING", "REQUEUED", "SUSPENDED"):
+                # Not running yet: whatever the probe saw in that rho's folder predates
+                # this job (e.g. an interrupted run preserved for an in-place rescue).
+                # Cancelling the element here killed pending rescued radii (2026-09-16).
+                print(f"\t    * slurm reports {scancel_target} is {slurm_state} (not started); ignoring stale files, no rescue", typeMsg='i')
+                continue
             elif slurm_state is not None:
                 print(f"\t    * slurm reports {scancel_target} is {slurm_state}; proceeding with rescue", typeMsg='i')
 
@@ -546,8 +556,72 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             omp_prefix = (
                 f"export OMP_NUM_THREADS={mpi['nomp']}\n"
                 f"export OMP_STACKSIZE=1G\n"
+                # OpenMPI MPI-IO backend: OMPIO on NFS (engaging /orcd) spent 30-100 s per output
+                # step; ROMIO brings it to <1 s. Ignored by MPICH-based builds (Perlmutter).
+                "export OMPI_MCA_io=romio321\n"
             )
-            if mpi.get("numa") is not None:
+            # Bash mode inside an existing SLURM allocation (driver under salloc/sbatch):
+            # the gacode launcher (platform/exec/exec.<PLATFORM>) runs `srun` with no
+            # node/GPU flags, and srun reads the allocation-wide SLURM_NNODES as -N.
+            # Pin every radial call to exactly one node holding its own GPUs, so the
+            # concurrent calls that the bash builder backgrounds land on different nodes
+            # (a shared node would map two calls onto the same GPUs via SLURM_LOCALID).
+            # srun honors these as input environment variables (-N, --gpus-per-node);
+            # the node count is read from SLURM_JOB_NUM_NODES (SLURM_NNODES alone is
+            # ignored, verified on Perlmutter 2026-09-15), both are set for safety.
+            _wrap = bool(CONFIGread.machineSettings(code='cgyro').get("srun_wrap_calls", False)) and resolved.submission_type == "bash" and mpi.get("numa") is not None
+            if _wrap and mpi.get("nodes", 1) > 1:
+                raise ValueError("[MITIM] srun_wrap_calls supports single-node radial calls only (resources_per_call <= gpus_per_node)")
+            _hosts = SIMtools.slurm_allocation_hostnames() if (resolved.submission_type == "bash" and mpi.get("numa") is not None) else []
+            _nodes = mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
+            if _hosts:
+                # Node choice happens in bash: the builder runs ONE body for every radius in a
+                # loop; SIMtools exports the allocation as MITIM_HOSTS and a 1-based MITIM_CALL
+                # counter, and call k takes hosts [(k-1)*nodes, k*nodes).
+                omp_prefix += (
+                    f"_npc={_nodes}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=\"\"\n"
+                    f"for _j in $(seq 0 $((_npc-1))); do _h=${{MITIM_HOSTS[$(( (_k*_npc+_j) % _nh ))]}}; _sel=\"${{_sel}}${{_sel:+,}}${{_h}}\"; done\n"
+                )
+            if _wrap:
+                # Machines whose gacode launcher is OpenMPI `mpirun` (engaging PSFCR8_GPU):
+                # inside a multi-node allocation mpirun launches its daemons wherever SLURM
+                # puts them and ignores hostfiles. Instead run each radial call as an srun
+                # step ON its node (4 tasks so the step owns the node's CPUs and GPUs; only
+                # task 0 runs mpirun) with the SLURM view narrowed to that node, so mpirun
+                # spawns its ranks locally with no daemons. Enabled per machine with
+                # `srun_wrap_calls: true` (single-node calls only). Verified on engaging
+                # 2026-09-16. No SLURM_* exports here: srun would read them as options.
+                inner = (
+                    "if [ \"$SLURM_PROCID\" != \"0\" ]; then exit 0; fi; "
+                    "export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 "
+                    f"SLURM_TASKS_PER_NODE={mpi['numa']} SLURM_NTASKS={mpi['numa']} SLURM_NPROCS={mpi['numa']} SLURM_JOB_CPUS_PER_NODE={mpi['nomp'] * mpi['numa']}; "
+                    f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=romio321; "   # ROMIO: OMPIO on NFS spent ~100 s per output step
+                    f"cgyro -e \"$MITIM_FOLDER\" -n {mpi['n']} -nomp {mpi['nomp']} -numa {mpi['numa']} -mpinuma {mpi['mpinuma']} -p {p}"
+                )
+                # The step takes the node's whole CPU share of its GPUs (128 cores / 4 GPUs
+                # -> 32 per task on engaging R8), not just nomp: a whole-node cpuset is what
+                # lets the NUMA platform (exec.PSFCR8_GPU_NUMA) place ranks by rankfile.
+                _gpn = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or mpi['numa'])
+                _cpt = max(mpi['nomp'], self._allocation_cpus_per_node() // max(_gpn, 1))
+                cgyro_cmd = (omp_prefix +
+                             f"export MITIM_FOLDER={folder}\n"
+                             f"srun -N1 -n{mpi['numa']} -c{_cpt} --gpus-per-node={mpi['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
+                             f"bash -c '{inner}' {additional_command}")
+            elif resolved.submission_type == "bash" and mpi.get("numa") is not None:
+                # srun-based launchers (Perlmutter): pin the step via SLURM input variables
+                # (node count from SLURM_JOB_NUM_NODES; SLURM_NNODES alone is ignored).
+                omp_prefix += (
+                    f"export SLURM_JOB_NUM_NODES={_nodes}\n"
+                    f"export SLURM_NNODES={_nodes}\n"
+                    f"export SLURM_GPUS_PER_NODE={mpi['numa']}\n"
+                )
+                if _hosts:
+                    omp_prefix += "export SLURM_JOB_NODELIST=$_sel; export SLURM_NODELIST=$_sel\n"
+                cgyro_cmd = (omp_prefix +
+                             f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
+                             f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
+                             f"-p {p} {additional_command}")
+            elif mpi.get("numa") is not None:
                 cgyro_cmd = (omp_prefix +
                              f"cgyro -e {folder} -n {mpi['n']} -nomp {mpi['nomp']} "
                              f"-numa {mpi['numa']} -mpinuma {mpi['mpinuma']} "
@@ -598,6 +672,14 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             'default_cores': 16,  # Default cores to use in the simulation
             'output_class': CGYROutils.CGYROoutput,
             'force_submission_type': _force_submission_type,
+            # Interrupted-run rescue (SIMtools._rescue_interrupted_runs): with both the
+            # restart blob and out.cgyro.tag present, re-running `cgyro -e` in the same
+            # folder continues the time integration (restart_flag=1) for MAX_TIME more
+            # a/cs from the tag time (out.cgyro.tag: line 1 i_current, line 2 t_current).
+            'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.tag', 'progress_line': 2, 'time_key': 'MAX_TIME',
+                            'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
+            # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)
+            'completion_marker': ('out.cgyro.info', 'EXIT'),
         }
         
         print("\n-----------------------------------------------------------------------------------------")
@@ -681,6 +763,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         
 
     # Thin wrapper: capture preprocess_options and delegate to the generic run()
+    @staticmethod
+    def _allocation_cpus_per_node():
+        '''Per-node CPU count of the allocation (first entry of SLURM_JOB_CPUS_PER_NODE, e.g. "128(x5)" -> 128).'''
+        raw = os.environ.get("SLURM_JOB_CPUS_PER_NODE", "")
+        digits = "".join(ch for ch in raw.split("(")[0].split(",")[0] if ch.isdigit())
+        return int(digits) if digits else 1
+
     def run(self, *args, preprocess_options=None, **kwargs):
         self._preprocess_options = preprocess_options
         try:
@@ -1303,7 +1392,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             BD
             """
         )
-      
+
+        # One "Averaging" figure per case: window selection diagnostics of the primary fluxes
+        for i, label in enumerate(labels):
+            if hasattr(self.results[label], 'averaging'):
+                fig = self.fn.add_figure(label=f"Averaging, {label}")
+                self.results[label].averaging.plot(fig=fig, color=GRAPHICStools.listColors()[i % len(GRAPHICStools.listColors())], label_plot=label)
+
         create_ballooning = False
         for label in labels:
             if 'phi_ballooning' in self.results[label].__dict__:

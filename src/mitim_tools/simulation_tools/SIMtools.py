@@ -41,6 +41,19 @@ def _background_job_block(command, indent="    "):
     '''
     return f"{indent}{{\n{command.rstrip(chr(10))}\n{indent}}} &\n"
 
+def slurm_allocation_hostnames():
+    '''Nodes of the SLURM allocation this process runs in ([] outside SLURM).'''
+    nodelist = os.environ.get("SLURM_JOB_NODELIST") or os.environ.get("SLURM_NODELIST")
+    if not nodelist:
+        return []
+    try:
+        import subprocess
+        out = subprocess.run(["scontrol", "show", "hostnames", nodelist], capture_output=True, text=True, timeout=30)
+        return [h for h in out.stdout.split() if h] if out.returncode == 0 else []
+    except Exception:
+        return []
+
+
 class mitim_simulation:
     '''
     Main class for running GACODE simulations.
@@ -202,6 +215,7 @@ class mitim_simulation:
         additional_files_to_send = None, # Dict (rho keys) of files to send along with the run (e.g. for restart). Each list entry is either a path or a (src_path, dst_basename) tuple — tuples let the file be renamed on stage-in (e.g. CGYRO restart per-rho blobs -> out.cgyro.restart).
         helper_lostconnection=False, # If True, it means that the connection to the remote machine was lost, but the files are there, so I just want to retrieve them not execute the commands
         job_name_suffix='_sim', # Suffix appended to the code name for the slurm --job-name (e.g. "cgyro" + "_sim" -> "cgyro_sim"). PORTALS overrides with "_ev{evaluation_number}" to tag submissions by iteration.
+        rescue_interrupted=False, # If True, radii whose previous execution was interrupted in the scratch folder (restart + tag files present, identical input) are continued in place instead of wiped and re-run (codes that declare `rescue_spec`, e.g. CGYRO)
     ):
 
         run_type = _normalize_run_type(run_type)
@@ -264,6 +278,7 @@ class mitim_simulation:
             helper_lostconnection=helper_lostconnection,
             base_subfolder=subfolder,
             job_name_suffix=job_name_suffix,
+            rescue_interrupted=rescue_interrupted,
         )
 
         return code_executor_full
@@ -361,6 +376,7 @@ class mitim_simulation:
             filesToRetrieve,
             Folder_sim,
             cold_start=cold_start,
+            completion_marker=self.run_specifications.get("completion_marker"),
         )
 
         if len(rhosEvaluate) == len(rhos):
@@ -418,6 +434,81 @@ class mitim_simulation:
 
         print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {allocation["cores"]} cores/radius)',
             typeMsg="" if expected_allocated_cores < warning else "q",)
+
+    def _rescue_interrupted_runs(self, kwargs_run, tmpFolder, folders, folders_red, input_file):
+        '''
+        Continue, in place, radial runs that a previous execution left unfinished in
+        the scratch folder (driver killed, allocation expired). Enabled by
+        run(rescue_interrupted=True) for codes declaring `run_specifications["rescue_spec"]`:
+            {"required": [files that must exist, e.g. restart blob + tag],
+             "progress_file": file holding the time the code will resume from,
+             "progress_line": its 1-based line number (None = last line); first token is read,
+             "time_key": input-file key holding the run length (e.g. "MAX_TIME"),
+             "report_files": files whose sizes are logged for forensics (optional)}
+        A rho sub-folder is rescued only if the required files are there and its
+        input file is byte-identical (md5) to the one just generated, so a changed
+        namelist, preset or gradient never continues a stale run. Rescued folders
+        are kept across the scratch wipe (mitim_job.preserve_subfolders) and receive
+        no staged restart file, so the code's own continuation logic takes over
+        (CGYRO: restart + out.cgyro.tag -> restart_flag=1, t continues). Codes take
+        `time_key` as a number of steps to ADD from the restart point (CGYRO:
+        n_time = MAX_TIME/DELTA_T), so for rescued radii that key is rewritten in the
+        staged input to the remaining time (original minus the resume time) and
+        excluded from the identity md5. The resume time must be the one the code
+        restarts from (CGYRO: t_current in out.cgyro.tag, second line), NOT the last
+        printed time: the restart blob predates the last output by up to one restart
+        interval, and counting from the wrong point over- or under-shoots the target.
+        Everything else is staged and run as usual.
+        '''
+        spec = self.run_specifications.get("rescue_spec")
+        self.simulation_job.preserve_subfolders = []
+        if not (kwargs_run.get("rescue_interrupted", False) and spec):
+            return
+        if getattr(self.simulation_job, "run_in_place", False):
+            print("\t- rescue_interrupted requested but the run is in-place (no scratch folder): nothing to rescue", typeMsg="i")
+            return
+
+        time_key = spec.get("time_key")
+        found = self.simulation_job.probe_interrupted_runs(
+            folders_red, spec.get("required", []), input_file,
+            progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
+            checksum_ignore_prefix=time_key, report_files=spec.get("report_files"),
+        )
+        if not found:
+            return
+
+        import hashlib, re
+        rescued = []
+        for folder_sim_this, rel in zip(folders, folders_red):
+            if rel not in found:
+                continue
+            md5_remote, progress, report = found[rel]
+            text = (folder_sim_this / input_file).read_text()
+            kept = "".join(l for l in text.splitlines(keepends=True) if not (time_key and l.startswith(time_key)))
+            if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
+                print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                continue
+            # Keep only the input file locally: staged restarts would overwrite the
+            # orphan's own (more advanced) restart on extraction
+            for f in folder_sim_this.iterdir():
+                if f.name != input_file:
+                    f.unlink()
+            # Trim the run length to what is left (the code counts steps from the restart point)
+            remaining_msg = ""
+            m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
+            if m is not None:
+                try:
+                    total = float(m.group(2)); done = float(progress)
+                    remaining = max(total - done, 1.0)
+                    text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
+                    (folder_sim_this / input_file).write_text(text)
+                    remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
+                except (TypeError, ValueError):
+                    pass
+            rescued.append(rel)
+            print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
+
+        self.simulation_job.preserve_subfolders = rescued
 
     def _run(
         self,
@@ -543,6 +634,11 @@ class mitim_simulation:
                             shutil.copy(src, folder_sim_this / dst_name)
 
             # ---------------------------------------------
+            # Rescue interrupted runs left in the scratch folder
+            # ---------------------------------------------
+            self._rescue_interrupted_runs(kwargs_run, tmpFolder, folders, folders_red, input_file)
+
+            # ---------------------------------------------
             # Prepare command
             # ---------------------------------------------
 
@@ -582,7 +678,7 @@ class mitim_simulation:
             resolved = SLURMtools.resolve(
                 code=code,
                 allocation={"resources_per_call": resources_per_call, "minutes": minutes,
-                            "mem": allocation.get("mem")},
+                            "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
                 n_rhos=len(rhos), n_subfolders=len(code_executor),
                 machine_settings=machineSettings,
                 launch_slurm=launchSlurm,
@@ -621,12 +717,23 @@ class mitim_simulation:
                 GACODEcommand += ")\n\n"
 
                 # Loop over each folder and launch code, waiting if we've reached max_parallel_execution
+                # Inside a SLURM allocation, expose the node list and a 1-based call counter
+                # to the per-call body, so a code_call can pin call k to its own node(s)
+                # (CGYRO does; see CGYROtools.code_call).
+                _hosts = slurm_allocation_hostnames()
+                if _hosts:
+                    GACODEcommand += "MITIM_HOSTS=( " + " ".join(_hosts) + " )\nMITIM_CALL=0\n\n"
                 GACODEcommand += "for folder in \"${folders[@]}\"; do\n"
+                if _hosts:
+                    GACODEcommand += "    MITIM_CALL=$((MITIM_CALL+1))\n"
                 folder_str = '"$folder"'  # literal double quotes around $folder
                 # Background each launch in a brace group (see _background_job_block
                 # for why a bare '<cmd> &' breaks for multi-line / no-trailing-newline code_calls).
                 GACODEcommand += _background_job_block(code_call(folder=folder_str, n=resources_per_call, p=self.simulation_job.folderExecution))
-                GACODEcommand += "    while (( $(jobs -r | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
+                # `jobs -rp` (PIDs only, one per line): plain `jobs -r` echoes the job's command
+                # text, which for the multi-line CGYRO brace group spans several lines and
+                # inflated the count, serializing the radii (seen on Perlmutter 2026-09-15).
+                GACODEcommand += "    while (( $(jobs -rp | wc -l) >= max_parallel_execution )); do sleep 1; done\n"
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
 
@@ -696,7 +803,7 @@ class mitim_simulation:
                 resolved = SLURMtools.resolve(
                     code=code,
                     allocation={"resources_per_call": resources_per_call, "minutes": minutes,
-                                "mem": allocation.get("mem")},
+                                "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
                     n_rhos=len(rhos), n_subfolders=len(code_executor),
                     machine_settings=machineSettings,
                     launch_slurm=launchSlurm,
@@ -757,11 +864,15 @@ class mitim_simulation:
                             )
                         run_status_int = 2
                     except LOGtools.InteractiveTerminalError:
-                        # TODO: this re-run executes in a scratch whose staged inputs may
-                        # already be gone (observed: NEO retried with input.neo missing and
-                        # its early open of out.neo.run truncated the first attempt's error
-                        # message). A correct retry must re-stage inputs or skip execution;
-                        # until then the retry can destroy the failure diagnostic.
+                        # A failed retrieval already removed the local rho folders (they are
+                        # both the staged inputs and the retrieval targets), so a repeat would
+                        # die in the tarball step with a confusing FileNotFoundError.
+                        if any(not Path(f).exists() for f in folders):
+                            raise RuntimeError(
+                                f"[MITIM] {code.upper()} run did not return its expected outputs and the staged "
+                                f"inputs under {tmpFolder} are gone; not retrying. Check {tmpFolder}/mitim_farming.err "
+                                f"and the code's own logs in the scratch folder."
+                            )
                         print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
                         run_status_int += 1
                     
@@ -1821,9 +1932,16 @@ def cold_start_checker(
     Folder_sim,
     cold_start=False,
     print_each_time=False,
+    completion_marker=None,
 ):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
+
+    completion_marker: optional (file, substring). A radius counts as done only if
+    `<file>_<rho>` also CONTAINS the substring — e.g. ('out.cgyro.info', 'EXIT') for
+    CGYRO, whose output files exist from the first step on: a run killed mid-way
+    (job cancelled or timed out) leaves a complete-looking file set with a few a/cs
+    of data, which used to be accepted as a finished evaluation.
     """
     cont_each = 0
     if cold_start:
@@ -1841,6 +1959,15 @@ def cold_start_checker(
                         print(f"\t* {ffi} does not exist")
                     else:
                         cont_each += 1
+            if existsRho and completion_marker is not None:
+                mfile = Folder_sim / f"{completion_marker[0]}_{ir:.4f}"
+                try:
+                    finished = completion_marker[1] in mfile.read_text(errors="ignore")
+                except OSError:
+                    finished = False
+                if not finished:
+                    print(f"\t* {mfile.name} has no '{completion_marker[1]}' marker: run was interrupted, re-running this radius", typeMsg='w')
+                    existsRho = False
             if not existsRho:
                 rhosEvaluate.append(ir)
 

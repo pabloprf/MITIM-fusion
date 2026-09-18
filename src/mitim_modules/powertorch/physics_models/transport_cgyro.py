@@ -7,6 +7,19 @@ from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
 
 
+def _check_exchange_moment(outputs, labels):
+    '''
+    Either every radius carries the exchange moment (Se_mean) or none does (old CGYRO,
+    n_flux=3). A mix means the output files of the odd radii are inconsistent (time
+    rows vs flux records), which must not be silently passed on as Qie = 0.
+    '''
+    missing = [f"{l:.4f}" if isinstance(l, float) else str(l) for l, o in zip(labels, outputs) if not hasattr(o, 'Se_mean')]
+    if missing and len(missing) < len(outputs):
+        raise RuntimeError(
+            f"CGYRO exchange moment missing at {missing} but present elsewhere: "
+            "out.cgyro.time and bin.cgyro.ky_flux disagree there (interrupted/continued run?)"
+        )
+
 def _all_child_jobids(gk_object):
     '''
     Flatten the auto-resubmit ledger into a deduplicated list of child jobids
@@ -660,6 +673,14 @@ def _iteration_matches_spec_key(key, iteration):
     False and a warning is printed.
     '''
     key = str(key).strip()
+    # PORTALS sources the evaluation number from the Dakota-style filename, a
+    # *string* in the Execution phase ("3") and an int during the SR initializer;
+    # a str-vs-int comparison raised TypeError on the first BO iteration.
+    try:
+        iteration = int(iteration)
+    except (TypeError, ValueError):
+        print(f"\t- [CGYRO *_special] Non-integer evaluation number {iteration!r}; no per-iteration override applied", typeMsg='w')
+        return False
     for op, cmp in (
         (">=", lambda a, b: a >= b),
         ("<=", lambda a, b: a <= b),
@@ -804,6 +825,11 @@ def _resolve_cgyro_allocation_special(run_options, evaluation_number, existing_a
 # external import paths keep working while callers migrate.
 _resolve_cgyro_extra_options_first = _resolve_cgyro_extra_options_special
 _resolve_cgyro_allocation_first = _resolve_cgyro_allocation_special
+
+
+def _averaging_records(outputs):
+    '''Per-rho GKaverager.to_dict() (window, flag, provenance) of the read outputs, for the fluxes JSON.'''
+    return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
 
 
 class gyrokinetic_model:
@@ -1206,6 +1232,8 @@ class gyrokinetic_model:
 
             # Qie: electron turbulent energy exchange (the quantity TGLF passes as Se).
             # Older CGYRO outputs carry no exchange moment (n_flux=3) -> zero + warning.
+            # Only SOME radii lacking it means inconsistent output files at those radii.
+            _check_exchange_moment(outputs, rho_locations)
             if hasattr(outputs[0], 'Se_mean'):
                 self.QieGB_turb = np.array([outputs[i].Se_mean for i in range(len(rho_locations))])
                 self.QieGB_turb_stds = np.array([outputs[i].Se_std for i in range(len(rho_locations))])
@@ -1213,6 +1241,9 @@ class gyrokinetic_model:
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 self.QieGB_turb = self.QeGB_turb*0.0
                 self.QieGB_turb_stds = self.QeGB_turb*0.0
+
+            # Averaging-window record per rho (method, t_start, flag, ...) -> fluxes_turb.json
+            self.averaging_info_turb = _averaging_records(outputs)
 
         elif run_type == 'prep':
             
@@ -1416,6 +1447,7 @@ class cgyro_model(gyrokinetic_model):
                 "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
                 "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation",
                 "run_type", "additional_files_to_send", "helper_lostconnection",
+                "rescue_interrupted",
             }
             run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}
 
@@ -1653,6 +1685,7 @@ class cgyro_model(gyrokinetic_model):
         Mt_std_batch = np.zeros((N, nrho))
         S_batch      = np.zeros((N, nrho))
         S_std_batch  = np.zeros((N, nrho))
+        averaging_batch = {}
 
         for p, label in plasma_labels.items():
             if not cgyro_unpickled:
@@ -1677,6 +1710,7 @@ class cgyro_model(gyrokinetic_model):
             GZ_std_batch[p, :] = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(nrho)])
             Mt_batch[p, :]     = np.array([outputs[i].Mt_mean for i in range(nrho)])
             Mt_std_batch[p, :] = np.array([outputs[i].Mt_std for i in range(nrho)])
+            _check_exchange_moment(outputs, list(range(nrho)))
             if hasattr(outputs[0], 'Se_mean'):
                 S_batch[p, :]      = np.array([outputs[i].Se_mean for i in range(nrho)])
                 S_std_batch[p, :]  = np.array([outputs[i].Se_std for i in range(nrho)])
@@ -1684,6 +1718,8 @@ class cgyro_model(gyrokinetic_model):
                 print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
                 S_batch[p, :]      = 0.0
                 S_std_batch[p, :]  = 0.0
+
+            averaging_batch[p] = _averaging_records(outputs)
 
         # Optional remote scratch cleanup on the submit path — see the
         # single-plasma branch for the rationale. Same try/except shape so
@@ -1727,6 +1763,7 @@ class cgyro_model(gyrokinetic_model):
         if pass_info:
             self.QeGB_turb      = Qe_batch
             self.QeGB_turb_stds = Qe_std_batch
+            self.averaging_info_turb = [averaging_batch.get(p, None) for p in range(N)]   # per plasma, per rho
 
             self.QiGB_turb      = Qi_batch
             self.QiGB_turb_stds = Qi_std_batch

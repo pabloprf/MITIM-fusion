@@ -4,6 +4,14 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
+    (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
+    `tmin` window, Sandia QUENDS transient trim, or N.T. Howard's stationarity scan) and
+    `uncertainty: acf | quends` (autocorrelation vs block-mean standard error). Implemented by the
+    reusable `GKaverager` (`simulation_tools/utils/GKaveraging.py`), with per-rho window/flag/provenance
+    written to `fluxes_turb.json`, an "Averaging" tab in the CGYRO/GX notebooks, `mitim_plot_cgyro --averaging`,
+    the optional `mitim[quends]` extra and `tests/capability_tests/cgyro_07_flux_averaging_methods.py`.
+
 *   💥 **Thermal D-D neutron rate**: new `PLASMAtools.sigmav_dd_neutron` (Bosch-Hale
     D(d,n)3He parametrization [Bosch & Hale, Nucl. Fusion 32 (1992) 611, Table VII]) and
     `mitim_state.derived['ndd_thermal']` — volume-integrated thermal D(d,n)3He neutron rate (n/s)

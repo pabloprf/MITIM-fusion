@@ -144,36 +144,37 @@ def test_cgyro_gx_eped_interfaces(tmp):
     c.Qe_mean, c.Qe_std, c.Qi_mean, c.Qi_std, c.Ge_mean, c.Ge_std, c.Mt_mean, c.Mt_std = 1., .1, 2., .2, .3, .03, 0., 0.
     c.Gi_all_mean, c.Gi_all_std = np.array([0.1, 0.2]), np.array([0.01, 0.02])
     c.t, c.tmin, c.linear = np.linspace(0, 500, 11), 250.0, False
-    c.Qe_ncorr, c.Qe_icor, c.Gi_all_ncorr, c.Gi_all_icor = 4.0, 0.5, np.array([3.0, 6.0]), np.array([0.7, 0.3])
-    c.avg_it0, c.avg_it1 = 5, 10
     c.cgyro_version = '26-Jun-11 [0e6c00ed3 [2025-10-02]][PIXI_OPENMP][0.0]'
+    # the averager as GKaveraging builds it (fixed window, ACF standard error), on a real trace for Qe
+    from mitim_tools.simulation_tools.utils.GKaveraging import GKaverager
+    rng = np.random.default_rng(1)
+    c.t = np.linspace(0, 500, 501)
+    c.Qe = 1.0 + np.convolve(rng.normal(size=len(c.t)), np.ones(10) / 10, mode='same')
+    c.averaging = GKaverager(c.t, {'Qi': c.Qe * 2, 'Qe': c.Qe, 'Ge': c.Qe * 0.1}, method='fixed', tmin=250.0, tmin_is_rel=False)
     o = c.harvest_outputs()
     assert o['Qi_mean'] == 2. and o['Gi_2_std'] == 0.02 and 'Se_mean' not in o and o['t_last'] == 500. and np.isnan(o['tmax_fluct']) and o['linear'] == 0
-    # averaging method: window + effective samples + autocorrelation time per flux, description once per run/code
-    assert o['avg_tmin'] == 250. and o['avg_tmax'] == 500. and o['avg_npoints'] == 6 and o['avg_dt'] == 50.
-    assert o['Qe_ncorr'] == 4.0 and o['Qe_icor'] == 0.5 and o['Gi_2_ncorr'] == 6.0 and o['Gi_1_icor'] == 0.7 and 'Qi_ncorr' not in o
-    assert 'sqrt(<flux>_ncorr)' in c.harvest_provenance()['averaging']
+    # averaging: window from the averager, per-flux ACF diagnostics recomputed on that window, method once per run/code
+    assert o['avg_tmin'] == 250. and o['avg_tmax'] == 500. and o['avg_npoints'] == 251 and o['avg_dt'] == 1. and o['avg_flag'] == 'fixed'
+    assert 1 < o['Qe_icor'] < 30 and o['Qe_ncorr'] < 251 / 3 and 'Qi_ncorr' not in o, "diagnostics only for fluxes whose trace is on the object"
+    assert abs(c.averaging.stats['Qe']['std'] - c.Qe[250:].std() / np.sqrt(o['Qe_ncorr'])) < 1e-9, "std is the sample std / sqrt(ncorr) of the same window"
+    prov = json.loads(c.harvest_provenance()['averaging'])
+    assert prov['method'] == 'fixed' and prov['uncertainty'] == 'acf' and prov['tmin'] == 250.0 and 'sqrt(<flux>_ncorr)' in prov['std']
     assert c.harvest_inputs()['nonlinear_flag'] == 1 and c.harvest_hash_extra() == {'t_last': 500.0}
     assert c.harvest_version().startswith('26-Jun-11')
-    # a real apply_ac call fills the diagnostics
-    from mitim_tools.gacode_tools.utils import CGYROutils
-    rng = np.random.default_rng(1)
-    t = np.linspace(0, 400, 401)
-    S = 1.0 + np.convolve(rng.normal(size=len(t)), np.ones(10) / 10, mode='same')
-    info = {}
-    m, s = CGYROutils.apply_ac(t, S, tmin=100.0, info=info)
-    assert abs(m - S[100:].mean()) < 1e-12 and info['it0'] == 100 and info['it1'] == len(t) and 1 < info['icor'] < 30 and info['n_corr'] < 301 / 3
-    assert abs(s - S[100:].std() / np.sqrt(info['n_corr'])) < 1e-12, "std is the sample std over the window divided by sqrt(n_corr)"
+    # no averager (e.g. a partially read object) -> window fields NaN, provenance empty, no crash
+    c2 = CGYROoutput.__new__(CGYROoutput)
+    c2.t, c2.params1D = c.t, {}
+    assert np.isnan(c2.harvest_outputs()['avg_tmin']) and c2.harvest_provenance()['averaging'] == ''
 
     g = GXoutput.__new__(GXoutput)
     g.inputclass = SimpleNamespace(controls={'nstep': 1000}, plasma={'tprim_1': 3.0})
     g.Qe_mean, g.Qe_std, g.Qi_mean, g.Qi_std, g.Ge_mean, g.Ge_std = 1., .1, 2., .2, .3, .03
     g.Qi_all_mean, g.Qi_all_std = np.array([1.5, 0.5]), np.array([.1, .1])
     g.t, g.tmin, g.gx_version = np.linspace(0, 100, 5), 50., 'git_hash=deadbeef'
-    g.Qi_all_ncorr, g.Qi_all_icor = np.array([2.0, 2.5]), np.array([1.0, 1.0])
+    g.averaging = SimpleNamespace(t_start=50., t_end=100., n_window=3, flag='fixed', method='fixed', uncertainty='acf', provenance={'tmin': 50.}, diagnostics={})
     o = g.harvest_outputs()
     assert o['Qi_2_mean'] == 0.5 and o['t_last'] == 100. and g.harvest_inputs() == {'nstep': 1000, 'tprim_1': 3.0} and g.harvest_version() == 'git_hash=deadbeef'
-    assert o['avg_tmin'] == 50. and o['avg_tmax'] == 100. and o['avg_npoints'] == 3 and o['Qi_2_ncorr'] == 2.5 and 'averaging' in g.harvest_provenance()
+    assert o['avg_tmin'] == 50. and o['avg_tmax'] == 100. and o['avg_npoints'] == 3 and o['avg_flag'] == 'fixed' and '"method": "fixed"' in g.harvest_provenance()['averaging']
 
     import xarray as xr
     import f90nml
@@ -209,7 +210,7 @@ def test_cgyro_gx_eped_interfaces(tmp):
     assert prov['code_version'] == 'eped_version=1.0' and prov['machine'] == 'engaging' and prov['averaging'] == '' and _meta(folder)['maestro_beat'] == 2
     # the averaging description travels with the provenance of averaged codes
     r._write({'code': 'cgyro', 'inputs': {'ky': 0.3}, 'outputs': c.harvest_outputs(), 'meta': {'machine': 'engaging', **c.harvest_provenance()}})
-    assert 'apply_ac' in _meta(folder)['codes']['cgyro']['averaging']
+    assert '"method": "fixed"' in _meta(folder)['codes']['cgyro']['averaging']
     print("PASS CGYRO / GX output interfaces and EPED collector")
 
 
