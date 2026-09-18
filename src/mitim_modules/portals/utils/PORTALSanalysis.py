@@ -494,8 +494,9 @@ class PORTALSanalyzer:
                 _cgyro_read_cfg = self.powerstate.transport_options['options'][turb_key]['read']
                 cgyro_read_kwargs = {k: v for k, v in _cgyro_read_cfg.items()
                                      if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
-            except Exception:
+            except Exception as _e:
                 cgyro_read_kwargs = {}
+                print(f"\t- Could not read the CGYRO 'read' settings (tmin/averaging) from the powerstate ({type(_e).__name__}); re-read windows will be the full trace with method 'fixed', NOT what the run used", typeMsg='w')
 
         for it in its:
             folder_execution = self.opt_fun.folder / "Execution" / f"Evaluation.{it}" / "transport_simulation_folder"
