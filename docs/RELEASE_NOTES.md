@@ -11,7 +11,8 @@ DESCRIPTION
     fluxes, for CGYRO/GX the averaging window and uncertainty diagnostics; for EPED the eped.input as
     run, NMODES/WIDTHS/TEPED_BOUND and the stability rule) with its provenance (machine, modules, code
     version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
-    compression and pushed once at the end (MAESTRO: all beats at finalize) into a netCDF-4 file
+    compression and pushed once at the end (MAESTRO: all beats share `Outputs/harvest`, records tagged
+    with `maestro_beat`, one push at finalize) into a netCDF-4 file
     (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
     `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
     `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests

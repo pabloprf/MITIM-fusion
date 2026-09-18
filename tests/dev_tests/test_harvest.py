@@ -138,6 +138,33 @@ def test_recorder_tglf_layout_and_dedup(tmp):
     print("PASS recorder: lean records, provenance once per run/code, numpy scalars, dedup in-memory + on disk, pickle, scan knob")
 
 
+def test_shared_staging_folder(tmp):
+    '''A driver (MAESTRO) hands its own staging folder to the runs it chains: one folder, one run_meta.json, maestro_beat per record'''
+    driver = tmp / 'chain' / 'Outputs' / 'harvest'
+    o_driver = H.options_from_namelist({'enabled': True}, driver, run_meta_extra={'run_folder': str(tmp / 'chain')})
+    own = tmp / 'chain' / 'Beats' / 'Beat_4' / 'run_portals' / 'Outputs' / 'harvest'
+    o_beat = H.options_from_namelist({'enabled': True, 'push': False, 'run_id': o_driver['run_meta']['run'], 'maestro_beat': 4,
+                                      'staging_folder': str(driver)}, own, run_meta_extra={'run_folder': str(own.parents[1])})
+    assert o_beat['folder'] == str(driver) and not own.exists(), "the beat stages in the driver folder, its own is never created"
+    assert _meta(driver)['maestro_beat'] == -1 and _meta(driver)['run_folder'] == str(tmp / 'chain'), "the shared run_meta.json stays the driver's"
+    sim = _fake_sim('tglf', [0.5], [{'RLTS_1': 1.0}], [{'Qe': 1.0, 'Qi': 2.0, 'Ge': 0.0, 'Mt': 0.0, 'Se': 0.0, 'roa': 0.5, 'tglf_version': 'v'}])
+    assert H.harvest_recorder(o_beat).record(sim, 'base') == 1
+    o_beat7 = H.options_from_namelist({'enabled': True, 'run_id': o_driver['run_meta']['run'], 'maestro_beat': 7, 'staging_folder': str(driver)}, own)
+    assert H.harvest_recorder(o_beat7).record(sim, 'base') == 0, "same inputs in a later beat are deduplicated across the chain"
+    sim2 = _fake_sim('tglf', [0.5], [{'RLTS_1': 2.0}], [{'Qe': 3.0, 'Qi': 4.0, 'Ge': 0.0, 'Mt': 0.0, 'Se': 0.0, 'roa': 0.5, 'tglf_version': 'v'}])
+    assert H.harvest_recorder(o_beat7).record(sim2, 'base') == 1
+    rows = _lines(driver, 'tglf')
+    assert [r['maestro_beat'] for r in rows] == [4, 7] and len({r['run'] for r in rows}) == 1
+    db = H.harvest_database(tmp / 'chain.nc')
+    assert db.push([driver]) == {'tglf': 2}
+    df = db.load('tglf')
+    assert sorted(df['maestro_beat'].astype(int)) == [4, 7] and 'maestro_beat_x' not in df.columns, "per-record beat wins over the runs table"
+    # a standalone run (no staging_folder) keeps no per-record beat column
+    solo = tmp / 'solo' / 'Outputs' / 'harvest'
+    assert H.harvest_recorder(_opts(solo)).record(sim, 'base') == 1 and 'maestro_beat' not in _lines(solo, 'tglf')[0]
+    print("PASS shared staging folder (driver-owned run_meta, per-record maestro_beat, cross-beat dedup)")
+
+
 def test_cgyro_gx_eped_interfaces(tmp):
     c = CGYROoutput.__new__(CGYROoutput)
     c.params1D = {'n_species': 3, 'dlntdr_0': 2.0, 'nonlinear_flag': True}
@@ -417,6 +444,7 @@ def main():
     try:
         test_options_and_run_meta(tmp)
         test_recorder_tglf_layout_and_dedup(tmp)
+        test_shared_staging_folder(tmp)
         test_cgyro_gx_eped_interfaces(tmp)
         test_push_schema_union_and_load(tmp)
         test_rolling_compression(tmp)

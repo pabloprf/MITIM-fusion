@@ -15,9 +15,9 @@ Key teaching points:
     1. One switch for the whole chain: `maestro.harvest.enabled: true` (+ optional `file`,
        `scan_trick_members`). MAESTRO forwards it to each PORTALS beat with its own run id, and
        the EPED beat records itself; nothing else changes in the beat configs.
-    2. Records are staged per beat as the run goes (Beats/Beat_<n>/run_portals/Outputs/harvest/
-       for PORTALS, Outputs/harvest/ for EPED), compressed on the fly, and persisted into
-       beat_results/ so they survive every prune_level. MAESTRO pushes all of them at finalize;
+    2. Records of every beat (PORTALS and EPED alike) are staged as the run goes in ONE folder,
+       <run>/Outputs/harvest/, compressed on the fly, each tagged with its `maestro_beat`; the
+       folder sits outside Beats/ so it survives every prune_level. MAESTRO pushes at finalize;
        a chain that died can be pushed later with `mitim_harvest <folder>`.
     3. Only FULL EPED evaluations are harvested (EPED-NN is a surrogate itself, and surrogate
        outputs must never enter a training set). Full EPED runs on the machine configured for
@@ -105,14 +105,12 @@ print(db.summary().to_string(index=False))
 print("\nRuns table:")
 print(db.runs()[["run", "code", "machine", "maestro_beat", "code_version"]].assign(code_version=lambda d: d["code_version"].str.split("\n").str[0]).to_string(index=False))
 
-# Records contributed by each beat (from the archived staging files; the database itself only keeps `run`)
-print("\nTGLF records per beat:")
-for f in HARVESTtools.staging_folders_of(folder):
-    if "beat_results" in f.parts:
-        n = sum(len(HARVESTtools._read_jsonl(p)) for p in f.glob("tglf.jsonl*"))
-        print(f"   {f.parts[f.parts.index('Beats') + 1]}: {n}")
-
 tglf = db.load("tglf")
+
+# Records contributed by each beat: all beats stage into <run>/Outputs/harvest, each record tagged with its maestro_beat
+print("\nTGLF records per beat:")
+print(tglf.groupby("maestro_beat").size().to_string())
+
 print(f"\nTGLF records in the database: {len(tglf)} ({sum(c.startswith('in_') for c in tglf.columns)} inputs -> {sum(c.startswith('out_') for c in tglf.columns)} outputs)")
 
 eped = db.load("eped")

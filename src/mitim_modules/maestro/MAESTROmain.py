@@ -151,8 +151,8 @@ class maestro:
         #          (the null case is enforced in the EPED beat's _inform)
         self.refreeze_995_after_beat = self.maestro_namelist.get('maestro', {}).get('refreeze_995_after_beat', 0)
 
-        # Harvest options (maestro.harvest): plain dict; EPED beats record into Outputs/harvest/, PORTALS
-        # beats stage into their own run folder with this run_id, and finalize() pushes everything once
+        # Harvest options (maestro.harvest): plain dict; EPED and PORTALS beats all stage into Outputs/harvest/
+        # with this run_id (each record carries its maestro_beat), and finalize() pushes everything once
         from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist
         self.harvest = options_from_namelist(self.maestro_namelist.get('maestro', {}).get('harvest', {}),
                                              staging_folder=self.folder_output / 'harvest',
@@ -658,8 +658,9 @@ class maestro:
             # The initializer prune goes here too: the engineering-parameter freeze reads
             # initializer_*/input.gacode on every invocation, so it can only be safe once the run
             # is over (and that file is never a target -- see beat.prune_initializer).
-            # Harvest push (once per run, all beats). Staging survives every prune level: PORTALS beats'
-            # Outputs/harvest is persisted into beat_results/ (a copy at levels 0-1, the only copy at 2-3).
+            # Harvest push (once per run, all beats). Everything is staged in Outputs/harvest, outside Beats/,
+            # so it survives every prune level; the per-beat folders are only there for chains started before
+            # the staging was centralized.
             if self.harvest.get('enabled', False):
                 from mitim_tools.harvest_tools import HARVESTtools
                 folders = [self.folder_output / 'harvest']

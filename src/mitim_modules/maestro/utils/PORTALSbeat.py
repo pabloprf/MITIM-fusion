@@ -129,12 +129,14 @@ class portals_beat(beat):
         # MAESTRO beat may receive optimization options changes from previous beats (via _inform() inside prepare), so allow that too
         portals_fun.portals_parameters['optimization_options'] = portals_fun.optimization_options = IOtools.deep_dict_update(portals_fun.optimization_options, self.optimization_options_additional)
 
-        # Harvest inside MAESTRO: stage under this beat with the MAESTRO run_id; MAESTRO pushes once at finalize
+        # Harvest inside MAESTRO: stage in MAESTRO's own Outputs/harvest (one folder for the whole chain, outside
+        # Beats/ so no prune level touches it) with the MAESTRO run_id; MAESTRO pushes once at finalize
         harvest = getattr(self.maestro_instance, 'harvest', {}) or {}
         if harvest.get('enabled', False):
             portals_fun.portals_parameters['harvest'] = {
                 'enabled': True, 'file': harvest.get('file'), 'push': False, 'scan_trick_members': harvest.get('scan_trick_members', True),
-                'run_id': harvest['run_meta']['run'], 'maestro_beat': int(self.maestro_instance.counter_current)}
+                'run_id': harvest['run_meta']['run'], 'maestro_beat': int(self.maestro_instance.counter_current),
+                'staging_folder': harvest['folder']}
 
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state

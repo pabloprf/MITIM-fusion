@@ -13,7 +13,9 @@ TGLF records are individual runs: the base point AND each perturbed member of th
 
 Two tiers:
     1. Staging, per run (opt-in via the `harvest:` namelist block): JSON-lines, one file per code,
-       `<run>/Outputs/harvest/<code>.jsonl` (+ run_meta.json with the provenance). Append-only and
+       `<run>/Outputs/harvest/<code>.jsonl` (+ run_meta.json with the provenance). A driver that
+       chains several runs (MAESTRO) hands its own folder to each of them (`staging_folder`), so the
+       whole chain stages in ONE place and each record carries its `maestro_beat`. Append-only and
        crash-safe, so a dead or preempted run keeps its records and can be pushed by hand
        (`mitim_harvest <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
        is compressed as one more gzip member of `<code>.jsonl.gz` (~20-30x smaller, since only a
@@ -49,7 +51,7 @@ from mitim_tools.misc_tools import IOtools, CONFIGread, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 DEFAULT_FILE = "~/mitim_harvest/mitim_harvest.nc"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4   # 4: optional per-record `maestro_beat` (chained runs share one staging folder)
 ROLL_BYTES = 256 * 1024   # plain-JSON tail size that triggers compression into <code>.jsonl.gz (~60 TGLF records)
 CODES = ('tglf', 'neo', 'cgyro', 'gx', 'qualikiz', 'eped')
 RUNS_GROUP = 'runs'
@@ -79,15 +81,20 @@ def options_from_namelist(block, staging_folder, run_meta_extra=None):
     deep-copied and dill-pickled with the powerstate). When enabled, creates the staging folder and
     its run_meta.json (re-read if present, so a resumed run keeps its id).
     Extra keys a driver may inject into the block: `push` (False for MAESTRO beats), `run_id`,
-    `maestro_beat`.
+    `maestro_beat`, and `staging_folder` (overrides the argument: the driver's own staging folder,
+    shared by every run of the chain). With a shared folder the run-level run_meta.json belongs to
+    the driver and is left untouched; `maestro_beat` then travels per record instead.
     '''
     block = dict(block or {})
+    shared = bool(block.get('staging_folder'))
+    staging_folder = block.get('staging_folder') or staging_folder
     opts = {
         'enabled': bool(block.get('enabled', False)),
         'file': block.get('file', None),
         'push': bool(block.get('push', True)),
         'scan_trick_members': bool(block.get('scan_trick_members', True)),
         'folder': str(staging_folder),
+        'maestro_beat': int(block['maestro_beat']) if 'maestro_beat' in block else None,
         'run_meta': {},
     }
     if not opts['enabled']:
@@ -113,6 +120,10 @@ def options_from_namelist(block, staging_folder, run_meta_extra=None):
             'created': datetime.datetime.now().isoformat(timespec='seconds'),
             'codes': {},
         }
+    if shared and meta_file.exists():
+        opts['run_meta'] = run_meta
+        return opts
+
     if block.get('run_id'):
         run_meta['run'] = block['run_id']
     if 'maestro_beat' in block:
@@ -278,7 +289,7 @@ class harvest_recorder:
         return Path(self.options['folder'])
 
     def with_context(self, **context):
-        '''Context is NOT stored in records; it only steers the recorder (e.g. scan_member=1 -> skippable)'''
+        '''Context steers the recorder (e.g. scan_member=1 -> skippable) and is NOT stored in records, except `maestro_beat`'''
         return harvest_recorder(self.options, {**self.context, **context})
 
     def record(self, obj, label=None, folder=None):
@@ -326,6 +337,9 @@ class harvest_recorder:
             self._note_provenance(code, rec.get('meta', {}))
 
             flat = {'run': self.options.get('run_meta', {}).get('run', ''), 'hash': h}
+            beat = self.context.get('maestro_beat', self.options.get('maestro_beat'))
+            if beat is not None and int(beat) >= 0:
+                flat['maestro_beat'] = int(beat)
             flat.update({f"in_{k}": v for k, v in inputs.items()})
             flat.update({f"out_{k}": v for k, v in outputs.items()})
 
@@ -512,6 +526,7 @@ class harvest_database:
             runs = self.runs()
             if len(runs):
                 runs = runs[runs['code'] == code].drop(columns=['code'])
+                runs = runs.drop(columns=[c for c in runs.columns if c in df.columns and c != 'run'])   # per-record maestro_beat wins
                 df = df.merge(runs, on='run', how='left')
                 for c in RUN_KEYS + RUN_CODE_KEYS:
                     if c in df and not pd.api.types.is_numeric_dtype(df[c]):
