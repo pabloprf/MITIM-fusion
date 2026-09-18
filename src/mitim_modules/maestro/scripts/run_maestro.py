@@ -245,7 +245,8 @@ def run_maestro_local(
                   'by interpolating the built (guessed) profiles to psiN=0.995. Only null vs non-null is honored here.', typeMsg='w')
         rz_boundary_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["rz_boundary_file"]
         internal_flux_file = maestro_namelist["plasma"]["parameters"]["separatrix"]["internal_flux_file"]
-        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file, 'extract_995_from': extract_995_from, 'internal_flux_file': internal_flux_file}
+        geometry    = {'R': R, 'a': a, 'kappa_sep': kappa_sep, 'delta_sep': delta_sep, 'zeta_sep': zeta_sep, 'z0': 0.0, 'coeffs_MXH' : n_mxh, 'rz_boundary_file': rz_boundary_file, 'extract_995_from': extract_995_from, 'internal_flux_file': internal_flux_file,
+                       'minuet_q_shape': maestro_namelist["plasma"]["parameters"]["separatrix"].get("minuet_q_shape")}
 
     # Initialize geometry from geqdsk file
     elif initialization_type == "geqdsk":

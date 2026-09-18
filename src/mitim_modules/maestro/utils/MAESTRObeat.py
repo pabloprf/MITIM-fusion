@@ -699,7 +699,7 @@ class initializer_from_separatrix(beat_initializer):
 
         # Run minuet to generate equilibrium
         f = GEQtools.minuet_millerized(R, a, kappa_sep, delta_sep, zeta_sep if zeta_sep is not None else 0.0, z0)
-        f.prep(p0_MPa, Ip_MA, B_T)
+        f.prep(p0_MPa, Ip_MA, B_T, **(kwargs.get('minuet_q_shape') or {}))
         f.solve()
         f.derive()
 
@@ -742,9 +742,14 @@ class initializer_from_separatrix(beat_initializer):
         # real equilibrium) is kept, so boundary_surface_psin extracts a too-near-separatrix (over-
         # squared) surface and the realistic radial decay is partly wasted. Without a file, keep
         # the solver's self-consistent psi (still better than the linear-ramp guess).
+        # Only the file's psi_N(rho) MAPPING is imposed: its absolute flux belongs to the file's own machine
+        # (Ip, B, R), so it is rescaled to the solver's poloidal-flux swing, and q is re-derived from it so
+        # q and psi stay one equilibrium.
         if kwargs.get('internal_flux_file') is not None:
-            self.p.profiles['polflux(Wb/radian)'] = np.interp(
-                self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles['polflux(Wb/radian)'])
+            psi_solver = self.p.profiles['polflux(Wb/radian)']
+            psi_file = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles['polflux(Wb/radian)'])
+            self.p.profiles['polflux(Wb/radian)'] = psi_solver[0] + (psi_file - psi_file[0]) * (psi_solver[-1] - psi_solver[0]) / (psi_file[-1] - psi_file[0])
+            self._q_from_polflux()
 
         for i in range(coeffs_MXH):
             self.p.profiles[f'shape_cos{i}(-)'] = np.interp(self.p.profiles['rho(-)'], p_old.profiles['rho(-)'], p_old.profiles[f'shape_cos{i}(-)'])
@@ -770,6 +775,26 @@ class initializer_from_separatrix(beat_initializer):
             self.p.profiles[aux_channels['e']] = self.p.profiles[aux_channels['e']] * factor
             self.p.profiles[aux_channels['i']] = self.p.profiles[aux_channels['i']] * factor
             self.p.derive_quantities()
+
+    def _q_from_polflux(self):
+        '''
+        Re-derive q from the (re-imposed) poloidal flux so that q and psi describe ONE equilibrium:
+        q = dPhi/dpsi = torfluxa * d(rho^2)/dpsi (GACODE convention, both fluxes in Wb/radian, rho = sqrt of
+        normalized toroidal flux). torfluxa is the solver's (target boundary and field); psi is the file's.
+        Differentiating in rho^2 keeps the on-axis value finite.
+        '''
+
+        rho = self.p.profiles['rho(-)']
+        psi = self.p.profiles['polflux(Wb/radian)']
+        q_solver = self.p.profiles['q(-)']
+
+        q = np.abs(self.p.profiles['torfluxa(Wb/radian)'][0] / np.gradient(psi, rho**2)) * np.sign(q_solver)
+
+        print(f'\t- q re-derived from the internal_flux_file poloidal flux: q0 {q_solver[0]:.3f} -> {q[0]:.3f}, '
+              f'q(rho=0.5) {np.interp(0.5, rho, q_solver):.3f} -> {np.interp(0.5, rho, q):.3f}, '
+              f'q(rho=0.95) {np.interp(0.95, rho, q_solver):.3f} -> {np.interp(0.95, rho, q):.3f}', typeMsg='i')
+
+        self.p.profiles['q(-)'] = q
 
     def _inform_save(self):
         
@@ -1079,7 +1104,7 @@ class initializer_from_minuet(initializer_from_geqdsk):
 
         # Run minuet to generate equilibrium
         f = GEQtools.minuet_millerized(R, a, kappa_sep, delta_sep, zeta_sep, z0)
-        f.prep(p0_MPa, Ip_MA, B_T)
+        f.prep(p0_MPa, Ip_MA, B_T, **(kwargs_geqdsk.get('minuet_q_shape') or {}))
         f.solve()
         f.derive()
 

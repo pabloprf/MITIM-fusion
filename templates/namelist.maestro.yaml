@@ -86,6 +86,13 @@ plasma:
 
       # [Optional] If initialization_type = separatrix: path to input.gacode to reproduce internal flux surfaces and other moments
       internal_flux_file: null
+      # (With internal_flux_file, the file's poloidal flux is kept and q is re-derived from it, so q and psi stay one equilibrium)
+
+      # [Optional] q shape of every MINUET-built initialization equilibrium (initialization_type minuet / separatrix,
+      # and the TRANSP t=0 machine slice): q(x) = 1 + q_shape_lambda * x^q_shape_exponent, scaled to match Ip.
+      # null -> GEQtools.minuet_millerized defaults {q_shape_lambda: 3.5, q_shape_exponent: 4.0}, calibrated to reproduce
+      # the FREEGS q0 and q(psiN=0.5) within ~5% on C-Mod- and ARC-like shapes (a parabola cannot match both)
+      minuet_q_shape: null
 
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients used in TWO places:
       #   1. At INITIALIZATION: the equilibrium->input.gacode conversion (to_profiles) parametrizes every

@@ -1126,7 +1126,8 @@ class transp_beat(beat):
         solver_used = None
         if GEQtools.minuet_available():
             try:
-                self.transp.populate_time.from_minuet(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
+                self.transp.populate_time.from_minuet(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20,
+                    q_shape = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('minuet_q_shape'))
                 solver_used = 'MINUET'
             except Exception as e:
                 print(f'\t\t- MINUET failed to build the initialization machine slice ({type(e).__name__}: {e}), falling back to freegs', typeMsg = 'w')

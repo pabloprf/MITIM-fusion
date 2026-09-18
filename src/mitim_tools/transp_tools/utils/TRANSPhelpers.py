@@ -875,12 +875,12 @@ class transp_input_time:
 
         self._from_eq_quantities(time, rhotor, q, pressure, Ip, RB, RZ, ne0_20 = ne0_20, Vsurf = Vsurf, Zeff = Zeff, Paux_MW = Paux_MW)
 
-    def from_minuet(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
+    def from_minuet(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0, q_shape = None):
 
         # Create Miller MINUET fixed-boundary equilibrium for the desired geometry
         # (no squareness isoflux constraint needed: the Miller curve IS the boundary here)
         self.f = GEQtools.minuet_millerized( R, a, kappa_sep, delta_sep, zeta_sep, z0)
-        self.f.prep(p0_MPa, Ip_MA, B_T)
+        self.f.prep(p0_MPa, Ip_MA, B_T, **(q_shape or {}))
         self.f.solve()
         self.f.derive()
 

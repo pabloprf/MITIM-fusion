@@ -1274,8 +1274,11 @@ class minuet_millerized:
     Differences in physics inputs w.r.t. FREEGS worth flagging:
         - FREEGS's ConstrainPaxisIp derives q from a (1-psiN^alpha_m)^alpha_n current ansatz.
           MINUET instead takes q(x) as INPUT (it is q-constrained), so the q SHAPE here is a
-          modeling choice: parabolic q(x) = 1 + q_shape_lambda * x^2, uniformly scaled until
-          the solved Ip matches the requested one.
+          modeling choice: q(x) = 1 + q_shape_lambda * x^q_shape_exponent, uniformly scaled until
+          the solved Ip matches the requested one. The defaults (3.5, 4) reproduce the FREEGS q0 and
+          q(psiN=0.5) within ~5% on C-Mod- and ARC-like shapes; a parabola (exponent 2) cannot match
+          both at any lambda (q(0.5) 1.6-2x too high), and a too-broad current profile seeds TRANSP
+          with a state whose first NUBEAM call can fail.
         - The pressure DOES reproduce FREEGS's convention exactly:
           p(psiN) = p0 * (1 - psiN**alpha_m)**alpha_n, labelled in psi_N (not in x).
     '''
@@ -1301,7 +1304,7 @@ class minuet_millerized:
         self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
 
     def prep(self, p0_MPa, Ip_MA, B_T,
-            beta_pol = None, q_shape_lambda = 2.0,
+            beta_pol = None, q_shape_lambda = 3.5, q_shape_exponent = 4.0,
             gs_ns = 128, gs_ntheta = 256, n_surfaces = 80, n_theta_trace = 384,
             n_passes = 3, n_outer = 3,
             parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0},
@@ -1323,6 +1326,7 @@ class minuet_millerized:
         self.parameters_profiles = parameters_profiles
 
         self.q_shape_lambda = q_shape_lambda
+        self.q_shape_exponent = q_shape_exponent
         self.gs_ns = gs_ns
         self.gs_ntheta = gs_ntheta
         self.n_surfaces = n_surfaces
@@ -1335,12 +1339,12 @@ class minuet_millerized:
         self.F_b = self.B_T * self.R0
 
         print(f"\t- Preparing equilibrium with MINUET, fixed-boundary GS on a {gs_ns}x{gs_ntheta} (s,theta) grid")
-        print(f"\t\t* q shape (modeling choice): q(x) = 1 + {self.q_shape_lambda}*x^2, scaled to match Ip")
+        print(f"\t\t* q shape (modeling choice): q(x) = 1 + {self.q_shape_lambda}*x^{self.q_shape_exponent}, scaled to match Ip")
         print(f"\t\t* p(psiN) = p0*(1-psiN^{parameters_profiles['alpha_m']})^{parameters_profiles['alpha_n']} (FREEGS ConstrainPaxisIp convention)")
 
     def _q_shape(self, x):
 
-        return 1.0 + self.q_shape_lambda * np.asarray(x, dtype=float)**2
+        return 1.0 + self.q_shape_lambda * np.abs(np.asarray(x, dtype=float))**self.q_shape_exponent
 
     def _pressure_callable(self, geom):
         '''
