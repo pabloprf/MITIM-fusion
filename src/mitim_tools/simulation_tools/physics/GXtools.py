@@ -425,7 +425,14 @@ class GXoutput(SIMtools.GACODEoutput):
     def read(self, tmin, tmin_is_rel=True):
 
         data = netCDF4.Dataset(self.FolderGACODE / f"gxplasma.out.nc{self.suffix}")
-        
+
+        # GX build provenance from the file's global attributes (names vary by GX version; empty if none)
+        try:
+            self.gx_version = "; ".join(f"{k}={data.getncattr(k)}" for k in data.ncattrs()
+                                        if any(s in k.lower() for s in ('version', 'git', 'hash', 'commit')))
+        except Exception:
+            self.gx_version = ""
+
         self.t = data.groups['Grids'].variables['time'][:] # (time)
         self.theta = data.groups['Grids'].variables['theta'][:]
         
@@ -479,8 +486,35 @@ class GXoutput(SIMtools.GACODEoutput):
 
         self._signal_analysis()
 
+    # ---- harvest interface (SIMtools.GACODEoutput): inputs from the gxplasma.in file, fluxes are time averages
+    def harvest_inputs(self):
+        return {**self.inputclass.controls, **self.inputclass.plasma}
+
+    harvest_averaging = CGYROutils.CGYROoutput.harvest_averaging   # same apply_ac machinery, GX time units
+
+    def harvest_outputs(self):
+        out = {}
+        for k in ('Qe', 'Qi', 'Ge'):
+            for s in ('mean', 'std', 'ncorr', 'icor'):
+                v = getattr(self, f'{k}_{s}', None)
+                if v is not None:
+                    out[f'{k}_{s}'] = float(v)
+        for name, arr in (('mean', 'Qi_all_mean'), ('std', 'Qi_all_std'), ('ncorr', 'Qi_all_ncorr'), ('icor', 'Qi_all_icor')):
+            vals = getattr(self, arr, None)
+            if vals is not None:
+                for i, v in enumerate(np.atleast_1d(vals)):
+                    out[f'Qi_{i+1}_{name}'] = float(v)
+        out.update(CGYROutils._harvest_window(self))
+        return out
+
+    def harvest_provenance(self):
+        return {'averaging': self.harvest_averaging}
+
+    def harvest_hash_extra(self):
+        return {'t_last': float(self.t[-1]) if getattr(self, 't', None) is not None and len(self.t) else None}
+
     def _signal_analysis(self):
-        
+
         flags = [
             'g',
             'f',
@@ -495,11 +529,16 @@ class GXoutput(SIMtools.GACODEoutput):
         ]
         
         for iflag in flags:
+            info = {}
             self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = CGYROutils.apply_ac(
                     self.t,
                     self.__dict__[iflag],
                     tmin=self.tmin,
                     label_print=iflag,
                     print_msg=True,
+                    info=info,
                     )
+            # Averaging diagnostics (harvest): effective samples and autocorrelation time (in output steps)
+            self.__dict__[iflag+'_ncorr'], self.__dict__[iflag+'_icor'] = info['n_corr'], info['icor']
+            self.avg_it0, self.avg_it1 = info['it0'], info['it1']
 

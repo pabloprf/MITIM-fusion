@@ -93,6 +93,9 @@ class QuaLiKiz:
 
         self.results, self.scans = {}, {}
 
+        # harvest_recorder attached by PORTALS when harvesting is enabled (see SIMtools.mitim_simulation)
+        self.harvest = None
+
         def code_call(folder, n=1, additional_command=""):
             # Assumes a QuaLiKiz executable is on PATH on the execution
             # machine (sourced via that machine's `modules` config), exactly
@@ -402,6 +405,43 @@ class QuaLiKiz:
             # Per-rho slices, mirroring TGLFtools' self.results[label]['output'] list-by-rho shape
             "output": [ds.isel(dimx=i) for i in range(len(self.rhos))],
         }
+
+        if self.harvest is not None:
+            self.harvest.record(self, label, folder=folder)
+
+    # QuaLiKiz outputs (SI, per dimx) as read from its output folder; everything else 0-d and numeric
+    # in the per-radius dataset slice is an input of that radius
+    _harvest_output_names = ('efe_SI', 'pfe_SI', 'vfe_SI', 'dfe_SI', 'efi_SI', 'pfi_SI', 'vfi_SI', 'dfi_SI')
+
+    def harvest_records(self, label, folder=None):
+        from mitim_tools.harvest_tools.HARVESTtools import machine_info
+        res = self.results[label]
+        sim_folder = Path(folder).name if folder is not None else Path(getattr(self, 'FolderSimLast', '') or '').name
+        machine = machine_info(getattr(self, 'simulation_job', None))
+        records = []
+        for irho, rho in enumerate(self.rhos):
+            out = res['output'][irho]
+            inputs, outputs = {}, {}
+            for name, da in out.data_vars.items():
+                is_output = name in self._harvest_output_names or name.endswith('_SI') or name.endswith('_GB')
+                if is_output:
+                    vals = np.atleast_1d(np.asarray(da.values, dtype=float))
+                    if da.ndim == 0:
+                        outputs[name] = float(vals[0])
+                    elif da.ndim == 1:
+                        for i, v in enumerate(vals):
+                            outputs[f"{name}_{i}"] = float(v)
+                elif da.ndim == 0 and np.issubdtype(da.dtype, np.number):
+                    inputs[name] = float(da.values)
+                elif da.ndim == 1 and np.issubdtype(da.dtype, np.number) and da.size <= 5:
+                    for i, v in enumerate(np.asarray(da.values)):
+                        inputs[f"{name}_{i}"] = float(v)
+            records.append({
+                'code': 'qualikiz', 'inputs': inputs, 'outputs': outputs, 'hash_extra': None,
+                'meta': {'label': label, 'sim_folder': sim_folder, 'rho': float(rho), 'roa': float(inputs.get('x', np.nan)),
+                         'code_version': '', 'in_process': False, **machine},
+            })
+        return records
 
     def read_cases(
         self,

@@ -197,6 +197,11 @@ class CGYROoutput(SIMtools.GACODEoutput):
 
         self._read_timing(suffix)
 
+        # CGYRO version line (timestamp [gacode hash [date]][platform][tag]); always in the minimal retrieval
+        candidates = ([self.folder / f"out.cgyro.version{suffix}"] if suffix else []) + [self.folder / "out.cgyro.version"]
+        version_file = next((f for f in candidates if f.exists()), None)
+        self.cgyro_version = version_file.read_text().strip() if version_file is not None else ""
+
         # --------------------------------------------------------------
         # Read inputs
         # --------------------------------------------------------------
@@ -344,6 +349,38 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._saturate_signals()
         
         self.remove_symlinks()
+
+    # ---- harvest interface (SIMtools.GACODEoutput): inputs live in params1D, fluxes are time averages
+    harvest_averaging = ("time mean over [avg_tmin, avg_tmax] of the flux trace (avg_npoints outputs, spacing avg_dt in a/c_s); "
+                         "<flux>_std = sample std / sqrt(<flux>_ncorr), <flux>_ncorr = npoints / (3 <flux>_icor), "
+                         "<flux>_icor = lags (outputs) at which the autocorrelation drops to 1/e (CGYROutils.apply_ac)")
+
+    def harvest_inputs(self):
+        return {k: (int(v) if isinstance(v, (bool, np.bool_)) else v) for k, v in self.params1D.items()}
+
+    def harvest_outputs(self):
+        out = {}
+        for k in ('Qe', 'Qi', 'Ge', 'Mt', 'Se'):
+            for s in ('mean', 'std', 'ncorr', 'icor'):
+                v = getattr(self, f'{k}_{s}', None)
+                if v is not None:
+                    out[f'{k}_{s}'] = float(v)
+        for name, arr in (('mean', 'Gi_all_mean'), ('std', 'Gi_all_std'), ('ncorr', 'Gi_all_ncorr'), ('icor', 'Gi_all_icor')):
+            vals = getattr(self, arr, None)
+            if vals is not None:
+                for i, v in enumerate(np.atleast_1d(vals)):
+                    out[f'Gi_{i+1}_{name}'] = float(v)
+        out.update(_harvest_window(self))
+        out['tmax_fluct'] = float(getattr(self, 'tmax_fluct', np.nan))   # only set by the non-minimal read
+        out['linear'] = int(bool(getattr(self, 'linear', False)))
+        return out
+
+    def harvest_provenance(self):
+        return {'averaging': self.harvest_averaging}
+
+    def harvest_hash_extra(self):
+        '''A warm-started re-run with identical inputs but a longer trace is a different record'''
+        return {'t_last': float(self.t[-1]) if getattr(self, 't', None) is not None and len(self.t) else None}
 
     def _read_timing(self, suffix=None):
         """
@@ -922,13 +959,18 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         for iflag in flags:
             if iflag in self.__dict__:
+                info = {}
                 self.__dict__[iflag+'_mean'], self.__dict__[iflag+'_std'] = apply_ac(
                         self.t,
                         self.__dict__[iflag],
                         tmin=self.tmin,
                         label_print=iflag,
                         print_msg=iflag in ['Qi', 'Qe', 'Ge'],
+                        info=info,
                         )
+                # Averaging diagnostics (harvest): effective samples and autocorrelation time (in output steps)
+                self.__dict__[iflag+'_ncorr'], self.__dict__[iflag+'_icor'] = info['n_corr'], info['icor']
+                self.avg_it0, self.avg_it1 = info['it0'], info['it1']
                 
         for iflag in flags_fluctuations:
             if iflag in self.__dict__:
@@ -940,6 +982,18 @@ class CGYROoutput(SIMtools.GACODEoutput):
                         label_print=iflag,
                         )     
             
+def _harvest_window(obj):
+    '''Averaging-window parameters of a CGYRO/GX output for harvesting: avg_tmin, avg_tmax, avg_npoints, avg_dt, t_last'''
+    t = getattr(obj, 't', None)
+    if t is None or len(t) == 0:
+        return {'avg_tmin': np.nan, 'avg_tmax': np.nan, 'avg_npoints': np.nan, 'avg_dt': np.nan, 't_last': np.nan}
+    it0, it1 = getattr(obj, 'avg_it0', None), getattr(obj, 'avg_it1', None)
+    if it0 is None:
+        it0, it1 = int(np.argmin(np.abs(t - getattr(obj, 'tmin', t[0])))), len(t)
+    it1 = min(int(it1), len(t) - 1)
+    return {'avg_tmin': float(t[it0]), 'avg_tmax': float(t[it1]), 'avg_npoints': float(it1 - it0 + 1),
+            'avg_dt': float(np.median(np.diff(t))) if len(t) > 1 else np.nan, 't_last': float(t[-1])}
+
 def _grab_ncorrelation(S, debug=False):
     # Calculate the autocorrelation function
     i_acf = sm.tsa.acf(S, nlags=len(S))
@@ -965,8 +1019,12 @@ def _grab_ncorrelation(S, debug=False):
     
     return n_corr, icor
 
-def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False):
-    
+def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, debug=False, info=None):
+    '''
+    Time average of S over [tmin, tmax] (last axis is time) with an autocorrelation-corrected standard
+    error: std = sample std / sqrt(n_corr), n_corr = N / (3 icor), icor = lags at which the ACF drops
+    to 1/e. If `info` is a dict it is filled with n_corr, icor, it0, it1 (e.g. for harvesting).
+    '''
     it0 = np.argmin(np.abs(t - tmin))
     it1 = np.argmin(np.abs(t - tmax)) if tmax is not None else len(t)  # If tmax is None, use the full length of t
     
@@ -1014,6 +1072,9 @@ def apply_ac(t, S, tmin = 0, tmax = None, label_print = '', print_msg = False, d
             else:
                 # Higher dimensional case: print summary statistics
                 print(f"\t- {(label_print + ': a') if len(label_print)>0 else 'A'}utocorr time: {icor.mean():.1f}±{icor.std():.1f} -> {n_corr.mean():.1f}±{n_corr.std():.1f} samples -> shape {S_mean.shape}")
+
+    if info is not None:
+        info.update({'n_corr': n_corr, 'icor': icor, 'it0': int(it0), 'it1': int(it1)})
 
     return S_mean, S_std
 

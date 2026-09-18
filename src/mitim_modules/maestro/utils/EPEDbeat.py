@@ -865,7 +865,28 @@ class eped_beat(beat):
         # recomputed later from that retained file.
         self.limiting_mode_info = EPEDtools.limiting_mode_from_dataset(eped.results['case1']['run1'])
 
+        self._harvest_eped(eped, input_params, dict(m=m, z=z, mi=mi, zi=zi), eped_params_override, ptop_kPa, wtop_psipol)
+
         return ptop_kPa, wtop_psipol
+
+    def _harvest_eped(self, eped, input_params, composition, eped_params_override, ptop_kPa, wtop_psipol):
+        '''
+        One harvest record per full-EPED evaluation (retries included; EPED-NN never). Also covers the
+        eped_initializer creator, which builds an eped_beat on the same maestro instance (maestro_beat 0).
+        '''
+        harvest = getattr(self.maestro_instance, 'harvest', None)
+        if not harvest or not harvest.get('enabled', False):
+            return
+        from mitim_tools.harvest_tools.HARVESTtools import harvest_recorder
+        beats = getattr(self.maestro_instance, 'beats', {})
+        maestro_beat = next((int(c) for c, b in beats.items() if b is self), 0)
+        case_folder = eped.folder_run / 'run1'   # eped.input.1 / eped.config1 as written for this evaluation
+        harvest_recorder(harvest).with_context(maestro_beat=maestro_beat).record_eped(
+            input_params=input_params, composition=composition, eped_params_override=eped_params_override,
+            toq_eq_choice=getattr(self, 'toq_eq_choice', ''), dataset=eped.results['case1']['run1'],
+            ptop_kPa=ptop_kPa, wtop_psipol=wtop_psipol, limiting_mode_info=self.limiting_mode_info,
+            eped_folder=eped.folder, job=getattr(eped, 'eped_job', None),
+            eped_input_file=case_folder / 'eped.input.1', eped_config_file=case_folder / 'eped.config1')
         
     def finalize(self, **kwargs):
 

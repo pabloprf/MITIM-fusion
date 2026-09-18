@@ -130,6 +130,19 @@ class power_transport:
             "w0": "$M_T$ ($J/m^2$)",
         }
 
+    def _harvest_attach(self, sim):
+        '''
+        Attach a harvest_recorder (with this evaluation's context) to a freshly built simulation
+        object when the run opted into harvesting (transport_options["harvest"], set by PORTALSinit
+        from the namelist `harvest:` block). No-op otherwise. Returns the object for chaining.
+        '''
+        opts = self.powerstate.transport_options.get("harvest", None)
+        if opts and opts.get("enabled", False):
+            from mitim_tools.harvest_tools.HARVESTtools import harvest_recorder
+            sim.harvest = harvest_recorder(opts).with_context(
+                evaluation=int(self.evaluation_number), evaluation_name=str(self.name), eval_folder=str(self.folder))
+        return sim
+
     def evaluate(self):
 
         # Copy the input.gacode files to the output folder

@@ -75,8 +75,46 @@ class mitim_simulation:
         self.results, self.scans = {}, {}
         
         self.run_specifications = None
-        
+
         self.NormalizationSets = {'SELECTED': None}
+
+        # harvest_recorder (mitim_tools.harvest_tools.HARVESTtools) attached by PORTALS when the
+        # user opted into harvesting; None -> read() records nothing
+        self.harvest = None
+
+    def _harvest(self, label, folder=None):
+        if self.harvest is not None:
+            self.harvest.record(self, label, folder=folder)
+
+    def harvest_records(self, label, folder=None):
+        '''
+        One harvest record per radius of results[label]: the full input file (parsed dict, or the
+        output object's harvest_inputs() when the output class owns the inputs, e.g. CGYRO/GX) and
+        the scalar fluxes from the output object's harvest_outputs(). Subclasses that store their
+        results differently (QuaLiKiz) override this whole method.
+        '''
+        res = self.results[label]
+        code = self.run_specifications['code']
+        sim_folder = Path(folder).name if folder is not None else Path(getattr(self, 'FolderSimLast', '') or '').name
+        machine = _harvest_machine_info(getattr(self, 'simulation_job', None))
+        records = []
+        for irho, rho in enumerate(self.rhos):
+            out = res['output'][irho]
+            inputs = out.harvest_inputs()
+            if inputs is None:
+                inputs = res['parsed'][irho] if res.get('parsed') and res['parsed'][irho] is not None else None
+            if inputs is None and rho in getattr(self, 'inputs_files', {}):
+                inputs = {**self.inputs_files[rho].controls, **self.inputs_files[rho].plasma}
+            records.append({
+                'code': code,
+                'inputs': inputs or {},
+                'outputs': out.harvest_outputs(),
+                'hash_extra': out.harvest_hash_extra(),
+                'meta': {'label': label, 'sim_folder': sim_folder, 'rho': float(rho), 'roa': float(getattr(out, 'roa', np.nan)),
+                         'code_version': out.harvest_version(), 'in_process': bool(getattr(self, 'in_process', False)), **machine,
+                         **out.harvest_provenance()},
+            })
+        return records
 
     def prep(
         self,
@@ -1570,7 +1608,9 @@ class mitim_simulation:
 
             self.results[label]['parsed'].append(buildDictFromInput(SIMout.inputFile) if SIMout.inputFile else None)
 
-    def read_scan(        
+        self._harvest(label, folder=folder)
+
+    def read_scan(
         self,
         label="scan1",
         subfolder=None,
@@ -1989,12 +2029,47 @@ def buildDictFromInput(inputFile):
 
     return parsed
 
+def _harvest_machine_info(job):
+    ms = getattr(job, 'machineSettings', None) or {}
+    return {'machine': str(ms.get('machine', '') or ''), 'modules': str(ms.get('modules', '') or '')}
+
 class GACODEoutput:
     def __init__(self, *args, **kwargs):
         self.inputFile = None
 
     def unnormalize(self, *args, **kwargs):
         print("No unnormalization implemented.")
+
+    # ---- harvest interface (see mitim_tools.harvest_tools.HARVESTtools); override where the layout differs
+    def harvest_outputs(self):
+        '''Scalar fluxes of this radius, as the code returned them (GB units): TGLF and NEO layout'''
+        out = {}
+        for k in ('Qe', 'Qi', 'Ge', 'Mt', 'Se', 'Qifast'):
+            if hasattr(self, k):
+                out[k] = getattr(self, k)
+        GiAll = getattr(self, 'GiAll', None)
+        if GiAll is not None:
+            for i, g in enumerate(np.atleast_1d(GiAll)):
+                out[f'Gi_{i+1}'] = float(g)
+        return out
+
+    def harvest_inputs(self):
+        '''None -> the simulation object uses its parsed input file'''
+        return None
+
+    def harvest_hash_extra(self):
+        '''Extra payload that distinguishes two runs with identical inputs (e.g. a longer CGYRO trace)'''
+        return None
+
+    def harvest_provenance(self):
+        '''Per-(run, code) descriptors stored once with the provenance, e.g. the flux-averaging method'''
+        return {}
+
+    def harvest_version(self):
+        for attr in ('tglf_version', 'neo_version', 'cgyro_version', 'gx_version'):
+            if getattr(self, attr, ''):
+                return str(getattr(self, attr))
+        return ''
 
 class GACODEinput:
     def __init__(self, file=None, controls_file=None, code='', n_species=None):

@@ -137,6 +137,11 @@ def reset_config_cache():
     _settings_cache = None
     _verbose_level_cache = None
 
+def read_harvest_file():
+    '''preferences.harvest_file (central harvest netCDF); None when not configured'''
+    s = load_settings()
+    return s["preferences"].get("harvest_file", None)
+
 def read_dpi():
     s = load_settings()
     if "dpi_notebook" in s["preferences"]:

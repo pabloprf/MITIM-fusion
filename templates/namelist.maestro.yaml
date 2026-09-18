@@ -207,6 +207,18 @@ maestro:
   # ended without meeting their convergence criteria; null = never stop on unconvergence
   max_unconverged_portals_beats: null
 
+  # Harvest: archive every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of all PORTALS beats and every
+  # full-EPED evaluation (EPED-NN is not harvested). Staged per beat during the run (survives every
+  # prune level) and pushed ONCE by MAESTRO at finalize into the central per-user netCDF file;
+  # `mitim_harvest <folder>` pushes a run that died, `mitim_plot_harvest` inspects the file
+  harvest:
+    enabled: false
+    # null -> config_user.json preferences.harvest_file, else ~/mitim_harvest/mitim_harvest.nc
+    file: null
+    # Also record the perturbed members of the TGLF std scan trick (most of the volume); false keeps
+    # only the base point of each PORTALS evaluation
+    scan_trick_members: true
+
   # WHEN the 99.5% shaping fed to EPED is (re)frozen (HOW it is extracted is
   # plasma.parameters.separatrix.freeze_995_from). Options:
   #   0    : freeze at initialization and reuse for the whole run (default)

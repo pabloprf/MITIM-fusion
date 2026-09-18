@@ -979,6 +979,7 @@ class gyrokinetic_model:
         # simulation_job may already exist on the loaded gk_object.
         gk_object.connection_retry_settings = connection_retry_settings
         gk_object.auto_resubmit_settings = auto_resubmit_settings
+        self._harvest_attach(gk_object)   # both the fresh and the unpickled instance
         # Restart-sources payload captured from the just-written
         # restart_sources.json (or None on re-attach / no-restart paths).
         # _write_submission_metadata embeds it; load_submission_state
@@ -1401,6 +1402,7 @@ class cgyro_model(gyrokinetic_model):
         # paths where simulation_job already exists).
         cgyro.connection_retry_settings = connection_retry_settings
         cgyro.auto_resubmit_settings = auto_resubmit_settings
+        self._harvest_attach(cgyro)   # both the fresh and the unpickled instance
         if getattr(cgyro, "simulation_job", None) is not None:
             cgyro.simulation_job.connection_retry_settings = connection_retry_settings
 

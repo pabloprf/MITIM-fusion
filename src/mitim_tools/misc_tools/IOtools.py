@@ -21,7 +21,7 @@ import json
 import functools
 import hashlib
 import io
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, contextmanager
 import yaml, importlib
 from typing import Any, Mapping
 from collections import OrderedDict
@@ -2276,6 +2276,44 @@ def plot_metrics(log_file="resource_log.txt", output_image="resource_metrics.png
         GRAPHICStools.addDenseAxis(ax)
 
     plt.tight_layout()
+
+@contextmanager
+def mkdir_lock(path, timeout_s=600, stale_s=3600, poll_s=0.5):
+    '''
+    Cross-process lock on `path` via an atomic `os.mkdir(<path>.lock)` (atomic on NFS, unlike
+    O_EXCL / fcntl which are unreliable there). A lock older than `stale_s` (by the dir's mtime,
+    immune to clock skew between hosts) is assumed orphaned and broken: the breaker renames it to
+    a unique name first, so only one breaker wins. TimeoutError after `timeout_s` of waiting.
+    '''
+    import uuid
+    lockdir = Path(str(path) + ".lock")
+    t0 = time.time()
+    while True:
+        try:
+            os.mkdir(lockdir)
+            (lockdir / "owner.json").write_text(json.dumps({"host": socket.gethostname(), "pid": os.getpid(), "time": time.time()}))
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lockdir.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if age > stale_s:
+                stale = lockdir.with_name(f"{lockdir.name}.stale-{uuid.uuid4().hex}")
+                try:
+                    os.rename(lockdir, stale)
+                    shutil.rmtree(stale, ignore_errors=True)
+                    print(f"\t- Broke stale lock {clipstr(lockdir)} ({age/60:.0f} min old)", typeMsg='w')
+                except OSError:
+                    pass
+                continue
+            if time.time() - t0 > timeout_s:
+                raise TimeoutError(f"[MITIM] Lock {lockdir} held for more than {timeout_s}s (see its owner.json)")
+            time.sleep(poll_s)
+    try:
+        yield lockdir
+    finally:
+        shutil.rmtree(lockdir, ignore_errors=True)
 
 def shutil_rmtree(item):
     '''

@@ -84,6 +84,9 @@ class portals(STRATEGYtools.opt_evaluator):
             print(f"\t- Using provided PORTALS namelist in {IOtools.clipstr(self.portals_namelist)}")
         self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
 
+        # Older user namelists predate the harvest block; MAESTRO also injects extra keys into it
+        self.portals_parameters.setdefault("harvest", {"enabled": False, "file": None})
+
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
         if self.portals_parameters["optimization_namelist_location"] is not None:
             self.optimization_namelist = self.portals_parameters["optimization_namelist_location"]
@@ -148,7 +151,7 @@ class portals(STRATEGYtools.opt_evaluator):
         print(">> PORTALS flags pre-check")
 
         # Check that I haven't added a deprecated variable that I expect some behavior from
-        IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read", "portals_transformation_variables"], askQuestions=askQuestions)
+        IOtools.check_flags_mitim_namelist(self.portals_parameters, self.potential_flags, avoid = ["run", "read", "portals_transformation_variables", "harvest"], askQuestions=askQuestions)
 
         key_rhos = "predicted_roa" if self.portals_parameters["solution"]["predicted_roa"] is not None else "predicted_rho"
 
@@ -458,6 +461,15 @@ class portals(STRATEGYtools.opt_evaluator):
         powerstate.profiles_transport.write_state(self.folder / "Outputs" / f"input.gacode_transport_final_{suffix}")
         
         print(f"\n- Final profiles (iteration {portals.ibest}) written to Outputs/input.gacode_final_{suffix} and Outputs/input.gacode_transport_final_{suffix}", typeMsg="i")
+
+        # Push the staged harvest records to the user's central file (MAESTRO beats set push=False and let MAESTRO push once)
+        harvest = self.portals_parameters.get("harvest", {})
+        if harvest.get("enabled", False) and harvest.get("push", True):
+            from mitim_tools.harvest_tools import HARVESTtools
+            try:
+                HARVESTtools.harvest_database(harvest.get("file")).push([self.folder / "Outputs" / "harvest"])
+            except Exception as e:
+                print(f"- harvest push failed ({type(e).__name__}: {e}); staging kept in Outputs/harvest, push later with `mitim_harvest {self.folder}`", typeMsg="w")
 
 def runModelEvaluator(
     self,
