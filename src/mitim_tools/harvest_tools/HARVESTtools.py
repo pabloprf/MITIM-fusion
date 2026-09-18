@@ -737,6 +737,21 @@ class harvest_database:
         keys = list(dict.fromkeys(df[key])) if key in df else ['']
         return {k: cols[i % len(cols)] for i, k in enumerate(keys)}
 
+    @staticmethod
+    def _std_of(df, ycol):
+        '''Column holding the std of an averaged flux column (out_Qi_mean -> out_Qi_std), if stored'''
+        if ycol is not None and ycol.endswith('_mean') and ycol[:-5] + '_std' in df.columns:
+            return ycol[:-5] + '_std'
+        return None
+
+    @staticmethod
+    def _scatter(ax, sub, xcol, ycol, stdcol, color, **kw):
+        '''Scatter with 1-sigma error bars when the flux has a stored std (CGYRO/GX time averages)'''
+        if stdcol is not None:
+            ax.errorbar(sub[xcol], sub[ycol], yerr=sub[stdcol], fmt='o', ms=3, color=color, alpha=0.7, elinewidth=0.8, capsize=2, **kw)
+        else:
+            ax.scatter(sub[xcol], sub[ycol], s=8, color=color, alpha=0.6, **kw)
+
     def plot(self, code, x, y, color_by='run', ax=None, **kw):
         '''
         Scatter of column y vs column x of one code (names with or without the in_/out_ prefix).
@@ -750,17 +765,18 @@ class harvest_database:
         if ax is None:
             _, ax = plt.subplots()
         colors = self._color_by(df, color_by)
+        stdcol = self._std_of(df, y)
         for k, c in colors.items():
             sub = df[df[color_by] == k] if color_by in df else df
-            ax.scatter(sub[x], sub[y], s=8, color=c, alpha=0.6, label=str(k)[:12], **kw)
-        ax.set_xlabel(x); ax.set_ylabel(y); ax.set_title(code)
+            self._scatter(ax, sub, x, y, stdcol, c, label=str(k)[:12], **kw)
+        ax.set_xlabel(x); ax.set_ylabel(y + (' (1-sigma bars)' if stdcol else '')); ax.set_title(code)
         GRAPHICStools.addDenseAxis(ax)
         if len(colors) <= 12:
             ax.legend(fontsize=6, loc='best')
         return ax
 
     def plotDatabase(self, fn=None, codes=None):
-        '''FigureNotebook: an Overview tab plus one tab per code present in the file'''
+        '''FigureNotebook: an Overview tab, one tab per code present in the file, and a parity tab per pair of codes run on the same points'''
         from mitim_tools.misc_tools.GUItools import FigureNotebook
         if fn is None:
             fn = FigureNotebook("MITIM harvest", geometry="1700x900")
@@ -772,7 +788,92 @@ class harvest_database:
                 self._plot_eped(fn)
             else:
                 self._plot_transport(fn, code)
+        for a, b in (('tglf', 'cgyro'), ('tglf', 'gx'), ('cgyro', 'gx')):
+            if a in codes and b in codes:
+                self.plotParity(a, b, fn=fn)
         return fn
+
+    # -------------------------------------------------------------------------- parity between codes
+    # Physics coordinates that identify "the same plasma point" in each code's input file (electron
+    # species resolved by charge for CGYRO; GX names are template dependent and left out)
+    _COORDS = {
+        'tglf':  {'roa': ['RMIN_LOC'], 'aLTe': ['RLTS_1'], 'aLne': ['RLNS_1'], 'q': ['Q_LOC']},
+        'cgyro': {'roa': ['rmin'], 'q': ['q']},   # + electron gradients from _cgyro_drives
+    }
+    _FLUX_PAIRS = [('Qe', ['Qe', 'Qe_mean']), ('Qi', ['Qi', 'Qi_mean']), ('Ge', ['Ge', 'Ge_mean'])]
+
+    def _coords(self, code, df):
+        cols = {k: self._first(df, 'in_', v) for k, v in self._COORDS.get(code, {}).items()}
+        if code == 'cgyro':
+            d = self._cgyro_drives(df)
+            cols['aLTe'] = self._first(df, 'in_', d.get('Te', []))
+            cols['aLne'] = self._first(df, 'in_', d.get('ne', []))
+        return {k: v for k, v in cols.items() if v is not None}
+
+    def match_records(self, code_a='tglf', code_b='cgyro', decimals=3):
+        '''
+        Records of code_a and code_b from the SAME run at the SAME plasma point: r/a, q and the electron
+        temperature and density gradients equal to `decimals` (perturbed scan-trick members therefore never
+        match). Returns one row per pair with the fluxes of both codes (`<flux>_a`, `<flux>_b`, `<flux>_std_a/b`
+        when stored) and the matching coordinates.
+        '''
+        A, B = self.load(code_a, with_run_info=False), self.load(code_b, with_run_info=False)
+        if len(A) == 0 or len(B) == 0:
+            return pd.DataFrame()
+        ca, cb = self._coords(code_a, A), self._coords(code_b, B)
+        keys = [k for k in ('roa', 'q', 'aLTe', 'aLne') if k in ca and k in cb]
+        if not keys:
+            return pd.DataFrame()
+
+        def table(df, coords, suffix):
+            t = pd.DataFrame({'run': df['run']})
+            for k in keys:
+                t[k] = df[coords[k]].round(decimals)
+            for name, cands in self._FLUX_PAIRS:
+                col = self._first(df, 'out_', cands)
+                if col is not None:
+                    t[f'{name}_{suffix}'] = df[col]
+                    std = self._std_of(df, col)
+                    if std is not None:
+                        t[f'{name}_std_{suffix}'] = df[std]
+            return t.drop_duplicates(subset=['run'] + keys)
+
+        return table(A, ca, 'a').merge(table(B, cb, 'b'), on=['run'] + keys, how='inner')
+
+    def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None):
+        '''Parity plots (code_b vs code_a) of Qe, Qi, Ge for the records matched by match_records, error bars from the stored stds'''
+        import matplotlib.pyplot as plt
+        pairs = self.match_records(code_a, code_b)
+        if len(pairs) == 0:
+            print(f"\t- harvest: no {code_a}/{code_b} records at the same plasma points; no parity plot", typeMsg='i')
+            return pairs
+        if axs is None:
+            if fn is not None:
+                fig = fn.add_figure(label=f'Parity {code_a.upper()}-{code_b.upper()}')
+                axs = fig.subplots(1, 3)
+            else:
+                fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+        colors = self._color_by(pairs)
+        for ax, (name, _) in zip(np.atleast_1d(axs), self._FLUX_PAIRS):
+            if f'{name}_a' not in pairs or f'{name}_b' not in pairs:
+                ax.text(0.5, 0.5, f'{name} not in both', ha='center', va='center', transform=ax.transAxes)
+                continue
+            for k, c in colors.items():
+                sub = pairs[pairs['run'] == k]
+                ax.errorbar(sub[f'{name}_a'], sub[f'{name}_b'],
+                            xerr=sub[f'{name}_std_a'] if f'{name}_std_a' in sub else None,
+                            yerr=sub[f'{name}_std_b'] if f'{name}_std_b' in sub else None,
+                            fmt='o', ms=4, color=c, alpha=0.8, elinewidth=0.8, capsize=2, label=str(k)[:12])
+            lo = min(np.nanmin(pairs[f'{name}_a']), np.nanmin(pairs[f'{name}_b']), 0.0)
+            hi = max(np.nanmax(pairs[f'{name}_a']), np.nanmax(pairs[f'{name}_b']))
+            ax.plot([lo, hi], [lo, hi], '--', color='gray', lw=1)
+            ax.set_xlabel(f'{name} {code_a} (GB)'); ax.set_ylabel(f'{name} {code_b} (GB)')
+            ax.set_title(f'{name}: {len(pairs)} matched points')
+            GRAPHICStools.addDenseAxis(ax)
+            if len(colors) <= 12:
+                ax.legend(fontsize=6, loc='best')
+        GRAPHICStools.adjust_figure_layout(np.atleast_1d(axs)[0].figure)
+        return pairs
 
     def _plot_overview(self, fn, codes):
         fig = fn.add_figure(label='Overview')
@@ -831,10 +932,10 @@ class harvest_database:
             if xcol is None or ycol is None:
                 ax.text(0.5, 0.5, 'no drive/flux column found', ha='center', va='center', transform=ax.transAxes)
                 continue
+            stdcol = self._std_of(df, ycol)
             for k, c in colors.items():
-                sub = df[df['run'] == k]
-                ax.scatter(sub[xcol], sub[ycol], s=6, color=c, alpha=0.5)
-            ax.set_xlabel(xcol); ax.set_ylabel(ycol)
+                self._scatter(ax, df[df['run'] == k], xcol, ycol, stdcol, c)
+            ax.set_xlabel(xcol); ax.set_ylabel(ycol + (' (1-sigma bars)' if stdcol else ''))
         axs[1, 0].set_title(f'{len(colors)} runs (colors)')
         for a in axs.flatten():
             GRAPHICStools.addDenseAxis(a)

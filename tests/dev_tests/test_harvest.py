@@ -386,6 +386,28 @@ def test_database_inspection_and_rebuild(tmp):
     assert sorted(p.name for p in folder.iterdir()) == before, "the peek must not archive or rename anything"
     peek2 = H.harvest_database.from_staging([folder])
     assert len(peek2.load('tglf')) == 31
+
+    # parity between codes run at the same plasma points (same run, r/a, q, electron gradients);
+    # scan-trick members (perturbed gradients) never match, CGYRO stds become error bars
+    fp = tmp / 'runP' / 'Outputs' / 'harvest'
+    rp = H.harvest_recorder(_opts(fp))
+    for i, roa in enumerate([0.3, 0.5, 0.7]):
+        base = {'RMIN_LOC': roa, 'Q_LOC': 1.5 + i, 'RLTS_1': 2.0 + i, 'RLNS_1': 0.8, 'RLTS_2': 2.5}
+        rp._write({'code': 'tglf', 'inputs': base, 'outputs': {'Qe': 1.0 + i, 'Qi': 2.0 + i, 'Ge': 0.1}, 'meta': {}})
+        rp._write({'code': 'tglf', 'inputs': {**base, 'RLTS_1': (2.0 + i) * 1.02}, 'outputs': {'Qe': 9.0, 'Qi': 9.0, 'Ge': 9.0}, 'meta': {}})
+        rp._write({'code': 'cgyro', 'inputs': {'rmin': roa, 'q': 1.5 + i, 'z_0': 1.0, 'z_1': -1.0, 'dlntdr_0': 3.0, 'dlntdr_1': 2.0 + i, 'dlnndr_1': 0.8},
+                   'outputs': {'Qe_mean': 1.2 + i, 'Qe_std': 0.1, 'Qi_mean': 2.5 + i, 'Qi_std': 0.2, 'Ge_mean': 0.0, 'Ge_std': 0.05}, 'meta': {}})
+    rp._write({'code': 'cgyro', 'inputs': {'rmin': 0.9, 'q': 4.0, 'z_0': 1.0, 'z_1': -1.0, 'dlntdr_0': 3.0, 'dlntdr_1': 5.0, 'dlnndr_1': 0.8},
+               'outputs': {'Qe_mean': 7.0, 'Qe_std': 0.1, 'Qi_mean': 8.0, 'Qi_std': 0.2, 'Ge_mean': 0.0, 'Ge_std': 0.05}, 'meta': {}})
+    dbp = H.harvest_database(tmp / 'db6' / 'central.nc')
+    dbp.push([fp])
+    pairs = dbp.match_records('tglf', 'cgyro')
+    assert len(pairs) == 3 and list(pairs['Qe_a']) == [1.0, 2.0, 3.0] and list(pairs['Qe_b']) == [1.2, 2.2, 3.2] and list(pairs['Qi_std_b']) == [0.2] * 3
+    assert 'Qe_std_a' not in pairs.columns, "TGLF has no stored std"
+    fnp = FigureNotebook("parity test", show=False)
+    dbp.plotDatabase(fn=fnp)
+    assert fnp.tab_titles == ['Overview', 'TGLF', 'CGYRO', 'Parity TGLF-CGYRO'], fnp.tab_titles
+    assert dbp.match_records('tglf', 'eped').empty
     print("PASS database summary / interpret / plotDatabase / plot / rebuild / staging_folders_of")
 
 
