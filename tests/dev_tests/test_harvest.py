@@ -226,6 +226,8 @@ def test_cgyro_gx_eped_interfaces(tmp):
     assert r._write(rec) == 1
     row = _lines(folder, 'eped')[0]
     assert row['in_ip'] == 8.7 and row['in_mi'] == 20 and row['in_teped'] == 1.2 and row['in_tewid'] == 0.03, "the namelist as run wins over the dict"
+    assert row['maestro_beat'] == 2, "the beat travels with the record"
+    assert H.harvest_recorder(_opts(tmp / 'eped_ctx')).with_context(maestro_beat=5)._write(rec) == 1 and _lines(tmp / 'eped_ctx', 'eped')[0]['maestro_beat'] == 5, "EPED beats pass it as context"
     assert row['in_toq_eq_choice'] == 'mxh' and row['in_cfg_NMODES_0'] == 5 and row['in_cfg_NMODES_6'] == 30 and row['in_cfg_WIDTHS_4'] == 9
     assert row['in_cfg_TEPED_BOUND_0'] == 0.28 and row['in_cfg_TEPED_BOUND_1'] == 1.4 and row['in_cfg_CLEAN_AFTER'] == 1, "effective config, first occurrence"
     assert row['in_stability_rule'] == 'W' and row['in_stability_threshold'] == 1.0
