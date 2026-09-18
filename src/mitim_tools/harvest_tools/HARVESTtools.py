@@ -810,25 +810,26 @@ class harvest_database:
             cols['aLne'] = self._first(df, 'in_', d.get('ne', []))
         return {k: v for k, v in cols.items() if v is not None}
 
-    def match_records(self, code_a='tglf', code_b='cgyro', decimals=3):
+    def match_records(self, code_a='tglf', code_b='cgyro', rtol=2e-3):
         '''
-        Records of code_a and code_b from the SAME run at the SAME plasma point: r/a, q and the electron
-        temperature and density gradients equal to `decimals` (perturbed scan-trick members therefore never
-        match). Returns one row per pair with the fluxes of both codes (`<flux>_a`, `<flux>_b`, `<flux>_std_a/b`
-        when stored) and the matching coordinates.
+        Records of code_a and code_b from the SAME run at the SAME plasma point: r/a within 1e-3 and q,
+        electron a/LTe and a/Lne within `rtol` relative (CGYRO's parsed inputs carry 4-5 significant
+        digits, hence a tolerance rather than equality; the 2% scan-trick members never match). Returns
+        one row per pair with the coordinates (code_a's values), the fluxes of both codes (`<flux>_a`,
+        `<flux>_b`) and the stds when stored (`<flux>_std_a/b`).
         '''
         A, B = self.load(code_a, with_run_info=False), self.load(code_b, with_run_info=False)
         if len(A) == 0 or len(B) == 0:
             return pd.DataFrame()
         ca, cb = self._coords(code_a, A), self._coords(code_b, B)
         keys = [k for k in ('roa', 'q', 'aLTe', 'aLne') if k in ca and k in cb]
-        if not keys:
+        if 'roa' not in keys:
             return pd.DataFrame()
 
         def table(df, coords, suffix):
-            t = pd.DataFrame({'run': df['run']})
+            t = pd.DataFrame({'run': df['run'], 'roa_key': (df[coords['roa']] * 1000).round().astype(int)})
             for k in keys:
-                t[k] = df[coords[k]].round(decimals)
+                t[f'{k}_{suffix}'] = df[coords[k]].astype(float)
             for name, cands in self._FLUX_PAIRS:
                 col = self._first(df, 'out_', cands)
                 if col is not None:
@@ -836,9 +837,21 @@ class harvest_database:
                     std = self._std_of(df, col)
                     if std is not None:
                         t[f'{name}_std_{suffix}'] = df[std]
-            return t.drop_duplicates(subset=['run'] + keys)
+            return t
 
-        return table(A, ca, 'a').merge(table(B, cb, 'b'), on=['run'] + keys, how='inner')
+        m = table(A, ca, 'a').merge(table(B, cb, 'b'), on=['run', 'roa_key'], how='inner')
+        close = np.ones(len(m), dtype=bool)
+        for k in keys:
+            if k == 'roa':
+                continue
+            a, b = m[f'{k}_a'].to_numpy(), m[f'{k}_b'].to_numpy()
+            close &= np.abs(a - b) <= rtol * np.maximum(np.abs(a), 1e-12) + 1e-9
+        m = m[close].copy()
+        for k in keys:
+            m[k] = m[f'{k}_a']
+            m = m.drop(columns=[f'{k}_a', f'{k}_b'])
+        cols = ['run'] + keys + [c for c in m.columns if c not in ['run', 'roa_key'] + keys]
+        return m[cols].drop_duplicates(subset=['run'] + keys).reset_index(drop=True)
 
     def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None):
         '''Parity plots (code_b vs code_a) of Qe, Qi, Ge for the records matched by match_records, error bars from the stored stds'''
