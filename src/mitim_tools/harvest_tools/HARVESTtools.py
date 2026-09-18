@@ -830,6 +830,9 @@ class harvest_database:
             t = pd.DataFrame({'run': df['run'], 'roa_key': (df[coords['roa']] * 1000).round().astype(int)})
             for k in keys:
                 t[f'{k}_{suffix}'] = df[coords[k]].astype(float)
+            # model settings that label the comparison (TGLF saturation rule)
+            if 'in_SAT_RULE' in df.columns:
+                t['SAT_RULE'] = df['in_SAT_RULE'].map(lambda v: f'SAT{int(v)}' if pd.notna(v) else '')
             for name, cands in self._FLUX_PAIRS:
                 col = self._first(df, 'out_', cands)
                 if col is not None:
@@ -850,14 +853,16 @@ class harvest_database:
         for k in keys:
             m[k] = m[f'{k}_a']
             m = m.drop(columns=[f'{k}_a', f'{k}_b'])
+        subset = ['run'] + keys + [c for c in ('SAT_RULE',) if c in m.columns]
         cols = ['run'] + keys + [c for c in m.columns if c not in ['run', 'roa_key'] + keys]
-        return m[cols].drop_duplicates(subset=['run'] + keys).reset_index(drop=True)
+        return m[cols].drop_duplicates(subset=subset).reset_index(drop=True)
 
-    def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None, symlog_linthresh=None):
+    def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None, symlog_linthresh=None, color_by=None):
         '''
         Parity plots (code_b vs code_a) of Qe, Qi, Ge for the records matched by match_records, error bars
-        from the stored stds. Heat fluxes on log-log axes (non-positive values sit on the lower limit);
-        particle flux on symlog axes, linear within +-symlog_linthresh (default: the median |Ge|).
+        from the stored stds. Colors by TGLF saturation rule when TGLF is one of the codes (else by run),
+        markers by run. Heat fluxes on log-log axes (non-positive values sit on the lower limit); particle
+        flux on symlog axes, linear within +-symlog_linthresh (default: the median |Ge|).
         '''
         import matplotlib.pyplot as plt
         pairs = self.match_records(code_a, code_b)
@@ -870,17 +875,23 @@ class harvest_database:
                 axs = fig.subplots(1, 3)
             else:
                 fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-        colors = self._color_by(pairs)
+        color_by = color_by or ('SAT_RULE' if 'SAT_RULE' in pairs.columns else 'run')
+        colors = self._color_by(pairs, color_by)
+        markers = {r: 'osD^v<>ph*'[i % 10] for i, r in enumerate(dict.fromkeys(pairs['run']))}
         for ax, (name, _) in zip(np.atleast_1d(axs), self._FLUX_PAIRS):
             if f'{name}_a' not in pairs or f'{name}_b' not in pairs:
                 ax.text(0.5, 0.5, f'{name} not in both', ha='center', va='center', transform=ax.transAxes)
                 continue
             for k, c in colors.items():
-                sub = pairs[pairs['run'] == k]
-                ax.errorbar(sub[f'{name}_a'], sub[f'{name}_b'],
-                            xerr=sub[f'{name}_std_a'] if f'{name}_std_a' in sub else None,
-                            yerr=sub[f'{name}_std_b'] if f'{name}_std_b' in sub else None,
-                            fmt='o', ms=4, color=c, alpha=0.8, elinewidth=0.8, capsize=2, label=str(k)[:12])
+                for r, mk in markers.items():
+                    sub = pairs[(pairs[color_by] == k) & (pairs['run'] == r)]
+                    if len(sub) == 0:
+                        continue
+                    ax.errorbar(sub[f'{name}_a'], sub[f'{name}_b'],
+                                xerr=sub[f'{name}_std_a'] if f'{name}_std_a' in sub else None,
+                                yerr=sub[f'{name}_std_b'] if f'{name}_std_b' in sub else None,
+                                fmt=mk, ms=4, color=c, alpha=0.8, elinewidth=0.8, capsize=2,
+                                label=(str(k) if color_by != 'run' else str(k)[:12]) if r == next(iter(markers)) else None)
             vals = np.concatenate([pairs[f'{name}_a'].to_numpy(dtype=float), pairs[f'{name}_b'].to_numpy(dtype=float)])
             vals = vals[np.isfinite(vals)]
             if name == 'Ge':
@@ -900,7 +911,7 @@ class harvest_database:
             ax.set_xlabel(f'{name} {code_a} (GB)'); ax.set_ylabel(f'{name} {code_b} (GB)')
             ax.set_title(f'{name}: {len(pairs)} matched points ({scale_note})', fontsize=9)
             if len(colors) <= 12:
-                ax.legend(fontsize=6, loc='best')
+                ax.legend(fontsize=7, loc='best', title=(f'color: {color_by}' + (f', marker: run ({len(markers)})' if len(markers) > 1 else '')), title_fontsize=7)
         GRAPHICStools.adjust_figure_layout(np.atleast_1d(axs)[0].figure)
         return pairs
 

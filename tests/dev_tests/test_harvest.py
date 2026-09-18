@@ -392,7 +392,7 @@ def test_database_inspection_and_rebuild(tmp):
     fp = tmp / 'runP' / 'Outputs' / 'harvest'
     rp = H.harvest_recorder(_opts(fp))
     for i, roa in enumerate([0.3, 0.5, 0.7]):
-        base = {'RMIN_LOC': roa, 'Q_LOC': 1.5 + i, 'RLTS_1': 2.0 + i, 'RLNS_1': 0.8, 'RLTS_2': 2.5}
+        base = {'RMIN_LOC': roa, 'Q_LOC': 1.5 + i, 'RLTS_1': 2.0 + i, 'RLNS_1': 0.8, 'RLTS_2': 2.5, 'SAT_RULE': 2 if i < 2 else 3}
         rp._write({'code': 'tglf', 'inputs': base, 'outputs': {'Qe': 1.0 + i, 'Qi': 2.0 + i, 'Ge': 0.1}, 'meta': {}})
         rp._write({'code': 'tglf', 'inputs': {**base, 'RLTS_1': (2.0 + i) * 1.02}, 'outputs': {'Qe': 9.0, 'Qi': 9.0, 'Ge': 9.0}, 'meta': {}})
         rp._write({'code': 'cgyro', 'inputs': {'rmin': roa, 'q': 1.5 + i, 'z_0': 1.0, 'z_1': -1.0, 'dlntdr_0': 3.0, 'dlntdr_1': 2.0 + i, 'dlnndr_1': 0.8},
@@ -404,6 +404,7 @@ def test_database_inspection_and_rebuild(tmp):
     pairs = dbp.match_records('tglf', 'cgyro')
     assert len(pairs) == 3 and list(pairs['Qe_a']) == [1.0, 2.0, 3.0] and list(pairs['Qe_b']) == [1.2, 2.2, 3.2] and list(pairs['Qi_std_b']) == [0.2] * 3
     assert 'Qe_std_a' not in pairs.columns, "TGLF has no stored std"
+    assert list(pairs['SAT_RULE']) == ['SAT2', 'SAT2', 'SAT3'], "the TGLF saturation rule labels each matched pair"
     fnp = FigureNotebook("parity test", show=False)
     dbp.plotDatabase(fn=fnp)
     assert fnp.tab_titles == ['Overview', 'TGLF', 'CGYRO', 'Parity TGLF-CGYRO'], fnp.tab_titles
