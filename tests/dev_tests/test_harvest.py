@@ -378,6 +378,14 @@ def test_database_inspection_and_rebuild(tmp):
     assert len(db.load('tglf')) == 30 and len(list(file.parent.glob('central.nc.corrupt-*'))) == 1
     assert len(db.runs()) == 2 and db.load('tglf')['code_version'].iloc[0] == 'h1 [d]'
     assert H.staging_folders_of(tmp / 'runI') == [folder]
+    # peek at staging without pushing: works on pushed archives, rolled archives and plain tails alike, touches nothing
+    rec._write({'code': 'tglf', 'inputs': {'RLTS_1': 99.0, 'NS': 3}, 'outputs': {'Qe': 1.0}, 'meta': {}})
+    before = sorted(p.name for p in folder.iterdir())
+    peek = H.harvest_database.from_staging([tmp / 'runI'])
+    assert peek.file != db.file and len(peek.load('tglf')) == 31 and len(peek.load('eped')) == 5 and peek.load('tglf')['machine'].iloc[0] == 'local'
+    assert sorted(p.name for p in folder.iterdir()) == before, "the peek must not archive or rename anything"
+    peek2 = H.harvest_database.from_staging([folder])
+    assert len(peek2.load('tglf')) == 31
     print("PASS database summary / interpret / plotDatabase / plot / rebuild / staging_folders_of")
 
 

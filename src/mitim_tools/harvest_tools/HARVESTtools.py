@@ -533,16 +533,18 @@ class harvest_database:
     def _push_files(self, files, timeout_s=600, stale_s=3600, archive=True):
         import netCDF4
 
-        # Fold every plain tail into its rolled archive first, so each (folder, code) is one .gz
-        rolled = []
-        for f in files:
-            if f.suffix == '.jsonl':
-                _roll(f)
-                f.unlink(missing_ok=True)
-                f = f.with_name(f.name + '.gz')
-            if f.exists() and f not in rolled:
-                rolled.append(f)
-        files = rolled
+        # Fold every plain tail into its rolled archive first, so each (folder, code) is one .gz.
+        # A peek (archive=False) reads the files as they are and touches nothing.
+        if archive:
+            rolled = []
+            for f in files:
+                if f.suffix == '.jsonl':
+                    _roll(f)
+                    f.unlink(missing_ok=True)
+                    f = f.with_name(f.name + '.gz')
+                if f.exists() and f not in rolled:
+                    rolled.append(f)
+            files = rolled
 
         frames, runs_rows, seen = {}, {}, set()
         for f in files:
@@ -619,6 +621,28 @@ class harvest_database:
             self._append_group(ds, RUNS_GROUP, _frame_from_rows(new))
         return len(new)
 
+    @classmethod
+    def from_staging(cls, folders, file=None):
+        '''
+        Peek at staged records WITHOUT pushing them: build a (temporary, or `file`) database from the
+        staging files of `folders` (run folders or harvest/ folders, plain tails, rolled and already
+        pushed archives alike), leaving the staging untouched. For a copy of a live run's
+        Outputs/harvest/ pulled with mitim_scp, or for a look at a run before it finishes.
+        '''
+        import tempfile
+        staging = []
+        for f in folders:
+            staging += staging_folders_of(f)
+        files = sorted({p for s in staging for p in s.glob('*.jsonl*') if _is_staged(p)})
+        if file is None:
+            file = Path(tempfile.mkdtemp(prefix='mitim_harvest_peek_')) / 'harvest_peek.nc'
+        db = cls(file)
+        if db.file.exists():
+            db.file.unlink()
+        db._push_files(files, archive=False)
+        print(f"\t- harvest: peek database {IOtools.clipstr(db.file)} built from {len(files)} staged file(s); staging left untouched", typeMsg='i')
+        return db
+
     def rebuild(self, roots):
         '''Move the current file aside and re-push every staged file (pushed or not) found under roots'''
         if self.file.exists():
@@ -694,6 +718,19 @@ class harvest_database:
             if f"{prefix}{c}" in df.columns:
                 return f"{prefix}{c}"
         return None
+
+    @staticmethod
+    def _cgyro_drives(df):
+        '''CGYRO species are 0-indexed in params1D with no fixed order: find the electron (z=-1) and first main ion (z=1) by charge'''
+        z = {i: df[f'in_z_{i}'].dropna().iloc[0] for i in range(12) if f'in_z_{i}' in df.columns and df[f'in_z_{i}'].notna().any()}
+        ie = next((i for i, v in z.items() if v == -1), None)
+        ii = next((i for i, v in z.items() if v == 1), None)
+        drives = {}
+        if ie is not None:
+            drives['Te'], drives['ne'] = [f'dlntdr_{ie}'], [f'dlnndr_{ie}']
+        if ii is not None:
+            drives['Ti'] = [f'dlntdr_{ii}']
+        return drives
 
     def _color_by(self, df, key='run'):
         cols = GRAPHICStools.listColors()
@@ -781,7 +818,8 @@ class harvest_database:
         axs = fig.subplots(2, 3)
         colors = self._color_by(df)
         fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
-        drives = {k: self._first(df, 'in_', v) for k, v in self._DRIVES.get(code, {}).items()}
+        candidates = {**self._DRIVES.get(code, {}), **(self._cgyro_drives(df) if code == 'cgyro' else {})}
+        drives = {k: self._first(df, 'in_', v) for k, v in candidates.items()}
         for ax, (name, col) in zip(axs[0, :], fluxes.items()):
             if col is not None:
                 vals = df[col].dropna()
@@ -860,15 +898,19 @@ def main_push():
     print(db.push(folders))
 
 def main_plot():
-    parser = argparse.ArgumentParser(description="Inspect the central harvest file")
-    parser.add_argument("file", type=str, nargs="?", default=None)
+    parser = argparse.ArgumentParser(description="Inspect a harvest database, or peek at the staging of a (running) run without pushing it")
+    parser.add_argument("path", type=str, nargs="?", default=None,
+                        help="central netCDF file (default: the configured one), or a run folder / harvest staging folder to peek at")
     parser.add_argument("--code", type=str, default=None, help="restrict to one code")
     parser.add_argument("--x", type=str, default=None, help="with --y: single scatter instead of the notebook")
     parser.add_argument("--y", type=str, default=None)
     parser.add_argument("--noplot", action="store_true", help="only print the interpretation report")
     args = parser.parse_args()
 
-    db = harvest_database(args.file)
+    if args.path is not None and IOtools.expandPath(args.path).is_dir():
+        db = harvest_database.from_staging([IOtools.expandPath(args.path)])
+    else:
+        db = harvest_database(args.path)
     db.interpret(code=args.code)
     if args.noplot:
         return
@@ -879,3 +921,13 @@ def main_plot():
     else:
         fn = db.plotDatabase(codes=[args.code] if args.code else None)
         fn.show()
+
+
+if __name__ == "__main__":
+    # `python -m mitim_tools.harvest_tools.HARVESTtools push|plot ...` when the console scripts are not installed
+    import sys
+    if len(sys.argv) < 2 or sys.argv[1] not in ("push", "plot"):
+        print("usage: python -m mitim_tools.harvest_tools.HARVESTtools push <folders...> [--file F] | plot [file|folder] [--code C] [--x X --y Y] [--noplot]")
+        sys.exit(2)
+    cmd = sys.argv.pop(1)
+    main_push() if cmd == "push" else main_plot()
