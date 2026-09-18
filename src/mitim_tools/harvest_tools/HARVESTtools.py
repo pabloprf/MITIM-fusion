@@ -853,8 +853,12 @@ class harvest_database:
         cols = ['run'] + keys + [c for c in m.columns if c not in ['run', 'roa_key'] + keys]
         return m[cols].drop_duplicates(subset=['run'] + keys).reset_index(drop=True)
 
-    def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None):
-        '''Parity plots (code_b vs code_a) of Qe, Qi, Ge for the records matched by match_records, error bars from the stored stds'''
+    def plotParity(self, code_a='tglf', code_b='cgyro', fn=None, axs=None, symlog_linthresh=None):
+        '''
+        Parity plots (code_b vs code_a) of Qe, Qi, Ge for the records matched by match_records, error bars
+        from the stored stds. Heat fluxes on log-log axes (non-positive values sit on the lower limit);
+        particle flux on symlog axes, linear within +-symlog_linthresh (default: the median |Ge|).
+        '''
         import matplotlib.pyplot as plt
         pairs = self.match_records(code_a, code_b)
         if len(pairs) == 0:
@@ -877,12 +881,24 @@ class harvest_database:
                             xerr=sub[f'{name}_std_a'] if f'{name}_std_a' in sub else None,
                             yerr=sub[f'{name}_std_b'] if f'{name}_std_b' in sub else None,
                             fmt='o', ms=4, color=c, alpha=0.8, elinewidth=0.8, capsize=2, label=str(k)[:12])
-            lo = min(np.nanmin(pairs[f'{name}_a']), np.nanmin(pairs[f'{name}_b']), 0.0)
-            hi = max(np.nanmax(pairs[f'{name}_a']), np.nanmax(pairs[f'{name}_b']))
+            vals = np.concatenate([pairs[f'{name}_a'].to_numpy(dtype=float), pairs[f'{name}_b'].to_numpy(dtype=float)])
+            vals = vals[np.isfinite(vals)]
+            if name == 'Ge':
+                lin = symlog_linthresh or max(float(np.median(np.abs(vals[vals != 0]))) if np.any(vals != 0) else 0.1, 1e-3)
+                ax.set_xscale('symlog', linthresh=lin); ax.set_yscale('symlog', linthresh=lin)
+                lo, hi = -np.max(np.abs(vals)) * 1.5, np.max(np.abs(vals)) * 1.5
+                ax.axhline(0, color='k', lw=0.5); ax.axvline(0, color='k', lw=0.5)
+                scale_note = f'symlog, linear within +-{lin:.2g}'
+            else:
+                pos = vals[vals > 0]
+                lo, hi = (np.min(pos) * 0.5, np.max(pos) * 2.0) if len(pos) else (1e-3, 1.0)
+                ax.set_xscale('log'); ax.set_yscale('log')
+                ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+                n_np = int(np.sum(vals <= 0))
+                scale_note = 'log' + (f', {n_np} non-positive value(s) clipped to the lower limit' if n_np else '')
             ax.plot([lo, hi], [lo, hi], '--', color='gray', lw=1)
             ax.set_xlabel(f'{name} {code_a} (GB)'); ax.set_ylabel(f'{name} {code_b} (GB)')
-            ax.set_title(f'{name}: {len(pairs)} matched points')
-            GRAPHICStools.addDenseAxis(ax)
+            ax.set_title(f'{name}: {len(pairs)} matched points ({scale_note})', fontsize=9)
             if len(colors) <= 12:
                 ax.legend(fontsize=6, loc='best')
         GRAPHICStools.adjust_figure_layout(np.atleast_1d(axs)[0].figure)
