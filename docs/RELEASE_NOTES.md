@@ -4,6 +4,19 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Harvest: archive every code evaluation of PORTALS/MAESTRO runs into a per-user database**
+    (opt-in `harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`).
+    Every individual TGLF/NEO/CGYRO/GX/QuaLiKiz run (base points AND each TGLF std scan-trick member)
+    and every full-EPED evaluation is stored as an input -> output record (full input file, scalar
+    fluxes, for CGYRO/GX the averaging window and uncertainty diagnostics; for EPED the eped.input as
+    run, NMODES/WIDTHS/TEPED_BOUND and the stability rule) with its provenance (machine, modules, code
+    version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
+    compression and pushed once at the end (MAESTRO: all beats at finalize) into a netCDF-4 file
+    (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
+    `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
+    `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
+    `portals_04_harvest.py` and `maestro_02_harvest.py`.
+
 *   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
     (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
     `tmin` window, Sandia QUENDS transient trim, or N.T. Howard's stationarity scan) and
