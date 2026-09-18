@@ -530,6 +530,37 @@ transport:
         #   exclusive          : force sbatch --exclusive. Omit/null to defer to
         #                        the machine config's slurm.exclusive.
 
+        # Radii finish at different times inside one allocation (bash mode: the driver waits for
+        # the slowest one while the other nodes idle). What to do with that gap:
+        #   strategy: null           -> wait for the slowest radius
+        #             "wall_budget"  -> a watchdog around every radial call stops CGYRO once BOTH
+        #                               minutes_per_call has elapsed AND the run reached min_time
+        #                               a/cs (never before min_time, so a budget-cut run is always
+        #                               usable), right after a restart write so the blob the next
+        #                               iteration warm-starts from is whole. The run gets no EXIT
+        #                               line but a mitim_budget.tag, and counts as complete. The
+        #                               flux window is whatever averaging.method makes of the
+        #                               shorter trace. Works in every submission mode; in slurm
+        #                               modes keep allocation.minutes above minutes_per_call.
+        #             "extra_points" -> (bash mode) a radius that finishes while the slowest one
+        #                               still has enough time left runs ONE extra case on its
+        #                               idle node: same radius, the gradient of the channel with
+        #                               the largest residual scaled by (1 -/+ perturbation)
+        #                               toward reducing it, warm-started from the finished run.
+        #                               It is stopped (after a restart write) when the last main
+        #                               radius ends; if it reached min_time its GB fluxes are
+        #                               appended to Outputs/extra_points.csv, which the
+        #                               per-radius surrogates read as extra training points
+        #                               (surrogate_options.extrapointsFile); otherwise discarded.
+        #                               Results live under transport_simulation_folder/extra_cgyro/.
+        #   min_time is the shared physics floor: the shortest saturated run you accept.
+        load_balance:
+          strategy: null
+          minutes_per_call: 240
+          min_time: 300
+          extra_points:
+            perturbation: 0.15
+
       read:
         # tmin: left edge of the signal-analysis window.
         #   tmin >= 0                    : absolute time (a/cs).

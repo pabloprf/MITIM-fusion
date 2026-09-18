@@ -86,6 +86,11 @@ class mitim_job:
         # Sub-folders (relative to folderExecution) that remove_scratch_folder() must
         # keep across the going-in wipe: interrupted runs being rescued in place.
         self.preserve_subfolders = []
+        # Optional SCHEDULERtools.InAllocationScheduler: when set (local machine, bash
+        # mode) full_process() runs the per-call bodies through it instead of executing
+        # mitim_bash.src, and its accepted extra folders are added to the retrieval.
+        self.scheduler = None
+        self.scheduler_result = None
 
     def define_machine(
         self,
@@ -495,7 +500,20 @@ class mitim_job:
 
         while execution_counter < attempts_execution:
             
-            if execute_flag:
+            if execute_flag and self.scheduler is not None and self.ssh is None:
+                output, error = b"", b""
+                prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
+                print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
+                self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
+                # accepted extras come back best-effort: tarred with the same file patterns as
+                # the main folders, never part of the mandatory check
+                patterns = next(iter(self.output_folders_selective.values()), None) if self.output_folders_selective else None
+                for rel in self.scheduler_result["accepted"]:
+                    if rel not in self.output_folders:
+                        self.output_folders.append(rel)
+                    if patterns is not None:
+                        self.output_folders_selective[rel] = list(patterns)
+            elif execute_flag:
                 output, error = self.execute(
                     comm,
                     wait_for_all_commands=wait_for_all_commands,

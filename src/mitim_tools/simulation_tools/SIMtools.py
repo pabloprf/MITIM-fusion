@@ -377,6 +377,7 @@ class mitim_simulation:
             Folder_sim,
             cold_start=cold_start,
             completion_marker=self.run_specifications.get("completion_marker"),
+            completion_alt_file=self.run_specifications.get("completion_alt_file"),
         )
 
         if len(rhosEvaluate) == len(rhos):
@@ -434,6 +435,11 @@ class mitim_simulation:
 
         print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {allocation["cores"]} cores/radius)',
             typeMsg="" if expected_allocated_cores < warning else "q",)
+
+    def _extra_point_hooks(self, resources_per_call):
+        '''Codes that can use nodes freed by early radial calls (load_balance 'extra_points') return
+        the SCHEDULERtools hook dict here; None keeps the plain bash loop.'''
+        return None
 
     def _rescue_interrupted_runs(self, kwargs_run, tmpFolder, folders, folders_red, input_file):
         '''
@@ -737,8 +743,20 @@ class mitim_simulation:
                 GACODEcommand += "done\n\n"
                 GACODEcommand += "wait\n"
 
+                # load_balance 'extra_points': the same bodies run through a Python scheduler
+                # (SCHEDULERtools) that uses nodes freed by early radii for extra cases; the
+                # bash script above is still written for reference but not executed.
+                hooks = self._extra_point_hooks(resources_per_call) if _hosts else None
+                if hooks is not None:
+                    from mitim_tools.simulation_tools.utils import SCHEDULERtools
+                    bodies = {folder: code_call(folder=folder, n=resources_per_call, p=self.simulation_job.folderExecution) for folder in folders_red}
+                    self._scheduler_to_attach = SCHEDULERtools.InAllocationScheduler(bodies, _hosts, max_parallel_execution, **hooks)
+
             # Standard job
             elif type_of_submission == "slurm_standard":
+
+                if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
+                    print("\t- load_balance 'extra_points' needs the driver inside the allocation (bash mode); in slurm mode radii just wait for the slowest one", typeMsg="w")
 
                 print(f"\t- {code.upper()} will be executed in SLURM as standard job (cpus: {total_cores_required})",typeMsg="i")
 
@@ -750,6 +768,9 @@ class mitim_simulation:
 
             # Job array
             elif type_of_submission == "slurm_array":
+
+                if (getattr(self, "_load_balance", None) or {}).get("strategy") == "extra_points":
+                    print("\t- load_balance 'extra_points' needs the driver inside the allocation (bash mode); array elements release their nodes on their own", typeMsg="w")
 
                 print(f"\t- {code.upper()} will be executed in SLURM as job array due to its size (cpus: {total_cores_required})",typeMsg="i")
 
@@ -826,6 +847,8 @@ class mitim_simulation:
                 launchSlurm=launchSlurm,
                 slurm_settings=slurm_settings,
             )
+            self.simulation_job.scheduler = getattr(self, "_scheduler_to_attach", None)
+            self._scheduler_to_attach = None
             
             # Mandatory vs best-effort retrieval lists. `files_we_must_check` is
             # what check_all_received flags as missing (triggers the retry). The
@@ -1078,6 +1101,18 @@ class mitim_simulation:
         if missing_optional:
             distinct = sorted({f for _, _, f in missing_optional})
             print(f"\t- Optional file(s) not present on the remote (ok, proceeding): {distinct}   [{len(missing_optional)} (subfolder, rho, file) tuples]", typeMsg="w")
+
+        # Extra cases accepted by the in-allocation scheduler (load_balance 'extra_points')
+        # come back under tmpFolder/<rel>; keep them next to the main results before the wipe
+        accepted = (getattr(self.simulation_job, "scheduler_result", None) or {}).get("accepted", [])
+        for rel in accepted:
+            src, dst = tmpFolder / rel, Path(self.FolderGACODE) / rel
+            if src.is_dir():
+                dst.mkdir(parents=True, exist_ok=True)
+                for f in src.iterdir():
+                    f.replace(dst / f.name)
+        if accepted:
+            print(f"\t- Extra case(s) stored under {Path(self.FolderGACODE) / accepted[0].split('/')[0]}: {accepted}", typeMsg="i")
 
         if fineall:
             print("\t\t- All files were successfully retrieved")
@@ -1933,6 +1968,7 @@ def cold_start_checker(
     cold_start=False,
     print_each_time=False,
     completion_marker=None,
+    completion_alt_file=None,
 ):
     """
     This function checks if the TGLF inputs are already in the folder. If they are, it returns True
@@ -1942,6 +1978,8 @@ def cold_start_checker(
     CGYRO, whose output files exist from the first step on: a run killed mid-way
     (job cancelled or timed out) leaves a complete-looking file set with a few a/cs
     of data, which used to be accepted as a finished evaluation.
+    completion_alt_file: optional file name whose presence (`<file>_<rho>`) also counts
+    as done, e.g. the 'mitim_budget.tag' left by CGYRO's wall-budget watchdog.
     """
     cont_each = 0
     if cold_start:
@@ -1965,6 +2003,8 @@ def cold_start_checker(
                     finished = completion_marker[1] in mfile.read_text(errors="ignore")
                 except OSError:
                     finished = False
+                if not finished and completion_alt_file is not None:
+                    finished = (Folder_sim / f"{completion_alt_file}_{ir:.4f}").exists()
                 if not finished:
                     print(f"\t* {mfile.name} has no '{completion_marker[1]}' marker: run was interrupted, re-running this radius", typeMsg='w')
                     existsRho = False

@@ -400,6 +400,19 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
                 mec='black', mew=0.3, zorder=z_err,
             )
 
+        # Window provenance: a tick at t_start spanning the band, and the averaging
+        # method/flag (GKaveraging) as a small label. The label goes on the base trace
+        # always and on other traces only when the method did not converge ('fallback'/
+        # 'failure'), so a bad window is visible without cluttering healthy cells.
+        avg = getattr(out, 'averaging', None)
+        if tmin_it is not None and mean_val is not None and std_val is not None:
+            x0, m, s2 = float(tmin_it) + offset_it, float(mean_val), 2.0 * float(std_val)
+            ax.vlines(x0, m - s2, m + s2, colors=color if not is_base else 'black', linestyles=':', lw=lw_mean, alpha=alpha_mean, zorder=z_mean)
+            method, flag = getattr(avg, 'method', None), getattr(avg, 'flag', None)
+            if method is not None and (is_base or flag in ('fallback', 'failure')):
+                ax.text(x0, m + s2, f" {method}" + (f" ({flag})" if flag not in (None, 'ok', 'fixed') else ""),
+                        color=color if not is_base else 'black', fontsize=6, ha='left', va='bottom', alpha=0.9, zorder=z_err)
+
         # Track (mean, std) per trace so the row-level clamp can apply the
         # factor-of-(mean+/-2sigma) rule. Missing std defaults to 0 (treat as
         # a point). Skip entries whose mean isn't finite so pre-window traces

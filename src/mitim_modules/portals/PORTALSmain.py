@@ -211,6 +211,14 @@ class portals(STRATEGYtools.opt_evaluator):
         else:
             print("\t- extrapointsModels already defined, not changing")
 
+        # CGYRO extra points harvested on idle nodes (transport.options.cgyro.run.load_balance
+        # strategy 'extra_points') are appended to Outputs/extra_points.csv; make the
+        # surrogates read it unless the user pointed extrapointsFile elsewhere
+        _lb = ((self.portals_parameters['transport']['options'].get('cgyro') or {}).get('run') or {}).get('load_balance') or {}
+        if _lb.get('strategy') == 'extra_points' and self.optimization_options['surrogate_options'].get('extrapointsFile') is None:
+            self.optimization_options['surrogate_options']['extrapointsFile'] = str(self.folder / 'Outputs' / 'extra_points.csv')
+            print(f"\t- load_balance 'extra_points': surrogates will also train on {self.optimization_options['surrogate_options']['extrapointsFile']}", typeMsg='i')
+
         # Make a copy of the namelist that was imported to the folder
         shutil.copy(self.portals_namelist, self.folder / "portals.namelist_original.yaml")
 
