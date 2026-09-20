@@ -1,4 +1,5 @@
 import shutil
+from pathlib import Path
 import torch
 import copy
 import numpy as np
@@ -7,10 +8,12 @@ from collections import OrderedDict
 from mitim_tools.misc_tools import IOtools
 from mitim_tools.gacode_tools import PROFILEStools
 from mitim_tools.plasmastate_tools import MITIMstate
+from mitim_tools.plasmastate_tools.MITIMstate import _ensure_plasma_io_deepcopy
 from mitim_modules.powertorch import STATEtools
 from mitim_modules.portals import PORTALStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools import __mitimroot__
+from fusio.classes.io import io
 from IPython import embed
 
 
@@ -34,6 +37,7 @@ def initializeProblem(
     },
     add_fidelity_level_variable=False,
     n_fidelities=1,
+    use_plasma_io=True,
     ):
     """
     Notes:
@@ -54,13 +58,46 @@ def initializeProblem(
 
     FolderInitialization.mkdir(parents=True, exist_ok=True)
 
+    # ---- If given a raw file path (not a MITIMstate/fusio object already), route it through
+    # fusio's plasma_io conversion instead of the legacy hand-rolled input.gacode parser -- reuses
+    # the exact sequence already validated end-to-end in test/fusio_integration/PORTALS_workflow.py's
+    # .gacode branch (Ricci/residual numbers documented in plasma_io_migration_plan.md), now moved
+    # into mitim_state.scratch() itself (see MITIMstate.py's raw-filename branch) rather than being
+    # orchestrated here. .gacode loads still become a gacode_state (the source really was a GACODE
+    # ASCII file, and downstream code needs its hand-rolled-parser/write_state() capability); .nc
+    # loads become a bare mitim_state instead -- a .nc file was never actually GACODE-format, so
+    # tagging it gacode_state would misrepresent its provenance and drag in write_state()'s
+    # dependency on gacode_state-only bookkeeping (self.titles_single/self.files) that a .nc-sourced
+    # object never has. The checkpoints below dispatch on gacode_state specifically (not the
+    # broader mitim_state) so a .nc-sourced bare mitim_state instead falls through the same
+    # isinstance(fileStart, io) branches used for any other raw fusio object, upgrading to a real
+    # gacode_state only where the pipeline actually needs one (checkpoint 2's `profiles`). Old
+    # (hand-rolled-parser) behavior kept available via use_plasma_io=False.
+    if use_plasma_io and not isinstance(fileStart, (MITIMstate.mitim_state, io)):
+        fileStart_path = Path(fileStart)
+        if fileStart_path.suffix == ".gacode":
+            fileStart = PROFILEStools.gacode_state.scratch(fileStart_path)
+        elif fileStart_path.suffix == ".nc":
+            fileStart = MITIMstate.mitim_state.scratch(fileStart_path)
+        # else: unrecognized suffix -- leave fileStart as the original path, falls through to the
+        # legacy shutil.copy2/hand-rolled-parser branches below.
+
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Initialize file input.gacode
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     # ---- Copy the file of interest to initialization folder
-    if isinstance(fileStart, MITIMstate.mitim_state):
+    if isinstance(fileStart, PROFILEStools.gacode_state):
         fileStart.write_state(file=FolderInitialization / "input.gacode")
+    elif isinstance(fileStart, io):
+        # Establishes .input as the canonical snapshot and .output as an independent
+        # working copy (backfilling .input from .output first if only .output was
+        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring. Also
+        # catches a bare (non-gacode_state) mitim_state, e.g. from the .nc branch above --
+        # write_state() would fail on it (no titles_single/files), so it goes through
+        # fusio's own gacode-text writer instead, same as any other raw fusio object.
+        _ensure_plasma_io_deepcopy(fileStart)
+        fileStart.to("gacode").write(FolderInitialization / "input.gacode", side="input")
     else:
         shutil.copy2(fileStart, FolderInitialization / "input.gacode")
 
@@ -71,10 +108,19 @@ def initializeProblem(
     # ---- Initialize file to modify and increase resolution
 
     initialization_file = FolderInitialization / "input.gacode"
-    
+
     # If it is a profiles class, use it directly
-    if isinstance(fileStart, MITIMstate.mitim_state):
+    if isinstance(fileStart, PROFILEStools.gacode_state):
         profiles = copy.deepcopy(fileStart)
+    elif isinstance(fileStart, io):
+        # Establishes .input as the canonical snapshot and .output as an independent
+        # working copy (backfilling .input from .output first if only .output was
+        # populated by the caller) -- see _ensure_plasma_io_deepcopy()'s docstring.
+        # Replaces the old swap()-based logic, which emptied out whichever side had
+        # data instead of preserving it as a pristine reference.
+        _ensure_plasma_io_deepcopy(fileStart)
+        #profiles = PROFILEStools.gacode_state.scratch(fileStart.to("gacode").to_dict(side="input"))
+        profiles = PROFILEStools.gacode_state.scratch(fileStart)
     # If it is a file, then assume it is a gacode one (#TODO: check type?)
     else:
         profiles = PROFILEStools.gacode_state(initialization_file)
@@ -82,7 +128,7 @@ def initializeProblem(
     # About radial locations
     if portals_fun.portals_parameters["solution"]["predicted_roa"] is not None:
         roa = portals_fun.portals_parameters["solution"]["predicted_roa"]
-        rho = np.interp(roa, profiles.derived["roa"], profiles.profiles["rho(-)"])
+        rho = np.interp(roa, profiles.get_derived()["roa"], profiles.get_profiles()["rho(-)"])
         print("\t * r/a provided, transforming to rho:")
         print(f"\t\t r/a = {roa}")
         print(f"\t\t rho = {rho}")
@@ -97,7 +143,7 @@ def initializeProblem(
         position_of_impurity = 0
 
     if portals_fun.portals_parameters["solution"]["fZ0_as_weight"] is not None and portals_fun.portals_parameters["solution"]["trace_impurity"] is not None:
-        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.profiles['ne(10^19/m^3)'][0]
+        f0 = profiles.Species[position_of_impurity]["n0"] / profiles.get_profiles()['ne(10^19/m^3)'][0]
         portals_fun.portals_parameters["solution"]["fImp_orig"] = f0/portals_fun.portals_parameters["solution"]["fZ0_as_weight"]
         print(f'\t- Ion {portals_fun.portals_parameters["solution"]["trace_impurity"]} has original central concentration of {f0:.2e}, using its inverse multiplied by {portals_fun.portals_parameters["solution"]["fZ0_as_weight"]} as scaling factor of GZ -> {portals_fun.portals_parameters["solution"]["fImp_orig"]:.2e}',typeMsg="i")
     else:

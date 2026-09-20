@@ -141,7 +141,7 @@ class gacode_state(MITIMstate.mitim_state):
                     if title in self.titles_singleArr:
                         self.profiles[title] = np.array([float(i) for i in var0])
                     else:
-                        self.profiles[title] = np.array(var0)
+                        self.profiles[title] = np.array([float(i) for i in var0]) if title in ["nexp", "nion", "shot", "time"] else np.array(var0)
                 else:
                     # varT = [float(j) for j in var0[1:]]
                     if len(var0) == 0:
@@ -221,14 +221,32 @@ class gacode_state(MITIMstate.mitim_state):
 
         self._produce_shape_lists()
 
-        (
-            self.derived["volp_geo"],
-            self.derived["surf_geo"],
-            self.derived["gradr_geo"],
-            self.derived["bp2_geo"],
-            self.derived["bt2_geo"],
-            self.derived["bt_geo"],
-        ) = calculateGeometricFactors(self,n_theta=n_theta_geo)
+        # _geometry_factor_prepop (set only by MITIMstate._compute_derived_from_plasma_io(),
+        # never by any public entry point) lets that caller sidestep calculateGeometricFactors()
+        # for plasma_io-backed states, sourcing these same six quantities from plasma_io's own
+        # native derived-quantity fields instead -- see derived_field_map.geometry_factors_from_native()
+        # for the mapping and why: calculateGeometricFactors() operates on shape_cosN(-)/shape_sinN(-),
+        # which get_profiles() zero-fills whenever they aren't available from the source plasma_io
+        # object, silently corrupting geometry across the whole profile (not just noise at the r/a=1
+        # edge -- see plasma_io_migration_plan.md). Everything else in this method (flux-surface
+        # reconstruction, kappa95/delta95/etc., B_ref) is unaffected and still runs normally either way.
+        geometry_prepop = getattr(self, "_geometry_factor_prepop", None)
+        if geometry_prepop is not None:
+            self.derived["volp_geo"] = geometry_prepop["volp_geo"]
+            self.derived["surf_geo"] = geometry_prepop["surf_geo"]
+            self.derived["gradr_geo"] = geometry_prepop["gradr_geo"]
+            self.derived["bp2_geo"] = geometry_prepop["bp2_geo"]
+            self.derived["bt2_geo"] = geometry_prepop["bt2_geo"]
+            self.derived["bt_geo"] = geometry_prepop["bt_geo"]
+        else:
+            (
+                self.derived["volp_geo"],
+                self.derived["surf_geo"],
+                self.derived["gradr_geo"],
+                self.derived["bp2_geo"],
+                self.derived["bt2_geo"],
+                self.derived["bt_geo"],
+            ) = calculateGeometricFactors(self,n_theta=n_theta_geo)
 
         # Calculate flux surfaces
         cn = np.array(self.shape_cos).T
@@ -288,12 +306,24 @@ class gacode_state(MITIMstate.mitim_state):
 
         [ax00c,ax10c,ax20c,ax01c,ax11c,ax21c,ax02c,ax12c,ax22c,ax3D,ax2D] = axs3
 
-        rho = self.profiles["rho(-)"]
+        profiles = self.get_profiles()
+
+        # self.shape_cos/self.shape_sin are instance attributes set by the physics-engine
+        # _produce_shape_lists() (only ever run on the plain-dict shadow inside get_derived(),
+        # never on a plasma_io-backed self directly -- see get_profiles()'s docstring). Rebuilt
+        # here locally from get_profiles()'s own shape_cosN/shape_sinN keys instead, which are
+        # always present (real MXH-refit values if available, zero-filled otherwise) regardless
+        # of backing -- same convention _produce_shape_lists() itself uses, just sourced via the
+        # accessor rather than the raw dict.
+        shape_cos = [profiles[f"shape_cos{i}(-)"] for i in range(7)]
+        shape_sin = [None, None, None] + [profiles[f"shape_sin{i}(-)"] for i in range(3, 7)]
+
+        rho = profiles["rho(-)"]
         lines = GRAPHICStools.listLS()
 
         ax = ax00c
 
-        var = self.derived['r']
+        var = self.get_derived()['r']
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
@@ -305,7 +335,7 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.autoscale_y(ax, bottomy=0)
 
         ax = ax01c
-        ax.plot(self.profiles["rho(-)"], self.derived['volp_geo'], color=color, lw=lw, label = extralab)
+        ax.plot(self.get_profiles()["rho(-)"], self.get_derived()['volp_geo'], color=color, lw=lw, label = extralab)
         ax.set_xlabel('$\\rho_N$'); ax.set_xlim(0, 1)
         ax.set_ylabel(f"$dV/dr$ ($m^3/[r]$)")
         GRAPHICStools.addDenseAxis(ax)
@@ -315,7 +345,7 @@ class gacode_state(MITIMstate.mitim_state):
 
 
         ax = ax02c
-        var = self.profiles["polflux(Wb/radian)"]
+        var = self.get_profiles()["polflux(Wb/radian)"]
         ax.plot(rho, var, lw=lw, ls="-", c=color)
 
         ax.set_xlim([0, 1])
@@ -335,7 +365,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax10c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_sin):
+        for i, s in enumerate(shape_sin):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -357,7 +387,7 @@ class gacode_state(MITIMstate.mitim_state):
         ax = ax11c
         cont = 0
         yl = 0
-        for i, s in enumerate(self.shape_cos):
+        for i, s in enumerate(shape_cos):
             if s is not None:
                 valmax = np.abs(s).max()
                 if valmax > minShape:
@@ -381,7 +411,7 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax = ax12c
 
-        var = self.profiles["kappa(-)"]
+        var = self.get_profiles()["kappa(-)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
@@ -392,10 +422,10 @@ class gacode_state(MITIMstate.mitim_state):
         GRAPHICStools.autoscale_y(ax, bottomy=1)
 
         ax = ax20c
-        var = self.profiles["delta(-)"]
+        var = self.get_profiles()["delta(-)"]
         ax.plot(rho, var, "-", lw=lw, c=color, label = extralab + ', $\\delta$')
 
-        var = self.profiles["zeta(-)"]
+        var = self.get_profiles()["zeta(-)"]
         ax.plot(rho, var, "--", lw=lw, c=color, label = extralab + ', $\\zeta$')
 
 
@@ -412,7 +442,7 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax = ax21c
 
-        var = self.profiles["rmaj(m)"]
+        var = self.get_profiles()["rmaj(m)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
@@ -424,7 +454,7 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax = ax22c
 
-        var = self.profiles["zmag(m)"]
+        var = self.get_profiles()["zmag(m)"]
         ax.plot(rho, var, "-", lw=lw, c=color)
 
         ax.set_xlim([0, 1])
@@ -472,16 +502,16 @@ class gacode_state(MITIMstate.mitim_state):
             errors do not cancel, and the rings separate by up to ~5 mm on a 0.57 m plasma
             with no physical difference behind it.
             '''
-            R = self.derived["R_surface"][i_toroidal]
-            Z = self.derived["Z_surface"][i_toroidal]
+            R = self.get_derived()["R_surface"][i_toroidal]
+            Z = self.get_derived()["Z_surface"][i_toroidal]
             return (
                 np.array([np.interp(value, coordinate, R[:, j]) for j in range(R.shape[1])]),
                 np.array([np.interp(value, coordinate, Z[:, j]) for j in range(Z.shape[1])]),
             )
 
         for rho in surfaces_rho:
-            for i_toroidal in range(self.derived["R_surface"].shape[0]):
-                R, Z = surface_at(self.profiles["rho(-)"], rho, i_toroidal)
+            for i_toroidal in range(self.get_derived()["R_surface"].shape[0]):
+                R, Z = surface_at(self.get_profiles()["rho(-)"], rho, i_toroidal)
                 ax.plot(
                     R,
                     Z,
@@ -502,8 +532,8 @@ class gacode_state(MITIMstate.mitim_state):
         if include995:
             # Interpolated in psi_N, not rho: this curve is DEFINED as a fixed normalized
             # poloidal flux surface, and each state maps 0.995 to its own rho
-            for i_toroidal in range(self.derived["R_surface"].shape[0]):
-                R, Z = surface_at(self.derived["psi_pol_n"], 0.995, i_toroidal)
+            for i_toroidal in range(self.get_derived()["R_surface"].shape[0]):
+                R, Z = surface_at(self.get_derived()["psi_pol_n"], 0.995, i_toroidal)
                 ax.plot(
                     R,
                     Z,
@@ -525,8 +555,8 @@ class gacode_state(MITIMstate.mitim_state):
 
         ax.axhline(y=0, ls="--", lw=0.2, c="k")
         ax.plot(
-            [self.profiles["rmaj(m)"][0]],
-            [self.profiles["zmag(m)"][0]],
+            [self.get_profiles()["rmaj(m)"][0]],
+            [self.get_profiles()["zmag(m)"][0]],
             "o",
             markersize=2,
             c=color,
@@ -546,8 +576,8 @@ class gacode_state(MITIMstate.mitim_state):
 
         n_phi = 50 # Number of toroidal points for the surface mesh
 
-        R = self.derived["R_surface"][0,-1,:]  # Outermost flux surface R coordinates
-        Z = self.derived["Z_surface"][0,-1,:]  # Outermost flux surface Z coordinates
+        R = self.get_derived()["R_surface"][0,-1,:]  # Outermost flux surface R coordinates
+        Z = self.get_derived()["Z_surface"][0,-1,:]  # Outermost flux surface Z coordinates
 
         # Create toroidal angle array
         phi = np.linspace(0, 2*np.pi, n_phi)
