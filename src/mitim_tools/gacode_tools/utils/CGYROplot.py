@@ -431,8 +431,9 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
         out = pick_output_for_rho(cache[it], rho, r_idx)
         if out is None:
             continue
-        _draw_single_trace(out, offsets[it], color_for(it), is_base=False)
-        _draw_target(it, out, offsets[it], color_for(it), is_base=False)
+        # offsets is empty in local-time mode (time_mode="local"): every trace starts at 0
+        _draw_single_trace(out, offsets.get(it, 0.0), color_for(it), is_base=False)
+        _draw_target(it, out, offsets.get(it, 0.0), color_for(it), is_base=False)
 
     if base_out is not None:
         _draw_single_trace(base_out, offsets.get(base_iter, 0.0), color=None, is_base=True)
