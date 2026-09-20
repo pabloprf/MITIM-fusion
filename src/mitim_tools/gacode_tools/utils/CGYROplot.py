@@ -847,7 +847,9 @@ def plot_time_traces_overview(
     color_for, sm = _iteration_colors(sorted_its)
 
     fig = fn.add_figure(label="CGYRO traces (all)", tab_color=fn_color_start)
-    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True, sharey='row')
+    # No shared y across columns: the flux scale changes by an order of magnitude between the
+    # inner and outer radii, so a shared axis would flatten every inner-radius cell
+    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True)
     fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 8.0)
     fig.suptitle(
         f"{title_prefix} — all {len(sorted_its)} evaluations"
