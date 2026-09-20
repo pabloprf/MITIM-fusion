@@ -1023,6 +1023,16 @@ wait $_lb_pid 2>/dev/null
         if resources_per_call <= 0:
             return extraOptions
 
+        # Ranks per node (one MPI rank per GPU for CGYRO). Only used to keep the nonlinear
+        # all-to-all on-node; if the machine block cannot be read we fall back to a value
+        # that makes the locality preference a no-op.
+        try:
+            from mitim_tools.misc_tools import CONFIGread
+            gpus_per_node = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or 0)
+        except Exception:
+            gpus_per_node = 0
+        ranks_per_node = min(resources_per_call, gpus_per_node) if gpus_per_node > 0 else resources_per_call
+
         # Start from the per-rho controls snapshot (input.cgyro.controls) and,
         # if a code_settings label was provided, layer the yaml overrides on top
         # so we see the same N_TOROIDAL that will be written to disk.
@@ -1070,6 +1080,42 @@ wait $_lb_pid 2>/dev/null
         def _smallest_valid(nt):
             return next(tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp))
 
+        # CGYRO's process grid is n_proc = n_proc_1 x n_toroidal_procs, where
+        # n_toroidal_procs = N_TOROIDAL/TOROIDALS_PER_PROC and n_proc_1 splits nc and nv
+        # (cgyro_mpi_grid.F90:57,233-236). n_toroidal_procs is the size of the nonlinear
+        # all-to-all communicator, and MPI_RANK_ORDER=2 (CGYRO's default) makes that
+        # communicator rank-contiguous -- so holding it to one node's worth of ranks keeps
+        # the all-to-all on-node. Picking the smallest valid TOROIDALS_PER_PROC maximizes it
+        # instead. This only ever bites on multi-node radial calls: when the call fits in one
+        # node, validity already forces n_toroidal_procs <= resources_per_call, so every valid
+        # value is on-node and this rule reduces exactly to _smallest_valid.
+        def _grid_allows(nt, tpp, n_radial):
+            # n_proc_1 > 1 additionally requires n_proc_1 to divide nv and nc, or CGYRO aborts
+            # (cgyro_mpi_grid.F90:240-248). N_SPECIES is not resolved at this point, so require
+            # n_proc_1 | N_ENERGY*N_XI, which is sufficient for nv = N_ENERGY*N_XI*N_SPECIES.
+            n_proc_1 = resources_per_call // (nt // tpp)
+            if n_proc_1 == 1:
+                return True
+            if None in (n_energy, n_xi, n_theta, n_radial):
+                return False
+            return (n_energy * n_xi) % n_proc_1 == 0 and (n_radial * n_theta) % n_proc_1 == 0
+
+        def _preferred_valid(nt, n_radial):
+            valid = [tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp)]
+            on_node = [tpp for tpp in valid
+                       if (nt // tpp) <= ranks_per_node and _grid_allows(nt, tpp, n_radial)]
+            return min(on_node) if on_node else min(valid)
+
+        def _as_int(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        n_energy = _as_int(extraOptions.get('N_ENERGY', controls.get('N_ENERGY')))
+        n_xi = _as_int(extraOptions.get('N_XI', controls.get('N_XI')))
+        n_theta = _as_int(extraOptions.get('N_THETA', controls.get('N_THETA')))
+
         if any(nt <= 0 for nt in n_tor_list):
             print(
                 f"\t- [preprocess] Invalid N_TOROIDAL={n_tor_list}; leaving TOROIDALS_PER_PROC as-is",
@@ -1107,16 +1153,33 @@ wait $_lb_pid 2>/dev/null
             )
             return extraOptions
 
-        coerced = [
-            tpp if _is_valid(nt, tpp) else _smallest_valid(nt)
-            for tpp, nt in zip(tpp_list, n_tor_list)
-        ]
+        # N_RADIAL is per-rho (set by _apply_cgyro_preprocessing, which runs before this),
+        # while N_TOROIDAL is usually a scalar from the model yaml. Broadcast the length-1
+        # lists up to the longest so a per-rho N_RADIAL still reaches _grid_allows; if the
+        # lengths are genuinely incompatible, drop N_RADIAL rather than guess (which makes
+        # _grid_allows conservative and falls back to the smallest valid value).
+        nr_src = extraOptions.get('N_RADIAL', controls.get('N_RADIAL'))
+        nr_list = ([_as_int(v) for v in nr_src] if isinstance(nr_src, (list, np.ndarray))
+                   else [_as_int(nr_src)])
+        n_rho = max(len(n_tor_list), len(nr_list))
+        if len(n_tor_list) == 1:
+            n_tor_list = n_tor_list * n_rho
+            tpp_list = tpp_list * n_rho if len(tpp_list) == 1 else tpp_list
+        if len(nr_list) == 1:
+            nr_list = nr_list * n_rho
+        if not (len(n_tor_list) == len(tpp_list) == len(nr_list) == n_rho):
+            n_tor_list = n_tor_list[:1] * n_rho if len(n_tor_list) == 1 else n_tor_list
+            nr_list = [None] * len(n_tor_list)
+
+        coerced = [_preferred_valid(nt, nr) for nt, nr in zip(n_tor_list, nr_list)]
 
         if coerced != tpp_list:
+            n_groups = [nt // tpp for nt, tpp in zip(n_tor_list, coerced)]
             print(
-                f"\t- [preprocess] TOROIDALS_PER_PROC adjusted from {tpp_list} to {coerced} so that "
-                f"MPI ranks ({resources_per_call}) are a multiple of N_TOROIDAL/TOROIDALS_PER_PROC",
-                typeMsg="w",
+                f"\t- [preprocess] TOROIDALS_PER_PROC {tpp_list} -> {coerced} "
+                f"(MPI ranks {resources_per_call}, {ranks_per_node} per node; toroidal groups "
+                f"{n_groups}, which sets the size of the nonlinear all-to-all)",
+                typeMsg="i",
             )
 
         # Preserve scalar shape if the caller originally gave a scalar and all coerced match.

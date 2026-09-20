@@ -4,6 +4,18 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **CGYRO `TOROIDALS_PER_PROC` is now chosen for communication locality on multi-node radial
+    calls.** CGYRO's grid is `n_proc = n_proc_1 x n_toroidal_procs`, and `n_toroidal_procs =
+    N_TOROIDAL/TOROIDALS_PER_PROC` is the size of the nonlinear all-to-all communicator, which
+    `MPI_RANK_ORDER=2` (CGYRO's default) lays out rank-contiguously. MITIM previously picked the
+    smallest valid value, maximizing that communicator and spreading the all-to-all across nodes.
+    It now picks the smallest valid value whose toroidal group count fits within one node's ranks,
+    guarded by CGYRO's requirement that `n_proc_1` divide `nv` and `nc`. Single-node radial calls
+    are provably unaffected (validity already forces the group count below the rank count there),
+    and an explicit `TOROIDALS_PER_PROC` in `extraOptions` is still respected. Measured on
+    Perlmutter (ARC V3A, `Nonlinear_reduced2`, 8 A100 over 2 nodes): `nl_comm` 37.2 -> 5.2 s and
+    total step time 129.1 -> 101.6 s at identical GPU memory and node count.
+
 *   💥 **Harvest: archive every code evaluation of PORTALS/MAESTRO runs into a per-user database**
     (opt-in `harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`).
     Every individual TGLF/NEO/CGYRO/GX/QuaLiKiz run (base points AND each TGLF std scan-trick member)
