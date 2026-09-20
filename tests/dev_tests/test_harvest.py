@@ -397,7 +397,13 @@ def test_database_inspection_and_rebuild(tmp):
 
     fn = FigureNotebook("harvest test", show=False)
     db.plotDatabase(fn=fn)
-    assert fn.tab_titles == ['Overview', 'TGLF', 'EPED'], f"Overview + TGLF + EPED tabs expected, got {fn.tab_titles}"
+    assert fn.tab_titles == ['Overview', 'TGLF', 'TGLF ranges', 'TGLF pairs', 'EPED', 'EPED ranges', 'EPED pairs'], fn.tab_titles
+    # input coverage: categories, discrete flag relative to the record count, constants
+    cov = db.coverage('tglf').set_index('input')
+    assert cov.loc['RLTS_1', 'category'] == 'drives' and cov.loc['NS', 'n_distinct'] == 1 and not cov.loc['NS', 'discrete']
+    assert cov.loc['RLTS_1', 'n_distinct'] == 30 and not cov.loc['RLTS_1', 'discrete'] and cov.loc['RLNS_1', 'width'] == 0
+    ce = db.coverage('eped').set_index('input')
+    assert ce.loc['neped', 'category'] == 'pedestal' and ce.loc['ip', 'category'] == 'engineering' and ce.loc['neped', 'discrete']
     ax = db.plot('tglf', 'RLTS_2', 'Qi')
     assert ax.get_xlabel() == 'in_RLTS_2' and ax.get_ylabel() == 'out_Qi'
 
@@ -436,9 +442,65 @@ def test_database_inspection_and_rebuild(tmp):
     assert list(pairs['SAT_RULE']) == ['SAT2', 'SAT2', 'SAT3'], "the TGLF saturation rule labels each matched pair"
     fnp = FigureNotebook("parity test", show=False)
     dbp.plotDatabase(fn=fnp)
-    assert fnp.tab_titles == ['Overview', 'TGLF', 'CGYRO', 'Parity TGLF-CGYRO'], fnp.tab_titles
+    assert fnp.tab_titles == ['Overview', 'TGLF', 'TGLF ranges', 'TGLF pairs', 'CGYRO', 'CGYRO ranges', 'CGYRO pairs',
+                              'Parity TGLF-CGYRO'], fnp.tab_titles
     assert dbp.match_records('tglf', 'eped').empty
+
+    # species resolved by charge (NEO as MITIM writes it has electrons LAST), collisionality per code, 3x4 grid tab
+    import pandas as pd
+    neo = pd.DataFrame({'in_Z_1': [1.0], 'in_Z_2': [6.0], 'in_Z_3': [-1.0], 'in_DLNTDR_1': [2.0], 'in_DLNTDR_3': [3.0],
+                        'in_DLNNDR_3': [0.5], 'in_NU_1': [1e-4]})
+    assert dbp._drives('neo', neo) == {'Te': 'in_DLNTDR_3', 'ne': 'in_DLNNDR_3', 'Ti': 'in_DLNTDR_1'}
+    assert dbp._collisionality('neo', neo) == ('in_NU_1', 'NU_1 (collision frequency of NEO species 1, ion Z=1)')
+    tg = pd.DataFrame({'in_ZS_1': [-1.0], 'in_ZS_2': [1.0], 'in_RLTS_1': [2.0], 'in_RLTS_2': [3.0], 'in_RLNS_1': [1.0], 'in_XNUE': [0.1]})
+    assert dbp._drives('tglf', tg) == {'Te': 'in_RLTS_1', 'ne': 'in_RLNS_1', 'Ti': 'in_RLTS_2'} and dbp._collisionality('tglf', tg)[0] == 'in_XNUE'
+    fig = dbp.plotFluxesVsDrives('tglf')
+    assert fig is not None and len(fig.axes) == 12, "3 fluxes x (3 drives + distribution); no colorbar without XNUE in these records"
     print("PASS database summary / interpret / plotDatabase / plot / rebuild / staging_folders_of")
+
+
+def test_statistics(tmp):
+    '''Known answers: Qi = (a/LTi)^3, Qe = (a/LTe)^2, Ge = a/Lne, with +-2% one-at-a-time scans around each base point'''
+    from mitim_tools.misc_tools.GUItools import FigureNotebook
+    rng = np.random.default_rng(3)
+    folder = tmp / 'runS' / 'Outputs' / 'harvest'
+    rec = H.harvest_recorder(_opts(folder))
+
+    def write(aLTe, aLTi, aLne, xnue, q):
+        inputs = {'ZS_1': -1.0, 'ZS_2': 1.0, 'RLTS_1': aLTe, 'RLTS_2': aLTi, 'RLTS_3': aLTi, 'RLNS_1': aLne, 'XNUE': xnue,
+                  'Q_LOC': q, 'NS': 3}
+        rec._write({'code': 'tglf', 'inputs': inputs, 'outputs': {'Qe': aLTe ** 2, 'Qi': aLTi ** 3, 'Ge': aLne}, 'meta': {}})
+
+    for _ in range(40):
+        aLTe, aLTi, aLne, xnue = 1 + 2 * rng.random(), 1 + 2 * rng.random(), 0.2 + rng.random(), 0.01 + 0.1 * rng.random()
+        q = 1.0 + 20 * xnue + 1e-3 * rng.random()   # q follows collisionality (confounded), fixed per base point
+        write(aLTe, aLTi, aLne, xnue, q)
+        for m in (0.98, 1.02):
+            write(aLTe * m, aLTi, aLne, xnue, q)
+            write(aLTe, aLTi * m, aLne, xnue, q)
+            write(aLTe, aLTi, aLne * m, xnue, q)
+    db = H.harvest_database(tmp / 'db7' / 'central.nc')
+    db.push([folder])
+    st = db.statistics('tglf')
+    assert st.enough and list(st.inputs) == ['a/LTe (RLTS_1)', 'a/LTi (RLTS_2)', 'a/Lne (RLNS_1)', 'XNUE', 'Q_LOC'], list(st.inputs)
+    pr = st.prcc()
+    assert pr.loc['a/LTi (RLTS_2)', 'Qi'] > 0.95 and pr.loc['a/LTe (RLTS_1)', 'Qe'] > 0.95 and pr.loc['a/Lne (RLNS_1)', 'Ge'] > 0.95
+    assert abs(pr.loc['a/LTi (RLTS_2)', 'Qe']) < 0.2, "Qe does not depend on a/LTi"
+    loc = st.local_sensitivities()
+    assert set(loc['group']) == {'RLTS_1', 'RLTS_2,RLTS_3', 'RLNS_1'}, "tied columns (RLTS_2 = RLTS_3) form one scanned group"
+    assert len(loc) == 40 * 3 * 3, len(loc)
+    el = loc.groupby(['column', 'flux'])['elasticity'].median()
+    assert abs(el[('in_RLTS_2', 'Qi')] - 3) < 0.01 and abs(el[('in_RLTS_1', 'Qe')] - 2) < 0.01, el
+    assert abs(el[('in_RLTS_1', 'Qi')]) < 1e-9 and np.isnan(el[('in_RLNS_1', 'Ge')]), "no Ge elasticity (only dGe/dlnx)"
+    ge = loc[(loc.column == 'in_RLNS_1') & (loc.flux == 'Ge')]
+    assert np.allclose(ge['dQdlnx'], ge['x0'], rtol=1e-6), "Ge = a/Lne -> dGe/dln(a/Lne) = a/Lne"
+    report = st.interpret()
+    assert 'strongest partial rank correlations' in report and 'a/LTi (RLTS_2)' in report and '120 one-at-a-time clusters' in report
+    fn = FigureNotebook("stats test", show=False)
+    assert st.plotImportance(fn=fn) is not None and st.plotSensitivities(fn=fn) is not None
+    assert fn.tab_titles == ['TGLF stats', 'TGLF sensitivities']
+    assert db.statistics('tglf') is st, "cached per code"
+    print("PASS statistics: Spearman/PRCC pick the true drives, scan-trick elasticities 3 and 2 recovered, plots")
 
 
 def main():
@@ -453,6 +515,7 @@ def main():
         test_concurrent_push(tmp)
         test_stale_and_busy_lock(tmp)
         test_database_inspection_and_rebuild(tmp)
+        test_statistics(tmp)
         print("\nALL PASS")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
