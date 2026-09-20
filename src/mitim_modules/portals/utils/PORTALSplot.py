@@ -2566,6 +2566,27 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             getattr(self.powerstate, "predicted_channels", []) or [],
         )
 
+    # Overview first: every evaluation in one figure (rows channels, columns radii), warm-start
+    # time on x and evaluation on the colorbar, plus the mean-vs-evaluation convergence view.
+    # The chunked per-radius / per-channel tabs below are the zoom-in on individual windows.
+    CGYROplot.plot_time_traces_overview(
+        fn,
+        fn_color_start,
+        self.rhos,
+        self._cgyro_traces_cache,
+        sources_per_iter=self._cgyro_sources_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+    CGYROplot.plot_flux_convergence(
+        fn,
+        fn_color_start,
+        self.rhos,
+        self._cgyro_traces_cache,
+        base_iter=0,
+        targets_per_iter=self._cgyro_targets_cache,
+    )
+
     CGYROplot.plot_time_traces_per_radius(
         fn,
         fn_color_start,
@@ -2574,6 +2595,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
         targets_per_iter=self._cgyro_targets_cache,
+        time_mode="local",
     )
     # Same data, pivoted: one figure per channel with rhos as rows.
     # Per-radius and per-channel tab groups now each use a single color
@@ -2587,6 +2609,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         sources_per_iter=self._cgyro_sources_cache,
         base_iter=0,
         targets_per_iter=self._cgyro_targets_cache,
+        time_mode="local",
     )
 
 

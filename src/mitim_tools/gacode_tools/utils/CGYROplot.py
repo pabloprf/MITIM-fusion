@@ -541,6 +541,7 @@ def plot_time_traces_per_radius(
     title_prefix="CGYRO time traces",
     factor=2.5,
     targets_per_iter=None,
+    time_mode="local",
 ):
     '''
     Build one FigureNotebook tab per rho. Rows = transport channels
@@ -575,7 +576,7 @@ def plot_time_traces_per_radius(
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter) if time_mode == "chain" else " (per evaluation)"
     restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     for r_idx, rho in enumerate(rhos):
@@ -596,7 +597,7 @@ def plot_time_traces_per_radius(
             fontsize=11,
         )
 
-        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its)
+        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its) if time_mode == "chain" else {}
         base_out = pick_output_for_rho(cache[base_iter], rho, r_idx) if base_iter in cache else None
         base_has_window = base_out is not None and getattr(base_out, 'tmin', None) is not None
 
@@ -657,6 +658,7 @@ def plot_time_traces_per_channel(
     title_prefix="CGYRO time traces",
     factor=2.5,
     targets_per_iter=None,
+    time_mode="local",
 ):
     '''
     Companion to `plot_time_traces_per_radius` with the axes pivoted:
@@ -682,7 +684,7 @@ def plot_time_traces_per_channel(
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter) if time_mode == "chain" else " (per evaluation)"
     restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     rho_list = list(rhos)
@@ -715,7 +717,8 @@ def plot_time_traces_per_channel(
 
         # Pre-resolve per-rho offsets and base_out once (shared across columns).
         offsets_per_rho = {
-            r_idx: _compute_offsets_for_rho(rho_list[r_idx], r_idx, sources_per_iter, cache, sorted_its)
+            r_idx: (_compute_offsets_for_rho(rho_list[r_idx], r_idx, sources_per_iter, cache, sorted_its)
+                    if time_mode == "chain" else {})
             for r_idx in range(n_rows)
         }
         base_out_per_rho = {
@@ -772,3 +775,175 @@ def plot_time_traces_per_channel(
                     t_max = max(t_max, offs.get(it, 0.0) + float(out.t[-1]))
         if t_max > 0.0:
             axs[0, 0].set_xlim(-0.02 * t_max, t_max * (1.0 + _XLIM_LEGEND_EXTEND))
+
+
+# ---------------------------------------------------------------------------
+# Overview figures: every evaluation at once
+# ---------------------------------------------------------------------------
+
+def _iteration_colors(sorted_its):
+    '''Evaluation index -> color on a perceptually ordered map, plus the mappable for a colorbar.'''
+    import matplotlib.cm as cm
+    norm = Normalize(vmin=min(sorted_its), vmax=max(sorted_its) if max(sorted_its) > min(sorted_its) else min(sorted_its) + 1)
+    sm = cm.ScalarMappable(norm=norm, cmap='viridis')
+    return (lambda it: sm.to_rgba(it)), sm
+
+
+def _target_for(targets_per_iter, it, var, r_idx):
+    '''Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.'''
+    gb_key = _CHANNEL_TO_GB.get(var)
+    if not targets_per_iter or gb_key is None:
+        return None
+    arr = (targets_per_iter.get(it) or {}).get(gb_key)
+    if arr is None or r_idx >= len(arr):
+        return None
+    val = float(arr[r_idx])
+    return val if np.isfinite(val) else None
+
+
+def _robust_ylim(ax, means, stds, targets, pad=0.25):
+    '''
+    Frame the saturated windows, not the startup transients: the limits come from the window
+    means +/- 2 sigma (and the targets), so one iteration's initial overshoot cannot flatten
+    every other trace.
+    '''
+    vals = [m + 2.0 * s for m, s in zip(means, stds)] + [m - 2.0 * s for m, s in zip(means, stds)] + list(targets)
+    vals = [v for v in vals if np.isfinite(v)]
+    if len(vals) < 2:
+        return
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or (abs(hi) or 1.0)
+    ax.set_ylim(min(lo - pad * span, 0.0) if lo >= 0 else lo - pad * span, hi + pad * span)
+
+
+def plot_time_traces_overview(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    sources_per_iter=None,
+    base_iter=0,
+    title_prefix="CGYRO time traces",
+    targets_per_iter=None,
+    chained_time=True,
+):
+    '''
+    One figure with everything: rows = channels (Qe, Qi, Ge), columns = radii, every evaluation
+    drawn in the same cell and colored by evaluation index (colorbar on the right).
+
+    With `chained_time` (default) the x axis is the warm-start time: each evaluation is offset by
+    the simulated time its restart parent had already accumulated (restart_sources.json), so a
+    trace continues where its parent stopped and the axis reads as the total time invested at that
+    radius. The window mean of every evaluation is drawn as a short horizontal bar, and the
+    turbulence-only target of the last evaluation as a dashed line, so the approach to flux match
+    is visible across the whole run.
+    '''
+    if not tools_by_iteration:
+        return
+    sources_per_iter = sources_per_iter or {}
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO traces (all)", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True, sharey='row')
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 8.0)
+    fig.suptitle(
+        f"{title_prefix} — all {len(sorted_its)} evaluations"
+        f" ({'warm-start (chained) time' if chained_time else 'per-evaluation time'};"
+        f" restart_mode={_restart_label_from_sources(sources_per_iter) or 'none'})",
+        fontsize=11,
+    )
+
+    for r_idx, rho in enumerate(rhos):
+        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its) if chained_time else {}
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            means, stds, targets = [], [], []
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                if out is None or not hasattr(out, 't') or getattr(out, var, None) is None:
+                    continue
+                off = float(offsets.get(it, 0.0))
+                c = color_for(it)
+                ax.plot(out.t + off, getattr(out, var), color=c, lw=0.5, alpha=0.75,
+                        zorder=2 + (it == sorted_its[-1]) * 3)
+                m, s, tmin = getattr(out, f"{var}_mean", None), getattr(out, f"{var}_std", None), getattr(out, 'tmin', None)
+                if m is not None and tmin is not None:
+                    ax.hlines(float(m), float(tmin) + off, float(out.t[-1]) + off, colors=c, lw=1.6, zorder=6)
+                    means.append(float(m)); stds.append(float(s) if s is not None else 0.0)
+                tval = _target_for(targets_per_iter, it, var, r_idx)
+                if tval is not None:
+                    targets.append(tval)
+            if targets:
+                ax.axhline(targets[-1], color='k', ls='--', lw=1.0, alpha=0.8, zorder=7)
+            _robust_ylim(ax, means, stds, targets)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            if row_idx == len(_CHANNELS) - 1:
+                ax.set_xlabel("$t \\, c_s/a$" + (" (chained)" if chained_time else ""))
+            GRAPHICStools.addDenseAxis(ax)
+
+    cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), fraction=0.02, pad=0.01)
+    cbar.set_label("evaluation")
+    axs[0, 0].plot([], [], color='k', ls='--', lw=1.0, label='target $-$ neoclassical (last)')
+    axs[0, 0].plot([], [], color='gray', lw=1.6, label='mean over window')
+    axs[0, 0].legend(loc='upper right', fontsize=7, framealpha=0.9)
+
+
+def plot_flux_convergence(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    base_iter=0,
+    title_prefix="CGYRO fluxes",
+    targets_per_iter=None,
+):
+    '''
+    The question the traces are a diagnostic for: does each channel approach its target as the
+    optimizer iterates? Rows = channels, columns = radii; per evaluation the window mean with
+    +/- 2 sigma error bars against the evaluation index, over the turbulence-only target (line
+    per evaluation, since the target moves with the profiles).
+    '''
+    if not tools_by_iteration:
+        return
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO flux convergence", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True)
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 8.0)
+    fig.suptitle(f"{title_prefix} — window mean $\\pm 2\\sigma$ vs evaluation, and the target it chases", fontsize=11)
+
+    for r_idx, rho in enumerate(rhos):
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            its, means, stds, tgts, tgt_its = [], [], [], [], []
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                m = getattr(out, f"{var}_mean", None) if out is not None else None
+                if m is not None:
+                    its.append(it); means.append(float(m))
+                    s = getattr(out, f"{var}_std", None)
+                    stds.append(float(s) if s is not None else 0.0)
+                tval = _target_for(targets_per_iter, it, var, r_idx)
+                if tval is not None:
+                    tgts.append(tval); tgt_its.append(it)
+            if its:
+                ax.errorbar(its, means, yerr=[2.0 * s for s in stds], fmt='o-', ms=3.5, lw=1.0,
+                            color='tab:blue', ecolor='tab:blue', elinewidth=0.8, capsize=2, label='CGYRO')
+            if tgts:
+                ax.plot(tgt_its, tgts, 's--', ms=3.5, lw=1.0, color='k', alpha=0.8, label='target $-$ neoc')
+            _robust_ylim(ax, means, stds, tgts)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            if row_idx == len(_CHANNELS) - 1:
+                ax.set_xlabel("evaluation")
+            GRAPHICStools.addDenseAxis(ax)
+    axs[0, 0].legend(loc='best', fontsize=7, framealpha=0.9)
