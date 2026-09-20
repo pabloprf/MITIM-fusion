@@ -195,6 +195,15 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **POPCON initialization from a plasma state was silently wrong in three places**:
+    `MITIMpopcon.update_from_gacode` hardcoded `areal_elongation = 1.5` (so the popcon volume did
+    not follow the state), built the density-peaking offset with the wrong sign (cfspopcon forms
+    `nu_n = Angioni_scaling + offset`, so reproducing a state needs `ne_peaking - scaling`, not the
+    reverse — on an ARC case that alone made the peaking 44% too high and P_fus 47% too high), and
+    picked impurity species with `AtomicSpecies(int(Z))` although that enum is ordinal, mapping a
+    lumped Z = 5.3 impurity to Lithium. Species are now looked up by atomic number
+    (`closest_cfspopcon_species`) with the concentration rescaled to preserve n_z*Z.
+
 *   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
     `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
     prescribed (linear-in-psi_n) edge, written by the BC beat beyond the outermost predicted
