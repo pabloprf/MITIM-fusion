@@ -901,6 +901,110 @@ def plot_time_traces_overview(
     axs[0, 0].legend(loc='upper right', fontsize=7, framealpha=0.9)
 
 
+def _tail_fraction(ky, spectrum, tail_start):
+    '''
+    Share of the flux carried by the high-ky end of the grid: sum|spectrum| over ky >= tail_start*ky_max
+    divided by sum|spectrum| over all ky. Absolute values because a particle-flux spectrum changes sign,
+    and a signed sum would hide a large tail behind cancellation. A resolved run keeps this small: the
+    flux is carried by the modes the box resolves, not by the last bins.
+    '''
+    ky, spectrum = np.asarray(ky, dtype=float), np.abs(np.asarray(spectrum, dtype=float))
+    if ky.size == 0 or spectrum.size != ky.size:
+        return None
+    total = spectrum.sum()
+    if not np.isfinite(total) or total <= 0:
+        return None
+    return float(spectrum[ky >= tail_start * ky.max()].sum() / total)
+
+
+def plot_flux_spectra(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    tail_start=0.75,
+    title_prefix="CGYRO flux spectra",
+    live_iteration=None,
+):
+    '''
+    Is the grid resolving the flux? Rows = channels (Qe, Qi, Ge) as spectra against k_theta*rho_s,
+    columns = radii, one line per evaluation (color = evaluation, colorbar on the right). Each
+    spectrum is the time average over that evaluation's own saturated window (<q>_ky_mean), with
+    +/- sigma shaded for the last evaluation only. The dotted vertical line marks where the
+    high-ky tail starts (tail_start*ky_max).
+
+    The bottom row is the tail share per channel against evaluation: the fraction of |flux| carried
+    by ky >= tail_start*ky_max. A few percent means the resolved modes carry the flux; a share that
+    is large, or that grows as the profiles steepen, means the answer is set by the grid and the run
+    needs more ky (or a smaller ky_min) before its fluxes mean anything.
+    '''
+    if not tools_by_iteration:
+        return
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO spectra", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=len(_CHANNELS) + 1, ncols=len(rhos), squeeze=False, sharex="row",
+                       gridspec_kw={"hspace": 0.45, "wspace": 0.3})
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 9.5)
+    live_note = f" — evaluation {live_iteration} still running (its window is not final)" if live_iteration is not None else ""
+    fig.suptitle(f"{title_prefix} — window-averaged, tail = ky >= {tail_start:.2f} $ky_{{max}}${live_note}", fontsize=11)
+
+    for r_idx, rho in enumerate(rhos):
+        tails = {var: ([], []) for var, _ in _CHANNELS}
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            ky_max = None
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                ky, mean = getattr(out, "ky", None), getattr(out, f"{var}_ky_mean", None)
+                if out is None or ky is None or mean is None:
+                    continue
+                ky, mean = np.asarray(ky, dtype=float), np.asarray(mean, dtype=float)
+                ky_max = ky.max()
+                c = color_for(it)
+                ax.plot(ky, mean, color=c, lw=1.0, marker='o', ms=2.0, alpha=0.9)
+                if it == sorted_its[-1]:
+                    std = getattr(out, f"{var}_ky_std", None)
+                    if std is not None:
+                        std = np.asarray(std, dtype=float)
+                        ax.fill_between(ky, mean - std, mean + std, color=c, alpha=0.2, lw=0)
+                frac = _tail_fraction(ky, mean, tail_start)
+                if frac is not None:
+                    tails[var][0].append(it)
+                    tails[var][1].append(100.0 * frac)
+            if ky_max is not None:
+                ax.axvline(tail_start * ky_max, color='k', ls=':', lw=1.0, alpha=0.7)
+            ax.axhline(0.0, color='k', lw=0.5, alpha=0.4)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[-1, r_idx]
+        for (var, _), c in zip(_CHANNELS, ("b", "r", "g")):
+            its, vals = tails[var]
+            if its:
+                ax.plot(its, vals, color=c, marker='o', ms=3.0, lw=1.0, label=var)
+        ax.set_ylim(bottom=0)
+        ax.set_xticks(sorted_its)
+        ax.set_xlim(min(sorted_its) - 0.5, max(sorted_its) + 0.5)
+        ax.set_xlabel("evaluation")
+        if r_idx == 0:
+            ax.set_ylabel(f"tail share [%]")
+            ax.legend(loc="best", fontsize=7, framealpha=0.9)
+        GRAPHICStools.addDenseAxis(ax)
+
+    for r_idx in range(len(rhos)):
+        axs[len(_CHANNELS) - 1, r_idx].set_xlabel("$k_\\theta \\rho_s$")
+
+    if len(sorted_its) > 1:
+        cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), fraction=0.02, pad=0.01)
+        cbar.set_label("evaluation")
+
+
 def plot_flux_convergence(
     fn,
     fn_color_start,

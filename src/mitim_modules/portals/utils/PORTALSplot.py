@@ -2566,7 +2566,7 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             getattr(self.powerstate, "predicted_channels", []) or [],
         )
 
-    plot_cgyro_live_status(root_folder, fn, fn_color_start + 2)
+    live_drew_spectra = plot_cgyro_live_status(root_folder, fn, fn_color_start + 2, finished_cache=self._cgyro_traces_cache)
 
     # Overview first: every evaluation in one figure (rows channels, columns radii), warm-start
     # time on x and evaluation on the colorbar, plus the mean-vs-evaluation convergence view.
@@ -2588,6 +2588,9 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         base_iter=0,
         targets_per_iter=self._cgyro_targets_cache,
     )
+
+    if not live_drew_spectra:
+        CGYROplot.plot_flux_spectra(fn, fn_color_start, self.rhos, self._cgyro_traces_cache)
 
     CGYROplot.plot_time_traces_per_radius(
         fn,
@@ -2639,11 +2642,14 @@ def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
     return None
 
 
-def plot_cgyro_live_status(root_folder, fn, fn_color):
+def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
     '''
     "CGYRO live" tab: pull the in-progress outputs of the running evaluation from its scratch into a
     throwaway folder, read them with the run's own averaging settings, and plot per-radius traces +
-    timing (CGYROplot.plot_live_status). Nothing is written to the run folder or the scratch.
+    timing (CGYROplot.plot_live_status), followed by the flux-spectra tab with the running evaluation
+    drawn alongside `finished_cache` (so resolution can be judged on the run in progress, and on runs
+    where nothing has finished yet). Returns True when it drew the spectra, so the caller does not
+    draw a second spectra tab. Nothing is written to the run folder or the scratch.
     Settings come from the run's namelist.portals.yaml (the merged parameters prep() writes), not from
     a powerstate, so the tab also works before any evaluation has finished. Plain YAML load on
     purpose: read_mitim_yaml would execute the run's import:: sidecar functions.
@@ -2672,7 +2678,7 @@ def plot_cgyro_live_status(root_folder, fn, fn_color):
     found = _find_running_cgyro_evaluation(iter_folders, base_subfolder)
     if found is None:
         print("\t- No CGYRO evaluation in flight; skipping the live-status tab")
-        return
+        return False
     it, (machine_settings, folder_execution, pairs) = found
     print(f"\t- Adding live-status tab of CGYRO evaluation {it} ({machine_settings['machine']}:{folder_execution})")
 
@@ -2682,12 +2688,18 @@ def plot_cgyro_live_status(root_folder, fn, fn_color):
             info = CGYROplot.fetch_live_outputs(machine_settings, folder_execution, pairs, base)
         except Exception as e:
             print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
-            return
+            return False
         rhos = sorted(info)
         tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=read_kwargs, base_subfolder=base_subfolder)
         targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (params.get("solution") or {}).get("predicted_channels") or [])
         CGYROplot.plot_live_status(fn, fn_color, rhos, tool, info, base,
                                    label=f"CGYRO live (ev {it})", targets_per_iter=targets, it=it)
+
+        # Spectra of the running evaluation next to the finished ones, from the same fetched outputs
+        if tool is None:
+            return False
+        CGYROplot.plot_flux_spectra(fn, fn_color + 1, rhos, {**(finished_cache or {}), it: tool}, live_iteration=it)
+        return True
 
 
 def PORTALSanalyzer_plotModelComparison(
