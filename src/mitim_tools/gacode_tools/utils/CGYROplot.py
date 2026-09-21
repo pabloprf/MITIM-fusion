@@ -1104,7 +1104,7 @@ def live_source_from_bash(tmp_folder):
     return None
 
 
-def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder):
+def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder, files=None):
     '''
     Copy the in-progress outputs of every radius from the scratch folder (local copy, or SFTP get from a
     remote machine) into local_folder as <file>_<rho:.4f>, the layout of retrieved results, so the
@@ -1121,7 +1121,7 @@ def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder):
         for sub, rho in pairs:
             info[rho] = {"machine": machine_settings["machine"], "mtime": None}
             remote = f"{folder_execution}/{sub}/rho_{rho:.4f}"
-            for name in _LIVE_FILES:
+            for name in (files or _LIVE_FILES):
                 src, dst = f"{remote}/{name}", local_folder / f"{name}_{rho:.4f}"
                 try:
                     if job.sftp is None:
@@ -1137,6 +1137,61 @@ def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder):
     finally:
         job.close()
     return info
+
+
+# Enough to tell, per radius, how far it got and whether it already ended (EXIT line, watchdog tags)
+_STOP_STATUS_FILES = ["input.cgyro", ".mitim_t0", "out.cgyro.info", "mitim_budget.tag", "mitim_discard.tag", "mitim_stop", "out.cgyro.time"]
+
+
+def live_radii_state(machine_settings, folder_execution, pairs, local_folder):
+    '''
+    Per-radius state of a running CGYRO job, read from its scratch without touching it:
+    {(subfolder, rho): {'t', 't0', 'MAX_TIME', 'exit', 'budget', 'discard', 'stop_requested', 'mtime'}}.
+    't' is the last simulated time in out.cgyro.time; 'mtime' its last write (epoch s).
+    '''
+    local_folder = Path(local_folder)
+    state = {}
+    for sub, rho in pairs:
+        dst = local_folder / sub
+        info = fetch_live_outputs(machine_settings, folder_execution, [(sub, rho)], dst, files=_STOP_STATUS_FILES)[rho]
+        scal = _read_live_scalars(dst, rho)
+        try:
+            t = float((dst / f"out.cgyro.time_{rho:.4f}").read_text().split("\n")[-2].split()[0])
+        except (OSError, IndexError, ValueError):
+            t = None
+        state[(sub, rho)] = {
+            "t": t, "t0": scal.get("t0"), "MAX_TIME": scal.get("MAX_TIME"), "exit": scal.get("exit"),
+            "budget": (dst / f"mitim_budget.tag_{rho:.4f}").exists(),
+            "discard": (dst / f"mitim_discard.tag_{rho:.4f}").exists(),
+            "stop_requested": (dst / f"mitim_stop_{rho:.4f}").exists(),
+            "mtime": info["mtime"],
+        }
+    return state
+
+
+def request_stop(machine_settings, folder_execution, pairs, note="mitim_kill_cgyro"):
+    '''
+    Drop a mitim_stop file in the scratch folder of each (subfolder, rho) in pairs. The watchdog
+    around the running launch (CGYRO._wall_budget_wrap) picks it up within ~20 s, waits for the next
+    restart write, leaves mitim_budget.tag and stops CGYRO; the radius is then read as finished,
+    with its fluxes averaged over what it simulated. Launches started before the watchdog wrapped
+    main radii (MITIM older than this function) ignore the file.
+    '''
+    job = FARMINGtools.mitim_job(Path.cwd())
+    job.machineSettings = machine_settings
+    job.connect()
+    try:
+        for sub, rho in pairs:
+            path = f"{folder_execution}/{sub}/rho_{rho:.4f}/mitim_stop"
+            text = f"{note} {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            if job.sftp is None:
+                Path(path).write_text(text)
+            else:
+                with job.sftp.open(path, "w") as f:
+                    f.write(text)
+            print(f"\t- Stop requested for {sub}/rho_{rho:.4f} ({machine_settings['machine']}:{path})")
+    finally:
+        job.close()
 
 
 def _read_live_scalars(folder, rho):

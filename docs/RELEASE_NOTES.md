@@ -4,6 +4,14 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **`mitim_kill_cgyro`: stop hopeless CGYRO radii of a running PORTALS evaluation and use what they
+    simulated.** `mitim_kill_cgyro <portals folder>` lists each radius of the evaluation in flight (time,
+    end time, last write, status); `--rho ...` or `--all` asks the chosen radii to stop. Each one ends
+    right after its next restart write (so later iterations can still warm-start from it), is accepted as
+    finished, and its fluxes are averaged over the simulated trace. Every CGYRO launch now runs inside the
+    stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
+    in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
+
 *   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
     "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
     radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only

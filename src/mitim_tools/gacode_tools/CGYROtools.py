@@ -666,10 +666,12 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # doesn't break chaining.
             restart_path = f"{p}/{folder}/bin.cgyro.restart"
             marker_path = f"{p}/{folder}/.mitim_run_started"
-            # .mitim_t0: simulated time already in out.cgyro.time when this launch starts (0 for a
-            # fresh/warm start, the tag time for an in-place rescue), so the scheduler can estimate
-            # the remaining a/cs of a running call as MAX_TIME - (t - t0)
-            marker_cmd = f'touch "{marker_path}"; _t0=$(tail -n1 "{p}/{folder}/out.cgyro.time" 2>/dev/null | awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{p}/{folder}/.mitim_t0"'
+            # .mitim_t0: simulated time this launch starts from (0 for a fresh/warm start, the tag
+            # time for an in-place rescue), so the scheduler can estimate the remaining a/cs of a
+            # running call as MAX_TIME - (t - t0). Read from out.cgyro.tag (line 2), not from the
+            # tail of out.cgyro.time: an interrupted run wrote outputs past its last restart, and
+            # CGYRO rewinds those to the tag time when it resumes.
+            marker_cmd = f'touch "{marker_path}"; _t0=$(sed -n 2p "{p}/{folder}/out.cgyro.tag" 2>/dev/null | awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{p}/{folder}/.mitim_t0"'
             cleanup_cmd = (
                 f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
                 f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '
@@ -810,25 +812,39 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             self._preprocess_options = None
             self._load_balance = None
 
-    _WALL_BUDGET_WATCHDOG = r"""_lb_dir="RHODIR"; _lb_budget=BUDGET_S; _lb_min=MIN_TIME
+    _WALL_BUDGET_WATCHDOG = r"""_lb_dir="RHODIR"; _lb_budget=BUDGET_S; _lb_min=MIN_TIME; _lb_discard=DISCARD_BELOW_MIN
 set -m 2>/dev/null
+# a stop request applies to this launch only (a leftover one would end it at the first restart write)
+rm -f "$_lb_dir/mitim_stop"
 (
 CGYRO_CMD
 ) & _lb_pid=$!
 _lb_t0=$(date +%s)
 _lb_mt() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+_lb_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do echo "$c"; _lb_tree "$c"; done; }
+# TERM the launch and wait until its whole process tree is gone: mpirun/prterun puts every rank in
+# its own process group, so the group kill alone returns while ranks still hold the node/GPUs
+_lb_kill() {
+    local pids="$_lb_pid $(_lb_tree $_lb_pid)" i
+    kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
+    for i in $(seq 1 60); do kill -0 $pids 2>/dev/null || return 0; sleep 1; done
+    kill -KILL -- -$_lb_pid 2>/dev/null; kill -KILL $pids 2>/dev/null
+}
 while kill -0 $_lb_pid 2>/dev/null; do
-    sleep 20
-    # stop request: the wall budget (if any) is spent, or the scheduler dropped mitim_stop
+    for _lb_i in $(seq 1 20); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done
+    kill -0 $_lb_pid 2>/dev/null || break
+    # stop request: the wall budget (if any) is spent, or mitim_stop was dropped (scheduler, mitim_kill_cgyro)
     _lb_stop=0; [ -f "$_lb_dir/mitim_stop" ] && _lb_stop=1
     if (( _lb_stop == 0 )); then (( _lb_budget > 0 )) || continue; (( $(date +%s) - _lb_t0 < _lb_budget )) && continue; fi
     _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
     if ! awk -v t="${_lb_t:-0}" -v m="$_lb_min" 'BEGIN{exit !(t>=m)}'; then
         (( _lb_stop == 0 )) && continue
+        # a main radius is never discarded (the evaluation needs it): stopped below min_time it is accepted like any stop
+        if (( _lb_discard == 1 )); then
         echo "DISCARD t=${_lb_t:-0} min_time=$_lb_min elapsed=$(( $(date +%s) - _lb_t0 ))s" > "$_lb_dir/mitim_discard.tag"
-        kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
-        for _lb_i in $(seq 1 60); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done; kill -KILL -- -$_lb_pid 2>/dev/null
+        _lb_kill
         break
+        fi
     fi
     # past min_time: stop right after the next restart write (out.cgyro.tag is rewritten with
     # every bin.cgyro.restart) so the blob a later iteration warm-starts from is whole
@@ -837,8 +853,7 @@ while kill -0 $_lb_pid 2>/dev/null; do
     sleep 5
     _lb_t=$(tail -n1 "$_lb_dir/out.cgyro.time" 2>/dev/null | awk '{print $1+0}')
     echo "$([ $_lb_stop = 1 ] && echo STOP || echo BUDGET) t=$_lb_t elapsed=$(( $(date +%s) - _lb_t0 ))s budget=${_lb_budget}s min_time=$_lb_min" > "$_lb_dir/mitim_budget.tag"
-    kill -TERM -- -$_lb_pid 2>/dev/null || pkill -TERM -P $_lb_pid
-    for _lb_i in $(seq 1 60); do kill -0 $_lb_pid 2>/dev/null || break; sleep 1; done; kill -KILL -- -$_lb_pid 2>/dev/null
+    _lb_kill
     break
 done
 wait $_lb_pid 2>/dev/null
@@ -846,23 +861,26 @@ wait $_lb_pid 2>/dev/null
 
     def _wall_budget_wrap(self, cgyro_cmd, rho_dir, mode=None):
         '''
-        Watchdog around a radial launch (own process group). mode 'budget' (load_balance
-        strategy 'wall_budget'): stop once the wall budget is spent AND out.cgyro.time shows
-        >= min_time a/cs, waiting first for the next restart write. mode 'stop' (scheduler
-        extras): no budget, stop when a mitim_stop file appears; graceful past min_time
-        (mitim_budget.tag, accepted) or immediate below it (mitim_discard.tag). mode None
-        picks 'budget' if the strategy asks for it, else returns the command untouched.
+        Watchdog around a radial launch (own process group). Every launch honors a mitim_stop
+        file in its folder (dropped by the scheduler or by `mitim_kill_cgyro`): it waits for the
+        next restart write (so the blob a later iteration warm-starts from is whole), leaves
+        mitim_budget.tag (accepted as finished by radius_finished) and stops CGYRO.
+        mode 'manual' (main radii, default): stop only on request, at any simulated time.
+        mode 'budget' (main radii, load_balance strategy 'wall_budget'): also stop once the wall
+        budget is spent AND out.cgyro.time shows >= min_time a/cs.
+        mode 'stop' (scheduler extras): a request below min_time discards the case immediately
+        (mitim_discard.tag) instead. Main radii are never discarded: the evaluation needs them.
+        mode None picks 'budget' if the strategy asks for it, else 'manual'.
         '''
         lb = getattr(self, "_load_balance", None) or {}
         if mode is None:
-            mode = "budget" if lb.get("strategy") == "wall_budget" else None
-        if mode is None:
-            return cgyro_cmd
+            mode = "budget" if lb.get("strategy") == "wall_budget" else "manual"
         budget_s = int(float(lb["minutes_per_call"]) * 60) if mode == "budget" else 0
         return (self._WALL_BUDGET_WATCHDOG
                 .replace("RHODIR", rho_dir)
                 .replace("BUDGET_S", str(budget_s))
                 .replace("MIN_TIME", f"{float(lb.get('min_time', 0.0)):g}")
+                .replace("DISCARD_BELOW_MIN", "1" if mode == "stop" else "0")
                 .replace("CGYRO_CMD", cgyro_cmd.rstrip("\n")))
 
     # ------------------------------------------------------------------

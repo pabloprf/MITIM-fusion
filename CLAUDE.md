@@ -56,6 +56,7 @@ ones you will use most:
 | `mitim_run_maestro <folder> --namelist namelist.maestro.yaml` | Launch a MAESTRO multi-beat run |
 | `mitim_plot_maestro <folder> [--beats N] [--only transp]` | Plot MAESTRO results |
 | `mitim_check_maestro` | Inspect MAESTRO state / progress |
+| **`mitim_kill_cgyro <folder> [--rho r \| --all]`** | **Stop running CGYRO radii of a PORTALS evaluation at their next restart write, keeping the fluxes simulated so far** |
 | `mitim_plot_gacode / _tglf / _neo / _cgyro / _gx / _eq / _eped / _transp / _vgen` | Read+plot per-code outputs |
 | `mitim_run_tglf` / `mitim_run_transp` | Run a single code instance |
 | `mitim_slurm` | Submit a wrapper job to SLURM |

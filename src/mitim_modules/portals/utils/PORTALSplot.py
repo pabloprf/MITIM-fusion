@@ -2642,22 +2642,17 @@ def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
     return None
 
 
-def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
+def locate_running_cgyro(root_folder):
     '''
-    "CGYRO live" tab: pull the in-progress outputs of the running evaluation from its scratch into a
-    throwaway folder, read them with the run's own averaging settings, and plot per-radius traces +
-    timing (CGYROplot.plot_live_status), followed by the flux-spectra tab with the running evaluation
-    drawn alongside `finished_cache` (so resolution can be judged on the run in progress, and on runs
-    where nothing has finished yet). Returns True when it drew the spectra, so the caller does not
-    draw a second spectra tab. Nothing is written to the run folder or the scratch.
+    The CGYRO evaluation of a PORTALS run still in flight, or None: a dict with the iteration 'it',
+    'machine_settings', 'folder_execution' (scratch), 'pairs' [(subfolder, rho), ...], the run's
+    'read_kwargs' and 'base_subfolder', plus 'params' (namelist) and 'iter_folders'.
     Settings come from the run's namelist.portals.yaml (the merged parameters prep() writes), not from
-    a powerstate, so the tab also works before any evaluation has finished. Plain YAML load on
-    purpose: read_mitim_yaml would execute the run's import:: sidecar functions.
+    a powerstate, so this works before any evaluation has finished. Plain YAML load on purpose:
+    read_mitim_yaml would execute the run's import:: sidecar functions.
     '''
-    import tempfile
     import yaml
     from pathlib import Path
-    from mitim_tools.gacode_tools.utils import CGYROplot
     from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity, _resolve_code_from_options
 
     root_folder = Path(root_folder)
@@ -2666,32 +2661,56 @@ def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
         transport = params["transport"]
         cgyro_key = _model_highest_fidelity(transport["evaluator_instance_attributes"]["turbulence_model"])
     except (OSError, KeyError, TypeError, yaml.YAMLError) as e:
-        print(f"\t- Could not read the run namelist for the CGYRO live-status tab ({type(e).__name__}: {e}); skipping it", typeMsg='w')
-        return
+        print(f"\t- Could not read the run namelist ({type(e).__name__}: {e}) to locate the running CGYRO evaluation", typeMsg='w')
+        return None
     if _resolve_code_from_options(transport, cgyro_key) != "cgyro":
-        return
+        return None
     read_cfg = ((transport.get("options") or {}).get(cgyro_key) or {}).get("read") or {}
-    read_kwargs = {k: v for k, v in read_cfg.items() if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
     base_subfolder = f"base_{cgyro_key}"
     iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
 
     found = _find_running_cgyro_evaluation(iter_folders, base_subfolder)
     if found is None:
+        return None
+    it, (machine_settings, folder_execution, pairs) = found
+    return {
+        "it": it, "machine_settings": machine_settings, "folder_execution": folder_execution, "pairs": pairs,
+        "read_kwargs": {k: v for k, v in read_cfg.items() if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")},
+        "base_subfolder": base_subfolder, "params": params, "iter_folders": iter_folders,
+    }
+
+
+def plot_cgyro_live_status(root_folder, fn, fn_color, finished_cache=None):
+    '''
+    "CGYRO live" tab: pull the in-progress outputs of the running evaluation from its scratch into a
+    throwaway folder, read them with the run's own averaging settings, and plot per-radius traces +
+    timing (CGYROplot.plot_live_status), followed by the flux-spectra tab with the running evaluation
+    drawn alongside `finished_cache` (so resolution can be judged on the run in progress, and on runs
+    where nothing has finished yet). Returns True when it drew the spectra, so the caller does not
+    draw a second spectra tab. Nothing is written to the run folder or the scratch.
+    '''
+    import tempfile
+    from pathlib import Path
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    run = locate_running_cgyro(root_folder)
+    if run is None:
         print("\t- No CGYRO evaluation in flight; skipping the live-status tab")
         return False
-    it, (machine_settings, folder_execution, pairs) = found
+    it, machine_settings, folder_execution = run["it"], run["machine_settings"], run["folder_execution"]
+    base_subfolder, iter_folders = run["base_subfolder"], run["iter_folders"]
     print(f"\t- Adding live-status tab of CGYRO evaluation {it} ({machine_settings['machine']}:{folder_execution})")
 
     with tempfile.TemporaryDirectory(prefix="mitim_cgyro_live_") as tmp:
         base = Path(tmp) / base_subfolder
         try:
-            info = CGYROplot.fetch_live_outputs(machine_settings, folder_execution, pairs, base)
+            info = CGYROplot.fetch_live_outputs(machine_settings, folder_execution, run["pairs"], base)
         except Exception as e:
             print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
             return False
         rhos = sorted(info)
-        tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=read_kwargs, base_subfolder=base_subfolder)
-        targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (params.get("solution") or {}).get("predicted_channels") or [])
+        tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=run["read_kwargs"], base_subfolder=base_subfolder)
+        targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (run["params"].get("solution") or {}).get("predicted_channels") or [])
         CGYROplot.plot_live_status(fn, fn_color, rhos, tool, info, base,
                                    label=f"CGYRO live (ev {it})", targets_per_iter=targets, it=it)
 

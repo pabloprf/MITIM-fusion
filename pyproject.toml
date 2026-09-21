@@ -93,6 +93,7 @@ mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--su
 mitim_plot_neo = "mitim_tools.gacode_tools.scripts.read_neo:main"        # [--suffixes _0.55] [--gacode input.gacode]
 mitim_plot_vgen = "mitim_tools.gacode_tools.scripts.read_vgen:main"      # <folder> [--gacode input.gacode]
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
+mitim_kill_cgyro = "mitim_tools.gacode_tools.scripts.kill_cgyro:main"
 mitim_plot_gx = "mitim_tools.simulation_tools.scripts.read_gx:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_transp = "mitim_tools.transp_tools.scripts.read_transp:main"
