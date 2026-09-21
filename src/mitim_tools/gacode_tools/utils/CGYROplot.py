@@ -1083,6 +1083,7 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
     fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 9.5)
     now = time.time()
     etas = {}
+    wall_peaks = []   # last row is wall s per a/cs: comparable across radii, so it shares one y axis
 
     for r_idx, rho in enumerate(rhos):
         out = pick_output_for_rho(tool, rho, r_idx) if tool is not None else None
@@ -1122,8 +1123,7 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
             share = timing.sum(axis=0)
             for i, c in zip(np.argsort(share)[::-1][:2], ("tab:red", "tab:orange")):
                 ax.plot(x, timing[:, i] / dt_out, color=c, lw=0.8, label=f"{out.timing_names[i]} ({100 * share[i] / share.sum():.0f}%)")
-            # Headroom above the curves holds the one-row legend
-            ax.set_ylim(0, 1.45 * float(np.max(total / dt_out)))
+            wall_peaks.append(float(np.max(total / dt_out)))
             ax.legend(loc="upper center", ncol=3, fontsize=7, framealpha=0.9, handlelength=1.2, columnspacing=0.8)
             eta = None
             if live.get("MAX_TIME") is not None:
@@ -1140,6 +1140,14 @@ def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live",
         # .mitim_t0), so every column shows how much of its run is already done. Shared per column.
         if live.get("MAX_TIME") is not None:
             ax.set_xlim(0.0, live.get("t0", 0.0) + live["MAX_TIME"])
+
+    # One shared y axis for the timing row: the cost per a/cs is the quantity being compared between
+    # radii. Headroom above the curves holds the one-row legend.
+    if wall_peaks:
+        for c, ax in enumerate(axs[-1]):
+            ax.set_ylim(0, 1.45 * max(wall_peaks))
+            if c > 0:
+                ax.tick_params(labelleft=False)
 
     # The radii of one evaluation run concurrently, so the evaluation ends with the slowest of them
     known = {r: e for r, e in etas.items() if e is not None}
