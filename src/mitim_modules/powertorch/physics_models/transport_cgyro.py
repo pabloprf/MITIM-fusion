@@ -93,9 +93,20 @@ def _make_extra_point_builder(self, code, rho_locations, run_kwargs, read_kwargs
     return builder
 
 
+def _extra_point_usable(d):
+    '''An extra case ran to MAX_TIME (CGYRO's EXIT line) or was stopped past min_time (mitim_budget.tag).'''
+    if (d / "mitim_budget.tag").exists():
+        return True
+    try:
+        return "EXIT" in (d / "out.cgyro.info").read_text(errors="ignore")
+    except OSError:
+        return False
+
+
 def _harvest_extra_points(self, read_kwargs):
     '''
-    Accepted extra cases (mitim_budget.tag) under <folder>/extra_cgyro/rho_*/ are read with the
+    Accepted extra cases (ran to MAX_TIME, i.e. EXIT in out.cgyro.info, or stopped past min_time,
+    mitim_budget.tag) under <folder>/extra_cgyro/rho_*/ are read with the
     same averaging as the main radii and appended, one row per model (Qe/Qi/Ge_tr_turb_<k>), to
     Outputs/extra_points.csv of the PORTALS run with named x columns (SURROGATEtools assembles
     the x-vector from the model's current x_names). Each folder is harvested once.
@@ -107,7 +118,7 @@ def _harvest_extra_points(self, read_kwargs):
     rows = []
     for d in (sorted(root.glob("rho_*")) if root.is_dir() else []):
         meta_f, done = d / "mitim_extra_point.json", d / "mitim_harvested"
-        if done.exists() or not (meta_f.exists() and (d / "mitim_budget.tag").exists() and (d / "out.cgyro.time").exists()):
+        if done.exists() or not (meta_f.exists() and _extra_point_usable(d) and (d / "out.cgyro.time").exists()):
             continue
         meta = json.loads(meta_f.read_text())
         try:

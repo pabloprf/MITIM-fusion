@@ -6,8 +6,9 @@ react to calls finishing at different times: each radial body runs as its own
 subprocess on its node slot; when a call finishes while others still run, an optional
 hook may launch an "extra" call on the freed slot (load_balance strategy
 "extra_points"). Extras are told to stop (a `mitim_stop` file in their folder) as
-soon as the last main call ends, and the ones that left `accepted_marker` are reported
-as accepted so the caller can retrieve them.
+soon as the last main call ends, and the ones that finished (`completion_marker`, e.g. CGYRO's
+EXIT line) or were stopped past min_time (`accepted_marker`) are reported as accepted so the
+caller can retrieve them.
 """
 import os
 import time
@@ -27,6 +28,7 @@ class InAllocationScheduler:
         estimate_remaining=None,     # fn(rel_folder) -> seconds a running call still needs, or None
         estimate_to_accept=None,     # fn(rel_folder) -> seconds an extra started on this slot needs to become acceptable
         accepted_marker="mitim_budget.tag",
+        completion_marker=None,      # (file, substring): an extra that ran to its end, e.g. ("out.cgyro.info", "EXIT")
         stop_file="mitim_stop",
         poll_seconds=30,
         stop_grace_seconds=1800,     # after the stop file, how long to wait for extras to wind down before killing
@@ -38,6 +40,7 @@ class InAllocationScheduler:
         self.estimate_remaining = estimate_remaining
         self.estimate_to_accept = estimate_to_accept
         self.accepted_marker = accepted_marker
+        self.completion_marker = completion_marker
         self.stop_file = stop_file
         self.poll_seconds = poll_seconds
         self.stop_grace_seconds = stop_grace_seconds
@@ -69,6 +72,7 @@ class InAllocationScheduler:
         log = open(log_path or (cwd / "mitim.out"), "a")
         pending = list(self.bodies.items())
         running, extras = {}, {}          # rel -> (proc, call_index)
+        ended_extras = set()
         call_index = 0
         t_start = time.time()
         try:
@@ -87,18 +91,29 @@ class InAllocationScheduler:
                     launched = self._maybe_extra(cwd, prelude, log, rel, k, running)
                     if launched is not None:
                         extras[launched[0]] = (launched[1], k)
-                for rel in [r for r, (p, _) in extras.items() if p.poll() is not None]:
-                    proc, _ = extras.pop(rel)
-                    print(f"\t- [scheduler] extra {rel} ended on its own (rc={proc.returncode})")
-                    extras[rel] = (proc, None)   # keep for the final classification
+                for rel in [r for r, (p, _) in extras.items() if p.poll() is not None and r not in ended_extras]:
+                    ended_extras.add(rel)   # stays in extras for the final classification
+                    print(f"\t- [scheduler] extra {rel} ended on its own (rc={extras[rel][0].returncode})")
             self._stop_extras(cwd, extras)
         finally:
             log.close()
-        accepted = [r for r in extras if (cwd / r / self.accepted_marker).exists()]
+        accepted = [r for r in extras if self._accepted(cwd / r)]
         discarded = [r for r in extras if r not in accepted]
         if extras:
             print(f"\t- [scheduler] extras accepted: {accepted or 'none'}; discarded: {discarded or 'none'}")
         return {"accepted": accepted, "discarded": discarded}
+
+    def _accepted(self, folder):
+        '''An extra is usable if it ran to its end or was stopped past min_time.'''
+        if (folder / self.accepted_marker).exists():
+            return True
+        if self.completion_marker is None:
+            return False
+        name, text = self.completion_marker
+        try:
+            return text in (folder / name).read_text(errors="ignore")
+        except OSError:
+            return False
 
     def _maybe_extra(self, cwd, prelude, log, rel, call_index, running):
         if not running:

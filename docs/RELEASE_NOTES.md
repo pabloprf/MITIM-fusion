@@ -229,6 +229,11 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
+    extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,
+    the best converged, were discarded and never reached `Outputs/extra_points.csv`. An extra is now kept
+    if CGYRO wrote its `EXIT` line or it was stopped past `min_time`.
+
 *   🐛 **MITIM-launched CGYRO no longer dies at startup on OpenMPI 5 builds** (`MPI_FILE_WRITE_AT in
     cgyro_write_hosts failed`, e.g. laptop pixi and Perlmutter CPU builds). The MPI-IO backend was forced
     to `romio321`, which only OpenMPI 4 ships; it is now `OMPI_MCA_io=^ompio`, which keeps ROMIO (fast on

@@ -750,7 +750,8 @@ class mitim_simulation:
                 if hooks is not None:
                     from mitim_tools.simulation_tools.utils import SCHEDULERtools
                     bodies = {folder: code_call(folder=folder, n=resources_per_call, p=self.simulation_job.folderExecution) for folder in folders_red}
-                    self._scheduler_to_attach = SCHEDULERtools.InAllocationScheduler(bodies, _hosts, max_parallel_execution, **hooks)
+                    self._scheduler_to_attach = SCHEDULERtools.InAllocationScheduler(bodies, _hosts, max_parallel_execution,
+                        completion_marker=self.run_specifications.get("completion_marker"), **hooks)
 
             # Standard job
             elif type_of_submission == "slurm_standard":
