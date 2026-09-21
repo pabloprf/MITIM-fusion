@@ -573,8 +573,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 f"export OMP_NUM_THREADS={mpi['nomp']}\n"
                 f"export OMP_STACKSIZE=1G\n"
                 # OpenMPI MPI-IO backend: OMPIO on NFS (engaging /orcd) spent 30-100 s per output
-                # step; ROMIO brings it to <1 s. Ignored by MPICH-based builds (Perlmutter).
-                "export OMPI_MCA_io=romio321\n"
+                # step; ROMIO brings it to <1 s. "^ompio" (anything but OMPIO) and not a ROMIO name:
+                # the component is romio321 in OpenMPI 4 but romio341 in OpenMPI 5, and naming one
+                # the build lacks leaves no MPI-IO at all (CGYRO dies in cgyro_write_hosts).
+                # Ignored by MPICH-based builds (Perlmutter GPU).
+                "export OMPI_MCA_io=^ompio\n"
             )
             # Bash mode inside an existing SLURM allocation (driver under salloc/sbatch):
             # the gacode launcher (platform/exec/exec.<PLATFORM>) runs `srun` with no
@@ -611,7 +614,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                     "if [ \"$SLURM_PROCID\" != \"0\" ]; then exit 0; fi; "
                     "export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 "
                     f"SLURM_TASKS_PER_NODE={mpi['numa']} SLURM_NTASKS={mpi['numa']} SLURM_NPROCS={mpi['numa']} SLURM_JOB_CPUS_PER_NODE={mpi['nomp'] * mpi['numa']}; "
-                    f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=romio321; "   # ROMIO: OMPIO on NFS spent ~100 s per output step
+                    f"export OMP_NUM_THREADS={mpi['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=^ompio; "   # ROMIO (see omp_prefix): OMPIO on NFS spent ~100 s per output step
                     f"cgyro -e \"$MITIM_FOLDER\" -n {mpi['n']} -nomp {mpi['nomp']} -numa {mpi['numa']} -mpinuma {mpi['mpinuma']} -p {p}"
                 )
                 # The step takes the node's whole CPU share of its GPUs (128 cores / 4 GPUs

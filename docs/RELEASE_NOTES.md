@@ -218,6 +218,11 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **MITIM-launched CGYRO no longer dies at startup on OpenMPI 5 builds** (`MPI_FILE_WRITE_AT in
+    cgyro_write_hosts failed`, e.g. laptop pixi and Perlmutter CPU builds). The MPI-IO backend was forced
+    to `romio321`, which only OpenMPI 4 ships; it is now `OMPI_MCA_io=^ompio`, which keeps ROMIO (fast on
+    NFS) under any OpenMPI version and is ignored by MPICH.
+
 *   🐛 **Truncated CGYRO runs are no longer accepted as finished evaluations in bash/in-allocation mode.**
     CGYRO writes all its output files from the first step, so a step killed mid-run (preemption, crash,
     GPU OOM, node failure) passed the retrieval check, and the scheduler logged it as `rc=0` because the
