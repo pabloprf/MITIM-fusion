@@ -218,6 +218,13 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **Truncated CGYRO runs are no longer accepted as finished evaluations in bash/in-allocation mode.**
+    CGYRO writes all its output files from the first step, so a step killed mid-run (preemption, crash,
+    GPU OOM, node failure) passed the retrieval check, and the scheduler logged it as `rc=0` because the
+    call script's status was its trailing cleanup's. A run now raises unless every radius carries CGYRO's
+    completion marker (`EXIT` in `out.cgyro.info`, or the wall-budget watchdog's tag), and the call body
+    returns CGYRO's real exit status. Test: `tests/dev_tests/test_cgyro_completion_gate.py`.
+
 *   🐛 **POPCON initialization from a plasma state was silently wrong in three places**:
     `MITIMpopcon.update_from_gacode` hardcoded `areal_elongation = 1.5` (so the popcon volume did
     not follow the state), built the density-peaking offset with the wrong sign (cfspopcon forms

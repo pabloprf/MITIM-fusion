@@ -901,6 +901,9 @@ class mitim_simulation:
                     
                 self._organize_results(code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=optional_files_to_retrieve)
 
+                if run_type == 'normal':
+                    self._verify_completion(code_executor, code)
+
             # Submit run but do not wait; the user should do checks and fetch results
             elif run_type == 'submit':
 
@@ -1047,6 +1050,43 @@ class mitim_simulation:
         )
 
         self.simulation_job.run()
+
+    def _verify_completion(self, code_executor, code):
+        '''
+        Refuse to hand back a run that did not finish. The retrieval check only proves the
+        output files exist, and codes like CGYRO write them all from the first step: a step
+        killed mid-run (preemption, crash, GPU OOM, node failure) leaves a complete-looking
+        set, and the launch script's exit status is not a reliable signal. So the code's own
+        completion marker is checked on the retrieved files - the same test cold_start_checker
+        applies before a launch, which otherwise only catches a truncated run on the NEXT call,
+        after this one has already been consumed.
+        '''
+        marker = self.run_specifications.get("completion_marker")
+        if marker is None:
+            return
+        alt = self.run_specifications.get("completion_alt_file")
+
+        unfinished = []
+        for subfolder_sim in code_executor:
+            for rho in code_executor[subfolder_sim]:
+                finished, mfile = radius_finished(code_executor[subfolder_sim][rho]['folder'], rho, marker, alt)
+                if finished:
+                    continue
+                try:
+                    lines = [l.strip() for l in mfile.read_text(errors="ignore").splitlines() if l.strip()]
+                    last = lines[-1] if lines else "empty"
+                except OSError:
+                    last = "file missing"
+                unfinished.append(f"{subfolder_sim} rho={rho:.4f} (last line of {mfile.name}: {last!r})")
+
+        if unfinished:
+            raise RuntimeError(
+                f"[MITIM] {code.upper()} returned without finishing at {len(unfinished)} radius(es) - no "
+                f"'{marker[1]}' line in {marker[0]}" + (f" and no {alt}" if alt else "") + ":\n\t"
+                + "\n\t".join(unfinished)
+                + "\nTheir outputs are truncated and are not used. Re-running this evaluation re-runs only these "
+                "radii (cold_start_checker applies the same test before launching)."
+            )
 
     def _organize_results(self, code_executor, tmpFolder, filesToRetrieve, optional_files_to_retrieve=None, **_unused_kwargs_organize):
         # **_unused_kwargs_organize tolerates any forward-compatible keys the
@@ -1976,6 +2016,28 @@ def inputToVariable(folder, rhos, file='input.tglf'):
 
     return inputFilesTGLF
 
+def radius_finished(folder, rho, completion_marker, completion_alt_file=None):
+    """
+    Whether the run stored in `folder` as `<file>_<rho>` ran to completion.
+
+    completion_marker: (file, substring); `<file>_<rho>` must CONTAIN the substring. For
+    CGYRO that is ('out.cgyro.info', 'EXIT'), a line written only on an orderly finish
+    (cgyro_final_kernel.F90) - a crash writes 'ERROR: (CGYRO)' and a signal writes nothing.
+    completion_alt_file: file whose presence (`<file>_<rho>`) also counts as finished,
+    e.g. the 'mitim_budget.tag' left when CGYRO's wall-budget watchdog stops a run on purpose.
+
+    Returns (finished, marker_path).
+    """
+    mfile = Path(folder) / f"{completion_marker[0]}_{rho:.4f}"
+    try:
+        finished = completion_marker[1] in mfile.read_text(errors="ignore")
+    except OSError:
+        finished = False
+    if not finished and completion_alt_file is not None:
+        finished = (Path(folder) / f"{completion_alt_file}_{rho:.4f}").exists()
+    return finished, mfile
+
+
 def cold_start_checker(
     rhos,
     output_files_simulation_select,
@@ -2013,13 +2075,7 @@ def cold_start_checker(
                     else:
                         cont_each += 1
             if existsRho and completion_marker is not None:
-                mfile = Folder_sim / f"{completion_marker[0]}_{ir:.4f}"
-                try:
-                    finished = completion_marker[1] in mfile.read_text(errors="ignore")
-                except OSError:
-                    finished = False
-                if not finished and completion_alt_file is not None:
-                    finished = (Folder_sim / f"{completion_alt_file}_{ir:.4f}").exists()
+                finished, mfile = radius_finished(Folder_sim, ir, completion_marker, completion_alt_file)
                 if not finished:
                     print(f"\t* {mfile.name} has no '{completion_marker[1]}' marker: run was interrupted, re-running this radius", typeMsg='w')
                     existsRho = False

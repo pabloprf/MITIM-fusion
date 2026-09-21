@@ -44,6 +44,21 @@ def _format_wall_seconds(s):
     return f"{sec}s"
 
 
+def body_keeping_exit_status(pre_cmd, main_cmd, cleanup_cmd):
+    '''
+    Shell body running pre_cmd, main_cmd, cleanup_cmd in that order, whose exit status is
+    main_cmd's. Without this the trailing cleanup (an rm) set it, so a CGYRO killed by a
+    signal or crashed mid-run was logged by the in-allocation scheduler as rc=0.
+    `(exit $rc)` sets the status without ending the shell, so anything a launcher appends
+    after this body (slurm_array script, bash `{ ... } &` group) still runs.
+    Note: the status is only as good as what the launcher chain propagates, and the
+    wall-budget watchdog stops runs on purpose - completion is judged from CGYRO's own EXIT
+    line (run_specifications["completion_marker"]), not from this code.
+    '''
+    return (pre_cmd + "\n" + main_cmd.rstrip("\n") + "\n_mitim_rc=$?\n"
+            + cleanup_cmd + "\n(exit $_mitim_rc)\n")
+
+
 def cgyro_per_task_status(sim):
     '''
     Custom checker for `mitim_simulation.check(custom_checker=...)` that
@@ -660,7 +675,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
             cgyro_cmd = self._wall_budget_wrap(cgyro_cmd, f"{p}/{folder}", mode=kwargs.get("watchdog"))
 
-            return marker_cmd + "\n" + cgyro_cmd.rstrip("\n") + "\n" + cleanup_cmd + "\n"
+            return body_keeping_exit_status(marker_cmd, cgyro_cmd, cleanup_cmd)
 
         # On GPU machines, always use a job array so each radius gets its own GPU allocation.
         _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
