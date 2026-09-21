@@ -505,7 +505,25 @@ class GXoutput(SIMtools.GACODEoutput):
 
     # ---- harvest interface (SIMtools.GACODEoutput): inputs from the gxplasma.in file, fluxes are time averages by self.averaging
     def harvest_inputs(self):
-        return {**self.inputclass.controls, **self.inputclass.plasma}
+        '''
+        Every key of the gxplasma.in this radius ran with. The [species] arrays (`z = [ 1.0, -1.0 ]`)
+        become z_1, z_2, ... (GXinput's own names) and quotes are stripped, then parsed like TGLF/NEO
+        inputs; GXinput itself would keep '[' as the value of every species key.
+        '''
+        file = getattr(self.inputclass, 'file', None)
+        if file is None or not Path(file).is_file():
+            return {**self.inputclass.controls, **self.inputclass.plasma}
+        lines = []
+        for line in Path(file).read_text().splitlines():
+            line = line.split('#')[0].strip()
+            if '=' not in line or line.startswith('['):
+                continue
+            key, val = (s.strip() for s in line.split('=', 1))
+            if val.startswith('['):
+                lines += [f"{key}_{i+1} = {v.strip().strip(chr(34))}" for i, v in enumerate(val.strip('[] ').split(',')) if v.strip()]
+            else:
+                lines.append(f"{key} = {val.strip(chr(34))}")
+        return SIMtools.buildDictFromInput("\n".join(lines))
 
     def harvest_outputs(self):
         out = {}

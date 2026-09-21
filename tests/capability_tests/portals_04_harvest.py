@@ -14,7 +14,7 @@ Key teaching points:
        ~/mitim_harvest/mitim_harvest.nc. Inside MAESTRO, the same block lives under
        `maestro.harvest` and MAESTRO pushes once at the end for all its beats (+ full EPED).
     2. During the run, records are STAGED as JSON-lines under Outputs/harvest/ (one file per
-       code) and pushed to the central file when the run finishes (under an NFS-safe lock, so
+       code and writing process, <code>.<host>-<pid>.jsonl) and pushed to the central file when the run finishes (under an NFS-safe lock, so
        many runs can share the file). A run that died can be pushed later with
        `mitim_harvest <run folder>`.
     3. The central file is inspected with `HARVESTtools.harvest_database` (load / summary /
@@ -107,6 +107,11 @@ print(siblings[["in_RLTS_1", "in_RLTS_2", "in_TAUS_2", "in_XNUE", "in_BETAE", "o
 print("\nProvenance (runs table):")
 for k in ["code_version", "machine", "mitim_version", "git_commit", "run"]:
     print(f"   {k:15s} {(str(tglf[k].iloc[0]).splitlines() or ['(not available)'])[0]}")
+
+# Every record keeps its FULL input file, so the exact input.tglf of any evaluation can be written back (keys in
+# the original order, bools/ints/floats/strings as in the original file) and re-run by hand:
+rebuilt = db.write_input_file("tglf", tglf["hash"].iloc[0], folderWork / "input.tglf_rebuilt_from_harvest")
+print(f"\nRebuilt {rebuilt.name} from the database; first lines:\n" + "\n".join(rebuilt.read_text().splitlines()[:5]))
 
 # ---------------------------------------------------------------------------------------------------------------------
 # 4. Interpret and plot the database (same as `mitim_plot_harvest <file>`)

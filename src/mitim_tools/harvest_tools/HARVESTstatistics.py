@@ -36,7 +36,8 @@ class harvest_statistics:
     _INPUTS = {
         'tglf':  ['Te', 'Ti', 'ne', 'TAUS_2', 'XNUE', 'BETAE', 'ZEFF', 'Q_LOC', 'Q_PRIME_LOC', 'RMIN_LOC', 'KAPPA_LOC', 'DELTA_LOC'],
         'neo':   ['Te', 'Ti', 'ne', 'TEMP_1', 'NU_1', 'RHO_STAR', 'Q', 'SHEAR', 'RMIN_OVER_A', 'KAPPA', 'DELTA'],
-        'cgyro': ['Te', 'Ti', 'ne', 'nu_ee', 'beta_star', 'q', 's', 'rmin', 'kappa', 'delta'],
+        'cgyro': ['Te', 'Ti', 'ne', 'NU_EE', 'BETAE_UNIT', 'Q', 'S', 'RMIN', 'KAPPA', 'DELTA',
+                  'nu_ee', 'beta_star', 'q', 's', 'rmin', 'kappa', 'delta'],   # lowercase: records before schema 5
     }
     _FLUXES = ('Qe', 'Qi', 'Ge')
 

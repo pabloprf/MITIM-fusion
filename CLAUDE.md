@@ -442,7 +442,7 @@ and for CGYRO/GX the flux-averaging method) lives once per run and code in the
 `runs` group, joined on load. Averaged codes also store per record the window
 (`avg_tmin`, `avg_tmax`, `avg_npoints`, `avg_dt`), the std, and per flux the
 effective sample count and autocorrelation time (`<flux>_ncorr`, `<flux>_icor`). Staged as
-`Outputs/harvest/<code>.jsonl` with rolling gzip compression (a run never holds
+`Outputs/harvest/<code>.<host>-<pid>.jsonl` (one file per writer process; legacy `<code>.jsonl` still read) with rolling gzip compression (a run never holds
 more than a few MB) and appended at the end of the outermost driver into a
 per-user netCDF-4 file (one group per code) under an NFS-safe mkdir lock.
 Pushed archives are kept, so `mitim_harvest --rebuild` can regenerate the file.
@@ -450,7 +450,9 @@ Implementation: `mitim_tools/harvest_tools/HARVESTtools.py` (`harvest_recorder`
 attached to simulation objects by `power_transport._harvest_attach`; the
 per-code extraction is `harvest_records` / `harvest_outputs` on the
 simulation/output classes; `harvest_database` loads, interprets, plots and
-pushes). CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
+pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO records hold only pygacode
+`params1D` and are refused by `harvest_database.input_file`), derived norms as `out_derived_*`.
+CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
 
 ### 5.6 Logging conventions

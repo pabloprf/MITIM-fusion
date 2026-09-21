@@ -39,7 +39,10 @@ DESCRIPTION
     (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
     `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
     `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
-    `portals_04_harvest.py` and `maestro_02_harvest.py`.
+    `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO record can be written back as its exact
+    input file (`harvest_database.input_file` / `write_input_file`, types from a per-run map); CGYRO
+    records also carry restart provenance (warm start, source iteration, inherited time), whether
+    `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
 
 *   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
     (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic

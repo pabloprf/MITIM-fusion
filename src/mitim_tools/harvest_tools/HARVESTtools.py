@@ -12,18 +12,23 @@ TGLF records are individual runs: the base point AND each perturbed member of th
 (`scan_trick_members: false` drops the latter, which are most of the volume).
 
 Two tiers:
-    1. Staging, per run (opt-in via the `harvest:` namelist block): JSON-lines, one file per code,
-       `<run>/Outputs/harvest/<code>.jsonl` (+ run_meta.json with the provenance). A driver that
+    1. Staging, per run (opt-in via the `harvest:` namelist block): JSON-lines, one file per code and
+       writer process, `<run>/Outputs/harvest/<code>.<host>-<pid>.jsonl` (+ run_meta.json with the
+       provenance), so a file never has two writers (legacy runs: one shared `<code>.jsonl`, still read). A driver that
        chains several runs (MAESTRO) hands its own folder to each of them (`staging_folder`), so the
        whole chain stages in ONE place and each record carries its `maestro_beat`. Append-only and
        crash-safe, so a dead or preempted run keeps its records and can be pushed by hand
        (`mitim_harvest <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
-       is compressed as one more gzip member of `<code>.jsonl.gz` (~20-30x smaller, since only a
+       is compressed as one more gzip member of `<stem>.jsonl.gz` (~20-30x smaller, since only a
        handful of inputs change between records), so a run holds a few MB at most. Pushed archives
-       are renamed `<code>.jsonl.pushed-<ts>.gz` and kept, so the central file can be rebuilt.
+       are renamed `<stem>.jsonl.pushed-<ts>.gz` and kept, so the central file can be rebuilt.
     2. Central store, per user: one netCDF-4 file, one group per code plus `runs`, unlimited `record`
        dimension, appended in place under an NFS-safe mkdir lock (IOtools.mkdir_lock). A variable
-       that later records introduce reads back as NaN for the earlier ones.
+       that later records introduce reads back as NaN for the earlier ones. A variable keeps the
+       type of its first appearance: later numbers into a string variable are stored as strings,
+       later strings into a numeric one as numbers when they parse, else as NaN with the string in
+       the sibling `<col>__str`. Every group is typed before anything is written, so a push
+       appends all its records or none.
 
 Objects:
     harvest_recorder : attached to a simulation object as `sim.harvest`; `record(sim, label)`
@@ -51,7 +56,7 @@ from mitim_tools.misc_tools import IOtools, CONFIGread, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
 DEFAULT_FILE = "~/mitim_harvest/mitim_harvest.nc"
-SCHEMA_VERSION = 4   # 4: optional per-record `maestro_beat` (chained runs share one staging folder)
+SCHEMA_VERSION = 5   # 4: optional per-record `maestro_beat` (chained runs share one staging folder); 5: CGYRO in_ = input.cgyro keys (+ out_derived_*, run history), input type maps, `<col>__str` siblings
 ROLL_BYTES = 256 * 1024   # plain-JSON tail size that triggers compression into <code>.jsonl.gz (~60 TGLF records)
 CODES = ('tglf', 'neo', 'cgyro', 'gx', 'qualikiz', 'eped')
 RUNS_GROUP = 'runs'
@@ -62,6 +67,7 @@ RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 
 # ... and once per (run, code), captured from the first record of that code (`averaging`: how the
 # time-averaged fluxes and their std were computed, for CGYRO/GX; empty for single-value codes)
 RUN_CODE_KEYS = ['machine', 'modules', 'code_version', 'in_process', 'averaging']
+# ... plus `input_types` (see RECORD_TYPES), built at push time from the staged records
 
 # ------------------------------------------------------------------------------------------------
 # Options / central file resolution
@@ -202,7 +208,10 @@ def machine_info(job):
 # ------------------------------------------------------------------------------------------------
 
 def _open_text(file):
-    return gzip.open(file, 'rt') if str(file).endswith('.gz') else open(file, 'r')
+    '''gzip by content, not by name (a file claimed by a push is <name>.claim-<tag>)'''
+    with open(file, 'rb') as fi:
+        is_gz = fi.read(2) == b'\x1f\x8b'
+    return gzip.open(file, 'rt') if is_gz else open(file, 'r')
 
 def _read_jsonl(file):
     '''
@@ -225,9 +234,10 @@ def _read_jsonl(file):
 
 def _roll(plain):
     '''
-    Compress the plain <code>.jsonl tail as one more gzip member appended to <code>.jsonl.gz, then
+    Compress the plain <stem>.jsonl tail as one more gzip member appended to <stem>.jsonl.gz, then
     truncate the tail. Member first, truncate second: a kill in between duplicates lines, which the
-    hash dedup absorbs; the reverse order could lose them.
+    hash dedup absorbs; the reverse order could lose them. Only the process that owns the file (its
+    single writer) rolls it, so no line can be appended between the read and the truncation.
     '''
     plain = Path(plain)
     if not plain.exists() or plain.stat().st_size == 0:
@@ -239,14 +249,78 @@ def _roll(plain):
     with open(plain, 'wb'):
         pass
 
+# Staging file names. Each process writes its own <code>.<host>-<pid>.jsonl (+ its rolled .jsonl.gz),
+# so no file ever has two writers and no lock is needed (NFS-safe). Legacy runs staged one shared
+# <code>.jsonl per folder; those names are still read and pushed (the stem is then just <code>).
+# Pushed archives: <stem>.jsonl.pushed-<ts>.gz. Files claimed by a push in progress: <name>.claim-<tag>.
+_HOST = ''.join(c if c.isalnum() else '_' for c in socket.gethostname().split('.')[0]) or 'host'
+
+def _writer_stem(code):
+    return f"{code}.{_HOST}-{os.getpid()}"
+
 def _is_staged(file):
-    return '.jsonl' in file.name and not file.name.startswith('run_meta')
+    return '.jsonl' in file.name and not file.name.startswith('run_meta') and '.claim-' not in file.name
+
+def _stem_of(file):
+    return file.name.split('.jsonl')[0]
 
 def _code_of(file):
-    return file.name.split('.jsonl')[0]
+    return _stem_of(file).split('.')[0]
 
 def _is_pushed(file):
     return '.pushed-' in file.name
+
+def _gz_bytes(file):
+    '''Content of a staging file as gzip member(s): rolled archives as they are, plain tails compressed'''
+    data = Path(file).read_bytes()
+    return data if data[:2] == b'\x1f\x8b' or not data else gzip.compress(data)
+
+def _is_orphan_claim(file, stale_s):
+    '''A file claimed by a push that died before archiving or restoring it (claim older than stale_s)'''
+    if '.claim-' not in file.name:
+        return False
+    try:
+        t = datetime.datetime.strptime(file.name.rsplit('.claim-', 1)[1][:15], '%Y%m%d_%H%M%S')
+    except ValueError:
+        return False
+    return (datetime.datetime.now() - t).total_seconds() > stale_s
+
+def _claim(files):
+    '''Rename each unpushed file to <name>.claim-<tag> (pushed archives, re-pushed by rebuild, stay put); [(original, claimed)]'''
+    tag = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}-{_HOST}-{os.getpid()}"
+    claimed = []
+    for f in files:
+        f = Path(f)
+        if _is_pushed(f):
+            claimed.append((f, f))
+            continue
+        c = f.with_name(f"{f.name}.claim-{tag}")
+        try:
+            os.replace(f, c)
+        except FileNotFoundError:
+            continue
+        claimed.append((f, c))
+    return claimed
+
+def _fold(claimed, target_of):
+    '''Append every claimed (not pushed) file, as gzip members, to target_of(folder, stem), then drop it'''
+    for orig, c in claimed:
+        if c == orig and _is_pushed(c):
+            continue
+        data = _gz_bytes(c)
+        if data:
+            with open(target_of(c.parent, _stem_of(c)), 'ab') as fo:
+                fo.write(data)
+        c.unlink(missing_ok=True)
+
+def _archive(claimed):
+    '''Pushed: one <stem>.jsonl.pushed-<ts>.gz per (folder, writer), kept so the central file can be rebuilt'''
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    _fold(claimed, lambda folder, stem: folder / f"{stem}.jsonl.pushed-{ts}.gz")
+
+def _unclaim(claimed):
+    '''Failed push: back to staging as rolled, unpushed archives <stem>.jsonl.gz'''
+    _fold(claimed, lambda folder, stem: folder / f"{stem}.jsonl.gz")
 
 # ------------------------------------------------------------------------------------------------
 # Recorder (attached to simulation objects)
@@ -255,6 +329,7 @@ def _is_pushed(file):
 _SEEN = {}   # staging folder -> set of input hashes already staged (this process)
 
 def _seen(folder):
+    '''Hashes staged in the folder, seeded once per process from EVERY staging file there (all writers, legacy names, pushed archives)'''
     key = str(folder)
     if key not in _SEEN:
         seen = set()
@@ -343,7 +418,7 @@ class harvest_recorder:
             flat.update({f"in_{k}": v for k, v in inputs.items()})
             flat.update({f"out_{k}": v for k, v in outputs.items()})
 
-            plain = self.folder / f"{code}.jsonl"
+            plain = self.folder / f"{_writer_stem(code)}.jsonl"
             with open(plain, 'a') as fo:
                 fo.write(json.dumps(flat, default=_json_default) + '\n')
                 size = fo.tell()
@@ -451,7 +526,7 @@ def collect_eped(input_params, composition=None, eped_params_override=None, toq_
 # ------------------------------------------------------------------------------------------------
 
 _STRING_COLS = {'run', 'hash', 'code', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit',
-                'created', 'machine', 'modules', 'code_version', 'averaging'}
+                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record'}
 
 def _frame_from_rows(rows):
     '''DataFrame with the union of keys; a column is string if any value is a string, numeric (f8) otherwise'''
@@ -464,6 +539,89 @@ def _frame_from_rows(rows):
         else:
             df[col] = pd.to_numeric(s.map(lambda v: (float(v) if isinstance(v, (bool, np.bool_)) else v)), errors='coerce').astype('float64')
     return df
+
+STR_SUFFIX = '__str'
+
+def _parse_float(s):
+    if s == '':
+        return np.nan
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+def _reconcile_frame(df, existing):
+    '''
+    The columns of `df` as the arrays to append: (n_records, {column: (is_str, array)}). A variable
+    keeps the type it was created with (`existing`: {variable: is_str} already in the file; new
+    columns take their type from df). Numbers arriving into a string variable are written as
+    strings; strings arriving into a numeric variable are written as numbers when they parse, and
+    otherwise as NaN there with the string in the string sibling `<col>__str`. Nothing is dropped.
+    '''
+    cols = {}
+    for col in df.columns:
+        is_str = not pd.api.types.is_numeric_dtype(df[col])
+        vals = df[col].to_numpy()
+        as_str = existing.get(col, is_str)
+        if as_str and is_str:
+            cols[col] = (True, np.array([str(v) for v in vals], dtype=object))
+        elif as_str:
+            cols[col] = (True, np.array(['' if np.isnan(v) else str(v) for v in vals.astype('float64')], dtype=object))
+        elif not is_str:
+            cols[col] = (False, vals.astype('float64'))
+        else:
+            strs = [str(v) for v in vals]
+            parsed = [_parse_float(s) for s in strs]
+            cols[col] = (False, np.array([np.nan if p is None else p for p in parsed], dtype='float64'))
+            rest = [s if p is None else '' for s, p in zip(strs, parsed)]
+            if any(rest):
+                side = f"{col}{STR_SUFFIX}"
+                if not existing.get(side, True):
+                    raise TypeError(f"harvest: '{side}' exists as a numeric variable, cannot hold the strings of '{col}'")
+                cols[side] = (True, np.array(rest, dtype=object))
+    return len(df), cols
+
+# Input types, so an input file can be written back exactly (the netCDF stores every number as f8): per
+# (run, code) in the runs table, `input_types` = JSON {KEY: 'bool'|'int'|'float'|'str'} in the order of
+# the input file, each key typed as its FIRST record had it (never rewritten, later keys appended); a
+# record whose own types differ (e.g. KY = 3 in one input.cgyro, 8.0E-02 in another) carries just those
+# keys in its `input_types_record` (JSON, '' otherwise).
+RECORD_TYPES = 'input_types_record'
+
+def _input_types(row):
+    out = {}
+    for k, v in row.items():
+        if not k.startswith('in_'):
+            continue
+        if isinstance(v, bool):
+            out[k[3:]] = 'bool'
+        elif isinstance(v, int):
+            out[k[3:]] = 'int'
+        elif isinstance(v, float) and not np.isnan(v):
+            out[k[3:]] = 'float'
+        elif isinstance(v, str) and v != '':
+            out[k[3:]] = 'str'
+    return out
+
+def _type_overrides(run_types, row_types):
+    '''Add the keys run_types has not seen (first record wins) and return this record's deviations from it'''
+    for k, t in row_types.items():
+        run_types.setdefault(k, t)
+    return {k: t for k, t in row_types.items() if run_types[k] != t}
+
+def _format_input_value(v, typ):
+    '''One value as MITIM's GACODE writers emit it (bools as True/False, ints as ints); floats as the
+    shortest string that reads back to the same double, always with a '.' so buildDictFromInput keeps it a float'''
+    if typ == 'bool':
+        return "True" if bool(v) else "False"
+    if typ == 'int':
+        return str(int(round(float(v))))
+    if typ == 'float':
+        s = repr(float(v))
+        if '.' not in s:
+            s = s.replace('e', '.0e') if 'e' in s else s + '.0'
+        return s
+    return str(v)
 
 class harvest_database:
 
@@ -514,6 +672,8 @@ class harvest_database:
         columns: subset of variable names to read (`run` and `hash` are always included);
         run: one run id or a list of ids to keep (filtered while reading, cheap on a big file);
         with_run_info: join the provenance from the `runs` group (machine, code_version, ...).
+        A `<col>__str` column holds the values of numeric `<col>` that arrived as non-numeric
+        strings (NaN in `<col>` for those records); it is returned as is, next to `<col>`.
         '''
         if columns is not None:
             columns = set(columns) | set(RECORD_KEYS)
@@ -525,7 +685,7 @@ class harvest_database:
         if with_run_info and len(df) and 'run' in df:
             runs = self.runs()
             if len(runs):
-                runs = runs[runs['code'] == code].drop(columns=['code'])
+                runs = runs[runs['code'] == code].drop(columns=['code', 'input_types'], errors='ignore')   # input_file() reads the type map itself
                 runs = runs.drop(columns=[c for c in runs.columns if c in df.columns and c != 'run'])   # per-record maestro_beat wins
                 df = df.merge(runs, on='run', how='left')
                 for c in RUN_KEYS + RUN_CODE_KEYS:
@@ -533,35 +693,98 @@ class harvest_database:
                         df[c] = df[c].fillna('')
         return df
 
+    # -------------------------------------------------------------------------- input files
+    _INPUT_FILES = {'tglf': 'input.tglf', 'neo': 'input.neo', 'cgyro': 'input.cgyro'}
+
+    def record(self, code, record):
+        '''One record as a pandas Series with its run's provenance (incl. the `input_types` map), from its input hash or a row of load()'''
+        if isinstance(record, str):
+            df = self._read_group(code, mask_fn=lambda read: read('hash') == record)
+            if len(df) == 0:
+                raise KeyError(f"harvest: no {code} record with hash {record} in {self.file}")
+            record = df.iloc[0]
+        row = pd.Series(record)
+        runs = self.runs()
+        if len(runs) and 'input_types' in runs:
+            prov = runs[(runs['run'] == row['run']) & (runs['code'] == code)]
+            if len(prov):
+                row = pd.concat([row, prov.iloc[0].drop(labels=[c for c in prov.columns if c in row.index or c == 'code'])])
+        return row
+
+    def input_file(self, code, record):
+        '''
+        Text of the input file (input.tglf / input.neo / input.cgyro) of one record, `record` = its input
+        hash or a row of load(). Keys in the order of the original file, types restored from the run's
+        `input_types` map (bools True/False as MITIM writes them, ints as ints, floats exact), missing
+        values (NaN / '' fills of keys this record did not have) dropped, `<KEY>__str` siblings used.
+        Records pushed before the type map existed come back with every number as a float.
+        '''
+        if code not in self._INPUT_FILES:
+            raise ValueError(f"harvest: input files can be written for {list(self._INPUT_FILES)}, not '{code}'")
+        row = self.record(code, record)
+        n_species = row.get('in_N_SPECIES', np.nan)
+        if code == 'cgyro' and not (isinstance(n_species, (int, float, np.number)) and np.isfinite(n_species)):
+            # schema < 5 CGYRO records hold pygacode params1D (lowercase), not input.cgyro: refuse instead of writing a bogus file
+            raise ValueError("harvest: this CGYRO record predates schema 5 and does not contain its input.cgyro")
+        types = {}
+        for col in ('input_types', RECORD_TYPES):   # run map, then this record's deviations
+            if isinstance(row.get(col, ''), str) and row.get(col, ''):
+                types.update(json.loads(row[col]))
+        keys = [k[3:] for k in row.index if k.startswith('in_') and not k.endswith(STR_SUFFIX) and k not in RUN_CODE_KEYS]   # in_process is provenance
+        lines = []
+        for key in [k for k in types if k in keys] + sorted(k for k in keys if k not in types):
+            v = row[f'in_{key}']
+            if isinstance(v, float) and np.isnan(v) or v is None or v == '':
+                v = row.get(f'in_{key}{STR_SUFFIX}', '')
+                if v is None or v == '' or (isinstance(v, float) and np.isnan(v)):
+                    continue
+            typ = types.get(key, 'str' if isinstance(v, str) else 'float')
+            lines.append(f"{key.ljust(23)} = {_format_input_value(v, typ)}")
+        return "\n".join(lines) + "\n"
+
+    def write_input_file(self, code, record, path):
+        '''Write input_file(code, record) to `path` (a folder gets <folder>/input.<code>); returns the path'''
+        path = Path(path)
+        if path.is_dir():
+            path = path / self._INPUT_FILES[code]
+        path.write_text(self.input_file(code, record))
+        return path
+
     # -------------------------------------------------------------------------- writing
     def push(self, staging_folders, timeout_s=600, stale_s=3600):
         '''
-        Append every unpushed staging file (<code>.jsonl tail + rolled <code>.jsonl.gz) of the given
-        folders to the central file, under the lock, then archive them as <code>.jsonl.pushed-<ts>.gz.
-        Records are deduplicated by (code, run, hash) within the call (MAESTRO may hand the
-        run_portals/ and beat_results/ twins). Returns {code: records_appended}.
+        Append every unpushed staging file of the given folders (plain tails and rolled .jsonl.gz of
+        every writer process, legacy <code>.jsonl names included) to the central file, under the
+        lock, then archive them as <stem>.jsonl.pushed-<ts>.gz. Records are deduplicated by
+        (code, run, hash) within the call (MAESTRO may hand the run_portals/ and beat_results/
+        twins). Returns {code: records_appended}. A push that fails (lock timeout, unreadable file,
+        ...) appends nothing and leaves its files in staging as rolled, unpushed archives.
         '''
         files = [f for folder in [Path(f) for f in staging_folders] if folder.is_dir()
-                 for f in sorted(folder.glob('*.jsonl*')) if _is_staged(f) and not _is_pushed(f)]
+                 for f in sorted(folder.glob('*.jsonl*')) if (_is_staged(f) and not _is_pushed(f)) or _is_orphan_claim(f, stale_s)]
         return self._push_files(files, timeout_s=timeout_s, stale_s=stale_s, archive=True)
 
     def _push_files(self, files, timeout_s=600, stale_s=3600, archive=True):
+        '''
+        archive=True claims each unpushed file by renaming it first (atomic, also on NFS): a writer
+        still alive simply starts a new tail, so nothing it appends or rolls later can be archived
+        without having been pushed. archive=False (peek) reads the files as they are and touches nothing.
+        '''
+        claimed = _claim(files) if archive else [(f, f) for f in files]
+        try:
+            appended = self._append_files([c for _, c in claimed], timeout_s=timeout_s, stale_s=stale_s)
+        except BaseException:
+            if archive:
+                _unclaim(claimed)
+            raise
+        if archive:
+            _archive(claimed)
+        return appended
+
+    def _append_files(self, files, timeout_s=600, stale_s=3600):
         import netCDF4
 
-        # Fold every plain tail into its rolled archive first, so each (folder, code) is one .gz.
-        # A peek (archive=False) reads the files as they are and touches nothing.
-        if archive:
-            rolled = []
-            for f in files:
-                if f.suffix == '.jsonl':
-                    _roll(f)
-                    f.unlink(missing_ok=True)
-                    f = f.with_name(f.name + '.gz')
-                if f.exists() and f not in rolled:
-                    rolled.append(f)
-            files = rolled
-
-        frames, runs_rows, seen = {}, {}, set()
+        frames, runs_rows, typed, seen = {}, {}, [], set()
         for f in files:
             code = _code_of(f)
             meta_file = f.parent / 'run_meta.json'
@@ -578,63 +801,82 @@ class harvest_database:
                     runs_rows[rkey] = {'run': rkey[0], 'code': code,
                                        **{k: run_meta.get(k, '') for k in RUN_KEYS if k != 'run'},
                                        **{k: per_code.get(k, 0 if k == 'in_process' else '') for k in RUN_CODE_KEYS}}
+                typed.append((rkey, row, _input_types(row)))
                 rows.append(row)
             if rows:
                 frames.setdefault(code, []).extend(rows)
 
         appended = {}
-        if frames:
-            with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
-                mode = 'a' if self.file.exists() else 'w'
-                with netCDF4.Dataset(self.file, mode, format='NETCDF4') as ds:
-                    for code, rows in frames.items():
-                        appended[code] = self._append_group(ds, code, _frame_from_rows(rows))
-                    self._upsert_runs(ds, list(runs_rows.values()))
-            print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
-
-        if archive:
-            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            for f in files:
-                if not _is_pushed(f):
-                    os.replace(f, f.with_name(f"{_code_of(f)}.jsonl.pushed-{ts}.gz"))
-
+        if not frames:
+            return appended
+        with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
+            # 1. Type every column of every group against what the file already holds, writing
+            #    nothing yet: a type conflict can no longer abort a push halfway through the groups
+            schema, run_index = self._schema()
+            # input types: extend each run's map (a run pushed again, e.g. by hand while alive, keeps
+            # its map and only appends new keys), deviating records carry their own
+            run_types = {rkey: json.loads(run_index[rkey][1] or '{}') if rkey in run_index else {} for rkey in runs_rows}
+            for rkey, row, row_types in typed:
+                over = _type_overrides(run_types[rkey], row_types)
+                if over:
+                    row[RECORD_TYPES] = json.dumps(over)
+            for rkey, row in runs_rows.items():
+                row['input_types'] = json.dumps(run_types[rkey])
+            type_updates = {run_index[rkey][0]: row['input_types'] for rkey, row in runs_rows.items()
+                            if rkey in run_index and row['input_types'] != (run_index[rkey][1] or '{}')}
+            plan = {code: _reconcile_frame(_frame_from_rows(rows), schema.get(code, {})) for code, rows in frames.items()}
+            new_runs = [r for r in runs_rows.values() if (r['run'], r['code']) not in run_index]
+            if new_runs:
+                plan[RUNS_GROUP] = _reconcile_frame(_frame_from_rows(new_runs), schema.get(RUNS_GROUP, {}))
+            # 2. Write
+            with netCDF4.Dataset(self.file, 'a' if self.file.exists() else 'w', format='NETCDF4') as ds:
+                for name, (k, cols) in plan.items():
+                    self._write_group(ds, name, cols, k)
+                    if name != RUNS_GROUP:
+                        appended[name] = k
+                if type_updates:
+                    grp = ds.groups[RUNS_GROUP]
+                    if 'input_types' not in grp.variables:
+                        grp.createVariable('input_types', str, ('record',))
+                    for idx, js in type_updates.items():
+                        grp.variables['input_types'][idx] = js
+        print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
         return appended
 
+    def _schema(self):
+        '''({group: {variable: is_string}}, {(run, code): (index, input_types)} of the runs group) of the central file'''
+        import netCDF4
+        schema, run_index = {}, {}
+        if not self.file.exists():
+            return schema, run_index
+        with netCDF4.Dataset(self.file, 'r') as ds:
+            for name, grp in ds.groups.items():
+                schema[name] = {v: grp.variables[v].dtype == str for v in grp.variables}
+            grp = ds.groups.get(RUNS_GROUP)
+            if grp is not None and 'record' in grp.dimensions and len(grp.dimensions['record']):
+                grp.set_auto_mask(False)
+                n = len(grp.dimensions['record'])
+                it = grp.variables['input_types'][:] if 'input_types' in grp.variables else [''] * n
+                for i, (r, c, js) in enumerate(zip(grp.variables['run'][:], grp.variables['code'][:], it)):
+                    run_index.setdefault((str(r), str(c)), (i, '' if js is None else str(js)))
+        return schema, run_index
+
     @staticmethod
-    def _append_group(ds, code, df):
-        grp = ds.groups[code] if code in ds.groups else ds.createGroup(code)
+    def _write_group(ds, name, cols, k):
+        grp = ds.groups[name] if name in ds.groups else ds.createGroup(name)
         if 'record' not in grp.dimensions:
             grp.createDimension('record', None)
             grp.setncattr('schema_version', SCHEMA_VERSION)
-        n, k = len(grp.dimensions['record']), len(df)
-        for col in df.columns:
-            is_str = not pd.api.types.is_numeric_dtype(df[col])
+        n = len(grp.dimensions['record'])
+        for col, (is_str, arr) in cols.items():
             if col not in grp.variables:
                 if is_str:
                     grp.createVariable(col, str, ('record',))
                 else:
                     grp.createVariable(col, 'f8', ('record',), fill_value=np.nan, zlib=True, chunksizes=(4096,))
-            var = grp.variables[col]
-            if is_str:
-                var[n:n + k] = np.array([str(v) for v in df[col].to_numpy()], dtype=object)
-            else:
-                var[n:n + k] = df[col].to_numpy(dtype='float64')
+            grp.variables[col][n:n + k] = arr
         grp.setncattr('last_push', datetime.datetime.now().isoformat(timespec='seconds'))
         return k
-
-    def _upsert_runs(self, ds, rows):
-        '''Append the (run, code) provenance rows not already present in the `runs` group'''
-        if not rows:
-            return 0
-        grp = ds.groups[RUNS_GROUP] if RUNS_GROUP in ds.groups else ds.createGroup(RUNS_GROUP)
-        existing = set()
-        if 'record' in grp.dimensions and len(grp.dimensions['record']):
-            grp.set_auto_mask(False)
-            existing = set(zip([str(v) for v in grp.variables['run'][:]], [str(v) for v in grp.variables['code'][:]]))
-        new = [r for r in rows if (r['run'], r['code']) not in existing]
-        if new:
-            self._append_group(ds, RUNS_GROUP, _frame_from_rows(new))
-        return len(new)
 
     @classmethod
     def from_staging(cls, folders, file=None):
@@ -665,7 +907,7 @@ class harvest_database:
             os.replace(self.file, aside)
             print(f"\t- harvest: previous file moved to {IOtools.clipstr(aside)}", typeMsg='w')
         files = sorted({f for root in [Path(r) for r in roots] for f in root.rglob('*.jsonl*')
-                        if f.parent.name == 'harvest' and _is_staged(f)})
+                        if f.parent.name == 'harvest' and (_is_staged(f) or _is_orphan_claim(f, 3600))})
         return self._push_files(files, archive=True)
 
     # -------------------------------------------------------------------------- interpreting
@@ -739,13 +981,22 @@ class harvest_database:
     _FLUXES = {'Qe': ['Qe', 'Qe_mean', 'efe_SI'], 'Qi': ['Qi', 'Qi_mean', 'efi_SI_0'], 'Ge': ['Ge', 'Ge_mean', 'pfe_SI']}
 
     # Species order differs between codes (TGLF: electrons first; NEO as MITIM writes it: electrons LAST;
-    # CGYRO: 0-indexed, any order), so electrons (charge -1) and the main ion (first charge +1) are found
-    # by charge: (charge key, a/LT key, a/Ln key, first index)
+    # CGYRO: any order), so electrons (charge -1) and the main ion (first charge +1) are found by charge:
+    # (charge key, a/LT key, a/Ln key, first index); CGYRO records before schema 5 held pygacode's 0-indexed names
     _SPECIES = {
         'tglf':  ('ZS_{}', 'RLTS_{}', 'RLNS_{}', 1),
         'neo':   ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
-        'cgyro': ('z_{}', 'dlntdr_{}', 'dlnndr_{}', 0),
+        'cgyro': ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
     }
+    _SPECIES_LEGACY = {'cgyro': ('z_{}', 'dlntdr_{}', 'dlnndr_{}', 0)}
+
+    @classmethod
+    def _species_keys(cls, code, df):
+        keys = cls._SPECIES[code]
+        legacy = cls._SPECIES_LEGACY.get(code)
+        if legacy is not None and f"in_{keys[0].format(keys[3])}" not in df.columns and f"in_{legacy[0].format(legacy[3])}" in df.columns:
+            return legacy
+        return keys
 
     # Collisionality used to color flux-vs-drive plots, as each code's own input (no conversion between
     # normalizations): TGLF XNUE is the electron-ion collision frequency; NEO only takes NU_1, the collision
@@ -767,7 +1018,7 @@ class harvest_database:
         '''(electron index, main-ion index) from the charges in the input file; None when not found'''
         if code not in cls._SPECIES:
             return None, None
-        zkey, _, _, i0 = cls._SPECIES[code]
+        zkey, _, _, i0 = cls._species_keys(code, df)
         z = {i: df[f'in_{zkey.format(i)}'].dropna().iloc[0] for i in range(i0, i0 + 12)
              if f'in_{zkey.format(i)}' in df.columns and df[f'in_{zkey.format(i)}'].notna().any()}
         ie = next((i for i, v in z.items() if v == -1), None)
@@ -779,7 +1030,7 @@ class harvest_database:
         '''{'Te': [col], 'Ti': [col], 'ne': [col]} with the electron / main-ion gradient names of this code'''
         if code not in cls._SPECIES:
             return {}
-        _, tkey, nkey, _ = cls._SPECIES[code]
+        _, tkey, nkey, _ = cls._species_keys(code, df)
         ie, ii = cls._species_index(code, df)
         drives = {}
         if ie is not None:
@@ -883,7 +1134,7 @@ class harvest_database:
     # species resolved by charge for CGYRO; GX names are template dependent and left out)
     _COORDS = {
         'tglf':  {'roa': ['RMIN_LOC'], 'aLTe': ['RLTS_1'], 'aLne': ['RLNS_1'], 'q': ['Q_LOC']},
-        'cgyro': {'roa': ['rmin'], 'q': ['q']},   # + electron gradients from _cgyro_drives
+        'cgyro': {'roa': ['RMIN', 'rmin'], 'q': ['Q', 'q']},   # + electron gradients from _cgyro_drives
     }
     _FLUX_PAIRS = [('Qe', ['Qe', 'Qe_mean']), ('Qi', ['Qi', 'Qi_mean']), ('Ge', ['Ge', 'Ge_mean'])]
 
@@ -1269,7 +1520,7 @@ class harvest_database:
     _PAIRS = {
         'tglf':  ['Te', 'Ti', 'ne', 'TAUS_2', 'XNUE', 'BETAE', 'Q_LOC', 'RMIN_LOC'],
         'neo':   ['Te', 'Ti', 'ne', 'NU_1', 'RHO_STAR', 'Q', 'SHEAR', 'RMIN_OVER_A'],
-        'cgyro': ['Te', 'Ti', 'ne', 'nu_ee', 'beta_star', 'q', 's', 'rmin'],
+        'cgyro': ['Te', 'Ti', 'ne', 'NU_EE', 'BETAE_UNIT', 'Q', 'S', 'RMIN', 'nu_ee', 'beta_star', 'q', 's', 'rmin'],
         'eped':  ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep'],
     }
 

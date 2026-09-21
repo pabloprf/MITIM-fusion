@@ -7,7 +7,9 @@ serialization, provenance written once per run and code), the polymorphic
 harvest_records/harvest_outputs interface on stand-in simulation objects (TGLF/NEO layout,
 CGYRO, GX, EPED), and the central netCDF database (schema-union append, runs table join,
 selective loading, two-process concurrent push under the mkdir lock, stale-lock recovery,
-rebuild, summary/interpret/plot).
+rebuild, summary/interpret/plot), column type flips across pushes (all-or-nothing), per-process
+staging files (two writers in one folder, legacy <code>.jsonl names), and the CGYRO run-history
+fields (restart chain, completion, cost).
 
 Everything runs in a temporary folder -- no transport code, no cluster.
 
@@ -67,7 +69,8 @@ def _fake_sim(code, rhos, inputs, outputs_attrs, sim_folder='base_x'):
 
 
 def _lines(folder, code):
-    return [json.loads(l) for l in (Path(folder) / f"{code}.jsonl").read_text().splitlines() if l.strip()]
+    '''Plain staged lines of `code` (this process writes <code>.<host>-<pid>.jsonl)'''
+    return [json.loads(l) for f in sorted(Path(folder).glob(f"{code}.*.jsonl")) for l in f.read_text().splitlines() if l.strip()]
 
 
 def _meta(folder):
@@ -167,7 +170,7 @@ def test_shared_staging_folder(tmp):
 
 def test_cgyro_gx_eped_interfaces(tmp):
     c = CGYROoutput.__new__(CGYROoutput)
-    c.params1D = {'n_species': 3, 'dlntdr_0': 2.0, 'nonlinear_flag': True}
+    c.params1D = {'n_species': 3, 'dlntdr_0': 2.0, 'nonlinear_flag': True, 'q_gb_norm': 0.5}
     c.Qe_mean, c.Qe_std, c.Qi_mean, c.Qi_std, c.Ge_mean, c.Ge_std, c.Mt_mean, c.Mt_std = 1., .1, 2., .2, .3, .03, 0., 0.
     c.Gi_all_mean, c.Gi_all_std = np.array([0.1, 0.2]), np.array([0.01, 0.02])
     c.t, c.tmin, c.linear = np.linspace(0, 500, 11), 250.0, False
@@ -186,7 +189,12 @@ def test_cgyro_gx_eped_interfaces(tmp):
     assert abs(c.averaging.stats['Qe']['std'] - c.Qe[250:].std() / np.sqrt(o['Qe_ncorr'])) < 1e-9, "std is the sample std / sqrt(ncorr) of the same window"
     prov = json.loads(c.harvest_provenance()['averaging'])
     assert prov['method'] == 'fixed' and prov['uncertainty'] == 'acf' and prov['tmin'] == 250.0 and 'sqrt(<flux>_ncorr)' in prov['std']
-    assert c.harvest_inputs()['nonlinear_flag'] == 1 and c.harvest_hash_extra() == {'t_last': 500.0}
+    assert o['derived_q_gb_norm'] == 0.5 and 'derived_n_species' not in o, "CGYRO-derived quantities (not inputs) travel as out_derived_*"
+    assert c.harvest_inputs() is None, "no folder -> the simulation object falls back to its own parsed inputs"
+    (tmp / 'cg').mkdir()
+    (tmp / 'cg' / 'input.cgyro_0.5000').write_text("NONLINEAR_FLAG=1\nN_SPECIES=3\nDELTA_T=0.04\n")
+    c.folder, c.suffix_read = tmp / 'cg', '_0.5000'
+    assert c.harvest_inputs() == {'NONLINEAR_FLAG': 1, 'N_SPECIES': 3, 'DELTA_T': 0.04} and c.harvest_hash_extra() == {'t_last': 500.0}
     assert c.harvest_version().startswith('26-Jun-11')
     # no averager (e.g. a partially read object) -> window fields NaN, provenance empty, no crash
     c2 = CGYROoutput.__new__(CGYROoutput)
@@ -257,8 +265,8 @@ def test_push_schema_union_and_load(tmp):
     db = H.harvest_database(file)
     n = db.push([fA])
     assert n == {'tglf': 2}, n
-    pushed = list(fA.glob('tglf.jsonl.pushed-*'))
-    assert not (fA / 'tglf.jsonl').exists() and len(pushed) == 1 and pushed[0].name.endswith('.gz'), "pushed file is gzipped in place"
+    pushed = list(fA.glob('tglf.*jsonl.pushed-*'))
+    assert not list(fA.glob('tglf.*.jsonl')) and len(pushed) == 1 and pushed[0].name.endswith('.gz'), "pushed file is gzipped in place"
     assert db.push([fA]) == {}, "nothing left to push"
     H._SEEN.clear()
     assert H.harvest_recorder(_opts(fA))._write({'code': 'tglf', 'inputs': {'A': 1.0, 'B': 2.0}, 'outputs': {'Qe': 1.0}, 'meta': {}}) == 0, "dedup against the gzipped archive"
@@ -302,7 +310,8 @@ def test_rolling_compression(tmp):
             rec._write({'code': 'tglf', 'inputs': {f'K{j}': float(j) for j in range(20)} | {'RLTS_1': float(i)}, 'outputs': {'Qe': float(i)}, 'meta': {}})
     finally:
         H.ROLL_BYTES = saved
-    gz, plain = folder / 'tglf.jsonl.gz', folder / 'tglf.jsonl'
+    stem = H._writer_stem('tglf')
+    gz, plain = folder / f'{stem}.jsonl.gz', folder / f'{stem}.jsonl'
     assert gz.exists() and plain.stat().st_size < 3000, "tail stays below the threshold"
     with gzip.open(gz, 'rb') as fi:
         uncompressed = len(fi.read())
@@ -322,7 +331,7 @@ def test_rolling_compression(tmp):
     file = tmp / 'db5' / 'central.nc'
     db = H.harvest_database(file)
     assert db.push([folder]) == {'tglf': 55}
-    assert not gz.exists() and not plain.exists() and len(list(folder.glob('tglf.jsonl.pushed-*.gz'))) == 1
+    assert not gz.exists() and not plain.exists() and len(list(folder.glob('tglf.*jsonl.pushed-*.gz'))) == 1
     assert len(db.load('tglf')) == 55 and db.push([folder]) == {}
     print("PASS rolling gzip staging: bounded plain tail, multi-member archive, dedup, truncated member, push")
 
@@ -370,7 +379,7 @@ def test_stale_and_busy_lock(tmp):
         raise AssertionError("push must time out on a fresh lock")
     except TimeoutError:
         pass
-    assert time.time() - t0 >= 2 and (folder / 'tglf.jsonl.gz').exists() and len(list(folder.glob('*.pushed-*'))) == 1, "staging must be left intact (rolled, unpushed) after a failed push"
+    assert time.time() - t0 >= 2 and (folder / f"{H._writer_stem('tglf')}.jsonl.gz").exists() and len(list(folder.glob('*.pushed-*'))) == 1 and not list(folder.glob('*.claim-*')), "staging must be left intact (rolled, unpushed) after a failed push"
     lock.rmdir()
     assert H.harvest_database(file).push([folder]) == {'tglf': 1}
     print("PASS lock: stale lock broken, fresh lock times out and leaves staging intact")
@@ -503,6 +512,176 @@ def test_statistics(tmp):
     print("PASS statistics: Spearman/PRCC pick the true drives, scan-trick elasticities 3 and 2 recovered, plots")
 
 
+def test_type_flips(tmp):
+    '''A column keeps the type it was created with; later pushes of the other type are converted or go to <col>__str, never fail halfway'''
+    file = tmp / 'dbT' / 'central.nc'
+    db = H.harvest_database(file)
+    fA, fB, fC = (tmp / f'runT{k}' / 'harvest' for k in 'ABC')
+    rA = H.harvest_recorder(_opts(fA))
+    rA._write({'code': 'tglf', 'inputs': {'X': 1.0, 'MODE': 'GYRO'}, 'outputs': {'Qe': 1.0, 'kind': 'ITG'}, 'meta': {}})
+    assert db.push([fA]) == {'tglf': 1}
+    rB = H.harvest_recorder(_opts(fB))
+    rB._write({'code': 'tglf', 'inputs': {'X': 'abc', 'MODE': 3}, 'outputs': {'Qe': 2.0, 'kind': 7.5}, 'meta': {}})
+    rB._write({'code': 'tglf', 'inputs': {'X': 2.5, 'MODE': 'x'}, 'outputs': {'Qe': 3.0, 'kind': 'TEM'}, 'meta': {}})
+    rB._write({'code': 'neo', 'inputs': {'N': 1}, 'outputs': {'Qi': 0.1}, 'meta': {}})
+    assert db.push([fB]) == {'tglf': 2, 'neo': 1}
+    df = db.load('tglf', with_run_info=False)
+    # str into f8: parseable -> number, else NaN + the string in the sibling
+    assert df['in_X'].iloc[0] == 1.0 and np.isnan(df['in_X'].iloc[1]) and df['in_X'].iloc[2] == 2.5
+    assert list(df['in_X__str']) == ['', 'abc', ''], list(df['in_X__str'])
+    # numbers into a str column: written as strings
+    assert list(df['in_MODE']) == ['GYRO', '3', 'x'] and list(df['out_kind']) == ['ITG', '7.5', 'TEM']
+    # a push whose reconciliation fails writes NOTHING (no group appended), and its staging goes back intact
+    import netCDF4
+    rC = H.harvest_recorder(_opts(fC))
+    rC._write({'code': 'tglf', 'inputs': {'X': 9.0}, 'outputs': {'Qe': 9.0}, 'meta': {}})
+    rC._write({'code': 'neo', 'inputs': {'N': 2}, 'outputs': {'Qi': 0.2}, 'meta': {}})
+    orig = H._reconcile_frame
+    def failing(df, existing):
+        if 'in_N' in df.columns:
+            raise TypeError("injected failure on the second group")
+        return orig(df, existing)
+    H._reconcile_frame = failing
+    try:
+        db.push([fC])
+        raise AssertionError("push must raise")
+    except TypeError:
+        pass
+    finally:
+        H._reconcile_frame = orig
+    with netCDF4.Dataset(file) as ds:
+        assert len(ds.groups['tglf'].dimensions['record']) == 3 and len(ds.groups['neo'].dimensions['record']) == 1, "nothing appended"
+    assert not list(fC.glob('*.claim-*')) and not list(fC.glob('*.pushed-*')) and len(list(fC.glob('*.jsonl.gz'))) == 2, "staging restored as rolled archives"
+    assert db.push([fC]) == {'tglf': 1, 'neo': 1} and len(db.load('tglf')) == 4
+    print("PASS type flips: f8<-str parse or __str sibling, str<-number, failed reconciliation writes nothing")
+
+
+def _stage_worker(args):
+    folder, n, tag, roll = args
+    sys.path.insert(0, str(mitim_root))
+    from mitim_tools.harvest_tools import HARVESTtools as H2
+    H2.ROLL_BYTES = roll
+    rec = H2.harvest_recorder(H2.options_from_namelist({'enabled': True}, folder))
+    for i in range(n):
+        rec._write({'code': 'tglf', 'inputs': {'RLTS_1': float(i), 'tag': tag, 'pad': 'x' * 200}, 'outputs': {'Qe': float(i)}, 'meta': {}})
+    return os.getpid()
+
+
+def test_concurrent_staging_same_folder(tmp):
+    '''Two processes staging (and rolling) into ONE folder at the same time: each owns its files, no line lost'''
+    folder = tmp / 'shared' / 'harvest'
+    H.options_from_namelist({'enabled': True}, folder)
+    ctx = multiprocessing.get_context('spawn')
+    with ctx.Pool(2) as pool:
+        pids = pool.map(_stage_worker, [(folder, 300, 'a', 2000), (folder, 300, 'b', 2000)])
+    stems = {H._stem_of(f) for f in folder.glob('tglf.*.jsonl*')}
+    assert len(stems) == 2 and all(any(str(p) in s for s in stems) for p in pids), stems
+    assert len(list(folder.glob('*.jsonl.gz'))) == 2, "both writers rolled"
+    db = H.harvest_database(tmp / 'dbS' / 'central.nc')
+    assert db.push([folder]) == {'tglf': 600}
+    df = db.load('tglf')
+    assert sorted(df.groupby('in_tag').size()) == [300, 300]
+    print("PASS two processes staging into the same folder with rolls: 600/600 records, one file set per writer")
+
+
+def test_legacy_staging_files(tmp):
+    '''Runs staged before per-process files (<code>.jsonl, <code>.jsonl.gz, <code>.jsonl.pushed-<ts>.gz) still dedup, push and rebuild'''
+    folder = tmp / 'legacy' / 'Outputs' / 'harvest'
+    o = _opts(folder)
+    rid = o['run_meta']['run']
+    rows = []
+    for i in range(4):
+        inputs = {'RLTS_1': float(i)}
+        rows.append(json.dumps({'run': rid, 'hash': H.input_hash('tglf', inputs), 'in_RLTS_1': float(i), 'out_Qe': float(i)}))
+    with gzip.open(folder / 'tglf.jsonl.gz', 'wt') as fo:
+        fo.write('\n'.join(rows[:2]) + '\n')
+    (folder / 'tglf.jsonl').write_text('\n'.join(rows[2:]) + '\n')
+    assert H._code_of(folder / 'tglf.jsonl') == 'tglf' and H._code_of(folder / 'tglf.host-12.jsonl.gz') == 'tglf'
+    H._SEEN.clear()
+    rec = H.harvest_recorder(o)
+    assert rec._write({'code': 'tglf', 'inputs': {'RLTS_1': 2.0}, 'outputs': {'Qe': 2.0}, 'meta': {}}) == 0, "dedup reads the legacy tail"
+    assert rec._write({'code': 'tglf', 'inputs': {'RLTS_1': 0.0}, 'outputs': {'Qe': 0.0}, 'meta': {}}) == 0, "... and the legacy archive"
+    assert rec._write({'code': 'tglf', 'inputs': {'RLTS_1': 7.0}, 'outputs': {'Qe': 7.0}, 'meta': {}}) == 1
+    db = H.harvest_database(tmp / 'dbL' / 'central.nc')
+    assert db.push([folder]) == {'tglf': 5}
+    pushed = sorted(f.name for f in folder.glob('*.pushed-*'))
+    assert len(pushed) == 2 and any(n.startswith('tglf.jsonl.pushed-') for n in pushed), pushed
+    assert not list(folder.glob('*.jsonl')) and not list(folder.glob('*.jsonl.gz'))
+    # an old pushed archive from before the change is re-read by rebuild
+    assert db.rebuild([tmp / 'legacy']) == {'tglf': 5}
+    print("PASS legacy <code>.jsonl staging: dedup, push, archive and rebuild")
+
+
+def _cgyro_folder(root, ctx, it, rho, t_last, sources=None, sub='base_cgyro', json_sub=None, info=None, extra=None):
+    d = root / f"{ctx}{it}" / 'transport_simulation_folder' / sub
+    d.mkdir(parents=True, exist_ok=True)
+    s = f"_{rho:.4f}"
+    t = np.arange(1.0, t_last + 0.5, 1.0)
+    (d / f"out.cgyro.time{s}").write_text("\n".join(f" {x:.4E}  1.0E-03  1.0E-06  1.0E-02" for x in t) + "\n")
+    if sources is not None:
+        (root / f"{ctx}{it}" / 'transport_simulation_folder' / (json_sub or sub)).mkdir(parents=True, exist_ok=True)
+        (root / f"{ctx}{it}" / 'transport_simulation_folder' / (json_sub or sub) / 'restart_sources.json').write_text(
+            json.dumps({'mode': 'all', 'evaluation_number': it, 'context_label': 'Evaluation', 'sources': sources}))
+    header = " nc_loc | nv_loc | nsplit | n_jtheta | n_MPI | n_OMP\n  2944      512     2048          4        8   16\n"
+    (d / f"out.cgyro.info{s}").write_text(info if info is not None else f"INFO: (CGYRO) Initializing with restart data.\n{header}INFO: (CGYRO) GPU-aware code triggered.\nEXIT: (CGYRO) Normal\n")
+    (d / f"out.cgyro.hosts{s}").write_text("".join(f"RANK={r} C1=0 C2={r} host=node{r // 4}\n" for r in range(8)))
+    (d / f"input.cgyro{s}").write_text("NONLINEAR_FLAG=1\nMAX_TIME=100\nDELTA_T=0.04\n")
+    for name, text in (extra or {}).items():
+        (d / f"{name}{s}").write_text(text)
+    obj = SimpleNamespace(folder=d, suffix_read=s, t=t, timing_total=np.full(len(t), 30.0), timing_setup={'input': 1.0, 'coll_init': 9.0},
+                          cgyro_version='26-May-07 18:39:35 [208e0edea [2025-04-29]][PSFCLUSTER_GPU][0.0]')
+    return obj
+
+
+def test_cgyro_run_fields(tmp):
+    from mitim_tools.gacode_tools.utils.CGYROutils import harvest_run_fields
+    root, rho, k = tmp / 'pc' / 'Execution', 0.5, '0.5000'
+    # chain ("all"): ev0 cold (t=100) <- ev1 (t=150) <- ev2 (t=120) <- ev3 (t=80)
+    cold = harvest_run_fields(_cgyro_folder(root, 'Evaluation.', 0, rho, 100,
+                                            info=" nc_loc | nv_loc | nsplit | n_jtheta | n_MPI | n_OMP\n 1 1 1 1 4 8\nEXIT: (CGYRO) Normal\n"))
+    assert cold['restart_warm'] == 0 and cold['restart_t_inherited'] == 0 and np.isnan(cold['restart_source_iter'])
+    _cgyro_folder(root, 'Evaluation.', 1, rho, 150, sources={k: 0})
+    _cgyro_folder(root, 'Evaluation.', 2, rho, 120, sources={k: 1})
+    o = harvest_run_fields(_cgyro_folder(root, 'Evaluation.', 3, rho, 80, sources={k: 2}))
+    assert o['restart_warm'] == 1 and o['restart_source_iter'] == 2 and o['restart_t_inherited'] == 100 + 150 + 120, o
+    # completion and cost
+    assert o['max_time'] == 100 and o['t_start'] == 0 and o['reached_max_time'] == 1 and o['budget_stop'] == 0
+    assert o['cost_s_per_acs'] == 30.0 and o['wall_s'] == 30.0 * 80 + 10.0
+    assert o['n_mpi'] == 8 and o['n_omp'] == 16 and o['n_nodes'] == 2 and o['gpu'] == 1
+    # the plotter's alignment gives the same offset (its walker is what harvest calls)
+    from mitim_tools.gacode_tools.utils import CGYROplot
+    src = CGYROplot.load_restart_sources_for_iterations([(i, root / f"Evaluation.{i}" / 'transport_simulation_folder') for i in range(4)])
+    assert src[3]['parents'][k] == 2
+    # a parent missing on disk -> NaN, never an undercount
+    import shutil as sh
+    sh.rmtree(root / 'Evaluation.1')
+    assert np.isnan(harvest_run_fields(_cgyro_folder(root, 'Evaluation.', 3, rho, 80, sources={k: 2}))['restart_t_inherited'])
+    # truncated (no EXIT after the last launch), stopped by the budget watchdog, continued in place
+    header = " nc_loc | nv_loc | nsplit | n_jtheta | n_MPI | n_OMP\n 1 1 1 1 8 16\n"
+    t = harvest_run_fields(_cgyro_folder(root, 'Evaluation.', 4, rho, 60, sources={k: 3}, info=f"EXIT: (CGYRO) Normal\nINFO: (CGYRO) Restart data found.\n{header}",
+                                         extra={'mitim_budget.tag': 'BUDGET t=60'}))
+    assert t['reached_max_time'] == 0 and t['budget_stop'] == 1 and np.isnan(t['t_start']), "EXIT of an earlier launch does not count"
+    t = harvest_run_fields(_cgyro_folder(root, 'Evaluation.', 5, rho, 60, sources={k: 3}, info=f"INFO: (CGYRO) Restart data found.\n{header}",
+                                         extra={'.mitim_t0': '40.0\n'}))
+    assert t['t_start'] == 40.0 and t['reached_max_time'] == 0
+    # warm start without a restart_sources.json (restart_from_folder): warm, parent unknown
+    w = harvest_run_fields(_cgyro_folder(tmp / 'rf', 'Evaluation.', 0, rho, 50))
+    assert w['restart_warm'] == 1 and np.isnan(w['restart_source_iter']) and np.isnan(w['restart_t_inherited'])
+    # batched: JSON in <base>, traces in <base>_plasma<p>, parents are plasma 0
+    rb = tmp / 'pb' / 'Execution'
+    _cgyro_folder(rb, 'Evaluation.', 0, rho, 90, sub='base_cgyro_plasma0')
+    b = harvest_run_fields(_cgyro_folder(rb, 'Evaluation.', 1, rho, 30, sub='base_cgyro_plasma1', sources={k: 0}, json_sub='base_cgyro'))
+    assert b['restart_source_iter'] == 0 and b['restart_t_inherited'] == 90, b
+    # simple-relax initialization folders chain the same way
+    ri = tmp / 'sr' / 'Initialization' / 'initialization_simple_relax'
+    _cgyro_folder(ri, 'portals_sr_ev_', 0, rho, 70)
+    assert harvest_run_fields(_cgyro_folder(ri, 'portals_sr_ev_', 1, rho, 10, sources={k: 0}))['restart_t_inherited'] == 70
+    # nothing on disk -> NaN everywhere, no exception
+    e = harvest_run_fields(SimpleNamespace())
+    assert all(np.isnan(v) for v in e.values()), e
+    print("PASS CGYRO run fields: restart chain (all/batched/SR), missing parent NaN, completion, budget stop, in-place t_start, cost, ranks")
+
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvest_test_'))
     try:
@@ -516,6 +695,10 @@ def main():
         test_stale_and_busy_lock(tmp)
         test_database_inspection_and_rebuild(tmp)
         test_statistics(tmp)
+        test_type_flips(tmp)
+        test_concurrent_staging_same_folder(tmp)
+        test_legacy_staging_files(tmp)
+        test_cgyro_run_fields(tmp)
         print("\nALL PASS")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

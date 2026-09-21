@@ -1,0 +1,99 @@
+#-------------------------------------------------------------------------
+# NEO input file modified by MITIM 5.0.0
+#-------------------------------------------------------------------------
+
+
+# Control parameters
+# ------------------
+
+SILENT_FLAG             = 0
+EQUILIBRIUM_MODEL       = 2
+PROFILE_MODEL           = 1
+PROFILE_ERAD0_MODEL     = 1
+N_RADIAL                = 1
+N_THETA                 = 17
+N_ENERGY                = 6
+N_XI                    = 17
+COLLISION_MODEL         = 4
+SIM_MODEL               = 2
+SPITZER_MODEL           = 0
+ROTATION_MODEL          = 2
+THREED_MODEL            = 0
+THREED_EXB_MODEL        = 0
+
+
+# Plasma/Geometry parameters
+# ------------------
+
+N_SPECIES               = 5
+IPCCW                   = 1
+BTCCW                   = 1
+OMEGA_ROT               = -1.80540E-02
+OMEGA_ROT_DERIV         = 5.11222E-03
+NU_1                    = 2.04977E-03
+RHO_STAR                = 3.56243E-03
+RMIN_OVER_A             = 5.51610E-01
+RMAJ_OVER_A             = 3.17081E+00
+SHIFT                   = -5.85508E-02
+ZMAG_OVER_A             = 5.19669E-02
+S_ZMAG                  = -2.31605E-02
+Q                       = 1.15189E+00
+SHEAR                   = 1.28321E+00
+KAPPA                   = 1.26197E+00
+S_KAPPA                 = 5.15024E-02
+DELTA                   = 1.55846E-02
+S_DELTA                 = 2.85159E-02
+ZETA                    = -2.46073E-03
+S_ZETA                  = -1.48016E-02
+SHAPE_COS0              = -5.84306E-02
+SHAPE_S_COS0            = -1.31895E-02
+SHAPE_COS1              = -1.43810E-02
+SHAPE_S_COS1            = -2.11336E-02
+SHAPE_COS2              = 4.11683E-04
+SHAPE_S_COS2            = 5.57493E-03
+SHAPE_COS3              = 1.37158E-04
+SHAPE_S_COS3            = 1.42190E-03
+SHAPE_COS4              = -2.89135E-04
+SHAPE_S_COS4            = -5.13038E-04
+SHAPE_COS5              = -5.15492E-05
+SHAPE_S_COS5            = 9.13468E-05
+SHAPE_SIN3              = -3.67027E-04
+SHAPE_S_SIN3            = -2.99843E-03
+SHAPE_SIN4              = -2.36926E-04
+SHAPE_S_SIN4            = -7.28874E-04
+SHAPE_SIN5              = -5.67541E-05
+SHAPE_S_SIN5            = 7.14370E-04
+SHAPE_COS6              = 0.00000E+00
+SHAPE_S_COS6            = 0.00000E+00
+SHAPE_SIN6              = 0.00000E+00
+SHAPE_S_SIN6            = 0.00000E+00
+Z_1                     = 1.00000E+00
+MASS_1                  = 1.00026E+00
+DLNNDR_1                = 5.23895E-01
+DLNTDR_1                = 1.84165E+00
+TEMP_1                  = 4.11332E-01
+DENS_1                  = 8.35704E-01
+Z_2                     = 6.00000E+00
+MASS_2                  = 5.96501E+00
+DLNNDR_2                = 5.55027E-01
+DLNTDR_2                = 1.84777E+00
+TEMP_2                  = 4.13731E-01
+DENS_2                  = 2.69295E-02
+Z_3                     = 7.00000E+00
+MASS_3                  = 6.95613E+00
+DLNNDR_3                = 5.55027E-01
+DLNTDR_3                = 1.84777E+00
+TEMP_3                  = 4.13731E-01
+DENS_3                  = 2.30824E-08
+Z_4                     = 1.00000E+00
+MASS_4                  = 1.00026E+00
+DLNNDR_4                = 7.53224E+00
+DLNTDR_4                = 4.51665E+00
+TEMP_4                  = 7.59406E+00
+DENS_4                  = 2.36351E-03
+Z_5                     = -1.00000E+00
+MASS_5                  = 2.72445E-04
+DLNNDR_5                = 5.55028E-01
+DLNTDR_5                = 2.51440E+00
+TEMP_5                  = 1.00000E+00
+DENS_5                  = 1.00000E+00
