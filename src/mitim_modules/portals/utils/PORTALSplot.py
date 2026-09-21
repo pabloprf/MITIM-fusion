@@ -2566,6 +2566,8 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
             getattr(self.powerstate, "predicted_channels", []) or [],
         )
 
+    plot_cgyro_live_status(root_folder, fn, fn_color_start + 2)
+
     # Overview first: every evaluation in one figure (rows channels, columns radii), warm-start
     # time on x and evaluation on the colorbar, plus the mean-vs-evaluation convergence view.
     # The chunked per-radius / per-channel tabs below are the zoom-in on individual windows.
@@ -2611,6 +2613,81 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         targets_per_iter=self._cgyro_targets_cache,
         time_mode="local",
     )
+
+
+def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
+    '''
+    Where the evaluation still in flight is running: (iteration, scratch source) with the source as
+    CGYROplot.live_source_* returns it, or None. A submitted job is the latest evaluation whose
+    cgyro_submission.json exists (written at submit, deleted once its results are read); without one,
+    a bash-mode job of the LAST evaluation is found from its staged execution script (local scratch only).
+    '''
+    from mitim_tools.gacode_tools import CGYROtools
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    for it, folder in reversed(iter_folders):
+        path = folder / base_subfolder / CGYROtools.CGYRO._submission_metadata_filename
+        if path.is_file():
+            return it, CGYROplot.live_source_from_submission(path)
+    if iter_folders:
+        it, folder = iter_folders[-1]
+        tmp = folder / "tmp_cgyro"
+        if tmp.is_dir():
+            source = CGYROplot.live_source_from_bash(tmp)
+            if source is not None:
+                return it, source
+    return None
+
+
+def plot_cgyro_live_status(root_folder, fn, fn_color):
+    '''
+    "CGYRO live" tab: pull the in-progress outputs of the running evaluation from its scratch into a
+    throwaway folder, read them with the run's own averaging settings, and plot per-radius traces +
+    timing (CGYROplot.plot_live_status). Nothing is written to the run folder or the scratch.
+    Settings come from the run's namelist.portals.yaml (the merged parameters prep() writes), not from
+    a powerstate, so the tab also works before any evaluation has finished. Plain YAML load on
+    purpose: read_mitim_yaml would execute the run's import:: sidecar functions.
+    '''
+    import tempfile
+    import yaml
+    from pathlib import Path
+    from mitim_tools.gacode_tools.utils import CGYROplot
+    from mitim_modules.portals.utils.PORTALSanalysis import _model_highest_fidelity, _resolve_code_from_options
+
+    root_folder = Path(root_folder)
+    try:
+        params = yaml.safe_load((root_folder / "namelist.portals.yaml").read_text())
+        transport = params["transport"]
+        cgyro_key = _model_highest_fidelity(transport["evaluator_instance_attributes"]["turbulence_model"])
+    except (OSError, KeyError, TypeError, yaml.YAMLError) as e:
+        print(f"\t- Could not read the run namelist for the CGYRO live-status tab ({type(e).__name__}: {e}); skipping it", typeMsg='w')
+        return
+    if _resolve_code_from_options(transport, cgyro_key) != "cgyro":
+        return
+    read_cfg = ((transport.get("options") or {}).get(cgyro_key) or {}).get("read") or {}
+    read_kwargs = {k: v for k, v in read_cfg.items() if k in ("tmin", "tmin_is_rel", "last_tmin_for_linear", "averaging")}
+    base_subfolder = f"base_{cgyro_key}"
+    iter_folders = list(_iterate_portals_evaluation_folders(root_folder))
+
+    found = _find_running_cgyro_evaluation(iter_folders, base_subfolder)
+    if found is None:
+        print("\t- No CGYRO evaluation in flight; skipping the live-status tab")
+        return
+    it, (machine_settings, folder_execution, pairs) = found
+    print(f"\t- Adding live-status tab of CGYRO evaluation {it} ({machine_settings['machine']}:{folder_execution})")
+
+    with tempfile.TemporaryDirectory(prefix="mitim_cgyro_live_") as tmp:
+        base = Path(tmp) / base_subfolder
+        try:
+            info = CGYROplot.fetch_live_outputs(machine_settings, folder_execution, pairs, base)
+        except Exception as e:
+            print(f"\t- Could not fetch the live CGYRO outputs ({type(e).__name__}: {e}); skipping the live-status tab", typeMsg='w')
+            return
+        rhos = sorted(info)
+        tool = CGYROplot.load_tool_for_iteration(Path(tmp), rhos, read_kwargs=read_kwargs, base_subfolder=base_subfolder)
+        targets = _load_turb_targets_for_iterations([(it, dict(iter_folders)[it])], (params.get("solution") or {}).get("predicted_channels") or [])
+        CGYROplot.plot_live_status(fn, fn_color, rhos, tool, info, base,
+                                   label=f"CGYRO live (ev {it})", targets_per_iter=targets, it=it)
 
 
 def PORTALSanalyzer_plotModelComparison(

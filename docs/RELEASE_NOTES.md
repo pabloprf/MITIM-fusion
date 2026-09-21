@@ -4,6 +4,17 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
+    "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
+    radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only
+    target, plus a wall-clock row with the cost of 1 a/cs and the two most expensive CGYRO sections.
+    Titles carry the last simulated time, the age of the last output (stalls), the time left to
+    `MAX_TIME` per radius and, for the evaluation, when its slowest radius finishes; the time axis runs
+    out to `MAX_TIME`. The scratch folder comes from `cgyro_submission.json` (submitted runs) or the
+    staged execution script (bash runs, local scratch); remote scratch is pulled over SFTP into a
+    temporary folder, and neither the run folder nor the scratch is written to. Also rendered when no
+    evaluation has finished yet, which is when it is most useful.
+
 *   💥 **CGYRO `TOROIDALS_PER_PROC` is now chosen for communication locality on multi-node radial
     calls.** CGYRO's grid is `n_proc = n_proc_1 x n_toroidal_procs`, and `n_toroidal_procs =
     N_TOROIDAL/TOROIDALS_PER_PROC` is the size of the nonlinear all-to-all communicator, which

@@ -1429,6 +1429,10 @@ class PORTALSinitializer:
         '''
         if len(self.powerstates) == 0:
             print("- No powerstates available to plot metrics", typeMsg="w")
+            # A CGYRO evaluation may still be running with nothing finished yet: that is when its live status matters most
+            if show_transport_models and self.fn is not None:
+                from mitim_modules.portals.utils.PORTALSplot import plot_cgyro_live_status
+                plot_cgyro_live_status(self.folder, self.fn, kwargs.get('fn_color', 2))
             return
 
         # Resolve per-tab labels. None -> auto from extra_lab. Explicit

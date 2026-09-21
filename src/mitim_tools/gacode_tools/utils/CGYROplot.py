@@ -9,6 +9,11 @@ restart mode); this module handles CGYRO-specific loading and drawing.
 """
 
 import json
+import os
+import shlex
+import shutil
+import time
+from pathlib import Path
 
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -17,7 +22,7 @@ from matplotlib.patches import Patch
 
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.gacode_tools import CGYROtools
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.LOGtools import HiddenPrints, printMsg as print
 
 
@@ -950,3 +955,205 @@ def plot_flux_convergence(
                 ax.set_xlabel("evaluation")
             GRAPHICStools.addDenseAxis(ax)
     axs[0, 0].legend(loc='best', fontsize=7, framealpha=0.9)
+
+
+# ---------------------------------------------------------------------------
+# Live status of a running CGYRO job
+# ---------------------------------------------------------------------------
+
+# The minimal read set, plus input.cgyro (PRINT_STEP, MAX_TIME) and .mitim_t0 (simulated time at
+# launch). out.cgyro.time goes LAST: copied after bin.cgyro.ky_flux it can only be longer, which
+# CGYROoutput._reconcile_time_vector trims.
+_LIVE_FILES = [
+    "input.cgyro", "input.cgyro.gen", ".mitim_t0",
+    "bin.cgyro.geo", "out.cgyro.egrid", "out.cgyro.equilibrium", "out.cgyro.grids", "out.cgyro.hosts",
+    "out.cgyro.memory", "out.cgyro.mpi", "out.cgyro.prec", "out.cgyro.rotation", "out.cgyro.startups",
+    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing",
+    "bin.cgyro.freq", "bin.cgyro.ky_cflux", "bin.cgyro.ky_flux", "out.cgyro.time",
+]
+
+
+def live_source_from_submission(submission_json):
+    '''Where a submitted (run_type submit) CGYRO job runs, from its cgyro_submission.json:
+    (machineSettings, scratch folder, [(subfolder, rho), ...]).'''
+    meta = json.loads(Path(submission_json).read_text())
+    pairs = [(sub, float(rho)) for sub, rhos in meta["kwargs_organize"]["code_executor"].items() for rho in rhos]
+    return meta["job"]["machineSettings"], meta["job"]["folderExecution"], pairs
+
+
+def live_source_from_bash(tmp_folder):
+    '''
+    Where a run_type normal (bash) CGYRO job runs, when no submission JSON exists: the scratch folder
+    is the first `cd` of the execution script staged in tmp_<code>, and the radii are the staged
+    <subfolder>/rho_* folders. Only LOCAL scratch is supported this way (the machine is not recorded),
+    so this returns None when the folder is not on this filesystem.
+    '''
+    tmp_folder = Path(tmp_folder)
+    for script in sorted(tmp_folder.glob("mitim_bash*.src")) + sorted(tmp_folder.glob("mitim_shell_executor*.sh")):
+        for line in script.read_text().splitlines():
+            if line.strip().startswith("cd "):
+                folder_execution = shlex.split(line.strip())[1]
+                if not Path(folder_execution).is_dir():
+                    return None
+                pairs = sorted((d.parent.name, float(d.name.split("rho_")[-1])) for d in tmp_folder.glob("*/rho_*") if d.is_dir())
+                return {"machine": "local"}, folder_execution, pairs
+    return None
+
+
+def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder):
+    '''
+    Copy the in-progress outputs of every radius from the scratch folder (local copy, or SFTP get from a
+    remote machine) into local_folder as <file>_<rho:.4f>, the layout of retrieved results, so the
+    standard reader applies. Read-only on the scratch side: no tarball, no renames, the job is untouched.
+    Returns {rho: {'mtime': last write of out.cgyro.time (epoch s) or None, 'machine': name}}.
+    '''
+    local_folder = Path(local_folder)
+    local_folder.mkdir(parents=True, exist_ok=True)
+    job = FARMINGtools.mitim_job(local_folder)
+    job.machineSettings = machine_settings
+    job.connect()
+    info = {}
+    try:
+        for sub, rho in pairs:
+            info[rho] = {"machine": machine_settings["machine"], "mtime": None}
+            remote = f"{folder_execution}/{sub}/rho_{rho:.4f}"
+            for name in _LIVE_FILES:
+                src, dst = f"{remote}/{name}", local_folder / f"{name}_{rho:.4f}"
+                try:
+                    if job.sftp is None:
+                        shutil.copyfile(src, dst)
+                        mtime = os.stat(src).st_mtime
+                    else:
+                        job.sftp.get(src, str(dst))
+                        mtime = job.sftp.stat(src).st_mtime
+                except OSError:
+                    continue
+                if name == "out.cgyro.time":
+                    info[rho]["mtime"] = mtime
+    finally:
+        job.close()
+    return info
+
+
+def _read_live_scalars(folder, rho):
+    '''PRINT_STEP, DELTA_T and MAX_TIME from input.cgyro, simulated time at launch (.mitim_t0) and the EXIT line of out.cgyro.info.'''
+    out = {}
+    try:
+        for line in (folder / f"input.cgyro_{rho:.4f}").read_text().splitlines():
+            key, _, val = line.partition("=")
+            if key.strip() in ("PRINT_STEP", "DELTA_T", "MAX_TIME") and val.split():
+                out[key.strip()] = float(val.split()[0])
+    except (OSError, ValueError):
+        pass
+    try:
+        out["t0"] = float((folder / f".mitim_t0_{rho:.4f}").read_text().strip() or 0.0)
+    except (OSError, ValueError):
+        pass
+    try:
+        out["exit"] = next((l.strip() for l in (folder / f"out.cgyro.info_{rho:.4f}").read_text().splitlines() if "EXIT" in l), None)
+    except OSError:
+        pass
+    return out
+
+
+def _fmt_duration(seconds):
+    if seconds is None or not np.isfinite(seconds):
+        return "?"
+    if seconds < 90:
+        return f"{seconds:.0f} s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
+
+
+def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live", targets_per_iter=None, it=None):
+    '''
+    Status of a CGYRO job still running: rows = channels (Qe, Qi, Ge) + wall-clock timing, columns = radii.
+
+    Flux rows: trace vs simulated time with the current window mean +/- std (the run's own averaging
+    settings) and the turbulence-only target (dashed) when the evaluation already wrote it.
+    Timing row: wall seconds per time step = TOTAL of each out.cgyro.timing row / PRINT_STEP (CGYRO
+    writes one row per print interval and zeroes its timers after it), and the two sections that cost
+    the most over the run. Its title gives the latest s/step and the wall time left to reach MAX_TIME,
+    counted from .mitim_t0 (MAX_TIME is additional on warm starts). The column title gives the last
+    simulated time and how long ago out.cgyro.time was written (a stall shows up there).
+    '''
+    fig = fn.add_figure(label=label, tab_color=fn_color)
+    axs = fig.subplots(nrows=len(_CHANNELS) + 1, ncols=len(rhos), squeeze=False, sharex="col")
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 9.5)
+    now = time.time()
+    etas = {}
+
+    for r_idx, rho in enumerate(rhos):
+        out = pick_output_for_rho(tool, rho, r_idx) if tool is not None else None
+        live = {**info.get(rho, {}), **_read_live_scalars(folder, rho)}
+        has_t = out is not None and getattr(out, "t", None) is not None and len(out.t) > 0
+
+        age = now - live["mtime"] if live.get("mtime") is not None else None
+        status = "exited" if live.get("exit") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet")
+        axs[0, r_idx].set_title(f"$\\rho={float(rho):.3f}$" + (f"  t={out.t[-1]:.1f} $a/c_s$" if has_t else "") + f"\n(last output {status})", fontsize=9)
+
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            if has_t and getattr(out, var, None) is not None:
+                ax.plot(out.t, getattr(out, var), color="b", lw=0.6)
+                m, sd, tmin = getattr(out, f"{var}_mean", None), getattr(out, f"{var}_std", None), getattr(out, "tmin", None)
+                if m is not None and tmin is not None:
+                    ax.hlines(float(m), float(tmin), float(out.t[-1]), colors="r", lw=1.6, zorder=6)
+                    if sd is not None:
+                        ax.fill_between([float(tmin), float(out.t[-1])], float(m) - float(sd), float(m) + float(sd), color="r", alpha=0.15, lw=0)
+            tval = _target_for(targets_per_iter, it, var, r_idx)
+            if tval is not None:
+                ax.axhline(tval, color="k", ls="--", lw=1.0, alpha=0.8, zorder=7)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[-1, r_idx]
+        timing = getattr(out, "timing", None) if out is not None else None
+        if has_t and timing is not None and len(timing):
+            # A timing row covers one output interval: PRINT_STEP time steps = PRINT_STEP*DELTA_T of
+            # simulated time (1 a/cs the way MITIM sets it), so the raw row divided by that span is the
+            # wall cost of 1 a/cs and reads directly against MAX_TIME.
+            dt_out = live["PRINT_STEP"] * live["DELTA_T"] if live.get("PRINT_STEP") and live.get("DELTA_T") else 1.0
+            total = out.timing_total
+            x = out.t[-len(total):] if len(out.t) >= len(total) else np.arange(len(total))
+            ax.plot(x, total / dt_out, color="k", lw=1.0, label="TOTAL")
+            share = timing.sum(axis=0)
+            for i, c in zip(np.argsort(share)[::-1][:2], ("tab:red", "tab:orange")):
+                ax.plot(x, timing[:, i] / dt_out, color=c, lw=0.8, label=f"{out.timing_names[i]} ({100 * share[i] / share.sum():.0f}%)")
+            # Headroom above the curves holds the one-row legend
+            ax.set_ylim(0, 1.45 * float(np.max(total / dt_out)))
+            ax.legend(loc="upper center", ncol=3, fontsize=7, framealpha=0.9, handlelength=1.2, columnspacing=0.8)
+            eta = None
+            if live.get("MAX_TIME") is not None:
+                eta = max(live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1], 0.0) * total[-1] / dt_out
+            etas[rho] = 0.0 if live.get("exit") else eta
+            state = "done" if live.get("exit") else _fmt_duration(eta)
+            ax.set_title(f"{total[-1] / dt_out:.4g} wall s / 1 $a/c_s$  \u00b7  to MAX_TIME: {state}", fontsize=8)
+        if r_idx == 0:
+            ax.set_ylabel("wall s / 1 $a/c_s$")
+        ax.set_xlabel("$t \\, c_s/a$")
+        GRAPHICStools.addDenseAxis(ax)
+
+        # x out to where this radius stops (MAX_TIME is additional to the warm-start time in
+        # .mitim_t0), so every column shows how much of its run is already done. Shared per column.
+        if live.get("MAX_TIME") is not None:
+            ax.set_xlim(0.0, live.get("t0", 0.0) + live["MAX_TIME"])
+
+    # The radii of one evaluation run concurrently, so the evaluation ends with the slowest of them
+    known = {r: e for r, e in etas.items() if e is not None}
+    if known:
+        slowest = max(known, key=known.get)
+        left = known[slowest]
+        text = "all radii done" if left == 0 else f"evaluation done in {_fmt_duration(left)} (slowest $\\rho$={slowest:.3f})"
+        missing = len(rhos) - len(known)
+        if missing:
+            text += f" + {missing} radius/radii with no timing yet"
+        fig.suptitle(f"{label}: {text}", fontsize=11)
+
+    axs[0, 0].plot([], [], color="r", lw=1.6, label="window mean $\\pm\\sigma$")
+    if targets_per_iter:
+        axs[0, 0].plot([], [], color="k", ls="--", lw=1.0, label="target $-$ neoclassical")
+    axs[0, 0].legend(loc="best", fontsize=7, framealpha=0.9)
+
