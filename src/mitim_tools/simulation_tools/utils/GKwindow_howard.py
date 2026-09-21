@@ -49,6 +49,9 @@ def min_window(span):
 
 def _smooth(y, w):
     w = max(3, int(w) | 1)
+    # never wider than the trace: np.convolve(mode="same") returns max(len(y), w) points, so a run
+    # stopped early (fewer samples than SMOOTH_W) would otherwise break every array operation after this
+    w = min(w, max(1, (len(y) - 1) | 1))
     k = np.ones(w) / w
     ys = np.convolve(y, k, mode="same")
     norm = np.convolve(np.ones_like(y), k, mode="same")
