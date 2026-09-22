@@ -12,6 +12,7 @@ from mitim_tools.gacode_tools.utils import GACODEdefaults, CGYROutils
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.simulation_tools.utils import SIMplot
 from mitim_tools.misc_tools import GRAPHICStools, CONFIGread
+from mitim_tools.misc_tools.FARMINGtools import SlurmState
 from mitim_tools.gacode_tools.utils import GACODEplotting
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from IPython import embed
@@ -59,6 +60,14 @@ def body_keeping_exit_status(pre_cmd, main_cmd, cleanup_cmd):
             + cleanup_cmd + "\n(exit $_mitim_rc)\n")
 
 
+# What the coarse, one-row-per-job squeue STATE of the outer poller means for the array
+# as a whole: the job is no longer in the queue as far as that poller can tell. Used only
+# as a tiebreaker on top of the per-task filesystem signals.
+_SLURM_JOB_GONE_STATES = frozenset({
+    SlurmState.ABSENT, SlurmState.COMPLETED, SlurmState.TIMEOUT,
+    SlurmState.FAILED, SlurmState.CANCELLED,
+})
+
 def cgyro_per_task_status(sim):
     '''
     Custom checker for `mitim_simulation.check(custom_checker=...)` that
@@ -98,7 +107,7 @@ def cgyro_per_task_status(sim):
     # per-task filesystem signals — never as the primary classifier.
     info_slurm = getattr(job, "infoSLURM", None) or {}
     slurm_state = info_slurm.get("STATE")
-    job_terminal = slurm_state in ("NOT FOUND", "COMPLETED", "TIMEOUT", "FAILED", "CANCELLED")
+    job_terminal = SlurmState.from_token(slurm_state) in _SLURM_JOB_GONE_STATES
 
     # Structured rows returned to the caller (cgyro_per_task_callback) so the
     # auto-resubmit orchestrator can act on STALLED / STALLED_INIT entries
@@ -259,21 +268,6 @@ def cgyro_per_task_status(sim):
     return rows
 
 
-# Slurm task states that mean the work unit is no longer in flight (regardless of
-# whether it succeeded). Hitting any of these is a hard "do not rescue" signal:
-# - COMPLETED / COMPLETING / DEADLINE: cgyro reached MAX_TIME and exited cleanly.
-#   Common false-positive case for the staleness heuristic when CGYRO does not
-#   write out.cgyro.tag (e.g. natural MAX_TIME exit on certain CGYRO versions).
-# - CANCELLED / FAILED / TIMEOUT / NODE_FAIL / OUT_OF_MEMORY / BOOT_FAIL /
-#   PREEMPTED / REVOKED: task is dead and won't progress; rescue would just
-#   restart from the warm-start, which the cap-1 BO loop will retry next iteration.
-_SLURM_TERMINAL_STATES = frozenset({
-    "COMPLETED", "COMPLETING", "CANCELLED", "FAILED", "TIMEOUT",
-    "OUT_OF_MEMORY", "BOOT_FAIL", "NODE_FAIL", "PREEMPTED", "REVOKED",
-    "DEADLINE",
-})
-
-
 def _slurm_state_for_target(job, target):
     '''
     Return the slurm state for `target` (a "<jobid>" or "<jobid>_<idx>" string),
@@ -311,7 +305,7 @@ def _cgyro_handle_stalled_tasks(sim, rows):
     has exceeded the auto-resubmit kill threshold, scancels just that array
     task, cleans its remote subfolder of stale signal files (preserving
     bin.cgyro.restart so the new task warm-starts from where the dead one
-    left off), parses the bad node from infoSLURM["NODELIST"], and resubmits
+    left off), takes the node of that array element from the last squeue poll, and resubmits
     a single-task sbatch via `mitim_job.resubmit_single_task` with an
     --exclude on that node so the rescue lands somewhere else.
 
@@ -344,12 +338,6 @@ def _cgyro_handle_stalled_tasks(sim, rows):
     per_folder_commands   = (sim.kwargs_organize or {}).get("per_folder_commands", {})
     if not array_index_by_folder or not per_folder_commands:
         return  # not a slurm_array submission — single-task rescue not applicable
-
-    info_slurm = getattr(job, "infoSLURM", None) or {}
-    parent_nodes = info_slurm.get("NODELIST")
-    # squeue prints "(null)" when the job is queued or "n/a" on some sites; both mean "no node yet".
-    if parent_nodes in (None, "(null)", "n/a", "(None)"):
-        parent_nodes = None
 
     if not hasattr(sim, "_resubmit_ledger") or sim._resubmit_ledger is None:
         sim._resubmit_ledger = {}
@@ -435,8 +423,13 @@ def _cgyro_handle_stalled_tasks(sim, rows):
             # the next poll" cases. None means sacct gave no signal — fall
             # through to the existing rescue path rather than block on an
             # unsupported sacct setup.
+            # A terminal state means the work unit is no longer in flight, whether it
+            # succeeded (COMPLETED/COMPLETING/DEADLINE: cgyro reached MAX_TIME and exited
+            # cleanly, the usual false positive when out.cgyro.tag is not written) or died
+            # (CANCELLED/FAILED/TIMEOUT/NODE_FAIL/OUT_OF_MEMORY/BOOT_FAIL/PREEMPTED/REVOKED:
+            # a rescue would just restart from the warm-start the next BO iteration retries).
             slurm_state = _slurm_state_for_target(job, scancel_target)
-            if slurm_state in _SLURM_TERMINAL_STATES:
+            if SlurmState.from_token(slurm_state).terminal:
                 ledger["status"] = f"TERMINAL_NO_RESCUE:{slurm_state}"
                 metadata_dirty = True
                 print(
@@ -446,7 +439,9 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                     typeMsg='i',
                 )
                 continue
-            elif slurm_state in ("PENDING", "CONFIGURING", "REQUEUED", "SUSPENDED"):
+            elif SlurmState.from_token(slurm_state) in (
+                SlurmState.PENDING, SlurmState.CONFIGURING, SlurmState.REQUEUED, SlurmState.SUSPENDED
+            ):
                 # Not running yet: whatever the probe saw in that rho's folder predates
                 # this job (e.g. an interrupted run preserved for an in-place rescue).
                 # Cancelling the element here killed pending rescued radii (2026-09-16).
@@ -475,13 +470,12 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                 print(f"\t    * remote cleanup failed ({type(e).__name__}: {e}); skipping rescue for {folder}", typeMsg='w')
                 continue
 
-            # Bad-node exclusion: only meaningful when the parent array task
-            # was the one that stalled (NODELIST in infoSLURM is the parent
-            # array's nodes). For child-job rescues we don't currently track
-            # per-jobid NODELIST — accept that and let the resubmit land
-            # wherever slurm picks. Defensive: skip parsing if the column
-            # contains squeue's special "no node yet" sentinels.
-            bad_node = parent_nodes if (not rescuing_child) else None
+            # Bad-node exclusion: the node of THIS array element, from the squeue rows of
+            # the last poll (the whole array's node list would exclude healthy nodes too).
+            # For child-job rescues we don't track per-jobid nodes — accept that and let
+            # the resubmit land wherever slurm picks. None when the element has no node
+            # assigned yet or squeue printed a reason instead.
+            bad_node = job.node_of(array_idx) if (not rescuing_child) else None
 
             label = f"_resubmit_{Path(folder).name}_a{attempt}"
             code_call_str = per_folder_commands.get(folder)

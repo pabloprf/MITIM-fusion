@@ -39,7 +39,9 @@ class FakeJob:
         self.jobid = "12345"
         self.folderExecution = "/scratch/test"
         self.launchSlurm = True
-        self.infoSLURM = {"NODELIST": "node05", "STATE": "RUNNING"}
+        self.infoSLURM = {"NODELIST(REASON)": "node05", "STATE": "RUNNING"}
+        # Per-array-element node, as mitim_job.node_of() resolves it from the squeue rows
+        self.node_by_array_index = {2: "node05"}
         self.machineSettings = {"slurm": {}}
         self.slurm_settings = {"job-name": "cgyro_test"}
         self.executed = []
@@ -52,6 +54,9 @@ class FakeJob:
         # signal" (sacct returned empty). Set to "RUNNING" to behave like
         # a healthy stalled task that should be rescued.
         self.sacct_state_for_target = "RUNNING"
+
+    def node_of(self, array_index):
+        return self.node_by_array_index.get(array_index)
 
     def connect(self):
         self.executed.append(("connect",))
@@ -241,12 +246,12 @@ def test_no_array_metadata_means_noop():
 
 def test_no_node_in_squeue_falls_back_to_no_exclude():
     sim = FakeSim(cap=1)
-    sim.simulation_job.infoSLURM["NODELIST"] = "(null)"
+    sim.simulation_job.node_by_array_index = {}
     rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 2000)]
     CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
     _code, _label, exclude = sim.simulation_job.last_resubmit_args
     assert exclude is None, exclude
-    print("PASS: NODELIST '(null)' -> no --exclude on resubmit")
+    print("PASS: no node for the stalled array element -> no --exclude on resubmit")
 
 
 def test_sacct_completed_skips_rescue_marks_terminal():
