@@ -230,6 +230,13 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
+    `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
+    `Pcool(table species) - brems(all species)`, so an absent species turned its bremsstrahlung into negative
+    line radiation (ARC V3A with boron: -10 MW; with a lumped impurity: -12 MW). The subtraction now covers only
+    the species in the table; absent species radiate pure bremsstrahlung. Runs with every species in the table
+    are unchanged.
+
 *   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
     extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,
     the best converged, were discarded and never reached `Outputs/extra_points.csv`. An extra is now kept

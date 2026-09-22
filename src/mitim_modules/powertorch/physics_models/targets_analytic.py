@@ -152,8 +152,13 @@ class analytical_model(TARGETStools.power_targets):
         # Line
         # ----------------------------------------------------
 
-        # TGYRO "Trick": Calculate bremmstrahlung separate and substract to Pcool to get the actual line
-        self.powerstate.plasma["qrad_line"] = Pcool - self.powerstate.plasma["qrad_bremms"]
+        # TGYRO "Trick": Calculate bremmstrahlung separate and substract to Pcool to get the actual line.
+        # Only the bremsstrahlung of the species that ARE in the cooling table is subtracted: a species absent
+        # from radiation_chebyshev.csv (c_rad set to the -1e10 sentinel, zero cooling) would otherwise turn its own
+        # bremsstrahlung into negative line radiation and drop it from the total (it stays in qrad_bremms).
+        in_table = (c_rad[..., 0] > -1e9).to(ni20)   # same batch x species layout as Zi
+        qrad_bremms_in_table = f * ne20 * (ni20 * (Zi**2 * in_table).unsqueeze(1)).sum(dim=-1) * Te_keV**0.5
+        self.powerstate.plasma["qrad_line"] = Pcool - qrad_bremms_in_table
 
         # ----------------------------------------------------
         # Synchrotron
