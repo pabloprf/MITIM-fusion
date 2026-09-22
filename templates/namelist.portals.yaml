@@ -382,6 +382,10 @@ transport:
         #              (target_GB - current_neoc_GB). Different rhos can pick
         #              different source iterations. Tie-broken in favor of the
         #              higher iteration index (more representative profile).
+        #              The L2 distance is taken in RAW GB units, NOT per-channel
+        #              relative: QiGB is typically one to two orders of magnitude
+        #              larger than GeGB, so the heat channels decide the pick and
+        #              the particle/momentum channels barely contribute.
         #              If a rho has no prior iteration with both fluxes_turb.json
         #              and bin.cgyro.restart_<rho:.4f>, that rho is cold-started
         #              with a warning (NON-fatal — different from "first"/"all").
@@ -391,6 +395,10 @@ transport:
         # or, during the simple-relax initializer:
         #   Initialization/initialization_simple_relax/portals_sr_ev_{src}/
         #     transport_simulation_folder/base_cgyro
+        # In batched mode (powerstate.batch_size > 1, the parallel simple-relax
+        # initializer) the source is base_cgyro_plasma0 instead: the per-plasma
+        # folder is a SIBLING of base_cgyro, not nested under it, and every
+        # plasma of the batch warm-starts from that plasma-0 reference.
         # IMPORTANT:
         #   - You MUST configure RESTART_STEP (and any related CGYRO restart
         #     settings) in extraOptions so the source iteration writes
@@ -410,6 +418,16 @@ transport:
         #     require for the binary restart files.
         #   - If restart_from_folder is also set, it takes precedence and
         #     this option is ignored (with a warning).
+        #   - For "first"/"all" a missing source folder, or a missing
+        #     bin.cgyro.restart_<rho:.4f> for ANY predicted radius, raises
+        #     FileNotFoundError and stops the run: a partial restart would mix
+        #     cold and warm radii in one ensemble, which cannot be diagnosed
+        #     downstream. Clear restart_from_cases to run without restart.
+        #   - "all" takes iteration N-1 as the source and requires it to have
+        #     FINISHED. PORTALS can submit several evaluations per BO step
+        #     (AllowedExcursions / batch acquisition); if N-1 belongs to the
+        #     same batch and is still running, iteration N hard-fails as above.
+        #     Use "best", which falls back per-rho instead, when that can happen.
         # DEPRECATED: the older `restart_from_first: true` still works as an
         # alias for restart_from_cases: "first" but prints a notice.
         restart_from_cases: null

@@ -1,19 +1,76 @@
+import inspect
 import json
 from pathlib import Path
 import numpy as np
 from mitim_tools.gacode_tools import CGYROtools
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
-from IPython import embed
+from mitim_modules.powertorch.physics_models.utils.cgyro_extra_points import ExtraPointHarvester
+from mitim_modules.powertorch.physics_models.utils.cgyro_restart import RestartChain, RestartPlan
+from mitim_modules.powertorch.physics_models.utils.gk_submission import GKSubmission
+from mitim_modules.powertorch.physics_models.utils.per_iter_overrides import PerIterOverrides
+
+
+# powerstate attribute <key>_turb / <key>_turb_stds <- (mean, std) attributes of one code output.
+# "per species" entries are read at the turbulence-side impurity position.
+_FLUX_SPEC = (
+    ("QeGB", "Qe_mean",     "Qe_std",     False),
+    ("QiGB", "Qi_mean",     "Qi_std",     False),
+    ("GeGB", "Ge_mean",     "Ge_std",     False),
+    # GZ: particle flux of the PORTALS trace impurity. MITIM writes input.cgyro species in
+    # input.gacode ion order (electrons last), so the impurity position indexes Gi_all directly.
+    ("GZGB", "Gi_all_mean", "Gi_all_std", True),
+    # Mt: momentum flux summed over all species (same convention as TGLF's Mt = Me + sum(Mi)).
+    # No sign flip: CGYRO's native sign is the physical GACODE convention (it receives
+    # MACH/GAMMA_E/GAMMA_P unflipped, like NEO); TGLF's -SIGN_IT flip only undoes its
+    # parity-mapped rotation inputs (tgyro_tglf_map.f90:197-199 / tgyro_flux.f90:199,208).
+    ("MtGB", "Mt_mean",     "Mt_std",     False),
+)
+
+# Qie: electron turbulent energy exchange (the quantity TGLF passes as Se). Older CGYRO outputs
+# carry no exchange moment (n_flux=3) and get zeros instead.
+_EXCHANGE_SPEC = ("QieGB", "Se_mean", "Se_std", False)
+
+# Passed by name at the call site, so they must never also come from the namelist `run:` block
+_SINGLE_EXPLICIT_KWARGS = {"subfolder", "cold_start", "forceIfcold_start", "only_minimal_files", "job_name_suffix"}
+_BATCHED_EXPLICIT_KWARGS = {"list_of_states", "base_subfolder", "cold_start", "forceIfcold_start",
+                            "extra_name", "attempts_execution", "only_minimal_files", "job_name_suffix"}
+
+
+def _forwardable_kwargs(target, method_name, explicit):
+    '''
+    The `transport.options.<code>.run` keys that `target.<method_name>` actually accepts. The MRO
+    is walked so a wrapper forwarding **kwargs (CGYROtools.CGYRO.run -> mitim_simulation.run)
+    contributes its own parameters and the search continues below it. Deriving the set from the
+    callee is what keeps a namelist knob from being forwarded to a method that does not take it.
+    '''
+    accepted = set()
+    for klass in target.__mro__:
+        func = klass.__dict__.get(method_name)
+        if func is None:
+            continue
+        params = inspect.signature(func).parameters
+        accepted |= {n for n, p in params.items() if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)}
+        if not any(p.kind is p.VAR_KEYWORD for p in params.values()):
+            break
+    return accepted - {"self"} - explicit
+
+
+# Namelist run keys the batched path forwards; kept as a module constant because
+# tests/dev_tests/test_run_over_plasmas_kwargs.py checks it against the callee signature.
+_RUN_OVER_PLASMAS_KEYS = _forwardable_kwargs(SIMtools.mitim_simulation, "run_over_plasmas", _BATCHED_EXPLICIT_KWARGS)
+
+# An extra case is usable when it ran to MAX_TIME (EXIT) or was stopped past min_time (tag)
+_extra_point_usable = ExtraPointHarvester.usable
 
 
 def _check_exchange_moment(outputs, labels):
     '''
-    Either every radius carries the exchange moment (Se_mean) or none does (old CGYRO,
+    Either every output carries the exchange moment (Se_mean) or none does (old CGYRO,
     n_flux=3). A mix means the output files of the odd radii are inconsistent (time
     rows vs flux records), which must not be silently passed on as Qie = 0.
     '''
-    missing = [f"{l:.4f}" if isinstance(l, float) else str(l) for l, o in zip(labels, outputs) if not hasattr(o, 'Se_mean')]
+    missing = [str(l) for l, o in zip(labels, outputs) if not hasattr(o, 'Se_mean')]
     if missing and len(missing) < len(outputs):
         raise RuntimeError(
             f"CGYRO exchange moment missing at {missing} but present elsewhere: "
@@ -21,1330 +78,472 @@ def _check_exchange_moment(outputs, labels):
         )
 
 
-# ----------------------------------------------------------------------------------------
-# load_balance strategy 'extra_points': perturbed cases on nodes freed by early radii
-# (bash mode; scheduler in SIMtools/SCHEDULERtools, hooks in CGYROtools)
-# ----------------------------------------------------------------------------------------
-# Keys of transport.options.cgyro.run that are forwarded to SIMtools run_over_plasmas
-# (every one of them must be a parameter of that method)
-_RUN_OVER_PLASMAS_KEYS = {
-    "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
-    "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation", "load_balance",
-    "run_type", "additional_files_to_send", "helper_lostconnection",
-    "rescue_interrupted",
-}
-
-_EXTRA_X_VARIABLES = ["aLte", "aLti", "aLne", "aLnZ", "aLw0_n", "nuei", "tite", "w0_n", "beta_e"]
-# channel -> (gradient variable, target key [MW/m2 or 1E20/m2/s], GB normalization key, flux prefix)
-_EXTRA_CHANNELS = {"te": ("aLte", "QeMWm2", "Qgb", "Qe"), "ti": ("aLti", "QiMWm2", "Qgb", "Qi"), "ne": ("aLne", "Ge1E20m2", "Ggb", "Ge")}
-
-def _make_extra_point_builder(self, code, rho_locations, run_kwargs, read_kwargs):
-    '''
-    Returns builder(rho, finished_scratch_dir, local_dir) -> input.cgyro path (or None), called by
-    CGYROtools when the scheduler frees a node. The extra case is the finished radius with the
-    gradient of its largest-residual channel scaled by (1 -/+ perturbation) toward reducing the
-    residual (turbulent flux of the finished run + neoclassical flux of this evaluation - target,
-    in GB units). Profiles are rebuilt from a copy of the powerstate, post-processed like the
-    main call, and turned into a single-radius input.cgyro through the normal prep chain. The
-    surrogate x-vector at that radius and the normalizations go to local_dir/mitim_extra_point.json.
-    '''
-    from mitim_tools.gacode_tools import CGYROtools
-    from mitim_tools.gacode_tools.utils import CGYROutils
-    lb = run_kwargs.get("load_balance") or {}
-    perturbation = float((lb.get("extra_points") or {}).get("perturbation", 0.15))
-    postproc = self._resolve_postproc_fun(code)
-    channels = [c for c in self.powerstate.predicted_channels if c in _EXTRA_CHANNELS]
-
-    def builder(rho, scratch_dir, local_dir):
-        if not channels:
-            return None
-        k = int(np.argmin([abs(r - rho) for r in rho_locations])); ir = k + 1
-        out = CGYROutils.CGYROoutput(Path(scratch_dir), suffix=None, minimal=True, **read_kwargs)
-        residual = {}
-        for ch in channels:
-            aL, tar_key, gb_key, flux = _EXTRA_CHANNELS[ch]
-            gb = float(self.powerstate.plasma[gb_key][0, ir])
-            target = float(self.powerstate.plasma[tar_key][0, ir]) / gb
-            neoc = float(getattr(self, f"{flux}GB_neoc", np.zeros(len(rho_locations)))[k])
-            residual[ch] = (float(getattr(out, f"{flux}_mean")) + neoc - target, abs(target))
-        ch = max(residual, key=lambda c: abs(residual[c][0]) / (residual[c][1] + 1.0))
-        factor = (1.0 - perturbation) if residual[ch][0] > 0 else (1.0 + perturbation)
-        aL = _EXTRA_CHANNELS[ch][0]
-
-        ps = self.powerstate.copy_state()
-        ps.plasma[aL][:, ir] = ps.plasma[aL][:, ir] * factor
-        ps.update_var(ch)
-        ps.calculateProfileFunctions()
-        x = {v: float(ps.plasma[v][0, ir]) for v in _EXTRA_X_VARIABLES if v in ps.plasma}
-
-        local_dir = Path(local_dir); local_dir.mkdir(parents=True, exist_ok=True)
-        file_profs = local_dir / "input.gacode"
-        ps.copy_state().from_powerstate(write_input_gacode=file_profs, postprocess_input_gacode=self.powerstate.transport_options["applyCorrections"],
-                                        rederive_profiles=True, insert_highres_powers=True)
-        if postproc is not None:
-            postproc(file_profs)
-        cg = CGYROtools.CGYRO(rhos=[rho])
-        cg.prep(file_profs, local_dir)
-        cg._preprocess_options = run_kwargs.get("preprocess_options")
-        cg._run_prepare("base_cgyro", extraOptions=run_kwargs.get("extraOptions", {}), multipliers=run_kwargs.get("multipliers", {}),
-                        code_settings=run_kwargs.get("code_settings"), allocation=run_kwargs.get("allocation"),
-                        ApplyCorrections=run_kwargs.get("ApplyCorrections", True), Quasineutral=run_kwargs.get("Quasineutral", False),
-                        cold_start=True, forceIfcold_start=True, launchSlurm=False)
-        input_cgyro = local_dir / "base_cgyro" / f"input.cgyro_{rho:.4f}"
-        meta = {"rho": rho, "radius_index": ir, "channel": ch, "variable": aL, "factor": factor, "residual_GB": residual[ch][0],
-                "parent_fluxes_GB": {c: float(getattr(out, f"{_EXTRA_CHANNELS[c][3]}_mean")) for c in channels},
-                "x": x, "Qgb": float(ps.plasma["Qgb"][0, ir]), "Ggb": float(ps.plasma["Ggb"][0, ir]), "Pgb": float(ps.plasma["Pgb"][0, ir]),
-                "evaluation_number": int(getattr(self, "evaluation_number", 0))}
-        (local_dir / "mitim_extra_point.json").write_text(json.dumps(meta, indent=2))
-        print(f"\t- [extra point] rho={rho:.4f}: {aL} x {factor:.3f} ({ch} residual {residual[ch][0]:+.2f} GB)", typeMsg="i")
-        return input_cgyro
-
-    return builder
-
-
-_EXTRA_POINT_SPEC = SIMtools.CompletionSpec("out.cgyro.info", "EXIT", alt_file="mitim_budget.tag")
-
-def _extra_point_usable(d):
-    '''An extra case ran to MAX_TIME (CGYRO's EXIT line) or was stopped past min_time (mitim_budget.tag).'''
-    return _EXTRA_POINT_SPEC.finished(d)[0]
-
-
-def _harvest_extra_points(self, read_kwargs):
-    '''
-    Accepted extra cases (ran to MAX_TIME, i.e. EXIT in out.cgyro.info, or stopped past min_time,
-    mitim_budget.tag) under <folder>/extra_cgyro/rho_*/ are read with the
-    same averaging as the main radii and appended, one row per model (Qe/Qi/Ge_tr_turb_<k>), to
-    Outputs/extra_points.csv of the PORTALS run with named x columns (SURROGATEtools assembles
-    the x-vector from the model's current x_names). Each folder is harvested once.
-    '''
-    import pandas as pd
-    from mitim_tools.gacode_tools.utils import CGYROutils
-    root = Path(self.folder) / "extra_cgyro"
-    csv = Path(self.powerstate.transport_options["folder"]) / "Outputs" / "extra_points.csv"
-    rows = []
-    for d in (sorted(root.glob("rho_*")) if root.is_dir() else []):
-        meta_f, done = d / "mitim_extra_point.json", d / "mitim_harvested"
-        if done.exists() or not (meta_f.exists() and _extra_point_usable(d) and (d / "out.cgyro.time").exists()):
-            continue
-        meta = json.loads(meta_f.read_text())
-        try:
-            out = CGYROutils.CGYROoutput(d, suffix=None, minimal=True, **read_kwargs)
-        except Exception as e:
-            print(f"\t- [extra point] {d.name} could not be read ({type(e).__name__}: {e}); skipped", typeMsg="w")
-            continue
-        base = {"x_names": repr(list(meta["x"].keys())), **meta["x"], "evaluation": meta["evaluation_number"], "rho": meta["rho"],
-                "channel": meta["channel"], "factor": meta["factor"], "t_end": float(out.t[-1]) if hasattr(out, "t") else None, "source": str(d)}
-        for flux in ("Qe", "Qi", "Ge"):
-            mean, std = getattr(out, f"{flux}_mean", None), getattr(out, f"{flux}_std", None)
-            if mean is not None:
-                rows.append({"Model": f"{flux}_tr_turb_{meta['radius_index']}", "y": float(mean), "yvar": float(std) ** 2, **base})
-        done.write_text("harvested\n")
-    if rows:
-        df = pd.DataFrame(rows)
-        if csv.exists():
-            df = pd.concat([pd.read_csv(csv), df], ignore_index=True)
-        csv.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(csv, index=False)
-        print(f"\t- [extra point] {len(rows)} surrogate row(s) appended to {csv}", typeMsg="i")
-
-def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additional_files_to_send=None):
-    '''
-    Translate the namelist-level `restart_from_folder` option into per-rho
-    `additional_files_to_send` entries.
-
-    `restart_from_folder` is expected to be a directory containing the
-    per-radius binary restart file CGYRO produces (and MITIM retrieves):
-    `bin.cgyro.restart_<rho:.4f>`. For every rho in `rho_locations`, the
-    binary is staged as `bin.cgyro.restart` inside the rho subfolder via
-    SIMtools' rename-on-copy mechanism.
-
-    CGYRO auto-detects the restart at startup (cgyro_init_h.f90):
-      - tag present + bin present  -> restart_flag=1 (TRUE restart;
-        continues from t_current stamped in the tag; requires new
-        MAX_TIME > t_current AND the full out.cgyro.* time-series bundle
-        on disk to rewind via io_control=3 — cgyro_init_kernel.F90:82).
-      - tag missing, bin present   -> restart_flag=2 (warm start; uses
-        restart data as initial condition, t resets to 0, out.cgyro.*
-        files are overwritten fresh via io_control=1).
-
-    For PORTALS this helper deliberately stages ONLY the binary (no tag):
-    each iteration changes input.cgyro parameters, so *continuing* in
-    time from a prior run with different physics is not physically
-    meaningful; warm-start is the correct semantics, and it also avoids
-    the io_control=3 rewind crash when the full output bundle isn't
-    staged alongside the restart file.
-
-    Raises if the folder doesn't exist or if any rho is missing its
-    `bin.cgyro.restart_<rho:.4f>` file.
-    '''
-
-    restart_folder = run_options.get("restart_from_folder")
-    if restart_folder in (None, ""):
-        return existing_additional_files_to_send
-
-    restart_folder = Path(restart_folder).expanduser()
-    if not restart_folder.is_dir():
-        raise FileNotFoundError(
-            f"[MITIM] CGYRO restart_from_folder does not exist or is not a directory: {restart_folder}"
-        )
-
-    print(f"\n- [CGYRO restart] Staging per-radius restart files from:\n\t{restart_folder}", typeMsg='i')
-
-    resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
-    missing_bin = []
-    for rho in rho_locations:
-        bin_file = restart_folder / f"bin.cgyro.restart_{rho:.4f}"
-        if not bin_file.is_file():
-            missing_bin.append(bin_file.name)
-            continue
-        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart (warm start)", typeMsg='i')
-        resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
-
-    if missing_bin:
-        raise FileNotFoundError(
-            "[MITIM] CGYRO restart_from_folder is missing per-rho binary restart files: "
-            f"{missing_bin}. Expected one file per predicted radius, named "
-            f"bin.cgyro.restart_<rho:.4f>, in {restart_folder}."
-        )
-
-    return resolved
-
-
-def _build_current_turb_target_GB(power_transport_self, plasma_index=0):
-    '''
-    Assemble per-channel "turbulent target" in GB units for the
-    `restart_from_cases: "best"` selection. For each active channel in
-    self.powerstate.predicted_channels, returns:
-
-        current_target_GB - current_neoc_GB
-
-    as a per-rho numpy array (rho=0 stripped to match fluxes_*.json
-    indexing). Targets come from `self.powerstate.plasma["{Q*GB}"]`,
-    populated by `calculateTargets()` before the transport call. Current
-    iteration's neoclassical comes from `self.{Q*GB}_neoc`, populated by
-    the preceding `evaluate_neoclassical()` in `TRANSPORTtools.evaluate()`.
-
-    Channels with no GB-key mapping are skipped. Channels whose neoclassical
-    array is missing/shape-mismatched fall back to neoc=0 for that channel
-    (defensive — should not happen in practice).
-
-    `plasma_index` picks which plasma to use as the reference in batched
-    mode (default 0; matches the existing batched-mode "first"/"all"
-    behavior of pulling restart from plasma 0 of the source iteration).
-    '''
-    channel_to_gb = {
-        "te": "QeGB", "ti": "QiGB", "ne": "GeGB", "nZ": "GZGB", "w0": "MtGB",
-    }
-    out = {}
-    predicted_channels = getattr(power_transport_self.powerstate, "predicted_channels", []) or []
-    for ch in predicted_channels:
-        gb_key = channel_to_gb.get(ch)
-        if gb_key is None:
-            continue
-        target_t = power_transport_self.powerstate.plasma.get(gb_key)
-        if target_t is None:
-            continue
-        # powerstate.plasma["{Q*GB}"] is a torch tensor of shape [batch, nrho]
-        # (rho=0 at index 0). Strip rho=0 and pick the reference plasma.
-        if hasattr(target_t, "detach"):
-            target_arr = target_t[plasma_index, 1:].detach().cpu().numpy()
-        else:
-            target_arr = np.asarray(target_t)[plasma_index, 1:]
-
-        neoc_val = getattr(power_transport_self, f"{gb_key}_neoc", None)
-        if neoc_val is None:
-            neoc_arr = np.zeros_like(target_arr)
-        else:
-            arr = np.asarray(neoc_val)
-            if arr.ndim >= 2:
-                arr = arr[plasma_index] if arr.shape[0] > plasma_index else arr[0]
-            if arr.shape == target_arr.shape:
-                neoc_arr = arr.astype(target_arr.dtype, copy=False)
-            else:
-                neoc_arr = np.zeros_like(target_arr)
-
-        out[gb_key] = target_arr - neoc_arr
-    return out
-
-
-def _write_restart_sources_json(folder, base_subfolder, mode, evaluation_number,
-                                 context_label, sources):
-    '''
-    Persist the per-rho parent map for this evaluation so the trace plotter
-    (`CGYROplot.load_restart_sources_for_iterations`) can align CGYRO time
-    traces across warm-started iterations under the same single code path
-    for all three restart modes ("first", "all", "best"). Without this file
-    the plotter treats this iteration as a cold start (no time-axis offset).
-
-    `sources` is {rho_str ("0.2500"): source_iter (int)}; rhos absent from
-    the dict are treated as cold-started by the plotter.
-
-    File: <folder>/<base_subfolder>/restart_sources.json
-    Schema:
-      {"mode": "first" | "all" | "best",
-       "evaluation_number": N,
-       "context_label": "Evaluation" or "portals_sr_ev",
-       "sources": {"0.2500": 0, "0.4500": 0, ...}}
-    '''
-    if not sources:
-        return
-    out_dir = folder / base_subfolder
-    try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        print(f"\t- [CGYRO restart] Could not create {out_dir} for restart_sources.json: {e}", typeMsg='w')
-        return
-    out_path = out_dir / "restart_sources.json"
-    payload = {
-        "mode": mode,
-        "evaluation_number": int(evaluation_number),
-        "context_label": context_label,
-        "sources": {str(k): int(v) for k, v in sources.items()},
-    }
-    try:
-        with open(out_path, "w") as f:
-            json.dump(payload, f, indent=2)
-    except OSError as e:
-        print(f"\t- [CGYRO restart] Could not write {out_path}: {e}", typeMsg='w')
-
-
-def _restore_restart_sources_json(folder, base_subfolder, payload):
-    '''
-    Re-write restart_sources.json from the payload captured at resolve time.
-    The resolver writes the JSON *before* run(), but run() -> _run_prepare
-    recreates <base_subfolder>/ via askNewFolder, wiping it. Without this
-    restore the happy path (submit -> poll -> fetch -> read in one process)
-    leaves no JSON on disk — cgyro_submission.json, which embeds the payload
-    for the re-attach restore (load_submission_state), is unlinked after
-    read — and the trace plotter reports every completed iteration as
-    restart_mode='none' with no time-axis alignment.
-    '''
-    if not payload:
-        return
-    out_path = folder / base_subfolder / "restart_sources.json"
-    try:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w") as f:
-            json.dump(payload, f, indent=2)
-    except OSError as e:
-        print(f"\t- [CGYRO restart] Could not restore {out_path}: {e}", typeMsg='w')
-
-
-def _resolve_cgyro_restart_chain(
-    run_options,
-    evaluation_number,
-    folder,
-    rho_locations,
-    existing_additional_files_to_send=None,
-    plasma_subfolder=None,
-    base_subfolder="base_cgyro",
-    current_turb_target_GB=None,
-):
-    '''
-    Automatic-restart companion to `_resolve_cgyro_restart_folder`. Driven
-    by the namelist-level `restart_from_cases` option:
-
-      None / null  -> no-op (no automatic restart)
-      "first"      -> every iteration N >= 1 restarts from iteration 0
-      "all"        -> every iteration N >= 1 restarts from iteration N-1
-                      (chained; each iter warm-starts from the previous)
-      "best"       -> for each radius independently, restart from the prior
-                      iteration whose turbulent flux at that radius is
-                      closest (L2 over active channels in GB units) to the
-                      current "turbulent target" (target - current neoc).
-                      Different radii can pick different source iterations.
-
-    Source folder for "first"/"all" iteration N is derived as:
-      <root>/Execution/Evaluation.{source_iter}/transport_simulation_folder/base_cgyro
-        (base_cgyro_plasma0 instead in batched mode — the per-plasma folder is
-        a SIBLING of base_cgyro in the SIMtools layout, not nested under it)
-    or, during the simple-relax initializer:
-      <root>/Initialization/initialization_simple_relax/portals_sr_ev_{source_iter}/
-        transport_simulation_folder/base_cgyro
-
-    where source_iter is 0 for "first" and (N-1) for "all". For "best",
-    source_iter is computed per-rho from the fluxes_turb.json comparison.
-
-    The binary restart file is named bin.cgyro.restart_<rho:.4f>, matching
-    what CGYRO writes and MITIM retrieves after a PORTALS run. It is
-    staged into the rho subfolder renamed to "bin.cgyro.restart" via the
-    (src, dst) tuple mechanism in SIMtools. See
-    `_resolve_cgyro_restart_folder` for the rationale on why only the
-    binary is staged (warm start, restart_flag=2) and not the companion
-    out.cgyro.tag file.
-
-    Missing files are FATAL for "first"/"all": if either the source
-    base_cgyro folder is absent, or the per-rho restart binary is absent
-    for any rho, a FileNotFoundError is raised. A silent partial restart
-    produced one-rho-cold/others-warm ensembles that were almost
-    impossible to diagnose downstream (and broke the "one key per rho"
-    invariant the stage-in consumer relies on).
-
-    For "best", missing files are NON-FATAL and per-rho: candidates that
-    don't have both fluxes_turb.json and bin.cgyro.restart_<rho:.4f> are
-    dropped from the candidate set for that rho only; if no candidate
-    survives for a given rho, that rho is cold-started (no entry added)
-    with a warning. The "best" mode is inherently dynamic, so a strict
-    "abort on any missing file" contract would defeat the purpose.
-
-    If you want to proceed without restart, clear restart_from_cases in
-    the namelist.
-
-    Backward-compat: legacy `restart_from_first: true` still works and is
-    mapped to `restart_from_cases: "first"` (with a one-line notice).
-
-    `current_turb_target_GB` is required only for mode == "best" and is
-    a dict of per-channel per-rho numpy arrays (target_GB - current_neoc_GB);
-    its keys define the active channels for the L2 metric. See
-    `_build_current_turb_target_GB` for the canonical assembly.
-
-    Returns the merged additional_files_to_send dict, or the existing one
-    unchanged when the mode is None/empty, restart_from_folder takes
-    precedence, or this is iteration 0 (no prior iteration to restart
-    from — not an error for N=0).
-    '''
-
-    # PORTALS sources `evaluation_number` from the Dakota-style filename
-    # (`IOtools.obtainGeneralParams`) which yields a *string* (e.g. "0", "5").
-    # Coerce here so range(), arithmetic, and the iter-0 short-circuit all
-    # behave correctly. Defensive fallback: leave the value alone if it
-    # doesn't parse as an int — the downstream comparison against 0 will
-    # still short-circuit and the helper will no-op.
-    try:
-        evaluation_number = int(evaluation_number)
-    except (TypeError, ValueError):
-        pass
-
-    # Resolve the mode, with backward-compat for the retired
-    # `restart_from_first: true` flag.
-    mode = run_options.get("restart_from_cases")
-    if mode in (None, "", "null"):
-        # Check legacy flag.
-        if run_options.get("restart_from_first", False):
-            print(
-                "\t- [CGYRO restart] `restart_from_first: true` is deprecated; "
-                "mapping to `restart_from_cases: \"first\"`. Please update your namelist.",
-                typeMsg='w',
-            )
-            mode = "first"
-        else:
-            return existing_additional_files_to_send
-
-    mode_lower = str(mode).lower()
-    if mode_lower not in ("first", "all", "best"):
-        print(
-            f"\t- [CGYRO restart] Unknown restart_from_cases={mode!r}; expected one of "
-            "null / \"first\" / \"all\" / \"best\". Ignoring.",
-            typeMsg='w',
-        )
-        return existing_additional_files_to_send
-
-    # restart_from_folder explicit beats automatic chain.
-    if run_options.get("restart_from_folder") not in (None, ""):
-        print(
-            f"\t- [CGYRO restart] restart_from_folder is set; restart_from_cases={mode_lower!r} ignored.",
-            typeMsg='w',
-        )
-        return existing_additional_files_to_send
-
-    # Detect context: simple-relax initialization places per-iteration folders
-    # under <root>/Initialization/initialization_simple_relax/portals_sr_ev_{N}/
-    # transport_simulation_folder. The BO loop uses <root>/Execution/Evaluation.{N}/
-    # transport_simulation_folder. Both share the pattern folder.parent.parent /
-    # <sibling name> / folder.name; only the sibling's stem differs.
-    in_simple_relax = "initialization_simple_relax" in folder.parts
-    context_label = "portals_sr_ev" if in_simple_relax else "Evaluation"
-
-    if evaluation_number == 0:
-        print(
-            f"\n- [CGYRO restart_from_cases={mode_lower!r}] This is {context_label}.0 — no prior iteration to restart from.\n"
-            "\t  REMINDER: for subsequent iterations to resume from this one, RESTART_STEP\n"
-            "\t  (and any related CGYRO restart settings) MUST be set in extraOptions so\n"
-            "\t  that bin.cgyro.restart_<rho:.4f> files are written, and keep_files must\n"
-            "\t  preserve them (keep_files: \"all\" is safest).",
-            typeMsg='w',
-        )
-        return existing_additional_files_to_send
-
-    if mode_lower == "best":
-        return _resolve_cgyro_restart_chain_best(
-            evaluation_number=evaluation_number,
-            folder=folder,
-            rho_locations=rho_locations,
-            existing_additional_files_to_send=existing_additional_files_to_send,
-            plasma_subfolder=plasma_subfolder,
-            base_subfolder=base_subfolder,
-            current_turb_target_GB=current_turb_target_GB,
-            in_simple_relax=in_simple_relax,
-            context_label=context_label,
-        )
-
-    source_iter = 0 if mode_lower == "first" else (evaluation_number - 1)
-    source_sibling = (f"portals_sr_ev_{source_iter}" if in_simple_relax
-                      else f"Evaluation.{source_iter}")
-
-    # In batched mode the per-plasma simulation folder (<base>_plasma{p}) is a
-    # SIBLING of base_subfolder in the SIMtools layout, so it replaces
-    # base_subfolder as the source rather than nesting under it.
-    source_subfolder = plasma_subfolder if plasma_subfolder else base_subfolder
-    source_folder = folder.parent.parent / source_sibling / folder.name / source_subfolder
-
-    if not source_folder.is_dir():
-        raise FileNotFoundError(
-            f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
-            f"{context_label}.{evaluation_number}, but the source {source_subfolder} "
-            f"folder does not exist:\n\t{source_folder}\n"
-            f"Clear restart_from_cases in the namelist to run without restart."
-        )
-
-    print(
-        f"\n- [CGYRO restart_from_cases={mode_lower!r}] {context_label}.{evaluation_number} will restart from {source_sibling}:\n"
-        f"\t{source_folder}",
-        typeMsg='i',
-    )
-
-    resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
-    missing_bin = []
-    for rho in rho_locations:
-        bin_file = source_folder / f"bin.cgyro.restart_{rho:.4f}"
-        if not bin_file.is_file():
-            missing_bin.append(bin_file.name)
-            continue
-        print(f"\t  rho={rho:.4f}: {bin_file.name} -> bin.cgyro.restart (warm start)", typeMsg='i')
-        resolved.setdefault(float(rho), []).append((bin_file, "bin.cgyro.restart"))
-
-    if missing_bin:
-        raise FileNotFoundError(
-            f"[MITIM] CGYRO restart_from_cases={mode_lower!r} was requested for "
-            f"{context_label}.{evaluation_number}, but binary restart files are missing in "
-            f"{source_sibling}: {missing_bin}.\n"
-            "Check that RESTART_STEP was set in extraOptions on the source iteration and "
-            "that keep_files did not unlink them. Clear restart_from_cases in the namelist "
-            "to run without restart."
-        )
-
-    # Persist the per-rho parent map (uniform for "first"/"all": every rho
-    # has the same source iter). Consumed by the plotter via
-    # CGYROplot.load_restart_sources_for_iterations.
-    _write_restart_sources_json(
-        folder=folder,
-        base_subfolder=base_subfolder,
-        mode=mode_lower,
-        evaluation_number=evaluation_number,
-        context_label=context_label,
-        sources={f"{rho:.4f}": source_iter for rho in rho_locations},
-    )
-
-    return resolved
-
-
-def _resolve_cgyro_restart_chain_best(
-    evaluation_number,
-    folder,
-    rho_locations,
-    existing_additional_files_to_send,
-    plasma_subfolder,
-    base_subfolder,
-    current_turb_target_GB,
-    in_simple_relax,
-    context_label,
-):
-    '''
-    Per-rho "best" warm-start selection for `restart_from_cases: "best"`.
-
-    For each prior iteration i in [0, evaluation_number-1] within the
-    current stage (BO Evaluation.{i} or simple-relax portals_sr_ev_{i}),
-    read fluxes_turb.json. Then for each rho independently, pick the
-    candidate iteration whose turbulent flux at that rho is closest, by
-    L2 norm over the active channels (the keys of current_turb_target_GB),
-    to the "current turbulent target" (target - current neoclassical),
-    among the candidates that also have bin.cgyro.restart_<rho:.4f>
-    on disk. Ties broken by preferring the higher iteration index (its
-    plasma profile is closer to the current iterate, so the warm-start
-    binary is more representative).
-
-    Rhos for which no candidate has both the JSON and the binary are
-    cold-started (omitted from the resolved dict) with a per-rho warning;
-    a consolidated summary lists them so misconfigurations are visible.
-    '''
-
-    if not current_turb_target_GB:
-        print(
-            "\t- [CGYRO restart_from_cases='best'] No current turbulent target was provided "
-            "(active channels empty or target assembly failed). No restart applied.",
-            typeMsg='w',
-        )
-        return existing_additional_files_to_send
-
-    # Build the candidate set: prior iterations whose fluxes_turb.json exists
-    # and contains the active channel keys.
-    candidates = []
-    for i in range(evaluation_number):
-        candidate_subfolder = (f"portals_sr_ev_{i}" if in_simple_relax
-                               else f"Evaluation.{i}")
-        candidate_eval_root = folder.parent.parent / candidate_subfolder / folder.name
-        json_path = candidate_eval_root / "fluxes_turb.json"
-        if plasma_subfolder and not json_path.is_file():
-            # Batched evaluations write per-plasma JSON pairs (plasma_{b}/ fan-out)
-            # instead of a single top-level file; use plasma 0, matching the
-            # plasma-0 reference convention of the batched restart chain.
-            json_path = candidate_eval_root / "plasma_0" / "fluxes_turb.json"
-        if not json_path.is_file():
-            continue
-        try:
-            with open(json_path, "r") as f:
-                flux_mean = json.load(f).get("fluxes_mean", {})
-        except (OSError, ValueError) as e:
-            print(
-                f"\t- [CGYRO restart 'best'] Could not load {json_path}: {e}; skipping iter {i}.",
-                typeMsg='w',
-            )
-            continue
-        missing_keys = [k for k in current_turb_target_GB if k not in flux_mean]
-        if missing_keys:
-            print(
-                f"\t- [CGYRO restart 'best'] {context_label}.{i} fluxes_turb.json missing channels "
-                f"{missing_keys}; skipping as candidate.",
-                typeMsg='w',
-            )
-            continue
-        candidates.append((i, candidate_eval_root, flux_mean))
-
-    if not candidates:
-        print(
-            f"\t- [CGYRO restart_from_cases='best'] No prior iteration in "
-            f"[0, {evaluation_number - 1}] had a usable fluxes_turb.json; cold start.",
-            typeMsg='w',
-        )
-        return existing_additional_files_to_send
-
-    print(
-        f"\n- [CGYRO restart_from_cases='best'] {context_label}.{evaluation_number} per-rho selection "
-        f"({len(candidates)} candidate iter(s); active channels: {sorted(current_turb_target_GB.keys())}):",
-        typeMsg='i',
-    )
-
-    resolved = dict(existing_additional_files_to_send) if existing_additional_files_to_send else {}
-    cold_started_rhos = []
-    chosen_sources = {}  # {rho_str: source_iter} for restart_sources.json
-    for rho_idx, rho in enumerate(rho_locations):
-        # Per-rho candidate filter: only iters that have the binary for THIS rho.
-        per_rho = []
-        for i, candidate_eval_root, flux_mean in candidates:
-            # Sibling, not nested, in batched mode (see _resolve_cgyro_restart_chain).
-            bin_dir = candidate_eval_root / (plasma_subfolder if plasma_subfolder else base_subfolder)
-            bin_file = bin_dir / f"bin.cgyro.restart_{rho:.4f}"
-            if not bin_file.is_file():
-                continue
-            sq_sum = 0.0
-            for ch_key, target_arr in current_turb_target_GB.items():
-                tr_val = float(flux_mean[ch_key][rho_idx])
-                tg_val = float(target_arr[rho_idx])
-                sq_sum += (tr_val - tg_val) ** 2
-            per_rho.append((sq_sum ** 0.5, i, bin_file))
-
-        if not per_rho:
-            cold_started_rhos.append(rho)
-            print(
-                f"\t  rho={rho:.4f}: cold start (no prior iter had bin+json for this radius)",
-                typeMsg='w',
-            )
-            continue
-
-        # Sort by (distance asc, iter desc) so the higher iter wins on ties.
-        per_rho.sort(key=lambda t: (t[0], -t[1]))
-        chosen_dist, chosen_iter, chosen_bin = per_rho[0]
-        chosen_sibling = (f"portals_sr_ev_{chosen_iter}" if in_simple_relax
-                         else f"Evaluation.{chosen_iter}")
-        print(
-            f"\t  rho={rho:.4f} -> {chosen_sibling} (d={chosen_dist:.3g})",
-            typeMsg='i',
-        )
-        resolved.setdefault(float(rho), []).append((chosen_bin, "bin.cgyro.restart"))
-        chosen_sources[f"{rho:.4f}"] = chosen_iter
-
-    if cold_started_rhos:
-        print(
-            f"\t- [CGYRO restart 'best'] {len(cold_started_rhos)} of {len(rho_locations)} "
-            f"rho(s) cold-started: {[f'{r:.4f}' for r in cold_started_rhos]}. Check that "
-            "RESTART_STEP/keep_files preserved bin.cgyro.restart_<rho:.4f> on prior iters.",
-            typeMsg='w',
-        )
-
-    # Persist the per-rho parent map. Cold-started rhos are simply omitted —
-    # the plotter treats their absence as "no offset" for that (rho, iter).
-    _write_restart_sources_json(
-        folder=folder,
-        base_subfolder=base_subfolder,
-        mode="best",
-        evaluation_number=evaluation_number,
-        context_label=context_label,
-        sources=chosen_sources,
-    )
-
-    return resolved
-
-
-# Deprecated alias — kept so any external imports of the old name keep working
-# until the retiring release. Delegates to the new chain resolver.
-_resolve_cgyro_restart_from_first = _resolve_cgyro_restart_chain
-
-
-def _rerun_restart_resolver_for_fresh_fallback(
-    power_obj, gk_object, run_kwargs, simulation_options, rho_locations,
-    base_subfolder, plasma_subfolder=None, plasma_index=0,
-):
-    '''
-    Re-attach deliberately skips the restart-chain resolver to preserve the
-    original parent pick. When the re-attach FALLS BACK to a fresh submission
-    (prior job dead and results unrecoverable), the resolver must run after
-    all: otherwise the job cold-starts silently while MAX_TIME (sized as
-    warm-start-additional time) and the restored restart_sources.json still
-    claim a warm start. Mutates run_kwargs["additional_files_to_send"] and
-    refreshes gk_object._restart_sources_payload from the freshly-written
-    restart_sources.json.
-    '''
-    resolved = _resolve_cgyro_restart_chain(
-        simulation_options["run"],
-        getattr(power_obj, "evaluation_number", 0),
-        power_obj.folder,
-        rho_locations,
-        run_kwargs.get("additional_files_to_send"),
-        plasma_subfolder=plasma_subfolder,
-        base_subfolder=base_subfolder,
-        current_turb_target_GB=_build_current_turb_target_GB(power_obj, plasma_index=plasma_index),
-    )
-    if resolved is not None:
-        run_kwargs["additional_files_to_send"] = resolved
-
-    payload = None
-    json_path = power_obj.folder / base_subfolder / "restart_sources.json"
-    if json_path.is_file():
-        try:
-            with open(json_path, "r") as f:
-                payload = json.load(f)
-        except (OSError, ValueError):
-            payload = None
-    gk_object._restart_sources_payload = payload
-
-
-def _iteration_matches_spec_key(key, iteration):
-    '''
-    Test whether a PORTALS iteration index matches a *_special spec key:
-
-      "N"    -> exact match: iteration == N
-      ">N"   -> iteration >  N
-      ">=N"  -> iteration >= N
-      "<N"   -> iteration <  N
-      "<=N"  -> iteration <= N
-
-    Malformed keys (non-integer right-hand-side, unknown operator) return
-    False and a warning is printed.
-    '''
-    key = str(key).strip()
-    # PORTALS sources the evaluation number from the Dakota-style filename, a
-    # *string* in the Execution phase ("3") and an int during the SR initializer;
-    # a str-vs-int comparison raised TypeError on the first BO iteration.
-    try:
-        iteration = int(iteration)
-    except (TypeError, ValueError):
-        print(f"\t- [CGYRO *_special] Non-integer evaluation number {iteration!r}; no per-iteration override applied", typeMsg='w')
-        return False
-    for op, cmp in (
-        (">=", lambda a, b: a >= b),
-        ("<=", lambda a, b: a <= b),
-        (">",  lambda a, b: a >  b),
-        ("<",  lambda a, b: a <  b),
-    ):
-        if key.startswith(op):
-            try:
-                return cmp(iteration, int(key[len(op):].strip()))
-            except ValueError:
-                print(f"\t- [CGYRO *_special] Malformed spec key {key!r}; ignoring", typeMsg='w')
-                return False
-    try:
-        return iteration == int(key)
-    except ValueError:
-        print(f"\t- [CGYRO *_special] Malformed spec key {key!r}; expected integer or comparison (e.g. '5', '>5'); ignoring", typeMsg='w')
-        return False
-
-
-def _resolve_cgyro_per_iter_override(spec_dict, evaluation_number, existing_baseline):
-    '''
-    Generic helper for extraOptions_special / allocation_special: walk
-    the per-iteration spec dict and merge any override entries whose key
-    matches `evaluation_number` on top of `existing_baseline`.
-
-    Match semantics:
-      - Range-style keys (">N", "<N", ">=N", "<=N") are applied first.
-      - Exact-integer keys ("N") are applied last so they override
-        range-matched values when both match (e.g. "5" wins over ">4"
-        for iteration 5).
-
-    Returns (merged_dict, matched_keys). When no key matches or the spec
-    is empty, returns (existing_baseline, []) unchanged.
-
-    Never mutates the incoming namelist dict — PORTALS re-reads
-    simulation_options on every iteration, so mutation would leak
-    per-iter overrides across iterations.
-    '''
-    if not spec_dict:
-        return existing_baseline, []
-
-    range_keys = []
-    exact_keys = []
-    for k in spec_dict:
-        ks = str(k).strip()
-        if any(ks.startswith(op) for op in (">=", "<=", ">", "<")):
-            range_keys.append(k)
-        else:
-            exact_keys.append(k)
-
-    merged = dict(existing_baseline) if existing_baseline else {}
-    matched = []
-
-    # Ranges first (so exact matches applied after take precedence).
-    for k in range_keys:
-        if _iteration_matches_spec_key(k, evaluation_number):
-            matched.append(str(k))
-            for kk, vv in (spec_dict[k] or {}).items():
-                merged[kk] = vv
-
-    # Exact matches last so they win on conflicts.
-    for k in exact_keys:
-        if _iteration_matches_spec_key(k, evaluation_number):
-            matched.append(str(k))
-            for kk, vv in (spec_dict[k] or {}).items():
-                merged[kk] = vv
-
-    if not matched:
-        return existing_baseline, []
-    return merged, matched
-
-
-def _resolve_cgyro_extra_options_special(run_options, evaluation_number, existing_extra_options):
-    '''
-    Per-iteration CGYRO `extraOptions` overrides driven by
-    `extraOptions_special`, a dict keyed by iteration selectors. See
-    `_resolve_cgyro_per_iter_override` for match semantics.
-
-    Backward compatibility: the retired `extraOptions_first: {...}` is
-    treated as an implicit `{"0": {...}}` under the new spec, with a
-    one-line deprecation notice.
-    '''
-    spec = run_options.get("extraOptions_special")
-    legacy_first = run_options.get("extraOptions_first")
-    if not spec and legacy_first:
-        print(
-            "\t- [CGYRO extraOptions_special] `extraOptions_first` is deprecated; "
-            "treating as `extraOptions_special: {\"0\": ...}`. Please update your namelist.",
-            typeMsg='w',
-        )
-        spec = {"0": legacy_first}
-
-    merged, matched = _resolve_cgyro_per_iter_override(
-        spec or {}, evaluation_number, existing_extra_options,
-    )
-    if matched:
-        print(
-            f"\n- [CGYRO extraOptions_special] Iteration {evaluation_number}: "
-            f"overrides from keys {matched} -> {sorted(set(merged) - set(existing_extra_options or {}))}"
-            if existing_extra_options is not None
-            else f"\n- [CGYRO extraOptions_special] Iteration {evaluation_number}: overrides from keys {matched}",
-            typeMsg='i',
-        )
-    return merged
-
-
-def _resolve_cgyro_allocation_special(run_options, evaluation_number, existing_allocation):
-    '''
-    Per-iteration SLURM allocation overrides driven by
-    `allocation_special`, a dict keyed by iteration selectors. See
-    `_resolve_cgyro_per_iter_override` for match semantics.
-
-    Backward compatibility: the retired `allocation_first: {...}` is
-    treated as an implicit `{"0": {...}}` under the new spec, with a
-    one-line deprecation notice.
-    '''
-    spec = run_options.get("allocation_special")
-    legacy_first = run_options.get("allocation_first")
-    if not spec and legacy_first:
-        print(
-            "\t- [CGYRO allocation_special] `allocation_first` is deprecated; "
-            "treating as `allocation_special: {\"0\": ...}`. Please update your namelist.",
-            typeMsg='w',
-        )
-        spec = {"0": legacy_first}
-
-    merged, matched = _resolve_cgyro_per_iter_override(
-        spec or {}, evaluation_number, existing_allocation,
-    )
-    if matched:
-        print(
-            f"\n- [CGYRO allocation_special] Iteration {evaluation_number}: "
-            f"overrides from keys {matched} -> {dict((k, merged[k]) for k in sorted(set(merged) - set(existing_allocation or {})))}"
-            if existing_allocation is not None
-            else f"\n- [CGYRO allocation_special] Iteration {evaluation_number}: overrides from keys {matched}",
-            typeMsg='i',
-        )
-    return merged
-
-
-# Deprecated aliases — preserve the names from the previous API so any
-# external import paths keep working while callers migrate.
-_resolve_cgyro_extra_options_first = _resolve_cgyro_extra_options_special
-_resolve_cgyro_allocation_first = _resolve_cgyro_allocation_special
-
-
 def _averaging_records(outputs):
     '''Per-rho GKaverager.to_dict() (window, flag, provenance) of the read outputs, for the fluxes JSON.'''
     return [o.averaging.to_dict() for o in outputs] if all(hasattr(o, 'averaging') for o in outputs) else None
 
 
+def _flux_arrays(outputs_per_plasma, mean_attr, std_attr, per_species, impurity_position):
+    '''(N, nrho) mean and std arrays for one entry of _FLUX_SPEC.'''
+    def value(o, attr):
+        return getattr(o, attr)[impurity_position] if per_species else getattr(o, attr)
+
+    return (np.array([[value(o, mean_attr) for o in outputs] for outputs in outputs_per_plasma]),
+            np.array([[value(o, std_attr) for o in outputs] for outputs in outputs_per_plasma]))
+
+
+class _GKRun:
+    '''
+    The configuration and live state of one gyrokinetic evaluation, assembled by `_gk_options`
+    and threaded through `_gk_prepare` / `_gk_execute` / `_gk_collect_fluxes`. `batched` is the
+    only switch between the single-plasma and the multi-plasma dispatch.
+    '''
+
+    batched = False
+    list_of_states = None
+    plasma_labels = None
+    plasma_subfolder = None
+    unpickled = False
+    submission = None
+    pickle_file = None
+
+
 class gyrokinetic_model:
 
-    def _evaluate_gyrokinetic_model(self, code = 'cgyro', gk_object = None):
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Grab options
-        # ------------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------
+    # One evaluation of a gyrokinetic backend (CGYRO, GX): namelist -> simulation object ->
+    # results on local disk -> the turbulent fluxes power_transport reads.
+    # ------------------------------------------------------------------------------------------
 
+    def _evaluate_gyrokinetic_model(self, code='cgyro', gk_object=None):
+
+        ctx = self._gk_options(code, gk_object)
+        gk = self._gk_prepare(ctx, gk_object)
+        outputs = self._gk_execute(ctx, gk)
+
+        if ctx.run_type is SIMtools.RunType.PREP:
+            return self._run_externally_and_wait(ctx)
+
+        if outputs is not None:
+            self._gk_collect_fluxes(ctx, outputs)
+            if ctx.extra_points:
+                self._extra_points(ctx).harvest()
+            ctx.submission.cleanup(
+                remove_scratch=(ctx.run_type is SIMtools.RunType.SUBMIT) and ctx.remove_scratch_after_fetch)
+
+        return gk
+
+    # ------------------------------------------------------------------------------------------
+    # Stages
+    # ------------------------------------------------------------------------------------------
+
+    def _gk_options(self, code, gk_class, list_of_states=None):
+        '''
+        Namelist -> everything the rest of the evaluation needs: the kwargs the backend's runner
+        accepts, the re-attach and retry controls, and the resolved warm-start plan.
+        '''
         simulation_options = self.transport_evaluator_options[code]
-        cold_start = self.cold_start
+        run_options = simulation_options["run"]
+        batched = list_of_states is not None
 
-        # Defined early so the restart-chain resolver below (which needs the per-
-        # instance folder name for named multi-fidelity CGYROs) can reference it.
-        # Later sections still re-use `subfolder_name` for metadata_path, pickle,
-        # run.subfolder, read.folder, etc.
-        subfolder_name = f"base_{code}"
+        ctx = _GKRun()
+        ctx.code = code
+        ctx.batched = batched
+        ctx.list_of_states = list_of_states
+        ctx.simulation_options = simulation_options
+        ctx.read_options = simulation_options["read"]
+        ctx.cold_start = self.cold_start
+        ctx.keep_gk_files = simulation_options.get("keep_files", 'all')
+        ctx.evaluation_number = getattr(self, "evaluation_number", 0)
+        # Every on-disk artifact carries the instance name, so a named multi-fidelity config
+        # ('cgyro1') never collides with plain 'cgyro'.
+        ctx.subfolder_name = f"base_{code}"
+        ctx.plasma_subfolder = f"{ctx.subfolder_name}_plasma0" if batched else None
+        ctx.rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item()
+                             for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
+        ctx.run_type = SIMtools.RunType.parse(run_options.get("run_type", "normal"))
 
-        rho_locations = [self.powerstate.plasma["rho"][0, 1:][i].item() for i in range(len(self.powerstate.plasma["rho"][0, 1:]))]
-        run_type = SIMtools._normalize_run_type(simulation_options["run"]["run_type"])
-        keep_gk_files = simulation_options.get("keep_files", 'all')
+        if batched and ctx.run_type is SIMtools.RunType.PREP:
+            raise NotImplementedError(
+                "run_type='prep' (interactive external CGYRO run) is not supported in "
+                "batched mode. Use single-plasma evaluation or run_type='normal'/'submit'.")
 
-        # Re-attach controls (see templates/namelist.portals.yaml). Read via .get()
-        # so we do not mutate the shared namelist dict between PORTALS iterations;
-        # the two keys are stripped from the kwargs actually forwarded to run().
-        check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
-        every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
-        # Forwarded to the mitim_job via mitim_simulation; consumed inside
-        # connect_ssh() so submit, check, and fetch all share the same retry
-        # policy. attempts=None means retry forever (recommended for long
-        # PORTALS-CGYRO runs that need to ride out overnight VPN flaps).
-        connection_retry_settings = {
-            "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
-            "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
+        # Read through .get() so the shared namelist dict is not mutated between PORTALS iterations
+        ctx.every_n_minutes = run_options.get("every_n_minutes", 10)
+        ctx.remove_scratch_after_fetch = run_options.get("remove_scratch_after_fetch", False)
+        ctx.check_existing_runs = run_options.get("check_existing_runs", False)
+        if ctx.check_existing_runs and ctx.run_type is not SIMtools.RunType.SUBMIT:
+            print(f"\t- check_existing_runs=True has no effect when run_type='{ctx.run_type.value}' "
+                  "(only 'submit' supports re-attach); ignoring", typeMsg='w')
+            ctx.check_existing_runs = False
+
+        # Forwarded to the mitim_job and consumed inside connect_ssh(), so submit, check and fetch
+        # share one retry policy. attempts=None retries forever, which is what a long
+        # PORTALS-CGYRO run needs to ride out overnight VPN flaps.
+        ctx.connection_retry_settings = {
+            "wait_seconds": run_options.get("ssh_retry_wait_seconds", 5),
+            "attempts":     run_options.get("ssh_retry_attempts", 3),
         }
-        # Auto-resubmit settings for the per-rho stall-rescue path
-        # (CGYROtools._cgyro_handle_stalled_tasks). Defaults are conservative:
-        # one rescue attempt per rho, kill threshold 30 min for both stall
-        # types. Users disable per run by setting auto_resubmit_enabled=False
-        # in the namelist.
-        auto_resubmit_settings = {
-            "enabled":                    simulation_options["run"].get("auto_resubmit_enabled", True),
-            "stall_init_kill_seconds":    simulation_options["run"].get("stall_init_kill_seconds", 1800),
-            "stall_running_kill_seconds": simulation_options["run"].get("stall_running_kill_seconds", 1800),
-            "max_resubmits_per_rho":      simulation_options["run"].get("max_resubmits_per_rho", 1),
+        # Per-rho stall rescue (CGYROtools._cgyro_handle_stalled_tasks)
+        ctx.auto_resubmit_settings = {
+            "enabled":                    run_options.get("auto_resubmit_enabled", True),
+            "stall_init_kill_seconds":    run_options.get("stall_init_kill_seconds", 1800),
+            "stall_running_kill_seconds": run_options.get("stall_running_kill_seconds", 1800),
+            "max_resubmits_per_rho":      run_options.get("max_resubmits_per_rho", 1),
         }
-        if check_existing_runs and run_type != 'submit':
-            print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
-            check_existing_runs = False
-        run_kwargs = {k: v for k, v in simulation_options["run"].items() if k not in ('check_existing_runs', 'every_n_minutes', 'ssh_retry_wait_seconds', 'ssh_retry_attempts', 'auto_resubmit_enabled', 'stall_init_kill_seconds', 'stall_running_kill_seconds', 'max_resubmits_per_rho', 'restart_from_folder', 'restart_from_first', 'restart_from_cases', 'extraOptions_first', 'extraOptions_special', 'allocation_first', 'allocation_special', 'remove_scratch_after_fetch')}
-        remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
 
-        # Translate namelist-level restart_from_folder into per-rho
-        # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
-        resolved_additional = _resolve_cgyro_restart_folder(
-            simulation_options["run"],
-            rho_locations,
-            run_kwargs.get("additional_files_to_send"),
-        )
-        if resolved_additional is not None:
-            run_kwargs["additional_files_to_send"] = resolved_additional
+        forwardable = _forwardable_kwargs(
+            gk_class,
+            "run_over_plasmas" if batched else "run",
+            _BATCHED_EXPLICIT_KWARGS if batched else _SINGLE_EXPLICIT_KWARGS)
+        ctx.run_kwargs = {k: v for k, v in run_options.items() if k in forwardable}
+        ctx.extra_points = (ctx.run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points"
 
-        # Automatic restart chain from prior iteration's base_<code> folder,
-        # driven by restart_from_cases ("first"=from iter 0, "all"=from iter N-1,
-        # "best"=per-rho L2-closest prior iter). Skipped when restart_from_folder
-        # is set (the helper short-circuits). `subfolder_name` is f"base_{code}"
-        # — for named multi-fidelity instances (e.g. 'cgyro1') this keeps every
-        # artifact path tied to the instance name. For "best", we assemble
-        # current_turb_target_GB = target_GB - current_neoc_GB per active channel
-        # so the helper can score prior fluxes_turb.json files against it; the
-        # neoclassical comes from the preceding evaluate_neoclassical() this iter.
-        #
-        # On re-attach (cgyro_submission.json already on disk for this iter),
-        # SKIP the resolver: re-running it would re-pick parents against the
-        # *current* BO state and could produce a restart_sources.json that
-        # misrepresents what was actually staged at the original submit. The
-        # original pick is embedded in cgyro_submission.json by
-        # _write_submission_metadata and restored to disk by
-        # load_submission_state, so the plotter sees the correct warm-start
-        # chain even if restart_sources.json was wiped between submit and
-        # re-attach.
-        _metadata_path_check = self.folder / subfolder_name / "cgyro_submission.json"
-        restart_sources_payload = None
-        if check_existing_runs and _metadata_path_check.is_file():
-            print(f"\t- [CGYRO restart] Re-attach detected ({_metadata_path_check.name} present); preserving original parent-pick (skipping resolver)", typeMsg='i')
+        self._gk_warm_start(ctx, gk_class, run_options)
+
+        # Per-iteration overrides. extraOptions is coerced to {} because SIMtools.run does not
+        # accept None; allocation may stay None so that run() still sizes it from _default_allocation.
+        ctx.run_kwargs["extraOptions"] = PerIterOverrides.from_run_options(run_options, "extraOptions").merge(
+            ctx.run_kwargs.get("extraOptions"), ctx.evaluation_number) or {}
+        ctx.run_kwargs["allocation"] = PerIterOverrides.from_run_options(run_options, "allocation").merge(
+            ctx.run_kwargs.get("allocation"), ctx.evaluation_number)
+
+        return ctx
+
+    def _gk_warm_start(self, ctx, gk_class, run_options):
+        '''
+        Resolve the restart staging into ctx.run_kwargs["additional_files_to_send"].
+        `restart_from_folder` is staged on every path; the automatic chain is SKIPPED on a
+        re-attach, because re-running it would re-pick parents against the current BO state and
+        misrepresent what was actually staged at the original submit. That original pick travels
+        in the submission metadata and is put back on disk by load_submission_state.
+        '''
+        ctx.chain = RestartChain(run_options, ctx.evaluation_number, self.folder, ctx.rho_locations,
+                                 base_subfolder=ctx.subfolder_name, plasma_subfolder=ctx.plasma_subfolder)
+        ctx.turb_target_GB = RestartChain.turbulent_target_GB(self, plasma_index=0)
+
+        staged = ctx.chain.stage_explicit_folder(ctx.run_kwargs.get("additional_files_to_send"))
+        if staged is not None:
+            ctx.run_kwargs["additional_files_to_send"] = staged
+
+        metadata_name = getattr(gk_class, "_submission_metadata_filename", None)
+        metadata = (self.folder / ctx.subfolder_name / metadata_name) if metadata_name else None
+        if ctx.check_existing_runs and metadata is not None and metadata.is_file():
+            print(f"\t- [CGYRO restart] Re-attach detected ({metadata.name} present); "
+                  "preserving original parent-pick (skipping resolver)", typeMsg='i')
+            ctx.plan = RestartPlan(files_per_rho=ctx.run_kwargs.get("additional_files_to_send"))
         else:
-            resolved_additional = _resolve_cgyro_restart_chain(
-                simulation_options["run"],
-                getattr(self, "evaluation_number", 0),
-                self.folder,
-                rho_locations,
-                run_kwargs.get("additional_files_to_send"),
-                base_subfolder=subfolder_name,
-                current_turb_target_GB=_build_current_turb_target_GB(self),
-            )
-            if resolved_additional is not None:
-                run_kwargs["additional_files_to_send"] = resolved_additional
+            ctx.plan = ctx.chain.resolve(ctx.run_kwargs.get("additional_files_to_send"), ctx.turb_target_GB)
 
-            # Capture the payload that the resolver just wrote, so it can be
-            # embedded in cgyro_submission.json by _write_submission_metadata.
-            # On a future re-attach load_submission_state restores this JSON
-            # to disk if the local copy was wiped between submit and re-attach.
-            _restart_json_path = self.folder / subfolder_name / "restart_sources.json"
-            if _restart_json_path.is_file():
-                try:
-                    with open(_restart_json_path, "r") as _f:
-                        restart_sources_payload = json.load(_f)
-                except (OSError, ValueError) as _e:
-                    print(f"\t- [CGYRO restart] Could not re-read {_restart_json_path.name} for metadata embed ({_e}); JSON-restore-on-reattach disabled for this iter", typeMsg='w')
+        if ctx.plan.files_per_rho is not None:
+            ctx.run_kwargs["additional_files_to_send"] = ctx.plan.files_per_rho
 
-        # Per-iteration extraOptions overrides (extraOptions_special), e.g.
-        # RESTART_STEP/MAX_TIME tuning for the seed iteration vs. the rest.
-        # No-op for iterations that match no spec key.
-        run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_special(
-            simulation_options["run"],
-            getattr(self, "evaluation_number", 0),
-            run_kwargs.get("extraOptions"),
-        )
+    def _gk_prepare(self, ctx, gk_class):
+        '''
+        The simulation object, either restored from the pickle a previous run left or freshly
+        constructed and prepped. Retry settings and the harvest recorder are attached either way.
+        '''
+        ctx.pickle_file = self.folder / ctx.subfolder_name / ("gk_object_batched.pkl" if ctx.batched else "gk_object.pkl")
 
-        # Per-iteration SLURM allocation overrides (allocation_special), e.g.
-        # longer `minutes` on the seed iteration that has to converge the
-        # full transient before writing its restart blob; shorter on later
-        # iterations that only run MAX_TIME past the warm-start.
-        run_kwargs["allocation"] = _resolve_cgyro_allocation_special(
-            simulation_options["run"],
-            getattr(self, "evaluation_number", 0),
-            run_kwargs.get("allocation"),
-        )
-
-        # ------------------------------------------------------------------------------------------------------------------------
-        # Prepare object
-        # ------------------------------------------------------------------------------------------------------------------------
-
-        # subfolder_name defined earlier (above the restart-chain resolver).
-        metadata_path = self.folder / subfolder_name / "cgyro_submission.json"
-
-        # <><><><><><>
-        # If the way to store data is in pickle, try first to read the stored pickled in the folder (e.g. for SR stage)
-        # <><><><><><>
-        gk_object_unpickled = False
-        if keep_gk_files in ['pickle']:
+        gk = None
+        if ctx.keep_gk_files in ['pickle']:
             try:
-                pickle_file = self.folder / f"{subfolder_name}" / "gk_object.pkl"
-                gk_object = SIMtools.restore_class_pickle(pickle_file)
-                gk_object_unpickled = True
-                print('\t- Pickle file with GK object information has been restored successfully', typeMsg='i')
+                gk = SIMtools.restore_class_pickle(ctx.pickle_file)
+                ctx.unpickled = True
+                if ctx.batched:
+                    ctx.plasma_labels = {p: f"{ctx.subfolder_name}_plasma{p}" for p in range(len(ctx.list_of_states))}
+                print(f"\t- Pickle file with {'batched ' if ctx.batched else ''}GK object information "
+                      "has been restored successfully", typeMsg='i')
             except Exception as e:
-                gk_object_unpickled = False
+                ctx.unpickled = False
                 print('\t- Pickle file could not be read, with error:', typeMsg='w')
                 print(e)
 
-        # <><><><><><>
-        # Standard run
-        # <><><><><><>
-        reattached = False
-        skip_check_fetch = False
-        if not gk_object_unpickled:
-            gk_object = gk_object(rhos=rho_locations)
-
-            # Side-aware: CGYRO is a turbulence backend, so under per-model
-            # postproc it consumes the turb-side post-processed profiles.
-            # Falls back to the canonical profiles_transport on the fast path.
-            _ = gk_object.prep(
-                self._profiles_transport_for("turb"),
-                self.folder,
-                )
-            if (run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points":
-                gk_object.extra_point_builder = _make_extra_point_builder(self, code, rho_locations, run_kwargs, simulation_options["read"])
-
-        # Set on gk_object regardless of pickle status, so both the freshly-
-        # constructed and the unpickled instance carry the retry config.
-        # connect_ssh() reads this from the mitim_job; the propagation onto
-        # simulation_job happens at construction time (SIMtools.py) and also
-        # explicitly here for the unpickled / re-attached paths where
-        # simulation_job may already exist on the loaded gk_object.
-        gk_object.connection_retry_settings = connection_retry_settings
-        gk_object.auto_resubmit_settings = auto_resubmit_settings
-        self._harvest_attach(gk_object)   # both the fresh and the unpickled instance
-        # Restart-sources payload captured from the just-written
-        # restart_sources.json (or None on re-attach / no-restart paths).
-        # _write_submission_metadata embeds it; load_submission_state
-        # restores restart_sources.json on disk on the next re-attach.
-        gk_object._restart_sources_payload = restart_sources_payload
-        if getattr(gk_object, "simulation_job", None) is not None:
-            gk_object.simulation_job.connection_retry_settings = connection_retry_settings
-
-        if not gk_object_unpickled:
-
-            # <><><><><><>
-            # Optional re-attach: if a prior process submitted this job and
-            # wrote submission metadata, skip run() and go straight to
-            # check/fetch/read against the existing slurm allocation.
-            # <><><><><><>
-            if check_existing_runs:
-                if metadata_path.exists():
-                    print("")
-                    print(f"\t==================== [check_existing_runs] Re-attach to existing CGYRO submission ====================", typeMsg='i')
-                    print("")
-                    print(f"\t- Submission metadata found at:", typeMsg='i')
-                    print(f"\t     {metadata_path}", typeMsg='i')
-                    # Normally _run_prepare sets FolderSimLast (consumed by
-                    # read()); re-attach skips that call to avoid the folder
-                    # wipe / prompt, so set it manually here.
-                    gk_object.FolderSimLast = self.folder / subfolder_name
-                    data = gk_object.load_submission_state(metadata_path)
-                    # load_submission_state builds a fresh mitim_job from the
-                    # JSON, so propagate the namelist-tunable retry config
-                    # onto it explicitly (the SIMtools construction-site
-                    # propagation only fires for the run()/sbatch path).
-                    if getattr(gk_object, "simulation_job", None) is not None:
-                        gk_object.simulation_job.connection_retry_settings = connection_retry_settings
-                    _jobinfo = data.get("job", {})
-                    print("")
-                    print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')
-                    print(f"\t     remote folder: {_jobinfo.get('folderExecution')}", typeMsg='i')
-                    print(f"\t     submitted at:  {data.get('created_utc')} (schema v{data.get('schema_version')})", typeMsg='i')
-                    print("")
-                    print(f"\t- Skipping run()/sbatch; polling this job with every_n_minutes={every_n_minutes}", typeMsg='i')
-                    print("")
-                    reattached = True
-
-                    # Liveness probe — decision tree when the job is gone:
-                    #   1. local result files already complete  -> skip to read()
-                    #   2. otherwise try fetch() once: the job may have
-                    #      finished cleanly while we were offline and the
-                    #      results are still sitting in the remote scratch
-                    #      folder waiting to be pulled.
-                    #   3. only fall back to a fresh submission when fetch()
-                    #      also can't produce a complete local set.
-                    print(f"\t- Liveness probe via squeue...", typeMsg='i')
-                    gk_object.simulation_job.check(file_output=gk_object.slurm_output)
-                    # Auto-resubmit may have spawned child jobids before the
-                    # prior PORTALS process died; consider the run "still live"
-                    # if any child is still in the queue, even when the parent
-                    # array has already left.
-                    parent_alive = (gk_object.simulation_job.status != 2)
-                    any_child_alive = gk_object._any_child_job_alive()
-                    print("")
-                    if (not parent_alive) and (not any_child_alive):
-                        print(f"\t- Slurm reports job is NOT in the queue (state={gk_object.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
-                        if gk_object._local_results_complete():
-                            print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read()", typeMsg='i')
-                            skip_check_fetch = True
-                        else:
-                            print(f"\t- Local results incomplete; attempting fetch() from remote scratch folder in case the job finished while we were offline...", typeMsg='i')
-                            try:
-                                gk_object.fetch()
-                            except Exception as _fe:
-                                print(f"\t- fetch() raised ({_fe})", typeMsg='w')
-                            if gk_object._local_results_complete():
-                                print(f"\t- Remote scratch had the results — fetch complete, skipping check()/fetch() in the main loop and jumping to read()", typeMsg='i')
-                                skip_check_fetch = True
-                            else:
-                                print(f"\t- Even after fetch() the expected CGYRO output files are incomplete — the prior submission apparently failed.", typeMsg='w')
-                                print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
-                                metadata_path.unlink(missing_ok=True)
-                                reattached = False
-                                # Re-attach skipped the restart-chain resolver; a fresh
-                                # submission needs it (otherwise: silent cold start with
-                                # warm-start-sized MAX_TIME + stale restart_sources.json)
-                                _rerun_restart_resolver_for_fresh_fallback(
-                                    self, gk_object, run_kwargs, simulation_options,
-                                    rho_locations, subfolder_name,
-                                )
-                    else:
-                        live_summary = f"jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}"
-                        if any_child_alive:
-                            child_ids = gk_object._child_jobids()
-                            live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
-                        print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
-                    print("")
-                else:
-                    print("")
-                    print(f"\t==================== [check_existing_runs] No prior CGYRO submission to re-attach ====================", typeMsg='i')
-                    print("")
-                    print(f"\t- Looked for metadata at:", typeMsg='i')
-                    print(f"\t     {metadata_path}", typeMsg='i')
-                    print(f"\t- File does not exist; this is a fresh PORTALS evaluation, submitting CGYRO normally", typeMsg='i')
-                    print("")
-
-            if not reattached:
-                _ = gk_object.run(
-                    subfolder_name,
-                    cold_start=cold_start,
-                    forceIfcold_start=True,
-                    only_minimal_files=keep_gk_files in ['none', 'pickle'],
-                    job_name_suffix=f"_ev{getattr(self, 'evaluation_number', 0)}",
-                    **run_kwargs
-                    )
-                # run() -> _run_prepare recreated <subfolder_name>/ via askNewFolder,
-                # wiping the resolver-written restart_sources.json. Put it back so
-                # the warm-start parent map survives on disk for the trace plotter
-                # (also during polling, for mid-run plots). Read from the gk_object
-                # attribute, not the local restart_sources_payload: the re-attach ->
-                # fresh-fallback path refreshes only the attribute.
-                _restore_restart_sources_json(
-                    self.folder, subfolder_name,
-                    getattr(gk_object, "_restart_sources_payload", None),
-                )
-
-        if run_type in ['normal', 'submit', 'send']:
-
-            if not gk_object_unpickled:
-
-                if run_type in ['submit'] and not skip_check_fetch:
-                    print("")
-                    print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
-                    print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
-                    print("")
-                    gk_object.check(
-                        every_n_minutes=every_n_minutes,
-                        skip_first_iteration_squeue=reattached,
-                        custom_checker=getattr(gk_object, "_custom_check_callback", None),
-                    )
-
-                    print("")
-                    print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-rho folders.", typeMsg='i')
-                    print("")
-                    gk_object.fetch()
-                elif run_type in ['submit'] and skip_check_fetch:
-                    print("")
-                    print(f"\t- [submit] Results were already local — reading them directly without polling or fetching.", typeMsg='i')
-                    print("")
-
-                gk_object.read(
-                    label=subfolder_name,
-                    minimal=True,  # In case I pickle, I don't want to be extra heavy
-                    **simulation_options["read"]
-                    )
-
-                # Optional remote scratch cleanup on the submit path. run_type
-                # 'normal' already cleans up via run(removeScratchFolders=True);
-                # submit mode defers that because fetch is decoupled from run.
-                # Wrapped in a try/except so a flaky connection doesn't abort
-                # the PORTALS iteration just because the rm -rf failed.
-                if run_type == 'submit' and remove_scratch_after_fetch:
-                    try:
-                        gk_object.simulation_job.connect()
-                        gk_object.simulation_job.remove_scratch_folder()
-                        gk_object.simulation_job.close()
-                        print(f"\t- [submit] remove_scratch_after_fetch=true — removed remote scratch {gk_object.simulation_job.folderExecution}", typeMsg='i')
-                    except Exception as _rs_e:
-                        print(f"\t- remote scratch removal raised ({_rs_e}); leaving the folder in place", typeMsg='w')
-
-                # Invariant for re-attach: "metadata present => job in flight (or
-                # retrieval not yet complete)". Read succeeded, so drop the file.
-                if metadata_path.exists():
-                    print(f"\t- [check_existing_runs] Read finished — removing stale submission metadata at {metadata_path.name} so the next PORTALS iteration submits fresh", typeMsg='i')
-                metadata_path.unlink(missing_ok=True)
-
-                # Special case to keep only the pickle file but remove all heavy files.
-                # Save pickle FIRST; only unlink the heavy files if the pickle is on disk,
-                # otherwise a save failure would leave the run with no data at all.
-                # Skip pickle on a re-attached run — `inputs_files` / normalization
-                # state may be incomplete (reconstructed via prep only), which would
-                # produce an unusable pickle.
-                if keep_gk_files in ['pickle'] and reattached:
-                    print("\t- pickle requested but run was re-attached; skipping pickle save (inputs not fully available)", typeMsg='i')
-                elif keep_gk_files in ['pickle']:
-                    pickle_file.parent.mkdir(parents=True, exist_ok=True)
-                    gk_object.save_pickle(pickle_file)
-                    if pickle_file.exists():
-                        for file in gk_object.output_files_simulation["complete"]:
-                            for rho in gk_object.rhos:
-                                fileN = f"{file}_{rho:.4f}"
-                                (self.folder / f"{subfolder_name}" / fileN).unlink(missing_ok=True)
-                    else:
-                        print(
-                            f"\t- save_pickle did not produce {pickle_file}; keeping raw CGYRO files",
-                            typeMsg='w',
-                        )
-        
-            # ------------------------------------------------------------------------------------------------------------------------
-            # Pass the information to what power_transport expects
-            # ------------------------------------------------------------------------------------------------------------------------
-
-            self.QeGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Qe_mean for i in range(len(rho_locations))])
-            self.QeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Qe_std for i in range(len(rho_locations))])
-                    
-            self.QiGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Qi_mean for i in range(len(rho_locations))])
-            self.QiGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Qi_std for i in range(len(rho_locations))])
-                    
-            self.GeGB_turb = np.array([gk_object.results[subfolder_name]['output'][i].Ge_mean for i in range(len(rho_locations))])
-            self.GeGB_turb_stds = np.array([gk_object.results[subfolder_name]['output'][i].Ge_std for i in range(len(rho_locations))])
-
-            outputs = gk_object.results[subfolder_name]['output']
-
-            # GZ: particle flux of the PORTALS trace impurity. MITIM writes input.cgyro
-            # species in input.gacode ion order (electrons last), so the powerstate's
-            # turbulence-side impurity position indexes Gi_all directly.
-            imp_pos = self._impurity_position_transport_for("turb")
-            self.GZGB_turb = np.array([outputs[i].Gi_all_mean[imp_pos] for i in range(len(rho_locations))])
-            self.GZGB_turb_stds = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(len(rho_locations))])
-
-            # Mt: momentum flux summed over all species (same convention as TGLF's
-            # Mt = Me + sum(Mi)). No sign flip: CGYRO's native sign is the physical
-            # GACODE convention (it receives MACH/GAMMA_E/GAMMA_P unflipped, like NEO);
-            # TGLF's -SIGN_IT flip only undoes its parity-mapped rotation inputs
-            # (tgyro_tglf_map.f90:197-199 / tgyro_flux.f90:199,208).
-            self.MtGB_turb = np.array([outputs[i].Mt_mean for i in range(len(rho_locations))])
-            self.MtGB_turb_stds = np.array([outputs[i].Mt_std for i in range(len(rho_locations))])
-
-            # Qie: electron turbulent energy exchange (the quantity TGLF passes as Se).
-            # Older CGYRO outputs carry no exchange moment (n_flux=3) -> zero + warning.
-            # Only SOME radii lacking it means inconsistent output files at those radii.
-            _check_exchange_moment(outputs, rho_locations)
-            if hasattr(outputs[0], 'Se_mean'):
-                self.QieGB_turb = np.array([outputs[i].Se_mean for i in range(len(rho_locations))])
-                self.QieGB_turb_stds = np.array([outputs[i].Se_std for i in range(len(rho_locations))])
+        if not ctx.unpickled:
+            gk = gk_class(rhos=ctx.rho_locations)
+            if ctx.batched:
+                # run_over_plasmas / _prepare_plasmas_state call _run_prepare directly (not run()),
+                # so preprocess_options has to be on the object before they do
+                gk._preprocess_options = ctx.simulation_options["run"].get("preprocess_options")
             else:
-                print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
-                self.QieGB_turb = self.QeGB_turb*0.0
-                self.QieGB_turb_stds = self.QeGB_turb*0.0
+                # Side-aware: a turbulence backend consumes the turb-side post-processed profiles
+                gk.prep(self._profiles_transport_for("turb"), self.folder)
+                if ctx.extra_points:
+                    gk.extra_point_builder = self._extra_points(ctx).builder()
 
-            # Averaging-window record per rho (method, t_start, flag, ...) -> fluxes_turb.json
-            self.averaging_info_turb = _averaging_records(outputs)
-            if (run_kwargs.get("load_balance") or {}).get("strategy") == "extra_points":
-                _harvest_extra_points(self, simulation_options["read"])
+        # On the object whether it was unpickled or not: connect_ssh() reads the retry config from
+        # the mitim_job, which may already exist on a restored instance.
+        gk.connection_retry_settings = ctx.connection_retry_settings
+        gk.auto_resubmit_settings = ctx.auto_resubmit_settings
+        self._harvest_attach(gk)
+        # Embedded in the submission metadata by _write_submission_metadata, so that a later
+        # re-attach can put restart_sources.json back on disk.
+        gk._restart_sources_payload = ctx.plan.payload
+        if getattr(gk, "simulation_job", None) is not None:
+            gk.simulation_job.connection_retry_settings = ctx.connection_retry_settings
 
-        elif run_type == 'prep':
-            
-            # Prevent writing the json file from variables, as we will wait for the user to run CGYRO externally and provide the json themselves
-            self._write_json_from_variables_turb = False
-            
-            # Wait until the user has placed the json file in the right folder
-            
-            self._profiles_transport_for("turb").write_state(self.folder / subfolder_name / "input.gacode")
-            
-            pre_checks(self)
+        return gk
 
-            file_path = self.folder / 'fluxes_turb.json'
+    def _gk_execute(self, ctx, gk):
+        '''
+        Results onto local disk: re-attach to the job a previous process submitted, or submit a
+        fresh one; poll and fetch when the submission is detached; read. Returns one list of
+        per-rho output objects per plasma, or None when this run_type leaves nothing to read.
+        '''
+        ctx.submission = GKSubmission(
+            gk, self.folder, ctx.subfolder_name,
+            every_n_minutes=ctx.every_n_minutes,
+            enabled=ctx.check_existing_runs,
+            connection_retry_settings=ctx.connection_retry_settings,
+            label=f"batched {ctx.code.upper()}" if ctx.batched else ctx.code.upper(),
+            submit_name="run_over_plasmas()" if ctx.batched else "run()",
+            reader_name="read_plasma()" if ctx.batched else "read()",
+            organize_label="per-(plasma,rho) folders" if ctx.batched else "per-rho folders",
+        )
 
-            attempts = 0
-            all_good = post_checks(self) if file_path.exists() else False
-            while (file_path.exists() is False) or (not all_good):
-                if attempts > 0:
-                    print(f"\n !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
-                    print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
-                    print(f" MITIM could not find the file... looping back", typeMsg='i')
-                    print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
-                    print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
-                logic_to_wait(self.folder, self.folder / subfolder_name)
-                attempts += 1
+        if not ctx.unpickled:
+            outcome = ctx.submission.try_reattach(
+                on_fresh_fallback=lambda: ctx.chain.rerun_for_fresh_submission(gk, ctx.run_kwargs, ctx.turb_target_GB),
+                before_load=lambda: self._gk_restore_reader_state(ctx, gk),
+            )
+            if not outcome.reattached:
+                self._gk_submit(ctx, gk)
+                # run() -> _run_prepare recreated <subfolder_name>/ through askNewFolder, wiping the
+                # resolver's restart_sources.json. Put it back so the warm-start parent map is on
+                # disk for the trace plotter, including during polling.
+                RestartPlan.restore_json(self.folder, ctx.subfolder_name,
+                                         getattr(gk, "_restart_sources_payload", None))
 
-                if file_path.exists():
-                    all_good = post_checks(self)
+        # 'send' stages the inputs without submitting and 'prep' only builds them: neither
+        # leaves anything on disk to read
+        if ctx.run_type in (SIMtools.RunType.SEND, SIMtools.RunType.PREP):
+            return None
+
+        if not ctx.unpickled:
+            if ctx.run_type is SIMtools.RunType.SUBMIT:
+                ctx.submission.poll_and_fetch(outcome.reattached)
+
+            self._gk_read(ctx, gk)
+            self._gk_save_pickle(ctx, gk, outcome.reattached)
+
+        labels = list(ctx.plasma_labels.values()) if ctx.batched else [ctx.subfolder_name]
+        return [gk.results[label]['output'] for label in labels]
+
+    def _gk_collect_fluxes(self, ctx, outputs_per_plasma, pass_info=True):
+        '''
+        The turbulent fluxes power_transport expects: QeGB_turb, QiGB_turb, GeGB_turb, GZGB_turb,
+        MtGB_turb, QieGB_turb and their _stds, as (nrho,) arrays for one plasma and (N, nrho) for
+        a batch, plus the per-rho averaging record that goes into fluxes_turb.json.
+        '''
+        flat = [o for outputs in outputs_per_plasma for o in outputs]
+        _check_exchange_moment(flat, [
+            f"plasma {p} rho={rho:.4f}" if ctx.batched else f"{rho:.4f}"
+            for p in range(len(outputs_per_plasma)) for rho in ctx.rho_locations])
+
+        if not pass_info:
+            return
+
+        has_exchange = hasattr(flat[0], 'Se_mean')
+        spec = (_FLUX_SPEC + (_EXCHANGE_SPEC,)) if has_exchange else _FLUX_SPEC
+        impurity_position = self._impurity_position_transport_for("turb")
+
+        for key, mean_attr, std_attr, per_species in spec:
+            mean, std = _flux_arrays(outputs_per_plasma, mean_attr, std_attr, per_species, impurity_position)
+            setattr(self, f"{key}_turb", mean if ctx.batched else mean[0])
+            setattr(self, f"{key}_turb_stds", std if ctx.batched else std[0])
+
+        if not has_exchange:
+            print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
+            self.QieGB_turb = self.QeGB_turb * 0.0
+            self.QieGB_turb_stds = self.QeGB_turb_stds * 0.0
+
+        averaging = [_averaging_records(outputs) for outputs in outputs_per_plasma]
+        self.averaging_info_turb = averaging if ctx.batched else averaging[0]
+
+    # ------------------------------------------------------------------------------------------
+    # Pieces of a stage
+    # ------------------------------------------------------------------------------------------
+
+    def _extra_points(self, ctx):
+        return ExtraPointHarvester(self, ctx.code, ctx.rho_locations, ctx.run_kwargs, ctx.read_options)
+
+    def _gk_submit(self, ctx, gk):
+        job_name_suffix = f"_ev{ctx.evaluation_number}"
+        if ctx.batched:
+            gk.prep(ctx.list_of_states[0], self.folder, cold_start=ctx.cold_start)
+            ctx.plasma_labels = gk.run_over_plasmas(
+                ctx.list_of_states,
+                base_subfolder=ctx.subfolder_name,
+                cold_start=ctx.cold_start,
+                forceIfcold_start=True,
+                extra_name=self.name,
+                attempts_execution=2,
+                only_minimal_files=ctx.keep_gk_files in ['none', 'pickle'],
+                job_name_suffix=job_name_suffix,
+                **ctx.run_kwargs,
+            )
+        else:
+            gk.run(
+                ctx.subfolder_name,
+                cold_start=ctx.cold_start,
+                forceIfcold_start=True,
+                only_minimal_files=ctx.keep_gk_files in ['none', 'pickle'],
+                job_name_suffix=job_name_suffix,
+                **ctx.run_kwargs,
+            )
+
+    def _gk_restore_reader_state(self, ctx, gk):
+        '''
+        What the reader needs but a re-attach never staged. _run_prepare normally sets
+        FolderSimLast; the batched reader additionally needs every per-plasma folder rebuilt
+        (profiles, inputs_files, normalizations) without contacting the cluster.
+        '''
+        if not ctx.batched:
+            gk.FolderSimLast = self.folder / ctx.subfolder_name
+            return
+
+        print(f"\t- Rebuilding per-plasma state for {len(ctx.list_of_states)} plasma(s) "
+              "(profiles, inputs, normalizations) without re-submitting...", typeMsg='i')
+        print("")
+        gk.prep(ctx.list_of_states[0], self.folder, cold_start=False)
+        # forceIfcold_start=True so askNewFolder() does not prompt mid-re-attach; the inputs are
+        # deterministic from namelist+powerstate and the slurm job already has its own copy
+        _, _, ctx.plasma_labels = gk._prepare_plasmas_state(
+            ctx.list_of_states,
+            base_subfolder=ctx.subfolder_name,
+            cold_start=False,
+            forceIfcold_start=True,
+            code_settings=ctx.run_kwargs.get("code_settings"),
+            extraOptions=ctx.run_kwargs.get("extraOptions"),
+            multipliers=ctx.run_kwargs.get("multipliers"),
+            minimum_delta_abs=ctx.run_kwargs.get("minimum_delta_abs"),
+            only_minimal_files=ctx.keep_gk_files in ['none', 'pickle'],
+            launchSlurm=ctx.run_kwargs.get("launchSlurm", True),
+            allocation=ctx.run_kwargs.get("allocation"),
+            additional_files_to_send=ctx.run_kwargs.get("additional_files_to_send"),
+            ApplyCorrections=ctx.run_kwargs.get("ApplyCorrections", True),
+            Quasineutral=ctx.run_kwargs.get("Quasineutral", False),
+            announce=False,
+        )
+
+    def _gk_read(self, ctx, gk):
+        # minimal=True: a pickle carrying the full output would be extra heavy
+        if ctx.batched:
+            for p, label in ctx.plasma_labels.items():
+                gk.read_plasma(p, label=label, minimal=True, **ctx.read_options)
+        else:
+            gk.read(label=ctx.subfolder_name, minimal=True, **ctx.read_options)
+
+    def _gk_save_pickle(self, ctx, gk, reattached):
+        '''
+        keep_files 'pickle': the object first, the heavy per-rho files only once the pickle is on
+        disk, so a failed save never leaves the evaluation with no data at all.
+        '''
+        if ctx.keep_gk_files not in ['pickle']:
+            return
+        if reattached:
+            # inputs_files / normalization state were reconstructed through prep only
+            print("\t- pickle requested but run was re-attached; skipping pickle save (inputs not fully available)", typeMsg='i')
+            return
+
+        ctx.pickle_file.parent.mkdir(parents=True, exist_ok=True)
+        gk.save_pickle(ctx.pickle_file)
+        if not ctx.pickle_file.exists():
+            print(f"\t- save_pickle did not produce {ctx.pickle_file}; keeping raw CGYRO files", typeMsg='w')
+            return
+
+        labels = list(ctx.plasma_labels.values()) if ctx.batched else [ctx.subfolder_name]
+        for label in labels:
+            for file in gk.output_files_simulation["complete"]:
+                for rho in gk.rhos:
+                    (self.folder / label / f"{file}_{rho:.4f}").unlink(missing_ok=True)
+
+    def _run_externally_and_wait(self, ctx):
+        '''
+        run_type 'prep': MITIM builds the inputs, the user runs the code elsewhere and drops
+        fluxes_turb.json in the evaluation folder. Loop until that file is there and its
+        gradients agree with the powerstate.
+        '''
+        # the JSON comes from the user, so do not write one from our own variables
+        self._write_json_from_variables_turb = False
+        self._profiles_transport_for("turb").write_state(self.folder / ctx.subfolder_name / "input.gacode")
+
+        self.pre_checks()
+
+        file_path = self.folder / 'fluxes_turb.json'
+        attempts = 0
+        all_good = self.post_checks() if file_path.exists() else False
+        while (file_path.exists() is False) or (not all_good):
+            if attempts > 0:
+                print(f"\n !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
+                print(f" MITIM could not find the file... looping back", typeMsg='i')
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
+                print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", typeMsg='i')
+            logic_to_wait(self.folder, self.folder / ctx.subfolder_name)
+            attempts += 1
+
+            if file_path.exists():
+                all_good = self.post_checks()
+
+    # ------------------------------------------------------------------------------------------
+    # Interactive helpers of run_type 'prep'
+    # ------------------------------------------------------------------------------------------
+
+    def pre_checks(self):
+        '''Gradients and the flux the turbulence has to carry (target - neoclassical), per radius.'''
+        plasma = self.powerstate.plasma
+
+        txt = "\nFluxes to be matched by turbulence ( Target - Neoclassical ):"
+
+        for var, varn in zip(
+            ["r/a  ", "rho  ", "a/LTe", "a/LTi", "a/Lne", "a/LnZ", "a/Lw0"],
+            ["roa", "rho", "aLte", "aLti", "aLne", "aLnZ", "aLw0"],
+        ):
+            txt += f"\n{var}   = "
+            for j in range(plasma["rho"].shape[1] - 1):
+                txt += f"{plasma[varn][0,j+1]:.6f}   "
+
+        for var, varn in zip(
+            ["Qe (GB)", "Qi (GB)", "Ge (GB)", "GZ (GB)", "Mt (GB)"],
+            ["QeGB", "QiGB", "GeGB", "GZGB", "MtGB"],
+        ):
+            # neoclassical_model None leaves no *GB_neoc: the target itself is what turbulence carries
+            neoc = self.__dict__.get(f'{varn}_neoc')
+            txt += f"\n{var}  = "
+            for j in range(plasma["rho"].shape[1] - 1):
+                txt += f"{plasma[varn][0,j+1] - (neoc[j] if neoc is not None else 0.0):.4e}   "
+
+        print(txt)
+
+    def post_checks(self, rtol=1e-3):
+        '''Compare the additional_info of a user-supplied fluxes_turb.json against the powerstate.'''
+        with open(self.folder / 'fluxes_turb.json', 'r') as f:
+            json_dict = json.load(f)
+
+        additional_info_from_json = json_dict.get('additional_info', {})
+
+        all_good = True
+
+        if len(additional_info_from_json) == 0:
+            print(f"\t- No additional info found in fluxes_turb.json to be compared with", typeMsg='i')
+
+        else:
+            print(f"\t- Additional info found in fluxes_turb.json:", typeMsg='i')
+            for k, v in additional_info_from_json.items():
+                vP = self.powerstate.plasma[k].cpu().numpy()[0,1:]
+
+                crit = not np.allclose(v, vP, rtol=rtol)
+
+                print(f"\t   {k} from JSON      : {[round(float(i),4) for i in v]}", typeMsg='' if not crit else 'i')
+                print(f"\t   {k} from POWERSTATE: {[round(float(i),4) for i in vP]}", typeMsg='' if not crit else 'i')
+
+                if crit:
+                    all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.3f}%, max rel difference: {np.max(np.abs(v - vP) / np.maximum(np.abs(v), np.abs(vP)))*100.0:.3f}%", typeMsg='q')
+
+        return all_good
+
+    # ------------------------------------------------------------------------------------------
 
     def _stable_correction(self, simulation_options_all):
 
@@ -1387,494 +586,52 @@ class gyrokinetic_model:
                     print(f"\t\t- Assigning {Qi_stable_percent_error:.1f}% from target value as standard deviation: sigma = {Qi_std:.2e} MW/m^2 instead of {QiMWm2_stds[i]:.2e} MW/m^2", typeMsg='i')
                     QiMWm2_stds[i] = Qi_std
 
+
 class cgyro_model(gyrokinetic_model):
 
     def evaluate_turbulence(self):
 
         # Active cgyro options block (defaults to "cgyro"; differs in named multi-fidelity
-        # instances like "cgyro1"). The base-TGLF diagnostic below intentionally stays on
+        # instances like "cgyro1"). The base-TGLF diagnostic intentionally stays on
         # options["tglf"] — see namelist.portals.yaml notes on the multi-fidelity scoping.
         cgyro_key = getattr(self, "_active_turb_options_key", None) or "cgyro"
-
-        if self.transport_evaluator_options[cgyro_key].get("run_base_tglf", True):
-            # Run base TGLF, to keep track of discrepancies! ---------------------------------------------
-            simulation_options_tglf = self.transport_evaluator_options["tglf"]
-            simulation_options_tglf["use_scan_trick_for_stds"] = None
-            self._evaluate_tglf(pass_info=False, options_key="tglf")
-            # --------------------------------------------------------------------------------------------
+        self._run_base_tglf(cgyro_key)
 
         self._evaluate_gyrokinetic_model(code=cgyro_key, gk_object=CGYROtools.CGYRO)
 
-    # ----------------------------------------------------------------------------------------
-    # Multi-plasma CGYRO — fan a list of profile states through run_over_plasmas so that every
-    # (plasma, rho) work unit is dispatched concurrently by the existing FARMINGtools pipeline.
-    # Used by power_transport._evaluate_batched() when the powerstate carries batch_size > 1.
-    # ----------------------------------------------------------------------------------------
     def evaluate_turbulence_batched(self, list_of_states, pass_info=True):
-
+        '''
+        Fan a list of profile states through run_over_plasmas so that every (plasma, rho) work
+        unit is dispatched concurrently by the existing FARMINGtools pipeline. Reached from
+        portals_transport_model.evaluate_turbulence_batched when powerstate.batch_size > 1.
+        '''
         cgyro_key = getattr(self, "_active_turb_options_key", None) or "cgyro"
+        self._run_base_tglf(cgyro_key, list_of_states=list_of_states)
 
-        # Run base TGLF for diagnostics, same as single-plasma path (pass_info=False
-        # so TGLF results are computed for comparison but don't overwrite the flux arrays).
-        # Pin to options["tglf"] even under multi-fidelity, same as the single-plasma branch.
-        if self.transport_evaluator_options[cgyro_key].get("run_base_tglf", True):
-            from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
-            simulation_options_tglf = self.transport_evaluator_options["tglf"]
-            simulation_options_tglf["use_scan_trick_for_stds"] = None
+        ctx = self._gk_options(cgyro_key, CGYROtools.CGYRO, list_of_states=list_of_states)
+        gk = self._gk_prepare(ctx, CGYROtools.CGYRO)
+        outputs = self._gk_execute(ctx, gk)
+
+        if outputs is not None:
+            self._gk_collect_fluxes(ctx, outputs, pass_info=pass_info)
+            ctx.submission.cleanup(
+                remove_scratch=(ctx.run_type is SIMtools.RunType.SUBMIT) and ctx.remove_scratch_after_fetch)
+
+        return gk
+
+    def _run_base_tglf(self, cgyro_key, list_of_states=None):
+        '''Base TGLF alongside CGYRO, to keep track of discrepancies. pass_info=False so it
+        computes its fluxes without overwriting the CGYRO ones.'''
+        if not self.transport_evaluator_options[cgyro_key].get("run_base_tglf", True):
+            return
+
+        from mitim_modules.powertorch.physics_models.transport_tglf import tglf_model
+        self.transport_evaluator_options["tglf"]["use_scan_trick_for_stds"] = None
+        if list_of_states is None:
+            self._evaluate_tglf(pass_info=False, options_key="tglf")
+        else:
             tglf_model._evaluate_tglf_batched(self, list_of_states, pass_info=False, options_key="tglf")
 
-        simulation_options = self.transport_evaluator_options[cgyro_key]
-        cold_start = self.cold_start
-
-        run_type = SIMtools._normalize_run_type(simulation_options["run"].get("run_type", "normal"))
-        if run_type == "prep":
-            raise NotImplementedError(
-                "run_type='prep' (interactive external CGYRO run) is not supported in "
-                "batched mode. Use single-plasma evaluation or run_type='normal'/'submit'."
-            )
-
-        # Re-attach controls (see templates/namelist.portals.yaml). Read via .get()
-        # so we do not mutate the shared namelist between PORTALS iterations.
-        check_existing_runs = simulation_options["run"].get("check_existing_runs", False)
-        every_n_minutes = simulation_options["run"].get("every_n_minutes", 10)
-        remove_scratch_after_fetch = simulation_options["run"].get("remove_scratch_after_fetch", False)
-        # Forwarded onto the mitim_job (see single-plasma path); consumed inside
-        # connect_ssh() so submit, check, and fetch all share the same retry
-        # policy. attempts=None means retry forever (recommended for long
-        # PORTALS-CGYRO runs that need to ride out overnight VPN flaps).
-        connection_retry_settings = {
-            "wait_seconds": simulation_options["run"].get("ssh_retry_wait_seconds", 5),
-            "attempts":     simulation_options["run"].get("ssh_retry_attempts", 3),
-        }
-        # Auto-resubmit settings (see single-plasma path) — same defaults.
-        auto_resubmit_settings = {
-            "enabled":                    simulation_options["run"].get("auto_resubmit_enabled", True),
-            "stall_init_kill_seconds":    simulation_options["run"].get("stall_init_kill_seconds", 1800),
-            "stall_running_kill_seconds": simulation_options["run"].get("stall_running_kill_seconds", 1800),
-            "max_resubmits_per_rho":      simulation_options["run"].get("max_resubmits_per_rho", 1),
-        }
-        if check_existing_runs and run_type != 'submit':
-            print(f"\t- check_existing_runs=True has no effect when run_type='{run_type}' (only 'submit' supports re-attach); ignoring", typeMsg='w')
-            check_existing_runs = False
-
-        keep_gk_files = simulation_options.get("keep_files", "all")
-
-        rho_locations = [
-            self.powerstate.plasma["rho"][0, 1:][i].item()
-            for i in range(len(self.powerstate.plasma["rho"][0, 1:]))
-        ]
-
-        N = len(list_of_states)
-        nrho = len(rho_locations)
-
-        # All on-disk artifacts (base folder, metadata JSON, pickle, per-plasma sub-folders)
-        # track the active instance name so named multi-fidelity configs (e.g. 'cgyro1') do
-        # not collide with plain 'cgyro'. Single-fidelity keeps writing to 'base_cgyro' /
-        # 'base_cgyro_plasma{p}' exactly as before.
-        base_subfolder_name = f"base_{cgyro_key}"
-
-        metadata_path = self.folder / base_subfolder_name / "cgyro_submission.json"
-
-        # Try to restore from pickle if keep_files == 'pickle' (mirrors single-plasma path)
-        cgyro_unpickled = False
-        pickle_file = self.folder / base_subfolder_name / "gk_object_batched.pkl"
-        if keep_gk_files in ["pickle"]:
-            try:
-                cgyro = SIMtools.restore_class_pickle(pickle_file)
-                cgyro_unpickled = True
-                plasma_labels = {p: f"{base_subfolder_name}_plasma{p}" for p in range(N)}
-                print("\t- Pickle file with batched GK object information has been restored successfully", typeMsg="i")
-            except Exception as e:
-                cgyro_unpickled = False
-                print("\t- Pickle file could not be read, with error:", typeMsg="w")
-                print(e)
-
-        reattached = False
-        skip_check_fetch = False
-        if not cgyro_unpickled:
-            cgyro = CGYROtools.CGYRO(rhos=rho_locations)
-
-            # run_over_plasmas / _prepare_plasmas_state call _run_prepare directly
-            # (not CGYRO.run()), so preprocess_options must be set beforehand for
-            # _run_prepare -> _apply_cgyro_preprocessing to pick it up.
-            cgyro._preprocess_options = simulation_options["run"].get("preprocess_options")
-
-        # Set on cgyro regardless of pickle status, so both freshly-constructed
-        # and unpickled instances carry the retry config; connect_ssh() picks
-        # this up via simulation_job (propagated either at construction time
-        # in SIMtools.py or explicitly here for the unpickled / re-attached
-        # paths where simulation_job already exists).
-        cgyro.connection_retry_settings = connection_retry_settings
-        cgyro.auto_resubmit_settings = auto_resubmit_settings
-        self._harvest_attach(cgyro)   # both the fresh and the unpickled instance
-        if getattr(cgyro, "simulation_job", None) is not None:
-            cgyro.simulation_job.connection_retry_settings = connection_retry_settings
-
-        if not cgyro_unpickled:
-
-            # Filter simulation_options["run"] to only keys that run_over_plasmas accepts;
-            # CGYRO-specific keys (preprocess_options) are handled above; re-attach
-            # controls (check_existing_runs, every_n_minutes) are consumed here.
-            # restart_from_folder is resolved below into additional_files_to_send.
-            run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _RUN_OVER_PLASMAS_KEYS}
-
-            # Translate namelist-level restart_from_folder into per-rho
-            # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).
-            # Apply before both the re-attach and fresh-submit branches so either path
-            # sees the resolved dict via run_kwargs["additional_files_to_send"].
-            resolved_additional = _resolve_cgyro_restart_folder(
-                simulation_options["run"],
-                rho_locations,
-                run_kwargs.get("additional_files_to_send"),
-            )
-            if resolved_additional is not None:
-                run_kwargs["additional_files_to_send"] = resolved_additional
-
-            # Automatic restart chain in batched mode: for every iteration N>=1,
-            # pull bin.cgyro.restart from plasma 0 of the source iteration
-            # (iter 0 for "first", iter N-1 for "all", per-rho L2-closest for
-            # "best"). All plasmas in the current batched call warm-start from
-            # the same plasma-0 reference since they share the seed-iteration
-            # semantics. base_subfolder and plasma_subfolder are both
-            # instance-named so multi-fidelity restart chains resolve to the
-            # right ancestor directory on disk. For "best", the turbulent
-            # target is built from plasma 0 to match this same plasma-0
-            # reference convention.
-            #
-            # Re-attach: skip the resolver and rely on load_submission_state
-            # to restore restart_sources.json from the embedded copy in
-            # cgyro_submission.json. See the single-plasma path for rationale.
-            restart_sources_payload = None
-            if check_existing_runs and metadata_path.is_file():
-                print(f"\t- [CGYRO restart] Re-attach detected ({metadata_path.name} present); preserving original parent-pick (skipping resolver)", typeMsg='i')
-            else:
-                resolved_additional = _resolve_cgyro_restart_chain(
-                    simulation_options["run"],
-                    getattr(self, "evaluation_number", 0),
-                    self.folder,
-                    rho_locations,
-                    run_kwargs.get("additional_files_to_send"),
-                    plasma_subfolder=f"{base_subfolder_name}_plasma0",
-                    base_subfolder=base_subfolder_name,
-                    current_turb_target_GB=_build_current_turb_target_GB(self, plasma_index=0),
-                )
-                if resolved_additional is not None:
-                    run_kwargs["additional_files_to_send"] = resolved_additional
-
-                _restart_json_path = self.folder / base_subfolder_name / "restart_sources.json"
-                if _restart_json_path.is_file():
-                    try:
-                        with open(_restart_json_path, "r") as _f:
-                            restart_sources_payload = json.load(_f)
-                    except (OSError, ValueError) as _e:
-                        print(f"\t- [CGYRO restart] Could not re-read {_restart_json_path.name} for metadata embed ({_e}); JSON-restore-on-reattach disabled for this iter", typeMsg='w')
-            cgyro._restart_sources_payload = restart_sources_payload
-
-            # Per-iteration extraOptions overrides (extraOptions_special). All
-            # plasmas in a batched call share the iteration index and therefore
-            # apply the same merged overrides.
-            run_kwargs["extraOptions"] = _resolve_cgyro_extra_options_special(
-                simulation_options["run"],
-                getattr(self, "evaluation_number", 0),
-                run_kwargs.get("extraOptions"),
-            )
-
-            # Per-iteration SLURM allocation overrides (allocation_special).
-            run_kwargs["allocation"] = _resolve_cgyro_allocation_special(
-                simulation_options["run"],
-                getattr(self, "evaluation_number", 0),
-                run_kwargs.get("allocation"),
-            )
-
-            if check_existing_runs:
-                if metadata_path.exists():
-                    print("")
-                    print(f"\t==================== [check_existing_runs] Re-attach to existing batched CGYRO submission ====================", typeMsg='i')
-                    print("")
-                    print(f"\t- Submission metadata found at:", typeMsg='i')
-                    print(f"\t     {metadata_path}", typeMsg='i')
-                    print("")
-                    print(f"\t- Rebuilding per-plasma state for {N} plasma(s) (profiles, inputs, normalizations) without re-submitting...", typeMsg='i')
-                    print("")
-
-                    # Rebuild per-plasma state (profiles, inputs_files, normalizations)
-                    # that read_plasma() relies on, without contacting the cluster.
-                    _ = cgyro.prep(
-                        list_of_states[0],
-                        self.folder,
-                        cold_start=False,
-                    )
-                    # forceIfcold_start=True so _run_prepare's askNewFolder() does
-                    # not prompt the user mid-re-attach; inputs are deterministic
-                    # from namelist+powerstate so re-staging the per-plasma folder
-                    # is harmless (and the slurm job already has its own copy).
-                    _, _, plasma_labels = cgyro._prepare_plasmas_state(
-                        list_of_states,
-                        base_subfolder=base_subfolder_name,
-                        cold_start=False,
-                        forceIfcold_start=True,
-                        code_settings=run_kwargs.get("code_settings"),
-                        extraOptions=run_kwargs.get("extraOptions"),
-                        multipliers=run_kwargs.get("multipliers"),
-                        minimum_delta_abs=run_kwargs.get("minimum_delta_abs"),
-                        only_minimal_files=keep_gk_files in ["none", "pickle"],
-                        launchSlurm=run_kwargs.get("launchSlurm", True),
-                        allocation=run_kwargs.get("allocation"),
-                        additional_files_to_send=run_kwargs.get("additional_files_to_send"),
-                        ApplyCorrections=run_kwargs.get("ApplyCorrections", True),
-                        Quasineutral=run_kwargs.get("Quasineutral", False),
-                        announce=False,
-                    )
-                    data = cgyro.load_submission_state(metadata_path)
-                    # load_submission_state builds a fresh mitim_job from the
-                    # JSON, so propagate the namelist-tunable retry config
-                    # onto it explicitly.
-                    if getattr(cgyro, "simulation_job", None) is not None:
-                        cgyro.simulation_job.connection_retry_settings = connection_retry_settings
-                    _jobinfo = data.get("job", {})
-                    print("")
-                    print(f"\t- Prior submission: jobid={_jobinfo.get('jobid')} on {_jobinfo.get('machineSettings', {}).get('machine')}", typeMsg='i')
-                    print(f"\t     remote folder: {_jobinfo.get('folderExecution')}", typeMsg='i')
-                    print(f"\t     submitted at:  {data.get('created_utc')} (schema v{data.get('schema_version')})", typeMsg='i')
-                    print("")
-                    print(f"\t- Skipping run_over_plasmas()/sbatch; polling this job with every_n_minutes={every_n_minutes}", typeMsg='i')
-                    print("")
-                    reattached = True
-
-                    # Liveness probe — same stale-job decision tree as
-                    # single-plasma: job gone + local complete -> read;
-                    # job gone + local incomplete -> try fetch() once
-                    # (results may still be in remote scratch); if fetch
-                    # still can't fill the local set -> resubmit.
-                    print(f"\t- Liveness probe via squeue...", typeMsg='i')
-                    cgyro.simulation_job.check(file_output=cgyro.slurm_output)
-                    # Same child-jobid widening as single-plasma path: a
-                    # rescue child job spawned by the auto-resubmit
-                    # orchestrator may still be in the queue even if the
-                    # parent array has already left.
-                    parent_alive = (cgyro.simulation_job.status != 2)
-                    any_child_alive = cgyro._any_child_job_alive()
-                    print("")
-                    if (not parent_alive) and (not any_child_alive):
-                        print(f"\t- Slurm reports job is NOT in the queue (state={cgyro.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
-                        if cgyro._local_results_complete():
-                            print(f"\t- All expected CGYRO output files are already on local disk — skipping check()/fetch() and jumping to read_plasma()", typeMsg='i')
-                            skip_check_fetch = True
-                        else:
-                            print(f"\t- Local results incomplete; attempting fetch() from remote scratch folder in case the job finished while we were offline...", typeMsg='i')
-                            try:
-                                cgyro.fetch()
-                            except Exception as _fe:
-                                print(f"\t- fetch() raised ({_fe})", typeMsg='w')
-                            if cgyro._local_results_complete():
-                                print(f"\t- Remote scratch had the results — fetch complete, skipping check()/fetch() in the main loop and jumping to read_plasma()", typeMsg='i')
-                                skip_check_fetch = True
-                            else:
-                                print(f"\t- Even after fetch() the expected CGYRO output files are incomplete — the prior submission apparently failed.", typeMsg='w')
-                                print(f"\t  Removing {metadata_path.name} and falling back to a fresh submission", typeMsg='w')
-                                metadata_path.unlink(missing_ok=True)
-                                reattached = False
-                                # Re-attach skipped the restart-chain resolver; a fresh
-                                # submission needs it (otherwise: silent cold start with
-                                # warm-start-sized MAX_TIME + stale restart_sources.json)
-                                _rerun_restart_resolver_for_fresh_fallback(
-                                    self, cgyro, run_kwargs, simulation_options,
-                                    rho_locations, base_subfolder_name,
-                                    plasma_subfolder=f"{base_subfolder_name}_plasma0",
-                                    plasma_index=0,
-                                )
-                    else:
-                        live_summary = f"jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}"
-                        if any_child_alive:
-                            child_ids = cgyro._child_jobids()
-                            live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
-                        print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
-                    print("")
-                else:
-                    print("")
-                    print(f"\t==================== [check_existing_runs] No prior batched CGYRO submission to re-attach ====================", typeMsg='i')
-                    print("")
-                    print(f"\t- Looked for metadata at:", typeMsg='i')
-                    print(f"\t     {metadata_path}", typeMsg='i')
-                    print(f"\t- File does not exist; this is a fresh PORTALS evaluation, submitting CGYRO normally", typeMsg='i')
-                    print("")
-
-            if not reattached:
-                _ = cgyro.prep(
-                    list_of_states[0],
-                    self.folder,
-                    cold_start=cold_start,
-                )
-
-                plasma_labels = cgyro.run_over_plasmas(
-                    list_of_states,
-                    base_subfolder=base_subfolder_name,
-                    cold_start=cold_start,
-                    forceIfcold_start=True,
-                    extra_name=self.name,
-                    attempts_execution=2,
-                    only_minimal_files=keep_gk_files in ["none", "pickle"],
-                    job_name_suffix=f"_ev{getattr(self, 'evaluation_number', 0)}",
-                    **run_kwargs,
-                )
-
-            # run_over_plasmas does not poll/fetch for run_type='submit'; do it
-            # here so batched `submit` actually works (also covers the re-attach
-            # path, since reattached runs need the same check/fetch cycle).
-            if run_type == "submit" and not skip_check_fetch:
-                print("")
-                print(f"\t- [submit] Polling slurm every {every_n_minutes} min until the batched CGYRO job leaves the queue (state NOT FOUND / squeue returns nothing).", typeMsg='i')
-                print(f"\t  You can ^C at any time; {metadata_path.name} is on disk so re-attach will resume from where we left off.", typeMsg='i')
-                print("")
-                cgyro.check(
-                    every_n_minutes=every_n_minutes,
-                    skip_first_iteration_squeue=reattached,
-                    custom_checker=getattr(cgyro, "_custom_check_callback", None),
-                )
-
-                print("")
-                print(f"\t- [submit] Job finished on the cluster — pulling the result tarball and organizing files into per-(plasma,rho) folders.", typeMsg='i')
-                print("")
-                cgyro.fetch()
-            elif run_type == "submit" and skip_check_fetch:
-                print("")
-                print(f"\t- [submit] Results were already local — reading them directly without polling or fetching.", typeMsg='i')
-                print("")
-        Qe_batch     = np.zeros((N, nrho))
-        Qe_std_batch = np.zeros((N, nrho))
-        Qi_batch     = np.zeros((N, nrho))
-        Qi_std_batch = np.zeros((N, nrho))
-        Ge_batch     = np.zeros((N, nrho))
-        Ge_std_batch = np.zeros((N, nrho))
-        GZ_batch     = np.zeros((N, nrho))
-        GZ_std_batch = np.zeros((N, nrho))
-        Mt_batch     = np.zeros((N, nrho))
-        Mt_std_batch = np.zeros((N, nrho))
-        S_batch      = np.zeros((N, nrho))
-        S_std_batch  = np.zeros((N, nrho))
-        averaging_batch = {}
-
-        for p, label in plasma_labels.items():
-            if not cgyro_unpickled:
-                cgyro.read_plasma(
-                    p,
-                    label=label,
-                    minimal=True,
-                    **simulation_options["read"],
-                )
-            outputs = cgyro.results[label]["output"]
-
-            Qe_batch[p, :]     = np.array([outputs[i].Qe_mean for i in range(nrho)])
-            Qe_std_batch[p, :] = np.array([outputs[i].Qe_std for i in range(nrho)])
-            Qi_batch[p, :]     = np.array([outputs[i].Qi_mean for i in range(nrho)])
-            Qi_std_batch[p, :] = np.array([outputs[i].Qi_std for i in range(nrho)])
-            Ge_batch[p, :]     = np.array([outputs[i].Ge_mean for i in range(nrho)])
-            Ge_std_batch[p, :] = np.array([outputs[i].Ge_std for i in range(nrho)])
-
-            # GZ / Mt / Qie: same extraction and conventions as the single-plasma path
-            imp_pos = self._impurity_position_transport_for("turb")
-            GZ_batch[p, :]     = np.array([outputs[i].Gi_all_mean[imp_pos] for i in range(nrho)])
-            GZ_std_batch[p, :] = np.array([outputs[i].Gi_all_std[imp_pos] for i in range(nrho)])
-            Mt_batch[p, :]     = np.array([outputs[i].Mt_mean for i in range(nrho)])
-            Mt_std_batch[p, :] = np.array([outputs[i].Mt_std for i in range(nrho)])
-            _check_exchange_moment(outputs, list(range(nrho)))
-            if hasattr(outputs[0], 'Se_mean'):
-                S_batch[p, :]      = np.array([outputs[i].Se_mean for i in range(nrho)])
-                S_std_batch[p, :]  = np.array([outputs[i].Se_std for i in range(nrho)])
-            else:
-                print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
-                S_batch[p, :]      = 0.0
-                S_std_batch[p, :]  = 0.0
-
-            averaging_batch[p] = _averaging_records(outputs)
-
-        # Optional remote scratch cleanup on the submit path — see the
-        # single-plasma branch for the rationale. Same try/except shape so
-        # a connection hiccup doesn't abort the PORTALS iteration.
-        if run_type == 'submit' and remove_scratch_after_fetch:
-            try:
-                cgyro.simulation_job.connect()
-                cgyro.simulation_job.remove_scratch_folder()
-                cgyro.simulation_job.close()
-                print(f"\t- [submit] remove_scratch_after_fetch=true — removed remote scratch {cgyro.simulation_job.folderExecution}", typeMsg='i')
-            except Exception as _rs_e:
-                print(f"\t- remote scratch removal raised ({_rs_e}); leaving the folder in place", typeMsg='w')
-
-        # Invariant for re-attach: "metadata present => job in flight (or
-        # retrieval not yet complete)". Read loop succeeded, so drop the file.
-        if metadata_path.exists():
-            print(f"\t- [check_existing_runs] Batched read finished — removing stale submission metadata at {metadata_path.name} so the next PORTALS iteration submits fresh", typeMsg='i')
-        metadata_path.unlink(missing_ok=True)
-
-        # Save pickle first, then remove heavy files only if the pickle is on disk.
-        # This mirrors the single-plasma path and prevents data loss if save_pickle raises.
-        # Skip on a re-attached run — per-plasma `inputs_files` / normalization
-        # state was reconstructed minimally via prep, so a pickle would be incomplete.
-        if keep_gk_files in ["pickle"] and reattached:
-            print("\t- pickle requested but run was re-attached; skipping pickle save (inputs not fully available)", typeMsg="i")
-        elif keep_gk_files in ["pickle"] and not cgyro_unpickled:
-            pickle_file.parent.mkdir(parents=True, exist_ok=True)
-            cgyro.save_pickle(pickle_file)
-            if pickle_file.exists():
-                for p, label in plasma_labels.items():
-                    for file in cgyro.output_files_simulation["complete"]:
-                        for rho in cgyro.rhos:
-                            fileN = f"{file}_{rho:.4f}"
-                            (self.folder / label / fileN).unlink(missing_ok=True)
-            else:
-                print(
-                    f"\t- save_pickle did not produce {pickle_file}; keeping raw CGYRO files",
-                    typeMsg='w',
-                )
-
-        if pass_info:
-            self.QeGB_turb      = Qe_batch
-            self.QeGB_turb_stds = Qe_std_batch
-            self.averaging_info_turb = [averaging_batch.get(p, None) for p in range(N)]   # per plasma, per rho
-
-            self.QiGB_turb      = Qi_batch
-            self.QiGB_turb_stds = Qi_std_batch
-
-            self.GeGB_turb      = Ge_batch
-            self.GeGB_turb_stds = Ge_std_batch
-
-            self.GZGB_turb      = GZ_batch
-            self.GZGB_turb_stds = GZ_std_batch
-
-            self.MtGB_turb      = Mt_batch
-            self.MtGB_turb_stds = Mt_std_batch
-
-            self.QieGB_turb      = S_batch
-            self.QieGB_turb_stds = S_std_batch
-
-        return cgyro
-
-
-def pre_checks(self):
-    
-    plasma = self.powerstate.plasma
-
-    txt = "\nFluxes to be matched by turbulence ( Target - Neoclassical ):"
-
-    # Print gradients
-    for var, varn in zip(
-        ["r/a  ", "rho  ", "a/LTe", "a/LTi", "a/Lne", "a/LnZ", "a/Lw0"],
-        ["roa", "rho", "aLte", "aLti", "aLne", "aLnZ", "aLw0"],
-    ):
-        txt += f"\n{var}   = "
-        for j in range(plasma["rho"].shape[1] - 1):
-            txt += f"{plasma[varn][0,j+1]:.6f}   "
-
-    # Print target fluxes
-    for var, varn in zip(
-        ["Qe (GB)", "Qi (GB)", "Ge (GB)", "GZ (GB)", "Mt (GB)"],
-        ["QeGB", "QiGB", "GeGB", "GZGB", "MtGB"],
-    ):
-        txt += f"\n{var}  = "
-        for j in range(plasma["rho"].shape[1] - 1):
-            txt += f"{plasma[varn][0,j+1]-self.__dict__[f'{varn}_neoc'][j]:.4e}   "
-
-    print(txt)
 
 def logic_to_wait(folder, subfolder):
     print(f"\n**** Simulation inputs prepared. Please, run it from the simulation setup in folder:\n", typeMsg='i')
@@ -1884,32 +641,6 @@ def logic_to_wait(folder, subfolder):
     while not print(f"**** When you have done that, please say yes", typeMsg='q'):
         pass
 
-def post_checks(self, rtol = 1e-3):
-    
-    with open(self.folder / 'fluxes_turb.json', 'r') as f:
-        json_dict = json.load(f)
-        
-    additional_info_from_json = json_dict.get('additional_info', {})
-    
-    all_good = True
-    
-    if len(additional_info_from_json) == 0:
-        print(f"\t- No additional info found in fluxes_turb.json to be compared with", typeMsg='i')
-        
-    else:
-        print(f"\t- Additional info found in fluxes_turb.json:", typeMsg='i')
-        for k, v in additional_info_from_json.items():
-            vP = self.powerstate.plasma[k].cpu().numpy()[0,1:]
-            
-            crit = not np.allclose(v, vP, rtol=rtol)
-
-            print(f"\t   {k} from JSON      : {[round(float(i),4) for i in v]}", typeMsg='' if not crit else 'i')
-            print(f"\t   {k} from POWERSTATE: {[round(float(i),4) for i in vP]}", typeMsg='' if not crit else 'i')
-
-            if crit:
-                all_good = print(f"{k} does not match with a relative tolerance of {rtol*100.0:.3f}%, max rel difference: {np.max(np.abs(v - vP) / np.maximum(np.abs(v), np.abs(vP)))*100.0:.3f}%", typeMsg='q')
-
-    return all_good
 
 def write_json_CGYRO(roa, fluxes_mean, fluxes_stds, additional_info = None, file = 'fluxes_turb.json'):
     '''
@@ -1944,7 +675,7 @@ def write_json_CGYRO(roa, fluxes_mean, fluxes_stds, additional_info = None, file
                 'Qgb': [0.4, 0.7, ...],
                 'rho': [0.2, 0.5, ...],
     '''
-    
+
     if additional_info is None:
         additional_info = {}
 
@@ -1969,5 +700,5 @@ def write_json_CGYRO(roa, fluxes_mean, fluxes_stds, additional_info = None, file
                 return obj.item()
             else:
                 return obj
-            
+
         json.dump(convert_numpy(json_dict), f, indent=4)
