@@ -150,64 +150,6 @@ def _harvest_extra_points(self, read_kwargs):
         df.to_csv(csv, index=False)
         print(f"\t- [extra point] {len(rows)} surrogate row(s) appended to {csv}", typeMsg="i")
 
-def _all_child_jobids(gk_object):
-    '''
-    Flatten the auto-resubmit ledger into a deduplicated list of child jobids
-    (preserving insertion order). Empty when no rho has been rescued yet.
-    '''
-    ledger = getattr(gk_object, "_resubmit_ledger", None) or {}
-    seen = []
-    for entry in ledger.values():
-        for jid in entry.get("child_jobids", []):
-            if jid not in seen:
-                seen.append(jid)
-    return seen
-
-
-def _any_child_jobid_alive(gk_object):
-    '''
-    Liveness widening for the re-attach path: when the auto-resubmit
-    orchestrator has spawned rescue jobs for stalled rhos, the parent array
-    may already be gone (its remaining tasks finished cleanly) while one or
-    more rescue children are still running. In that case the run is *not*
-    finished — squeue against the union of child jobids decides. Returns
-    False when no child jobids exist yet, on connection failure (treated as
-    "no signal — let the caller fall through to the existing decision tree"),
-    or when squeue reports none of the child jobids are queued/running.
-    '''
-    child_ids = _all_child_jobids(gk_object)
-    if not child_ids:
-        return False
-
-    job = getattr(gk_object, "simulation_job", None)
-    if job is None:
-        return False
-
-    joined = ",".join(child_ids)
-    cmd = f'squeue -h -j {joined} -o "%.15i %.10T"'
-    try:
-        job.connect()
-        out, _err = job.execute(cmd, printYN=False)
-        job.close()
-    except Exception as e:
-        print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating as no live child", typeMsg='w')
-        return False
-
-    if isinstance(out, bytes):
-        out = out.decode(errors='replace')
-    out = (out or "").strip()
-    # Any non-empty squeue output with at least one child jobid line means
-    # something is still queued or running.
-    for line in out.splitlines():
-        toks = line.split()
-        if not toks:
-            continue
-        if toks[0] in child_ids:
-            print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
-            return True
-    return False
-
-
 def _resolve_cgyro_restart_folder(run_options, rho_locations, existing_additional_files_to_send=None):
     '''
     Translate the namelist-level `restart_from_folder` option into per-rho
@@ -1196,7 +1138,7 @@ class gyrokinetic_model:
                     # if any child is still in the queue, even when the parent
                     # array has already left.
                     parent_alive = (gk_object.simulation_job.status != 2)
-                    any_child_alive = _any_child_jobid_alive(gk_object)
+                    any_child_alive = gk_object._any_child_job_alive()
                     print("")
                     if (not parent_alive) and (not any_child_alive):
                         print(f"\t- Slurm reports job is NOT in the queue (state={gk_object.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
@@ -1227,7 +1169,7 @@ class gyrokinetic_model:
                     else:
                         live_summary = f"jobid={gk_object.simulation_job.jobid}, state={gk_object.simulation_job.infoSLURM.get('STATE')}"
                         if any_child_alive:
-                            child_ids = _all_child_jobids(gk_object)
+                            child_ids = gk_object._child_jobids()
                             live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
                         print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
                     print("")
@@ -1714,7 +1656,7 @@ class cgyro_model(gyrokinetic_model):
                     # orchestrator may still be in the queue even if the
                     # parent array has already left.
                     parent_alive = (cgyro.simulation_job.status != 2)
-                    any_child_alive = _any_child_jobid_alive(cgyro)
+                    any_child_alive = cgyro._any_child_job_alive()
                     print("")
                     if (not parent_alive) and (not any_child_alive):
                         print(f"\t- Slurm reports job is NOT in the queue (state={cgyro.simulation_job.infoSLURM.get('STATE')})", typeMsg='i')
@@ -1747,7 +1689,7 @@ class cgyro_model(gyrokinetic_model):
                     else:
                         live_summary = f"jobid={cgyro.simulation_job.jobid}, state={cgyro.simulation_job.infoSLURM.get('STATE')}"
                         if any_child_alive:
-                            child_ids = _all_child_jobids(cgyro)
+                            child_ids = cgyro._child_jobids()
                             live_summary += f"; rescue child jobid(s) still alive: {child_ids}"
                         print(f"\t- Slurm reports job is still live ({live_summary}); proceeding with check()/fetch()", typeMsg='i')
                     print("")

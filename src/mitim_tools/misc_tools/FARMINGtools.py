@@ -1287,9 +1287,9 @@ class mitim_job:
         last line) of `progress_file` (e.g. the time the code will resume from), or
         None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
         (forensics for the log; missing files are skipped). Lines of `checksum_file`
-        starting with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from
-        the md5, so a value the caller rewrites on rescue does not defeat the
-        identity check. One shell round-trip in total.
+        starting with `checksum_ignore_prefix` (a prefix or a list of them, e.g.
+        ['MAX_TIME', 'RESTART_STEP']) are excluded from the md5, so values the caller
+        rewrites on rescue do not defeat the identity check. One shell round-trip in total.
         '''
         if getattr(self, 'run_in_place', False) or not rel_folders:
             return {}
@@ -1298,13 +1298,14 @@ class mitim_job:
         pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
         prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
-        filt = f"grep -v '^{checksum_ignore_prefix}'" if checksum_ignore_prefix else 'cat'
+        prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
+        filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
         lines = []
         for rel in rel_folders:
             d = f'{fe}/{rel}'
             lines.append(
                 f'd={shlex.quote(d)}; if {checks}; then '
-                f'h=$( {filt} "$d/{checksum_file}" | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
+                f'h=$( cat "$d/{checksum_file}"{filt} | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
                 f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
             )
         self.connect(log_file=self.folder_local / 'paramiko.log')

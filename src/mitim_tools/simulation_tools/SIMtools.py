@@ -450,6 +450,12 @@ class mitim_simulation:
              "progress_file": file holding the time the code will resume from,
              "progress_line": its 1-based line number (None = last line); first token is read,
              "time_key": input-file key holding the run length (e.g. "MAX_TIME"),
+             "checksum_ignore": input-file key prefixes excluded from the identity md5
+                (optional, defaults to [time_key]; list every key `after_trim` rewrites,
+                otherwise the next rescue of the same folder fails the identity check),
+             "after_trim": optional callable (text, remaining) -> (text, log_note) applied
+                to the staged input after the time_key rewrite, for keys whose value must
+                follow the trimmed run length (CGYRO: RESTART_STEP),
              "report_files": files whose sizes are logged for forensics (optional)}
         A rho sub-folder is rescued only if the required files are there and its
         input file is byte-identical (md5) to the one just generated, so a changed
@@ -475,10 +481,11 @@ class mitim_simulation:
             return
 
         time_key = spec.get("time_key")
+        ignore_prefixes = list(spec.get("checksum_ignore") or ([time_key] if time_key else []))
         found = self.simulation_job.probe_interrupted_runs(
             folders_red, spec.get("required", []), input_file,
             progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
-            checksum_ignore_prefix=time_key, report_files=spec.get("report_files"),
+            checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
         )
         if not found:
             return
@@ -490,7 +497,7 @@ class mitim_simulation:
                 continue
             md5_remote, progress, report = found[rel]
             text = (folder_sim_this / input_file).read_text()
-            kept = "".join(l for l in text.splitlines(keepends=True) if not (time_key and l.startswith(time_key)))
+            kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
             if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
                 print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
                 continue
@@ -513,8 +520,12 @@ class mitim_simulation:
                 total = float(m.group(2))
                 remaining = max(total - done, 1.0)
                 text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
-                (folder_sim_this / input_file).write_text(text)
                 remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
+                after_trim = spec.get("after_trim")
+                if after_trim is not None:
+                    text, note = after_trim(text, remaining)
+                    remaining_msg += note
+                (folder_sim_this / input_file).write_text(text)
             rescued.append(rel)
             print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
 
@@ -953,6 +964,58 @@ class mitim_simulation:
                     self._base_subfolder = kwargs_run.get("base_subfolder")
                     self._write_submission_metadata(self._base_subfolder)
 
+    def _child_jobids(self):
+        '''
+        Deduplicated rescue jobids recorded in the auto-resubmit ledger (insertion
+        order). Empty until a stalled radius has been resubmitted.
+        '''
+        seen = []
+        for entry in (getattr(self, "_resubmit_ledger", None) or {}).values():
+            for jid in entry.get("child_jobids", []):
+                if jid not in seen:
+                    seen.append(jid)
+        return seen
+
+    def _live_child_jobids(self, alive_if_unreachable=False):
+        '''
+        Rescue jobids that squeue still reports as queued/running. The parent array can
+        drain while a rescue child is still integrating, so the run is over only when
+        both are gone.
+
+        alive_if_unreachable: answer when the probe cannot reach the remote. The poll
+        loop passes True (keep waiting rather than fetch a half-done radius); the
+        re-attach decision tree passes False ("no signal", fall through to its own checks).
+        '''
+        child_ids = self._child_jobids()
+        job = getattr(self, "simulation_job", None)
+        if not child_ids or job is None:
+            return []
+
+        cmd = f'squeue -h -j {",".join(child_ids)} -o "%.15i %.10T"'
+        try:
+            job.connect()
+            out, _err = job.execute(cmd, printYN=False)
+            job.close()
+        except Exception as e:
+            print(f"\t- [child-jobid liveness] squeue failed ({type(e).__name__}: {e}); treating rescue children as "
+                  f"{'alive' if alive_if_unreachable else 'not alive'}", typeMsg='w')
+            return list(child_ids) if alive_if_unreachable else []
+
+        if isinstance(out, bytes):
+            out = out.decode(errors='replace')
+
+        alive = []
+        for line in (out or "").strip().splitlines():
+            toks = line.split()
+            if toks and toks[0] in child_ids and toks[0] not in alive:
+                print(f"\t- [child-jobid liveness] rescue child jobid {toks[0]} is still in the queue (state={toks[1] if len(toks) > 1 else '?'})", typeMsg='i')
+                alive.append(toks[0])
+        return alive
+
+    def _any_child_job_alive(self, alive_if_unreachable=False):
+        '''Boolean form of `_live_child_jobids`.'''
+        return len(self._live_child_jobids(alive_if_unreachable=alive_if_unreachable)) > 0
+
     def check(self, every_n_minutes=None, skip_first_iteration_squeue=False, max_completing_polls=2, custom_checker=None):
         '''
         Poll slurm until the job leaves the queue (state "NOT FOUND" / status=2).
@@ -1002,8 +1065,14 @@ class mitim_simulation:
                         print(f"\t- custom_checker raised: {_e}; continuing poll", typeMsg='w')
 
                 if self.simulation_job.status == 2:
-                    print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
-                    break
+                    # squeue on the parent jobid only: an auto-resubmit rescue child is an
+                    # independent job, so the parent array can drain while a rescued radius
+                    # is still integrating. Fetching then pulls that radius half-done.
+                    live_children = self._live_child_jobids(alive_if_unreachable=True)
+                    if not live_children:
+                        print("\n\t* Job considered finished (please do .fetch() to retrieve results)",typeMsg="i")
+                        break
+                    print(f"\t- Parent job left the queue but rescue child jobid(s) {live_children} are still in it; continuing to poll", typeMsg='i')
 
                 # Track consecutive COMPLETING polls — slurm's "COMPLETING"
                 # state normally lasts seconds; when it persists it is almost
@@ -1044,6 +1113,10 @@ class mitim_simulation:
             self.simulation_job.close()
 
             self._organize_results(**self.kwargs_organize)
+
+            # Same gate the 'normal' path applies after its own _organize_results: the
+            # submit/fetch path used to hand back truncated radii as finished results
+            self._verify_completion(self.kwargs_organize["code_executor"], self.run_specifications.get("code", ""))
 
         else:
             print("- Not retrieving results because this was run command line (not slurm)")
@@ -1371,20 +1444,26 @@ class mitim_simulation:
     def _local_results_complete(self):
         '''
         True when every expected result file (per rho per subfolder) from
-        `kwargs_organize` already exists on disk — used by the re-attach path to
-        skip check()+fetch() when the prior job finished while no PORTALS
-        process was watching.
+        `kwargs_organize` already exists on disk and, for codes declaring a
+        `completion_marker`, every radius also carries it — used by the re-attach path
+        to skip check()+fetch() when the prior job finished while no PORTALS
+        process was watching. Files alone do not prove completion (CGYRO writes them
+        all from its first step). Purely local: no remote access.
         '''
         if not getattr(self, "kwargs_organize", None):
             return False
         code_executor = self.kwargs_organize["code_executor"]
         files_to_retrieve = self.kwargs_organize["filesToRetrieve"]
+        marker = self.run_specifications.get("completion_marker")
+        alt = self.run_specifications.get("completion_alt_file")
         for sub, rhos in code_executor.items():
             for rho, v in rhos.items():
                 folder = Path(v["folder"])
                 for fname in files_to_retrieve:
                     if not (folder / f"{fname}_{float(rho):.4f}").exists():
                         return False
+                if marker is not None and not radius_finished(folder, float(rho), marker, alt)[0]:
+                    return False
         return True
 
     def run_over_plasmas(

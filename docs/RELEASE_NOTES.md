@@ -240,7 +240,12 @@ DESCRIPTION
     result nor the staging folder; an interrupted run without a readable resume time is discarded instead
     of silently running the full `MAX_TIME` on top of its checkpoint; the SLURM script builder no longer
     writes defaults into the global machine config; the allocation counts every pending (subfolder, rho)
-    unit instead of only the last subfolder's.
+    unit instead of only the last subfolder's. The status poll now also waits for auto-resubmit rescue
+    jobs (the parent array draining used to end the poll and fetch the rescued radius half-done), the
+    completion gate (`EXIT` in `out.cgyro.info` or `mitim_budget.tag`) now applies to the submit/fetch and
+    re-attach paths as it did to `run_type: normal`, and an in-place rescued radius re-derives
+    `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
+    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it).
 
 *   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
     extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,

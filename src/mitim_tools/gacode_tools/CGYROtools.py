@@ -708,6 +708,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             # folder continues the time integration (restart_flag=1) for MAX_TIME more
             # a/cs from the tag time (out.cgyro.tag: line 1 i_current, line 2 t_current).
             'rescue_spec': {'required': ['bin.cgyro.restart', 'out.cgyro.tag'], 'progress_file': 'out.cgyro.tag', 'progress_line': 2, 'time_key': 'MAX_TIME',
+                            # RESTART_STEP was sized for the full MAX_TIME, so it has to follow the trim
+                            # (and be excluded from the identity md5, like MAX_TIME, for the next rescue)
+                            'after_trim': self._restart_step_after_trim,
+                            'checksum_ignore': ['MAX_TIME', 'RESTART_STEP'],
                             'report_files': ['out.cgyro.time', 'bin.cgyro.ky_flux', 'bin.cgyro.restart', 'out.cgyro.tag']},
             # A radius is only 'done' if CGYRO wrote its EXIT line (files exist from step 1 on)...
             'completion_marker': ('out.cgyro.info', 'EXIT'),
@@ -1402,6 +1406,39 @@ wait $_lb_pid 2>/dev/null
             typeMsg="i",
         )
         return extraOptions
+
+    @staticmethod
+    def _restart_step_after_trim(text, remaining):
+        """
+        Re-derive RESTART_STEP for the shortened run of a rescued radius (rescue_spec
+        'after_trim' hook). _enforce_restart_step sized RESTART_STEP from the FULL
+        MAX_TIME, so once the rescue trims MAX_TIME to what is left the trigger
+        mod(i_time, RESTART_STEP*PRINT_STEP) == 0 with i_time = 1..nint(MAX_TIME/DELTA_T)
+        can no longer fire: the continuation writes no checkpoint and mitim_kill_cgyro's
+        watchdog (which waits on out.cgyro.tag) blocks on that radius.
+
+        Same coercion as _enforce_restart_step, on n_outputs of the remaining window.
+        Returns (text, note appended to the [rescue] log line); unchanged when the keys
+        are missing from the staged input.
+        """
+        import re
+
+        def _value(key):
+            m = re.search(rf"^{key}\s*=\s*(\S+)", text, flags=re.M)
+            return m, (float(m.group(1)) if m else None)
+
+        m_rs, rs = _value('RESTART_STEP')
+        _, dt = _value('DELTA_T')
+        _, ps = _value('PRINT_STEP')
+        if m_rs is None or not dt or not ps:
+            return text, ""
+
+        n_outputs = max(1, int(round(remaining / dt)) // int(round(ps)))
+        rs = int(rs)
+        new_rs = rs if (0 < rs <= n_outputs and n_outputs % rs == 0) else n_outputs
+        if new_rs == rs:
+            return text, ""
+        return text[:m_rs.start(1)] + f"{new_rs}" + text[m_rs.end(1):], f", RESTART_STEP {rs} -> {new_rs}"
 
     def _apply_cgyro_preprocessing(self, extraOptions):
         """
