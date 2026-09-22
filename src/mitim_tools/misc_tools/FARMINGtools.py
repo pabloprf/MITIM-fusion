@@ -2,9 +2,7 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
-from math import log
 from tqdm import tqdm
-import os
 import shlex
 import shutil
 import time
@@ -19,6 +17,7 @@ import paramiko
 import numpy as np
 from pathlib import Path
 from contextlib import contextmanager
+from dataclasses import dataclass
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -57,6 +56,78 @@ New handling of jobs in remote or local clusters. Example use:
 
 """
 
+@dataclass
+class RetryPolicy:
+    """
+    Wait/attempt policy applied to every remote operation that can fail transiently
+    (connect, sftp transfer, idempotent remote exec). attempts=None retries forever.
+
+    Configured per job through mitim_job.connection_retry_settings, which PORTALS-CGYRO
+    fills from portals.namelist:
+        transport.options.cgyro.run.ssh_retry_wait_seconds
+        transport.options.cgyro.run.ssh_retry_attempts   (int, or null/None for infinite)
+    """
+
+    wait_seconds: float = 5.0
+    attempts: int | None = 3
+
+    # Transient handshake/network errors: paramiko's own transient class, socket timeouts
+    # (Errno 60), EOF/reset from a transport dropped mid-operation, and gaierror (DNS
+    # resolution failing while the VPN is down). Anything outside this tuple is a real
+    # failure and is re-raised on its first occurrence.
+    TRANSIENT = (
+        paramiko.ssh_exception.SSHException,
+        TimeoutError,
+        socket.timeout,
+        EOFError,
+        ConnectionError,
+        socket.gaierror,
+    )
+
+    @classmethod
+    def from_settings(cls, settings):
+        settings = settings or {}
+        attempts = settings.get("attempts", 3)
+        if attempts is not None and (not isinstance(attempts, int) or attempts < 1):
+            raise ValueError(
+                f"connection_retry_settings['attempts'] must be a positive int "
+                f"or None (infinite); got {attempts!r}"
+            )
+        return cls(wait_seconds=float(settings.get("wait_seconds", 5)), attempts=attempts)
+
+    def run(self, what, fn, on_retry=None):
+        """
+        Call fn() until it succeeds or the attempts are exhausted, running on_retry
+        (typically the job's connect) between attempts.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return fn()
+            except self.TRANSIENT as e:
+                if self.attempts is not None and attempt >= self.attempts:
+                    raise
+                cap_str = "infinite" if self.attempts is None else f"{self.attempts}"
+                print(
+                    f"\t<> {what} attempt {attempt}/{cap_str} failed "
+                    f"({type(e).__name__}: {e}). "
+                    f"{'Reconnecting & retrying' if on_retry is not None else 'Retrying'} "
+                    f"in {self.wait_seconds:g}s...",
+                    typeMsg="w",
+                )
+                time.sleep(self.wait_seconds)
+                if on_retry is not None:
+                    try:
+                        on_retry()
+                    except Exception as e_reconnect:
+                        print(
+                            f"\t<> reconnect during {what} failed ({e_reconnect}); "
+                            "will retry on next iteration",
+                            typeMsg="w",
+                        )
+
+
 class mitim_job:
     def __init__(
             self,
@@ -76,12 +147,11 @@ class mitim_job:
         # (e.g. mitim_job.check() builds a temporary retrieve for squeue output).
         self.output_file_fallbacks = {}
 
-        # Optional retry config consumed by connect_ssh(). Callers that want
-        # to override the default 5 s wait / 3-attempt cap (e.g. PORTALS-CGYRO,
-        # which reads it from portals.namelist) can set this to a dict of
-        # {"wait_seconds": float, "attempts": int|None} where attempts=None
-        # means retry forever. When self.connection_retry_settings is None,
-        # connect_ssh() falls back to the historical defaults.
+        # The remote session. None until connect() builds them (and for local runs).
+        self.jump_client, self.ssh, self.sftp = None, None, None
+
+        # Optional {"wait_seconds": float, "attempts": int|None} overriding the default
+        # 5 s / 3 attempts of the RetryPolicy built by self.retry; None keeps the defaults.
         self.connection_retry_settings = None
         # Sub-folders (relative to folderExecution) that remove_scratch_folder() must
         # keep across the going-in wipe: interrupted runs being rescued in place.
@@ -481,82 +551,80 @@ class mitim_job:
         time_init = datetime.datetime.now()
         print(f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------")
 
-        # ~~~~~~ Connect
-        self.connect(log_file=self.folder_local / "paramiko.log")
+        with self.session(log_file=self.folder_local / "paramiko.log"):
+            # ~~~~~~ Prepare scratch folder
+            if not self.run_in_place:
+                if removeScratchFolders_goingIn:
+                    self.remove_scratch_folder()
+                self.create_scratch_folder()
 
-        # ~~~~~~ Prepare scratch folder
-        if not self.run_in_place:
-            if removeScratchFolders_goingIn:
-                self.remove_scratch_folder()
-            self.create_scratch_folder()
+                # ~~~~~~ Send
+                self.send()
+            else:
+                print("\t* In-place local execution: skipping scratch setup and file staging")
 
-            # ~~~~~~ Send
-            self.send()
-        else:
-            print("\t* In-place local execution: skipping scratch setup and file staging")
+            # ~~~~~~ Execute
+            execution_counter = 0
+            received, output, error = False, None, None
 
-        # ~~~~~~ Execute
-        execution_counter = 0
+            while execution_counter < attempts_execution:
 
-        while execution_counter < attempts_execution:
-            
-            if execute_flag and self.scheduler is not None and self.ssh is None:
-                output, error = b"", b""
-                prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
-                print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
-                self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
-                # accepted extras come back best-effort: tarred with the same file patterns as
-                # the main folders, never part of the mandatory check
-                patterns = next(iter(self.output_folders_selective.values()), None) if self.output_folders_selective else None
-                for rel in self.scheduler_result["accepted"]:
-                    if rel not in self.output_folders:
-                        self.output_folders.append(rel)
-                    if patterns is not None:
-                        self.output_folders_selective[rel] = list(patterns)
-            elif execute_flag:
-                output, error = self.execute(
-                    comm,
-                    wait_for_all_commands=wait_for_all_commands,
-                    printYN=True,
-                    timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-                    log_file=self.log_simulation_file
+                if execute_flag and self.scheduler is not None and self.ssh is None:
+                    output, error = b"", b""
+                    prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
+                    print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
+                    self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
+                    # accepted extras come back best-effort: tarred with the same file patterns as
+                    # the main folders, never part of the mandatory check
+                    patterns = next(iter(self.output_folders_selective.values()), None) if self.output_folders_selective else None
+                    for rel in self.scheduler_result["accepted"]:
+                        if rel not in self.output_folders:
+                            self.output_folders.append(rel)
+                        if patterns is not None:
+                            self.output_folders_selective[rel] = list(patterns)
+                elif execute_flag:
+                    output, error = self.execute(
+                        comm,
+                        wait_for_all_commands=wait_for_all_commands,
+                        printYN=True,
+                        timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+                        log_file=self.log_simulation_file
+                    )
+                else:
+                    output, error = b"", b""
+                    print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
+
+                # ~~~~~~ Retrieve
+                received = self.retrieve(
+                    check_if_files_received=check_if_files_received,
+                    check_files_in_folder=check_files_in_folder,
                 )
-            else:
-                output, error = b"", b""
-                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
 
-            # ~~~~~~ Retrieve
-            received = self.retrieve(
-                check_if_files_received=check_if_files_received,
-                check_files_in_folder=check_files_in_folder,
-            )
+                execution_counter += 1
 
-            execution_counter += 1
+                if received:
+                    break
+                else:
+                    if execution_counter < attempts_execution:
+                        print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
 
+            # ~~~~~~ Remove scratch folder
             if received:
-                break
-            else:
-                if execution_counter < attempts_execution:
-                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
 
-        # ~~~~~~ Remove scratch folder
-        if received:
-
-            if wait_for_all_commands and removeScratchFolders_goingOut and not self.run_in_place:
-                self.remove_scratch_folder()
+                if wait_for_all_commands and removeScratchFolders_goingOut and not self.run_in_place:
+                    self.remove_scratch_folder()
                 
-        else:
+            else:
 
-            # If not received, write output and error to files
-            self._write_debugging_files(output, error)
+                # If not received, write output and error to files (they are None when
+                # execute_remote swallowed a timeout, or when nothing was executed at all)
+                if output is not None:
+                    self._write_debugging_files(output, error)
 
-            cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
-            if not cont:
-                print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
-                embed()
-
-        # ~~~~~~ Close
-        self.close()
+                cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                if not cont:
+                    print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
+                    embed()
 
         print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
@@ -566,11 +634,45 @@ class mitim_job:
             with open(self.folder_local / f"mitim_farming{extra_name}.err", "w") as f:
                 f.write(error.decode("utf-8"))
 
+    @property
+    def retry(self):
+        # Built on access, not in __init__, because callers (SIMtools, transport_cgyro)
+        # assign connection_retry_settings after the job object exists
+        return RetryPolicy.from_settings(self.connection_retry_settings)
+
+    @contextmanager
+    def session(self, **kwargs):
+        """
+        The ssh/jump/sftp lifecycle: connect on entry, close on exit no matter how the
+        body ends, so an aborted execute/retrieve cannot leave the transport open.
+        """
+        try:
+            self.connect(**kwargs)
+        except Exception:
+            self._close_clients()
+            raise
+        try:
+            yield self
+        finally:
+            self.close()
+
+    def _close_clients(self):
+        # Closes and forgets whatever is live. Safe on a job that never connected and
+        # on one whose connect half-succeeded (ssh up, open_sftp raised)
+        for attribute in ("sftp", "ssh", "jump_client"):
+            client = getattr(self, attribute, None)
+            if client is not None:
+                try:
+                    client.close()
+                except Exception as e_close:
+                    print(f"\t<> Could not close {attribute} cleanly ({type(e_close).__name__}: {e_close})", typeMsg="w")
+            setattr(self, attribute, None)
+
     def connect(self, *args, **kwargs):
         if self.machineSettings["machine"] != "local":
             return self.connect_ssh(*args, **kwargs)
         else:
-            self.jump_client, self.ssh, self.sftp = None, None, None
+            self._close_clients()
 
     def connect_ssh(self, log_file=None):
         self.jump_host = self.machineSettings["tunnel"]
@@ -585,63 +687,20 @@ class mitim_job:
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
 
-        # Resolve retry config. Defaults preserve historical behavior (5 s wait,
-        # 3-attempt cap). PORTALS-CGYRO overrides these via portals.namelist:
-        #   transport.options.cgyro.run.ssh_retry_wait_seconds
-        #   transport.options.cgyro.run.ssh_retry_attempts   (int, or null/None for infinite)
-        # which transport_cgyro.py forwards onto self.connection_retry_settings.
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        # None (e.g. YAML `null`) means retry forever; any positive int caps the
-        # attempts. Anything else is a config error and surfaces here.
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        max_retries = retry_attempts  # None == unbounded
-
-        # Transient handshake/network errors. TimeoutError is the case Pablo
-        # reported (Errno 60 from paramiko's underlying socket); SSHException
-        # covers paramiko's own transient class; socket.timeout / EOFError /
-        # ConnectionError / socket.gaierror cover the rest of the typical
-        # VPN/firewall flap modes (gaierror = DNS resolution failure when
-        # the VPN drops mid-poll). Anything outside this tuple is treated
-        # as a real failure and re-raised on the first occurrence.
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
-            socket.gaierror,
-        )
-
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                self._connect_ssh_item()
-                break
-            except transient_exc as e:
-                if max_retries is not None and attempt >= max_retries:
-                    raise
-                cap_str = "infinite" if max_retries is None else f"{max_retries}"
-                print(
-                    f"\t<> Paramiko connect attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
+        self.retry.run("Paramiko connect", self._connect_ssh_item)
 
     def _connect_ssh_item(self):
+
+        # Whatever is live must go before new clients are built, otherwise every
+        # reconnect (VPN flap mid-transfer) orphans a transport and an sftp channel
+        self._close_clients()
 
         try:
             self.define_jump()
             self.define_server()
         except paramiko.ssh_exception.AuthenticationException:
             # If it fails, try to disable rsa-sha2-512 and rsa-sha2-256 (e.g. for iris.gat.com)
+            self._close_clients()
             self.define_jump()
             self.define_server(
                 disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]}
@@ -766,62 +825,18 @@ class mitim_job:
 
     def _sftp_transfer_with_retry(self, sftp_method_name, *args, **kwargs):
         '''
-        Retry a paramiko SFTP transfer ('get' or 'put') using the same
-        policy `connect_ssh` uses, sourced from self.connection_retry_settings
-        (5 s wait / 3 attempts by default; PORTALS-CGYRO namelist-tunable;
-        attempts=None means infinite). On a transient transport-closed /
-        socket-timeout / EOF / connection-reset failure mid-transfer,
-        rebuild self.ssh + self.sftp via self.connect() and re-issue the
-        op. The remote tarballs (mitim_send.tar.gz / mitim_receive.tar.gz)
-        persist across reconnects, so callers do not need to re-tar.
-        Persistent connection failure is caught by connect_ssh's own retry
-        surface; a single reconnect failure here is logged and the next
-        loop iteration retries the transfer.
+        Retry a paramiko SFTP transfer ('get' or 'put'), reconnecting between attempts.
+        The remote tarballs (mitim_send.tar.gz / mitim_receive.tar.gz) survive a
+        reconnect, so callers do not need to re-tar.
 
-        sftp_method_name is looked up on self.sftp on every attempt — the
-        bound method must NOT be captured before the loop, because reconnect
-        replaces self.sftp with a fresh SFTPClient instance.
+        The method is looked up on self.sftp inside the lambda, on every attempt: a
+        reconnect replaces self.sftp with a fresh SFTPClient instance.
         '''
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
+        return self.retry.run(
+            f"Paramiko sftp.{sftp_method_name}",
+            lambda: getattr(self.sftp, sftp_method_name)(*args, **kwargs),
+            on_retry=self.connect,
         )
-
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                getattr(self.sftp, sftp_method_name)(*args, **kwargs)
-                return
-            except transient_exc as e:
-                if retry_attempts is not None and attempt >= retry_attempts:
-                    raise
-                cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
-                print(
-                    f"\t<> Paramiko sftp.{sftp_method_name} attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
-                try:
-                    self.connect()
-                except Exception as _conn_e:
-                    print(
-                        f"\t<> reconnect during sftp.{sftp_method_name} failed ({_conn_e}); "
-                        "will retry transfer on next loop iteration",
-                        typeMsg="w",
-                    )
 
     def send(self):
         if getattr(self, "run_in_place", False):
@@ -880,6 +895,11 @@ class mitim_job:
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, log_file=None, **kwargs):
+
+        # self.ssh is None before connect(); on a remote machine that would otherwise
+        # send the command to the local shell
+        if self.ssh is None and self.machineSettings["machine"] != "local":
+            raise RuntimeError("execute() on a remote machine requires a live self.ssh; call self.connect() first")
 
         if self.ssh is not None:
             output, error = self.execute_remote(command_str, **kwargs)
@@ -989,51 +1009,14 @@ class mitim_job:
                 print("\t> Command timed out!", typeMsg="w")
                 return None, None
 
-        # Opt-in retry for IDEMPOTENT remote commands (squeue poll, tar/rm during
-        # retrieve) across transient SSH/VPN flaps, mirroring connect_ssh /
-        # _sftp_transfer_with_retry (same connection_retry_settings; ssh_retry_attempts
-        # null == retry forever). Previously a drop between connect and the squeue/tar
-        # exec_command raised an uncaught SSHException even with retry-forever requested.
-        # NEVER set retry_on_transient for a job submission -- re-running would double-launch.
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
-            socket.gaierror,
+        # Opt-in retry for IDEMPOTENT remote commands only (squeue poll, tar/rm during
+        # retrieve). NEVER set retry_on_transient for a job submission -- a re-run
+        # would double-launch it.
+        return self.retry.run(
+            "Remote exec",
+            lambda: self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands),
+            on_retry=self.connect,
         )
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                return self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands)
-            except transient_exc as e:
-                if retry_attempts is not None and attempt >= retry_attempts:
-                    raise
-                cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
-                print(
-                    f"\t<> Remote exec attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
-                try:
-                    self.connect()
-                except Exception as _conn_e:
-                    print(
-                        f"\t<> reconnect during remote exec failed ({_conn_e}); "
-                        "will retry on next iteration",
-                        typeMsg="w",
-                    )
 
     def _execute_remote_once(self, command_str, timeoutSecs, wait_for_all_commands):
         # One exec_command attempt; raises on transient SSH/socket errors so the
@@ -1308,11 +1291,8 @@ class mitim_job:
                 f'h=$( cat "$d/{checksum_file}"{filt} | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
                 f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
             )
-        self.connect(log_file=self.folder_local / 'paramiko.log')
-        try:
+        with self.session(log_file=self.folder_local / 'paramiko.log'):
             output, _ = self.execute('; '.join(lines))
-        finally:
-            self.close()
         found = {}
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')
@@ -1328,11 +1308,7 @@ class mitim_job:
     def close_ssh(self):
         print("\t* Closing connection")
 
-        self.sftp.close()
-        self.ssh.close()
-
-        if self.jump_client is not None:
-            self.jump_client.close()
+        self._close_clients()
 
     # --------------------------------------------------------------------
 
@@ -1387,22 +1363,19 @@ class mitim_job:
         # exec_command is retried across transient SSH/VPN flaps (retry_on_transient),
         # and the retrieval is best-effort; if a residual transient error still
         # surfaces (e.g. finite ssh_retry_attempts exhausted), degrade to "not received"
-        # -> interpret_status treats it as pending/keep-polling. connect() keeps its own
-        # retry, so a clean connect here means close() below is safe.
+        # -> interpret_status treats it as pending/keep-polling.
         output = error = None
         try:
-            self.connect()
-            try:
-                output, error = self.execute(command, printYN=True, retry_on_transient=True)
-                received = self.retrieve(optional_files=[file_output], best_effort=True)
-            except (paramiko.ssh_exception.SSHException, TimeoutError, socket.timeout,
-                    EOFError, ConnectionError, socket.gaierror) as _poll_exc:
-                print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
-                      f"assuming job still pending (will re-poll)", typeMsg="w")
-                received = False
-            if not received and output is not None:
-                self._write_debugging_files(output, error, extra_name = '_check')
-            self.close()
+            with self.session():
+                try:
+                    output, error = self.execute(command, printYN=True, retry_on_transient=True)
+                    received = self.retrieve(optional_files=[file_output], best_effort=True)
+                except RetryPolicy.TRANSIENT as _poll_exc:
+                    print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
+                          f"assuming job still pending (will re-poll)", typeMsg="w")
+                    received = False
+                if not received and output is not None:
+                    self._write_debugging_files(output, error, extra_name = '_check')
             self.interpret_status(file_output = file_output)
         finally:
             # Back to original
