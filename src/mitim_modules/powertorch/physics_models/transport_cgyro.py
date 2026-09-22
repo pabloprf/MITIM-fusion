@@ -102,14 +102,11 @@ def _make_extra_point_builder(self, code, rho_locations, run_kwargs, read_kwargs
     return builder
 
 
+_EXTRA_POINT_SPEC = SIMtools.CompletionSpec("out.cgyro.info", "EXIT", alt_file="mitim_budget.tag")
+
 def _extra_point_usable(d):
     '''An extra case ran to MAX_TIME (CGYRO's EXIT line) or was stopped past min_time (mitim_budget.tag).'''
-    if (d / "mitim_budget.tag").exists():
-        return True
-    try:
-        return "EXIT" in (d / "out.cgyro.info").read_text(errors="ignore")
-    except OSError:
-        return False
+    return _EXTRA_POINT_SPEC.finished(d)[0]
 
 
 def _harvest_extra_points(self, read_kwargs):

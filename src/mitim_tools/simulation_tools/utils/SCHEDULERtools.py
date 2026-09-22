@@ -28,7 +28,7 @@ class InAllocationScheduler:
         estimate_remaining=None,     # fn(rel_folder) -> seconds a running call still needs, or None
         estimate_to_accept=None,     # fn(rel_folder) -> seconds an extra started on this slot needs to become acceptable
         accepted_marker="mitim_budget.tag",
-        completion_marker=None,      # (file, substring): an extra that ran to its end, e.g. ("out.cgyro.info", "EXIT")
+        completion_marker=None,      # (file, substring) or SIMtools.CompletionSpec: an extra that ran to its end, e.g. ("out.cgyro.info", "EXIT")
         stop_file="mitim_stop",
         poll_seconds=30,
         stop_grace_seconds=1800,     # after the stop file, how long to wait for extras to wind down before killing
@@ -105,15 +105,8 @@ class InAllocationScheduler:
 
     def _accepted(self, folder):
         '''An extra is usable if it ran to its end or was stopped past min_time.'''
-        if (folder / self.accepted_marker).exists():
-            return True
-        if self.completion_marker is None:
-            return False
-        name, text = self.completion_marker
-        try:
-            return text in (folder / name).read_text(errors="ignore")
-        except OSError:
-            return False
+        from mitim_tools.simulation_tools.SIMtools import CompletionSpec
+        return CompletionSpec.coerce(self.completion_marker, alt_file=self.accepted_marker).finished(folder)[0]
 
     def _maybe_extra(self, cwd, prelude, log, rel, call_index, running):
         if not running:

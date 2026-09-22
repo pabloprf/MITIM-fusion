@@ -105,12 +105,8 @@ def cgyro_per_task_status(sim):
     # past their kill threshold without re-parsing the printed lines.
     rows = []
 
-    # Flatten code_executor into an ordered list of "subfolder/rho_{val:.4f}"
-    # folder paths matching the slurm-array layout built by SIMtools._run.
-    folders = []
-    for sub, rhos in kwargs_organize["code_executor"].items():
-        for rho in rhos:
-            folders.append(f"{sub}/rho_{float(rho):.4f}")
+    # The same ordered execution-folder list SIMtools._run staged for the slurm array
+    folders = SIMtools.WorkPlan.from_code_executor(kwargs_organize["code_executor"]).rel_paths
     if not folders:
         return []
 
@@ -948,7 +944,7 @@ wait $_lb_pid 2>/dev/null
         '''Scheduler hook: prepare extra_cgyro/rho_<rho> in scratch (perturbed input.cgyro +
         the finished run's restart blob as warm start) and return (rel_extra, bash body).'''
         rho = float(rel.rsplit("rho_", 1)[-1])
-        rel_extra = f"extra_cgyro/rho_{rho:.4f}"
+        rel_extra = f"extra_cgyro/{SIMtools.rho_folder(rho)}"
         local_dir = Path(self.FolderGACODE) / rel_extra
         local_dir.mkdir(parents=True, exist_ok=True)
         input_cgyro = self.extra_point_builder(rho, self._scratch(rel), local_dir)

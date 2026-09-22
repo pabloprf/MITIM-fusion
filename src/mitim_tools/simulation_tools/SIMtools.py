@@ -6,6 +6,7 @@ import os
 import copy
 import numpy as np
 import dill as pickle_dill
+from dataclasses import dataclass, field
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
 from mitim_tools.gacode_tools import PROFILEStools
@@ -20,6 +21,142 @@ _RUN_TYPE_ALIASES = {'run': 'normal'}
 
 def _normalize_run_type(run_type):
     return _RUN_TYPE_ALIASES.get(run_type, run_type)
+
+# ----------------------------------------------------------------------------------------------------
+# Per-radius naming convention (the ONE place it lives; writers and readers must not drift)
+# ----------------------------------------------------------------------------------------------------
+
+def rho_suffix(rho):
+    '''Suffix of a stored per-radius file: `<file>_<rho>`. Casts, so a rho read back from JSON works.'''
+    return f"_{float(rho):.4f}"
+
+def rho_folder(rho):
+    '''Name of a per-radius execution folder inside its subfolder.'''
+    return f"rho{rho_suffix(rho)}"
+
+
+_CODE_EXECUTOR_FIELDS = ("folder", "dictionary", "inputs", "extraOptions", "multipliers", "additional_files_to_send")
+
+
+@dataclass
+class RadialCall:
+    '''
+    One pending (subfolder, rho) execution: what to stage, where its results land,
+    and the naming convention that links the two.
+    '''
+    subfolder: str
+    rho: float
+    folder: Path = None                  # final destination of the retrieved results
+    dictionary: object = None            # per-rho input class
+    inputs: str = None                   # text of the input file to stage
+    extraOptions: dict = None
+    multipliers: dict = None
+    additional_files_to_send: list = None
+    entry: dict = field(default=None, repr=False)   # the code_executor entry this was built from
+
+    @property
+    def rel(self):
+        '''Execution folder of this call, relative to the scratch root.'''
+        return f"{self.subfolder}/{rho_folder(self.rho)}"
+
+    def result_name(self, file):
+        '''Name this call's `file` takes once stored next to the other radii.'''
+        return f"{file}{rho_suffix(self.rho)}"
+
+    @classmethod
+    def from_entry(cls, subfolder, rho, entry):
+        return cls(subfolder, rho, entry=entry,
+                   **{k: v for k, v in entry.items() if k in _CODE_EXECUTOR_FIELDS})
+
+    def to_entry(self):
+        return self.entry if self.entry is not None else {k: getattr(self, k) for k in _CODE_EXECUTOR_FIELDS}
+
+
+class WorkPlan:
+    '''
+    The pending radial calls of one submission, in staging order. Built from (and
+    convertible back to) `code_executor`, which stays the external contract.
+    '''
+
+    def __init__(self, calls=(), subfolders=None):
+        self.calls = list(calls)
+        # Kept explicitly: a subfolder whose radii are all cached contributes no call
+        self.subfolders = list(subfolders) if subfolders is not None else list(dict.fromkeys(c.subfolder for c in self.calls))
+
+    def __len__(self):
+        return len(self.calls)
+
+    def __iter__(self):
+        return iter(self.calls)
+
+    @property
+    def rel_paths(self):
+        return [call.rel for call in self.calls]
+
+    @classmethod
+    def from_code_executor(cls, code_executor):
+        return cls(
+            [RadialCall.from_entry(sub, rho, entry) for sub, rhos in code_executor.items() for rho, entry in rhos.items()],
+            subfolders=list(code_executor.keys()),
+        )
+
+    def to_code_executor(self):
+        code_executor = {sub: {} for sub in self.subfolders}
+        for call in self.calls:
+            code_executor.setdefault(call.subfolder, {})[call.rho] = call.to_entry()
+        return code_executor
+
+
+@dataclass
+class CompletionSpec:
+    '''
+    How a code says "this radius ran to completion": a substring that must appear in
+    `marker_file`, or the presence of `alt_file` (e.g. the tag left when a watchdog
+    stops a run on purpose). Names carry the per-radius suffix when a rho is given,
+    and are plain when it is not (scratch-folder layout).
+    '''
+    marker_file: str = None
+    marker_text: str = None
+    alt_file: str = None
+
+    @classmethod
+    def from_run_specifications(cls, run_specifications):
+        marker = (run_specifications or {}).get("completion_marker")
+        return None if marker is None else cls(marker[0], marker[1], (run_specifications or {}).get("completion_alt_file"))
+
+    @classmethod
+    def coerce(cls, completion_marker, alt_file=None):
+        '''Accept a CompletionSpec, a (file, substring) tuple or None.'''
+        if isinstance(completion_marker, cls):
+            return cls(completion_marker.marker_file, completion_marker.marker_text,
+                       completion_marker.alt_file if alt_file is None else alt_file)
+        if completion_marker is None:
+            return cls(None, None, alt_file)
+        return cls(completion_marker[0], completion_marker[1], alt_file)
+
+    def _name(self, file, rho):
+        return file if rho is None else f"{file}{rho_suffix(rho)}"
+
+    def finished(self, folder, rho=None):
+        '''Returns (finished, marker_path).'''
+        folder = Path(folder)
+        mfile = folder / self._name(self.marker_file, rho) if self.marker_file is not None else folder
+        finished = False
+        if self.marker_file is not None:
+            try:
+                finished = self.marker_text in mfile.read_text(errors="ignore")
+            except OSError:
+                finished = False
+        if not finished and self.alt_file is not None:
+            finished = (folder / self._name(self.alt_file, rho)).exists()
+        return finished, mfile
+
+    def unfinished(self, plan):
+        '''(call, marker_path) for every call of the plan that did not run to completion.'''
+        if not isinstance(plan, WorkPlan):
+            plan = WorkPlan.from_code_executor(plan)
+        return [(call, mfile) for call, (ok, mfile) in ((c, self.finished(c.folder, c.rho)) for c in plan) if not ok]
+
 
 def _background_job_block(command, indent="    "):
     '''
@@ -183,7 +320,7 @@ class mitim_simulation:
             self.inputs_files[rho] = input_class.initialize_in_memory(self.inputs_files[rho])
                 
             # Write input.tglf file
-            self.inputs_files[rho].file = self.FolderGACODE / f'{input_file}_{rho:.4f}'
+            self.inputs_files[rho].file = self.FolderGACODE / f'{input_file}{rho_suffix(rho)}'
             self.inputs_files[rho].write_state()
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -422,26 +559,16 @@ class mitim_simulation:
         for irho in latest_inputsFileDict:
             latest_inputsFileDict[irho].anticipate_problems()
 
-        # Check cores problem
-        # if launchSlurm:
-        #     self._check_cores(rhosEvaluate, allocation)
-
         self.FolderSimLast = Folder_sim
-            
+
         return code_executor, code_executor_full
-
-    def _check_cores(self, rhosEvaluate, allocation, warning = 32 * 2):
-        expected_allocated_cores = int(len(rhosEvaluate) * allocation["cores"])
-
-        print(f'\t- Slurm job will be submitted with {expected_allocated_cores} cores ({len(rhosEvaluate)} radii x {allocation["cores"]} cores/radius)',
-            typeMsg="" if expected_allocated_cores < warning else "q",)
 
     def _extra_point_hooks(self, resources_per_call):
         '''Codes that can use nodes freed by early radial calls (load_balance 'extra_points') return
         the SCHEDULERtools hook dict here; None keeps the plain bash loop.'''
         return None
 
-    def _rescue_interrupted_runs(self, kwargs_run, tmpFolder, folders, folders_red, input_file):
+    def _rescue_interrupted_runs(self, kwargs_run, folders, folders_red, input_file):
         '''
         Continue, in place, radial runs that a previous execution left unfinished in
         the scratch folder (driver killed, allocation expired). Enabled by
@@ -552,11 +679,10 @@ class mitim_simulation:
         # (e.g. CGYRO's bin.cgyro.restart / .restart.flag / out.cgyro.tag).
         optional_files_to_retrieve = list(self.output_files_simulation.get("optional", []))
 
-        c = 0
-        for subfolder_simulation in code_executor:
-            c += len(code_executor[subfolder_simulation])
+        # Internal view of the pending work; code_executor stays the external contract
+        plan = WorkPlan.from_code_executor(code_executor)
 
-        if c == 0:
+        if len(plan) == 0:
             
             print(f"\t- {self.run_specifications['code'].upper()} not run because all results files found (please ensure consistency!)",typeMsg="i")
         
@@ -618,46 +744,42 @@ class mitim_simulation:
 
             self.simulation_job.define_machine_quick(code,f"mitim_{name}")
 
+            # ---------------------------------------------
+            # Prepare files and folders
+            # ---------------------------------------------
+
             folders, folders_red = [], []
-            for subfolder_sim in code_executor:
+            for call in plan:
+                print(f"\t- Preparing {code.upper()} execution ({call.subfolder}) at rho={call.rho:.4f}")
 
-                rhos = list(code_executor[subfolder_sim].keys())
+                folder_sim_this = tmpFolder / call.rel
+                folders.append(folder_sim_this)
 
-                # ---------------------------------------------
-                # Prepare files and folders
-                # ---------------------------------------------
+                folder_sim_this_rel = folder_sim_this.relative_to(tmpFolder)
+                folders_red.append(folder_sim_this_rel.as_posix() if self.simulation_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
 
-                for i, rho in enumerate(rhos):
-                    print(f"\t- Preparing {code.upper()} execution ({subfolder_sim}) at rho={rho:.4f}")
+                folder_sim_this.mkdir(parents=True, exist_ok=True)
 
-                    folder_sim_this = tmpFolder / subfolder_sim / f"rho_{rho:.4f}"
-                    folders.append(folder_sim_this)
+                input_file_sim = folder_sim_this / input_file
+                with open(input_file_sim, "w") as f:
+                    f.write(call.inputs)
 
-                    folder_sim_this_rel = folder_sim_this.relative_to(tmpFolder)
-                    folders_red.append(folder_sim_this_rel.as_posix() if self.simulation_job.machineSettings['machine'] != 'local' else str(folder_sim_this_rel))
-
-                    folder_sim_this.mkdir(parents=True, exist_ok=True)
-
-                    input_file_sim = folder_sim_this / input_file
-                    with open(input_file_sim, "w") as f:
-                        f.write(code_executor[subfolder_sim][rho]["inputs"])
-                        
-                    # Copy potential additional files to send. Entries may be a bare
-                    # path (staged with its own basename) or a (src, dst_basename)
-                    # tuple to rename on stage-in (e.g. CGYRO per-rho restart blobs
-                    # named "out.cgyro.restart_<rho>" renamed to "out.cgyro.restart").
-                    if code_executor[subfolder_sim][rho]["additional_files_to_send"] is not None:
-                        for entry in code_executor[subfolder_sim][rho]["additional_files_to_send"]:
-                            if isinstance(entry, tuple):
-                                src, dst_name = entry
-                            else:
-                                src, dst_name = entry, Path(entry).name
-                            shutil.copy(src, folder_sim_this / dst_name)
+                # Copy potential additional files to send. Entries may be a bare
+                # path (staged with its own basename) or a (src, dst_basename)
+                # tuple to rename on stage-in (e.g. CGYRO per-rho restart blobs
+                # named "out.cgyro.restart_<rho>" renamed to "out.cgyro.restart").
+                if call.additional_files_to_send is not None:
+                    for entry in call.additional_files_to_send:
+                        if isinstance(entry, tuple):
+                            src, dst_name = entry
+                        else:
+                            src, dst_name = entry, Path(entry).name
+                        shutil.copy(src, folder_sim_this / dst_name)
 
             # ---------------------------------------------
             # Rescue interrupted runs left in the scratch folder
             # ---------------------------------------------
-            self._rescue_interrupted_runs(kwargs_run, tmpFolder, folders, folders_red, input_file)
+            self._rescue_interrupted_runs(kwargs_run, folders, folders_red, input_file)
 
             # ---------------------------------------------
             # Prepare command
@@ -710,9 +832,6 @@ class mitim_simulation:
                 exclusive=user_exclusive,
             )
             type_of_submission = resolved.submission_type
-            max_cores_per_node = machineSettings.get("cores_per_node") or 16
-
-            shellPreCommands, shellPostCommands = None, None
 
             # Defaults populated only by the slurm_array branch; non-array paths
             # leave these empty (single-rho-rescue resubmit is array-only).
@@ -885,8 +1004,6 @@ class mitim_simulation:
                 output_folders_selective=files_we_want_to_tar,
                 output_file_fallbacks=self.output_file_fallbacks,
                 check_files_in_folder=files_we_must_check,
-                shellPreCommands=shellPreCommands,
-                shellPostCommands=shellPostCommands,
             )
 
             # Submit run and wait
@@ -1144,28 +1261,23 @@ class mitim_simulation:
         applies before a launch, which otherwise only catches a truncated run on the NEXT call,
         after this one has already been consumed.
         '''
-        marker = self.run_specifications.get("completion_marker")
-        if marker is None:
+        spec = CompletionSpec.from_run_specifications(self.run_specifications)
+        if spec is None:
             return
-        alt = self.run_specifications.get("completion_alt_file")
 
         unfinished = []
-        for subfolder_sim in code_executor:
-            for rho in code_executor[subfolder_sim]:
-                finished, mfile = radius_finished(code_executor[subfolder_sim][rho]['folder'], rho, marker, alt)
-                if finished:
-                    continue
-                try:
-                    lines = [l.strip() for l in mfile.read_text(errors="ignore").splitlines() if l.strip()]
-                    last = lines[-1] if lines else "empty"
-                except OSError:
-                    last = "file missing"
-                unfinished.append(f"{subfolder_sim} rho={rho:.4f} (last line of {mfile.name}: {last!r})")
+        for call, mfile in spec.unfinished(code_executor):
+            try:
+                lines = [l.strip() for l in mfile.read_text(errors="ignore").splitlines() if l.strip()]
+                last = lines[-1] if lines else "empty"
+            except OSError:
+                last = "file missing"
+            unfinished.append(f"{call.subfolder} rho={call.rho:.4f} (last line of {mfile.name}: {last!r})")
 
         if unfinished:
             raise RuntimeError(
                 f"[MITIM] {code.upper()} returned without finishing at {len(unfinished)} radius(es) - no "
-                f"'{marker[1]}' line in {marker[0]}" + (f" and no {alt}" if alt else "") + ":\n\t"
+                f"'{spec.marker_text}' line in {spec.marker_file}" + (f" and no {spec.alt_file}" if spec.alt_file else "") + ":\n\t"
                 + "\n\t".join(unfinished)
                 + "\nTheir outputs are truncated and are not used. Re-running this evaluation re-runs only these "
                 "radii (cold_start_checker applies the same test before launching)."
@@ -1186,42 +1298,40 @@ class mitim_simulation:
         print("\t- Retrieving files and changing names for storing")
         fineall = True
         missing_optional = []
-        for subfolder_sim in code_executor:
+        for call in WorkPlan.from_code_executor(code_executor):
 
-            for rho in code_executor[subfolder_sim].keys():
-                for file in filesToRetrieve:
-                    original_file = f"{file}_{rho:.4f}"
-                    final_destination = code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
+            for file in filesToRetrieve:
+                original_file = call.result_name(file)
+                final_destination = call.folder / f"{original_file}"
 
-                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
+                temp_file = tmpFolder / call.rel / f"{file}"
 
-                    # A file that did not come back leaves the previous result in place
-                    # (removing it first would destroy a good result on a failed retrieval)
-                    if not temp_file.exists():
-                        print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
-                        fineall = False
-                        continue
+                # A file that did not come back leaves the previous result in place
+                # (removing it first would destroy a good result on a failed retrieval)
+                if not temp_file.exists():
+                    print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
+                    fineall = False
+                    continue
 
-                    final_destination.unlink(missing_ok=True)
-                    temp_file.replace(final_destination)
+                final_destination.unlink(missing_ok=True)
+                temp_file.replace(final_destination)
 
-                    fineall = fineall and final_destination.exists()
+                fineall = fineall and final_destination.exists()
 
-                    if not final_destination.exists():
-                        print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
+                if not final_destination.exists():
+                    print(f"\t!! file {file} ({original_file}) could not be retrived",typeMsg="w",)
 
-                # Optional retrievals — move if present, silently skip if not;
-                # we aggregate the misses and emit one summary warning so the
-                # log is not flooded with "restart not found" noise per rho.
-                for file in optional_files_to_retrieve:
-                    original_file = f"{file}_{rho:.4f}"
-                    final_destination = code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
-                    final_destination.unlink(missing_ok=True)
-                    temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
-                    if not temp_file.exists():
-                        missing_optional.append((subfolder_sim, float(rho), file))
-                        continue
-                    temp_file.replace(final_destination)
+            # Optional retrievals — move if present, silently skip if not;
+            # we aggregate the misses and emit one summary warning so the
+            # log is not flooded with "restart not found" noise per rho.
+            for file in optional_files_to_retrieve:
+                final_destination = call.folder / f"{call.result_name(file)}"
+                final_destination.unlink(missing_ok=True)
+                temp_file = tmpFolder / call.rel / f"{file}"
+                if not temp_file.exists():
+                    missing_optional.append((call.subfolder, float(call.rho), file))
+                    continue
+                temp_file.replace(final_destination)
 
         if missing_optional:
             distinct = sorted({f for _, _, f in missing_optional})
@@ -1452,18 +1562,15 @@ class mitim_simulation:
         '''
         if not getattr(self, "kwargs_organize", None):
             return False
-        code_executor = self.kwargs_organize["code_executor"]
         files_to_retrieve = self.kwargs_organize["filesToRetrieve"]
-        marker = self.run_specifications.get("completion_marker")
-        alt = self.run_specifications.get("completion_alt_file")
-        for sub, rhos in code_executor.items():
-            for rho, v in rhos.items():
-                folder = Path(v["folder"])
-                for fname in files_to_retrieve:
-                    if not (folder / f"{fname}_{float(rho):.4f}").exists():
-                        return False
-                if marker is not None and not radius_finished(folder, float(rho), marker, alt)[0]:
+        spec = CompletionSpec.from_run_specifications(self.run_specifications)
+        for call in WorkPlan.from_code_executor(self.kwargs_organize["code_executor"]):
+            folder = Path(call.folder)
+            for fname in files_to_retrieve:
+                if not (folder / call.result_name(fname)).exists():
                     return False
+            if spec is not None and not spec.finished(folder, call.rho)[0]:
+                return False
         return True
 
     def run_over_plasmas(
@@ -1891,7 +1998,7 @@ class mitim_simulation:
 
             SIMout = class_output(
                 folder,
-                suffix=(f"_{rho:.4f}" if rho is not None else "") if suffix is None else suffix,
+                suffix=(rho_suffix(rho) if rho is not None else "") if suffix is None else suffix,
                 **kwargs_to_class_output
             )
             
@@ -2070,7 +2177,7 @@ def change_and_write_code(
 
         input_file = input_sim_rho.file.name.split('_')[0]
 
-        newfile = Folder_sim / f"{input_file}_{rho:.4f}"
+        newfile = Folder_sim / f"{input_file}{rho_suffix(rho)}"
 
         if code_settings is not None:
             # Apply corrections
@@ -2107,7 +2214,7 @@ def inputToVariable(folder, rhos, file='input.tglf'):
 
     inputFilesTGLF = {}
     for rho in rhos:
-        fileN = folder / f"{file}_{rho:.4f}"
+        fileN = folder / f"{file}{rho_suffix(rho)}"
 
         with open(fileN, "r") as f:
             lines = f.readlines()
@@ -2127,14 +2234,7 @@ def radius_finished(folder, rho, completion_marker, completion_alt_file=None):
 
     Returns (finished, marker_path).
     """
-    mfile = Path(folder) / f"{completion_marker[0]}_{rho:.4f}"
-    try:
-        finished = completion_marker[1] in mfile.read_text(errors="ignore")
-    except OSError:
-        finished = False
-    if not finished and completion_alt_file is not None:
-        finished = (Path(folder) / f"{completion_alt_file}_{rho:.4f}").exists()
-    return finished, mfile
+    return CompletionSpec.coerce(completion_marker, alt_file=completion_alt_file).finished(folder, rho)
 
 
 def cold_start_checker(
@@ -2165,7 +2265,7 @@ def cold_start_checker(
         for ir in rhos:
             existsRho = True
             for j in output_files_simulation_select:
-                ffi = Folder_sim / f"{j}_{ir:.4f}"
+                ffi = Folder_sim / f"{j}{rho_suffix(ir)}"
                 existsThis = ffi.exists()
                 existsRho = existsRho and existsThis
                 if not existsThis:

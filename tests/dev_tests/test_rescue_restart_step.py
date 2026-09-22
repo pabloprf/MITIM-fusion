@@ -128,7 +128,7 @@ def test_end_to_end_rescue_rewrites_both_keys():
         log = io.StringIO()
         with contextlib.redirect_stdout(log):
             SIMtools.mitim_simulation._rescue_interrupted_runs(
-                sim, {"rescue_interrupted": True}, d, [folder], [rel], "input.cgyro")
+                sim, {"rescue_interrupted": True}, [folder], [rel], "input.cgyro")
         out = log.getvalue()
 
         text = (folder / "input.cgyro").read_text()
