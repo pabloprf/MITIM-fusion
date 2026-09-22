@@ -406,7 +406,7 @@ def test_database_inspection_and_rebuild(tmp):
 
     fn = FigureNotebook("harvest test", show=False)
     db.plotDatabase(fn=fn)
-    assert fn.tab_titles == ['Overview', 'TGLF', 'TGLF ranges', 'TGLF pairs', 'EPED', 'EPED ranges', 'EPED pairs'], fn.tab_titles
+    assert fn.tab_titles == ['Overview', 'TGLF', 'TGLF by radius', 'TGLF ranges', 'TGLF pairs', 'EPED', 'EPED ranges', 'EPED pairs'], fn.tab_titles
     # input coverage: categories, discrete flag relative to the record count, constants
     cov = db.coverage('tglf').set_index('input')
     assert cov.loc['RLTS_1', 'category'] == 'drives' and cov.loc['NS', 'n_distinct'] == 1 and not cov.loc['NS', 'discrete']
@@ -451,8 +451,8 @@ def test_database_inspection_and_rebuild(tmp):
     assert list(pairs['SAT_RULE']) == ['SAT2', 'SAT2', 'SAT3'], "the TGLF saturation rule labels each matched pair"
     fnp = FigureNotebook("parity test", show=False)
     dbp.plotDatabase(fn=fnp)
-    assert fnp.tab_titles == ['Overview', 'TGLF', 'TGLF ranges', 'TGLF pairs', 'CGYRO', 'CGYRO ranges', 'CGYRO pairs',
-                              'Parity TGLF-CGYRO'], fnp.tab_titles
+    assert fnp.tab_titles == ['Overview', 'TGLF', 'TGLF by radius', 'TGLF settings', 'TGLF ranges', 'TGLF pairs',
+                              'CGYRO', 'CGYRO by radius', 'CGYRO ranges', 'CGYRO pairs', 'Parity TGLF-CGYRO'], fnp.tab_titles
     assert dbp.match_records('tglf', 'eped').empty
 
     # species resolved by charge (NEO as MITIM writes it has electrons LAST), collisionality per code, 3x4 grid tab
@@ -464,7 +464,7 @@ def test_database_inspection_and_rebuild(tmp):
     tg = pd.DataFrame({'in_ZS_1': [-1.0], 'in_ZS_2': [1.0], 'in_RLTS_1': [2.0], 'in_RLTS_2': [3.0], 'in_RLNS_1': [1.0], 'in_XNUE': [0.1]})
     assert dbp._drives('tglf', tg) == {'Te': 'in_RLTS_1', 'ne': 'in_RLNS_1', 'Ti': 'in_RLTS_2'} and dbp._collisionality('tglf', tg)[0] == 'in_XNUE'
     fig = dbp.plotFluxesVsDrives('tglf')
-    assert fig is not None and len(fig.axes) == 12, "3 fluxes x (3 drives + distribution); no colorbar without XNUE in these records"
+    assert fig is not None and len(fig.axes) == 12, "3 fluxes x (3 drives + distribution); colored by radius (legend, no colorbar)"
     print("PASS database summary / interpret / plotDatabase / plot / rebuild / staging_folders_of")
 
 
@@ -682,6 +682,51 @@ def test_cgyro_run_fields(tmp):
     print("PASS CGYRO run fields: restart chain (all/batched/SR), missing parent NaN, completion, budget stop, in-place t_start, cost, ranks")
 
 
+def test_radius_settings_windows(tmp):
+    """r/a per code, radial groups, code settings (matched physics points), averaging-window tab"""
+    import matplotlib
+    matplotlib.use('Agg')
+    folder = tmp / 'runS' / 'Outputs' / 'harvest'
+    rec = H.harvest_recorder(_opts(folder))
+    for i, roa in enumerate([0.35, 0.55, 0.75]):
+        for sat in (2, 3):   # the same plasma point with two saturation rules
+            base = {'RMIN_LOC': roa, 'ZS_1': -1.0, 'ZS_2': 1.0, 'RLTS_1': 2.0 + i, 'RLTS_2': 2.5, 'RLNS_1': 0.8, 'XNUE': 0.1, 'SAT_RULE': sat, 'NS': 2}
+            rec._write({'code': 'tglf', 'inputs': base, 'outputs': {'Qe': sat * (1.0 + i), 'Qi': 2.0 + i, 'Ge': 0.1}, 'meta': {}})
+        rec._write({'code': 'tglf', 'inputs': {**base, 'RLTS_2': 4.0, 'SAT_RULE': 3}, 'outputs': {'Qe': 1.0, 'Qi': 9.0, 'Ge': 0.1}, 'meta': {}})
+        rec._write({'code': 'cgyro', 'inputs': {'RMIN': roa, 'Z_1': 1.0, 'Z_2': -1.0, 'DLNTDR_1': 2.5, 'DLNTDR_2': 2.0 + i, 'DLNNDR_2': 0.8,
+                                                'NU_EE': 0.05, 'N_TOROIDAL': 16, 'MAX_TIME': 500.0 + 100 * i},
+                    'outputs': {'Qe_mean': 1.0, 'Qe_std': 0.1, 'Qi_mean': 2.0, 'Qi_std': 0.2, 'Ge_mean': 0.0, 'Ge_std': 0.05,
+                                'avg_tmin': 100.0, 'avg_tmax': 400.0, 't_last': 400.0, 'max_time': 500.0, 'reached_max_time': 0,
+                                'restart_warm': 1, 'restart_t_inherited': 300.0, 'Qi_ncorr': 5.0, 'cost_s_per_acs': 20.0, 'wall_s': 8000.0, 'n_nodes': 1},
+                    'meta': {}})
+    db = H.harvest_database(tmp / 'db8' / 'central.nc')
+    db.push([folder])
+    tg, cg = db.load('tglf'), db.load('cgyro')
+    assert list(db.radius('tglf', tg).unique()) == [0.35, 0.55, 0.75] and list(db.radius('cgyro', cg)) == [0.35, 0.55, 0.75]
+    labels, colors = db._radial_bins(db.radius('tglf', tg))
+    assert list(colors) == ['r/a=0.35', 'r/a=0.55', 'r/a=0.75'] and labels.iloc[0] == 'r/a=0.35'
+    import pandas as pd
+    labels, colors = db._radial_bins(pd.Series(np.linspace(0.3, 0.95, 20)))
+    assert list(colors)[0] == 'r/a 0.30-0.40' and list(colors)[-1] == 'r/a 0.90-1.00' and len(colors) == 7, "more than 8 radii -> 0.1-wide bins"
+
+    # settings: SAT_RULE varies (NS does not), MAX_TIME is run control, not a CGYRO setting
+    _, varying, lab = db.settings('tglf')
+    assert varying == ['in_SAT_RULE'] and set(lab) == {'SAT_RULE=2', 'SAT_RULE=3'}
+    assert db.settings('cgyro')[1] == [], "N_TOROIDAL constant, MAX_TIME is run control"
+    pairs = db.match_settings('tglf')
+    assert len(pairs) == 3 and list(pairs['Qe']) == [2.0, 4.0, 6.0] and list(pairs['Qe_ref']) == [3.0, 6.0, 9.0], "only the same physics point pairs up"
+    assert pairs.attrs['reference'] == 'SAT_RULE=3', "reference = the most common settings (3+3 records vs 3)"
+    assert db.coverage('tglf').set_index('input').loc['SAT_RULE', 'category'] == 'settings'
+
+    fig = db.plotSettings('tglf')
+    assert fig is not None and db.plotSettings('neo') is None
+    fig = db.plotWindows('cgyro')
+    assert fig is not None and len(fig.axes) == 5 and db.plotWindows('tglf') is None
+    fig = db.plotFluxesByRadius('cgyro')
+    assert len(fig.axes) == 3 * 3 + 1, "3 fluxes x 3 radii + NU_EE colorbar"
+    print("PASS radius per code, radial groups, settings + matched physics points, windows tab")
+
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvest_test_'))
     try:
@@ -694,6 +739,7 @@ def main():
         test_concurrent_push(tmp)
         test_stale_and_busy_lock(tmp)
         test_database_inspection_and_rebuild(tmp)
+        test_radius_settings_windows(tmp)
         test_statistics(tmp)
         test_type_flips(tmp)
         test_concurrent_staging_same_folder(tmp)

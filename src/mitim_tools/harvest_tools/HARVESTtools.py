@@ -1004,7 +1004,41 @@ class harvest_database:
     _COLLISIONALITY = {
         'tglf': ('XNUE', 'XNUE (e-i collision frequency, TGLF input)'),
         'neo':  ('NU_1', 'NU_1 (collision frequency of NEO species 1, {species})'),
+        'cgyro': ('NU_EE', 'NU_EE (e-e collision frequency, CGYRO input)'),
     }
+
+    # Radial location of a record, r/a from its own input file (every code writes r/a, under its own name)
+    _RADIUS = {'tglf': ['RMIN_LOC'], 'neo': ['RMIN_OVER_A'], 'cgyro': ['RMIN', 'rmin'], 'gx': ['rhoc'], 'qualikiz': ['x']}
+
+    def radius(self, code, df):
+        '''r/a of each record of `df` (a frame of load(code)); NaN when the radial input is not stored'''
+        col = self._first(df, 'in_', self._RADIUS.get(code, []))
+        return df[col].astype(float) if col is not None else pd.Series(np.nan, index=df.index)
+
+    @staticmethod
+    def _radial_bins(roa, max_exact=8, dr=0.1):
+        '''
+        Radial groups for plotting: each distinct r/a when there are at most `max_exact` of them (one radial
+        grid), else bins [k*dr, (k+1)*dr) in r/a, so runs on slightly different grids (0.944 vs 0.95) fall
+        together. Returns (group label per record, {label: color} ordered inner (dark) to outer (bright)).
+        '''
+        import matplotlib.pyplot as plt
+        v = roa.to_numpy(dtype=float)
+        ok = np.isfinite(v)
+        distinct = np.unique(np.round(v[ok], 3))
+        if len(distinct) <= max_exact:
+            names = np.array([f'r/a={x:.3g}' for x in np.round(np.where(ok, v, 0), 3)], dtype=object)
+            order = [f'r/a={x:.3g}' for x in distinct]
+        else:
+            lo = np.floor(np.where(ok, v, 0) / dr + 1e-6) * dr
+            names = np.array([f'r/a {a:.2f}-{a + dr:.2f}' for a in lo], dtype=object)
+            order = [f'r/a {a:.2f}-{a + dr:.2f}' for a in np.unique(lo[ok])]
+        names[~ok] = 'r/a unknown'
+        cmap = plt.get_cmap('plasma')
+        colors = {k: cmap(0.85 * i / max(len(order) - 1, 1)) for i, k in enumerate(order)}
+        if not ok.all():
+            colors['r/a unknown'] = 'gray'
+        return pd.Series(names, index=roa.index), colors
 
     @staticmethod
     def _first(df, prefix, candidates):
@@ -1103,7 +1137,11 @@ class harvest_database:
         return ax
 
     def plotDatabase(self, fn=None, codes=None):
-        '''FigureNotebook: an Overview tab, one tab per code present in the file, and a parity tab per pair of codes run on the same points'''
+        '''
+        FigureNotebook: an Overview tab; per transport code its fluxes vs drives (all radii, then one column
+        per radius), the averaging windows (CGYRO/GX), the effect of its settings, coverage and statistics;
+        EPED; and a parity tab per pair of codes run on the same points
+        '''
         from mitim_tools.misc_tools.GUItools import FigureNotebook
         if fn is None:
             fn = FigureNotebook("MITIM harvest", geometry="1700x900")
@@ -1113,10 +1151,11 @@ class harvest_database:
         for code in codes:
             if code == 'eped':
                 self._plot_eped(fn)
-            elif code in self._COLLISIONALITY:
-                self.plotFluxesVsDrives(code, fn=fn)
             else:
-                self._plot_transport(fn, code)
+                self.plotFluxesVsDrives(code, fn=fn)
+                self.plotFluxesByRadius(code, fn=fn)
+                self.plotWindows(code, fn=fn)
+                self.plotSettings(code, fn=fn)
             self.plotCoverage(code, fn=fn)
             self.plotPairs(code, fn=fn)
             if code != 'eped':
@@ -1325,23 +1364,68 @@ class harvest_database:
             ax.axhline(0, color='k', lw=0.4)
         ax.set_ylim(*spec['lim'])
 
-    def plotFluxesVsDrives(self, code, fn=None, run=None):
+    def _color_spec(self, code, df, color_by):
+        '''
+        How to color the records of df: 'radius' (r/a groups), 'collisionality' (the code's own input, log
+        scale; falls back to radius when the code has none), 'run', or a Series of category labels (e.g. settings)
+        '''
+        if isinstance(color_by, pd.Series):
+            return {'kind': 'cat', 'labels': color_by, 'colors': self._color_by(color_by.to_frame('c'), 'c'), 'title': color_by.name or ''}
+        if color_by == 'collisionality':
+            from matplotlib.colors import LogNorm
+            ccol, clabel = self._collisionality(code, df)
+            vals = df[ccol].to_numpy(dtype=float) if ccol else np.array([])
+            if np.any(vals > 0):
+                pos = vals[vals > 0]
+                return {'kind': 'cont', 'values': vals, 'norm': LogNorm(vmin=pos.min(), vmax=max(pos.max(), pos.min() * 1.0001)), 'title': clabel}
+            color_by = 'radius'
+        if color_by == 'radius':
+            labels, colors = self._radial_bins(self.radius(code, df))
+            return {'kind': 'cat', 'labels': labels, 'colors': colors, 'title': 'radius'}
+        return {'kind': 'cat', 'labels': df[color_by].astype(str), 'colors': self._color_by(df.assign(_c=df[color_by].astype(str)), '_c'), 'title': color_by}
+
+    @staticmethod
+    def _scatter_spec(ax, x, y, spec, mask=None, s=6):
+        '''
+        Scatter y vs x colored by a _color_spec (mask restricts the records); returns the mappable of a continuous
+        spec. Categories are drawn in one call in shuffled order, so no category hides behind the last one drawn.
+        '''
+        mask = np.ones(len(x), dtype=bool) if mask is None else np.asarray(mask)
+        if spec['kind'] == 'cont':
+            return ax.scatter(x[mask], y[mask], c=spec['values'][mask], norm=spec['norm'], cmap='viridis', s=s, alpha=0.8, zorder=2)
+        idx = np.random.default_rng(0).permutation(np.flatnonzero(mask))
+        colors = spec['labels'].map(spec['colors']).to_numpy()[idx]
+        ax.scatter(x[idx], y[idx], s=s, c=list(colors), alpha=0.7, zorder=2)
+        return None
+
+    @staticmethod
+    def _color_key(fig, spec, sc):
+        '''Colorbar (continuous) or legend (categories) in the right margin that adjust_figure_layout leaves'''
+        if spec['kind'] == 'cont':
+            if sc is not None:
+                fig.colorbar(sc, cax=fig.add_axes([0.925, 0.1, 0.012, 0.8])).set_label(spec['title'])
+            return
+        from matplotlib.lines import Line2D
+        handles = [Line2D([], [], ls='', marker='o', color=c, label=k) for k, c in spec['colors'].items()][:25]
+        fig.legend(handles=handles, loc='center left', bbox_to_anchor=(0.905, 0.5), fontsize=7, title=spec['title'], title_fontsize=7, frameon=False)
+
+    def plotFluxesVsDrives(self, code, fn=None, run=None, color_by='radius'):
         '''
         Every flux against every drive: rows Qe, Qi, Ge; columns a/LTe, a/LTi, a/Lne (electron and main-ion
-        gradients resolved by charge), plus the distribution of each flux as a last column. Points colored
-        by the code's collisionality input on a log scale; 1-sigma bars when the flux has a stored std.
-        Fluxes span orders of magnitude: heat fluxes on a log axis (non-positive values cannot be drawn and
-        are counted in the label), particle flux on symlog (linear within +-median|Ge|). Drives stay linear.
-        `run` restricts to one run id or a list of them.
+        gradients resolved by charge), plus the distribution of each flux as a last column. Colored by radius
+        (r/a groups, see _radial_bins) by default: the same gradient drives very different fluxes at different
+        radii. color_by='collisionality' colors by the code's collisionality input (log), or 'run'.
+        1-sigma bars when the flux has a stored std. Fluxes span orders of magnitude: heat fluxes on a log axis
+        (non-positive values cannot be drawn and are counted in the label), particle flux on symlog (linear
+        within +-median|Ge|). Drives stay linear. `run` restricts to one run id or a list of them.
         '''
         import matplotlib.pyplot as plt
-        from matplotlib.colors import LogNorm
         df = self.load(code, run=run)
         if len(df) == 0:
             return None
         fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
         drives = self._drives(code, df)
-        ccol, clabel = self._collisionality(code, df)
+        spec = self._color_spec(code, df, color_by)
 
         if fn is not None:
             fig = fn.add_figure(label=code.upper())
@@ -1349,11 +1433,6 @@ class harvest_database:
             fig = plt.figure(figsize=(18, 11))
         axs = fig.subplots(3, 4, gridspec_kw={'width_ratios': [1, 1, 1, 0.55]})
 
-        cvals = df[ccol].to_numpy(dtype=float) if ccol else None
-        norm = None
-        if cvals is not None and np.any(cvals > 0):
-            pos = cvals[cvals > 0]
-            norm = LogNorm(vmin=pos.min(), vmax=max(pos.max(), pos.min() * 1.0001))
         sc = None
         for irow, (fname, fcol) in enumerate(fluxes.items()):
             stdcol = self._std_of(df, fcol)
@@ -1365,10 +1444,7 @@ class harvest_database:
                     continue
                 if stdcol is not None:
                     ax.errorbar(df[dcol], df[fcol], yerr=df[stdcol], fmt='none', ecolor='gray', elinewidth=0.6, alpha=0.5, zorder=1)
-                if norm is not None:
-                    sc = ax.scatter(df[dcol], df[fcol], c=cvals, norm=norm, cmap='viridis', s=6, alpha=0.8, zorder=2)
-                else:
-                    ax.scatter(df[dcol], df[fcol], s=6, color='b', alpha=0.6, zorder=2)
+                sc = self._scatter_spec(ax, df[dcol].to_numpy(dtype=float), df[fcol].to_numpy(dtype=float), spec) or sc
                 if irow == 2:
                     ax.set_xlabel(f'{self._DRIVE_LABELS[dname]}  ({dcol[3:]})')
                 if icol == 0:
@@ -1391,9 +1467,284 @@ class harvest_database:
         axs[0, 3].set_title('distribution', fontsize=9)
 
         GRAPHICStools.adjust_figure_layout(fig)
-        if sc is not None:
-            cax = fig.add_axes([0.925, 0.1, 0.012, 0.8])
-            fig.colorbar(sc, cax=cax).set_label(clabel)
+        self._color_key(fig, spec, sc)
+        return fig
+
+    # Each flux against the gradient that drives it
+    _OWN_DRIVE = {'Qe': 'Te', 'Qi': 'Ti', 'Ge': 'ne'}
+
+    def plotFluxesByRadius(self, code, fn=None, run=None, color_by='collisionality', label=None, fig=None):
+        '''
+        Trends at fixed radius: rows Qe, Qi, Ge against their own drive (a/LTe, a/LTi, a/Lne), one column per
+        radial group (_radial_bins). The flux axis is shared along a row, so stiffness and threshold can be
+        compared between radii. Colored by collisionality (log; by run when the code has no collisionality
+        input), or by any color_by accepted by _color_spec (plotSettings passes the settings of each record).
+        '''
+        import matplotlib.pyplot as plt
+        df = self.load(code, run=run)
+        if len(df) == 0:
+            return None
+        groups, gcolors = self._radial_bins(self.radius(code, df))
+        order = list(gcolors)
+        if isinstance(color_by, str) and color_by == 'collisionality' and self._collisionality(code, df)[0] is None:
+            color_by = 'run'
+        spec = self._color_spec(code, df, color_by)
+        fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
+        drives = self._drives(code, df)
+
+        own = fig is None   # else a (sub)figure of the caller, which also draws the color key
+        if own:
+            fig = fn.add_figure(label=label or f'{code.upper()} by radius') if fn is not None else plt.figure(figsize=(18, 10))
+        axs = np.atleast_2d(fig.subplots(3, len(order), sharey='row', squeeze=False))
+        sc = None
+        for irow, (fname, fcol) in enumerate(fluxes.items()):
+            dcol = drives.get(self._OWN_DRIVE[fname])
+            if fcol is None or dcol is None:
+                axs[irow, 0].text(0.5, 0.5, f'no {fname} or its drive', ha='center', va='center', transform=axs[irow, 0].transAxes)
+                continue
+            stdcol = self._std_of(df, fcol)
+            yscale = self._flux_axis(df[fcol].to_numpy(dtype=float), fname)
+            x, y = df[dcol].to_numpy(dtype=float), df[fcol].to_numpy(dtype=float)
+            for icol, g in enumerate(order):
+                ax, m = axs[irow, icol], (groups == g).to_numpy()
+                if stdcol is not None:
+                    ax.errorbar(x[m], y[m], yerr=df[stdcol].to_numpy(dtype=float)[m], fmt='none', ecolor='gray', elinewidth=0.6, alpha=0.5, zorder=1)
+                sc = self._scatter_spec(ax, x, y, spec, mask=m) or sc
+                self._apply_flux_axis(ax, yscale)
+                ax.grid(True, alpha=0.3)
+                ax.tick_params(labelsize=7)
+                if irow == 0:
+                    ax.set_title(f'{g}  ({int(m.sum())})', fontsize=9)
+                ax.set_xlabel(f'{self._DRIVE_LABELS[self._OWN_DRIVE[fname]]} ({dcol[3:]})', fontsize=8)
+            axs[irow, 0].set_ylabel(f'{fname}  ({fcol[4:]})\n{yscale["note"]}' + ('\n1-sigma bars' if stdcol else ''), fontsize=8)
+        if own:
+            GRAPHICStools.adjust_figure_layout(fig)
+            fig.subplots_adjust(wspace=0.08)
+            self._color_key(fig, spec, sc)
+        else:
+            fig.subplots_adjust(left=0.08, right=0.98, top=0.93, bottom=0.08, wspace=0.08, hspace=0.35)
+        return fig
+
+    # -------------------------------------------------------------------------- averaging windows (CGYRO, GX)
+    def plotWindows(self, code, fn=None, run=None):
+        '''
+        How long each time-averaged run was and which part of it the flux average used (codes that store
+        avg_tmin/avg_tmax: CGYRO, GX). Left, one line per record grouped by radius, on the total simulated time
+        (a/cs): time inherited from the restart chain (gray), this run (light), averaging window (dark, colored
+        by radius), MAX_TIME requested (|), and x where the run stopped before MAX_TIME. Right: window length vs
+        r/a (open = cold start), relative std of Qi/Qe vs window length, effective samples of Qi vs window
+        length, and cost per a/cs.
+        '''
+        import matplotlib.pyplot as plt
+        from matplotlib.collections import LineCollection
+        df = self.load(code, run=run)
+        if len(df) == 0 or 'out_avg_tmin' not in df:
+            return None
+        get = lambda c, fill=np.nan: df[c].to_numpy(dtype=float) if c in df else np.full(len(df), fill)
+        roa = self.radius(code, df)
+        groups, colors = self._radial_bins(roa)
+        t_inh, t_last = np.nan_to_num(get('out_restart_t_inherited', 0.0)), get('out_t_last')
+        tmin, tmax, max_time = get('out_avg_tmin'), get('out_avg_tmax'), get('out_max_time')
+        wlen = tmax - tmin
+        warm = get('out_restart_warm', 0.0) > 0
+        order = np.lexsort((np.arange(len(df)), roa.to_numpy(dtype=float)))
+
+        fig = fn.add_figure(label=f'{code.upper()} windows') if fn is not None else plt.figure(figsize=(18, 10))
+        gs = fig.add_gridspec(2, 3, width_ratios=[1.6, 1, 1])
+        ax = fig.add_subplot(gs[:, 0])
+        y = np.empty(len(df))
+        y[order] = np.arange(len(df))
+        segs = [[(0, yi), (ti, yi)] for yi, ti in zip(y, t_inh) if ti > 0]
+        ax.add_collection(LineCollection(segs, colors='gray', lw=2, alpha=0.5))
+        ax.add_collection(LineCollection([[(a, yi), (a + b, yi)] for yi, a, b in zip(y, t_inh, t_last)], colors='lightsteelblue', lw=2))
+        ax.add_collection(LineCollection([[(a + b, yi), (a + c, yi)] for yi, a, b, c in zip(y, t_inh, tmin, tmax)],
+                                         colors=[colors[g] for g in groups], lw=3.5))
+        ax.plot(t_inh + max_time, y, '|', color='k', ms=6)
+        short = get('out_reached_max_time', 1.0) == 0
+        ax.plot((t_inh + t_last)[short], y[short], 'x', color='r', ms=6, label=f'stopped before MAX_TIME ({int(short.sum())})')
+        ticks = [np.mean(y[(groups == g).to_numpy()]) for g in colors if (groups == g).any()]
+        ax.set_yticks(ticks, [g for g in colors if (groups == g).any()], fontsize=7)
+        for g in colors:
+            m = (groups == g).to_numpy()
+            if m.any():
+                ax.axhline(y[m].max() + 0.5, color='k', lw=0.3)
+        ax.set_ylim(len(df) - 0.5, -0.5)
+        ax.set_xlim(0, np.nanmax(np.concatenate([t_inh + t_last, t_inh + max_time])) * 1.02)
+        ax.set_xlabel('total simulated time (a/cs): inherited (gray) + this run (light), window (dark)')
+        ax.set_title(f'{code.upper()}: {len(df)} records; | = MAX_TIME requested', fontsize=9)
+        if short.any():
+            ax.legend(fontsize=7, loc='lower right')
+        ax.grid(True, axis='x', alpha=0.3)
+
+        ax = fig.add_subplot(gs[0, 1])
+        for g, c in colors.items():
+            m = (groups == g).to_numpy()
+            ax.scatter(roa[m & warm], wlen[m & warm], color=c, s=20)
+            ax.scatter(roa[m & ~warm], wlen[m & ~warm], facecolors='none', edgecolors=c, s=20)
+        ax.set_xlabel('r/a'); ax.set_ylabel('window length (a/cs)')
+        ax.set_title(f'median window {np.nanmedian(wlen):.0f} a/cs = {100 * np.nanmedian(wlen / t_last):.0f}% of the run; open = cold start', fontsize=8)
+
+        ax = fig.add_subplot(gs[0, 2])
+        for fname, mk in (('Qi', 'o'), ('Qe', 's')):
+            mcol, scol = self._first(df, 'out_', [f'{fname}_mean']), self._first(df, 'out_', [f'{fname}_std'])
+            if mcol and scol:
+                rel = get(scol) / np.abs(get(mcol))
+                ax.scatter(wlen, rel, c=[colors[g] for g in groups], marker=mk, s=16, label=fname)
+        ax.set_yscale('log'); ax.set_xlabel('window length (a/cs)'); ax.set_ylabel('std / |mean|')
+        ax.legend(fontsize=7, title='marker', title_fontsize=7)
+
+        ax = fig.add_subplot(gs[1, 1])
+        if 'out_Qi_ncorr' in df:
+            ax.scatter(wlen, get('out_Qi_ncorr'), c=[colors[g] for g in groups], s=16)
+            ax.set_ylabel('Qi effective samples (ncorr)')
+        ax.set_xlabel('window length (a/cs)')
+
+        ax = fig.add_subplot(gs[1, 2])
+        if 'out_cost_s_per_acs' in df:
+            ax.scatter(roa, get('out_cost_s_per_acs'), c=[colors[g] for g in groups], s=16)
+            wall = np.nansum(get('out_wall_s', 0.0) * np.nan_to_num(get('out_n_nodes', 1.0), nan=1.0)) / 3600
+            ax.set_title(f'total {wall:.0f} node-hours in this tab', fontsize=8)
+            ax.set_ylabel('wall s per a/cs (per run)')
+        ax.set_xlabel('r/a')
+        for a in fig.axes[1:]:
+            a.grid(True, alpha=0.3)
+        fig.subplots_adjust(left=0.08, right=0.98, top=0.95, bottom=0.07, wspace=0.3, hspace=0.3)
+        return fig
+
+    # -------------------------------------------------------------------------- code settings (numerics, model knobs)
+    # Input keys that are code settings rather than plasma physics: resolution, model choices and knobs.
+    # _RUN_CONTROL keys only steer the run (length, output cadence, parallelization, initial amplitude):
+    # left out of the settings and of the physics signature
+    _SETTINGS = {
+        'tglf': r'^(SAT_RULE|NBASIS_M(IN|AX)|NKY|KY$|KYGRID_MODEL|NXGRID|N?WIDTH(_MIN)?$|FIND_WIDTH|USE_[A-Z_]+|WDIA_TRAPPED|IBRANCH|'
+                r'NMODES|FILTER|THETA_TRAPPED|ETG_FACTOR|ALPHA_(ZF|QUENCH|E|P|MACH)$|XNU_(MODEL|FACTOR)|DEBYE_FACTOR|UNITS|'
+                r'ADIABATIC_ELEC|NEW_EIKONAL|DAMP_(PSI|SIG)|LINSKER_FACTOR|GRADB_FACTOR|WD_ZERO|PARK|G(C)?HAT|RLNP_CUTOFF|[BF]T?_MODEL_SA)',
+        'neo':  r'^(N_(RADIAL|THETA|ENERGY|XI)$|[A-Z0-9_]+_MODEL$)',
+        'cgyro': r'^(N_TOROIDAL|KY$|N_RADIAL|BOX_SIZE|N_THETA|N_XI|N_ENERGY|E_MAX|N_FIELD|NONLINEAR_FLAG|[A-Z_]+_MODEL$|'
+                 r'SHEAR_METHOD|N?UP_(THETA|RADIAL|ALPHA)|DELTA_T(_METHOD)?$|EXCH_FLAG|[A-Z_]+_SCALE$)',
+        'gx':   r'^(nx|ny|ntheta|nperiod|nhermite|nlaguerre|y0|x0|jtwist|boundary|nonlinear_mode|scheme|cfl|dt|closure_model|'
+                r'hypercollisions|hyper|HB_hyper|nu_hyper_[ml]|p_hyper(_[ml])?|D_hyper|D_H|p_HB|w_osc|ei_colls|fphi|fapar|fbpar|collisions_model)$',
+        'qualikiz': r'^(kthetarhos|numsols|relacc\d|maxruns|maxpts|timeout|ETGmult|collmult|coll_flag|rot_flag|phys_meth|'
+                    r'separateflux|typee|typei|verbose|el_type|set_qn_normni|set_qn_an|check_qn|x_eq_rho)',
+    }
+    _RUN_CONTROL = {
+        'cgyro': r'^(MAX_TIME|PRINT_STEP|RESTART_STEP|TOROIDALS_PER_PROC|MOMENT_PRINT_FLAG|FIELD_PRINT_FLAG|AMP0?|FREQ_TOL|SILENT_FLAG)$',
+        'neo':   r'^SILENT_FLAG$',
+        'tglf':  r'^(WRITE_WAVEFUNCTION_FLAG|NN_MAX_ERROR)$',
+        'gx':    r'^(t_max|nstep|nwrite|nsave|debug|save_for_restart|restart|append_on_restart|omega|fluxes|fields|moments|'
+                 r'init_amp|init_field|gaussian_init|ikpar_init)$',
+    }
+
+    def _setting_columns(self, code, df):
+        '''(settings columns, run-control columns) of this code present in df'''
+        import re
+        ins = [c for c in df.columns if c.startswith('in_')]
+        rs, rc = self._SETTINGS.get(code), self._RUN_CONTROL.get(code)
+        run_control = [c for c in ins if rc and re.match(rc, c[3:])]
+        return [c for c in ins if rs and re.match(rs, c[3:]) and c not in run_control], run_control
+
+    def settings(self, code, run=None, df=None):
+        '''
+        Code settings of every record: returns (df, settings columns that vary, label per record). The label
+        names the values of the varying settings ('SAT_RULE=3, USE_BPER=1'); records with equal labels ran with
+        the same settings.
+        '''
+        df = self.load(code, run=run) if df is None else df
+        cols, _ = self._setting_columns(code, df)
+        varying = [c for c in cols if df[c].nunique(dropna=False) > 1]
+        fmt = lambda v: 'unset' if pd.isna(v) else (f'{v:g}' if isinstance(v, (int, float, np.number)) else str(v))
+        labels = df[varying].apply(lambda r: ', '.join(f'{c[3:]}={fmt(v)}' for c, v in r.items()), axis=1) if varying else pd.Series('', index=df.index)
+        return df, varying, labels.rename('settings')
+
+    def _physics_signature(self, code, df, digits=5):
+        '''Hash of every numeric input that is neither a setting nor run control, rounded to `digits` significant digits'''
+        settings, run_control = self._setting_columns(code, df)
+        cols = [c for c in df.columns if c.startswith('in_') and c not in settings + run_control and pd.api.types.is_numeric_dtype(df[c])]
+        v = df[cols].to_numpy(dtype=float)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mag = 10 ** (np.floor(np.log10(np.abs(v))) - digits + 1)
+            v = np.where(np.isfinite(mag) & (v != 0), np.round(v / mag) * mag, v)
+        return pd.util.hash_pandas_object(pd.DataFrame(v).round(12), index=False).to_numpy()
+
+    def match_settings(self, code, run=None):
+        '''
+        Records with the SAME physics inputs (every numeric input except settings and run control, to 5 significant
+        digits) run with different settings: one row per (reference record, other record), reference = the most
+        common settings. Columns: settings, r/a and the fluxes `<flux>_ref` / `<flux>` (+ stds when stored).
+        '''
+        df, varying, labels = self.settings(code, run=run)
+        if not varying:
+            return pd.DataFrame()
+        ref = labels.value_counts().index[0]
+        t = pd.DataFrame({'sig': self._physics_signature(code, df), 'settings': labels, 'roa': self.radius(code, df)})
+        for name, cands in self._FLUX_PAIRS:
+            col = self._first(df, 'out_', cands)
+            if col is not None:
+                t[name] = df[col]
+                if self._std_of(df, col):
+                    t[f'{name}_std'] = df[self._std_of(df, col)]
+        a, b = t[t['settings'] == ref].drop_duplicates('sig'), t[t['settings'] != ref]
+        m = b.merge(a.drop(columns=['settings', 'roa']), on='sig', suffixes=('', '_ref')).drop(columns='sig')
+        m.attrs['reference'] = ref
+        return m
+
+    def plotSettings(self, code, fn=None, run=None):
+        '''
+        Effect of the code settings that vary in the database (e.g. TGLF SAT_RULE, CGYRO N_TOROIDAL/BOX_SIZE):
+        one tab with the records per settings combination and the flux-vs-drive trends per radius colored by
+        settings (differences there mix settings with physics); when some physics points were run with more
+        than one setting, a second tab with those matched pairs: flux with each setting vs flux with the most
+        common one (the clean comparison).
+        '''
+        import matplotlib.pyplot as plt
+        df, varying, labels = self.settings(code, run=run)
+        if not varying:
+            print(f"\t- harvest: {code} settings are the same in every record; no settings tab", typeMsg='i')
+            return None
+        # settings combinations named A, B, ... by number of records; the left panel spells them out
+        counts = labels.value_counts()
+        letter = {k: chr(65 + i) if i < 26 else f'#{i}' for i, k in enumerate(counts.index)}
+        letters = labels.map(letter).rename('settings')
+        colors = self._color_by(letters.to_frame('c'), 'c')
+        fig = fn.add_figure(label=f'{code.upper()} settings') if fn is not None else plt.figure(figsize=(18, 11))
+        sub = fig.subfigures(1, 2, width_ratios=[1, 4])
+        ax = sub[0].subplots()
+        ax.axis('off')
+        ypos = 0.98
+        ax.text(0.0, ypos, f'{code.upper()}: {len(varying)} settings vary', fontsize=9, weight='bold', va='top', transform=ax.transAxes)
+        for k, n in counts.head(12).items():
+            ypos -= 0.035
+            ax.text(0.0, ypos, f'{letter[k]}: {n} records', fontsize=8, weight='bold', color=colors[letter[k]], va='top', transform=ax.transAxes)
+            for item in k.split(', '):
+                ypos -= 0.025
+                ax.text(0.06, ypos, item, fontsize=7, color=colors[letter[k]], va='top', transform=ax.transAxes)
+        self.plotFluxesByRadius(code, run=run, color_by=letters, fig=sub[1])
+
+        pairs = self.match_settings(code, run=run)
+        if len(pairs) == 0:
+            groups, _ = self._radial_bins(self.radius(code, df))
+            per_radius = letters.groupby(groups).nunique().max() <= 1
+            note = ('settings change only between radii\n(one combination per radial group)' if per_radius else
+                    'no physics point was run with two settings:\nthe trends mix settings and physics')
+            ax.text(0.0, 0.01, note, transform=ax.transAxes, fontsize=8, va='bottom', color='darkred')
+            return fig
+        pairs['settings'] = pairs['settings'].map(letter)
+        pairs.attrs['reference'] = letter[pairs.attrs['reference']]
+        fig2 = fn.add_figure(label=f'{code.upper()} settings parity') if fn is not None else plt.figure(figsize=(15, 5))
+        axs = fig2.subplots(1, 3)
+        for ax, (name, _) in zip(axs, self._FLUX_PAIRS):
+            if name not in pairs:
+                continue
+            for k, g in pairs.groupby('settings'):
+                ax.errorbar(g[f'{name}_ref'], g[name], xerr=g.get(f'{name}_std_ref'), yerr=g.get(f'{name}_std'),
+                            fmt='o', ms=3, color=colors[k], alpha=0.7, elinewidth=0.6, label=k)
+            lim = np.nanmax(np.abs(pairs[[f'{name}_ref', name]].to_numpy(dtype=float))) * 1.1
+            ax.plot([-lim, lim], [-lim, lim], '--', color='gray', lw=1)
+            ax.set_xlabel(f'{name} with settings {pairs.attrs["reference"]} (see {code.upper()} settings tab)'); ax.set_ylabel(f'{name} with the other settings')
+            ax.set_title(f'{name}: {len(pairs)} matched physics points', fontsize=9)
+            ax.grid(True, alpha=0.3)
+        axs[0].legend(fontsize=6, loc='upper left')
+        GRAPHICStools.adjust_figure_layout(fig2)
         return fig
 
     # -------------------------------------------------------------------------- input coverage
@@ -1424,6 +1775,8 @@ class harvest_database:
         import re
         df = self.load(code, run=run, with_run_info=False)
         rules = self._CATEGORIES.get(code, self._CATEGORIES['_transport'])
+        if code in self._SETTINGS:
+            rules = [('settings', self._SETTINGS[code])] + rules
         rows = []
         for c in df.columns:
             if not c.startswith('in_') or not pd.api.types.is_numeric_dtype(df[c]):
@@ -1443,13 +1796,13 @@ class harvest_database:
             return cov
         cov.attrs['few'] = int(max(self._FEW_VALUES, self._FEW_FRACTION * cov['n_distinct'].max()))
         cov['discrete'] = (cov['n_distinct'] > 1) & (cov['n_distinct'] <= cov.attrs['few'])
-        order = {name: i for i, (name, _) in enumerate(rules)}
+        order = {name: i for i, (name, _) in enumerate(sorted(rules, key=lambda r: r[0] == 'settings'))}   # settings matched first, shown last
         cov['_o'] = cov['category'].map(lambda c: order.get(c, len(order)))
         return cov.sort_values(['_o', 'width'], ascending=[True, False]).drop(columns='_o').reset_index(drop=True)
 
     _CATEGORY_COLORS = {'drives': 'tab:blue', 'collisions & beta': 'tab:green', 'species': 'tab:purple', 'geometry': 'tab:brown',
                         'engineering': 'tab:blue', 'shape': 'tab:brown', 'pedestal': 'tab:green', 'composition': 'tab:purple',
-                        'EPED settings': 'gray', 'other': 'gray'}
+                        'EPED settings': 'gray', 'settings': 'tab:red', 'other': 'gray'}
 
     def plotCoverage(self, code, fn=None, run=None, include_shape=False, ncols=6, max_panels=30):
         '''
@@ -1584,35 +1937,6 @@ class harvest_database:
         fig.subplots_adjust(left=0.07, right=0.98, top=0.95, bottom=0.07, wspace=0.08, hspace=0.08)
         return fig
 
-    def _plot_transport(self, fn, code):
-        df = self.load(code)
-        if len(df) == 0:
-            return
-        fig = fn.add_figure(label=code.upper())
-        axs = fig.subplots(2, 3)
-        colors = self._color_by(df)
-        fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
-        drives = self._drives(code, df)
-        for ax, (name, col) in zip(axs[0, :], fluxes.items()):
-            if col is not None:
-                vals = df[col].dropna()
-                ax.hist(vals, bins=40, color='gray')
-                ax.set_xlabel(col)
-            ax.set_ylabel('records'); ax.set_title(f'{name} distribution')
-        pairs = [(drives.get('Ti'), fluxes['Qi']), (drives.get('Te'), fluxes['Qe']), (drives.get('ne'), fluxes['Ge'])]
-        for ax, (xcol, ycol) in zip(axs[1, :], pairs):
-            if xcol is None or ycol is None:
-                ax.text(0.5, 0.5, 'no drive/flux column found', ha='center', va='center', transform=ax.transAxes)
-                continue
-            stdcol = self._std_of(df, ycol)
-            for k, c in colors.items():
-                self._scatter(ax, df[df['run'] == k], xcol, ycol, stdcol, c)
-            ax.set_xlabel(xcol); ax.set_ylabel(ycol + (' (1-sigma bars)' if stdcol else ''))
-        axs[1, 0].set_title(f'{len(colors)} runs (colors)')
-        for a in axs.flatten():
-            GRAPHICStools.addDenseAxis(a)
-        GRAPHICStools.adjust_figure_layout(fig)
-
     def _plot_eped(self, fn):
         df = self.load('eped')
         if len(df) == 0:
@@ -1701,6 +2025,7 @@ def main_plot():
     runs = db.runs()
     print("\n- Interactive session. In scope:", typeMsg='i')
     print("\t db       harvest_database  (db.load(code, columns=, run=), db.summary(), db.interpret(code), db.match_records(a, b))")
+    print("\t          db.radius(code, frames[code]) r/a per record;  db.settings(code), db.match_settings(code) code settings per record")
     print("\t frames   {code: DataFrame} ->", {c: f.shape for c, f in frames.items()})
     print("\t runs     provenance table, one row per (run, code)")
     print("\t fn       the notebook;  db.plot(code, x, y, ax=fn.add_figure(label='mine').add_subplot(111)); fn.show()  adds a tab")
