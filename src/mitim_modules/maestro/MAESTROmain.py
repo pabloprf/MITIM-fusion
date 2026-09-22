@@ -166,7 +166,7 @@ class maestro:
         # _plot_beats never hits an undefined attribute if called directly)
         self._plot_skips = []
 
-    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False):
+    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False, count_unconverged = True):
 
         timeBeginning = datetime.datetime.now()
 
@@ -204,6 +204,9 @@ class maestro:
         if prune_level is not None and prune_level not in PRUNE_LEVELS:
             raise ValueError(f'[MITIM] prune_level for beat "{beat}" must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
         self.beat.prune_level_override = prune_level
+
+        # maestro.<beat>.count_unconverged: false keeps this beat out of max_unconverged_portals_beats
+        self.beat.count_unconverged = count_unconverged
 
         # Define initializer
         self.beat.define_initializer(initializer)

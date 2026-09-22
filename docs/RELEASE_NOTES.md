@@ -226,6 +226,7 @@ DESCRIPTION
     without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
     beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
     `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+    Beats with `count_unconverged: false` (set on the template's `portals_soft`) are not counted.
 
 ### Bug Fixes
 

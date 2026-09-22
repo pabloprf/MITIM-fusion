@@ -204,7 +204,8 @@ maestro:
   # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
   # Stop the chain (skip the remaining beats, still finalize) once this many PORTALS beats have
-  # ended without meeting their convergence criteria; null = never stop on unconvergence
+  # ended without meeting their convergence criteria; null = never stop on unconvergence.
+  # Beats with `count_unconverged: false` (portals_soft by default) are not counted.
   max_unconverged_portals_beats: null
 
   # Harvest: archive every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of all PORTALS beats and every
@@ -236,6 +237,7 @@ maestro:
   #       preprocess_prepare:            [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
   #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
   #       preprocess_run:                [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
+  #       count_unconverged:             [Optional, PORTALS beats, default true] Whether an unconverged beat counts toward maestro.max_unconverged_portals_beats
   # ---------------------------------------------------------------------------
 
   eped:
@@ -587,6 +589,9 @@ maestro:
     beat_type: portals
 
     base_module: portals
+
+    # A soft beat runs with relaxed criteria by design; its unconvergence does not stop the chain
+    count_unconverged: false
 
     parameters_prepare:
 
