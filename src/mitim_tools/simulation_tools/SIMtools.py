@@ -869,12 +869,6 @@ class mitim_simulation:
         inputs = copy.deepcopy(self.inputs_files)
         Folder_sim = self.FolderGACODE / subfolder_simulation
 
-        output_files_new = []
-        for i in self.output_files_simulation["complete"]:
-            if "mitim.out" not in i:
-                output_files_new.append(i)
-        self.output_files_simulation["complete"] = output_files_new
-
         # ------------------------------------------------
         # Selection of files to retrieve
         # ------------------------------------------------

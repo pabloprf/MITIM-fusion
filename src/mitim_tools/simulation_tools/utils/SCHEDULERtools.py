@@ -94,9 +94,12 @@ class InAllocationScheduler:
                 for rel in [r for r, (p, _) in extras.items() if p.poll() is not None and r not in ended_extras]:
                     ended_extras.add(rel)   # stays in extras for the final classification
                     print(f"\t- [scheduler] extra {rel} ended on its own (rc={extras[rel][0].returncode})")
-            self._stop_extras(cwd, extras)
         finally:
-            log.close()
+            # also on an exception or a KeyboardInterrupt: an extra left running holds the GPUs
+            try:
+                self._stop_extras(cwd, extras)
+            finally:
+                log.close()
         accepted = [r for r in extras if self._accepted(cwd / r)]
         discarded = [r for r in extras if r not in accepted]
         if extras:
@@ -111,6 +114,8 @@ class InAllocationScheduler:
     def _maybe_extra(self, cwd, prelude, log, rel, call_index, running):
         if not running:
             return None
+        # The slot stays free until run() returns, which is when the LAST main call ends, so the
+        # window is the longest remaining time over every still-running main call
         remaining = [self.estimate_remaining(r) for r in running] if self.estimate_remaining else [None]
         remaining = [x for x in remaining if x is not None]
         needed = self.estimate_to_accept(rel) if self.estimate_to_accept else None
