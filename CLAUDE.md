@@ -456,6 +456,28 @@ pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO rec
 CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
 
+### 5.8 Impurity lumping vs. the radiation target
+
+**Lump impurities ONLY inside `profiles_postprocessing_fun` (the copy handed to TGLF/NEO/CGYRO). The targets
+(`targets_analytic`) are evaluated on the PORTALS state itself, and the radiation model looks each thermal ion up by
+name in `radiation_chebyshev.csv`: a species called `LUMPED` is not there, so it radiates nothing, and after the Zeff
+bremsstrahlung subtraction its "line" term goes negative. Never seed a PORTALS run with an already-lumped
+`input.gacode` (e.g. a published `D,T,LUMPED` state); if that is all you have, graft the real species back first
+(`STUDIES/.../00_orientation/arc_v3a_paper_case/build_unlumped_seed.py` does it so that `lumpImpurities()` returns the
+same LUMPED ion). Symptom of the trap: P_rad ~half of the reference, P_fus inflated.**
+
+### 5.9 Re-evaluating an existing PORTALS run without redoing transport
+
+**To recompute the targets (new seed species, changed target options) while keeping the transport results of N
+finished evaluations: (1) blank every output column (`*_tr_*`, `*_tar_*`, `*_std`, `maximization_objective`) of those
+rows in `Outputs/optimization_data.csv`, keeping the DV columns; (2) set
+`optimization_options.initialization_options.initial_training = N`; (3) re-run with `cold_start=False`. MITIM_BO reads
+the N DVs as the training set (type_initialization 3, no LHS/SR), `EVALUATORtools.mitimRun` sees NaN outputs and
+re-runs each evaluation in its existing `Execution/Evaluation.i/` folder, and `SIMtools.cold_start_checker` skips every
+radius whose output files are complete on disk (CGYRO: `out.cgyro.info` with EXIT), so only the targets change. An
+evaluation interrupted in the scratch folder is continued by `rescue_interrupted: true` only if its regenerated
+`input.cgyro` is md5-identical (MAX_TIME excluded). Back up `Outputs/` first.**
+
 ### 5.6 Logging conventions
 
 Use `from mitim_tools.misc_tools.LOGtools import printMsg as print` and pass
