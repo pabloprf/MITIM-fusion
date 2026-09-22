@@ -494,6 +494,13 @@ class mitim_simulation:
             if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
                 print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
                 continue
+            # Without a resume time the trim below cannot happen and the radius would run
+            # the full time_key again on top of the restart point, so it is not rescued
+            try:
+                done = float(progress)
+            except (TypeError, ValueError):
+                print(f"\t- [rescue] {rel}: interrupted run found but no resume time could be read ({progress!r}); discarding it", typeMsg="w")
+                continue
             # Keep only the input file locally: staged restarts would overwrite the
             # orphan's own (more advanced) restart on extraction
             for f in folder_sim_this.iterdir():
@@ -503,14 +510,11 @@ class mitim_simulation:
             remaining_msg = ""
             m = re.search(rf"^({time_key}\s*=\s*)(\S+)", text, flags=re.M) if time_key else None
             if m is not None:
-                try:
-                    total = float(m.group(2)); done = float(progress)
-                    remaining = max(total - done, 1.0)
-                    text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
-                    (folder_sim_this / input_file).write_text(text)
-                    remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
-                except (TypeError, ValueError):
-                    pass
+                total = float(m.group(2))
+                remaining = max(total - done, 1.0)
+                text = text[:m.start(2)] + f"{remaining:.5E}" + text[m.end(2):]
+                (folder_sim_this / input_file).write_text(text)
+                remaining_msg = f", {time_key} {total:g} -> {remaining:g} remaining"
             rescued.append(rel)
             print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
 
@@ -672,7 +676,8 @@ class mitim_simulation:
                     machineSettings = dict(machineSettings)
                     machineSettings["cores_per_node"] = _env_cores
 
-            total_simulation_executions = len(rhos) * len(code_executor)
+            # Every (subfolder, rho) pending work unit, i.e. one staged folder each
+            total_simulation_executions = len(folders_red)
             total_cores_required = int(resources_per_call) * total_simulation_executions
 
             # ---- Resolve allocation once (submission_type + sbatch dict + mpi + concurrency)
@@ -685,7 +690,7 @@ class mitim_simulation:
                 code=code,
                 allocation={"resources_per_call": resources_per_call, "minutes": minutes,
                             "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
-                n_rhos=len(rhos), n_subfolders=len(code_executor),
+                n_rhos=total_simulation_executions, n_subfolders=1,
                 machine_settings=machineSettings,
                 launch_slurm=launchSlurm,
                 force_submission_type=forced_submission_type,
@@ -826,7 +831,7 @@ class mitim_simulation:
                     code=code,
                     allocation={"resources_per_call": resources_per_call, "minutes": minutes,
                                 "mem": allocation.get("mem"), "max_concurrent_calls": allocation.get("max_concurrent_calls")},
-                    n_rhos=len(rhos), n_subfolders=len(code_executor),
+                    n_rhos=total_simulation_executions, n_subfolders=1,
                     machine_settings=machineSettings,
                     launch_slurm=launchSlurm,
                     force_submission_type=forced_submission_type,
@@ -897,6 +902,10 @@ class mitim_simulation:
                                 f"inputs under {tmpFolder} are gone; not retrying. Check {tmpFolder}/mitim_farming.err "
                                 f"and the code's own logs in the scratch folder."
                             )
+                        if run_status_int >= 1:
+                            # The retry was already spent; a second failure is not random,
+                            # and falling through would organize results of a run that never produced them
+                            raise
                         print('\n\t Run wanted to crash because interactive terminal is not allowed in this bash job, but repeating once to see if error was random')
                         run_status_int += 1
                     
@@ -1111,14 +1120,16 @@ class mitim_simulation:
                     original_file = f"{file}_{rho:.4f}"
                     final_destination = code_executor[subfolder_sim][rho]['folder'] / f"{original_file}"
 
-                    final_destination.unlink(missing_ok=True)
-
                     temp_file = tmpFolder / subfolder_sim / f"rho_{rho:.4f}" / f"{file}"
 
+                    # A file that did not come back leaves the previous result in place
+                    # (removing it first would destroy a good result on a failed retrieval)
                     if not temp_file.exists():
                         print(f"\t!! file {file} ({original_file}) could not be retrieved", typeMsg="w")
+                        fineall = False
                         continue
 
+                    final_destination.unlink(missing_ok=True)
                     temp_file.replace(final_destination)
 
                     fineall = fineall and final_destination.exists()
@@ -1397,6 +1408,8 @@ class mitim_simulation:
         additional_files_to_send=None,
         helper_lostconnection=False,
         job_name_suffix='_sim',
+        rescue_interrupted=False,
+        load_balance=None,   # see CGYROtools.CGYRO.run; consumed by _run via self._load_balance
     ):
         '''
         Phase-1 multi-plasma runner. Runs the same simulation configuration (same rhos,
@@ -1463,24 +1476,30 @@ class mitim_simulation:
         )
 
         # Parallel dispatch of every (plasma, rho) work unit via the existing _run path.
-        self._run(
-            code_executor,
-            code_executor_full=code_executor_full,
-            code_settings=code_settings,
-            ApplyCorrections=ApplyCorrections,
-            Quasineutral=Quasineutral,
-            launchSlurm=launchSlurm,
-            cold_start=cold_start,
-            forceIfcold_start=forceIfcold_start,
-            extra_name=extra_name,
-            allocation=allocation,
-            only_minimal_files=only_minimal_files,
-            attempts_execution=attempts_execution,
-            run_type=run_type,
-            helper_lostconnection=helper_lostconnection,
-            base_subfolder=base_subfolder,
-            job_name_suffix=job_name_suffix,
-        )
+        # load_balance is carried on the instance (as CGYRO.run does for the single-plasma path)
+        self._load_balance = load_balance
+        try:
+            self._run(
+                code_executor,
+                code_executor_full=code_executor_full,
+                code_settings=code_settings,
+                ApplyCorrections=ApplyCorrections,
+                Quasineutral=Quasineutral,
+                launchSlurm=launchSlurm,
+                cold_start=cold_start,
+                forceIfcold_start=forceIfcold_start,
+                extra_name=extra_name,
+                allocation=allocation,
+                only_minimal_files=only_minimal_files,
+                attempts_execution=attempts_execution,
+                run_type=run_type,
+                helper_lostconnection=helper_lostconnection,
+                base_subfolder=base_subfolder,
+                job_name_suffix=job_name_suffix,
+                rescue_interrupted=rescue_interrupted,
+            )
+        finally:
+            self._load_balance = None
 
         return plasma_labels
 

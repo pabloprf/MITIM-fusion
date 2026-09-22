@@ -25,6 +25,15 @@ def _check_exchange_moment(outputs, labels):
 # load_balance strategy 'extra_points': perturbed cases on nodes freed by early radii
 # (bash mode; scheduler in SIMtools/SCHEDULERtools, hooks in CGYROtools)
 # ----------------------------------------------------------------------------------------
+# Keys of transport.options.cgyro.run that are forwarded to SIMtools run_over_plasmas
+# (every one of them must be a parameter of that method)
+_RUN_OVER_PLASMAS_KEYS = {
+    "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
+    "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation", "load_balance",
+    "run_type", "additional_files_to_send", "helper_lostconnection",
+    "rescue_interrupted",
+}
+
 _EXTRA_X_VARIABLES = ["aLte", "aLti", "aLne", "aLnZ", "aLw0_n", "nuei", "tite", "w0_n", "beta_e"]
 # channel -> (gradient variable, target key [MW/m2 or 1E20/m2/s], GB normalization key, flux prefix)
 _EXTRA_CHANNELS = {"te": ("aLte", "QeMWm2", "Qgb", "Qe"), "ti": ("aLti", "QiMWm2", "Qgb", "Qi"), "ne": ("aLne", "Ge1E20m2", "Ggb", "Ge")}
@@ -1568,13 +1577,7 @@ class cgyro_model(gyrokinetic_model):
             # CGYRO-specific keys (preprocess_options) are handled above; re-attach
             # controls (check_existing_runs, every_n_minutes) are consumed here.
             # restart_from_folder is resolved below into additional_files_to_send.
-            _run_over_plasmas_keys = {
-                "code_settings", "extraOptions", "multipliers", "minimum_delta_abs",
-                "ApplyCorrections", "Quasineutral", "launchSlurm", "allocation", "load_balance",
-                "run_type", "additional_files_to_send", "helper_lostconnection",
-                "rescue_interrupted",
-            }
-            run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _run_over_plasmas_keys}
+            run_kwargs = {k: v for k, v in simulation_options["run"].items() if k in _RUN_OVER_PLASMAS_KEYS}
 
             # Translate namelist-level restart_from_folder into per-rho
             # additional_files_to_send tuples (renamed to out.cgyro.restart on stage-in).

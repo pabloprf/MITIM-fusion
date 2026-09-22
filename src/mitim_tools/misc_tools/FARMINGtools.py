@@ -1362,6 +1362,8 @@ class mitim_job:
         if "output_files" in self.__dict__:
             output_files_backup = copy.deepcopy(self.output_files)
             output_folders_backup = copy.deepcopy(self.output_folders)
+            output_folders_selective_backup = copy.deepcopy(self.output_folders_selective)
+            output_file_fallbacks_backup = copy.deepcopy(self.output_file_fallbacks)
             wasThere = True
         else:
             wasThere = False
@@ -1374,6 +1376,11 @@ class mitim_job:
         # retry on every status poll while the job is queued.
         self.output_files = ["squeue_output.dat"]
         self.output_folders = []
+        # The per-folder specs must be blanked too: retrieve() resolves the
+        # primary/fallback pairs on the remote (rm/mv of bin.cgyro.restart.old)
+        # before tarring, which must not happen on a mere status poll.
+        self.output_folders_selective = {}
+        self.output_file_fallbacks = {}
 
         # A status poll must never crash the run on a remote hiccup. The squeue
         # exec_command is retried across transient SSH/VPN flaps (retry_on_transient),
@@ -1382,24 +1389,27 @@ class mitim_job:
         # -> interpret_status treats it as pending/keep-polling. connect() keeps its own
         # retry, so a clean connect here means close() below is safe.
         output = error = None
-        self.connect()
         try:
-            output, error = self.execute(command, printYN=True, retry_on_transient=True)
-            received = self.retrieve(optional_files=[file_output], best_effort=True)
-        except (paramiko.ssh_exception.SSHException, TimeoutError, socket.timeout,
-                EOFError, ConnectionError, socket.gaierror) as _poll_exc:
-            print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
-                  f"assuming job still pending (will re-poll)", typeMsg="w")
-            received = False
-        if not received and output is not None:
-            self._write_debugging_files(output, error, extra_name = '_check')
-        self.close()
-        self.interpret_status(file_output = file_output)
-
-        # Back to original
-        if wasThere:
-            self.output_folders = output_folders_backup
-            self.output_files = output_files_backup
+            self.connect()
+            try:
+                output, error = self.execute(command, printYN=True, retry_on_transient=True)
+                received = self.retrieve(optional_files=[file_output], best_effort=True)
+            except (paramiko.ssh_exception.SSHException, TimeoutError, socket.timeout,
+                    EOFError, ConnectionError, socket.gaierror) as _poll_exc:
+                print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
+                      f"assuming job still pending (will re-poll)", typeMsg="w")
+                received = False
+            if not received and output is not None:
+                self._write_debugging_files(output, error, extra_name = '_check')
+            self.close()
+            self.interpret_status(file_output = file_output)
+        finally:
+            # Back to original
+            if wasThere:
+                self.output_folders = output_folders_backup
+                self.output_files = output_files_backup
+                self.output_folders_selective = output_folders_selective_backup
+                self.output_file_fallbacks = output_file_fallbacks_backup
 
     def interpret_status(self, file_output = "slurm_output.dat"):
         """
@@ -1456,8 +1466,10 @@ class mitim_job:
         elif self.infoSLURM["STATE"] == "NOT FOUND":
             self.status = 2
         else:
-            print("Unknown SLURM status, please check")
-            embed()
+            # Any other state the job can sit in (REQUEUED, SUSPENDED, CONFIGURING, ...)
+            # means it is still in the queue: keep polling, never read it as finished.
+            print(f"\t* SLURM state '{self.infoSLURM['STATE']}' not explicitly handled; assuming job still in the queue (will re-poll)", typeMsg="w")
+            self.status = 0
 
         # ------------------------------------------------------------
         # If it was available, read the status of the ACTUAL slurm job
@@ -1698,7 +1710,7 @@ def create_slurm_execution_files(
     shellPostCommands=None,
     label_log_files="",
     wait_until_sbatch=True,
-    slurm_allocation={},
+    slurm_allocation=None,
     launchSlurm=True,
     slurm_settings = None,
     if_array_relabel = False,
@@ -1707,6 +1719,12 @@ def create_slurm_execution_files(
     append_mode = False
 ):
     
+    # Work on copies: the setdefault calls below would otherwise write the defaults
+    # into the caller's dicts, and slurm_allocation is machineSettings["slurm"],
+    # aliased by reference to the process-global config cache.
+    slurm_allocation = dict(slurm_allocation or {})
+    slurm_settings = dict(slurm_settings or {})
+
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
     fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
@@ -1714,9 +1732,6 @@ def create_slurm_execution_files(
     # ---------------------------------------------------
     # slurm_settings indicate the job resource allocation   
     #  ---------------------------------------------------
-
-    if slurm_settings is None:
-        slurm_settings = {}
 
     # ---- Native sbatch keys (the only schema we support) -----------------
     # Back-compat: migrate the legacy 'minutes' key to the native 'time' key. mitim_job-direct

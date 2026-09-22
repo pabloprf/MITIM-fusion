@@ -230,6 +230,18 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
+    in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
+    (`run_over_plasmas` now accepts `rescue_interrupted` and `load_balance`); a status poll no longer drops
+    into an IPython prompt on SLURM states such as `REQUEUED` or `CONFIGURING` (they keep polling), no longer
+    runs the `bin.cgyro.restart.old` prune on the remote, and no longer re-queries `sacct` every poll for a
+    task already flagged `TERMINAL_NO_RESCUE`; a second `InteractiveTerminalError` in a run is re-raised
+    instead of being read as success; a file missing from a retrieval no longer deletes the previous good
+    result nor the staging folder; an interrupted run without a readable resume time is discarded instead
+    of silently running the full `MAX_TIME` on top of its checkpoint; the SLURM script builder no longer
+    writes defaults into the global machine config; the allocation counts every pending (subfolder, rho)
+    unit instead of only the last subfolder's.
+
 *   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
     extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,
     the best converged, were discarded and never reached `Outputs/extra_points.csv`. An extra is now kept

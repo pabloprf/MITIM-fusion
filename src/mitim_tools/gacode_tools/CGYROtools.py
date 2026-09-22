@@ -391,6 +391,11 @@ def _cgyro_handle_stalled_tasks(sim, rows):
                 "status": "active",
             })
 
+            # Already resolved as a false positive (slurm says the task ended): stay
+            # silent and never re-query sacct, this row is re-examined on every poll
+            if str(ledger.get("status", "")).startswith("TERMINAL_NO_RESCUE"):
+                continue
+
             if ledger.get("status") == "EXHAUSTED" or ledger["n_attempts"] >= cap:
                 if ledger.get("status") != "EXHAUSTED":
                     ledger["status"] = "EXHAUSTED"
