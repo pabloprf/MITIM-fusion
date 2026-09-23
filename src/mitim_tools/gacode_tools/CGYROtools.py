@@ -1127,7 +1127,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self._extra_point_n = int(resources_per_call)
         return {"on_call_finished": self._launch_extra_point,
                 "estimate_remaining": self._estimate_remaining,
-                "estimate_to_accept": self._estimate_to_accept}
+                "estimate_to_accept": self._estimate_to_accept,
+                "idle_slot_sources": self._idle_slot_sources}
 
     def _scratch(self, rel):
         return Path(self.simulation_job.folderExecution) / rel
@@ -1160,6 +1161,41 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         cost = self._cost_per_acs(rel)
         lb = getattr(self, "_load_balance", None) or {}
         return None if cost is None else float(lb.get("min_time", 0.0)) * cost + 300.0
+
+    def _idle_slot_sources(self, main_rels):
+        '''
+        Scheduler hook: the radii of this evaluation that an earlier driver job already finished,
+        so a relaunch that runs only the unfinished ones can still give its idle slots extras.
+        Each is made to look like a radius that just finished in scratch: its stored `<file>_<rho>`
+        outputs are symlinked into the scratch folder under their plain names (skipped when the
+        folder is still there), which is all _launch_extra_point, _estimate_to_accept and the
+        builder read. Radii whose extra is already done locally are left out.
+        '''
+        spec = SIMtools.CompletionSpec.from_run_specifications(self.run_specifications)
+        extra_done = SIMtools.CompletionSpec.coerce(spec, alt_file="mitim_budget.tag")
+        main = set(main_rels)
+        sources = []
+        for sub in sorted({rel.split("/")[0] for rel in main_rels}):
+            local = Path(self.FolderGACODE) / sub
+            for info in sorted(local.glob(f"{spec.marker_file}_*")):
+                rho = float(info.name.rsplit("_", 1)[-1])
+                rel = f"{sub}/{SIMtools.rho_folder(rho)}"
+                if rel in main or not spec.finished(local, rho)[0]:
+                    continue
+                if extra_done.finished(Path(self.FolderGACODE) / "extra_cgyro" / SIMtools.rho_folder(rho))[0]:
+                    continue
+                self._stage_finished_radius(local, rho, self._scratch(rel))
+                sources.append(rel)
+        return sources
+
+    @staticmethod
+    def _stage_finished_radius(local, rho, scratch_dir):
+        if (scratch_dir / "out.cgyro.info").exists():
+            return
+        scratch_dir.mkdir(parents=True, exist_ok=True)
+        suffix = SIMtools.rho_suffix(rho)
+        for f in local.glob(f"*{suffix}"):
+            (scratch_dir / f.name[:-len(suffix)]).symlink_to(f.resolve())
 
     def _launch_extra_point(self, rel):
         '''Scheduler hook: prepare extra_cgyro/rho_<rho> in scratch (perturbed input.cgyro +

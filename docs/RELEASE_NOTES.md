@@ -251,7 +251,9 @@ DESCRIPTION
     crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
     regardless, so SLURM recorded such array elements as `COMPLETED 0:0`. A status poll or re-attach whose
     remote scratch folder was deleted now reads the job as gone and resubmits, instead of polling it as
-    pending until the driver's wall time.
+    pending until the driver's wall time. With `load_balance: extra_points`,
+    a relaunch that re-runs only the unfinished radii now gives the nodes it leaves idle extras built from
+    the radii that already finished (before, only nodes freed during the job got one).
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
