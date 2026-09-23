@@ -63,7 +63,8 @@ RUNS_GROUP = 'runs'
 
 RECORD_KEYS = ['run', 'hash']
 # Provenance, once per run (run_meta.json) ...
-RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat']
+RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat',
+            'recovered_by']   # '' for live runs; 'mitim_harvester <version>@<commit>' for records rebuilt from disk (HARVESTrecover)
 # ... and once per (run, code), captured from the first record of that code (`averaging`: how the
 # time-averaged fluxes and their std were computed, for CGYRO/GX; empty for single-value codes)
 RUN_CODE_KEYS = ['machine', 'modules', 'code_version', 'in_process', 'averaging']
@@ -526,7 +527,7 @@ def collect_eped(input_params, composition=None, eped_params_override=None, toq_
 # ------------------------------------------------------------------------------------------------
 
 _STRING_COLS = {'run', 'hash', 'code', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit',
-                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record'}
+                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record', 'recovered_by'}
 
 def _frame_from_rows(rows):
     '''DataFrame with the union of keys; a column is string if any value is a string, numeric (f8) otherwise'''

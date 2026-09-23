@@ -115,6 +115,7 @@ mitim_clean_maestro = "mitim_modules.maestro.scripts.clean_maestro:main" # e.g. 
 mitim_prune_maestro = "mitim_modules.maestro.scripts.prune_maestro:main" # replicate keep_all_files:false on a finished run; e.g. mitim_prune_maestro FOLDER1 --apply
 mitim_harvest = "mitim_tools.harvest_tools.HARVESTtools:main_push"        # push staged evaluations of (dead) PORTALS/MAESTRO runs into the central harvest file; --rebuild
 mitim_plot_harvest = "mitim_tools.harvest_tools.HARVESTtools:main_plot"   # [file] [--code tglf] [--x RLTS_2 --y Qi] [--noplot]
+mitim_harvester = "mitim_tools.harvest_tools.HARVESTrecover:main"         # rebuild TGLF/NEO/EPED records of runs made WITHOUT harvest from disk; e.g. mitim_harvester RUNS_PARENT file.nc --dry-run
 
 # TRANSP
 mitim_trcheck = "mitim_tools.transp_tools.scripts.run_check:main"	        # e.g. mitim_trcheck pablorf
