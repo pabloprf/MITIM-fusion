@@ -109,12 +109,34 @@ def test_new_string_column_after_many_rows(tmp):
     print("PASS new string column appended after many rows is readable")
 
 
+def test_short_string_column_repaired(tmp):
+    # Old code left a string column shorter than the record dimension when a push did not carry it; the next
+    # write to it then made the whole column unreadable. Seen on the shared file (eped/input_types_record).
+    import netCDF4
+    f, n = tmp / 'short.nc', 5000
+    with netCDF4.Dataset(f, 'w') as ds:   # the group as old code wrote it: no 'strings_extended', 's' short
+        g = ds.createGroup('eped'); g.createDimension('record', None)
+        g.createVariable('run', str, ('record',)); g.createVariable('s', str, ('record',))
+        g['run'][0:10] = np.array(['a'] * 10, dtype=object); g['s'][0:10] = np.array(['x'] * 10, dtype=object)
+        g['run'][10:n] = np.array(['b'] * (n - 10), dtype=object)
+    with netCDF4.Dataset(f, 'a') as ds:   # new code: one push without 's', one with it, then a later in-place write
+        H.harvest_database._write_group(ds, 'eped', {'run': (True, np.array(['c'] * 20, dtype=object))}, 20)
+        H.harvest_database._write_group(ds, 'eped', {'run': (True, np.array(['d'] * 5, dtype=object)),
+                                                     's': (True, np.array(['y'] * 5, dtype=object))}, 5)
+        ds['eped']['s'][0] = 'x'
+    with netCDF4.Dataset(f) as ds:
+        s = ds['eped']['s'][:]
+    assert len(s) == n + 25 and s[0] == 'x' and s[n + 5] == '' and s[-1] == 'y', "short string column repaired and kept readable"
+    print("PASS short string column (old-code file) repaired on the next push and stays readable")
+
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvester_test_'))
     try:
         test_tglf_records_and_dedup(tmp)
         test_eped_files_from_nc(tmp)
         test_new_string_column_after_many_rows(tmp)
+        test_short_string_column_repaired(tmp)
         print("\nALL PASS")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

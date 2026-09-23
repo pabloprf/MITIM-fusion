@@ -867,11 +867,25 @@ class harvest_database:
 
     @staticmethod
     def _write_group(ds, name, cols, k):
+        '''
+        Append k rows to group `name`. vlen string columns have no fill value and their HDF5 storage only
+        grows when written: a string column a push does not carry would stay shorter than the record
+        dimension (reads still return '' past its end), and the next write to it would expose the never-
+        written rows ("NetCDF: HDF error" on every later read of that column). So every string column is
+        written for every appended row, and a group written by older code is repaired once (all its string
+        columns rewritten in full; attribute `strings_extended`).
+        '''
         grp = ds.groups[name] if name in ds.groups else ds.createGroup(name)
         if 'record' not in grp.dimensions:
             grp.createDimension('record', None)
             grp.setncattr('schema_version', SCHEMA_VERSION)
+            grp.setncattr('strings_extended', 1)
         n = len(grp.dimensions['record'])
+        if 'strings_extended' not in grp.ncattrs():
+            for var in grp.variables.values():
+                if var.dtype == str and n > 0:
+                    var[0:n] = np.array(list(var[0:n]), dtype=object)
+            grp.setncattr('strings_extended', 1)
         for col, (is_str, arr) in cols.items():
             if col not in grp.variables:
                 if is_str:
@@ -883,6 +897,9 @@ class harvest_database:
                 else:
                     grp.createVariable(col, 'f8', ('record',), fill_value=np.nan, zlib=True, chunksizes=(4096,))
             grp.variables[col][n:n + k] = arr
+        for col, var in grp.variables.items():
+            if col not in cols and var.dtype == str:
+                var[n:n + k] = np.array([''] * k, dtype=object)
         grp.setncattr('last_push', datetime.datetime.now().isoformat(timespec='seconds'))
         return k
 
