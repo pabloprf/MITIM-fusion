@@ -294,7 +294,7 @@ def _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its):
 
 
 def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
-                     color_for, base_iter, targets_per_iter=None):
+                     color_for, base_iter, targets_per_iter=None, trace_lw=1.0):
     '''
     Draw one subplot: non-base traces in `chunk` + base iter, for channel
     `var` at `rho`. Returns (trace_count, trace_means) so the outer grid
@@ -363,7 +363,7 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
             alpha_trace, alpha_mean = 1.0, 0.85
             shade_color, shade_alpha = 'gray', 0.28
         else:
-            lw_trace, lw_mean, ms_err, capsize_err, lw_err = 1.0, 0.7, 3, 2, 0.8
+            lw_trace, lw_mean, ms_err, capsize_err, lw_err = trace_lw, 0.7, 3, 2, 0.8
             z_trace, z_mean, z_err = 2, 3, 4
             alpha_trace, alpha_mean = 0.85, 0.8
             shade_color, shade_alpha = color, 0.22
@@ -1059,6 +1059,137 @@ def plot_flux_convergence(
                 ax.set_xlabel("evaluation")
             GRAPHICStools.addDenseAxis(ax)
     axs[0, 0].legend(loc='best', fontsize=7, framealpha=0.9)
+
+
+# ---------------------------------------------------------------------------
+# Evaluations near an anchor (best / last): concatenated traces vs gradients
+# ---------------------------------------------------------------------------
+
+_GRADIENT_MARKERS = ('o', 's', '^', 'D', 'v')
+
+
+def select_near_evaluations(gradients_per_iter, anchor, rel_tol=0.10, min_evals=3, max_evals=8):
+    '''
+    Evaluations whose gradients are close to those of `anchor`. The distance of evaluation i is
+    max over gradients k and radii r of |g_i[k][r] - g_anchor[k][r]| / rms_r(g_anchor[k]): the
+    per-gradient rms over radii normalizes, so a gradient crossing zero at one radius (a/Lne at the
+    axis) does not blow the distance up. Keeps every evaluation within `rel_tol`, at least the
+    `min_evals` nearest (anchor included) and at most the `max_evals` nearest. Returns
+    (evaluations sorted by index, {evaluation: distance}).
+    '''
+    ga = gradients_per_iter[anchor]
+    norms = {k: float(np.sqrt(np.mean(np.asarray(v, dtype=float) ** 2))) or 1.0 for k, v in ga.items()}
+    dist = {
+        it: max(float(np.max(np.abs(np.asarray(g[k], dtype=float) - np.asarray(ga[k], dtype=float)))) / norms[k] for k in ga)
+        for it, g in gradients_per_iter.items()
+    }
+    ranked = sorted(dist, key=lambda it: (dist[it], abs(it - anchor)))
+    n = min(max(min_evals, sum(dist[it] <= rel_tol for it in ranked)), max_evals)
+    return sorted(ranked[:n]), dist
+
+
+def plot_time_traces_near(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    gradients_per_iter,
+    anchor,
+    anchor_label="best",
+    targets_per_iter=None,
+    rel_tol=0.10,
+    min_evals=3,
+    max_evals=8,
+):
+    '''
+    Do the evaluations that barely moved the gradients agree with each other? Picks the evaluations
+    whose gradients sit within `rel_tol` of `anchor` (select_near_evaluations) and draws, per radius
+    (columns), their CGYRO traces back to back in evaluation order: the x axis is the cumulative
+    simulated time of the evaluations shown, not the warm-start time. Top row: change of each
+    gradient from the anchor's, g - g_anchor (absolute, not relative: a/Lne can sit near zero), at
+    the middle of each evaluation's segment. Flux rows: raw trace, window mean and +/- 2 sigma box
+    as in the per-radius trace tabs, and the anchor's turbulence-only target (target - neoclassical)
+    as the red dashed line.
+
+    `gradients_per_iter` = {evaluation: {label: per-rho array}}, e.g. {"$a/L_{Te}$": ...}.
+    '''
+    cache = tools_by_iteration
+    grads = {it: g for it, g in gradients_per_iter.items() if it in cache}
+    if anchor not in grads:
+        print(f"\t- CGYRO traces near {anchor_label}: evaluation {anchor} has no CGYRO outputs or gradients; skipping", typeMsg='w')
+        return
+    selected, dist = select_near_evaluations(grads, anchor, rel_tol=rel_tol, min_evals=min_evals, max_evals=max_evals)
+    color_for = _make_column_color_fn(selected)
+    ga = grads[anchor]
+
+    fig = fn.add_figure(label=f"CGYRO near {anchor_label}", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=1 + len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex='col',
+                       gridspec_kw={"hspace": 0.12, "wspace": 0.28})
+    fig.set_size_inches(max(9.0, 3.4 * len(rhos)), 10.0)
+    fig.suptitle(
+        f"CGYRO near {anchor_label} (ev{anchor}): ev{', ev'.join(str(it) for it in selected)} back to back — "
+        f"gradients within {100.0 * max(dist[it] for it in selected):.1f}% of ev{anchor}",
+        fontsize=11,
+    )
+
+    for r_idx, rho in enumerate(rhos):
+        # Cumulative x: each evaluation starts where the previous one shown ended
+        offsets, spans, x = {}, {}, 0.0
+        for it in selected:
+            out = pick_output_for_rho(cache[it], rho, r_idx)
+            if out is None or not hasattr(out, "t") or len(out.t) == 0:
+                continue
+            t0, t1 = float(out.t[0]), float(out.t[-1])
+            offsets[it], spans[it] = x - t0, (x, x + t1 - t0)
+            x += t1 - t0
+        present = [it for it in selected if it in offsets]
+        if not present:
+            continue
+        x_end = x
+
+        ax = axs[0, r_idx]
+        mids = [0.5 * sum(spans[it]) for it in present]
+        for (k, g0), marker in zip(ga.items(), _GRADIENT_MARKERS):
+            delta = [float(grads[it][k][r_idx]) - float(g0[r_idx]) for it in present]
+            ax.plot(mids, delta, '-', color='k', lw=0.8, alpha=0.6, zorder=2)
+            ax.scatter(mids, delta, marker=marker, s=[55 if it == anchor else 30 for it in present],
+                       c=[color_for(it) for it in present], edgecolors='k', linewidths=0.5, zorder=3)
+        ax.axhline(0.0, color='k', lw=0.5, alpha=0.5)
+        ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10, pad=16)
+        top = ax.secondary_xaxis('top')
+        top.set_ticks(mids, labels=[f"ev{it}" + ("*" if it == anchor else "") for it in present], fontsize=7)
+        if r_idx == 0:
+            ax.set_ylabel(f"gradient $-$ ev{anchor}")
+
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS, start=1):
+            ax = axs[row_idx, r_idx]
+            _, trace_stats, _ = _draw_chunk_cell(ax, var, rho, r_idx, present, cache, None, offsets, color_for, None,
+                                                 trace_lw=0.4)
+            tval = _target_for(targets_per_iter, anchor, var, r_idx)
+            if tval is not None:
+                ax.axhline(tval, color='red', ls='--', lw=1.2, zorder=9)
+            _robust_ylim(ax, [ms[0] for ms in trace_stats], [ms[1] for ms in trace_stats], [tval] if tval is not None else [])
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            GRAPHICStools.addDenseAxis(ax)
+
+        for row_idx in range(1 + len(_CHANNELS)):
+            for x0, _ in spans.values():
+                if x0 > 0.0:
+                    axs[row_idx, r_idx].axvline(x0, color='gray', ls=':', lw=0.8, zorder=1)
+        axs[0, r_idx].set_xlim(-0.02 * x_end, x_end * 1.02)
+        axs[-1, r_idx].set_xlabel("cumulative $t \\, c_s/a$ (evaluations shown)")
+        GRAPHICStools.addDenseAxis(axs[0, r_idx])
+
+    # One legend strip under the title: every column carries the same symbols
+    fig.legend(
+        [Line2D([0], [0], marker=m, color='k', ls='-', lw=0.8, mfc='w') for _, m in zip(ga, _GRADIENT_MARKERS)]
+        + [Line2D([0], [0], color='red', ls='--', lw=1.2),
+           Patch(facecolor='gray', alpha=0.3, edgecolor='none')],
+        list(ga) + [f"target$-$neo (ev{anchor})", "window $\\times 2\\sigma$"],
+        loc='upper center', bbox_to_anchor=(0.5, 0.965), ncol=len(ga) + 2, fontsize=8, frameon=False,
+    )
+    fig.subplots_adjust(top=0.86)
 
 
 # ---------------------------------------------------------------------------

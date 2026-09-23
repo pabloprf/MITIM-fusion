@@ -2592,6 +2592,8 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
     if not live_drew_spectra:
         CGYROplot.plot_flux_spectra(fn, fn_color_start, self.rhos, self._cgyro_traces_cache)
 
+    _plot_cgyro_near_best_and_last(self, fn, fn_color_start + 3)
+
     CGYROplot.plot_time_traces_per_radius(
         fn,
         fn_color_start,
@@ -2616,6 +2618,36 @@ def _plot_cgyro_time_traces_dispatch(self, fn, fn_color_start):
         targets_per_iter=self._cgyro_targets_cache,
         time_mode="local",
     )
+
+
+_CHANNEL_GRADIENTS = {"te": ("aLte", "$a/L_{Te}$"), "ti": ("aLti", "$a/L_{Ti}$"), "ne": ("aLne", "$a/L_{ne}$"),
+                      "nZ": ("aLnZ", "$a/L_{nZ}$"), "w0": ("aLw0_n", "$-(a/c_s)\\,d\\omega_0/dr$")}
+
+
+def _plot_cgyro_near_best_and_last(self, fn, fn_color):
+    '''
+    "CGYRO near best" and "CGYRO near last" tabs (one when best == last): the evaluations whose
+    predicted gradients barely differ from the anchor's, traces back to back with the gradient
+    changes on top (CGYROplot.plot_time_traces_near). Needs the analyzer's per-evaluation
+    powerstates, so the initializer view (simple-relax only) draws nothing.
+    '''
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    powerstates = getattr(self, "powerstates", None)
+    if not powerstates or getattr(self, "ibest", None) is None:
+        return
+    channels = [ch for ch in self.predicted_channels if ch in _CHANNEL_GRADIENTS]
+    gradients = {
+        i: {_CHANNEL_GRADIENTS[ch][1]: p.plasma[_CHANNEL_GRADIENTS[ch][0]][0, 1:].cpu().numpy() for ch in channels}
+        for i, p in enumerate(powerstates) if i in self._cgyro_traces_cache
+    }
+    if not gradients:
+        return
+    last = max(gradients)
+    anchors = [(self.ibest, "best")] + ([(last, "last")] if last != self.ibest else [])
+    for anchor, label in anchors:
+        CGYROplot.plot_time_traces_near(fn, fn_color, self.rhos, self._cgyro_traces_cache, gradients, anchor,
+                                        anchor_label=label, targets_per_iter=self._cgyro_targets_cache)
 
 
 def _find_running_cgyro_evaluation(iter_folders, base_subfolder):
