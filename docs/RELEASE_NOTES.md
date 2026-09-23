@@ -247,7 +247,9 @@ DESCRIPTION
     `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
     left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it). In bash mode,
     several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each own their GPU(s)
-    exclusively per srun step; before, every call landed on the node's first GPU.
+    exclusively per srun step; before, every call landed on the node's first GPU. A radius whose CGYRO
+    crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
+    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`.
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was

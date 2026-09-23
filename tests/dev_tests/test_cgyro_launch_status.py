@@ -122,20 +122,24 @@ MODES = ((None, None),
 
 
 def test_launch_bodies_are_byte_identical():
-    '''Every launch shape x watchdog mode produces exactly the bash of the reference commit.'''
+    '''Every launch shape x watchdog mode produces exactly the bash of the reference commit, plus the
+    one intended addition since: the exit verdict right after the launch (CgyroLaunchBody.exit_verdict).'''
     old = reference_module()
     if old is None:
         print(f"SKIP: {REFERENCE_COMMIT} not available in this repo")
         return
+    verdict = CGYROtools.CgyroLaunchBody(FOLDER, EXEC).exit_verdict()
     n = 0
     for shape, hosts in SHAPES:
         for mode, load_balance in MODES:
             new_body = build_body(CGYROtools, shape, hosts, mode, load_balance, additional_command="&& echo done")
             old_body = build_body(old, shape, hosts, mode, load_balance, additional_command="&& echo done")
+            assert old_body.count("\n_mitim_rc=$?\n") == 1, f"{shape}/{mode}: reference body lost its _mitim_rc line"
+            old_body = old_body.replace("\n_mitim_rc=$?\n", f"\n_mitim_rc=$?\n{verdict}\n")
             assert new_body == old_body, (
                 f"{shape}/{mode}:\n--- reference ---\n{old_body}\n--- now ---\n{new_body}")
             n += 1
-    print(f"PASS: {n} launch bodies (shape x watchdog mode) byte-identical to {REFERENCE_COMMIT}")
+    print(f"PASS: {n} launch bodies (shape x watchdog mode) byte-identical to {REFERENCE_COMMIT} + exit verdict")
 
 
 def test_watchdog_modes_render_their_switches():
