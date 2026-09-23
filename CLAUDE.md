@@ -460,8 +460,8 @@ CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
 
 **Lump impurities ONLY inside `profiles_postprocessing_fun` (the copy handed to TGLF/NEO/CGYRO). The targets
 (`targets_analytic`) are evaluated on the PORTALS state itself, and the radiation model looks each thermal ion up by
-name in `radiation_chebyshev.csv`: a species called `LUMPED` is not there, so it radiates nothing, and after the Zeff
-bremsstrahlung subtraction its "line" term goes negative. Never seed a PORTALS run with an already-lumped
+name in `radiation_chebyshev.csv`: a species called `LUMPED` (or `B`) is not there, so it radiates pure bremsstrahlung
+and no line radiation (before 249bd9c9 its bremsstrahlung was even dropped from the total). Never seed a PORTALS run with an already-lumped
 `input.gacode` (e.g. a published `D,T,LUMPED` state); if that is all you have, graft the real species back first
 (`STUDIES/.../00_orientation/arc_v3a_paper_case/build_unlumped_seed.py` does it so that `lumpImpurities()` returns the
 same LUMPED ion). Symptom of the trap: P_rad ~half of the reference, P_fus inflated.**
