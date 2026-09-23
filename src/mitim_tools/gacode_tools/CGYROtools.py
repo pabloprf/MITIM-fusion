@@ -194,19 +194,13 @@ class CgyroLaunchBody:
         '''
         Node choice happens in bash: the builder runs ONE body for every radius in a loop, SIMtools
         exports the allocation as MITIM_HOSTS and a 1-based MITIM_CALL counter, and call k takes
-        hosts [(k-1)*nodes, k*nodes). When several calls share a node, call k takes host k // calls_per_node
-        and the GPU slice (k % calls_per_node) of that node, exported as MITIM_GPUS: without it every
-        call lands on the node's first GPU (an extra launched on a freed slot reuses its MITIM_CALL,
-        so it inherits the slot's GPUs).
+        hosts [(k-1)*nodes, k*nodes). When several calls share a node, call k takes host k // calls_per_node;
+        which of that node's GPUs it gets is SLURM's choice (see _srun_step).
         '''
         if not self.hosts:
             return ""
         if self.calls_per_node > 1:
-            g = self.mpi['numa']
-            return (
-                f"_cpn={self.calls_per_node}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=${{MITIM_HOSTS[$(( (_k/_cpn) % _nh ))]}}\n"
-                f"_g0=$(( (_k % _cpn) * {g} )); export MITIM_GPUS=$(seq $_g0 $((_g0+{g}-1)) | paste -sd, -)\n"
-            )
+            return f"_cpn={self.calls_per_node}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=${{MITIM_HOSTS[$(( (_k/_cpn) % _nh ))]}}\n"
         return (
             f"_npc={self.nodes}; _k=$((MITIM_CALL-1)); _nh=${{#MITIM_HOSTS[@]}}; _sel=\"\"\n"
             f"for _j in $(seq 0 $((_npc-1))); do _h=${{MITIM_HOSTS[$(( (_k*_npc+_j) % _nh ))]}}; _sel=\"${{_sel}}${{_sel:+,}}${{_h}}\"; done\n"
@@ -232,22 +226,22 @@ class CgyroLaunchBody:
         just nomp: a whole-node cpuset is what lets the NUMA platform place ranks by rankfile.
         '''
         m = self.mpi
-        shared_node = self.calls_per_node > 1
-        # Overlapping steps that each request a GPU all get the node's first one; a step with no
-        # GPU request inherits the job's GPUs, and the call then pins its own slice from MITIM_GPUS.
-        gpus_visible = "export CUDA_VISIBLE_DEVICES=$MITIM_GPUS; " if shared_node else ""
-        step_gpus = "" if shared_node else f"--gpus-per-node={m['numa']} "
         inner = (
             "if [ \"$SLURM_PROCID\" != \"0\" ]; then exit 0; fi; "
             "export H=$(hostname); export SLURM_JOB_NODELIST=$H SLURM_NODELIST=$H SLURM_JOB_NUM_NODES=1 SLURM_NNODES=1 "
             f"SLURM_TASKS_PER_NODE={m['numa']} SLURM_NTASKS={m['numa']} SLURM_NPROCS={m['numa']} SLURM_JOB_CPUS_PER_NODE={m['nomp'] * m['numa']}; "
             f"export OMP_NUM_THREADS={m['nomp']} OMP_STACKSIZE=1G OMPI_MCA_io=^ompio; "
-            + gpus_visible
             + self._cgyro_invocation(folder='"$MITIM_FOLDER"', trailing="")
         )
         gpus_per_node = int(self.machine.get("gpus_per_node") or m['numa'])
-        cpus_per_task = max(m['nomp'], self.cpus_per_node // max(gpus_per_node, 1))
-        return (f"srun -N1 -n{m['numa']} -c{cpus_per_task} {step_gpus}--cpu-bind=none ${{_sel:+-w $_sel}} --overlap --export=ALL "
+        if self.calls_per_node > 1:
+            # Calls sharing a node: each step owns its GPUs and cores exclusively (no --overlap, --exact),
+            # so the gacode wrapper's CUDA_VISIBLE_DEVICES=<local rank> resolves inside the step's own
+            # device cgroup. With --overlap every step was handed the node's first GPU.
+            sharing, cpus_per_task = "--exact", m['nomp']
+        else:
+            sharing, cpus_per_task = "--overlap", max(m['nomp'], self.cpus_per_node // max(gpus_per_node, 1))
+        return (f"srun -N1 -n{m['numa']} -c{cpus_per_task} --gpus-per-node={m['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} {sharing} --export=ALL "
                 f"bash -c '{inner}' {self.additional_command}")
 
     def launch(self):

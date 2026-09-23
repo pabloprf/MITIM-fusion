@@ -265,8 +265,10 @@ def test_probe_script_is_portable_bash():
 
 
 def test_shared_node_calls_get_their_own_gpus():
-    '''Several 1-GPU calls on a 4-GPU node: call k pins GPU slice k on host k // 4; the srun step
-    requests no GPU (an overlapping step that asks for one gets the node's first every time).'''
+    '''Several 1-GPU calls on a 4-GPU node: call k takes host k // 4, and each srun step owns its
+    GPU exclusively (--exact, no --overlap: overlapping steps were all handed the node's first GPU,
+    and gacode's wrapper re-pins CUDA_VISIBLE_DEVICES to the local rank, so only the step's device
+    cgroup can make the choice stick).'''
     import subprocess
     body = CGYROtools.CgyroLaunchBody.__new__(CGYROtools.CgyroLaunchBody)
     body.machine = {"machine": "local", "gpus_per_node": 4, "srun_wrap_calls": True}
@@ -274,19 +276,19 @@ def test_shared_node_calls_get_their_own_gpus():
     body.hosts = ["node01", "node02"]; body.nodes = 1; body.bash_mode = True; body.srun_wrap = True
     body.folder = "base_cgyro/rho_0.4808"; body.p = "/scratch/x"; body.additional_command = ""; body.cpus_per_node = 128
     txt = body.launch()
-    assert "--gpus-per-node" not in txt and "CUDA_VISIBLE_DEVICES=$MITIM_GPUS" in txt, txt
+    assert "-c16 --gpus-per-node=1 --cpu-bind=none ${_sel:+-w $_sel} --exact" in txt and "--overlap" not in txt and "CUDA_VISIBLE" not in txt, txt
 
-    def render(k, sel):
-        out = subprocess.run(["bash", "-c", f"MITIM_HOSTS=(node01 node02); MITIM_CALL={k}\n{sel}echo $_sel $MITIM_GPUS"],
+    def host(k, sel):
+        out = subprocess.run(["bash", "-c", f"MITIM_HOSTS=(node01 node02); MITIM_CALL={k}\n{sel}echo $_sel"],
                              capture_output=True, text=True, check=True)
-        return out.stdout.split()
+        return out.stdout.strip()
     sel = body.host_selection()
-    assert [render(k, sel) for k in (1, 2, 4, 5)] == [["node01", "0"], ["node01", "1"], ["node01", "3"], ["node02", "0"]]
+    assert [host(k, sel) for k in (1, 4, 5, 9)] == ["node01", "node01", "node02", "node01"]
     body.mpi["numa"] = 2; sel = body.host_selection()
-    assert [render(k, sel) for k in (1, 2, 3)] == [["node01", "0,1"], ["node01", "2,3"], ["node02", "0,1"]]
+    assert [host(k, sel) for k in (1, 2, 3)] == ["node01", "node01", "node02"]
     body.mpi["numa"] = 4
-    assert "MITIM_GPUS" not in body.launch() and "--gpus-per-node=4" in body.launch()
-    print("PASS: shared-node calls pin their own GPU slice; whole-node shape unchanged")
+    assert "--overlap" in body.launch() and "-c32 --gpus-per-node=4" in body.launch()
+    print("PASS: shared-node calls own their GPU exclusively per step; whole-node shape unchanged")
 
 
 if __name__ == "__main__":
