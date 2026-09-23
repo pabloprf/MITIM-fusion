@@ -2,11 +2,10 @@
 Set of tools to farm out simulations to run in either remote clusters or locally, serially or parallel
 """
 
-from math import log
 from tqdm import tqdm
-import os
 import shlex
 import shutil
+import string
 import time
 import sys
 import subprocess
@@ -19,6 +18,8 @@ import paramiko
 import numpy as np
 from pathlib import Path
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from enum import Enum
 from mitim_tools.misc_tools import IOtools, CONFIGread
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 from mitim_tools.misc_tools.CONFIGread import read_verbose_level
@@ -57,6 +58,225 @@ New handling of jobs in remote or local clusters. Example use:
 
 """
 
+@dataclass
+class RetryPolicy:
+    """
+    Wait/attempt policy applied to every remote operation that can fail transiently
+    (connect, sftp transfer, idempotent remote exec). attempts=None retries forever.
+
+    Configured per job through mitim_job.connection_retry_settings, which PORTALS-CGYRO
+    fills from portals.namelist:
+        transport.options.cgyro.run.ssh_retry_wait_seconds
+        transport.options.cgyro.run.ssh_retry_attempts   (int, or null/None for infinite)
+    """
+
+    wait_seconds: float = 5.0
+    attempts: int | None = 3
+
+    # Transient handshake/network errors: paramiko's own transient class, socket timeouts
+    # (Errno 60), EOF/reset from a transport dropped mid-operation, and gaierror (DNS
+    # resolution failing while the VPN is down). Anything outside this tuple is a real
+    # failure and is re-raised on its first occurrence.
+    TRANSIENT = (
+        paramiko.ssh_exception.SSHException,
+        TimeoutError,
+        socket.timeout,
+        EOFError,
+        ConnectionError,
+        socket.gaierror,
+    )
+
+    @classmethod
+    def from_settings(cls, settings):
+        settings = settings or {}
+        attempts = settings.get("attempts", 3)
+        if attempts is not None and (not isinstance(attempts, int) or attempts < 1):
+            raise ValueError(
+                f"connection_retry_settings['attempts'] must be a positive int "
+                f"or None (infinite); got {attempts!r}"
+            )
+        return cls(wait_seconds=float(settings.get("wait_seconds", 5)), attempts=attempts)
+
+    def run(self, what, fn, on_retry=None):
+        """
+        Call fn() until it succeeds or the attempts are exhausted, running on_retry
+        (typically the job's connect) between attempts.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return fn()
+            except self.TRANSIENT as e:
+                if self.attempts is not None and attempt >= self.attempts:
+                    raise
+                cap_str = "infinite" if self.attempts is None else f"{self.attempts}"
+                print(
+                    f"\t<> {what} attempt {attempt}/{cap_str} failed "
+                    f"({type(e).__name__}: {e}). "
+                    f"{'Reconnecting & retrying' if on_retry is not None else 'Retrying'} "
+                    f"in {self.wait_seconds:g}s...",
+                    typeMsg="w",
+                )
+                time.sleep(self.wait_seconds)
+                if on_retry is not None:
+                    try:
+                        on_retry()
+                    except Exception as e_reconnect:
+                        print(
+                            f"\t<> reconnect during {what} failed ({e_reconnect}); "
+                            "will retry on next iteration",
+                            typeMsg="w",
+                        )
+
+
+@dataclass
+class RetrievalSpec:
+    """
+    Everything retrieve() needs to know about what comes back from the remote:
+
+        files           mandatory files, relative to folderExecution
+        folders         mandatory folders
+        selective       {folder: [file, ...]} subsets to tar instead of the whole folder
+        fallbacks       {primary: fallback} renames resolved remotely before tarring
+        check_in_folder {folder: [file, ...]} checked after extraction
+        optional        files that are tarred if present but never flagged as missing
+
+    Polls that must not disturb the remote (check(), submit-mode run()) retrieve with a
+    narrowed spec from only() instead of blanking and restoring the job's attributes.
+    """
+
+    files: list = field(default_factory=list)
+    folders: list = field(default_factory=list)
+    selective: dict = field(default_factory=dict)
+    fallbacks: dict = field(default_factory=dict)
+    check_in_folder: dict = field(default_factory=dict)
+    optional: list = field(default_factory=list)
+
+    def only(self, *files, optional=()):
+        return RetrievalSpec(files=list(files), optional=list(optional))
+
+
+class SlurmState(str, Enum):
+    """
+    The slurm job states MITIM reasons about, as reported by squeue/sacct.
+    ABSENT is MITIM's own token for "the job is no longer in the queue".
+    """
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETING = "COMPLETING"
+    CONFIGURING = "CONFIGURING"
+    REQUEUED = "REQUEUED"
+    SUSPENDED = "SUSPENDED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    TIMEOUT = "TIMEOUT"
+    NODE_FAIL = "NODE_FAIL"
+    PREEMPTED = "PREEMPTED"
+    REVOKED = "REVOKED"
+    OUT_OF_MEMORY = "OUT_OF_MEMORY"
+    BOOT_FAIL = "BOOT_FAIL"
+    DEADLINE = "DEADLINE"
+    ABSENT = "NOT FOUND"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def from_token(cls, token):
+        if token is None:
+            return cls.UNKNOWN
+        token = str(token).strip().upper()
+        if not token:
+            return cls.UNKNOWN
+        try:
+            return cls(token)
+        except ValueError:
+            pass
+        # sacct decorates states ("CANCELLED+", "CANCELLED by 12345"); squeue does not
+        try:
+            return cls(token.split()[0].rstrip("+"))
+        except ValueError:
+            return cls.UNKNOWN
+
+    @property
+    def in_queue(self):
+        # Still the queue's business: keep polling, never read as finished
+        return self in (
+            SlurmState.PENDING,
+            SlurmState.RUNNING,
+            SlurmState.COMPLETING,
+            SlurmState.CONFIGURING,
+            SlurmState.REQUEUED,
+            SlurmState.SUSPENDED,
+        )
+
+    @property
+    def terminal(self):
+        # The task has stopped progressing and will not resume by itself. COMPLETING is
+        # here as well as in in_queue: the queue still lists it, but the work is over.
+        return self in (
+            SlurmState.COMPLETED,
+            SlurmState.COMPLETING,
+            SlurmState.CANCELLED,
+            SlurmState.FAILED,
+            SlurmState.TIMEOUT,
+            SlurmState.OUT_OF_MEMORY,
+            SlurmState.BOOT_FAIL,
+            SlurmState.NODE_FAIL,
+            SlurmState.PREEMPTED,
+            SlurmState.REVOKED,
+            SlurmState.DEADLINE,
+        )
+
+
+@dataclass
+class SqueueRecord:
+    """
+    One row of `squeue -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R"`. Array
+    submissions print one row per element, so parse() returns all of them.
+    """
+
+    jobid: str = None
+    name: str = None
+    state: SlurmState = SlurmState.UNKNOWN
+    nodelist: str = None
+    fields: dict = field(default_factory=dict)
+
+    @classmethod
+    def parse(cls, text):
+        lines = [line for line in (text or "").splitlines() if line.strip()]
+        if len(lines) < 2:
+            return []
+
+        header = lines[0].split()
+        # The last column header is "NODELIST(REASON)": %R carries the node once running
+        # and the pending reason before that
+        key_node = next((key for key in header if key.startswith("NODELIST")), None)
+
+        records = []
+        for line in lines[1:]:
+            tokens = line.split()
+            fields = {key: (tokens[i] if i < len(tokens) else None) for i, key in enumerate(header)}
+            records.append(
+                cls(
+                    jobid=fields.get("JOBID"),
+                    name=fields.get("NAME"),
+                    state=SlurmState.from_token(fields.get("STATE")),
+                    nodelist=fields.get(key_node) if key_node is not None else None,
+                    fields=fields,
+                )
+            )
+        return records
+
+    @property
+    def node(self):
+        # "(null)", "(Priority)", "(Resources)", "n/a": a reason, not a node
+        if self.nodelist is None or self.nodelist == "n/a" or self.nodelist.startswith("("):
+            return None
+        return self.nodelist
+
+
 class mitim_job:
     def __init__(
             self,
@@ -70,18 +290,17 @@ class mitim_job:
         self.jobid = None
         self.log_simulation_file = log_simulation_file
 
-        # Populated in prep() for the submit path and in load_submission_state()
-        # for the re-attach path. Initialised here so retrieve() can read it
-        # unconditionally even on job instances that bypass prep() entirely
-        # (e.g. mitim_job.check() builds a temporary retrieve for squeue output).
-        self.output_file_fallbacks = {}
+        # What retrieve() brings back. Populated in prep() for the submit path and in
+        # load_submission_state() for the re-attach path. Initialised here so it can be
+        # read unconditionally on job instances that bypass prep() entirely (e.g.
+        # mitim_job.check(), which retrieves squeue output with a narrowed spec).
+        self.spec = RetrievalSpec()
 
-        # Optional retry config consumed by connect_ssh(). Callers that want
-        # to override the default 5 s wait / 3-attempt cap (e.g. PORTALS-CGYRO,
-        # which reads it from portals.namelist) can set this to a dict of
-        # {"wait_seconds": float, "attempts": int|None} where attempts=None
-        # means retry forever. When self.connection_retry_settings is None,
-        # connect_ssh() falls back to the historical defaults.
+        # The remote session. None until connect() builds them (and for local runs).
+        self.jump_client, self.ssh, self.sftp = None, None, None
+
+        # Optional {"wait_seconds": float, "attempts": int|None} overriding the default
+        # 5 s / 3 attempts of the RetryPolicy built by self.retry; None keeps the defaults.
         self.connection_retry_settings = None
         # Sub-folders (relative to folderExecution) that remove_scratch_folder() must
         # keep across the going-in wipe: interrupted runs being rescued in place.
@@ -91,6 +310,66 @@ class mitim_job:
         # mitim_bash.src, and its accepted extra folders are added to the retrieval.
         self.scheduler = None
         self.scheduler_result = None
+
+    # The five historical attribute names are views on the spec: external code
+    # (SIMtools.load_submission_state, fetch_cgyro_intermediate) assigns them directly,
+    # and full_process edits the containers in place, so the getters hand out the live
+    # objects rather than copies.
+
+    @property
+    def output_files(self):
+        return self.spec.files
+
+    @output_files.setter
+    def output_files(self, value):
+        self.spec.files = value
+
+    @property
+    def output_folders(self):
+        return self.spec.folders
+
+    @output_folders.setter
+    def output_folders(self, value):
+        self.spec.folders = value
+
+    @property
+    def output_folders_selective(self):
+        return self.spec.selective
+
+    @output_folders_selective.setter
+    def output_folders_selective(self, value):
+        self.spec.selective = value
+
+    @property
+    def output_file_fallbacks(self):
+        return self.spec.fallbacks
+
+    @output_file_fallbacks.setter
+    def output_file_fallbacks(self, value):
+        self.spec.fallbacks = value
+
+    @property
+    def check_files_in_folder(self):
+        return self.spec.check_in_folder
+
+    @check_files_in_folder.setter
+    def check_files_in_folder(self, value):
+        self.spec.check_in_folder = value
+
+    def __setstate__(self, state):
+        # Pickles written before the spec existed carry the five names in the instance
+        # dict, where the properties above would shadow them
+        spec = state.pop("spec", None)
+        if spec is None:
+            spec = RetrievalSpec(
+                files=state.pop("output_files", None) or [],
+                folders=state.pop("output_folders", None) or [],
+                selective=state.pop("output_folders_selective", None) or {},
+                fallbacks=state.pop("output_file_fallbacks", None) or {},
+                check_in_folder=state.pop("check_files_in_folder", None) or {},
+            )
+        self.__dict__.update(state)
+        self.spec = spec
 
     def define_machine(
         self,
@@ -183,8 +462,10 @@ class mitim_job:
         check_files_in_folder is a dictionary with the folder name as key and a list of files to check as value, optionally.
             Otherwise, it will just check if the folder was received, but not the files inside it.
 
-        output_folders_selective is a dictionary with folder name as key and list of specific files/patterns to include as value.
-            e.g., {'results': ['*.dat', '*.log'], 'plots': ['figure1.png']}
+        output_folders_selective is a dictionary with folder name as key and list of specific files
+        to include as value, e.g. {'plots': ['figure1.png']}. Explicit names only: the entries are
+        quoted into the remote tar command, so shell globs do not expand (and tar does not expand
+        them either on create).
 
         output_file_fallbacks maps primary basename -> fallback basename. Before
         the tarball is built, retrieve() runs one remote bash snippet per
@@ -205,16 +486,22 @@ class mitim_job:
 
         self.input_files = input_files if isinstance(input_files, list) else []
         self.input_folders = input_folders if isinstance(input_folders, list) else []
-        self.output_files = output_files if isinstance(output_files, list) else []
-        self.output_folders = output_folders if isinstance(output_folders, list) else []
-        self.check_files_in_folder = check_files_in_folder
 
         self.shellPreCommands = shellPreCommands if isinstance(shellPreCommands, list) else []
         self.shellPostCommands = shellPostCommands if isinstance(shellPostCommands, list) else []
         self.label_log_files = label_log_files
 
-        self.output_folders_selective = output_folders_selective if isinstance(output_folders_selective, dict) else {}
-        self.output_file_fallbacks = output_file_fallbacks if isinstance(output_file_fallbacks, dict) else {}
+        self.spec = RetrievalSpec(
+            files=output_files if isinstance(output_files, list) else [],
+            folders=output_folders if isinstance(output_folders, list) else [],
+            selective=output_folders_selective if isinstance(output_folders_selective, dict) else {},
+            fallbacks=output_file_fallbacks if isinstance(output_file_fallbacks, dict) else {},
+            check_in_folder=check_files_in_folder,
+        )
+
+        # run() snapshots the input lists on its first call; a re-prep supersedes that
+        # snapshot, which would otherwise re-send the previous inputs
+        self.__dict__.pop("_input_lists_snapshot", None)
 
     def run(
             self,
@@ -292,40 +579,25 @@ class mitim_job:
         # Submit-mode minimal retrieve: when waitYN=False the only thing we
         # need locally after `./mitim_shell_executor.sh > mitim.out` is
         # mitim.out itself (the sbatch banner that carries the jobid for the
-        # later check()/fetch() loop). The rest of self.output_files /
-        # self.output_folders is the post-run output spec, which at this
-        # point on the remote contains *only* what we just uploaded
-        # (input.cgyro per rho, multi-GB restart binaries, etc.) — pulling
-        # it back would round-trip those bytes for nothing. The full spec
-        # is restored before this method returns so the eventual fetch()
-        # (SIMtools.fetch -> simulation_job.retrieve()) sees the original
-        # CGYRO output list. Mirrors the same backup/restore dance used in
-        # `mitim_job.check()` to scope retrieve() to squeue_output.dat.
-        submit_minimal_retrieve = not waitYN
-        if submit_minimal_retrieve:
-            _saved_output_files = list(self.output_files)
-            _saved_output_folders = list(self.output_folders)
-            _saved_output_folders_selective = dict(self.output_folders_selective)
-            self.output_files = ["mitim.out"]
-            self.output_folders = []
-            self.output_folders_selective = {}
+        # later check()/fetch() loop). The job's own spec is the post-run
+        # output spec, which at this point on the remote contains *only* what
+        # we just uploaded (input.cgyro per rho, multi-GB restart binaries,
+        # etc.) — pulling it back would round-trip those bytes for nothing.
+        # The job keeps its full spec, so the eventual fetch() (SIMtools.fetch
+        # -> simulation_job.retrieve()) sees the original CGYRO output list.
+        spec = self.spec.only("mitim.out") if not waitYN else None
 
-        try:
-            self.full_process(
-                comm,
-                removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
-                removeScratchFolders_goingOut=removeScratchFolders_goingOut,
-                timeoutSecs=timeoutSecs,
-                check_if_files_received=waitYN and check_if_files_received,
-                check_files_in_folder=self.check_files_in_folder,
-                attempts_execution=attempts_execution,
-                execute_flag=execute_case_flag and (not helper_lostconnection)
-            )
-        finally:
-            if submit_minimal_retrieve:
-                self.output_files = _saved_output_files
-                self.output_folders = _saved_output_folders
-                self.output_folders_selective = _saved_output_folders_selective
+        self.full_process(
+            comm,
+            removeScratchFolders_goingIn=removeScratchFolders_goingIn and (not helper_lostconnection),
+            removeScratchFolders_goingOut=removeScratchFolders_goingOut,
+            timeoutSecs=timeoutSecs,
+            check_if_files_received=waitYN and check_if_files_received,
+            check_files_in_folder=self.check_files_in_folder,
+            attempts_execution=attempts_execution,
+            execute_flag=execute_case_flag and (not helper_lostconnection),
+            spec=spec,
+        )
 
         # Get jobid
         if self.launchSlurm:
@@ -465,6 +737,7 @@ class mitim_job:
         check_files_in_folder={},
         attempts_execution = 1,
         execute_flag=True,
+        spec=None,
     ):
         """
         My philosophy is to always wait for the execution of all commands. If I need
@@ -477,86 +750,86 @@ class mitim_job:
             but the connection failed with your local machine. You can then just retrieve the results.
         """
         wait_for_all_commands = True
+        spec = self.spec if spec is None else spec
 
         time_init = datetime.datetime.now()
         print(f"\n\t-------------- Running process ({time_init.strftime('%Y-%m-%d %H:%M:%S')}{f', will timeout execution in {timeoutSecs}s' if timeoutSecs < 1e6 else ''}) --------------")
 
-        # ~~~~~~ Connect
-        self.connect(log_file=self.folder_local / "paramiko.log")
+        with self.session(log_file=self.folder_local / "paramiko.log"):
+            # ~~~~~~ Prepare scratch folder
+            if not self.run_in_place:
+                if removeScratchFolders_goingIn:
+                    self.remove_scratch_folder()
+                self.create_scratch_folder()
 
-        # ~~~~~~ Prepare scratch folder
-        if not self.run_in_place:
-            if removeScratchFolders_goingIn:
-                self.remove_scratch_folder()
-            self.create_scratch_folder()
+                # ~~~~~~ Send
+                self.send()
+            else:
+                print("\t* In-place local execution: skipping scratch setup and file staging")
 
-            # ~~~~~~ Send
-            self.send()
-        else:
-            print("\t* In-place local execution: skipping scratch setup and file staging")
+            # ~~~~~~ Execute
+            execution_counter = 0
+            received, output, error = False, None, None
 
-        # ~~~~~~ Execute
-        execution_counter = 0
+            while execution_counter < attempts_execution:
 
-        while execution_counter < attempts_execution:
-            
-            if execute_flag and self.scheduler is not None and self.ssh is None:
-                output, error = b"", b""
-                prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
-                print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
-                self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
-                # accepted extras come back best-effort: tarred with the same file patterns as
-                # the main folders, never part of the mandatory check
-                patterns = next(iter(self.output_folders_selective.values()), None) if self.output_folders_selective else None
-                for rel in self.scheduler_result["accepted"]:
-                    if rel not in self.output_folders:
-                        self.output_folders.append(rel)
-                    if patterns is not None:
-                        self.output_folders_selective[rel] = list(patterns)
-            elif execute_flag:
-                output, error = self.execute(
-                    comm,
-                    wait_for_all_commands=wait_for_all_commands,
-                    printYN=True,
-                    timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
-                    log_file=self.log_simulation_file
+                if execute_flag and self.scheduler is not None and self.ssh is None:
+                    output, error = b"", b""
+                    prelude = "\n".join([self.machineSettings.get("modules") or ""] + list(self.shellPreCommands or []))
+                    print(f"\t* Executing (local) through the in-allocation scheduler ({len(self.scheduler.bodies)} calls, {self.scheduler.concurrency} at a time)", typeMsg="i")
+                    self.scheduler_result = self.scheduler.run(Path(self.folderExecution), prelude=prelude)
+                    # accepted extras come back best-effort: tarred with the same file patterns as
+                    # the main folders, never part of the mandatory check
+                    patterns = next(iter(spec.selective.values()), None) if spec.selective else None
+                    for rel in self.scheduler_result["accepted"]:
+                        if rel not in spec.folders:
+                            spec.folders.append(rel)
+                        if patterns is not None:
+                            spec.selective[rel] = list(patterns)
+                elif execute_flag:
+                    output, error = self.execute(
+                        comm,
+                        wait_for_all_commands=wait_for_all_commands,
+                        printYN=True,
+                        timeoutSecs=timeoutSecs if timeoutSecs < 1e6 else None,
+                        log_file=self.log_simulation_file
+                    )
+                else:
+                    output, error = b"", b""
+                    print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
+
+                # ~~~~~~ Retrieve
+                received = self.retrieve(
+                    check_if_files_received=check_if_files_received,
+                    check_files_in_folder=check_files_in_folder,
+                    spec=spec,
                 )
-            else:
-                output, error = b"", b""
-                print("\t* Not executing commands, just retrieving files (execute_flag=False)", typeMsg="q")
 
-            # ~~~~~~ Retrieve
-            received = self.retrieve(
-                check_if_files_received=check_if_files_received,
-                check_files_in_folder=check_files_in_folder,
-            )
+                execution_counter += 1
 
-            execution_counter += 1
+                if received:
+                    break
+                else:
+                    if execution_counter < attempts_execution:
+                        print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
 
+            # ~~~~~~ Remove scratch folder
             if received:
-                break
-            else:
-                if execution_counter < attempts_execution:
-                    print(f"\t* Unexpectedly, the run did not come back with the right outputs... repeating execution ({execution_counter}/{attempts_execution})")
 
-        # ~~~~~~ Remove scratch folder
-        if received:
-
-            if wait_for_all_commands and removeScratchFolders_goingOut and not self.run_in_place:
-                self.remove_scratch_folder()
+                if wait_for_all_commands and removeScratchFolders_goingOut and not self.run_in_place:
+                    self.remove_scratch_folder()
                 
-        else:
+            else:
 
-            # If not received, write output and error to files
-            self._write_debugging_files(output, error)
+                # If not received, write output and error to files (they are None when
+                # execute_remote swallowed a timeout, or when nothing was executed at all)
+                if output is not None:
+                    self._write_debugging_files(output, error)
 
-            cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
-            if not cont:
-                print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
-                embed()
-
-        # ~~~~~~ Close
-        self.close()
+                cont = print(f"\t* Not all expected files received, not removing scratch folder (mitim_farming.out and mitim_farming.err written in '{self.folder_local / 'mitim_farming.err'}')",typeMsg="q")
+                if not cont:
+                    print("[MITIM] Stopped with embed(), you can look at output and error",typeMsg="w",)
+                    embed()
 
         print(f"\t-------------- Finished process (took {IOtools.getTimeDifference(time_init)}) --------------\n")
 
@@ -566,11 +839,45 @@ class mitim_job:
             with open(self.folder_local / f"mitim_farming{extra_name}.err", "w") as f:
                 f.write(error.decode("utf-8"))
 
+    @property
+    def retry(self):
+        # Built on access, not in __init__, because callers (SIMtools, transport_cgyro)
+        # assign connection_retry_settings after the job object exists
+        return RetryPolicy.from_settings(self.connection_retry_settings)
+
+    @contextmanager
+    def session(self, **kwargs):
+        """
+        The ssh/jump/sftp lifecycle: connect on entry, close on exit no matter how the
+        body ends, so an aborted execute/retrieve cannot leave the transport open.
+        """
+        try:
+            self.connect(**kwargs)
+        except Exception:
+            self._close_clients()
+            raise
+        try:
+            yield self
+        finally:
+            self.close()
+
+    def _close_clients(self):
+        # Closes and forgets whatever is live. Safe on a job that never connected and
+        # on one whose connect half-succeeded (ssh up, open_sftp raised)
+        for attribute in ("sftp", "ssh", "jump_client"):
+            client = getattr(self, attribute, None)
+            if client is not None:
+                try:
+                    client.close()
+                except Exception as e_close:
+                    print(f"\t<> Could not close {attribute} cleanly ({type(e_close).__name__}: {e_close})", typeMsg="w")
+            setattr(self, attribute, None)
+
     def connect(self, *args, **kwargs):
         if self.machineSettings["machine"] != "local":
             return self.connect_ssh(*args, **kwargs)
         else:
-            self.jump_client, self.ssh, self.sftp = None, None, None
+            self._close_clients()
 
     def connect_ssh(self, log_file=None):
         self.jump_host = self.machineSettings["tunnel"]
@@ -585,63 +892,20 @@ class mitim_job:
         if log_file is not None:
             paramiko.util.log_to_file(log_file)
 
-        # Resolve retry config. Defaults preserve historical behavior (5 s wait,
-        # 3-attempt cap). PORTALS-CGYRO overrides these via portals.namelist:
-        #   transport.options.cgyro.run.ssh_retry_wait_seconds
-        #   transport.options.cgyro.run.ssh_retry_attempts   (int, or null/None for infinite)
-        # which transport_cgyro.py forwards onto self.connection_retry_settings.
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        # None (e.g. YAML `null`) means retry forever; any positive int caps the
-        # attempts. Anything else is a config error and surfaces here.
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        max_retries = retry_attempts  # None == unbounded
-
-        # Transient handshake/network errors. TimeoutError is the case Pablo
-        # reported (Errno 60 from paramiko's underlying socket); SSHException
-        # covers paramiko's own transient class; socket.timeout / EOFError /
-        # ConnectionError / socket.gaierror cover the rest of the typical
-        # VPN/firewall flap modes (gaierror = DNS resolution failure when
-        # the VPN drops mid-poll). Anything outside this tuple is treated
-        # as a real failure and re-raised on the first occurrence.
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
-            socket.gaierror,
-        )
-
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                self._connect_ssh_item()
-                break
-            except transient_exc as e:
-                if max_retries is not None and attempt >= max_retries:
-                    raise
-                cap_str = "infinite" if max_retries is None else f"{max_retries}"
-                print(
-                    f"\t<> Paramiko connect attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
+        self.retry.run("Paramiko connect", self._connect_ssh_item)
 
     def _connect_ssh_item(self):
+
+        # Whatever is live must go before new clients are built, otherwise every
+        # reconnect (VPN flap mid-transfer) orphans a transport and an sftp channel
+        self._close_clients()
 
         try:
             self.define_jump()
             self.define_server()
         except paramiko.ssh_exception.AuthenticationException:
             # If it fails, try to disable rsa-sha2-512 and rsa-sha2-256 (e.g. for iris.gat.com)
+            self._close_clients()
             self.define_jump()
             self.define_server(
                 disabled_algorithms={"pubkeys": ["rsa-sha2-512", "rsa-sha2-256"]}
@@ -766,62 +1030,18 @@ class mitim_job:
 
     def _sftp_transfer_with_retry(self, sftp_method_name, *args, **kwargs):
         '''
-        Retry a paramiko SFTP transfer ('get' or 'put') using the same
-        policy `connect_ssh` uses, sourced from self.connection_retry_settings
-        (5 s wait / 3 attempts by default; PORTALS-CGYRO namelist-tunable;
-        attempts=None means infinite). On a transient transport-closed /
-        socket-timeout / EOF / connection-reset failure mid-transfer,
-        rebuild self.ssh + self.sftp via self.connect() and re-issue the
-        op. The remote tarballs (mitim_send.tar.gz / mitim_receive.tar.gz)
-        persist across reconnects, so callers do not need to re-tar.
-        Persistent connection failure is caught by connect_ssh's own retry
-        surface; a single reconnect failure here is logged and the next
-        loop iteration retries the transfer.
+        Retry a paramiko SFTP transfer ('get' or 'put'), reconnecting between attempts.
+        The remote tarballs (mitim_send.tar.gz / mitim_receive.tar.gz) survive a
+        reconnect, so callers do not need to re-tar.
 
-        sftp_method_name is looked up on self.sftp on every attempt — the
-        bound method must NOT be captured before the loop, because reconnect
-        replaces self.sftp with a fresh SFTPClient instance.
+        The method is looked up on self.sftp inside the lambda, on every attempt: a
+        reconnect replaces self.sftp with a fresh SFTPClient instance.
         '''
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
+        return self.retry.run(
+            f"Paramiko sftp.{sftp_method_name}",
+            lambda: getattr(self.sftp, sftp_method_name)(*args, **kwargs),
+            on_retry=self.connect,
         )
-
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                getattr(self.sftp, sftp_method_name)(*args, **kwargs)
-                return
-            except transient_exc as e:
-                if retry_attempts is not None and attempt >= retry_attempts:
-                    raise
-                cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
-                print(
-                    f"\t<> Paramiko sftp.{sftp_method_name} attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
-                try:
-                    self.connect()
-                except Exception as _conn_e:
-                    print(
-                        f"\t<> reconnect during sftp.{sftp_method_name} failed ({_conn_e}); "
-                        "will retry transfer on next loop iteration",
-                        typeMsg="w",
-                    )
 
     def send(self):
         if getattr(self, "run_in_place", False):
@@ -880,6 +1100,11 @@ class mitim_job:
         self.execute(f"rm {self.folderExecution}/mitim_send.tar.gz")
 
     def execute(self, command_str, log_file=None, **kwargs):
+
+        # self.ssh is None before connect(); on a remote machine that would otherwise
+        # send the command to the local shell
+        if self.ssh is None and self.machineSettings["machine"] != "local":
+            raise RuntimeError("execute() on a remote machine requires a live self.ssh; call self.connect() first")
 
         if self.ssh is not None:
             output, error = self.execute_remote(command_str, **kwargs)
@@ -989,51 +1214,14 @@ class mitim_job:
                 print("\t> Command timed out!", typeMsg="w")
                 return None, None
 
-        # Opt-in retry for IDEMPOTENT remote commands (squeue poll, tar/rm during
-        # retrieve) across transient SSH/VPN flaps, mirroring connect_ssh /
-        # _sftp_transfer_with_retry (same connection_retry_settings; ssh_retry_attempts
-        # null == retry forever). Previously a drop between connect and the squeue/tar
-        # exec_command raised an uncaught SSHException even with retry-forever requested.
-        # NEVER set retry_on_transient for a job submission -- re-running would double-launch.
-        retry_cfg = getattr(self, "connection_retry_settings", None) or {}
-        retry_wait = float(retry_cfg.get("wait_seconds", 5))
-        retry_attempts = retry_cfg.get("attempts", 3)
-        if retry_attempts is not None and (not isinstance(retry_attempts, int) or retry_attempts < 1):
-            raise ValueError(
-                f"connection_retry_settings['attempts'] must be a positive int "
-                f"or None (infinite); got {retry_attempts!r}"
-            )
-        transient_exc = (
-            paramiko.ssh_exception.SSHException,
-            TimeoutError,
-            socket.timeout,
-            EOFError,
-            ConnectionError,
-            socket.gaierror,
+        # Opt-in retry for IDEMPOTENT remote commands only (squeue poll, tar/rm during
+        # retrieve). NEVER set retry_on_transient for a job submission -- a re-run
+        # would double-launch it.
+        return self.retry.run(
+            "Remote exec",
+            lambda: self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands),
+            on_retry=self.connect,
         )
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                return self._execute_remote_once(command_str, timeoutSecs, wait_for_all_commands)
-            except transient_exc as e:
-                if retry_attempts is not None and attempt >= retry_attempts:
-                    raise
-                cap_str = "infinite" if retry_attempts is None else f"{retry_attempts}"
-                print(
-                    f"\t<> Remote exec attempt {attempt}/{cap_str} failed "
-                    f"({type(e).__name__}: {e}). Reconnecting & retrying in {retry_wait:g}s...",
-                    typeMsg="w",
-                )
-                time.sleep(retry_wait)
-                try:
-                    self.connect()
-                except Exception as _conn_e:
-                    print(
-                        f"\t<> reconnect during remote exec failed ({_conn_e}); "
-                        "will retry on next iteration",
-                        typeMsg="w",
-                    )
 
     def _execute_remote_once(self, command_str, timeoutSecs, wait_for_all_commands):
         # One exec_command attempt; raises on transient SSH/socket errors so the
@@ -1059,26 +1247,62 @@ class mitim_job:
 
         return output, error
 
-    def retrieve(self, check_if_files_received=True, check_files_in_folder={}, optional_files=None, best_effort=False):
+    def retrieve(self, check_if_files_received=True, check_files_in_folder={}, optional_files=None, best_effort=False, spec=None):
         '''
+        spec: what to bring back (default: the job's own RetrievalSpec, built in prep()).
+        Status polls and submit-mode runs pass a narrowed spec so that nothing else on
+        the remote is tarred, pruned or renamed.
+
         optional_files: files that we still try to pull from the remote (added
         to the tarball and unlinked locally before retrieval like the mandatory
         ones) but which are NOT flagged as "not received" when absent — used by
         `check()` for the slurm-job log, which does not exist yet while the job
         is PENDING and shouldn't cause a 60s retry on every status poll.
         '''
-        optional_files = list(optional_files) if optional_files else []
+        spec = self.spec if spec is None else spec
+        optional_files = list(optional_files) if optional_files else list(spec.optional)
 
         if getattr(self, "run_in_place", False):
             print("\t* In-place local execution: outputs already in folder_local (skipping retrieval)")
             if check_if_files_received:
-                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
+                received = self.check_all_received(check_files_in_folder=check_files_in_folder, spec=spec)
                 if received:
                     print("\t\t- All correct", typeMsg="i")
                 return received
             return True
 
         print(f'\t* Retrieving files{" from remote server" if self.ssh is not None else ""}:')
+
+        time_wait = 60
+        received = False
+        for attempt in (1, 2):
+
+            if attempt == 2:
+                print(f"\t* Not all received, trying retrieval once again after waiting {time_wait} seconds", typeMsg="i")
+                time.sleep(time_wait)
+
+            if not self._pull_outputs(spec, optional_files, best_effort=best_effort):
+                return False
+
+            if not check_if_files_received:
+                return True
+
+            received = self.check_all_received(check_files_in_folder=check_files_in_folder, spec=spec)
+            if received:
+                print("\t\t- All correct", typeMsg="i")
+                break
+            if best_effort:
+                # Status poll: don't block on a 60s in-retrieve retry; the caller re-polls.
+                print("\t* Not all expected files received (best-effort); caller will re-poll", typeMsg="i")
+                break
+
+        return received
+
+    def _pull_outputs(self, spec, optional_files, best_effort=False):
+        '''
+        One tar + download + extract pass of `spec`. Returns False only when a
+        best-effort retrieval gave up; otherwise it either succeeds or raises.
+        '''
 
         # Defensively (re)create folder_local before any local FS or SFTP
         # operation: paramiko's sftp.get() opens the local destination via
@@ -1091,56 +1315,38 @@ class mitim_job:
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Removing local output files & folders that potentially exist from previous runs")
-        for file in list(self.output_files) + optional_files:
+        for file in list(spec.files) + optional_files:
             (self.folder_local / file).unlink(missing_ok=True)
-        for folder in self.output_folders:
+        for folder in spec.folders:
             if (self.folder_local / folder).exists():
                 IOtools.shutil_rmtree(self.folder_local / folder)
 
         # Create a tarball of the output files & folders on the remote machine
         print("\t\t- Tarballing (remote side)")
 
-        # Remote-side primary/fallback resolution BEFORE the tar, so we only
-        # ever tar & transfer one file per pair (the fallback is typically
-        # same-order-of-magnitude size as the primary — no point paying
-        # double when we only want one). Per (folder, primary, fallback):
-        #   primary present    -> remove fallback (dedup + free remote disk)
-        #   fallback only      -> rename fallback to primary
-        #   neither present    -> no-op
-        # Idempotent and safe if the folders don't exist yet.
-        if self.output_file_fallbacks:
-            fallback_lines = []
-            for folder, patterns in self.output_folders_selective.items():
-                pattern_set = set(patterns)
-                for primary, fallback in self.output_file_fallbacks.items():
-                    if primary not in pattern_set:
-                        continue
-                    p = f"{self.folderExecution}/{folder}/{primary}"
-                    f = f"{self.folderExecution}/{folder}/{fallback}"
-                    fallback_lines.append(
-                        f'if [ -f "{p}" ]; then rm -f "{f}"; '
-                        f'elif [ -f "{f}" ]; then mv "{f}" "{p}"; fi'
-                    )
-            if fallback_lines:
-                print(f"\t\t- Resolving {len(fallback_lines)} primary/fallback pair(s) on remote")
-                self.execute(" ; ".join(fallback_lines))
+        self._resolve_fallbacks_on_remote(spec)
 
         # Build tar command with selective folder content
         tar_items = []
 
         # Add all output files (mandatory + best-effort)
-        tar_items.extend(self.output_files)
+        tar_items.extend(spec.files)
         tar_items.extend(optional_files)
 
         # Add folders - either full folders or selective content
-        for folder in self.output_folders:
-            if folder in self.output_folders_selective:
+        for folder in spec.folders:
+            if folder in spec.selective:
                 # Add specific files from this folder
-                for pattern in self.output_folders_selective[folder]:
+                for pattern in spec.selective[folder]:
                     tar_items.append(f"{folder}/{pattern}")
             else:
                 # Add entire folder
                 tar_items.append(folder)
+
+        # Quoted like folderExecution: tar does not expand wildcards on create and the
+        # remote login shell's cwd is not folderExecution, so an item is always a literal
+        # path here (a name with a space would otherwise split into two items)
+        tar_items = " ".join(shlex.quote(str(item)) for item in tar_items)
 
         # Tar + download + extract, wrapped in a typeMsg='q' retry prompt:
         # the most common failure mode here (observed in production) is the
@@ -1159,7 +1365,7 @@ class mitim_job:
                     + " -C "
                     + f'{self.folderExecution}'
                     + " "
-                    + " ".join(tar_items),
+                    + tar_items,
                     retry_on_transient=True,   # idempotent gather: safe to re-run across SSH flaps
                 )
 
@@ -1195,7 +1401,7 @@ class mitim_job:
                 with tarfile.open(self.folder_local / "mitim_receive.tar.gz", "r:gz") as tar:
                     tar.extractall(path=self.folder_local)
                 break
-            except (FileNotFoundError, IOError, tarfile.ReadError, EOFError) as _retrieve_exc:
+            except (tarfile.ReadError, EOFError, OSError) as _retrieve_exc:
                 if best_effort:
                     # Best-effort (status-poll) retrieval: a failure here is expected and
                     # transient -- the job is early-PENDING so its remote folder/log are not
@@ -1206,6 +1412,10 @@ class mitim_job:
                           f"outputs treated as not-yet-available (caller will re-poll)", typeMsg='w')
                     (self.folder_local / "mitim_receive.tar.gz").unlink(missing_ok=True)
                     return False
+                if isinstance(_retrieve_exc, (TimeoutError, ConnectionError, socket.gaierror)):
+                    # Network error that already survived the retry policy: it is not a full
+                    # disk, and the prompt below would misdiagnose it
+                    raise
                 msg = (
                     f"Remote tar/download/extract failed "
                     f"({type(_retrieve_exc).__name__}: {_retrieve_exc}). "
@@ -1226,24 +1436,37 @@ class mitim_job:
         print("\t\t- Removing tarball (remote side)")
         self.execute(f"rm {self.folderExecution}/mitim_receive.tar.gz")
 
-        # Check if all files were received
-        time_wait = 60
-        if check_if_files_received:
-            received = self.check_all_received(check_files_in_folder=check_files_in_folder)
-            if received:
-                print("\t\t- All correct", typeMsg="i")
-            elif best_effort:
-                # Status poll: don't block on a 60s in-retrieve retry; the caller re-polls.
-                print("\t* Not all expected files received (best-effort); caller will re-poll", typeMsg="i")
-            else:
-                print(f"\t* Not all received, trying retrieval once again after waiting {time_wait} seconds", typeMsg="i")
-                time.sleep(time_wait)
-                _ = self.retrieve(check_if_files_received=False, optional_files=optional_files)
-                received = self.check_all_received(check_files_in_folder=check_files_in_folder)
-        else:
-            received = True
+        return True
 
-        return received
+    def _resolve_fallbacks_on_remote(self, spec):
+        '''
+        Remote-side primary/fallback resolution BEFORE the tar, so we only
+        ever tar & transfer one file per pair (the fallback is typically
+        same-order-of-magnitude size as the primary — no point paying
+        double when we only want one). Per (folder, primary, fallback):
+          primary present    -> remove fallback (dedup + free remote disk)
+          fallback only      -> rename fallback to primary
+          neither present    -> no-op
+        Idempotent and safe if the folders don't exist yet.
+        '''
+        if not spec.fallbacks:
+            return
+
+        fallback_lines = []
+        for folder, patterns in spec.selective.items():
+            pattern_set = set(patterns)
+            for primary, fallback in spec.fallbacks.items():
+                if primary not in pattern_set:
+                    continue
+                p = f"{self.folderExecution}/{folder}/{primary}"
+                f = f"{self.folderExecution}/{folder}/{fallback}"
+                fallback_lines.append(
+                    f'if [ -f "{p}" ]; then rm -f "{f}"; '
+                    f'elif [ -f "{f}" ]; then mv "{f}" "{p}"; fi'
+                )
+        if fallback_lines:
+            print(f"\t\t- Resolving {len(fallback_lines)} primary/fallback pair(s) on remote")
+            self.execute(" ; ".join(fallback_lines))
 
     def remove_scratch_folder(self):
         # Safety guard: never rm -rf the user's working directory in in-place mode
@@ -1267,9 +1490,11 @@ class mitim_job:
                 r = shlex.quote(rel)
                 cmd += f" && mkdir -p $(dirname {fe}/{r}) && mv {aside}/{r} {fe}/{r}"
             cmd += f" && rm -rf {aside}"
-            # One-shot: the going-out wipe after a successful run must remove everything
+            output, error = self.execute(cmd)
+            # One-shot: the going-out wipe after a successful run must remove everything.
+            # Cleared only once the command ran, so a failure keeps the list for the retry.
             self.preserve_subfolders = []
-            return self.execute(cmd)
+            return output, error
 
         print(f'\t* Removing{" remote" if self.ssh is not None else ""} folder')
 
@@ -1287,9 +1512,9 @@ class mitim_job:
         last line) of `progress_file` (e.g. the time the code will resume from), or
         None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
         (forensics for the log; missing files are skipped). Lines of `checksum_file`
-        starting with `checksum_ignore_prefix` (e.g. 'MAX_TIME') are excluded from
-        the md5, so a value the caller rewrites on rescue does not defeat the
-        identity check. One shell round-trip in total.
+        starting with `checksum_ignore_prefix` (a prefix or a list of them, e.g.
+        ['MAX_TIME', 'RESTART_STEP']) are excluded from the md5, so values the caller
+        rewrites on rescue do not defeat the identity check. One shell round-trip in total.
         '''
         if getattr(self, 'run_in_place', False) or not rel_folders:
             return {}
@@ -1298,20 +1523,18 @@ class mitim_job:
         pick = f'sed -n "{int(progress_line)}p"' if progress_line else 'tail -n 1'
         prog = f'$({pick} "$d/{progress_file}" 2>/dev/null | awk \'{{print $1}}\')' if progress_file else 'none'
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
-        filt = f"grep -v '^{checksum_ignore_prefix}'" if checksum_ignore_prefix else 'cat'
+        prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
+        filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
         lines = []
         for rel in rel_folders:
             d = f'{fe}/{rel}'
             lines.append(
                 f'd={shlex.quote(d)}; if {checks}; then '
-                f'h=$( {filt} "$d/{checksum_file}" | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
+                f'h=$( cat "$d/{checksum_file}"{filt} | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
                 f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
             )
-        self.connect(log_file=self.folder_local / 'paramiko.log')
-        try:
+        with self.session(log_file=self.folder_local / 'paramiko.log'):
             output, _ = self.execute('; '.join(lines))
-        finally:
-            self.close()
         found = {}
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')
@@ -1327,11 +1550,7 @@ class mitim_job:
     def close_ssh(self):
         print("\t* Closing connection")
 
-        self.sftp.close()
-        self.ssh.close()
-
-        if self.jump_client is not None:
-            self.jump_client.close()
+        self._close_clients()
 
     # --------------------------------------------------------------------
 
@@ -1357,49 +1576,57 @@ class mitim_job:
         else:
             txt_look = f"-n {self._squeue_job_name()}"
 
-        command = f'cd {shlex.quote(str(self.folderExecution))} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
+        # The remote folder holds the job's scripts from before sbatch, so it exists for every submitted
+        # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
+        # the failed `cd` looked like an unretrieved poll, i.e. "pending" forever.
+        folder = shlex.quote(str(self.folderExecution))
+        command = (f'if [ -d {folder} ]; then cd {folder} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat; '
+                   f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
-        if "output_files" in self.__dict__:
-            output_files_backup = copy.deepcopy(self.output_files)
-            output_folders_backup = copy.deepcopy(self.output_folders)
-            wasThere = True
-        else:
-            wasThere = False
-
-        # Only squeue_output.dat is mandatory — it is what interpret_status()
-        # parses. The slurm job log (`file_output`) is best-effort: it does not
-        # exist on the remote while the job is still PENDING, and its absence
-        # simply means `interpret_status` sets `self.log_file = None`. Marking
-        # it optional avoids a spurious "File not received" warning plus a 60s
-        # retry on every status poll while the job is queued.
-        self.output_files = ["squeue_output.dat"]
-        self.output_folders = []
+        # Only squeue_output.dat is mandatory — it is what interpret_status() parses. The
+        # slurm job log (`file_output`) is optional: it does not exist on the remote while
+        # the job is still PENDING, and its absence simply means `interpret_status` sets
+        # `self.log_file = None`. Everything else the job normally retrieves stays out of
+        # this spec, so a mere status poll never tars a folder nor resolves the
+        # primary/fallback pairs on the remote (rm/mv of bin.cgyro.restart.old).
+        spec = self.spec.only("squeue_output.dat", optional=[file_output])
 
         # A status poll must never crash the run on a remote hiccup. The squeue
         # exec_command is retried across transient SSH/VPN flaps (retry_on_transient),
         # and the retrieval is best-effort; if a residual transient error still
         # surfaces (e.g. finite ssh_retry_attempts exhausted), degrade to "not received"
-        # -> interpret_status treats it as pending/keep-polling. connect() keeps its own
-        # retry, so a clean connect here means close() below is safe.
+        # -> interpret_status treats it as pending/keep-polling.
         output = error = None
-        self.connect()
-        try:
-            output, error = self.execute(command, printYN=True, retry_on_transient=True)
-            received = self.retrieve(optional_files=[file_output], best_effort=True)
-        except (paramiko.ssh_exception.SSHException, TimeoutError, socket.timeout,
-                EOFError, ConnectionError, socket.gaierror) as _poll_exc:
-            print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
-                  f"assuming job still pending (will re-poll)", typeMsg="w")
-            received = False
-        if not received and output is not None:
-            self._write_debugging_files(output, error, extra_name = '_check')
-        self.close()
+        with self.session():
+            try:
+                output, error = self.execute(command, printYN=True, retry_on_transient=True)
+                if self._remote_folder_gone(output):
+                    self._set_gone()
+                    return
+                received = self.retrieve(spec=spec, best_effort=True)
+            except RetryPolicy.TRANSIENT as _poll_exc:
+                print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
+                      f"assuming job still pending (will re-poll)", typeMsg="w")
+                received = False
+            if not received and output is not None:
+                self._write_debugging_files(output, error, extra_name = '_check')
+
         self.interpret_status(file_output = file_output)
 
-        # Back to original
-        if wasThere:
-            self.output_folders = output_folders_backup
-            self.output_files = output_files_backup
+    REMOTE_FOLDER_GONE = "MITIM_REMOTE_FOLDER_GONE"
+
+    def _remote_folder_gone(self, output):
+        text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
+        return self.REMOTE_FOLDER_GONE in text
+
+    def _set_gone(self):
+        '''Status 2 (not found): whatever squeue says, a job whose remote folder was deleted has no results to fetch.'''
+        print(f"\t* Remote folder {self.folderExecution} no longer exists; the job's results are gone, treating it as finished (not found)", typeMsg="w")
+        self.records = []
+        self.infoSLURM = {"STATE": SlurmState.ABSENT.value}
+        self.jobid_found = None
+        self.status = 2
+        self.log_file = None
 
     def interpret_status(self, file_output = "slurm_output.dat"):
         """
@@ -1418,6 +1645,7 @@ class mitim_job:
         # -----------------------------------------------
         if not (self.folder_local / "squeue_output.dat").exists():
             print("\t* squeue output not retrieved this poll; assuming job still pending (will re-poll)", typeMsg="w")
+            self.records = []
             self.infoSLURM = {"STATE": "UNKNOWN", "NAME": self._squeue_job_name(), "JOBID": None}
             self.jobid_found = None
             self.status = 0
@@ -1425,39 +1653,38 @@ class mitim_job:
             return
 
         # -----------------------------------------------
-        # Read output of squeue command -> self.infoSLURM
+        # Read output of squeue command -> self.records, self.infoSLURM
         # -----------------------------------------------
 
         with open(self.folder_local / "squeue_output.dat", "r") as f:
-            output_squeue = f.read()
-        output_squeue = str(output_squeue)[3:].split("\n")
+            self.records = SqueueRecord.parse(f.read())
 
-        if (len(output_squeue[0].split()) == 0) or (len(output_squeue[1]) == 0):
-            self.infoSLURM = {"STATE": "NOT FOUND"}
+        if not self.records:
+            state = SlurmState.ABSENT
+            self.infoSLURM = {"STATE": state.value}
             self.jobid_found = None
         else:
-            self.infoSLURM = {}
-            for i in range(len(output_squeue[0].split())):
-                if i < len(output_squeue[1].split()):
-                    self.infoSLURM[output_squeue[0].split()[i]] = output_squeue[1].split()[i]
-                else:
-                    self.infoSLURM[output_squeue[0].split()[i]] = None
-
-            self.jobid_found = self.infoSLURM["JOBID"]
+            # An array submission prints one row per element; infoSLURM describes the
+            # first of them (node_of() answers the per-element questions)
+            state = self.records[0].state
+            self.infoSLURM = dict(self.records[0].fields)
+            self.jobid_found = self.infoSLURM.get("JOBID")
 
         # -----------------------------------------------
         # Interpret status
         # -----------------------------------------------
 
-        if self.infoSLURM["STATE"] == "PENDING":
+        if state is SlurmState.PENDING:
             self.status = 0
-        elif (self.infoSLURM["STATE"] == "RUNNING") or (self.infoSLURM["STATE"] == "COMPLETING"):
+        elif state in (SlurmState.RUNNING, SlurmState.COMPLETING):
             self.status = 1
-        elif self.infoSLURM["STATE"] == "NOT FOUND":
+        elif state is SlurmState.ABSENT:
             self.status = 2
         else:
-            print("Unknown SLURM status, please check")
-            embed()
+            # Any other state the job can sit in (REQUEUED, SUSPENDED, CONFIGURING, ...)
+            # means it is still in the queue: keep polling, never read it as finished.
+            print(f"\t* SLURM state '{self.infoSLURM['STATE']}' not explicitly handled; assuming job still in the queue (will re-poll)", typeMsg="w")
+            self.status = 0
 
         # ------------------------------------------------------------
         # If it was available, read the status of the ACTUAL slurm job
@@ -1483,17 +1710,35 @@ class mitim_job:
             txt += f". Log file (job.log_file) was retrieved, and has {len(self.log_file)} lines"
         print(txt)
 
-    def check_all_received(self, check_files_in_folder={}):
+    def node_of(self, array_index):
+        '''
+        Node running array element `array_index`, from the squeue rows of the last
+        interpret_status(). Returns None when it cannot be resolved: no rows, the element
+        is still inside a compressed "12345_[8-12]" pending row, or %R holds a reason
+        instead of a node.
+        '''
+        if array_index is None:
+            return None
+
+        suffix = f"_{array_index}"
+        for record in getattr(self, "records", []) or []:
+            jobid = record.jobid or ""
+            if jobid.endswith(suffix) and "[" not in jobid:
+                return record.node
+        return None
+
+    def check_all_received(self, check_files_in_folder={}, spec=None):
+        spec = self.spec if spec is None else spec
         print("\t* Checking if all files & folders that are expected were received")
         received = True
 
         # Check if all files were received
-        for file in self.output_files:
+        for file in spec.files:
             if not (self.folder_local / file).exists():
                 print(f"\t\t- File '{file}' not received", typeMsg="w")
                 received = False
 
-        for folder in self.output_folders:
+        for folder in spec.folders:
             # Check if all folders were received
             if not (self.folder_local / folder).exists():
                 print(f"\t\t- Folder '{folder}/' not received", typeMsg="w")
@@ -1689,6 +1934,189 @@ def SerialProcedure(Function, Params, howmany):
     return y, yE
 
 
+LOCKFILE_TEMPLATE = string.Template('''LOCK_FILE="$lock_path"
+LOCK_TIMEOUT=$timeout_seconds  # $hours hours in seconds
+
+# Check if lock file already exists
+if [ -f "$$LOCK_FILE" ]; then
+    # Get current time and file modification time
+    CURRENT_TIME=$$(date +%s)
+    FILE_TIME=$$(stat -c%Y "$$LOCK_FILE" 2>/dev/null || stat -f%m "$$LOCK_FILE" 2>/dev/null)
+    AGE=$$((CURRENT_TIME - FILE_TIME))
+${sp}
+    # If lock is older than $hours hours, delete it and continue
+    if [ "$$AGE" -gt "$$LOCK_TIMEOUT" ]; then
+        echo "Lock file is stale ($$(($$AGE / 3600)) hours old), removing and proceeding..."
+        rm -f "$$LOCK_FILE"
+    else
+        # Lock is recent, another job may be running
+        echo "ERROR: Lock file exists ($$(($$AGE / 60)) minutes old). Another job may be running."
+        exit 1
+    fi
+fi
+
+# Cleanup function runs on exit (success, failure, or timeout)
+cleanup() {
+    rm -f "$$LOCK_FILE"
+    echo "Lock file cleaned up at $$(date)"
+}
+
+trap cleanup EXIT
+
+# Create lock file
+touch "$$LOCK_FILE"
+echo "Lock file created at $$(date)"
+''')
+
+
+class SbatchScript:
+    '''
+    Builder of the sbatch script MITIM submits: the #SBATCH directives from the per-job
+    settings and the machine allocation, the banner/export preamble, and the optional
+    lock-file guard. Both dicts are copied, and the 'minutes'/'name' legacy keys are
+    migrated here, so nothing written back reaches the caller (slurm_allocation is
+    machineSettings["slurm"], aliased by reference to the process-global config cache).
+    '''
+
+    def __init__(self, settings=None, allocation=None):
+        self.settings = dict(settings or {})
+        self.allocation = dict(allocation or {})
+
+        # Back-compat: migrate the legacy 'minutes' key to the native 'time' key. mitim_job-direct
+        # callers (e.g. TRANSPsingularity) still pass 'minutes' instead of going through
+        # SLURMtools.resolve(); without this they'd silently fall back to the "10:00" default below.
+        if "time" not in self.settings and "minutes" in self.settings:
+            _m = int(self.settings["minutes"])
+            self.settings["time"] = f"{_m//60:02d}:{_m%60:02d}:00" if _m >= 60 else f"{_m:02d}:00"
+
+        # ---- Native sbatch keys (the only schema we support) -----------------
+        self.name            = self.settings.setdefault("job-name", "mitim_job")
+        self.time            = self.settings.setdefault("time", "10:00")
+        memory_req_by_job    = self.settings.setdefault("mem", None)
+
+        self.nodes           = self.settings.setdefault("nodes", None)
+        self.ntasks          = self.settings.setdefault("ntasks", None)
+        self.cpuspertask     = self.settings.setdefault("cpus-per-task", None)
+        self.ntaskspernode   = self.settings.setdefault("ntasks-per-node", None)
+        self.gpuspertask     = self.settings.setdefault("gpus-per-task", None)
+        self.gpuspernode     = self.settings.setdefault("gpus-per-node", None)
+
+        self.array           = self.settings.setdefault("array", None)
+        self.array_limit     = self.settings.setdefault("array_limit", None)
+        job_exclusive        = self.settings.setdefault("exclusive", False)
+
+        # Requeue-ability: True (default) emits --requeue, False emits --no-requeue,
+        # None leaves the cluster default. Explicit --requeue makes behavior uniform
+        # across clusters (slurm.conf JobRequeue varies): on preemption or node
+        # failure the job goes back in the queue under the same id instead of dying,
+        # and MITIM workflows resume from their on-disk checkpoints when re-executed.
+        self.requeue         = self.settings.setdefault("requeue", True)
+
+        # ---- Machine specifications as given by the config, not by the job ---
+        self.partition       = self.allocation.setdefault("partition", None)
+        self.qos             = self.allocation.setdefault("qos", None)
+        self.email           = self.allocation.setdefault("email", None)
+        self.exclude         = self.allocation.setdefault("exclude", None)
+        self.account         = self.allocation.setdefault("account", None)
+        self.constraint      = self.allocation.setdefault("constraint", None)
+        memory_req_by_config = self.allocation.setdefault("mem", None)
+        request_exclusive_node = self.allocation.setdefault("exclusive", False)
+
+        if memory_req_by_job == 0 :
+            print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
+            self.memory = memory_req_by_job
+        elif memory_req_by_job is not None:
+            print(f"\t\t- Memory requested by job ({memory_req_by_job}), overwriting memory requested by config file", typeMsg="i")
+            self.memory = memory_req_by_job
+        else:
+            if memory_req_by_config is not None:
+                print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
+            self.memory = memory_req_by_config
+
+        # --exclusive can co-exist with arrays (one whole node per array element)
+        # and with packed jobs (whole nodes via per-job slurm_settings). Honor
+        # both the machine config (`allocation`) and the per-job override
+        # (`settings.exclusive`). A string value (e.g. "user" or "mcs") emits
+        # --exclusive=<value>, which keeps OTHER users off the node while letting this
+        # user's own array tasks pack onto it; a bare True stays plain --exclusive
+        # (one whole node per job).
+        self.exclusive = request_exclusive_node or job_exclusive
+
+    def directives(self, folderExecution, label_log_files="", if_array_relabel=False, append_mode=False):
+        lines = ["#!/usr/bin/env bash"]
+
+        lines.append(f"#SBATCH --job-name {self.name}")
+        if (not if_array_relabel) or (self.array is None):
+            lines.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
+            lines.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
+        else:
+            lines.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}_%A_%a.dat")
+            lines.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}_%A_%a.dat")
+        lines.append(f"#SBATCH --time {self.time}")
+        if self.email is not None:
+            lines.append("#SBATCH --mail-user=" + self.email)
+        if self.partition is not None:
+            lines.append(f"#SBATCH --partition {self.partition}")
+        if self.account is not None:
+            lines.append(f"#SBATCH --account {self.account}")
+        if self.qos is not None:
+            lines.append(f"#SBATCH --qos {self.qos}")
+        if self.constraint is not None:
+            lines.append(f"#SBATCH --constraint {self.constraint}")
+        if self.memory is not None:
+            lines.append(f"#SBATCH --mem {self.memory}")
+        if self.array is not None:
+            lines.append(f"#SBATCH --array={self.array}{f'%{self.array_limit} ' if self.array_limit is not None else ''}")
+        if self.exclusive:
+            lines.append(f"#SBATCH --exclusive={self.exclusive}" if isinstance(self.exclusive, str) else "#SBATCH --exclusive")
+        if self.requeue is True:
+            lines.append("#SBATCH --requeue")
+        elif self.requeue is False:
+            lines.append("#SBATCH --no-requeue")
+        if self.nodes is not None:
+            lines.append(f"#SBATCH --nodes {self.nodes}")
+        if self.ntasks is not None:
+            lines.append(f"#SBATCH --ntasks {self.ntasks}")
+        if self.ntaskspernode is not None:
+            lines.append(f"#SBATCH --ntasks-per-node {self.ntaskspernode}")
+        if self.cpuspertask is not None:
+            lines.append(f"#SBATCH --cpus-per-task {self.cpuspertask}")
+        if self.gpuspertask is not None:
+            lines.append(f"#SBATCH --gpus-per-task {self.gpuspertask}")
+        if self.gpuspernode is not None:
+            lines.append(f"#SBATCH --gpus-per-node={self.gpuspernode}")
+        if self.exclude is not None:
+            lines.append(f"#SBATCH --exclude={self.exclude}")
+        if append_mode:
+            lines.append("#SBATCH --open-mode=append")
+
+        lines.append("#SBATCH --profile=all")
+
+        return lines
+
+    def preamble(self):
+        lines = ["", "export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK"]
+        if self.gpuspernode is not None:
+            lines.append('export SLURM_CPU_BIND="cores"')
+        lines.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
+        lines.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
+        lines.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
+        lines.append('echo "***********************************************************************************************"')
+        lines.append('echo ""')
+        lines.append("")
+        return lines
+
+    def lockfile_block(self, folderExecution, hours):
+        # Refuses to start a second job on the same folder unless the lock has gone stale
+        block = LOCKFILE_TEMPLATE.substitute(
+            lock_path=f"{folderExecution}/job.lock",
+            timeout_seconds=int(hours * 3600),
+            hours=hours,
+            sp="    ",   # the blank line inside the `if` keeps its indentation
+        )
+        return block.split("\n")
+
+
 def create_slurm_execution_files(
     command,
     folderExecution,
@@ -1698,7 +2126,7 @@ def create_slurm_execution_files(
     shellPostCommands=None,
     label_log_files="",
     wait_until_sbatch=True,
-    slurm_allocation={},
+    slurm_allocation=None,
     launchSlurm=True,
     slurm_settings = None,
     if_array_relabel = False,
@@ -1706,75 +2134,12 @@ def create_slurm_execution_files(
     lock_file_timeout_hours=12,
     append_mode = False
 ):
-    
+
     fileSBATCH = folder_local / f"mitim_bash{label_log_files}.src"
     fileSHELL = folder_local / f"mitim_shell_executor{label_log_files}.sh"
     fileSBATCH_remote = f"{folderExecution}/mitim_bash{label_log_files}.src"
-    
-    # ---------------------------------------------------
-    # slurm_settings indicate the job resource allocation   
-    #  ---------------------------------------------------
 
-    if slurm_settings is None:
-        slurm_settings = {}
-
-    # ---- Native sbatch keys (the only schema we support) -----------------
-    # Back-compat: migrate the legacy 'minutes' key to the native 'time' key. mitim_job-direct
-    # callers (e.g. TRANSPsingularity) still pass 'minutes' instead of going through
-    # SLURMtools.resolve(); without this they'd silently fall back to the "10:00" default below.
-    if "time" not in slurm_settings and "minutes" in slurm_settings:
-        _m = int(slurm_settings["minutes"])
-        slurm_settings["time"] = f"{_m//60:02d}:{_m%60:02d}:00" if _m >= 60 else f"{_m:02d}:00"
-
-    nameJob         = slurm_settings.setdefault("job-name", "mitim_job")
-    time_com        = slurm_settings.setdefault("time", "10:00")
-    memory_req_by_job = slurm_settings.setdefault("mem", None)
-
-    nodes           = slurm_settings.setdefault("nodes", None)
-    ntasks          = slurm_settings.setdefault("ntasks", None)
-    cpuspertask     = slurm_settings.setdefault("cpus-per-task", None)
-    ntaskspernode   = slurm_settings.setdefault("ntasks-per-node", None)
-    gpuspertask     = slurm_settings.setdefault("gpus-per-task", None)
-    gpuspernode     = slurm_settings.setdefault("gpus-per-node", None)
-
-    job_array       = slurm_settings.setdefault("array", None)
-    job_array_limit = slurm_settings.setdefault("array_limit", None)
-    job_exclusive   = slurm_settings.setdefault("exclusive", False)
-
-    # Requeue-ability: True (default) emits --requeue, False emits --no-requeue,
-    # None leaves the cluster default. Explicit --requeue makes behavior uniform
-    # across clusters (slurm.conf JobRequeue varies): on preemption or node
-    # failure the job goes back in the queue under the same id instead of dying,
-    # and MITIM workflows resume from their on-disk checkpoints when re-executed.
-    job_requeue     = slurm_settings.setdefault("requeue", True)
-
-    # ---------------------------------------------------
-    # slurm_allocation indicate the machine specifications as given by the config instead of individual job
-    # ---------------------------------------------------
-    
-    partition = slurm_allocation.setdefault("partition", None)
-    qos = slurm_allocation.setdefault("qos", None)
-    email = slurm_allocation.setdefault("email", None)
-    exclude = slurm_allocation.setdefault("exclude", None)
-    account = slurm_allocation.setdefault("account", None)
-    constraint = slurm_allocation.setdefault("constraint", None)
-    memory_req_by_config = slurm_allocation.setdefault("mem", None)
-    request_exclusive_node = slurm_allocation.setdefault("exclusive", False)
-    
-    
-    if memory_req_by_job == 0 :
-        print("\t\t- Entire node memory requested by job, overwriting memory requested by config file", typeMsg="i")
-        memory_req = memory_req_by_job
-    elif memory_req_by_job is not None:
-        print(f"\t\t- Memory requested by job ({memory_req_by_job}), overwriting memory requested by config file", typeMsg="i")
-        memory_req = memory_req_by_job
-    else:
-        if memory_req_by_config is not None:
-            print(f"\t\t- Memory requested by config file ({memory_req_by_config})", typeMsg="i")
-        memory_req =  memory_req_by_config
-    
-    # `time_com` is already a formatted sbatch --time string (set above
-    # from the native 'time' key or migrated from legacy 'minutes').
+    script = SbatchScript(settings=slurm_settings, allocation=slurm_allocation)
 
     """
 	********************************************************************************************
@@ -1786,124 +2151,25 @@ def create_slurm_execution_files(
     shellPreCommands = [] if shellPreCommands is None else shellPreCommands
     shellPostCommands = [] if shellPostCommands is None else shellPostCommands
 
-    # ~~~~ Construct SLURM header ~~~~~~~~~~~~~~~
-    commandSBATCH = []
+    commandSBATCH = script.directives(
+        folderExecution,
+        label_log_files=label_log_files,
+        if_array_relabel=if_array_relabel,
+        append_mode=append_mode,
+    )
+    commandSBATCH.extend(script.preamble())
 
-    commandSBATCH.append("#!/usr/bin/env bash")
-    commandSBATCH.append(f"#SBATCH --job-name {nameJob}")
-    if (not if_array_relabel) or (job_array is None):
-        commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}.dat")
-        commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}.dat")
-    else:
-        commandSBATCH.append(f"#SBATCH --output {folderExecution}/slurm_output{label_log_files}_%A_%a.dat")
-        commandSBATCH.append(f"#SBATCH --error {folderExecution}/slurm_error{label_log_files}_%A_%a.dat")
-    commandSBATCH.append(f"#SBATCH --time {time_com}")
-    if email is not None:
-        commandSBATCH.append("#SBATCH --mail-user=" + email)
-    if partition is not None:
-        commandSBATCH.append(f"#SBATCH --partition {partition}")
-    if account is not None:
-        commandSBATCH.append(f"#SBATCH --account {account}")
-    if qos is not None:
-        commandSBATCH.append(f"#SBATCH --qos {qos}")
-    if constraint is not None:
-        commandSBATCH.append(f"#SBATCH --constraint {constraint}")
-    if memory_req is not None:
-        commandSBATCH.append(f"#SBATCH --mem {memory_req}")
-    if job_array is not None:
-        commandSBATCH.append(f"#SBATCH --array={job_array}{f'%{job_array_limit} ' if job_array_limit is not None else ''}")
-    # --exclusive can co-exist with arrays (one whole node per array element)
-    # and with packed jobs (whole nodes via per-job slurm_settings). Honor
-    # both the machine config (`slurm_allocation`) and the per-job override
-    # (`slurm_settings.exclusive`). A string value (e.g. "user" or "mcs") emits
-    # --exclusive=<value>, which keeps OTHER users off the node while letting this
-    # user's own array tasks pack onto it; a bare True stays plain --exclusive
-    # (one whole node per job).
-    exclusive = request_exclusive_node or job_exclusive
-    if exclusive:
-        commandSBATCH.append(f"#SBATCH --exclusive={exclusive}" if isinstance(exclusive, str) else "#SBATCH --exclusive")
-    if job_requeue is True:
-        commandSBATCH.append("#SBATCH --requeue")
-    elif job_requeue is False:
-        commandSBATCH.append("#SBATCH --no-requeue")
-    if nodes is not None:
-        commandSBATCH.append(f"#SBATCH --nodes {nodes}")
-    if ntasks is not None:
-        commandSBATCH.append(f"#SBATCH --ntasks {ntasks}")
-    if ntaskspernode is not None:
-        commandSBATCH.append(f"#SBATCH --ntasks-per-node {ntaskspernode}")
-    if cpuspertask is not None:
-        commandSBATCH.append(f"#SBATCH --cpus-per-task {cpuspertask}")
-    if gpuspertask is not None:
-        commandSBATCH.append(f"#SBATCH --gpus-per-task {gpuspertask}")
-    if gpuspernode is not None:
-        commandSBATCH.append(f"#SBATCH --gpus-per-node={gpuspernode}")
-    if exclude is not None:
-        commandSBATCH.append(f"#SBATCH --exclude={exclude}")
-    if append_mode:
-        commandSBATCH.append("#SBATCH --open-mode=append")
-
-    commandSBATCH.append("#SBATCH --profile=all")
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-
-    # ~~~~ Commands ~~~~~~~~~~~~~~~
-    commandSBATCH.append("")
-    commandSBATCH.append("export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK")
-    if gpuspernode is not None:
-        commandSBATCH.append('export SLURM_CPU_BIND="cores"')
-    commandSBATCH.append('echo "MITIM: Submitting SLURM job $SLURM_JOBID in $HOSTNAME (host: $SLURM_SUBMIT_HOST)"')
-    commandSBATCH.append('echo "MITIM: Nodes have $SLURM_CPUS_ON_NODE cores and $SLURM_JOB_NUM_NODES node(s) were allocated for this job"')
-    commandSBATCH.append('echo "MITIM: Each of the $SLURM_NTASKS tasks allocated will run with $SLURM_CPUS_PER_TASK cores, allocating $SRUN_CPUS_PER_TASK CPUs per srun"')
-    commandSBATCH.append('echo "***********************************************************************************************"')
-    commandSBATCH.append('echo ""')
-    commandSBATCH.append("")
-
-    if lock_file == True:
-        commandSBATCH.extend([
-            f'LOCK_FILE="{folderExecution}/job.lock"',
-            f'LOCK_TIMEOUT={lock_file_timeout_hours * 3600}  # {lock_file_timeout_hours} hours in seconds',
-            '',
-            '# Check if lock file already exists',
-            'if [ -f "$LOCK_FILE" ]; then',
-            '    # Get current time and file modification time',
-            '    CURRENT_TIME=$(date +%s)',
-            '    FILE_TIME=$(stat -c%Y "$LOCK_FILE" 2>/dev/null || stat -f%m "$LOCK_FILE" 2>/dev/null)',
-            '    AGE=$((CURRENT_TIME - FILE_TIME))',
-            '    ',
-            '    # If lock is older than 12 hours, delete it and continue',
-            '    if [ "$AGE" -gt "$LOCK_TIMEOUT" ]; then',
-            '        echo "Lock file is stale ($(($AGE / 3600)) hours old), removing and proceeding..."',
-            '        rm -f "$LOCK_FILE"',
-            '    else',
-            '        # Lock is recent, another job may be running',
-            '        echo "ERROR: Lock file exists ($(($AGE / 60)) minutes old). Another job may be running."',
-            '        exit 1',
-            '    fi',
-            'fi',
-            '',
-            '# Cleanup function runs on exit (success, failure, or timeout)',
-            'cleanup() {',
-            '    rm -f "$LOCK_FILE"',
-            '    echo "Lock file cleaned up at $(date)"',
-            '}',
-            '',
-            'trap cleanup EXIT',
-            '',
-            '# Create lock file',
-            'touch "$LOCK_FILE"',
-            'echo "Lock file created at $(date)"',
-            '',
-        ])
+    if lock_file:
+        commandSBATCH.extend(script.lockfile_block(folderExecution, lock_file_timeout_hours))
 
     # If modules, add them, but also make sure I expand the potential aliases that they may have!
     full_command = ["shopt -s expand_aliases",modules_remote] if (modules_remote is not None) else []
-    
+
     full_command.extend(command)
     for c in full_command:
         commandSBATCH.append(c)
 
     commandSBATCH.append("")
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
     wait_txt = " --wait" if wait_until_sbatch else ""
     if launchSlurm:
@@ -1974,8 +2240,11 @@ def printEfficiencySLURM(out_file):
     jobid = None
     for line in aux:
         if ("Submitted batch job" in line) or ("Submitting SLURM job" in line):
-            jobid = int(line.split()[3])
-            break
+            # The two messages put the id in different columns ("Submitted batch job <id>"
+            # vs "MITIM: Submitting SLURM job <id> in <host> ..."): take the first number
+            jobid = next((int(token) for token in line.split() if token.isdigit()), None)
+            if jobid is not None:
+                break
 
     if jobid is not None:
         print(f"Evaluating efficienty of job {jobid}:")

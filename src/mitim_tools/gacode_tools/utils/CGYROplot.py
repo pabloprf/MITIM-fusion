@@ -1251,7 +1251,7 @@ def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder, 
     try:
         for sub, rho in pairs:
             info[rho] = {"machine": machine_settings["machine"], "mtime": None}
-            remote = f"{folder_execution}/{sub}/rho_{rho:.4f}"
+            remote = f"{folder_execution}/{sub}/{SIMtools.rho_folder(rho)}"
             for name in (files or _LIVE_FILES):
                 src, dst = f"{remote}/{name}", local_folder / f"{name}_{rho:.4f}"
                 try:
@@ -1313,7 +1313,7 @@ def request_stop(machine_settings, folder_execution, pairs, note="mitim_kill_cgy
     job.connect()
     try:
         for sub, rho in pairs:
-            path = f"{folder_execution}/{sub}/rho_{rho:.4f}/mitim_stop"
+            path = f"{folder_execution}/{sub}/{SIMtools.rho_folder(rho)}/mitim_stop"
             text = f"{note} {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
             if job.sftp is None:
                 Path(path).write_text(text)

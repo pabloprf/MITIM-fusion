@@ -235,6 +235,31 @@ DESCRIPTION
 
 ### Bug Fixes
 
+*   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
+    in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
+    (`run_over_plasmas` now accepts `rescue_interrupted` and `load_balance`); a status poll no longer drops
+    into an IPython prompt on SLURM states such as `REQUEUED` or `CONFIGURING` (they keep polling), no longer
+    runs the `bin.cgyro.restart.old` prune on the remote, and no longer re-queries `sacct` every poll for a
+    task already flagged `TERMINAL_NO_RESCUE`; a second `InteractiveTerminalError` in a run is re-raised
+    instead of being read as success; a file missing from a retrieval no longer deletes the previous good
+    result nor the staging folder; an interrupted run without a readable resume time is discarded instead
+    of silently running the full `MAX_TIME` on top of its checkpoint; the SLURM script builder no longer
+    writes defaults into the global machine config; the allocation counts every pending (subfolder, rho)
+    unit instead of only the last subfolder's. The status poll now also waits for auto-resubmit rescue
+    jobs (the parent array draining used to end the poll and fetch the rescued radius half-done), the
+    completion gate (`EXIT` in `out.cgyro.info` or `mitim_budget.tag`) now applies to the submit/fetch and
+    re-attach paths as it did to `run_type: normal`, and an in-place rescued radius re-derives
+    `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
+    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it). In bash mode,
+    several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each own their GPU(s)
+    exclusively per srun step; before, every call landed on the node's first GPU. A radius whose CGYRO
+    crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
+    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`. A status poll or re-attach whose
+    remote scratch folder was deleted now reads the job as gone and resubmits, instead of polling it as
+    pending until the driver's wall time. With `load_balance: extra_points`,
+    a relaunch that re-runs only the unfinished radii now gives the nodes it leaves idle extras built from
+    the radii that already finished (before, only nodes freed during the job got one).
+
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
     `Pcool(table species) - brems(all species)`, so an absent species turned its bremsstrahlung into negative
@@ -436,6 +461,17 @@ DESCRIPTION
     the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
 
 ### Changes for developers (internal execution)
+
+*   🔎 **PORTALS-CGYRO submission stack reorganized into named objects (behaviour-preserving).**
+    `FARMINGtools`: `RetryPolicy`, `mitim_job.session()`, `RetrievalSpec`, `SlurmState`/`SqueueRecord`,
+    `SbatchScript`. `SIMtools`: `RadialCall`/`WorkPlan` (the one place the `rho_<r>` naming lives),
+    `CompletionSpec`, `JobScript` builders, `SubmissionRecord` (owns `cgyro_submission.json`, same schema),
+    `RunType`/`SubmissionType`/`JobStatus`, and `_run` as named steps. `CGYROtools`: `CgyroLaunchBody`,
+    `Watchdog` (bash in `templates/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
+    `StallRescuer`, `_ResolvedControls`. `transport_cgyro` (1970 → 700 lines) drives single-plasma, batched and
+    GX evaluations through one `GKSubmission` engine, with `RestartChain`, `PerIterOverrides` and
+    `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested
+    byte-identical to the previous code.
 
 *   🔎 **NEW CHANGE**, description
 

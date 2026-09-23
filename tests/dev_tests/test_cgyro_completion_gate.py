@@ -12,6 +12,9 @@ CGYRO writes every output file from its first step, so a truncated run passes th
   wall-budget watchdog's mitim_budget.tag), otherwise the run raises.
 - CGYROtools.body_keeping_exit_status: the call body's exit status is CGYRO's, not the
   trailing cleanup's, so the in-allocation scheduler no longer logs rc=0 for a killed step.
+- CGYROtools.CgyroLaunchBody.exit_verdict: gacode's `cgyro` script exits 0 even when the
+  executable crashed, so a body whose CGYRO left no EXIT line reports rc=1 (engaging array
+  23547066, 2026-09-23: "Disk quota exceeded" at t=205 of 750, recorded as COMPLETED 0:0).
 
 The end-to-end test reproduces the Perlmutter incident of 2026-09-21 (job 58658847): a
 step SIGTERM'd at t=526 of 750, logged by the scheduler as "ended (rc=0)".
@@ -187,10 +190,39 @@ def test_killed_step_end_to_end():
     print("PASS test_killed_step_end_to_end")
 
 
+def test_exit_verdict():
+    '''A launcher that returns 0 after CGYRO crashed is reported as rc=1; clean ends and watchdog stops are not.'''
+    with tempfile.TemporaryDirectory() as d:
+        rel = f"base_cgyro/rho_{RHO:.4f}"
+        run_dir = Path(d) / rel
+        run_dir.mkdir(parents=True)
+        launch = CGYROtools.CgyroLaunchBody(rel, d)
+        info = run_dir / "out.cgyro.info"
+        crashed = 'printf "[t: 2.050E+02]\\n" > "{info}"; true'
+        cases = (
+            ("crash, launcher rc 0", crashed, None, 1),
+            ("clean end", 'printf "[t: 7.500E+02]\\nEXIT: (CGYRO) Normal\\n" > "{info}"; true', None, 0),
+            ("error line, launcher rc 0", 'printf "ERROR: (CGYRO) bad input\\n" > "{info}"; true', None, 1),
+            ("watchdog stop", crashed, "mitim_budget.tag", 0),
+            ("watchdog discard", crashed, "mitim_discard.tag", 0),
+            ("killed, rc kept", 'printf "[t: 2.050E+02]\\n" > "{info}"; bash -c \'kill -TERM $$\'', None, 143),
+        )
+        for label, main_cmd, tag, want in cases:
+            for f in run_dir.iterdir():
+                f.unlink()
+            if tag:
+                (run_dir / tag).touch()
+            body = CGYROtools.body_keeping_exit_status(":", main_cmd.format(info=info), ":", launch.exit_verdict())
+            rc = subprocess.run(["bash", "-c", body], capture_output=True).returncode
+            assert rc == want, f"{label}: rc={rc}, expected {want}"
+    print("PASS test_exit_verdict")
+
+
 if __name__ == "__main__":
     test_radius_finished()
     test_cold_start_checker_unchanged()
     test_verify_completion()
     test_body_keeping_exit_status()
     test_killed_step_end_to_end()
+    test_exit_verdict()
     print("\nALL PASS")
