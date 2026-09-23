@@ -455,6 +455,9 @@ pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO rec
 `params1D` and are refused by `harvest_database.input_file`), derived norms as `out_derived_*`.
 CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
+**`mitim_harvester <run(s) or parent folder> <file.nc> [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the
+TGLF/NEO/full-EPED records of MAESTRO/PORTALS runs made WITHOUT harvest (only what pruning left: PORTALS run folders, EPED
+`output_run1.nc`), with MITIM's own readers/recorder, a stable per-run id, and skips every (run, hash) already in the file.**
 
 ### 5.8 Impurity lumping vs. the radiation target
 

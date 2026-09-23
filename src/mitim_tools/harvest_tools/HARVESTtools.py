@@ -63,7 +63,8 @@ RUNS_GROUP = 'runs'
 
 RECORD_KEYS = ['run', 'hash']
 # Provenance, once per run (run_meta.json) ...
-RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat']
+RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat',
+            'recovered_by']   # '' for live runs; 'mitim_harvester <version>@<commit>' for records rebuilt from disk (HARVESTrecover)
 # ... and once per (run, code), captured from the first record of that code (`averaging`: how the
 # time-averaged fluxes and their std were computed, for CGYRO/GX; empty for single-value codes)
 RUN_CODE_KEYS = ['machine', 'modules', 'code_version', 'in_process', 'averaging']
@@ -526,7 +527,7 @@ def collect_eped(input_params, composition=None, eped_params_override=None, toq_
 # ------------------------------------------------------------------------------------------------
 
 _STRING_COLS = {'run', 'hash', 'code', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit',
-                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record'}
+                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record', 'recovered_by'}
 
 def _frame_from_rows(rows):
     '''DataFrame with the union of keys; a column is string if any value is a string, numeric (f8) otherwise'''
@@ -837,7 +838,10 @@ class harvest_database:
                 if type_updates:
                     grp = ds.groups[RUNS_GROUP]
                     if 'input_types' not in grp.variables:
-                        grp.createVariable('input_types', str, ('record',))
+                        var = grp.createVariable('input_types', str, ('record',))
+                        n_runs = len(grp.dimensions['record'])
+                        if n_runs > 0:   # vlen strings have no fill value (see _write_group)
+                            var[0:n_runs] = np.array([''] * n_runs, dtype=object)
                     for idx, js in type_updates.items():
                         grp.variables['input_types'][idx] = js
         print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
@@ -871,7 +875,11 @@ class harvest_database:
         for col, (is_str, arr) in cols.items():
             if col not in grp.variables:
                 if is_str:
-                    grp.createVariable(col, str, ('record',))
+                    var = grp.createVariable(col, str, ('record',))
+                    # vlen strings have no fill value: rows appended before this column existed must be written
+                    # explicitly, otherwise reading the variable fails with "NetCDF: HDF error"
+                    if n > 0:
+                        var[0:n] = np.array([''] * n, dtype=object)
                 else:
                     grp.createVariable(col, 'f8', ('record',), fill_value=np.nan, zlib=True, chunksizes=(4096,))
             grp.variables[col][n:n + k] = arr

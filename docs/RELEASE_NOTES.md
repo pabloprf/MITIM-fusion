@@ -56,6 +56,9 @@ DESCRIPTION
     input file (`harvest_database.input_file` / `write_input_file`, types from a per-run map); CGYRO
     records also carry restart provenance (warm start, source iteration, inherited time), whether
     `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
+    `mitim_harvester <run(s) or parent folder> <file.nc> [--dry-run]` backfills runs made WITHOUT harvest:
+    it rebuilds their TGLF/NEO/full-EPED records from whatever is left on disk (never EPED-NN), marks them
+    `recovered_by`, and skips records already in the file (capability test `maestro_03_harvester.py`).
 
 *   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
     (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
