@@ -245,7 +245,9 @@ DESCRIPTION
     completion gate (`EXIT` in `out.cgyro.info` or `mitim_budget.tag`) now applies to the submit/fetch and
     re-attach paths as it did to `run_type: normal`, and an in-place rescued radius re-derives
     `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
-    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it).
+    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it). In bash mode,
+    several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each get their own GPU slice
+    (`CUDA_VISIBLE_DEVICES` per call slot); before, every call landed on the node's first GPU.
 
 *   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
     extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,

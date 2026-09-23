@@ -264,6 +264,31 @@ def test_probe_script_is_portable_bash():
     print("PASS: probe script parses as bash and uses the portable mtime/EXIT checks")
 
 
+def test_shared_node_calls_get_their_own_gpus():
+    '''Several 1-GPU calls on a 4-GPU node: call k pins GPU slice k on host k // 4; the srun step
+    requests no GPU (an overlapping step that asks for one gets the node's first every time).'''
+    import subprocess
+    body = CGYROtools.CgyroLaunchBody.__new__(CGYROtools.CgyroLaunchBody)
+    body.machine = {"machine": "local", "gpus_per_node": 4, "srun_wrap_calls": True}
+    body.mpi = {"n": 1, "nomp": 16, "numa": 1, "mpinuma": 1}
+    body.hosts = ["node01", "node02"]; body.nodes = 1; body.bash_mode = True; body.srun_wrap = True
+    body.folder = "base_cgyro/rho_0.4808"; body.p = "/scratch/x"; body.additional_command = ""; body.cpus_per_node = 128
+    txt = body.launch()
+    assert "--gpus-per-node" not in txt and "CUDA_VISIBLE_DEVICES=$MITIM_GPUS" in txt, txt
+
+    def render(k, sel):
+        out = subprocess.run(["bash", "-c", f"MITIM_HOSTS=(node01 node02); MITIM_CALL={k}\n{sel}echo $_sel $MITIM_GPUS"],
+                             capture_output=True, text=True, check=True)
+        return out.stdout.split()
+    sel = body.host_selection()
+    assert [render(k, sel) for k in (1, 2, 4, 5)] == [["node01", "0"], ["node01", "1"], ["node01", "3"], ["node02", "0"]]
+    body.mpi["numa"] = 2; sel = body.host_selection()
+    assert [render(k, sel) for k in (1, 2, 3)] == [["node01", "0,1"], ["node01", "2,3"], ["node02", "0,1"]]
+    body.mpi["numa"] = 4
+    assert "MITIM_GPUS" not in body.launch() and "--gpus-per-node=4" in body.launch()
+    print("PASS: shared-node calls pin their own GPU slice; whole-node shape unchanged")
+
+
 if __name__ == "__main__":
     test_watchdog_modes_render_their_switches()
     test_radius_status_from_probe_line()
@@ -271,4 +296,5 @@ if __name__ == "__main__":
     test_probe_script_is_portable_bash()
     test_launch_bodies_are_byte_identical()
     test_enforced_values_match_reference()
+    test_shared_node_calls_get_their_own_gpus()
     print("\nALL PASS")
