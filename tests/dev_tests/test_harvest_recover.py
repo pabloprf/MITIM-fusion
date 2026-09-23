@@ -94,11 +94,27 @@ def test_eped_files_from_nc(tmp):
     print("PASS eped.input / eped.config rebuilt from output_run1.nc")
 
 
+def test_new_string_column_after_many_rows(tmp):
+    # A string column that first appears after >1 HDF5 chunk of rows used to leave those chunks unwritten
+    # ("NetCDF: HDF error" on read); seen on a real append of recovered EPED records (input_types_record)
+    import netCDF4
+    f, n = tmp / 'vlen.nc', 5000
+    with netCDF4.Dataset(f, 'w') as ds:
+        H.harvest_database._write_group(ds, 'eped', {'run': (True, np.array(['a'] * n, dtype=object)), 'x': (False, np.arange(float(n)))}, n)
+        H.harvest_database._write_group(ds, 'eped', {'run': (True, np.array(['b'] * 10, dtype=object)), 'x': (False, np.arange(10.)),
+                                                     'newstr': (True, np.array(['v'] * 10, dtype=object))}, 10)
+    with netCDF4.Dataset(f) as ds:
+        v = ds['eped']['newstr'][:]
+    assert len(v) == n + 10 and v[0] == '' and v[-1] == 'v', "new string column readable, earlier rows ''"
+    print("PASS new string column appended after many rows is readable")
+
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvester_test_'))
     try:
         test_tglf_records_and_dedup(tmp)
         test_eped_files_from_nc(tmp)
+        test_new_string_column_after_many_rows(tmp)
         print("\nALL PASS")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

@@ -838,7 +838,10 @@ class harvest_database:
                 if type_updates:
                     grp = ds.groups[RUNS_GROUP]
                     if 'input_types' not in grp.variables:
-                        grp.createVariable('input_types', str, ('record',))
+                        var = grp.createVariable('input_types', str, ('record',))
+                        n_runs = len(grp.dimensions['record'])
+                        if n_runs > 0:   # vlen strings have no fill value (see _write_group)
+                            var[0:n_runs] = np.array([''] * n_runs, dtype=object)
                     for idx, js in type_updates.items():
                         grp.variables['input_types'][idx] = js
         print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
@@ -872,7 +875,11 @@ class harvest_database:
         for col, (is_str, arr) in cols.items():
             if col not in grp.variables:
                 if is_str:
-                    grp.createVariable(col, str, ('record',))
+                    var = grp.createVariable(col, str, ('record',))
+                    # vlen strings have no fill value: rows appended before this column existed must be written
+                    # explicitly, otherwise reading the variable fails with "NetCDF: HDF error"
+                    if n > 0:
+                        var[0:n] = np.array([''] * n, dtype=object)
                 else:
                     grp.createVariable(col, 'f8', ('record',), fill_value=np.nan, zlib=True, chunksizes=(4096,))
             grp.variables[col][n:n + k] = arr
