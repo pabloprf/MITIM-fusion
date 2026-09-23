@@ -1576,7 +1576,12 @@ class mitim_job:
         else:
             txt_look = f"-n {self._squeue_job_name()}"
 
-        command = f'cd {shlex.quote(str(self.folderExecution))} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat'
+        # The remote folder holds the job's scripts from before sbatch, so it exists for every submitted
+        # job; when it is gone (scratch deleted) nothing can ever be retrieved, and without this marker
+        # the failed `cd` looked like an unretrieved poll, i.e. "pending" forever.
+        folder = shlex.quote(str(self.folderExecution))
+        command = (f'if [ -d {folder} ]; then cd {folder} && squeue {txt_look} -o "%.15i %.50P %.18j %.10u %.10T %.10M %.10l %.5D %R" > squeue_output.dat; '
+                   f'else echo {self.REMOTE_FOLDER_GONE}; fi')
 
         # Only squeue_output.dat is mandatory — it is what interpret_status() parses. The
         # slurm job log (`file_output`) is optional: it does not exist on the remote while
@@ -1595,6 +1600,9 @@ class mitim_job:
         with self.session():
             try:
                 output, error = self.execute(command, printYN=True, retry_on_transient=True)
+                if self._remote_folder_gone(output):
+                    self._set_gone()
+                    return
                 received = self.retrieve(spec=spec, best_effort=True)
             except RetryPolicy.TRANSIENT as _poll_exc:
                 print(f"\t* Status poll could not reach the remote ({type(_poll_exc).__name__}: {_poll_exc}); "
@@ -1604,6 +1612,21 @@ class mitim_job:
                 self._write_debugging_files(output, error, extra_name = '_check')
 
         self.interpret_status(file_output = file_output)
+
+    REMOTE_FOLDER_GONE = "MITIM_REMOTE_FOLDER_GONE"
+
+    def _remote_folder_gone(self, output):
+        text = output.decode(errors="ignore") if isinstance(output, bytes) else (output or "")
+        return self.REMOTE_FOLDER_GONE in text
+
+    def _set_gone(self):
+        '''Status 2 (not found): whatever squeue says, a job whose remote folder was deleted has no results to fetch.'''
+        print(f"\t* Remote folder {self.folderExecution} no longer exists; the job's results are gone, treating it as finished (not found)", typeMsg="w")
+        self.records = []
+        self.infoSLURM = {"STATE": SlurmState.ABSENT.value}
+        self.jobid_found = None
+        self.status = 2
+        self.log_file = None
 
     def interpret_status(self, file_output = "slurm_output.dat"):
         """

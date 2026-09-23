@@ -249,7 +249,9 @@ DESCRIPTION
     several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each own their GPU(s)
     exclusively per srun step; before, every call landed on the node's first GPU. A radius whose CGYRO
     crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
-    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`.
+    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`. A status poll or re-attach whose
+    remote scratch folder was deleted now reads the job as gone and resubmits, instead of polling it as
+    pending until the driver's wall time.
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was

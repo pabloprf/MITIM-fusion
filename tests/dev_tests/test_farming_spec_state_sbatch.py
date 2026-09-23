@@ -211,6 +211,28 @@ def test_check_polls_with_a_narrowed_spec():
     print("PASS test_check_polls_with_a_narrowed_spec")
 
 
+def test_check_with_the_remote_folder_gone():
+    '''A job whose remote folder was deleted is "not found" (status 2), not pending forever: the poll
+    used to `cd` into the missing folder, retrieve nothing and assume PENDING on every cycle (engaging
+    driver 23553772, 2026-09-23: 2 h 25 min re-attached to a dead array whose scratch was cleaned up).'''
+    folder = Path(tempfile.mkdtemp())
+    try:
+        job = _job_with_full_spec(folder)
+        job.machineSettings = {"machine": "local", "modules": None, "slurm": {}, "folderWork": str(folder)}
+        job.folderExecution = str(folder / "scratch_deleted")
+        job.jobid = "12345678"
+        job.slurm_settings = {"job-name": "cgyro_test"}
+        job.retrieve = lambda **kwargs: (_ for _ in ()).throw(AssertionError("nothing to retrieve from a deleted folder"))
+        with _quiet() as log:
+            job.check()
+        assert job.status == 2, (job.status, log.getvalue())
+        assert job.infoSLURM["STATE"] == FARMINGtools.SlurmState.ABSENT.value, job.infoSLURM
+        assert "no longer exists" in log.getvalue(), log.getvalue()
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    print("PASS test_check_with_the_remote_folder_gone")
+
+
 def test_retrieve_tars_exactly_what_the_spec_lists():
     '''End-to-end over a local "remote": the tar/copy/extract really runs.'''
     local = Path(tempfile.mkdtemp())
@@ -462,6 +484,7 @@ if __name__ == "__main__":
     test_setstate_migrates_a_pre_spec_pickle()
     test_submit_mode_run_retrieves_only_mitim_out()
     test_check_polls_with_a_narrowed_spec()
+    test_check_with_the_remote_folder_gone()
     test_retrieve_tars_exactly_what_the_spec_lists()
     test_squeue_parse_reads_every_row()
     test_state_tokens()
