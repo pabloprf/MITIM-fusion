@@ -1084,8 +1084,13 @@ class mitim_simulation:
         else:
             files_to_retrieve = self.output_files_simulation["complete"]
 
+        run_type = RunType.parse(run_type)
+        if run_type is RunType.SUBMIT and "minutes" not in allocation:
+            # A detached submission is a long job by definition; a silent default wall clock
+            # would just time every element out
+            raise ValueError(f"[MITIM] run_type 'submit' for {code} needs allocation['minutes'] (the wall clock of each submitted element)")
         return _RunSettings(
-            run_type=RunType.parse(run_type),
+            run_type=run_type,
             code=code,
             input_file=self.run_specifications.get('input_file', 'input.tglf'),
             code_call=self.run_specifications.get('code_call', None),
@@ -1095,7 +1100,7 @@ class mitim_simulation:
             launch_slurm=kwargs_run.get("launchSlurm", True),
             allocation=allocation,
             resources_per_call=allocation.get("resources_per_call", self._default_allocation(code)["resources_per_call"]),
-            minutes=allocation.get("minutes", 5),
+            minutes=allocation.get("minutes", 10),
             # allocation.submission_type ('slurm_array' | 'slurm_standard' | 'bash') overrides
             # the resolver heuristic, and itself wins over the per-code default
             submission_type_override=allocation.get("submission_type") or self.run_specifications.get('force_submission_type'),

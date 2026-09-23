@@ -535,8 +535,12 @@ transport:
         #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
         #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
         #                        --gpus-per-node / --ntasks-per-node counts
-        #   minutes            : slurm --time in minutes. 300 = 5h, the usual cap for
-        #                        CGYRO nonlinear runs.
+        #   minutes            : slurm --time in minutes of every submitted element. REQUIRED
+        #                        when run_type is "submit" (MITIM refuses to submit without it;
+        #                        it used to fall back to 5 minutes and time every radius out);
+        #                        10 minutes otherwise. Size it for one radius at MAX_TIME
+        #                        (e.g. 480 for a 750 a/cs reduced run); in bash mode the
+        #                        enclosing job's wall clock applies and this is ignored.
         #   mem                : per-node memory string passed to sbatch --mem
         #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
         #   submission_type    : "slurm_array" (default on GPU machines: one array
