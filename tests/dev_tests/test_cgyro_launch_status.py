@@ -276,7 +276,10 @@ def test_shared_node_calls_get_their_own_gpus():
     body.hosts = ["node01", "node02"]; body.nodes = 1; body.bash_mode = True; body.srun_wrap = True
     body.folder = "base_cgyro/rho_0.4808"; body.p = "/scratch/x"; body.additional_command = ""; body.cpus_per_node = 128
     txt = body.launch()
-    assert "-c16 --gpus-per-node=1 --cpu-bind=none ${_sel:+-w $_sel} --exact" in txt and "--overlap" not in txt and "CUDA_VISIBLE" not in txt, txt
+    assert "-c16 --gpus-per-node=1 --cpu-bind=none ${_sel:+-w $_sel} --exact ${SLURM_MEM_PER_NODE:+--mem=$((SLURM_MEM_PER_NODE/4))M}" in txt and "--overlap" not in txt and "CUDA_VISIBLE" not in txt, txt
+    step = txt.splitlines()[-1].split("bash -c")[0]
+    rendered = lambda env: subprocess.run(["bash", "-c", f"{env} _sel=node01; echo {step}"], capture_output=True, text=True, check=True).stdout
+    assert "--mem=76800M" in rendered("SLURM_MEM_PER_NODE=307200") and "--mem" not in rendered("unset SLURM_MEM_PER_NODE;"), (rendered("SLURM_MEM_PER_NODE=307200"), rendered("unset SLURM_MEM_PER_NODE;"))
 
     def host(k, sel):
         out = subprocess.run(["bash", "-c", f"MITIM_HOSTS=(node01 node02); MITIM_CALL={k}\n{sel}echo $_sel"],

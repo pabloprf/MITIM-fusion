@@ -237,8 +237,10 @@ class CgyroLaunchBody:
         if self.calls_per_node > 1:
             # Calls sharing a node: each step owns its GPUs and cores exclusively (no --overlap, --exact),
             # so the gacode wrapper's CUDA_VISIBLE_DEVICES=<local rank> resolves inside the step's own
-            # device cgroup. With --overlap every step was handed the node's first GPU.
-            sharing, cpus_per_task = "--exact", m['nomp']
+            # device cgroup. With --overlap every step was handed the node's first GPU. A step also
+            # takes the job's whole --mem unless told its share, which serializes the calls.
+            sharing = f"--exact ${{SLURM_MEM_PER_NODE:+--mem=$((SLURM_MEM_PER_NODE/{self.calls_per_node}))M}}"
+            cpus_per_task = m['nomp']
         else:
             sharing, cpus_per_task = "--overlap", max(m['nomp'], self.cpus_per_node // max(gpus_per_node, 1))
         return (f"srun -N1 -n{m['numa']} -c{cpus_per_task} --gpus-per-node={m['numa']} --cpu-bind=none ${{_sel:+-w $_sel}} {sharing} --export=ALL "
