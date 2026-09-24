@@ -53,7 +53,20 @@ _EPED_INT_KEYS = {'num_scan', 'shot', 'timeid', 'runid'}
 _EPED_CONFIG_VARS = {'NMODES': 'nmodes', 'WIDTHS': 'widths', 'TEPED_BOUND': 'teped_bound'}
 
 def _trailing_int(path):
-    return int(re.split(r'[._]', path.name)[-1])
+    last = re.split(r'[._]', path.name)[-1]
+    return int(last) if last.isdigit() else None
+
+_SKIPPED = set()
+
+def _numbered(paths):
+    '''Beat_<n> / Evaluation.<n> / portals_sr_ev_<n> sorted by n; renamed copies (e.g. Beat_14old) are skipped, since
+    their records would be tagged with the number of a different attempt'''
+    paths = [p for p in paths if p.is_dir()]
+    for p in paths:
+        if _trailing_int(p) is None and p not in _SKIPPED:
+            _SKIPPED.add(p)
+            print(f"\t- mitim_harvester: skipping {p} (name does not end in a number)")
+    return sorted((p for p in paths if _trailing_int(p) is not None), key=_trailing_int)
 
 def _first_existing(paths):
     return next((p for p in paths if p is not None and p.exists()), None)
@@ -94,7 +107,7 @@ class harvester:
 
     # -------------------------------------------------------------------------- what is on disk
     def _beats(self):
-        return sorted((b for b in (self.folder / 'Beats').glob('Beat_*') if b.is_dir()), key=_trailing_int) if self.is_maestro else []
+        return _numbered((self.folder / 'Beats').glob('Beat_*')) if self.is_maestro else []
 
     def portals_folders(self):
         '''[(maestro_beat or None, PORTALS folder)]: run_portals/ and beat_results/ twins alike (the hash dedups them)'''
@@ -105,8 +118,8 @@ class harvester:
 
     @staticmethod
     def transport_folders(portals):
-        sr = sorted((portals / 'Initialization' / 'initialization_simple_relax').glob('portals_sr_ev_*'), key=_trailing_int)
-        ev = sorted((portals / 'Execution').glob('Evaluation.*'), key=_trailing_int)
+        sr = _numbered((portals / 'Initialization' / 'initialization_simple_relax').glob('portals_sr_ev_*'))
+        ev = _numbered((portals / 'Execution').glob('Evaluation.*'))
         return [f / 'transport_simulation_folder' for f in sr + ev if (f / 'transport_simulation_folder').is_dir()]
 
     @staticmethod
@@ -121,7 +134,7 @@ class harvester:
 
     def eped_folders(self):
         '''[(maestro_beat, folder)] of the full-EPED evaluations on disk; the eped_initializer creator is beat 0'''
-        out = [(0, c) for c in sorted((self.folder / 'Beats').glob('Beat_*/initializer_*/creator_eped'))
+        out = [(0, c) for b in self._beats() for c in sorted(b.glob('initializer_*/creator_eped'))
                if (c / 'run_eped' / 'case1' / 'output_run1.nc').exists()] if self.is_maestro else []
         out += [(_trailing_int(b), b) for b in self._beats()
                 if (b / 'run_eped' / 'case1' / 'output_run1.nc').exists() or (b / 'beat_results' / 'output_run1.nc').exists()]

@@ -5,8 +5,8 @@ Sanity tests for mitim_harvester (mitim_tools.harvest_tools.HARVESTrecover) on a
 folder built from tests/data/input.tglf: TGLF records rebuilt from a PORTALS evaluation left on disk
 (base point + one scan-trick member, tagged with their maestro_beat), provenance marked
 `recovered_by`, --dry-run pushes nothing, a second run appends nothing (dedup against the file), a
-parent folder is searched for runs, and eped.input / eped.config rebuilt from an EPED output .nc
-give the same EPED record inputs as the originals.
+parent folder is searched for runs, renamed copies (Beat_14old) are skipped, and eped.input /
+eped.config rebuilt from an EPED output .nc give the same EPED record inputs as the originals.
 
 Everything runs in a temporary folder -- no transport code, no cluster.
 
@@ -69,6 +69,19 @@ def test_tglf_records_and_dedup(tmp):
     assert len(H.harvest_database(file).load('tglf')) == 2
     assert R.harvest_runs([run], file, scan_trick_members=False, dry_run=True)['tglf'] == 0
     print("PASS TGLF records from disk, maestro_beat, provenance, dry run, dedup on re-run")
+
+
+def test_renamed_copies_skipped(tmp):
+    run = _fake_maestro(tmp / 'renamed').resolve()
+    shutil.copytree(run / 'Beats' / 'Beat_2', run / 'Beats' / 'Beat_2old')
+    sr = run / 'Beats' / 'Beat_2' / 'run_portals' / 'Initialization' / 'initialization_simple_relax'
+    shutil.copytree(sr / 'portals_sr_ev_0', sr / 'portals_sr_ev_0bak')
+
+    h = R.harvester(run)
+    assert [b.name for b in h._beats()] == ['Beat_2'], "Beat_2old skipped"
+    assert [f.parent.name for f in h.transport_folders(sr.parents[1])] == ['portals_sr_ev_0'], "portals_sr_ev_0bak skipped"
+    assert R.harvest_runs([run], tmp / 'renamed.nc', dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0}
+    print("PASS renamed Beat_<n>old / <evaluation>bak copies skipped instead of crashing the run")
 
 
 def test_eped_files_from_nc(tmp):
@@ -134,6 +147,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvester_test_'))
     try:
         test_tglf_records_and_dedup(tmp)
+        test_renamed_copies_skipped(tmp)
         test_eped_files_from_nc(tmp)
         test_new_string_column_after_many_rows(tmp)
         test_short_string_column_repaired(tmp)
