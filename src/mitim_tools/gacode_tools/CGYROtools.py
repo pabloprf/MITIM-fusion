@@ -78,6 +78,7 @@ def _shell_text(name):
 
 _WATCHDOG_BASH = _shell_text("cgyro_watchdog.sh")
 _PROBE_BASH = _shell_text("cgyro_probe.sh")
+_REQUEUE_TRIM_BASH = _shell_text("cgyro_requeue_trim.sh")
 
 
 class Watchdog:
@@ -271,11 +272,15 @@ class CgyroLaunchBody:
         the marker and not out.cgyro.info, whose EXIT line is appended at the END of the run, so that
         comparison would delete every legitimately fresh restart. No-op when either file is absent.
         The if-block keeps the slurm_array additional_command's trailing newline from breaking chaining.
+
+        After the markers, templates/cgyro_requeue_trim.sh trims MAX_TIME when SLURM requeues the same
+        job (CGYRO would otherwise add the full MAX_TIME on top of the checkpoint it resumes from).
         '''
         restart_path = f"{self.p}/{self.folder}/bin.cgyro.restart"
         marker_path = f"{self.p}/{self.folder}/.mitim_run_started"
         marker_cmd = (f'touch "{marker_path}"; _t0=$(sed -n 2p "{self.p}/{self.folder}/out.cgyro.tag" 2>/dev/null '
-                      f'| awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{self.p}/{self.folder}/.mitim_t0"')
+                      f'| awk \'{{print $1+0}}\'); echo "${{_t0:-0}}" > "{self.p}/{self.folder}/.mitim_t0"\n'
+                      + _ShellTemplate(_REQUEUE_TRIM_BASH).substitute(run_dir=f"{self.p}/{self.folder}").rstrip("\n"))
         cleanup_cmd = (
             f'if [ -f "{restart_path}" ] && [ -f "{marker_path}" ] && '
             f'[ ! "{restart_path}" -nt "{marker_path}" ]; then '

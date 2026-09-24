@@ -123,12 +123,15 @@ MODES = ((None, None),
 
 def test_launch_bodies_are_byte_identical():
     '''Every launch shape x watchdog mode produces exactly the bash of the reference commit, plus the
-    one intended addition since: the exit verdict right after the launch (CgyroLaunchBody.exit_verdict).'''
+    intended additions since: the requeue trim after the markers (templates/cgyro_requeue_trim.sh) and the
+    exit verdict right after the launch (CgyroLaunchBody.exit_verdict).'''
     old = reference_module()
     if old is None:
         print(f"SKIP: {REFERENCE_COMMIT} not available in this repo")
         return
     verdict = CGYROtools.CgyroLaunchBody(FOLDER, EXEC).exit_verdict()
+    trim = CGYROtools._ShellTemplate(CGYROtools._REQUEUE_TRIM_BASH).substitute(run_dir=f"{EXEC}/{FOLDER}").rstrip("\n")
+    t0_line = f'> "{EXEC}/{FOLDER}/.mitim_t0"\n'
     n = 0
     for shape, hosts in SHAPES:
         for mode, load_balance in MODES:
@@ -136,10 +139,12 @@ def test_launch_bodies_are_byte_identical():
             old_body = build_body(old, shape, hosts, mode, load_balance, additional_command="&& echo done")
             assert old_body.count("\n_mitim_rc=$?\n") == 1, f"{shape}/{mode}: reference body lost its _mitim_rc line"
             old_body = old_body.replace("\n_mitim_rc=$?\n", f"\n_mitim_rc=$?\n{verdict}\n")
+            assert old_body.count(t0_line) == 1, f"{shape}/{mode}: reference body lost its .mitim_t0 line"
+            old_body = old_body.replace(t0_line, t0_line + trim + "\n")
             assert new_body == old_body, (
                 f"{shape}/{mode}:\n--- reference ---\n{old_body}\n--- now ---\n{new_body}")
             n += 1
-    print(f"PASS: {n} launch bodies (shape x watchdog mode) byte-identical to {REFERENCE_COMMIT} + exit verdict")
+    print(f"PASS: {n} launch bodies (shape x watchdog mode) byte-identical to {REFERENCE_COMMIT} + requeue trim + exit verdict")
 
 
 def test_watchdog_modes_render_their_switches():

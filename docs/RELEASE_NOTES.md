@@ -262,6 +262,8 @@ DESCRIPTION
     pending until the driver's wall time. With `load_balance: extra_points`,
     a relaunch that re-runs only the unfinished radii now gives the nodes it leaves idle extras built from
     the radii that already finished (before, only nodes freed during the job got one).
+    A radius that SLURM requeues (preemption) now runs only the time it had left, rounded up to whole
+    restart periods; before, CGYRO resumed from its checkpoint and ran the full `MAX_TIME` again.
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
