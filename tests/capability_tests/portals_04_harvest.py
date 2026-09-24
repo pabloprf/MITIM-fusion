@@ -10,13 +10,13 @@ training, physics studies).
 
 Key teaching points:
     1. Opt in with the `harvest:` block of the PORTALS namelist (`enabled: true`). The central
-       file is `file:`, else config_user.json `preferences.harvest_file`, else
-       ~/mitim_harvest/mitim_harvest.nc. Inside MAESTRO, the same block lives under
+       file is `file:`, else config_user.json `preferences.harvest_file`; with neither, the run
+       is NOT harvested (warning at launch). Inside MAESTRO, the same block lives under
        `maestro.harvest` and MAESTRO pushes once at the end for all its beats (+ full EPED).
     2. During the run, records are STAGED as JSON-lines under Outputs/harvest/ (one file per
        code and writing process, <code>.<host>-<pid>.jsonl) and pushed to the central file when the run finishes (under an NFS-safe lock, so
        many runs can share the file). A run that died can be pushed later with
-       `mitim_harvest <run folder>`.
+       `mitim_harvester <run folder>`.
     3. The central file is inspected with `HARVESTtools.harvest_database` (load / summary /
        interpret / plotDatabase) or from the terminal with `mitim_plot_harvest <file>`.
 """
@@ -35,7 +35,7 @@ cold_start = True
 inputgacode = __mitimroot__ / "tests" / "data" / "input.gacode"
 folderWork = __mitimroot__ / "tests" / "scratch" / "capability_portals_harvest"
 
-# The central database of this example (NOT the user's real one, which the template default points to)
+# The central database of this example (NOT the user's real one, which config_user.json preferences.harvest_file may set)
 harvest_file = __mitimroot__ / "tests" / "scratch" / "capability_harvest.nc"
 
 if cold_start and folderWork.exists():
@@ -49,7 +49,7 @@ if cold_start and harvest_file.exists():
 
 portals_fun = PORTALSmain.portals(folderWork)
 
-# The ONLY harvest-specific lines: enable it and (optionally) choose the central file
+# The ONLY harvest-specific lines: enable it and choose the central file (required unless config_user.json sets one)
 portals_fun.portals_parameters["harvest"]["enabled"] = True
 portals_fun.portals_parameters["harvest"]["file"] = str(harvest_file)
 
@@ -135,6 +135,6 @@ ax.set_title("Every TGLF run harvested: Qi vs a/LTi")
 fn.show()
 
 # Manual push of a run whose push did not happen (killed run, or a MAESTRO beat): from the terminal
-#   mitim_harvest <run folder> [--file <central file>]
+#   mitim_harvester <run folder> [--file <central file>]
 # which is what this does:
 print("\nManual re-push (nothing left to push, as expected):", db.push(HARVESTtools.staging_folders_of(folderWork)))

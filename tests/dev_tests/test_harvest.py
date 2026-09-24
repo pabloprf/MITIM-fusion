@@ -94,6 +94,26 @@ def test_options_and_run_meta(tmp):
     assert o4['run_meta']['run'] == 'abc' and o4['push'] is False and o4['scan_trick_members'] is False
     print("PASS options_from_namelist / run_meta.json")
 
+def test_no_default_file(tmp):
+    from mitim_tools.misc_tools import CONFIGread
+    configured = CONFIGread.read_harvest_file
+    CONFIGread.read_harvest_file = lambda: None   # as a config_user.json without preferences.harvest_file
+    try:
+        assert H.checked_block({'enabled': True})['enabled'] is False, "no namelist file, no config file: harvest off"
+        assert H.checked_block({'enabled': True, 'file': str(tmp / 'x.nc')})['enabled'] is True
+        assert H.checked_block({'enabled': True, 'push': False})['enabled'] is True, "MAESTRO beats: the driver pushes"
+        try:
+            H.harvest_database(None)
+            raise AssertionError("harvest_database without any file must raise")
+        except ValueError:
+            pass
+        CONFIGread.read_harvest_file = lambda: str(tmp / 'from_config.nc')
+        assert H.checked_block({'enabled': True})['enabled'] is True
+        assert H.harvest_database(None).file.name == 'from_config.nc'
+    finally:
+        CONFIGread.read_harvest_file = configured
+    print("PASS no default harvest file: namelist -> config -> harvest off with a warning")
+
 
 def test_recorder_tglf_layout_and_dedup(tmp):
     folder = tmp / 'p1' / 'Outputs' / 'harvest'
@@ -731,6 +751,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix='mitim_harvest_test_'))
     try:
         test_options_and_run_meta(tmp)
+        test_no_default_file(tmp)
         test_recorder_tglf_layout_and_dedup(tmp)
         test_shared_staging_folder(tmp)
         test_cgyro_gx_eped_interfaces(tmp)

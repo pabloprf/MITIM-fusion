@@ -12,13 +12,13 @@ per-user netCDF-4 database. See portals_04_harvest.py for the standalone-PORTALS
 the record layout.
 
 Key teaching points:
-    1. One switch for the whole chain: `maestro.harvest.enabled: true` (+ optional `file`,
+    1. One switch for the whole chain: `maestro.harvest.enabled: true` (+ `file`, required unless config_user.json sets one,
        `scan_trick_members`). MAESTRO forwards it to each PORTALS beat with its own run id, and
        the EPED beat records itself; nothing else changes in the beat configs.
     2. Records of every beat (PORTALS and EPED alike) are staged as the run goes in ONE folder,
        <run>/Outputs/harvest/, compressed on the fly, each tagged with its `maestro_beat`; the
        folder sits outside Beats/ so it survives every prune_level. MAESTRO pushes at finalize;
-       a chain that died can be pushed later with `mitim_harvest <folder>`.
+       a chain that died can be pushed later with `mitim_harvester <folder>`.
     3. Only FULL EPED evaluations are harvested (EPED-NN is a surrogate itself, and surrogate
        outputs must never enter a training set). Full EPED runs on the machine configured for
        `eped` in config_user.json (TGLF/NEO of the PORTALS beats run wherever `tglf`/`neo`

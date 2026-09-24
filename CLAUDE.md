@@ -446,16 +446,18 @@ effective sample count and autocorrelation time (`<flux>_ncorr`, `<flux>_icor`).
 `Outputs/harvest/<code>.<host>-<pid>.jsonl` (one file per writer process; legacy `<code>.jsonl` still read) with rolling gzip compression (a run never holds
 more than a few MB) and appended at the end of the outermost driver into a
 per-user netCDF-4 file (one group per code) under an NFS-safe mkdir lock.
-Pushed archives are kept, so `mitim_harvest --rebuild` can regenerate the file.
+**File: namelist `harvest.file`, else config_user.json `preferences.harvest_file`; there is NO default, so with neither
+set the run is not harvested (warning at launch).**
+Pushed archives are kept, so `mitim_harvester --rebuild` can regenerate the file.
 Implementation: `mitim_tools/harvest_tools/HARVESTtools.py` (`harvest_recorder`
 attached to simulation objects by `power_transport._harvest_attach`; the
 per-code extraction is `harvest_records` / `harvest_outputs` on the
 simulation/output classes; `harvest_database` loads, interprets, plots and
 pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO records hold only pygacode
 `params1D` and are refused by `harvest_database.input_file`), derived norms as `out_derived_*`.
-CLIs: `mitim_harvest <run folder>` (push a dead run, `--rebuild`),
+CLIs: **`mitim_harvester <run folder> [--file F]`** (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
-**`mitim_harvester <run(s) or parent folder> <file.nc> [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the
+**`mitim_harvester --from-disk <run(s) or parent folder> [--file F] [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the
 TGLF/NEO/full-EPED records of MAESTRO/PORTALS runs made WITHOUT harvest (only what pruning left: PORTALS run folders, EPED
 `output_run1.nc`), with MITIM's own readers/recorder, a stable per-run id, and skips every (run, hash) already in the file.**
 

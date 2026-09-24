@@ -750,10 +750,10 @@ harvest:
   # If true, every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of this run (base point AND each member of the
   # TGLF std scan trick, one record per radius: full input file + scalar fluxes + code version) is staged
   # under Outputs/harvest/ and appended to the central per-user netCDF file when the run ends
-  # (`mitim_harvest <folder>` pushes a run that died; `mitim_plot_harvest` inspects the file)
+  # (`mitim_harvester <folder>` pushes a run that died; `mitim_plot_harvest` inspects the file)
   enabled: false
-  # Central netCDF-4 file, one group per code. null -> config_user.json preferences.harvest_file,
-  # else ~/mitim_harvest/mitim_harvest.nc
+  # Central netCDF-4 file, one group per code. null -> config_user.json preferences.harvest_file;
+  # if neither is set, the run is NOT harvested (warning at launch)
   file: null
   # Also record the perturbed members of the TGLF std scan trick (~16 extra runs per radius and
   # evaluation, i.e. most of the volume); false keeps only the base point of each evaluation

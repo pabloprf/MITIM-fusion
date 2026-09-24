@@ -18,7 +18,7 @@ Two tiers:
        chains several runs (MAESTRO) hands its own folder to each of them (`staging_folder`), so the
        whole chain stages in ONE place and each record carries its `maestro_beat`. Append-only and
        crash-safe, so a dead or preempted run keeps its records and can be pushed by hand
-       (`mitim_harvest <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
+       (`mitim_harvester <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
        is compressed as one more gzip member of `<stem>.jsonl.gz` (~20-30x smaller, since only a
        handful of inputs change between records), so a run holds a few MB at most. Pushed archives
        are renamed `<stem>.jsonl.pushed-<ts>.gz` and kept, so the central file can be rebuilt.
@@ -55,7 +55,6 @@ from mitim_tools import __version__ as mitim_version, __mitimroot__
 from mitim_tools.misc_tools import IOtools, CONFIGread, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-DEFAULT_FILE = "~/mitim_harvest/mitim_harvest.nc"
 SCHEMA_VERSION = 5   # 4: optional per-record `maestro_beat` (chained runs share one staging folder); 5: CGYRO in_ = input.cgyro keys (+ out_derived_*, run history), input type maps, `<col>__str` siblings
 ROLL_BYTES = 256 * 1024   # plain-JSON tail size that triggers compression into <code>.jsonl.gz (~60 TGLF records)
 CODES = ('tglf', 'neo', 'cgyro', 'gx', 'qualikiz', 'eped')
@@ -74,12 +73,26 @@ RUN_CODE_KEYS = ['machine', 'modules', 'code_version', 'in_process', 'averaging'
 # Options / central file resolution
 # ------------------------------------------------------------------------------------------------
 
+def central_file(file=None):
+    '''namelist `file` -> config_user.json preferences.harvest_file; None when neither is set (no default on purpose)'''
+    return file or CONFIGread.read_harvest_file()
+
 def resolve_central_file(file=None):
-    '''namelist `file` -> config_user.json preferences.harvest_file -> DEFAULT_FILE'''
-    file = file or CONFIGread.read_harvest_file() or DEFAULT_FILE
+    file = central_file(file)
+    if file is None:
+        raise ValueError("no harvest file: set `file` in the harvest namelist block (or --file) or preferences.harvest_file in config_user.json")
     file = IOtools.expandPath(file)
     file.parent.mkdir(parents=True, exist_ok=True)
     return file
+
+def checked_block(block):
+    '''A driver's `harvest:` block, switched off with a warning when enabled but no central file is set anywhere'''
+    block = dict(block or {})
+    if block.get('enabled', False) and block.get('push', True) and central_file(block.get('file')) is None:
+        print("\t- harvest.enabled is true but no file is set (harvest.file in the namelist or preferences.harvest_file "
+              "in config_user.json): this run will NOT be harvested", typeMsg='w')
+        block['enabled'] = False
+    return block
 
 def options_from_namelist(block, staging_folder, run_meta_extra=None):
     '''
@@ -2000,13 +2013,27 @@ def staging_folders_of(run_folder):
             folders += [beat / 'beat_results' / 'Outputs' / 'harvest', beat / 'run_portals' / 'Outputs' / 'harvest']
     return [f for f in folders if f.is_dir()]
 
-def main_push():
-    parser = argparse.ArgumentParser(description="Push the staged evaluations of PORTALS/MAESTRO runs into the central harvest file")
-    parser.add_argument("folders", type=str, nargs="+", help="run folders (PORTALS or MAESTRO) or harvest staging folders")
-    parser.add_argument("--file", type=str, default=None, help="central netCDF file (default: config preferences.harvest_file or ~/mitim_harvest/mitim_harvest.nc)")
-    parser.add_argument("--rebuild", action="store_true", help="move the central file aside and re-push everything (pushed or not) found under the folders")
-    parser.add_argument("--dry-run", action="store_true", help="only list what would be pushed")
+def main_harvester():
+    parser = argparse.ArgumentParser(description="Append the evaluations of PORTALS/MAESTRO runs to the central harvest file (deduplicated). "
+                                                 "Default: the records a harvest-enabled run staged in Outputs/harvest (e.g. a run that died "
+                                                 "before its end-of-run push). --from-disk: records rebuilt from the files of runs made WITHOUT harvest")
+    parser.add_argument("folders", type=str, nargs="+", help="run folders (PORTALS or MAESTRO) or harvest staging folders; with --from-disk, also parent folders of runs")
+    parser.add_argument("--file", type=str, default=None, help="central netCDF file (default: config preferences.harvest_file; required if that is not set)")
+    parser.add_argument("--from-disk", action="store_true", help="rebuild the TGLF/NEO/full-EPED records of runs made WITHOUT harvest from what is left on disk")
+    parser.add_argument("--rebuild", action="store_true", help="move the central file aside and re-push everything staged (pushed or not) under the folders")
+    parser.add_argument("--dry-run", action="store_true", help="only report what would be pushed")
+    parser.add_argument("--stage", type=str, default=None, help="--from-disk: keep the staging folders under this directory (default: temporary, removed)")
+    parser.add_argument("--no-scan-members", action="store_true", help="--from-disk: skip the TGLF scan-trick members (turb_drives_*), keep base points only")
+    parser.add_argument("--batch", type=int, default=25, help="--from-disk: runs per push (bounds memory on large scans)")
     args = parser.parse_args()
+
+    if args.from_disk:
+        if args.rebuild:
+            parser.error("--rebuild re-pushes staged records; it does not combine with --from-disk")
+        from mitim_tools.harvest_tools import HARVESTrecover
+        HARVESTrecover.harvest_runs(args.folders, args.file, stage=args.stage, dry_run=args.dry_run,
+                                    scan_trick_members=not args.no_scan_members, batch=args.batch)
+        return
 
     db = harvest_database(args.file)
     if args.rebuild:
@@ -2059,10 +2086,10 @@ def main_plot():
 
 
 if __name__ == "__main__":
-    # `python -m mitim_tools.harvest_tools.HARVESTtools push|plot ...` when the console scripts are not installed
+    # `python -m mitim_tools.harvest_tools.HARVESTtools harvester|plot ...` when the console scripts are not installed
     import sys
-    if len(sys.argv) < 2 or sys.argv[1] not in ("push", "plot"):
-        print("usage: python -m mitim_tools.harvest_tools.HARVESTtools push <folders...> [--file F] | plot [file|folder] [--code C] [--x X --y Y] [--noplot]")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("harvester", "plot"):
+        print("usage: python -m mitim_tools.harvest_tools.HARVESTtools harvester <folders...> [--file F] [--from-disk] [--rebuild] [--dry-run] | plot [file|folder] [--code C] [--x X --y Y] [--noplot]")
         sys.exit(2)
     cmd = sys.argv.pop(1)
-    main_push() if cmd == "push" else main_plot()
+    main_harvester() if cmd == "harvester" else main_plot()

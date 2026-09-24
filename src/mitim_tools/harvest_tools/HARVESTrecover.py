@@ -21,7 +21,7 @@ harvest_database.push. Dedup: a run keeps a stable id (the live one when the run
 else a hash of its folder path) and every (run, hash) already in the target file is skipped, so
 running the harvester twice on the same run appends nothing.
 
-    mitim_harvester <run or parent folder> [...] <harvest_file> [--dry-run] [--stage DIR]
+    mitim_harvester --from-disk <run or parent folder> [...] [--file F] [--dry-run] [--stage DIR]   (HARVESTtools.main_harvester)
 '''
 
 import re
@@ -30,7 +30,6 @@ import json
 import yaml
 import hashlib
 import datetime
-import argparse
 import tempfile
 import numpy as np
 from pathlib import Path
@@ -340,20 +339,3 @@ def harvest_runs(paths, file, stage=None, dry_run=False, scan_trick_members=True
         IOtools.shutil_rmtree(root)
     print(f"- mitim_harvester: {'would append' if dry_run else 'appended'} " + ", ".join(f"{c} {n}" for c, n in totals.items()), typeMsg='i')
     return totals
-
-def main():
-    parser = argparse.ArgumentParser(description="Rebuild, from the files on disk, the harvest records (TGLF, NEO, full EPED) of MAESTRO/PORTALS "
-                                                 "runs that did not enable harvesting, and append them to a harvest file (deduplicated)")
-    parser.add_argument("paths", type=str, nargs="+", help="run folder(s) or parent folder(s) of runs, then the harvest file (.nc)")
-    parser.add_argument("--dry-run", action="store_true", help="only report what would be recorded (nothing is pushed)")
-    parser.add_argument("--stage", type=str, default=None, help="keep the staging folders under this directory (default: temporary, removed)")
-    parser.add_argument("--no-scan-members", action="store_true", help="skip the TGLF scan-trick members (turb_drives_*), keep base points only")
-    parser.add_argument("--batch", type=int, default=25, help="runs per push (bounds memory on large scans)")
-    args = parser.parse_args()
-    if len(args.paths) < 2:
-        parser.error("give at least one run folder and the harvest file")
-    harvest_runs(args.paths[:-1], args.paths[-1], stage=args.stage, dry_run=args.dry_run,
-                 scan_trick_members=not args.no_scan_members, batch=args.batch)
-
-if __name__ == "__main__":
-    main()

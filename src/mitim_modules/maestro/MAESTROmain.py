@@ -153,8 +153,8 @@ class maestro:
 
         # Harvest options (maestro.harvest): plain dict; EPED and PORTALS beats all stage into Outputs/harvest/
         # with this run_id (each record carries its maestro_beat), and finalize() pushes everything once
-        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist
-        self.harvest = options_from_namelist(self.maestro_namelist.get('maestro', {}).get('harvest', {}),
+        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist, checked_block
+        self.harvest = options_from_namelist(checked_block(self.maestro_namelist.get('maestro', {}).get('harvest', {})),
                                              staging_folder=self.folder_output / 'harvest',
                                              run_meta_extra={'run_folder': str(self.folder)})
 
@@ -673,7 +673,7 @@ class maestro:
                 try:
                     HARVESTtools.harvest_database(self.harvest.get('file')).push([f for f in folders if f.is_dir()])
                 except Exception as e:
-                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvest {self.folder}`', typeMsg='w')
+                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvester {self.folder}`', typeMsg='w')
 
             for beat_obj in self.beats.values():
                 beat_obj.optional_postprocessing()

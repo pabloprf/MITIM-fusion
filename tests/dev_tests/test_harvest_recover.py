@@ -84,6 +84,22 @@ def test_renamed_copies_skipped(tmp):
     print("PASS renamed Beat_<n>old / <evaluation>bak copies skipped instead of crashing the run")
 
 
+def test_cli(tmp):
+    run = _fake_maestro(tmp / 'cli').resolve()
+    file = tmp / 'cli.nc'
+    argv = sys.argv
+    try:
+        sys.argv = ['mitim_harvester', '--from-disk', str(run), '--file', str(file), '--dry-run']
+        H.main_harvester()
+        assert not file.exists(), "--from-disk --dry-run pushes nothing"
+        sys.argv = ['mitim_harvester', '--from-disk', str(run), '--file', str(file)]
+        H.main_harvester()
+        assert len(H.harvest_database(file).load('tglf')) == 2
+    finally:
+        sys.argv = argv
+    print("PASS mitim_harvester --from-disk (dry run, then push)")
+
+
 def test_eped_files_from_nc(tmp):
     import f90nml
     import xarray as xr
@@ -148,6 +164,7 @@ def main():
     try:
         test_tglf_records_and_dedup(tmp)
         test_renamed_copies_skipped(tmp)
+        test_cli(tmp)
         test_eped_files_from_nc(tmp)
         test_new_string_column_after_many_rows(tmp)
         test_short_string_column_repaired(tmp)

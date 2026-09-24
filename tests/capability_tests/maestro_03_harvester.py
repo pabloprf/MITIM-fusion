@@ -2,10 +2,10 @@
 CAPABILITY: HARVESTER (rebuild the harvest records of MAESTRO runs that did NOT enable harvesting)
 ---------------------------------------------------------------------------------------------------
 maestro_02_harvest.py shows harvesting switched on BEFORE a run. Most existing MAESTRO runs never
-had it. `mitim_harvester` rebuilds, from the files those runs left on disk, the same records a live
+had it. `mitim_harvester --from-disk` rebuilds, from the files those runs left on disk, the same records a live
 run would have staged, and appends them to a harvest file:
 
-    mitim_harvester <run folder(s) or parent folder of runs> <harvest_file.nc> [--dry-run] [--stage DIR]
+    mitim_harvester --from-disk <run folder(s) or parent folder of runs> [--file F] [--dry-run] [--stage DIR]
 
 Key teaching points:
     1. What it reads. TGLF and NEO: every run folder of every PORTALS evaluation still on disk
@@ -44,7 +44,7 @@ if recovered_file.exists():
     recovered_file.unlink()
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 1. What is on disk, and what would be recorded (same as `mitim_harvester <folder> <file> --dry-run`)
+# 1. What is on disk, and what would be recorded (same as `mitim_harvester --from-disk <folder> --file <file> --dry-run`)
 # ---------------------------------------------------------------------------------------------------------------------
 
 h = HARVESTrecover.harvester(folder, staging_folder=None)
@@ -59,7 +59,7 @@ for beat, eped_folder in h.eped_folders():
 HARVESTrecover.harvest_runs([folder], recovered_file, dry_run=True)
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 2. Harvest for real (same as `mitim_harvester <folder> <file>`), then once more to see the dedup
+# 2. Harvest for real (same as `mitim_harvester --from-disk <folder> --file <file>`), then once more to see the dedup
 # ---------------------------------------------------------------------------------------------------------------------
 
 appended = HARVESTrecover.harvest_runs([folder], recovered_file)

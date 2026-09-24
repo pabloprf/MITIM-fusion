@@ -46,14 +46,14 @@ DESCRIPTION
     version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
     compression and pushed once at the end (MAESTRO: all beats share `Outputs/harvest`, records tagged
     with `maestro_beat`, one push at finalize) into a netCDF-4 file
-    (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
-    `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
+    (`harvest.file` or `preferences.harvest_file`; with neither set the run is not harvested) under an NFS-safe lock.
+    `mitim_harvester <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
     `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
     `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO record can be written back as its exact
     input file (`harvest_database.input_file` / `write_input_file`, types from a per-run map); CGYRO
     records also carry restart provenance (warm start, source iteration, inherited time), whether
     `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
-    `mitim_harvester <run(s) or parent folder> <file.nc> [--dry-run]` backfills runs made WITHOUT harvest:
+    `mitim_harvester --from-disk <run(s) or parent folder> [--dry-run]` backfills runs made WITHOUT harvest:
     it rebuilds their TGLF/NEO/full-EPED records from whatever is left on disk (never EPED-NN), marks them
     `recovered_by`, and skips records already in the file (capability test `maestro_03_harvester.py`).
 
