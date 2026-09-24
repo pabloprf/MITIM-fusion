@@ -1789,7 +1789,7 @@ class harvest_database:
     _RUN_CONTROL = {
         'cgyro': r'^(MAX_TIME|PRINT_STEP|RESTART_STEP|TOROIDALS_PER_PROC|MOMENT_PRINT_FLAG|FIELD_PRINT_FLAG|AMP0?|FREQ_TOL|SILENT_FLAG)$',
         'neo':   r'^SILENT_FLAG$',
-        'tglf':  r'^(WRITE_WAVEFUNCTION_FLAG|NN_MAX_ERROR)$',
+        'tglf':  r'^(WRITE_WAVEFUNCTION_FLAG|NN_MAX_ERROR|NMODES)$',   # NMODES = NS+2 (MITIM), follows the species
         'gx':    r'^(t_max|nstep|nwrite|nsave|debug|save_for_restart|restart|append_on_restart|omega|fluxes|fields|moments|'
                  r'init_amp|init_field|gaussian_init|ikpar_init)$',
     }
@@ -1847,63 +1847,140 @@ class harvest_database:
         m.attrs['reference'] = ref
         return m
 
+    def settings_names(self, code, df, varying, max_deviations=3):
+        '''
+        Short name per record for its settings combination: the closest preset of templates/input.<code>.models.yaml
+        (over the input.<code>.controls defaults) plus the keys that deviate from it, e.g. 'SAT3 + USE_BPER=1'.
+        When no preset is within `max_deviations` keys (or the code has no presets): 'A' for the most common
+        combination and 'A + KEY=value' for the others.
+        '''
+        cols = [c for c in varying]
+        combos = df[cols].drop_duplicates()
+        fmt = lambda v: 'unset' if pd.isna(v) else (f'{v:g}' if isinstance(v, (int, float, np.number)) else str(v))
+        norm = lambda v: None if v is None or (isinstance(v, float) and np.isnan(v)) else (
+            str(v).strip().upper() if isinstance(v, str) else float(v))
+        presets = self._presets(code)
+
+        def deviations(row, full):
+            return [(c, row[c]) for c in cols if norm(full.get(c[3:])) != norm(row[c])]
+
+        counts = df.groupby(cols, dropna=False).size().sort_values(ascending=False)
+        ref = dict(zip(cols, counts.index[0] if len(cols) > 1 else [counts.index[0]]))
+        named = []
+        for _, row in combos.iterrows():
+            best = min(((name, deviations(row, full)) for name, full in presets.items()), key=lambda t: len(t[1]), default=None)
+            if best is not None and len(best[1]) <= max_deviations:
+                name, dev = best
+            else:
+                name, dev = 'A', deviations(row, {c[3:]: v for c, v in ref.items()})
+            named.append(name + (' + ' + ', '.join(f'{c[3:]}={fmt(v)}' for c, v in dev) if dev else ''))
+        combos = combos.assign(settings=named)
+        out = df[cols].merge(combos, on=cols, how='left')['settings']   # NaN keys match NaN; left order kept
+        return pd.Series(out.to_numpy(), index=df.index, name='settings')
+
+    def _presets(self, code):
+        '''{preset: full settings (controls defaults + preset)} from templates/input.<code>.models.yaml; {} when the code has none'''
+        cache = self.__dict__.setdefault('_presets_cache', {})
+        if code not in cache:
+            from mitim_tools import __mitimroot__ as root
+            from mitim_tools.gacode_tools.utils import GACODEdefaults
+            controls, models = root / 'templates' / f'input.{code}.controls', root / 'templates' / f'input.{code}.models.yaml'
+            out = {}
+            if controls.exists() and models.exists():
+                defaults = IOtools.generateMITIMNamelist(controls, caseInsensitive=False)
+                for name in IOtools.read_mitim_yaml(models) or {}:
+                    entry = GACODEdefaults.resolve_preset(name, controls_file=controls.name) or {}
+                    out[name] = {**defaults, **(entry.get('controls') or {})}
+            cache[code] = out
+        return cache[code]
+
     def plotSettings(self, code, fn=None, run=None):
         '''
-        Effect of the code settings that vary in the database (e.g. TGLF SAT_RULE, CGYRO N_TOROIDAL/BOX_SIZE):
-        one tab with the records per settings combination and the flux-vs-drive trends per radius colored by
-        settings (differences there mix settings with physics); when some physics points were run with more
-        than one setting, a second tab with those matched pairs: flux with each setting vs flux with the most
-        common one (the clean comparison).
+        Effect of the code settings that vary in the database (e.g. TGLF SAT_RULE, CGYRO N_TOROIDAL/BOX_SIZE), each
+        combination named by its closest preset (settings_names). Tab 1: records per combination (bars, the color key)
+        and the flux-vs-drive trends per radius colored by combination (differences there mix settings with physics).
+        Tab 2, when some physics points were run with more than one combination: one row per combination against
+        the most common one, flux vs flux on the same plasma points (the clean comparison).
         '''
         import matplotlib.pyplot as plt
-        df, varying, labels = self.settings(code, run=run)
+        df, varying, _ = self.settings(code, run=run)
         if not varying:
             print(f"\t- harvest: {code} settings are the same in every record; no settings tab", typeMsg='i')
             return None
-        # settings combinations named A, B, ... by number of records; the left panel spells them out
-        counts = labels.value_counts()
-        letter = {k: chr(65 + i) if i < 26 else f'#{i}' for i, k in enumerate(counts.index)}
-        letters = labels.map(letter).rename('settings')
-        colors = self._color_by(letters.to_frame('c'), 'c')
+        names = self.settings_names(code, df, varying)
+        colors = self._color_by(names.to_frame('c'), 'c')   # the same map plotFluxesByRadius builds from `names`
+        counts = names.value_counts()
+        runs = df.groupby(names)['run'].nunique()
+
         fig = fn.add_figure(label=f'{code.upper()} settings') if fn is not None else plt.figure(figsize=(18, 11))
-        sub = fig.subfigures(1, 2, width_ratios=[1, 4])
+        sub = fig.subfigures(1, 2, width_ratios=[1.4, 4])
         ax = sub[0].subplots()
-        ax.axis('off')
-        ypos = 0.98
-        ax.text(0.0, ypos, f'{code.upper()}: {len(varying)} settings vary', fontsize=9, weight='bold', va='top', transform=ax.transAxes)
-        for k, n in counts.head(12).items():
-            ypos -= 0.035
-            ax.text(0.0, ypos, f'{letter[k]}: {n} records', fontsize=8, weight='bold', color=colors[letter[k]], va='top', transform=ax.transAxes)
-            for item in k.split(', '):
-                ypos -= 0.025
-                ax.text(0.06, ypos, item, fontsize=7, color=colors[letter[k]], va='top', transform=ax.transAxes)
-        self.plotFluxesByRadius(code, run=run, color_by=letters, fig=sub[1])
+        y = np.arange(len(counts))[::-1]
+        ax.barh(y, counts.to_numpy(), height=0.7, color=[colors[k] for k in counts.index], alpha=0.85)
+        ax.set_yticks(y, [k.replace(' + ', '\n+ ') for k in counts.index], fontsize=7)
+        ax.set_ylim(len(counts) - 0.5 - max(len(counts), 12), len(counts) - 0.5)   # bars keep their size when there are few
+        ax.set_xscale('log')
+        ax.set_xlim(counts.min() / 3, counts.max() * 20)   # room for the run counts
+        ax.set_xlabel('records')
+        for yi, (k, n) in zip(y, counts.items()):
+            ax.text(n, yi, f' {runs[k]} runs', va='center', fontsize=6, color='dimgray')
+        ax.set_title(f'{code.upper()}: {len(counts)} settings combinations\n(closest preset + deviations)', fontsize=9)
+        ax.grid(True, axis='x', alpha=0.3)
+        sub[0].subplots_adjust(left=0.45, right=0.88, top=0.95, bottom=0.06)
+        self.plotFluxesByRadius(code, run=run, color_by=names, fig=sub[1])
 
         pairs = self.match_settings(code, run=run)
         if len(pairs) == 0:
             groups, _ = self._radial_bins(self.radius(code, df))
-            per_radius = letters.groupby(groups).nunique().max() <= 1
-            note = ('settings change only between radii\n(one combination per radial group)' if per_radius else
-                    'no physics point was run with two settings:\nthe trends mix settings and physics')
-            ax.text(0.0, 0.01, note, transform=ax.transAxes, fontsize=8, va='bottom', color='darkred')
+            per_radius = names.groupby(groups).nunique().max() <= 1
+            note = ('settings change only between radii (one combination per radial group)' if per_radius else
+                    'no physics point was run with two settings: the trends mix settings and physics')
+            ax.set_xlabel(f'records\n{note}', color='darkred')
             return fig
-        pairs['settings'] = pairs['settings'].map(letter)
-        pairs.attrs['reference'] = letter[pairs.attrs['reference']]
-        fig2 = fn.add_figure(label=f'{code.upper()} settings parity') if fn is not None else plt.figure(figsize=(15, 5))
-        axs = fig2.subplots(1, 3)
-        for ax, (name, _) in zip(axs, self._FLUX_PAIRS):
-            if name not in pairs:
-                continue
-            for k, g in pairs.groupby('settings'):
-                ax.errorbar(g[f'{name}_ref'], g[name], xerr=g.get(f'{name}_std_ref'), yerr=g.get(f'{name}_std'),
-                            fmt='o', ms=3, color=colors[k], alpha=0.7, elinewidth=0.6, label=k)
-            lim = np.nanmax(np.abs(pairs[[f'{name}_ref', name]].to_numpy(dtype=float))) * 1.1
-            ax.plot([-lim, lim], [-lim, lim], '--', color='gray', lw=1)
-            ax.set_xlabel(f'{name} with settings {pairs.attrs["reference"]} (see {code.upper()} settings tab)'); ax.set_ylabel(f'{name} with the other settings')
-            ax.set_title(f'{name}: {len(pairs)} matched physics points', fontsize=9)
-            ax.grid(True, alpha=0.3)
-        axs[0].legend(fontsize=6, loc='upper left')
-        GRAPHICStools.adjust_figure_layout(fig2)
+        self._plotSettingsParity(code, pairs, df, names, fn=fn)
+        return fig
+
+    def _plotSettingsParity(self, code, pairs, df, names, fn=None, max_rows=4):
+        '''Rows: the combinations with most matched points; columns Qe, Qi, Ge: flux with that combination vs with the most common one'''
+        import matplotlib.pyplot as plt
+        label = dict(zip(self.settings(code, df=df)[2], names))   # full settings string -> short name
+        pairs = pairs.assign(name=pairs['settings'].map(label))
+        ref = label[pairs.attrs['reference']]
+        order = pairs['name'].value_counts()
+        shown = order.index[:max_rows]
+        fluxes = [f for f, _ in self._FLUX_PAIRS if f in pairs]
+        fig = fn.add_figure(label=f'{code.upper()} settings parity') if fn is not None else plt.figure(figsize=(15, 4 * len(shown)))
+        axs = np.atleast_2d(fig.subplots(len(shown), len(fluxes), squeeze=False))
+        norm = plt.Normalize(np.nanmin(pairs['roa']), np.nanmax(pairs['roa']))
+        for i, k in enumerate(shown):
+            g = pairs[pairs['name'] == k]
+            for j, f in enumerate(fluxes):
+                ax = axs[i, j]
+                x, yv = g[f'{f}_ref'].to_numpy(dtype=float), g[f].to_numpy(dtype=float)
+                sc = ax.scatter(x, yv, c=g['roa'], cmap='viridis', norm=norm, s=8, alpha=0.8)
+                if f == 'Ge':   # particle flux changes sign: linear, symmetric
+                    lim = np.nanmax(np.abs(np.r_[x, yv])) * 1.1 if len(x) else 1
+                    ax.plot([-lim, lim], [-lim, lim], '--', color='gray', lw=1)
+                    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+                    stat = ''
+                else:
+                    pos = (x > 0) & (yv > 0)
+                    lo, hi = (np.nanmin(np.r_[x[pos], yv[pos]]) / 1.5, np.nanmax(np.r_[x[pos], yv[pos]]) * 1.5) if pos.any() else (1e-3, 1)
+                    for fac, ls in ((1, '--'), (2, ':'), (0.5, ':')):
+                        ax.plot([lo, hi], [lo * fac, hi * fac], ls, color='gray', lw=1)
+                    ax.set_xscale('log'); ax.set_yscale('log'); ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+                    r = yv[pos] / x[pos]
+                    stat = f', ratio median {np.median(r):.2f} [{np.percentile(r, 25):.2f}-{np.percentile(r, 75):.2f}]' if pos.any() else ''
+                    if (~pos).any():
+                        stat += f', {int((~pos).sum())} non-positive not shown'
+                ax.set_title(f'{f}: {len(g)} points{stat}', fontsize=8)
+                ax.set_xlabel(f'{f} with {ref}', fontsize=8)
+                ax.set_ylabel(f'{f} with {k}'.replace(' + ', '\n+ '), fontsize=8)
+                ax.grid(True, alpha=0.3)
+        if len(order) > len(shown):
+            fig.text(0.01, 0.005, f"not shown: {', '.join(f'{k} ({n})' for k, n in order.iloc[len(shown):].items())}", fontsize=7, color='dimgray')
+        fig.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.08, wspace=0.35, hspace=0.45)
+        fig.colorbar(sc, cax=fig.add_axes([0.925, 0.1, 0.01, 0.8])).set_label('r/a')
         return fig
 
     # -------------------------------------------------------------------------- input coverage
@@ -2171,7 +2248,7 @@ def main_plot():
     parser = argparse.ArgumentParser(description="Inspect a harvest database, or peek at the staging of a (running) run without pushing it")
     parser.add_argument("path", type=str, nargs="?", default=None,
                         help="central netCDF file (default: the configured one), or a run folder / harvest staging folder to peek at")
-    parser.add_argument("--code", type=str, default=None, help="restrict to one code")
+    parser.add_argument("--code", type=str, nargs="+", default=None, help="restrict to these codes, e.g. --code neo or --code tglf cgyro")
     parser.add_argument("--x", type=str, default=None, help="with --y: single scatter instead of the notebook")
     parser.add_argument("--y", type=str, default=None)
     parser.add_argument("--noplot", action="store_true", help="only print the interpretation report")
@@ -2181,16 +2258,17 @@ def main_plot():
         db = harvest_database.from_staging([IOtools.expandPath(args.path)])
     else:
         db = harvest_database(args.path)
-    db.interpret(code=args.code)
+    for code in args.code or [None]:
+        db.interpret(code=code)
     if args.noplot:
         return
     if args.x and args.y:
         import matplotlib.pyplot as plt
-        db.plot(args.code or db.codes()[0], args.x, args.y)
+        db.plot((args.code or db.codes())[0], args.x, args.y)
         plt.show()
         return
 
-    fn = db.plotDatabase(codes=[args.code] if args.code else None)
+    fn = db.plotDatabase(codes=args.code)
     fn.show()
 
     # Interactive session, like the other mitim_plot_* commands: the database and one DataFrame per code are in scope
