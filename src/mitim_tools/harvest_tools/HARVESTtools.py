@@ -623,14 +623,27 @@ def _type_overrides(run_types, row_types):
         run_types.setdefault(k, t)
     return {k: t for k, t in row_types.items() if run_types[k] != t}
 
+# EPED record inputs that are MITIM settings, not eped.input keys (collect_eped)
+_EPED_MITIM_KEYS = ('toq_eq_choice', 'stability_rule', 'stability_threshold')
+
+def _typed_value(v, typ):
+    '''A stored value back as the Python type its input file held'''
+    if typ == 'bool':
+        return bool(v)
+    if typ == 'int' and float(v).is_integer():
+        return int(v)
+    if typ in ('int', 'float'):
+        return float(v)   # a non-integer never becomes an int
+    return str(v)
+
 def _format_input_value(v, typ):
     '''One value as MITIM's GACODE writers emit it (bools as True/False, ints as ints); floats as the
     shortest string that reads back to the same double, always with a '.' so buildDictFromInput keeps it a float'''
     if typ == 'bool':
         return "True" if bool(v) else "False"
-    if typ == 'int':
-        return str(int(round(float(v))))
-    if typ == 'float':
+    if typ == 'int' and float(v).is_integer():
+        return str(int(v))
+    if typ in ('int', 'float'):   # a non-integer never becomes an int
         s = repr(float(v))
         if '.' not in s:
             s = s.replace('e', '.0e') if 'e' in s else s + '.0'
@@ -708,7 +721,7 @@ class harvest_database:
         return df
 
     # -------------------------------------------------------------------------- input files
-    _INPUT_FILES = {'tglf': 'input.tglf', 'neo': 'input.neo', 'cgyro': 'input.cgyro'}
+    _INPUT_FILES = {'tglf': 'input.tglf', 'neo': 'input.neo', 'cgyro': 'input.cgyro', 'eped': 'eped.input'}
 
     def record(self, code, record):
         '''One record as a pandas Series with its run's provenance (incl. the `input_types` map), from its input hash or a row of load()'''
@@ -727,42 +740,133 @@ class harvest_database:
 
     def input_file(self, code, record):
         '''
-        Text of the input file (input.tglf / input.neo / input.cgyro) of one record, `record` = its input
-        hash or a row of load(). Keys in the order of the original file, types restored from the run's
-        `input_types` map (bools True/False as MITIM writes them, ints as ints, floats exact), missing
-        values (NaN / '' fills of keys this record did not have) dropped, `<KEY>__str` siblings used.
-        Records pushed before the type map existed come back with every number as a float.
+        Text of the input file (input.tglf / input.neo / input.cgyro / eped.input) of one record, `record` =
+        its input hash or a row of load(). Keys in the order of the original file, types restored from the
+        run's `input_types` map (bools True/False as MITIM writes them, ints as ints, floats exact), missing
+        values (NaN / '' fills of keys this record did not have) dropped, `<KEY>__str` siblings used. Runs
+        pushed before the per-run maps existed take the types the other runs of the same code recorded.
+        EPED: the eped.input namelist only; its eped.config is eped_config(record).
         '''
         if code not in self._INPUT_FILES:
             raise ValueError(f"harvest: input files can be written for {list(self._INPUT_FILES)}, not '{code}'")
+        items = self._typed_inputs(code, record)
+        if code == 'eped':
+            import io
+            import f90nml
+            vals = {k: _typed_value(v, t) for k, v, t in items if not k.startswith('cfg_') and k not in _EPED_MITIM_KEYS}
+            buf = io.StringIO()
+            f90nml.Namelist({'eped_input': vals}).write(buf)
+            return buf.getvalue()
+        return "\n".join(f"{k.ljust(23)} = {_format_input_value(v, t)}" for k, v, t in items) + "\n"
+
+    def eped_config(self, record):
+        '''Text of the eped.config lines a full-EPED record carries (`cfg_<KEY>` inputs: NMODES, WIDTHS, TEPED_BOUND and every overridden key)'''
+        cfg = {}
+        for k, v, t in self._typed_inputs('eped', record):
+            if not k.startswith('cfg_'):
+                continue
+            base, _, idx = k[4:].rpartition('_')
+            if base and idx.isdigit():
+                cfg.setdefault(base, {})[int(idx)] = v
+            else:
+                cfg.setdefault(k[4:], {})[0] = v
+        token = lambda v: v if isinstance(v, str) else repr(float(v))   # read back as floats (_eped_config_values)
+        return "".join(f"{key} = {' '.join(token(v) for _, v in sorted(vals.items()))}\n" for key, vals in cfg.items())
+
+    def _typed_inputs(self, code, record):
+        '''[(key, value, type)] of the inputs of one record, in the order of its original input file'''
         row = self.record(code, record)
         n_species = row.get('in_N_SPECIES', np.nan)
         if code == 'cgyro' and not (isinstance(n_species, (int, float, np.number)) and np.isfinite(n_species)):
             # schema < 5 CGYRO records hold pygacode params1D (lowercase), not input.cgyro: refuse instead of writing a bogus file
             raise ValueError("harvest: this CGYRO record predates schema 5 and does not contain its input.cgyro")
-        types = {}
-        for col in ('input_types', RECORD_TYPES):   # run map, then this record's deviations
-            if isinstance(row.get(col, ''), str) and row.get(col, ''):
-                types.update(json.loads(row[col]))
+        run_types = row.get('input_types', '')
+        types = json.loads(run_types) if isinstance(run_types, str) and run_types else {}
+        if not types:
+            types = dict(self._code_types(code))
+        deviations = row.get(RECORD_TYPES, '')
+        if isinstance(deviations, str) and deviations:
+            types.update(json.loads(deviations))
         keys = [k[3:] for k in row.index if k.startswith('in_') and not k.endswith(STR_SUFFIX) and k not in RUN_CODE_KEYS]   # in_process is provenance
-        lines = []
+        items = []
         for key in [k for k in types if k in keys] + sorted(k for k in keys if k not in types):
             v = row[f'in_{key}']
             if isinstance(v, float) and np.isnan(v) or v is None or v == '':
                 v = row.get(f'in_{key}{STR_SUFFIX}', '')
                 if v is None or v == '' or (isinstance(v, float) and np.isnan(v)):
                     continue
-            typ = types.get(key, 'str' if isinstance(v, str) else 'float')
-            lines.append(f"{key.ljust(23)} = {_format_input_value(v, typ)}")
-        return "\n".join(lines) + "\n"
+            items.append((key, v, types.get(key, 'str' if isinstance(v, str) else 'float')))
+        return items
+
+    def _code_types(self, code):
+        '''
+        Input types of `code` over every run that has a map, for runs pushed without one. Only keys whose type
+        is the same in all runs (e.g. EPED's m/z/mi/zi are ints or floats depending on the composition source);
+        the others stay floats, which keeps their values exact
+        '''
+        cache = self.__dict__.setdefault('_code_types_cache', {})
+        if code not in cache:
+            runs, merged, conflicts = self.runs(), {}, set()
+            if len(runs) and 'input_types' in runs:
+                for js in runs.loc[runs['code'] == code, 'input_types']:
+                    if isinstance(js, str) and len(js) > 2:
+                        for k, t in json.loads(js).items():
+                            if merged.setdefault(k, t) != t:
+                                conflicts.add(k)
+            cache[code] = {k: t for k, t in merged.items() if k not in conflicts}
+        return cache[code]
 
     def write_input_file(self, code, record, path):
-        '''Write input_file(code, record) to `path` (a folder gets <folder>/input.<code>); returns the path'''
+        '''Write input_file(code, record) to `path` (a folder gets <folder>/input.<code>, EPED also <folder>/eped.config); returns the path'''
         path = Path(path)
         if path.is_dir():
+            if code == 'eped':
+                (path / 'eped.config').write_text(self.eped_config(record))
             path = path / self._INPUT_FILES[code]
         path.write_text(self.input_file(code, record))
         return path
+
+    def drop(self, code, hashes, run=None, timeout_s=600, stale_s=3600):
+        '''
+        Remove the `code` records whose hash is in `hashes` (only those of `run`, if given), e.g. records
+        superseded by a re-extraction. netCDF cannot shrink a dimension, so the whole file is rewritten under
+        the push lock; the previous file is kept as <file>.before-drop-<timestamp> (delete it once checked).
+        Returns the number of records removed.
+        '''
+        import netCDF4
+        hashes, removed = set(hashes), 0
+        stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        tmp, aside = self.file.with_name(f"{self.file.name}.drop-tmp"), self.file.with_name(f"{self.file.name}.before-drop-{stamp}")
+        with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
+            with netCDF4.Dataset(self.file, 'r') as src, netCDF4.Dataset(tmp, 'w', format='NETCDF4') as dst:
+                dst.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
+                for name, grp in src.groups.items():
+                    grp.set_auto_mask(False)
+                    n = len(grp.dimensions['record'])
+                    keep = np.ones(n, dtype=bool)
+                    if name == code:
+                        keep = ~np.isin(np.asarray(grp.variables['hash'][:], dtype=object), list(hashes))
+                        if run is not None:
+                            keep |= np.asarray(grp.variables['run'][:], dtype=object) != run
+                        removed = int((~keep).sum())
+                    out = dst.createGroup(name)
+                    out.setncatts({a: grp.getncattr(a) for a in grp.ncattrs()})
+                    out.createDimension('record', None)
+                    for vname, var in grp.variables.items():
+                        data = var[:][keep]
+                        if var.dtype == str:
+                            new = out.createVariable(vname, str, ('record',))
+                            if len(data):
+                                new[0:len(data)] = np.array(list(data), dtype=object)
+                        else:
+                            new = out.createVariable(vname, var.dtype, ('record',), fill_value=getattr(var, '_FillValue', np.nan),
+                                                     zlib=True, chunksizes=(4096,))
+                            new[0:len(data)] = data
+                        new.setncatts({a: var.getncattr(a) for a in var.ncattrs() if a != '_FillValue'})
+            os.replace(self.file, aside)
+            os.replace(tmp, self.file)
+        print(f"\t- harvest: dropped {removed} {code} record(s) from {IOtools.clipstr(self.file)}; previous file kept as {IOtools.clipstr(aside)}", typeMsg='w')
+        return removed
 
     # -------------------------------------------------------------------------- writing
     def push(self, staging_folders, timeout_s=600, stale_s=3600):
@@ -1079,6 +1183,22 @@ class harvest_database:
         return pd.Series(names, index=roa.index), colors
 
     @staticmethod
+    def _single_schema(code, df):
+        '''
+        CGYRO records before schema 5 hold pygacode params1D (lowercase names), not input.cgyro. When `df` mixes both
+        kinds, keep the schema-5 ones (and drop the columns only the others fill), so that every analysed column is
+        defined on every row; the two name sets are not merged, since that would assume they are the same quantities
+        '''
+        if code != 'cgyro' or 'in_N_SPECIES' not in df.columns:
+            return df
+        new = df['in_N_SPECIES'].notna()
+        if new.all() or not new.any():
+            return df
+        print(f"\t- harvest: {int((~new).sum())} CGYRO record(s) predate schema 5 (pygacode params1D, not input.cgyro) "
+              "and are left out of this analysis", typeMsg='w')
+        return df[new].dropna(axis=1, how='all')
+
+    @staticmethod
     def _first(df, prefix, candidates):
         for c in candidates:
             if f"{prefix}{c}" in df.columns:
@@ -1231,7 +1351,8 @@ class harvest_database:
         one row per pair with the coordinates (code_a's values), the fluxes of both codes (`<flux>_a`,
         `<flux>_b`) and the stds when stored (`<flux>_std_a/b`).
         '''
-        A, B = self.load(code_a, with_run_info=False), self.load(code_b, with_run_info=False)
+        A = self._single_schema(code_a, self.load(code_a, with_run_info=False))
+        B = self._single_schema(code_b, self.load(code_b, with_run_info=False))
         if len(A) == 0 or len(B) == 0:
             return pd.DataFrame()
         ca, cb = self._coords(code_a, A), self._coords(code_b, B)

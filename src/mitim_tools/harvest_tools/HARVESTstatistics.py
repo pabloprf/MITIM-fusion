@@ -44,7 +44,7 @@ class harvest_statistics:
     def __init__(self, db, code, run=None, inputs=None, collinear_r2=0.995, min_records=30):
         self.db, self.code, self.run = db, code, run
         self.collinear_r2, self.min_records = collinear_r2, min_records
-        self.df = db.load(code, run=run, with_run_info=False)
+        self.df = db._single_schema(code, db.load(code, run=run, with_run_info=False))
         self.fluxes = {k: db._first(self.df, 'out_', v) for k, v in db._FLUXES.items() if k in self._FLUXES}
         self.fluxes = {k: v for k, v in self.fluxes.items() if v is not None}
         self.inputs = self._resolve_inputs(inputs)      # {label: column}

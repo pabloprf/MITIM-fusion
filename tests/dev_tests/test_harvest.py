@@ -94,6 +94,82 @@ def test_options_and_run_meta(tmp):
     assert o4['run_meta']['run'] == 'abc' and o4['push'] is False and o4['scan_trick_members'] is False
     print("PASS options_from_namelist / run_meta.json")
 
+def test_drop_and_type_fallback(tmp):
+    import netCDF4
+    from mitim_tools.simulation_tools import SIMtools
+    file = tmp / 'dbD' / 'central.nc'
+    hashes = {}
+    for name, n_val in (('A', 3), ('B', 3), ('C', 3.5)):   # run C disagrees on the type of N
+        folder = tmp / 'dbD' / name / 'Outputs' / 'harvest'
+        rec = H.harvest_recorder(_opts(folder))
+        for i in range(3):
+            rec._write({'code': 'tglf', 'inputs': {'USE_X': True, 'N': n_val, 'RLTS_1': 1.0 + i}, 'outputs': {'Qe': float(i)}, 'meta': {}})
+        rec._write({'code': 'neo', 'inputs': {'RMIN_OVER_A': 0.5}, 'outputs': {'Qe': 1.0}, 'meta': {}})
+        H.harvest_database(file).push([folder])
+    db = H.harvest_database(file)
+    df = db.load('tglf')
+    run_a = _meta(tmp / 'dbD' / 'A' / 'Outputs' / 'harvest')['run']
+
+    # a run pushed before the per-run type maps existed: its keys take the types all other runs agree on
+    with netCDF4.Dataset(file, 'a') as ds:
+        grp = ds.groups[H.RUNS_GROUP]
+        for i, (r, c) in enumerate(zip(grp.variables['run'][:], grp.variables['code'][:])):
+            if r == run_a and c == 'tglf':
+                grp.variables['input_types'][i] = ''
+    db = H.harvest_database(file)
+    row = df[df['run'] == run_a].iloc[0]
+    text = db.input_file('tglf', row)
+    assert 'USE_X' in text and 'True' in text, "bool type borrowed from the other runs"
+    assert 'N                       = 3.0' in text, "N is int in A/B but float in C: not borrowed, stays a float"
+    assert db._code_types('tglf').get('USE_X') == 'bool' and 'N' not in db._code_types('tglf')
+    assert H._format_input_value(9.000000026, 'int') == '9.000000026', "a non-integer never becomes an int"
+
+    # drop: only the listed records go, every other group and run is kept, the previous file is kept aside
+    gone = df[df['run'] == run_a]['hash'].iloc[:2].tolist()
+    assert db.drop('tglf', gone, run=run_a) == 2
+    df2 = db.load('tglf')
+    assert len(df2) == len(df) - 2 and not set(gone) & set(df2[df2['run'] == run_a]['hash'])
+    assert len(db.load('neo')) == 3 and len(db.runs()) == len(H.harvest_database(next(file.parent.glob('central.nc.before-drop-*'))).runs())
+    kept = df2.iloc[0]
+    assert H.input_hash('tglf', H._scalar_dict(SIMtools.buildDictFromInput(db.input_file('tglf', kept))), None) == kept['hash'] or kept['run'] == run_a
+    print("PASS drop() rewrites the file without the listed records; runs without a type map borrow the unambiguous types")
+
+def test_eped_input_files(tmp):
+    import f90nml
+    src = tmp / 'eped_src'
+    src.mkdir()
+    f90nml.write(f90nml.Namelist({'eped_input': {'ip': 14.00002, 'bt': 8.5085839, 'r': 4.595, 'a': 1.28, 'kappa': 2.159294983157618,
+                                                 'delta': 0.627, 'neped': 21.7, 'betan': 2.0, 'zeffped': 1.75, 'nesep': 8.68,
+                                                 'tesep': 200.0, 'shot': 0, 'num_scan': 1, 'teped': -1, 'zi': 9.000000026, 'mi': 18}}),
+                 src / 'eped.input.1', force=True)
+    (src / 'eped.config').write_text("NMODES = 5 6 8 10 15 20 30\nWIDTHS = 3 4 5 7 9\nTEPED_BOUND = 0.4 1.4 0.01\nNOT_ASKED = 1\n")
+    r = H.collect_eped(None, toq_eq_choice='standard', dataset={'stability_rule': 'G', 'stability_threshold': 0.03},
+                       eped_input_file=src / 'eped.input.1', eped_config_file=src / 'eped.config')
+    folder = tmp / 'eped_run' / 'Outputs' / 'harvest'
+    H.harvest_recorder(_opts(folder))._write(r)
+    file = tmp / 'eped_db.nc'
+    H.harvest_database(file).push([folder])
+    db = H.harvest_database(file)
+    row = db.load('eped').iloc[0]
+    out = tmp / 'eped_rebuilt'
+    out.mkdir()
+    db.write_input_file('eped', row, out)
+    again = H.collect_eped(None, toq_eq_choice=row['in_toq_eq_choice'], dataset={'stability_rule': 'G', 'stability_threshold': 0.03},
+                           eped_input_file=out / 'eped.input', eped_config_file=out / 'eped.config')
+    assert H.input_hash('eped', H._scalar_dict(again['inputs']), None) == row['hash'], "eped.input + eped.config rebuilt exactly"
+    assert 'NOT_ASKED' not in (out / 'eped.config').read_text() and 'toq_eq_choice' not in (out / 'eped.input').read_text()
+    print("PASS eped.input / eped.config rebuilt from an EPED record (same record hash)")
+
+def test_mixed_cgyro_schemas(tmp):
+    import pandas as pd
+    df = pd.DataFrame({'in_N_SPECIES': [3.0, 3.0, np.nan], 'in_RMIN': [0.4, 0.55, np.nan], 'in_rmin': [np.nan, np.nan, 0.4],
+                       'out_Qi_mean': [1.0, 2.0, 3.0]})
+    kept = H.harvest_database._single_schema('cgyro', df)
+    assert list(kept['in_RMIN']) == [0.4, 0.55] and 'in_rmin' not in kept, "schema-5 rows only, legacy-only columns dropped"
+    assert len(H.harvest_database._single_schema('cgyro', df.iloc[2:])) == 1, "legacy-only frame kept"
+    assert len(H.harvest_database._single_schema('tglf', df)) == 3
+    print("PASS mixed CGYRO schemas: analyses keep the schema-5 records")
+
 def test_no_default_file(tmp):
     from mitim_tools.misc_tools import CONFIGread
     configured = CONFIGread.read_harvest_file
@@ -752,6 +828,9 @@ def main():
     try:
         test_options_and_run_meta(tmp)
         test_no_default_file(tmp)
+        test_mixed_cgyro_schemas(tmp)
+        test_drop_and_type_fallback(tmp)
+        test_eped_input_files(tmp)
         test_recorder_tglf_layout_and_dedup(tmp)
         test_shared_staging_folder(tmp)
         test_cgyro_gx_eped_interfaces(tmp)

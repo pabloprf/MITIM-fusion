@@ -455,6 +455,8 @@ per-code extraction is `harvest_records` / `harvest_outputs` on the
 simulation/output classes; `harvest_database` loads, interprets, plots and
 pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO records hold only pygacode
 `params1D` and are refused by `harvest_database.input_file`), derived norms as `out_derived_*`.
+**EPED records rebuild as eped.input + eped.config; runs pushed without a per-run type map borrow the types all other runs agree on;
+`harvest_database.drop(code, hashes)` rewrites the file without superseded records (previous file kept aside).**
 CLIs: **`mitim_harvester <run folder> [--file F]`** (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
 **`mitim_harvester --from-disk <run(s) or parent folder> [--file F] [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the

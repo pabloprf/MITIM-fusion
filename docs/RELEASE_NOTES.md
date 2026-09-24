@@ -49,8 +49,9 @@ DESCRIPTION
     (`harvest.file` or `preferences.harvest_file`; with neither set the run is not harvested) under an NFS-safe lock.
     `mitim_harvester <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
     `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
-    `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO record can be written back as its exact
-    input file (`harvest_database.input_file` / `write_input_file`, types from a per-run map); CGYRO
+    `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO/EPED record can be written back as its exact
+    input file (`harvest_database.input_file` / `write_input_file`, EPED as eped.input + eped.config, types from a
+    per-run map); `harvest_database.drop` removes superseded records; CGYRO
     records also carry restart provenance (warm start, source iteration, inherited time), whether
     `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
     `mitim_harvester --from-disk <run(s) or parent folder> [--dry-run]` backfills runs made WITHOUT harvest:
