@@ -325,7 +325,8 @@ def calculate_Ricci_portals_step(mitim_bo, d0=2.0, la=1.0):
     cal_var = torch.zeros_like(cal)
     for tag in ("_tr_turb_", "_tr_neoc_", "_tar_", "Qie_tr_turb_"):
         mask = torch.tensor(
-            [tag in n for n in ofs_names], dtype=Y.dtype, device=Y.device
+            # "_tr_turb_" is also a substring of "Qie_tr_turb_", which has its own tag
+            [tag in n and not (tag == "_tr_turb_" and n.startswith("Qie_")) for n in ofs_names], dtype=Y.dtype, device=Y.device
         )
         Ystd_k = Ystd * mask                                     # zero out all other columns
         of_k, cal_k, _ = mitim_bo.scalarized_objective(Y + Ystd_k)

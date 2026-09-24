@@ -21,12 +21,9 @@ DESCRIPTION
     out to `MAX_TIME`. The scratch folder comes from `cgyro_submission.json` (submitted runs) or the
     staged execution script (bash runs, local scratch); remote scratch is pulled over SFTP into a
     temporary folder, and neither the run folder nor the scratch is written to. Also rendered when no
-    evaluation has finished yet, which is when it is most useful.
-
-*   💥 **"CGYRO near best" / "CGYRO near last" tabs in `mitim_plot_portals --complete`.** The evaluations whose
-    predicted gradients sit within 10% of the best (or last) one, their Qe/Qi/Ge traces drawn back to back per
-    radius under the gradient changes, against the best/last turbulence-only target: shows whether near-identical
-    gradients give consistent CGYRO fluxes or the scatter that holds the optimizer back.
+    evaluation has finished yet, which is when it is most useful. New "CGYRO near best" / "CGYRO near last" tabs
+    draw the evaluations whose gradients sit within 10% of the best (last) one back to back per radius, under
+    the gradient changes and against its target: do near-identical gradients give consistent fluxes?
 
 *   💥 **CGYRO `TOROIDALS_PER_PROC` is now chosen for communication locality on multi-node radial
     calls.** CGYRO's grid is `n_proc = n_proc_1 x n_toroidal_procs`, and `n_toroidal_procs =
