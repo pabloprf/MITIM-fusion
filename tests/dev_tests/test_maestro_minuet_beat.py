@@ -191,4 +191,17 @@ d = np.load(b1 / "beat_results" / "minuet_results.npy", allow_pickle=True).item(
 print(f"\t- sawtooth crashes in minuet beat: {len(d['sawtooth_times'])}")
 assert (folder / "Outputs" / "trans_beat_parameters" / "beat_1.json").exists(), "cross-beat snapshot missing"
 
+# 5) MINUET ran at the frozen vacuum field (its torfluxa is kept by the merge, bcentr is re-pinned):
+#    the pre-merge export carries MINUET's own R*Bt
+p_pre = PROFILEStools.gacode_state(b1 / "beat_results" / "input.gacode_pre_merge")
+RB_pre = p_pre.profiles["bcentr(T)"][0] * p_pre.profiles["rcentr(m)"][0]
+RB_in = p_in.profiles["bcentr(T)"][0] * p_in.profiles["rcentr(m)"][0]
+print(f"\t- vacuum R*Bt: MINUET {RB_pre:.4f} T*m vs incoming {RB_in:.4f} T*m")
+assert abs(RB_pre / RB_in - 1) < 0.005, "MINUET did not run at the incoming vacuum field"
+
+# 6) Ohmic heating from the evolved current is written as qohme
+P_ohm = p_out.derived["qOhm_MW"][-1] if "qOhm_MW" in p_out.derived else np.nan
+print(f"\t- ohmic power at beat output: {P_ohm:.3f} MW (MINUET: {d['P_ohm_MW']:.3f} MW)")
+assert d["P_ohm_MW"] > 0 and abs(P_ohm / d["P_ohm_MW"] - 1) < 0.05, "qohme does not carry MINUET's ohmic power"
+
 print("\nPASS: MAESTRO [minuet, portals] chain completed with evolved q, frozen kinetics and gaussian sources")
