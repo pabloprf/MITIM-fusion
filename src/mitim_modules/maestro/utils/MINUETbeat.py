@@ -153,10 +153,14 @@ class minuet_beat(beat):
                                   shp_c, shp_s, n_theta = 512)
         fold, _ = mxh_fold_statistic(R, Z, pr['rho'][sel])
 
-        # Only OUTERMOST folded surfaces are cut (an interior fold is a deeper pathology to surface loudly)
+        # Only OUTERMOST surfaces are cut (an interior fold is a deeper pathology to surface loudly): folded ones
+        # (fold <= 0) and near-folded ones, whose fold collapses relative to the next surface inward. The latter
+        # still self-intersect nowhere but sit next to the 1/|J2| pole of the FSA metrics (a surface with fold
+        # 0.14 behind a 0.22 one read 9.19 vs 8.75 MA of Ampere Ip on a SPARC geqdsk state; a smooth Miller-like
+        # edge decays only ~2-5% per surface, e.g. 0.25 -> 0.18 over the last 8 surfaces)
         bad_outer = 0
-        for f in fold[::-1]:
-            if f <= 0:
+        for k in range(len(fold) - 1, 0, -1):
+            if fold[k] <= 0 or fold[k-1] <= 0 or fold[k] < 0.8 * fold[k-1]:
                 bad_outer += 1
             else:
                 break
@@ -165,8 +169,11 @@ class minuet_beat(beat):
 
         rho_full = self.profiles_current.profiles['rho(-)']
         rho_new = rho_full[:len(rho_full) - bad_outer]
-        print(f'\t- Incoming state has {bad_outer} self-intersecting outermost MXH surface(s); '
+        print(f'\t- Incoming state has {bad_outer} self-intersecting or near-folded outermost MXH surface(s); '
               f'trimming to rho <= {rho_new[-1]:.4f} as MINUET boundary (boundary_surface_psin-style backoff)', typeMsg='w')
+        if rho_new[-1] < 0.97:
+            print(f'\t- The trim reaches rho = {rho_new[-1]:.4f}: the incoming edge shaping is badly represented '
+                  f'(more MXH moments, or a boundary_surface_psin back-off, would help)', typeMsg='w')
 
         profiles_trimmed = copy.deepcopy(self.profiles_current)
         profiles_trimmed.changeResolution(rho_new = rho_new)
@@ -198,12 +205,9 @@ class minuet_beat(beat):
         diffusion_kwargs = dict(n_cells = cfg['n_cells'], n_save = cfg['n_save'])
         if cfg['rtol'] is not None:
             diffusion_kwargs['rtol'] = cfg['rtol']
-        if cfg['Ip_from_frozen'] and getattr(self, '_trim_rho', None) is not None:
-            # The trimmed boundary encloses LESS than the engineering Ip: let MINUET take the
-            # current the incoming state carries inside the cut (its geometry's own Ip)
-            print(f'\t- Not commanding the frozen Ip: MINUET boundary is the trimmed surface (rho = {self._trim_rho:.4f}), '
-                  'using the current the incoming state encloses there')
-        elif cfg['Ip_from_frozen']:
+        if cfg['Ip_from_frozen']:
+            # Also on a trimmed boundary: the thin cut band carries ~0.2% of Ip, whereas the current
+            # MINUET would reconstruct from the edge metrics of the incoming state is off by several %
             # Command Ip to the frozen engineering current (the CUR-ufile analog); MINUET
             # distributes the initial commanded-vs-state mismatch over its edge buffer
             Ip_MA = float(self.maestro_instance.profiles_with_engineering_parameters.profiles['current(MA)'][0])
@@ -247,6 +251,8 @@ class minuet_beat(beat):
         # Sidecar with the scalars that _inform_save()/summary() need after cleanup
         # ---------------------------------------------------------------------------------------
         crashes = np.asarray(m.history['crashes']) if m.history is not None else np.array([])
+        x_ohm, p_ohm, P_ohm = self._ohmic_power(m)
+        print(f'\t- MINUET ohmic power (last 20% of the run): {P_ohm:.3f} MW, written as qohme at beat output')
         minuet_results = {
             'sawtooth_times': crashes,
             't_end': float(m.result.t[-1]),
@@ -255,6 +261,7 @@ class minuet_beat(beat):
             'q0_final': float(m.result.q0[-1]),
             'evolve_equilibrium': cfg['evolve_equilibrium'],
             'trim_rho': getattr(self, '_trim_rho', None),   # input.gacode_minuet is on the relabelled grid when set
+            'ohmic_x': x_ohm, 'ohmic_MWm3': p_ohm, 'P_ohm_MW': P_ohm,
             'models': {
                 'resistivity': cfg['resistivity_model'],
                 'bootstrap': cfg['bootstrap_model'],
@@ -263,6 +270,22 @@ class minuet_beat(beat):
             },
         }
         np.save(self.folder / 'minuet_results.npy', minuet_results)
+
+    @staticmethod
+    def _ohmic_power(m, last_fraction = 0.2):
+        '''
+        Ohmic power density by the parallel-Ohm route, <E.B><J.B>/<B^2> with <E.B> = (V_loop/2pi) F <1/R^2>
+        (MINUET's own verification routes; uses the SAVED V_loop, so it is independent of eta), averaged over
+        the saved frames of the last `last_fraction` of the run so that a crash-instant V_loop transient does
+        not set it. Returns x (MINUET CD cells), p [MW/m^3], and its volume integral [MW].
+        '''
+        res, g = m.result, m.geom_last
+        x = res.x_c
+        F, g1R2, B2, Vp = (g.interp(k, x) for k in ('F', 'g_1R2', 'B2_avg', 'Vprime'))
+        k0 = int((1.0 - last_fraction) * (res.t.size - 1))
+        p = np.mean([res.v_loop[k] / (2 * np.pi) * F * g1R2 * res.jb[k] / B2 for k in range(k0, res.t.size)], axis=0) * 1E-6
+        P = float(np.trapezoid(p * Vp, x))
+        return x, p, P
 
     # -----------------------------------------------------------------------------------------------------------------------
     # Finalize and merge
@@ -397,6 +420,21 @@ class minuet_beat(beat):
         self.profiles_output.profiles['te(keV)'] = p_frozen.profiles['te(keV)']
         self.profiles_output.profiles['ti(keV)'][:,0] = p_frozen.profiles['ti(keV)'][:,0]
         self.profiles_output.makeAllThermalIonsHaveSameTemp()
+
+        # Ohmic heating from the evolved current (the transp beat's POH analog); x is MINUET's label, which on a
+        # trimmed boundary is rho/rho_cut
+        results_file = self.folder_output / 'minuet_results.npy'
+        d = np.load(results_file, allow_pickle=True).item() if results_file.exists() else {}
+        if d.get('ohmic_MWm3') is not None:
+            self.profiles_output.profiles['qohme(MW/m^3)'] = np.interp(rho, np.asarray(d['ohmic_x']) * (d.get('trim_rho') or 1.0), d['ohmic_MWm3'])
+
+        # MINUET's vacuum field must be the frozen one: torfluxa (kept) was solved with it, so a mismatch
+        # here would silently desync torfluxa from the re-pinned bcentr and ratchet over later beats
+        RB_minuet = float(self.profiles_output.profiles['bcentr(T)'][0] * self.profiles_output.profiles['rcentr(m)'][0])
+        RB_frozen = float(p_frozen.profiles['bcentr(T)'][0] * p_frozen.profiles['rcentr(m)'][0])
+        if abs(RB_minuet / RB_frozen - 1) > 0.01:
+            print(f'\t\t\t* MINUET vacuum R*Bt ({RB_minuet:.3f} T*m) differs from the frozen one ({RB_frozen:.3f} T*m) '
+                  f'by {100*(RB_minuet/RB_frozen-1):+.1f}%: torfluxa/q are inconsistent with the frozen bcentr', typeMsg='w')
 
         # Re-insert engineering parameters (except shape)
         print('\t\t\t* Bringing Bt and Ip of frozen plasma state to new plasma state')
@@ -573,6 +611,8 @@ class minuet_beat(beat):
                   f'sawtooth = {models.get("sawtooth")} ({models.get("reconnection")})')
         md.append(f'- **q0:** {d.get("q0_initial", float("nan")):.3f} (initial) -> {d.get("q0_final", float("nan")):.3f} (final)')
         md.append(f'- **Realized Ip:** {d.get("Ip_MA_realized", float("nan")):.3f} MA')
+        if d.get('P_ohm_MW') is not None:
+            md.append(f'- **Ohmic power (qohme at output):** {d["P_ohm_MW"]:.3f} MW')
         if len(sawtooth_times) >= 2:
             periods = np.diff(sawtooth_times)
             md.append(f'- **Sawteeth:** {len(sawtooth_times)} crashes, mean period {np.mean(periods)*1e3:.1f} ms')
