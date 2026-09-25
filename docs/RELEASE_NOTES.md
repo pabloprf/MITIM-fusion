@@ -268,6 +268,9 @@ DESCRIPTION
     the radii that already finished (before, only nodes freed during the job got one).
     A radius that SLURM requeues (preemption) now runs only the time it had left, rounded up to whole
     restart periods; before, CGYRO resumed from its checkpoint and ran the full `MAX_TIME` again.
+    The stall rescue no longer cancels a preempted radius right after SLURM restarts it (its
+    `out.cgyro.timing` still predated the preemption): a radius SLURM started less than the kill threshold
+    ago is left alone, and the node is excluded only when the radius hung there past the threshold.
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was

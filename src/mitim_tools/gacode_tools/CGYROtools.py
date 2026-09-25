@@ -369,9 +369,10 @@ class RadiusStatus:
     reason: str = ""
     tag_suffix: str = ""
     line: str = ""
+    rescue_child: str = None
 
     @classmethod
-    def from_probe_line(cls, line, slurm_state=None, job_terminal=False):
+    def from_probe_line(cls, line, slurm_state=None, job_terminal=False, rescue_child=None):
         '''
         One `folder|state|avg|steps|wall|since_update|tag|exited` probe line.
 
@@ -384,6 +385,8 @@ class RadiusStatus:
             3. the job-wide slurm state is terminal while the radius still reads RUNNING -> TIMED_OUT
                (the job is already gone but the staleness window has not elapsed yet)
             4. otherwise what the probe reported.
+        A radius already handed to a rescue job (`rescue_child`) no longer belongs to the array, so the
+        array's slurm state (e.g. NOT FOUND after a re-attach) does not time it out.
         Returns None for a malformed line (a remote that could not stat, a truncated read).
         '''
         parts = line.strip().split("|")
@@ -403,8 +406,9 @@ class RadiusStatus:
             tag=tag_token,
             exited=(parts[7] if len(parts) > 7 else "0") == "1",
             line=line.strip(),
+            rescue_child=rescue_child,
         )
-        status._reclassify(slurm_state, job_terminal)
+        status._reclassify(slurm_state, job_terminal and rescue_child is None)
         return status
 
     @property
@@ -460,7 +464,7 @@ class RadiusStatus:
         update = _format_wall_seconds(self.seconds_since_update)
         detail = f"{self.steps} step(s), avg TOTAL/step = {self.avg_text}s"
         head = f"\t     {self.folder}: "
-        tail = self.tag_suffix
+        tail = self.tag_suffix + (f" [rescue job {self.rescue_child}]" if self.rescue_child else "")
         lines = {
             TaskState.NOT_STARTED:  (f"pending — no out.cgyro.info on disk yet{tail}", ""),
             TaskState.INITIALIZED:  (f"initialized — out.cgyro.info present, awaiting out.cgyro.timing (wall since init: {wall}){tail}", ""),
@@ -545,10 +549,15 @@ def cgyro_per_task_status(sim, session=None):
     if lines is None:
         return []
 
+    rescue_children = {folder: entry["child_jobids"][-1]
+                       for folder, entry in (getattr(sim, "_resubmit_ledger", None) or {}).items() if entry.get("child_jobids")}
+
     print(f"\t- Per-task CGYRO status ({len(folders)} element(s)):")
     rows = []
     for line in lines:
-        status = RadiusStatus.from_probe_line(line, slurm_state=slurm_state, job_terminal=job_terminal)
+        folder = line.strip().split("|")[0]
+        status = RadiusStatus.from_probe_line(line, slurm_state=slurm_state, job_terminal=job_terminal,
+                                              rescue_child=rescue_children.get(folder))
         if status is None:
             continue
         text, type_msg = status.describe()
@@ -558,34 +567,49 @@ def cgyro_per_task_status(sim, session=None):
     return rows
 
 
+def _slurm_elapsed_seconds(token):
+    '''sacct Elapsed ("[D-]HH:MM:SS", or "MM:SS") in seconds; None when it cannot be parsed.'''
+    try:
+        days, _, clock = token.strip().rpartition("-")
+        seconds = 0
+        for part in clock.split(":"):
+            seconds = 60 * seconds + int(part)
+        return seconds + 86400 * int(days or 0)
+    except ValueError:
+        return None
+
+
 def _slurm_state_for_target(job, target):
     '''
-    Return the slurm state for `target` (a "<jobid>" or "<jobid>_<idx>" string),
-    queried via `sacct -X --format=State`. Returns the uppercased state token,
-    or None if sacct produced no useful output (e.g. site without sacct, jobid
-    too old to be in the accounting window). The caller treats None as "no
-    signal -- continue with the existing decision tree" rather than as a
-    terminal verdict.
+    (state, seconds running) for `target` (a "<jobid>" or "<jobid>_<idx>" string), queried via
+    `sacct -X --format=State,Elapsed`. For a requeued element sacct reports only its latest instance,
+    so the elapsed time counts from the latest (re)start. state is the uppercased token, or None if
+    sacct produced no useful output (e.g. site without sacct, jobid too old to be in the accounting
+    window); the caller treats None as "no signal -- continue with the existing decision tree"
+    rather than as a terminal verdict. seconds is None unless the state is RUNNING.
     '''
-    cmd = f'sacct -j {target} -X --format=State -n -P'
+    cmd = f'sacct -j {target} -X --format=State,Elapsed -n -P'
     try:
         out, _err = job.execute(cmd, printYN=False)
     except Exception as e:
         print(f"\t    * sacct query for {target} failed ({type(e).__name__}: {e}); proceeding without per-task slurm-state guard", typeMsg='w')
-        return None
+        return None, None
     if isinstance(out, bytes):
         out = out.decode(errors='replace')
     out = (out or "").strip()
     if not out:
-        return None
+        return None, None
     # Multiple lines possible (sacct emits one row per step). The first non-empty
     # line is the parent task state — what we actually care about.
     first = out.splitlines()[0].strip()
     if not first:
-        return None
+        return None, None
+    state_token, _, elapsed_token = first.partition("|")
     # State strings can carry trailing markers like "CANCELLED+" or
     # "CANCELLED by 12345"; canonicalize to the leading word.
-    return first.split()[0].rstrip("+").upper()
+    state = state_token.split()[0].rstrip("+").upper() if state_token.split() else None
+    running_s = _slurm_elapsed_seconds(elapsed_token) if (state == "RUNNING" and elapsed_token) else None
+    return state, running_s
 
 
 @dataclass
@@ -730,20 +754,23 @@ class StallRescuer:
         attempt = entry.n_attempts + 1
         print(
             f"\t  - [auto-resubmit] {folder}: {state} {since}s (>{threshold}s) — "
-            f"attempting rescue {attempt}/{self.cap}",
+            f"checking slurm before rescue {attempt}/{self.cap}",
             typeMsg='w',
         )
 
         target, rescuing_child = self._resolve_target(folder, entry)
         if target is None:
             return
-        if self._slurm_says_dead(folder, target, entry):
+        slurm_state, running_s = _slurm_state_for_target(self.job, target)
+        if self._slurm_says_dead(folder, target, entry, slurm_state):
+            return
+        if self._restarted_recently(target, slurm_state, running_s, threshold):
             return
         if not self._scancel(folder, target):
             return
         if not self._clean_remote(folder):
             return
-        self._resubmit(folder, entry, attempt, rescuing_child)
+        self._resubmit(folder, entry, attempt, rescuing_child, stalled_on_node=running_s is not None)
 
     def _resolve_target(self, folder, entry):
         '''
@@ -758,9 +785,9 @@ class StallRescuer:
         print(f"\t    * cannot resolve scancel target (jobid={self.job.jobid}, array_idx={array_idx}); skipping {folder}", typeMsg='w')
         return None, False
 
-    def _slurm_says_dead(self, folder, target, entry):
+    def _slurm_says_dead(self, folder, target, entry, slurm_state):
         '''
-        True when slurm's own answer forbids the rescue.
+        True when slurm's own answer (`slurm_state`, from sacct) forbids the rescue.
 
         A terminal state means the work unit is no longer in flight, whether it succeeded (CGYRO
         reached MAX_TIME and exited cleanly without writing out.cgyro.tag — the usual false positive
@@ -770,7 +797,6 @@ class StallRescuer:
         cancelling the element would kill a pending rescued radius. None means sacct gave no signal:
         fall through to the rescue rather than block on an unsupported sacct setup.
         '''
-        slurm_state = _slurm_state_for_target(self.job, target)
         state = SlurmState.from_token(slurm_state)
         if state.terminal:
             entry.status = f"TERMINAL_NO_RESCUE:{slurm_state}"
@@ -785,8 +811,25 @@ class StallRescuer:
         if state in (SlurmState.PENDING, SlurmState.CONFIGURING, SlurmState.REQUEUED, SlurmState.SUSPENDED):
             print(f"\t    * slurm reports {target} is {slurm_state} (not started); ignoring stale files, no rescue", typeMsg='i')
             return True
+        return False
+
+    def _restarted_recently(self, target, slurm_state, running_s, threshold):
+        '''
+        True when slurm (re)started the element less than `threshold` seconds ago. A preempted element
+        is requeued and later restarts from bin.cgyro.restart, but out.cgyro.timing keeps its
+        pre-preemption mtime until the restarted CGYRO appends to it: the probe's stall clock then
+        counts the preemption and the queue wait, not a hang. The stall clock restarts at the (re)start.
+        '''
+        if running_s is not None and running_s < threshold:
+            print(
+                f"\t    * slurm reports {target} RUNNING for only {running_s}s (<{threshold}s): (re)started after "
+                f"the files were last written (requeue/preemption); stall clock restarts, no rescue",
+                typeMsg='i',
+            )
+            return True
         if slurm_state is not None:
-            print(f"\t    * slurm reports {target} is {slurm_state}; proceeding with rescue", typeMsg='i')
+            running = f" for {running_s}s" if running_s is not None else ""
+            print(f"\t    * slurm reports {target} is {slurm_state}{running}; proceeding with rescue", typeMsg='i')
         return False
 
     def _scancel(self, folder, target):
@@ -810,11 +853,14 @@ class StallRescuer:
             return False
         return True
 
-    def _resubmit(self, folder, entry, attempt, rescuing_child):
+    def _resubmit(self, folder, entry, attempt, rescuing_child, stalled_on_node=False):
         # Bad-node exclusion: the node of THIS array element, from the squeue rows of the last poll
-        # (the whole array's node list would exclude healthy nodes too). Child rescues have no tracked
-        # per-jobid node, so slurm places them freely; None too when the element had no node yet.
-        bad_node = None if rescuing_child else self.job.node_of(self.array_index_by_folder.get(folder))
+        # (the whole array's node list would exclude healthy nodes too), and only when sacct confirmed
+        # the element has been running there for longer than the kill threshold, i.e. the hang happened
+        # on that node. Child rescues have no tracked per-jobid node, so slurm places them freely.
+        bad_node = None
+        if stalled_on_node and not rescuing_child:
+            bad_node = self.job.node_of(self.array_index_by_folder.get(folder))
 
         code_call_str = self.per_folder_commands.get(folder)
         if not code_call_str:

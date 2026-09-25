@@ -54,6 +54,8 @@ class FakeJob:
         # signal" (sacct returned empty). Set to "RUNNING" to behave like
         # a healthy stalled task that should be rescued.
         self.sacct_state_for_target = "RUNNING"
+        # Canned sacct Elapsed of the element's latest (re)start; None emits the state alone
+        self.sacct_elapsed = "01:00:00"
 
     def node_of(self, array_index):
         return self.node_by_array_index.get(array_index)
@@ -75,7 +77,9 @@ class FakeJob:
         if cmd.startswith("sacct"):
             if self.sacct_state_for_target is None:
                 return b"", b""
-            return self.sacct_state_for_target.encode(), b""
+            if self.sacct_elapsed is None:
+                return self.sacct_state_for_target.encode(), b""
+            return f"{self.sacct_state_for_target}|{self.sacct_elapsed}".encode(), b""
         return b"", b""
 
     def resubmit_single_task(self, code_call_str, label, exclude_node=None):
@@ -342,6 +346,64 @@ def test_terminal_no_rescue_row_is_skipped_on_the_next_poll():
     print("PASS: TERMINAL_NO_RESCUE row -> second poll runs no sacct and writes no metadata")
 
 
+def test_restarted_after_preemption_is_not_a_stall():
+    """A preempted array element is requeued and restarts later, but out.cgyro.timing keeps its
+    pre-preemption mtime until the restarted CGYRO appends to it. Seen 09-24 on r1: element
+    23566811_2 restarted at 11:10:51, the probe still read 70 min without an update, and the
+    rescuer scancelled it 10 s later, spending the radius's only rescue and excluding a healthy
+    node. RUNNING for less than the kill threshold must reset the stall clock: no scancel, no
+    resubmit, no rescue counted. Once it has run past the threshold without writing, it is a
+    real stall on that node and the rescue (with exclusion) goes through."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_elapsed = "00:00:10"
+    rows = [make_row("base_cgyro/rho_0.6712", "STALLED", 4205)]
+    CGYROtools._cgyro_handle_stalled_tasks(sim, rows)
+    cmds = [e for e in sim.simulation_job.executed if e[0] == "execute"]
+    assert not any(e[1].startswith("scancel") for e in cmds), cmds
+    assert sim.simulation_job.last_resubmit_args is None
+    ledger = sim._resubmit_ledger.get("base_cgyro/rho_0.6712", {})
+    assert ledger.get("n_attempts", 0) == 0, ledger
+
+    sim.simulation_job.sacct_elapsed = "00:35:00"
+    CGYROtools._cgyro_handle_stalled_tasks(sim, [make_row("base_cgyro/rho_0.6712", "STALLED", 2100)])
+    _code, _label, exclude = sim.simulation_job.last_resubmit_args
+    assert exclude == "node05", exclude
+    assert sim._resubmit_ledger["base_cgyro/rho_0.6712"]["n_attempts"] == 1
+    print("PASS: element restarted 10 s ago -> no rescue; running 35 min without writing -> rescue + exclude")
+
+
+def test_no_elapsed_from_sacct_rescues_without_exclude():
+    """Without sacct's Elapsed nobody can tell the hang happened on the current node: the rescue
+    still goes through, but no node is excluded."""
+    sim = FakeSim(cap=1)
+    sim.simulation_job.sacct_elapsed = None
+    CGYROtools._cgyro_handle_stalled_tasks(sim, [make_row("base_cgyro/rho_0.6712", "STALLED", 5000)])
+    _code, _label, exclude = sim.simulation_job.last_resubmit_args
+    assert exclude is None, exclude
+    print("PASS: sacct RUNNING without Elapsed -> rescue, no --exclude")
+
+
+def test_slurm_elapsed_parsing():
+    assert CGYROtools._slurm_elapsed_seconds("00:00:10") == 10
+    assert CGYROtools._slurm_elapsed_seconds("05:10") == 310
+    assert CGYROtools._slurm_elapsed_seconds("1-02:03:04") == 93784
+    assert CGYROtools._slurm_elapsed_seconds("Unknown") is None
+    print("PASS: sacct Elapsed parsing")
+
+
+def test_rescued_radius_not_timed_out_by_the_array_state():
+    """After a re-attach the parent array is gone (squeue NOT FOUND) while the radius runs in its
+    rescue job: the status line names the rescue job instead of 'timed out (slurm STATE=NOT FOUND)'."""
+    line = "base_cgyro/rho_0.6712|RUNNING|5.000|100|600|30|-|0"
+    orphan = CGYROtools.RadiusStatus.from_probe_line(line, slurm_state="NOT FOUND", job_terminal=True)
+    assert orphan.state == CGYROtools.TaskState.TIMED_OUT, orphan.state
+    rescued = CGYROtools.RadiusStatus.from_probe_line(line, slurm_state="NOT FOUND", job_terminal=True, rescue_child="23655600")
+    assert rescued.state == CGYROtools.TaskState.RUNNING, rescued.state
+    text, _ = rescued.describe()
+    assert "rescue job 23655600" in text and "NOT FOUND" not in text, text
+    print("PASS: rescued radius labeled by its rescue job, not timed out by the gone array")
+
+
 def test_interpret_status_requeued_keeps_polling():
     """An unhandled squeue state (REQUEUED, SUSPENDED, ...) means the job is still
     in the queue: status 0, no exception, no interactive embed."""
@@ -415,6 +477,10 @@ if __name__ == "__main__":
     test_sacct_no_signal_falls_through_to_rescue()
     test_sacct_running_state_proceeds_with_rescue()
     test_terminal_no_rescue_row_is_skipped_on_the_next_poll()
+    test_restarted_after_preemption_is_not_a_stall()
+    test_no_elapsed_from_sacct_rescues_without_exclude()
+    test_slurm_elapsed_parsing()
+    test_rescued_radius_not_timed_out_by_the_array_state()
     test_interpret_status_requeued_keeps_polling()
     test_metadata_payload_keys_round_trip()
     print("\nALL TESTS PASSED")
