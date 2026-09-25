@@ -22,7 +22,7 @@
  ei_colls = false        # turn off electron-ion collisions
 
 [Time]
- t_max = 500.0           # end time (in units of L_ref/vt_ref)
+ t_max = 500.0           # end time (in units of L_ref/vt_ref = a/c_s, since MITIM writes T_ref=Te, m_ref=m_D). Absolute: a restart continues the saved clock. MITIM writes t_saved + t_max for warm starts (GX.run)
  scheme = "rk3"          # use RK3 timestepping scheme (with adaptive timestepping)
 
 [Initialization]
@@ -59,8 +59,9 @@
  nsave = 100               # save restart file every nsave timesteps
  
  restart = false
- restart_from_file = "none"  # Specify restart file name, otherwise “[input_stem].restart.nc”
- append_on_restart = false # Otherwise, for unknown reasons to me (PRF), it fails
+ restart_if_exists = true  # restart from restart_from_file whenever it is in the run folder: a staged warm-start parent (PORTALS restart_from_cases) or the run's own checkpoint after a SLURM requeue
+ restart_from_file = "gxplasma.restart.nc"  # = GX's own restart_to_file default ([input_stem].restart.nc)
+ append_on_restart = false # must be false on a first launch: with it GX opens the dimensions/groups of an existing gxplasma.out.nc (ncdf.cu NcDims), so a restart into a fresh folder fails. templates/gx_requeue_resume.sh turns it on for a requeue
 
 [Diagnostics]
  nwrite = 100            # write diagnostics every nwrite timesteps (this is NOT a/c_s) (=1 doesn't work)

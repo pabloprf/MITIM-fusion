@@ -1129,6 +1129,7 @@ class harvest_database:
         'tglf':  ('ZS_{}', 'RLTS_{}', 'RLNS_{}', 1),
         'neo':   ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
         'cgyro': ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
+        'gx':    ('z_{}', 'tprim_{}', 'fprim_{}', 1),   # MITIM writes GX ions first, electrons last
     }
     _SPECIES_LEGACY = {'cgyro': ('z_{}', 'dlntdr_{}', 'dlnndr_{}', 0)}
 

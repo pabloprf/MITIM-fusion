@@ -234,6 +234,12 @@ DESCRIPTION
     `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
     Beats with `count_unconverged: false` (set on the template's `portals_soft`) are not counted.
 
+*   💥 **PORTALS-GX runs end to end, on 1-N GPUs per radius.** GX as PORTALS turbulence model now completes
+    evaluations (flux collection, Qie from GX's electron turbulent heating, harvest), with presets
+    `Nonlinear_reduced2_analogue` / `Nonlinear_reduced3_analogue` matched to CGYRO's ky grid, box and kx range,
+    `restart_from_cases` warm starts (t_max is added time, as CGYRO's MAX_TIME), resume of preempted array
+    elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
+
 ### Bug Fixes
 
 *   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
@@ -462,6 +468,11 @@ DESCRIPTION
     beat), a missing/unreadable `optimization_object.pkl` warns instead of raising an interactive
     prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
     the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
+
+*   🐛 **Blocking SLURM job arrays no longer lose their slowest tasks**: `sbatch --wait` on an array returns when
+    the last-started task ends (seen on engaging), after which MITIM retrieved and deleted the scratch folder
+    under the tasks still running. The execution script now waits until no task of the array is queued.
+    Multi-rank GX also writes its parallel-HDF5 output without Open MPI's NFS locks, which stalled it.
 
 ### Changes for developers (internal execution)
 

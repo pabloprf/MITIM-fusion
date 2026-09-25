@@ -921,7 +921,8 @@ class mitim_simulation:
                 "inputs": latest_inputsFile[irho],
                 "extraOptions": extraOptions,
                 "multipliers": multipliers,
-                "additional_files_to_send": additional_files_to_send[irho] if additional_files_to_send is not None else None
+                # .get: a radius may have nothing to send (restart_from_cases "best" cold-starts the radii with no parent)
+                "additional_files_to_send": (additional_files_to_send or {}).get(irho)
             }
             if irho in rhosEvaluate:
                 code_executor[subfolder_simulation][irho] = code_executor_full[subfolder_simulation][irho]

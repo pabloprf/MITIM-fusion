@@ -219,7 +219,8 @@ class gyrokinetic_model:
         in the submission metadata and is put back on disk by load_submission_state.
         '''
         ctx.chain = RestartChain(run_options, ctx.evaluation_number, self.folder, ctx.rho_locations,
-                                 base_subfolder=ctx.subfolder_name, plasma_subfolder=ctx.plasma_subfolder)
+                                 base_subfolder=ctx.subfolder_name, plasma_subfolder=ctx.plasma_subfolder,
+                                 restart_file=gk_class._warm_start_file, label=ctx.code.upper())
         ctx.turb_target_GB = RestartChain.turbulent_target_GB(self, plasma_index=0)
 
         staged = ctx.chain.stage_explicit_folder(ctx.run_kwargs.get("additional_files_to_send"))
@@ -229,7 +230,7 @@ class gyrokinetic_model:
         metadata_name = getattr(gk_class, "_submission_metadata_filename", None)
         metadata = (self.folder / ctx.subfolder_name / metadata_name) if metadata_name else None
         if ctx.check_existing_runs and metadata is not None and metadata.is_file():
-            print(f"\t- [CGYRO restart] Re-attach detected ({metadata.name} present); "
+            print(f"\t- [{ctx.code.upper()} restart] Re-attach detected ({metadata.name} present); "
                   "preserving original parent-pick (skipping resolver)", typeMsg='i')
             ctx.plan = RestartPlan(files_per_rho=ctx.run_kwargs.get("additional_files_to_send"))
         else:
@@ -279,6 +280,9 @@ class gyrokinetic_model:
         # Embedded in the submission metadata by _write_submission_metadata, so that a later
         # re-attach can put restart_sources.json back on disk.
         gk._restart_sources_payload = ctx.plan.payload
+        # Later iterations warm-start from this one's restart files, so they must come back whatever keep_files
+        # says (GX; CGYRO always retrieves bin.cgyro.restart as an optional file)
+        gk.keep_warm_start_file = ctx.chain.active
         if getattr(gk, "simulation_job", None) is not None:
             gk.simulation_job.connection_retry_settings = ctx.connection_retry_settings
 
@@ -353,7 +357,7 @@ class gyrokinetic_model:
             setattr(self, f"{key}_turb_stds", std if ctx.batched else std[0])
 
         if not has_exchange:
-            print("\t- CGYRO output carries no turbulent-exchange moment (n_flux=3); passing QieGB_turb = 0", typeMsg='w')
+            print(f"\t- {type(flat[0]).__name__} carries no turbulent-exchange moment; passing QieGB_turb = 0", typeMsg='w')
             self.QieGB_turb = self.QeGB_turb * 0.0
             self.QieGB_turb_stds = self.QeGB_turb_stds * 0.0
 

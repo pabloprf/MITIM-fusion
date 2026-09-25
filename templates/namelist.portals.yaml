@@ -656,11 +656,31 @@ transport:
 
       run:
 
-        code_settings: "Nonlinear"
+        code_settings: "Nonlinear Tokamak"
         extraOptions: {}
 
         # Run type: normal (send+submit+wait), submit (send+submit), send (send), prep ()
         run_type: "prep"
+
+        # Warm start across PORTALS iterations: same knobs and semantics as in the CGYRO block
+        # (restart_from_folder, restart_from_cases: null | "first" | "all" | "best"). GX specifics:
+        #   - The restart file is gxplasma.restart.nc, written every nsave steps (save_for_restart
+        #     and restart_if_exists are on in input.gx.controls), kept per radius as
+        #     gxplasma.restart.nc_<rho:.4f>. With restart_from_cases set it comes back under every
+        #     keep_files (150 MB per radius on the reduced3 analogue grid); without it, only
+        #     keep_files "all" brings it back.
+        #   - t_max (extraOptions or preset) is the ADDITIONAL time on a warm start, as CGYRO's
+        #     MAX_TIME. GX continues the clock of the saved state and stops at an absolute t_max,
+        #     so MITIM writes t_max = t_saved + t_max for every warm-started radius.
+        #   - The warm-started gxplasma.out.nc starts at t_saved, not at 0 as CGYRO's: a negative
+        #     tmin (see read) picks the same window as for CGYRO, an absolute tmin >= 0 does not.
+        #   - A preempted array element that SLURM requeues resumes from its own checkpoint and
+        #     runs only the remaining time (templates/gx_requeue_resume.sh), whatever this knob says.
+        restart_from_cases: null
+
+        # If True (and run_type=="submit"), a restarted PORTALS driver re-attaches to the slurm job
+        # recorded in <base_gx>/gx_submission.json instead of resubmitting.
+        check_existing_runs: False
 
       read:
         # tmin: left edge of the signal-analysis window.
@@ -672,8 +692,11 @@ transport:
         tmin: -0.3
         tmin_is_rel: true
         # averaging: same options as for CGYRO ("fixed" | "quends" | "howard_gkav", see above).
-        #   GX time is normalized to a/v_ti, not a/cs: the howard_gkav thresholds were tuned
-        #   for CGYRO cadence, so check the window on the trace plots.
+        #   GX time is in a/cs as for CGYRO (T_ref=Te, m_ref=m_D), but its output cadence differs
+        #   (nwrite timesteps): check the howard_gkav window on the trace plots.
+        # The electron TurbulentHeating GX writes (fluxes = true) is passed as QieGB_turb, as CGYRO's
+        # turbulent exchange moment (same definition, sign and GB unit Q_GB/a); PORTALS uses it only
+        # with solution.turbulent_exchange_as_surrogate.
         averaging:
           method: "fixed"
 

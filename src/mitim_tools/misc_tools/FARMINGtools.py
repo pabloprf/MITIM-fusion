@@ -2117,6 +2117,16 @@ class SbatchScript:
         return block.split("\n")
 
 
+# `sbatch --wait` on a job array returns when the array's last-started task ends, not when every task has (Slurm on
+# engaging, 2026-09-25: a 3-task array returned after 20 s while task 0 ran 150 s). MITIM then retrieved and deleted the
+# scratch folder under the tasks still running. The executor runs as `./mitim_shell_executor.sh > mitim.out`, so the
+# sbatch banner with the jobid is in mitim.out once sbatch returns: wait until none of the array's tasks is queued.
+_ARRAY_WAIT_BASH = [
+    '_mitim_jobid=$(grep -o "Submitted batch job [0-9]*" mitim.out | tail -1 | awk \'{print $4}\')',
+    'while [ -n "$_mitim_jobid" ] && squeue -h -j "$_mitim_jobid" -o %i 2>/dev/null | grep -q .; do sleep 30; done',
+]
+
+
 def create_slurm_execution_files(
     command,
     folderExecution,
@@ -2196,6 +2206,8 @@ def create_slurm_execution_files(
     commandSHELL.extend(copy.deepcopy(shellPreCommands))
 
     commandSHELL.append(f"{launch} {fileSBATCH_remote}")
+    if launchSlurm and wait_until_sbatch and script.array is not None:
+        commandSHELL.extend(_ARRAY_WAIT_BASH)
     commandSHELL.append("")
     for i in range(len(shellPostCommands)):
         commandSHELL.append(shellPostCommands[i])
