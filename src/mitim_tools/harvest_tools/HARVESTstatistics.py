@@ -38,6 +38,7 @@ class harvest_statistics:
         'neo':   ['Te', 'Ti', 'ne', 'TEMP_1', 'NU_1', 'RHO_STAR', 'Q', 'SHEAR', 'RMIN_OVER_A', 'KAPPA', 'DELTA'],
         'cgyro': ['Te', 'Ti', 'ne', 'NU_EE', 'BETAE_UNIT', 'Q', 'S', 'RMIN', 'KAPPA', 'DELTA',
                   'nu_ee', 'beta_star', 'q', 's', 'rmin', 'kappa', 'delta'],   # lowercase: records before schema 5
+        'qualikiz': ['Te', 'Ti', 'ne', 'Nustar', 'Zeff', 'q', 'smag', 'x', 'alpha'],
     }
     _FLUXES = ('Qe', 'Qi', 'Ge')
 
@@ -65,7 +66,7 @@ class harvest_statistics:
             col = drives.get(n) if n in ('Te', 'Ti', 'ne') else (f'in_{n}' if f'in_{n}' in df.columns else None)
             if col is None or col in out.values() or df[col].nunique() <= 1:
                 continue
-            label = f"{db._DRIVE_LABELS[n]} ({col[3:]})" if n in ('Te', 'Ti', 'ne') else col[3:]
+            label = f"{db.drive_label(self.code, n)} ({col[3:]})" if n in ('Te', 'Ti', 'ne') else col[3:]
             out[label] = col
         return out
 
@@ -283,7 +284,7 @@ class harvest_statistics:
             col = drives.get(d)
             sub = loc[(loc.flux == f) & (loc.column == col)].dropna(subset=['elasticity']) if col else loc.iloc[0:0]
             if len(sub) == 0:
-                ax.text(0.5, 0.5, f'no scans of {self.db._DRIVE_LABELS[d]}', ha='center', va='center', transform=ax.transAxes)
+                ax.text(0.5, 0.5, f'no scans of {self.db.drive_label(self.code, d)}', ha='center', va='center', transform=ax.transAxes)
                 continue
             if norm is not None:
                 c = self.df.loc[self.df[col].isin(sub['x0']), ccol].groupby(self.df[col]).first().reindex(sub['x0']).to_numpy()
@@ -294,8 +295,8 @@ class harvest_statistics:
             lo, hi = np.percentile(sub['elasticity'], [1, 99])   # a few points just above threshold (Q0 ~ 0) reach 1e4
             ax.set_ylim(min(lo, -1) * 1.5, max(hi, 1) * 1.5)
             ax.axhline(0, color='k', lw=0.5)
-            ax.set_xlabel(f'{self.db._DRIVE_LABELS[d]} ({col[3:]})')
-            ax.set_ylabel(f'd ln {f} / d ln {self.db._DRIVE_LABELS[d]}')
+            ax.set_xlabel(f'{self.db.drive_label(self.code, d)} ({col[3:]})')
+            ax.set_ylabel(f'd ln {f} / d ln {self.db.drive_label(self.code, d)}')
             ax.set_title(f'{f} stiffness vs drive', fontsize=10)
             ax.grid(True, alpha=0.3)
         nclust = len(loc) // max(len(self.fluxes), 1)

@@ -293,6 +293,10 @@ def _run_qlk_uncertainty_model(
     )
 
     label = f"{subfolder_name}_all"
+    # Harvest: every perturbed case of the stacked scan is recorded, tagged scan_member=1 (skippable via harvest.scan_trick_members)
+    harvest_base = qlk.harvest
+    if harvest_base is not None:
+        qlk.harvest = harvest_base.with_context(scan_member=1)
     qlk.run_cases(
         subfolder_name,
         cases,
@@ -304,6 +308,7 @@ def _run_qlk_uncertainty_model(
         code_settings=code_settings,
     )
     qlk.read_cases(label, n_cases=len(cases))
+    qlk.harvest = harvest_base
 
     scan_data_by_var = {
         variable: {

@@ -51,10 +51,10 @@ def test_tglf_records_and_dedup(tmp):
     file = tmp / 'recovered.nc'
 
     assert R.find_runs([tmp]) == [run], "parent folder searched for runs"
-    assert R.harvest_runs([run], file, dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0}
+    assert R.harvest_runs([run], file, dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
     assert not file.exists(), "--dry-run pushes nothing"
 
-    assert R.harvest_runs([tmp / 'scan'], file, stage=tmp / 'stage') == {'tglf': 2, 'neo': 0, 'eped': 0}
+    assert R.harvest_runs([tmp / 'scan'], file, stage=tmp / 'stage') == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
     db = H.harvest_database(file)
     df = db.load('tglf')
     assert len(df) == 2 and set(df['maestro_beat']) == {2.0}
@@ -64,8 +64,8 @@ def test_tglf_records_and_dedup(tmp):
     assert runs['recovered_by'].iloc[0].startswith('mitim_harvester') and runs['run_folder'].iloc[0] == str(run)
     assert runs['run'].iloc[0] == R.run_id_of(run), "stable run id"
 
-    assert R.harvest_runs([run], file, stage=tmp / 'stage') == {'tglf': 0, 'neo': 0, 'eped': 0}, "same staging: nothing new"
-    assert R.harvest_runs([run], file) == {'tglf': 0, 'neo': 0, 'eped': 0}, "fresh staging: known (run, hash) skipped"
+    assert R.harvest_runs([run], file, stage=tmp / 'stage') == {'tglf': 0, 'neo': 0, 'eped': 0, 'qualikiz': 0}, "same staging: nothing new"
+    assert R.harvest_runs([run], file) == {'tglf': 0, 'neo': 0, 'eped': 0, 'qualikiz': 0}, "fresh staging: known (run, hash) skipped"
     assert len(H.harvest_database(file).load('tglf')) == 2
     assert R.harvest_runs([run], file, scan_trick_members=False, dry_run=True)['tglf'] == 0
     print("PASS TGLF records from disk, maestro_beat, provenance, dry run, dedup on re-run")
@@ -80,7 +80,7 @@ def test_renamed_copies_skipped(tmp):
     h = R.harvester(run)
     assert [b.name for b in h._beats()] == ['Beat_2'], "Beat_2old skipped"
     assert [f.parent.name for f in h.transport_folders(sr.parents[1])] == ['portals_sr_ev_0'], "portals_sr_ev_0bak skipped"
-    assert R.harvest_runs([run], tmp / 'renamed.nc', dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0}
+    assert R.harvest_runs([run], tmp / 'renamed.nc', dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
     print("PASS renamed Beat_<n>old / <evaluation>bak copies skipped instead of crashing the run")
 
 

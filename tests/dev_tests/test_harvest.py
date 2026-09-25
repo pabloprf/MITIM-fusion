@@ -160,6 +160,45 @@ def test_eped_input_files(tmp):
     assert 'NOT_ASKED' not in (out / 'eped.config').read_text() and 'toq_eq_choice' not in (out / 'eped.input').read_text()
     print("PASS eped.input / eped.config rebuilt from an EPED record (same record hash)")
 
+def test_qualikiz_records(tmp):
+    '''QuaLiKiz: inputs are the dimx coordinates (plan), GB fluxes normalized like transport_qualikiz, read_cases members recorded'''
+    import xarray as xr
+    from mitim_tools.qualikiz_tools import QLKtools
+    from mitim_tools.gacode_tools import PROFILEStools
+    from mitim_tools.misc_tools import PLASMAtools
+    rhos = [0.4, 0.6]
+    def dataset(n):
+        d = {'efe_SI': ('dimx', np.linspace(1e4, 2e4, n)), 'pfe_SI': ('dimx', np.linspace(1e18, 2e18, n)),
+             'efi_SI': (('dimx', 'nions'), np.ones((n, 2)) * 5e3), 'pfi_SI': (('dimx', 'nions'), np.ones((n, 2)) * 1e17),
+             'vfi_SI': (('dimx', 'nions'), np.ones((n, 2))), 'cke': ('dimx', np.zeros(n))}
+        c = {'x': ('dimx', np.tile([0.45, 0.65], n // 2)), 'Ate': ('dimx', np.linspace(5, 6, n)), 'Ane': ('dimx', np.ones(n)),
+             'Ati': (('dimx', 'nions'), np.ones((n, 2)) * 6), 'Te': ('dimx', np.ones(n) * 5), 'phi': (('ntheta', 'dimx'), np.zeros((4, n))),
+             'coll_flag': 1.0}
+        return xr.Dataset(d, coords=c)
+    q = QLKtools.QuaLiKiz(rhos=rhos)
+    q.profiles = PROFILEStools.gacode_state(Path(__file__).resolve().parents[1] / 'data' / 'input.gacode')
+    ds = dataset(2).assign_coords(rho=('dimx', rhos))
+    q.results['base'] = {'dataset': ds, 'x': np.array(rhos), 'output': [ds.isel(dimx=i) for i in range(2)]}
+    recs = q.harvest_records('base')
+    r0 = recs[0]
+    assert {'x', 'Ate', 'Ati_0', 'Ati_1', 'Te', 'coll_flag', 'rho'} <= set(r0['inputs']) and 'cke' not in r0['inputs'] and 'phi' not in r0['inputs']
+    assert r0['meta']['roa'] == 0.45 and {'efe_SI', 'efi_SI_0', 'Qe', 'Qi', 'Ge', 'Gi_1', 'Mt'} <= set(r0['outputs'])
+    p = q.profiles
+    Qgb, Ggb, Pgb, _, _ = PLASMAtools.gyrobohmUnits(np.interp(0.4, p.profiles['rho(-)'], p.profiles['te(keV)']),
+                                                    np.interp(0.4, p.profiles['rho(-)'], p.profiles['ne(10^19/m^3)']) * 0.1,
+                                                    PLASMAtools.md_u, np.interp(0.4, p.profiles['rho(-)'], p.derived['B_unit']), p.derived['a'])
+    assert np.isclose(r0['outputs']['Qe'], 1e4 / (Qgb * 1e6)) and np.isclose(r0['outputs']['Qi'], 1e4 / (Qgb * 1e6))
+    assert np.isclose(r0['outputs']['Ge'], 1e18 / (Ggb * 1e20)) and np.isclose(r0['outputs']['Mt'], 2 / Pgb)
+
+    # the stacked scan trick (read_cases layout [case][rho]) is recorded too, one record per dimx point
+    ds4 = dataset(4).assign_coords(rho=('dimx', rhos * 2), case=('dimx', [0, 0, 1, 1]))
+    q.results['scan'] = {'dataset': ds4, 'x': np.array(rhos), 'output': [[ds4.isel(dimx=2 * c + i) for i in range(2)] for c in range(2)]}
+    scan = q.harvest_records('scan')
+    assert len(scan) == 4 and len({json.dumps(r['inputs'], sort_keys=True) for r in scan}) == 4 and 'case' not in scan[0]['inputs']
+    db = H.harvest_database(tmp / 'qlk.nc')
+    assert db.drive_label('qualikiz', 'Te') == 'R0/LTe' and db.drive_label('tglf', 'Te') == 'a/LTe'
+    print("PASS QuaLiKiz records: plan inputs (coords), GB fluxes as PORTALS normalizes them, stacked scan members")
+
 def test_mixed_cgyro_schemas(tmp):
     import pandas as pd
     df = pd.DataFrame({'in_N_SPECIES': [3.0, 3.0, np.nan], 'in_RMIN': [0.4, 0.55, np.nan], 'in_rmin': [np.nan, np.nan, 0.4],
@@ -829,6 +868,7 @@ def main():
         test_options_and_run_meta(tmp)
         test_no_default_file(tmp)
         test_mixed_cgyro_schemas(tmp)
+        test_qualikiz_records(tmp)
         test_drop_and_type_fallback(tmp)
         test_eped_input_files(tmp)
         test_recorder_tglf_layout_and_dedup(tmp)

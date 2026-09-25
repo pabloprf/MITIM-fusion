@@ -6,6 +6,8 @@ what they left on disk, and append them to a harvest file (record layout: see HA
                  (Initialization/initialization_simple_relax/portals_sr_ev_*/ and Execution/Evaluation.*/,
                  transport_simulation_folder/<base_tglf, base_neo, turb_drives_*>), read with MITIM's own
                  readers and recorded by the same harvest_recorder a live run uses: same fields, same hash.
+    QuaLiKiz   : base_qlk and the stacked scan-trick run (turb_drives/) of every evaluation, GB-normalized with
+                 the evaluation's input.gacode_torun as the live run does.
     EPED       : every full-EPED evaluation whose output_run1.nc survived (Beat_N/run_eped/case1/, else the
                  pruned Beat_N/beat_results/ copy; the eped_initializer creator as maestro_beat 0), recorded
                  with collect_eped. When pruning removed eped.input.1 / eped.config1, they are rebuilt from
@@ -38,7 +40,7 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print, HiddenPrints
 from mitim_tools.harvest_tools import HARVESTtools as H
 
-RECOVERED_CODES = ('tglf', 'neo', 'eped')
+RECOVERED_CODES = ('tglf', 'neo', 'eped', 'qualikiz')
 
 # Output file whose presence at a radius means the code finished there (+ its input file, always retrieved)
 _GACODE_FILES = {'tglf': ('out.tglf.gbflux', 'input.tglf'), 'neo': ('out.neo.transport_flux', 'input.neo')}
@@ -85,7 +87,7 @@ def run_id_of(folder):
     return hashlib.sha1(str(Path(folder).resolve()).encode()).hexdigest()[:12]
 
 class harvester:
-    '''One MAESTRO or PORTALS run folder -> its recoverable TGLF/NEO/EPED records, staged in `staging_folder`'''
+    '''One MAESTRO or PORTALS run folder -> its recoverable TGLF/NEO/QuaLiKiz/EPED records, staged in `staging_folder`'''
 
     def __init__(self, folder, staging_folder=None, scan_trick_members=True):
         self.folder = Path(folder).resolve()
@@ -123,12 +125,14 @@ class harvester:
 
     @staticmethod
     def code_folders(transport_folder):
-        '''[(run folder, code)] of one evaluation: base_tglf, base_neo, and the TGLF scan-trick members'''
+        '''[(run folder, code)] of one evaluation: base_tglf, base_neo, the TGLF scan-trick members, and the QuaLiKiz
+        runs (base_qlk and the stacked scan-trick run under turb_drives/: any folder with parameters.json and output/)'''
         out = []
         for d in sorted(p for p in transport_folder.iterdir() if p.is_dir()):
             for code, (out_file, _) in _GACODE_FILES.items():
                 if next(d.glob(f"{out_file}_*"), None) is not None:
                     out.append((d, code))
+        out += [(f.parent, 'qualikiz') for f in sorted(transport_folder.rglob('parameters.json')) if (f.parent / 'output').is_dir()]
         return out
 
     def eped_folders(self):
@@ -175,7 +179,8 @@ class harvester:
         for beat, portals in self.portals_folders():
             for tsf in self.transport_folders(portals):
                 for sim_folder, code in self.code_folders(tsf):
-                    counts[code] += self._counted(self._record_gacode, code, sim_folder, beat)
+                    record = self._record_qualikiz if code == 'qualikiz' else self._record_gacode
+                    counts[code] += self._counted(record, code, sim_folder, beat)
         for beat, folder in self.eped_folders():
             counts['eped'] += self._counted(self._record_eped, beat, folder)
         return counts
@@ -209,6 +214,23 @@ class harvester:
             sim.read(label='recovered', folder=sim_folder, require_all_files=False)
         else:
             sim.read(label='recovered', folder=sim_folder)
+
+    def _record_qualikiz(self, code, sim_folder, beat):
+        '''One QuaLiKiz run: base_qlk (read, one dimx point per radius) or the stacked scan trick (read_cases, radii repeated
+        per case). The radii are the plan's own rho; the GB normalization uses the evaluation's input.gacode_torun'''
+        from mitim_tools.qualikiz_tools import QLKtools
+        from mitim_tools.gacode_tools import PROFILEStools
+        tsf = next(p for p in sim_folder.parents if p.name == 'transport_simulation_folder')
+        rho_all = QLKtools.qualikiz_folder_to_xarray(sim_folder)['rho'].values.astype(float).tolist()
+        rhos = list(dict.fromkeys(rho_all))   # base: every dimx point; scan: the radii of the first case
+        sim = QLKtools.QuaLiKiz(rhos=rhos)
+        sim.profiles = PROFILEStools.gacode_state(_first_existing([tsf / 'input.gacode_torun', tsf / 'input.gacode']))
+        base = sim_folder.name.startswith('base')
+        sim.harvest = self.recorder.with_context(**self._context(beat, scan_member=int(not base)))
+        if base:
+            sim.read(label='recovered', folder=sim_folder)
+        else:
+            sim.read_cases('recovered', n_cases=len(rho_all) // len(rhos), folder=sim_folder)
 
     def _eped_parameters(self, beat):
         '''parameters_prepare of the EPED beat (base_module merged; the creator also takes profiles_initialization.parameters)'''
@@ -293,7 +315,7 @@ def find_runs(paths, max_depth=3):
     return [r for p in paths for r in walk(IOtools.expandPath(p), max_depth)]
 
 def known_hashes(db, run_ids):
-    '''{run: {hash}} of the TGLF/NEO/EPED records the file already holds for these runs'''
+    '''{run: {hash}} of the TGLF/NEO/QuaLiKiz/EPED records the file already holds for these runs'''
     known = {r: set() for r in run_ids}
     ids = np.array(sorted(run_ids), dtype=object)
     for code in [c for c in db.codes() if c in RECOVERED_CODES]:

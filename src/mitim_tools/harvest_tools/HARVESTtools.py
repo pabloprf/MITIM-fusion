@@ -5,7 +5,8 @@ every full-EPED evaluation of a PORTALS or MAESTRO run, so the data can be reuse
 
 A record is exactly an input -> output map of one code evaluation at one radius: the FULL input
 file (`in_<KEY>`), the scalar fluxes the code returned (`out_<name>`, in the code's own units: GB for
-TGLF/NEO/CGYRO/GX, SI for QuaLiKiz), plus two short keys: `run` (which run produced it) and `hash`
+TGLF/NEO/CGYRO/GX; QuaLiKiz: its SI and GB outputs plus out_Qe/Qi/Ge/Gi_k/Mt in MITIM GB units, as PORTALS
+uses them; its gradients Ate/Ane/Ati are normalized to Ro), plus two short keys: `run` (which run produced it) and `hash`
 (of the inputs, for deduplication). Who produced it (code version, machine, modules, MITIM commit,
 user, host, run folder) is stored ONCE per run and code in the `runs` table and joined on load.
 TGLF records are individual runs: the base point AND each perturbed member of the std scan trick
@@ -1147,6 +1148,7 @@ class harvest_database:
         'tglf': ('XNUE', 'XNUE (e-i collision frequency, TGLF input)'),
         'neo':  ('NU_1', 'NU_1 (collision frequency of NEO species 1, {species})'),
         'cgyro': ('NU_EE', 'NU_EE (e-e collision frequency, CGYRO input)'),
+        'qualikiz': ('Nustar', 'Nustar (electron collisionality, QuaLiKiz input)'),
     }
 
     # Radial location of a record, r/a from its own input file (every code writes r/a, under its own name)
@@ -1495,6 +1497,10 @@ class harvest_database:
         GRAPHICStools.adjust_figure_layout(fig)
 
     _DRIVE_LABELS = {'Te': 'a/LTe', 'Ti': 'a/LTi', 'ne': 'a/Lne'}
+    _DRIVE_LABELS_CODE = {'qualikiz': {'Te': 'R0/LTe', 'Ti': 'R0/LTi', 'ne': 'R0/Lne'}}   # QuaLiKiz gradients are normalized to Ro
+
+    def drive_label(self, code, d):
+        return self._DRIVE_LABELS_CODE.get(code, {}).get(d, self._DRIVE_LABELS[d])
 
     @staticmethod
     def _flux_axis(values, name, nbins=40):
@@ -1599,13 +1605,13 @@ class harvest_database:
             for icol, dname in enumerate(('Te', 'Ti', 'ne')):
                 ax, dcol = axs[irow, icol], drives.get(dname)
                 if fcol is None or dcol is None:
-                    ax.text(0.5, 0.5, f'no {fname} or {self._DRIVE_LABELS[dname]} column', ha='center', va='center', transform=ax.transAxes)
+                    ax.text(0.5, 0.5, f'no {fname} or {self.drive_label(code, dname)} column', ha='center', va='center', transform=ax.transAxes)
                     continue
                 if stdcol is not None:
                     ax.errorbar(df[dcol], df[fcol], yerr=df[stdcol], fmt='none', ecolor='gray', elinewidth=0.6, alpha=0.5, zorder=1)
                 sc = self._scatter_spec(ax, df[dcol].to_numpy(dtype=float), df[fcol].to_numpy(dtype=float), spec) or sc
                 if irow == 2:
-                    ax.set_xlabel(f'{self._DRIVE_LABELS[dname]}  ({dcol[3:]})')
+                    ax.set_xlabel(f'{self.drive_label(code, dname)}  ({dcol[3:]})')
                 if icol == 0:
                     ax.set_ylabel(f'{fname}  ({fcol[4:]})\n{yscale["note"]}' + ('\n1-sigma bars' if stdcol else ''), fontsize=9)
                 self._apply_flux_axis(ax, yscale)
@@ -1674,7 +1680,7 @@ class harvest_database:
                 ax.tick_params(labelsize=7)
                 if irow == 0:
                     ax.set_title(f'{g}  ({int(m.sum())})', fontsize=9)
-                ax.set_xlabel(f'{self._DRIVE_LABELS[self._OWN_DRIVE[fname]]} ({dcol[3:]})', fontsize=8)
+                ax.set_xlabel(f'{self.drive_label(code, self._OWN_DRIVE[fname])} ({dcol[3:]})', fontsize=8)
             axs[irow, 0].set_ylabel(f'{fname}  ({fcol[4:]})\n{yscale["note"]}' + ('\n1-sigma bars' if stdcol else ''), fontsize=8)
         if own:
             GRAPHICStools.adjust_figure_layout(fig)
@@ -2135,7 +2141,7 @@ class harvest_database:
             if col is None or col in cols or df[col].nunique() <= 1:
                 continue
             cols.append(col)
-            labels.append(f'{self._DRIVE_LABELS[n]} ({col[3:]})' if n in ('Te', 'Ti', 'ne') else col[3:])
+            labels.append(f'{self.drive_label(code, n)} ({col[3:]})' if n in ('Te', 'Ti', 'ne') else col[3:])
         cols, labels = cols[:max_vars], labels[:max_vars]
         if fn is not None:
             fig = fn.add_figure(label=f'{code.upper()} pairs')
@@ -2217,7 +2223,7 @@ def main_harvester():
                                                  "before its end-of-run push). --from-disk: records rebuilt from the files of runs made WITHOUT harvest")
     parser.add_argument("folders", type=str, nargs="+", help="run folders (PORTALS or MAESTRO) or harvest staging folders; with --from-disk, also parent folders of runs")
     parser.add_argument("--file", type=str, default=None, help="central netCDF file (default: config preferences.harvest_file; required if that is not set)")
-    parser.add_argument("--from-disk", action="store_true", help="rebuild the TGLF/NEO/full-EPED records of runs made WITHOUT harvest from what is left on disk")
+    parser.add_argument("--from-disk", action="store_true", help="rebuild the TGLF/NEO/QuaLiKiz/full-EPED records of runs made WITHOUT harvest from what is left on disk")
     parser.add_argument("--rebuild", action="store_true", help="move the central file aside and re-push everything staged (pushed or not) under the folders")
     parser.add_argument("--dry-run", action="store_true", help="only report what would be pushed")
     parser.add_argument("--stage", type=str, default=None, help="--from-disk: keep the staging folders under this directory (default: temporary, removed)")
