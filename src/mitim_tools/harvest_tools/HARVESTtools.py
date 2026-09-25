@@ -87,11 +87,11 @@ def resolve_central_file(file=None):
     return file
 
 def checked_block(block):
-    '''A driver's `harvest:` block, switched off with a warning when enabled but no central file is set anywhere'''
+    '''A driver's `harvest:` block (enabled unless it says otherwise), switched off when no central file is set anywhere'''
     block = dict(block or {})
-    if block.get('enabled', False) and block.get('push', True) and central_file(block.get('file')) is None:
-        print("\t- harvest.enabled is true but no file is set (harvest.file in the namelist or preferences.harvest_file "
-              "in config_user.json): this run will NOT be harvested", typeMsg='w')
+    if block.get('enabled', True) and block.get('push', True) and central_file(block.get('file')) is None:
+        print("\t- No harvest file set (harvest.file in the namelist or preferences.harvest_file "
+              "in config_user.json): this run will NOT be harvested", typeMsg='i')
         block['enabled'] = False
     return block
 
@@ -110,7 +110,7 @@ def options_from_namelist(block, staging_folder, run_meta_extra=None):
     shared = bool(block.get('staging_folder'))
     staging_folder = block.get('staging_folder') or staging_folder
     opts = {
-        'enabled': bool(block.get('enabled', False)),
+        'enabled': bool(block.get('enabled', True)),
         'file': block.get('file', None),
         'push': bool(block.get('push', True)),
         'scan_trick_members': bool(block.get('scan_trick_members', True)),

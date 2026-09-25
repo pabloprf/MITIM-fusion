@@ -213,9 +213,10 @@ maestro:
   # goes (each record tagged with its maestro_beat; survives every prune level) and MAESTRO pushes ONCE
   # at finalize into the central per-user netCDF file;
   # `mitim_harvester <folder>` pushes a run that died, `mitim_plot_harvest` inspects the file
+  # On by default: a run harvests whenever a file is set (below or in config_user.json), and does nothing otherwise
   harvest:
-    enabled: false
-    # null -> config_user.json preferences.harvest_file; if neither is set, the run is NOT harvested (warning at launch)
+    enabled: true
+    # null -> config_user.json preferences.harvest_file; if neither is set, the run is NOT harvested (one line at launch)
     file: null
     # Also record the perturbed members of the TGLF std scan trick (most of the volume); false keeps
     # only the base point of each PORTALS evaluation

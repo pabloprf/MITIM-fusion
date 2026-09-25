@@ -85,7 +85,7 @@ class portals(STRATEGYtools.opt_evaluator):
         self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
 
         # Older user namelists predate the harvest block; MAESTRO also injects extra keys into it
-        self.portals_parameters.setdefault("harvest", {"enabled": False, "file": None})
+        self.portals_parameters.setdefault("harvest", {"enabled": True, "file": None})
 
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
         if self.portals_parameters["optimization_namelist_location"] is not None:

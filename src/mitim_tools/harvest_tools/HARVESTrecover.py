@@ -6,6 +6,10 @@ what they left on disk, and append them to a harvest file (record layout: see HA
                  (Initialization/initialization_simple_relax/portals_sr_ev_*/ and Execution/Evaluation.*/,
                  transport_simulation_folder/<base_tglf, base_neo, turb_drives_*>), read with MITIM's own
                  readers and recorded by the same harvest_recorder a live run uses: same fields, same hash.
+    CGYRO      : every radius of base_cgyro/ (flat retrieved layout) with both out.cgyro.time_<rho> and input.cgyro_<rho>,
+                 read as PORTALS reads it (CGYRO.read, minimal, the `transport.options.cgyro.read` of that PORTALS
+                 folder's own namelist.portals.yaml snapshot), so the averaging window, the fluxes and the hash are the
+                 live ones; restart history comes from restart_sources.json and out.cgyro.info as in a live run.
     QuaLiKiz   : base_qlk and the stacked scan-trick run (turb_drives/) of every evaluation, GB-normalized with
                  the evaluation's input.gacode_torun as the live run does.
     EPED       : every full-EPED evaluation whose output_run1.nc survived (Beat_N/run_eped/case1/, else the
@@ -13,9 +17,12 @@ what they left on disk, and append them to a harvest file (record layout: see HA
                  with collect_eped. When pruning removed eped.input.1 / eped.config1, they are rebuilt from
                  the .nc, which carries every eped.input value and the NMODES/WIDTHS/TEPED_BOUND scan.
 
-Not recoverable from disk (a live run would have them): TGLF/NEO evaluations whose run folders were
-pruned (MAESTRO keep_all_files: false keeps none), EPED retries overwritten by the final attempt, the
-machine/modules the codes ran with, and the MITIM version of the run. The runs table marks recovered
+Not recoverable from disk (a live run would have them): TGLF/NEO/CGYRO evaluations whose run folders were
+pruned (MAESTRO keep_all_files: false keeps none), CGYRO evaluations run with keep_files "pickle" (once
+gk_object.pkl is written, transport_cgyro unlinks the per-radius outputs, out.cgyro.time/info/timing included,
+leaving input.cgyro_<rho> and the restart files; "none" unlinks nothing and is recoverable), the CGYRO history fields
+of files a retrieved copy dropped (no mitim_budget.tag -> out_budget_stop 0; the hash is unaffected), EPED retries
+overwritten by the final attempt, the machine/modules the codes ran with, and the MITIM version of the run. The runs table marks recovered
 runs with `recovered_by` (mitim_harvester version@commit).
 
 Each run stages into its own folder (like a live run's Outputs/harvest) and is pushed with
@@ -40,10 +47,11 @@ from mitim_tools.misc_tools import IOtools
 from mitim_tools.misc_tools.LOGtools import printMsg as print, HiddenPrints
 from mitim_tools.harvest_tools import HARVESTtools as H
 
-RECOVERED_CODES = ('tglf', 'neo', 'eped', 'qualikiz')
+RECOVERED_CODES = ('tglf', 'neo', 'cgyro', 'eped', 'qualikiz')
 
 # Output file whose presence at a radius means the code finished there (+ its input file, always retrieved)
-_GACODE_FILES = {'tglf': ('out.tglf.gbflux', 'input.tglf'), 'neo': ('out.neo.transport_flux', 'input.neo')}
+_GACODE_FILES = {'tglf': ('out.tglf.gbflux', 'input.tglf'), 'neo': ('out.neo.transport_flux', 'input.neo'),
+                 'cgyro': ('out.cgyro.time', 'input.cgyro')}
 
 # eped.input as EPEDtools.EPED._prep writes it: MAESTRO's input_params (+ zeta / s_three, s_four for the
 # non-standard TOQ equilibria), the fixed keys and the composition. num_scan is the only one not in the .nc.
@@ -87,7 +95,7 @@ def run_id_of(folder):
     return hashlib.sha1(str(Path(folder).resolve()).encode()).hexdigest()[:12]
 
 class harvester:
-    '''One MAESTRO or PORTALS run folder -> its recoverable TGLF/NEO/QuaLiKiz/EPED records, staged in `staging_folder`'''
+    '''One MAESTRO or PORTALS run folder -> its recoverable TGLF/NEO/CGYRO/QuaLiKiz/EPED records, staged in `staging_folder`'''
 
     def __init__(self, folder, staging_folder=None, scan_trick_members=True):
         self.folder = Path(folder).resolve()
@@ -100,6 +108,7 @@ class harvester:
         self.namelist = (yaml.safe_load(nml.read_text()) or {}) if nml.exists() else {}
         self.recorder = None
         self.failed = []
+        self._cgyro_read = {}
 
     @staticmethod
     def is_run(folder):
@@ -125,7 +134,7 @@ class harvester:
 
     @staticmethod
     def code_folders(transport_folder):
-        '''[(run folder, code)] of one evaluation: base_tglf, base_neo, the TGLF scan-trick members, and the QuaLiKiz
+        '''[(run folder, code)] of one evaluation: base_tglf, base_neo, base_cgyro, the TGLF scan-trick members, and the QuaLiKiz
         runs (base_qlk and the stacked scan-trick run under turb_drives/: any folder with parameters.json and output/)'''
         out = []
         for d in sorted(p for p in transport_folder.iterdir() if p.is_dir()):
@@ -200,7 +209,7 @@ class harvester:
         return {**({'maestro_beat': beat} if beat is not None else {}), **extra}
 
     def _record_gacode(self, code, sim_folder, beat):
-        from mitim_tools.gacode_tools import TGLFtools, NEOtools
+        from mitim_tools.gacode_tools import TGLFtools, NEOtools, CGYROtools
         out_file, in_file = _GACODE_FILES[code]
         rhos = sorted(float(f.name.rsplit('_', 1)[1]) for f in sim_folder.glob(f"{out_file}_*")
                       if (sim_folder / f"{in_file}_{f.name.rsplit('_', 1)[1]}").exists())
@@ -208,12 +217,29 @@ class harvester:
             return
         # TGLF folders other than base_* are the std scan trick (turb_drives_*): skippable like live
         scan_member = int(code == 'tglf' and not sim_folder.name.startswith('base'))
-        sim = (TGLFtools.TGLF if code == 'tglf' else NEOtools.NEO)(rhos=rhos)
+        sim = {'tglf': TGLFtools.TGLF, 'neo': NEOtools.NEO, 'cgyro': CGYROtools.CGYRO}[code](rhos=rhos)
         sim.harvest = self.recorder.with_context(**self._context(beat, scan_member=scan_member))
         if code == 'tglf':
             sim.read(label='recovered', folder=sim_folder, require_all_files=False)
+        elif code == 'cgyro':
+            # the hash (input.cgyro + t_last) does not see the averaging: reading with other options would stage wrong fluxes
+            # under the live hash, so only the run's own read options are used (transport_cgyro._gk_read)
+            sim.read(label='recovered', folder=sim_folder, minimal=True, **self.cgyro_read_options(sim_folder))
         else:
             sim.read(label='recovered', folder=sim_folder)
+
+    def cgyro_read_options(self, sim_folder):
+        '''transport.options.<cgyro instance>.read of the PORTALS folder holding sim_folder, from its namelist.portals.yaml
+        snapshot (the fully merged namelist PORTALS ran with; a MAESTRO beat_results/ twin uses its run_portals/ one)'''
+        portals = next(p for p in sim_folder.parents if p.name in ('Execution', 'Initialization')).parent
+        if portals not in self._cgyro_read:
+            nml = _first_existing([portals / 'namelist.portals.yaml', portals.parent / 'run_portals' / 'namelist.portals.yaml'])
+            if nml is None:
+                raise FileNotFoundError(f"no namelist.portals.yaml for {portals}: CGYRO read options unknown")
+            self._cgyro_read[portals] = yaml.safe_load(nml.read_text())['transport']['options']
+        options = self._cgyro_read[portals]
+        instance = re.sub(r'_plasma\d+$', '', sim_folder.name).removeprefix('base_')   # multi-fidelity 'cgyro1', batched _plasma<p>
+        return options[instance if instance in options else 'cgyro']['read']
 
     def _record_qualikiz(self, code, sim_folder, beat):
         '''One QuaLiKiz run: base_qlk (read, one dimx point per radius) or the stacked scan trick (read_cases, radii repeated
@@ -315,7 +341,7 @@ def find_runs(paths, max_depth=3):
     return [r for p in paths for r in walk(IOtools.expandPath(p), max_depth)]
 
 def known_hashes(db, run_ids):
-    '''{run: {hash}} of the TGLF/NEO/QuaLiKiz/EPED records the file already holds for these runs'''
+    '''{run: {hash}} of the TGLF/NEO/CGYRO/QuaLiKiz/EPED records the file already holds for these runs'''
     known = {r: set() for r in run_ids}
     ids = np.array(sorted(run_ids), dtype=object)
     for code in [c for c in db.codes() if c in RECOVERED_CODES]:

@@ -434,7 +434,7 @@ parallelism). Per-iteration overrides (`extraOptions_special`,
 ### 5.7 Harvest (archiving every code evaluation)
 
 `harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist (or
-`maestro.harvest`) records every individual TGLF/NEO/CGYRO/GX/QuaLiKiz
+`maestro.harvest`; **`enabled` defaults to true, so a run harvests whenever a file is set**) records every individual TGLF/NEO/CGYRO/GX/QuaLiKiz
 evaluation (base point AND each member of the TGLF std scan trick unless
 `scan_trick_members: false`) and every full-EPED evaluation. A record is only
 `in_<KEY>` (full input file) -> `out_<name>` (scalar fluxes) plus `run` and
@@ -460,8 +460,10 @@ pushes). CGYRO records store the parsed `input.cgyro` (schema 5; older CGYRO rec
 CLIs: **`mitim_harvester <run folder> [--file F]`** (push a dead run, `--rebuild`),
 `mitim_plot_harvest [file]`.
 **`mitim_harvester --from-disk <run(s) or parent folder> [--file F] [--dry-run] [--stage DIR]` (`HARVESTrecover.py`) rebuilds from disk the
-TGLF/NEO/full-EPED records of MAESTRO/PORTALS runs made WITHOUT harvest (only what pruning left: PORTALS run folders, EPED
+TGLF/NEO/CGYRO/full-EPED records of MAESTRO/PORTALS runs made WITHOUT harvest (only what pruning left: PORTALS run folders, EPED
 `output_run1.nc`), with MITIM's own readers/recorder, a stable per-run id, and skips every (run, hash) already in the file.**
+**CGYRO radii are read with the `transport.options.cgyro.read` of each PORTALS folder's own `namelist.portals.yaml` (the hash does
+not cover the averaging); runs with CGYRO `keep_files: "pickle"` are not recoverable (their outputs were unlinked).**
 
 ### 5.8 Impurity lumping vs. the radiation target
 
