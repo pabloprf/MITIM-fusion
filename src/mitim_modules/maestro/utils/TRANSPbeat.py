@@ -1122,19 +1122,23 @@ class transp_beat(beat):
             print(f'\t\t- Modifying p0 of initialization machine from {p0_MPa:.3f} MPa to {p0_MPa/factor_p:.3f} MPa to match target p/B^2 = {modify_p_to_match_pB2:.3f} (original p/B^2 was {beta_now:.3f})')
             p0_MPa = p0_MPa / factor_p
 
-        # MINUET (fixed-boundary GS) is preferred over FREEGS when installed, with FREEGS as fallback
+        # FREEGS builds this slice, MINUET is the fallback (e.g. the ST shapes FREEGS cannot bound). Not the other way
+        # around: with the MINUET slice (exact Miller boundary) the ARC deck-2 Case 1 chain dies with a TRANSP SIGFPE at
+        # t ~ 0.01 s of Beat_2, with both the legacy q shape (runs B/C, 2026-09-18) and the positive-current ansatz
+        # (2026-09-25, 23925002_3), while the FREEGS slice passes; mechanism not identified
         solver_used = None
-        if GEQtools.minuet_available():
-            try:
-                self.transp.populate_time.from_minuet(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20,
-                    q_shape = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('minuet_q_shape'))
-                solver_used = 'MINUET'
-            except Exception as e:
-                print(f'\t\t- MINUET failed to build the initialization machine slice ({type(e).__name__}: {e}), falling back to freegs', typeMsg = 'w')
-
-        if solver_used is None:
+        try:
             self.transp.populate_time.from_freegs(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20)
             solver_used = 'FREEGS'
+        except Exception as e:
+            if not GEQtools.minuet_available():
+                raise
+            print(f'\t\t- FREEGS failed to build the initialization machine slice ({type(e).__name__}: {e}), falling back to MINUET', typeMsg = 'w')
+
+        if solver_used is None:
+            self.transp.populate_time.from_minuet(self.time_init, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = ne0_20,
+                q_shape = self.maestro_instance.maestro_namelist['plasma']['parameters']['separatrix'].get('minuet_q_shape'))
+            solver_used = 'MINUET'
 
         print(f'\t\t- Initialization machine slice (t = {self.time_init}) built with {solver_used}')
 

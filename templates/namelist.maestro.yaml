@@ -22,8 +22,9 @@ plasma:
     #       fibe:       use FIBE to create an equilibrium from boundary parameters, requires geqdsk file to specify f and pressure profiles
     #       separatrix: create separatrix from parameters (or RZ file) and guess internal equilibrium or use internal_flux_file
     #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
-    # NOTE: the "separatrix" internal-equilibrium correction and the TRANSP machine-initialization morph
-    #       automatically PREFER MINUET over FREEGS when the minuet package is installed (FREEGS is the fallback)
+    # NOTE: the "separatrix" internal-equilibrium correction automatically PREFERS MINUET over FREEGS when the minuet
+    #       package is installed (FREEGS is the fallback). The TRANSP machine-initialization morph does the opposite
+    #       (FREEGS first, MINUET fallback): its MINUET slice leads to a TRANSP SIGFPE on the ARC deck-2 Case 1 chain
     # NOTE: minuet is the default; without the optional minuet package installed, use freegs instead
     initialization_type: minuet
 
