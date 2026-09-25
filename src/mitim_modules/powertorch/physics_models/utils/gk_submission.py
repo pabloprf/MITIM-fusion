@@ -3,7 +3,8 @@ The detached-submission lifecycle of a gyrokinetic run: re-attach to a job a pre
 submitted, poll it, fetch it, and drop its metadata once the results are in.
 
 Backend-agnostic: the metadata file name comes from the simulation object
-(`_submission_metadata_filename`), so a backend that writes none (GX) simply never re-attaches.
+(`_submission_metadata_filename`: cgyro_submission.json, gx_submission.json), so a backend that
+writes none simply never re-attaches.
 '''
 
 from dataclasses import dataclass

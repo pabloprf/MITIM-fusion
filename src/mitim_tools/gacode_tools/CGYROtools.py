@@ -940,6 +940,10 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
     # PORTALS restart can re-attach to the in-flight job rather than resubmit.
     _submission_metadata_filename = "cgyro_submission.json"
 
+    # Restart blob the PORTALS warm-start chain (restart_from_cases) stages, retrieved per rho as
+    # bin.cgyro.restart_<rho:.4f> (cgyro_restart.RestartChain)
+    _warm_start_file = "bin.cgyro.restart"
+
     # Per-task inspection for `check(custom_checker=...)`. Picked up by
     # transport_cgyro.py via `getattr(gk_object, '_custom_check_callback', None)`
     # so the generic gyrokinetic_model evaluator stays code-agnostic (GX etc.

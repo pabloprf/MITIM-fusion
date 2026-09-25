@@ -456,7 +456,16 @@ def test_sbatch_text_is_byte_identical_to_the_reference_commit():
         for folder in folders.values():
             shutil.rmtree(folder, ignore_errors=True)
         assert texts["old"][1] == texts["new"][1], f"{name}: mitim_bash.src changed\n--- old ---\n{texts['old'][1].decode()}\n--- new ---\n{texts['new'][1].decode()}"
-        assert texts["old"][2] == texts["new"][2], f"{name}: mitim_shell_executor.sh changed"
+        # Arrays launched with --wait also wait for every task to leave the queue (FARMINGtools._ARRAY_WAIT_BASH),
+        # right after the sbatch line; everything else is unchanged
+        shell_new = texts["new"][2].decode()
+        if case.get("launchSlurm") and case.get("wait_until_sbatch", True) and case["slurm_settings"].get("array"):
+            block = "\n".join(FARMINGtools._ARRAY_WAIT_BASH) + "\n"
+            assert ".src\n" + block in shell_new, f"{name}: array wait block missing after the sbatch line"
+            shell_new = shell_new.replace(block, "", 1)
+        else:
+            assert "_mitim_jobid" not in shell_new, f"{name}: array wait block in a non-array/no-wait launch"
+        assert texts["old"][2].decode() == shell_new, f"{name}: mitim_shell_executor.sh changed"
         assert texts["old"][0] == texts["new"][0], f"{name}: launch command changed"
         assert texts["old"][3:] == texts["new"][3:], f"{name}: file names changed"
     print(f"PASS test_sbatch_text_is_byte_identical_to_the_reference_commit ({len(CASES)} parameter sets)")
