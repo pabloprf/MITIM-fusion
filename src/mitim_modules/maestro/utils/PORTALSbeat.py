@@ -137,6 +137,9 @@ class portals_beat(beat):
                 'enabled': True, 'file': harvest.get('file'), 'push': False, 'scan_trick_members': harvest.get('scan_trick_members', True),
                 'run_id': harvest['run_meta']['run'], 'maestro_beat': int(self.maestro_instance.counter_current),
                 'staging_folder': harvest['folder']}
+        else:
+            # MAESTRO not harvesting (switched off, or no file): its PORTALS beats must not harvest on their own
+            portals_fun.portals_parameters['harvest'] = {'enabled': False}
 
         # Initialization now happens by the user
         from mitim_tools.gacode_tools.PROFILEStools import gacode_state
@@ -802,9 +805,12 @@ class portals_beat(beat):
         if converged is None and verdict_file.exists():
             converged = verdict_file.read_text().strip() == 'True'
         history = list(self.maestro_instance.parameters_trans_beat.get('portals_converged_history', []))
-        history.append(bool(converged) if converged is not None else None)
-        self.maestro_instance.parameters_trans_beat['portals_converged_history'] = history
-        print(f'\t\t* PORTALS convergence history: {history}')
+        if getattr(self, 'count_unconverged', True):
+            history.append(bool(converged) if converged is not None else None)
+            self.maestro_instance.parameters_trans_beat['portals_converged_history'] = history
+            print(f'\t\t* PORTALS convergence history: {history}')
+        else:
+            print(f'\t\t* PORTALS convergence of this beat ({converged}) not counted (count_unconverged: false); history: {history}')
 
         # Save the residual goal to use in the next PORTALS beat
         portals_output, _ = self.grab_output()

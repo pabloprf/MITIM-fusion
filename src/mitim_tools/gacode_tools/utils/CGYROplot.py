@@ -9,6 +9,11 @@ restart mode); this module handles CGYRO-specific loading and drawing.
 """
 
 import json
+import os
+import shlex
+import shutil
+import time
+from pathlib import Path
 
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, Normalize
@@ -17,7 +22,7 @@ from matplotlib.patches import Patch
 
 from mitim_tools.simulation_tools import SIMtools
 from mitim_tools.gacode_tools import CGYROtools
-from mitim_tools.misc_tools import GRAPHICStools
+from mitim_tools.misc_tools import GRAPHICStools, FARMINGtools
 from mitim_tools.misc_tools.LOGtools import HiddenPrints, printMsg as print
 
 
@@ -289,7 +294,7 @@ def _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its):
 
 
 def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
-                     color_for, base_iter, targets_per_iter=None):
+                     color_for, base_iter, targets_per_iter=None, trace_lw=1.0):
     '''
     Draw one subplot: non-base traces in `chunk` + base iter, for channel
     `var` at `rho`. Returns (trace_count, trace_means) so the outer grid
@@ -358,7 +363,7 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
             alpha_trace, alpha_mean = 1.0, 0.85
             shade_color, shade_alpha = 'gray', 0.28
         else:
-            lw_trace, lw_mean, ms_err, capsize_err, lw_err = 1.0, 0.7, 3, 2, 0.8
+            lw_trace, lw_mean, ms_err, capsize_err, lw_err = trace_lw, 0.7, 3, 2, 0.8
             z_trace, z_mean, z_err = 2, 3, 4
             alpha_trace, alpha_mean = 0.85, 0.8
             shade_color, shade_alpha = color, 0.22
@@ -431,8 +436,9 @@ def _draw_chunk_cell(ax, var, rho, r_idx, chunk, cache, base_out, offsets,
         out = pick_output_for_rho(cache[it], rho, r_idx)
         if out is None:
             continue
-        _draw_single_trace(out, offsets[it], color_for(it), is_base=False)
-        _draw_target(it, out, offsets[it], color_for(it), is_base=False)
+        # offsets is empty in local-time mode (time_mode="local"): every trace starts at 0
+        _draw_single_trace(out, offsets.get(it, 0.0), color_for(it), is_base=False)
+        _draw_target(it, out, offsets.get(it, 0.0), color_for(it), is_base=False)
 
     if base_out is not None:
         _draw_single_trace(base_out, offsets.get(base_iter, 0.0), color=None, is_base=True)
@@ -541,6 +547,7 @@ def plot_time_traces_per_radius(
     title_prefix="CGYRO time traces",
     factor=2.5,
     targets_per_iter=None,
+    time_mode="local",
 ):
     '''
     Build one FigureNotebook tab per rho. Rows = transport channels
@@ -575,7 +582,7 @@ def plot_time_traces_per_radius(
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter) if time_mode == "chain" else " (per evaluation)"
     restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     for r_idx, rho in enumerate(rhos):
@@ -596,7 +603,7 @@ def plot_time_traces_per_radius(
             fontsize=11,
         )
 
-        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its)
+        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its) if time_mode == "chain" else {}
         base_out = pick_output_for_rho(cache[base_iter], rho, r_idx) if base_iter in cache else None
         base_has_window = base_out is not None and getattr(base_out, 'tmin', None) is not None
 
@@ -657,6 +664,7 @@ def plot_time_traces_per_channel(
     title_prefix="CGYRO time traces",
     factor=2.5,
     targets_per_iter=None,
+    time_mode="local",
 ):
     '''
     Companion to `plot_time_traces_per_radius` with the axes pivoted:
@@ -682,7 +690,7 @@ def plot_time_traces_per_channel(
     sorted_its = sorted(cache.keys())
     non_base_its, chunks = _chunk_iterations(sorted_its, base_iter)
     n_cols = len(chunks)
-    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter)
+    xlabel_suffix = _xlabel_suffix_from_sources(sources_per_iter) if time_mode == "chain" else " (per evaluation)"
     restart_label = _restart_label_from_sources(sources_per_iter) or "none"
 
     rho_list = list(rhos)
@@ -715,7 +723,8 @@ def plot_time_traces_per_channel(
 
         # Pre-resolve per-rho offsets and base_out once (shared across columns).
         offsets_per_rho = {
-            r_idx: _compute_offsets_for_rho(rho_list[r_idx], r_idx, sources_per_iter, cache, sorted_its)
+            r_idx: (_compute_offsets_for_rho(rho_list[r_idx], r_idx, sources_per_iter, cache, sorted_its)
+                    if time_mode == "chain" else {})
             for r_idx in range(n_rows)
         }
         base_out_per_rho = {
@@ -772,3 +781,677 @@ def plot_time_traces_per_channel(
                     t_max = max(t_max, offs.get(it, 0.0) + float(out.t[-1]))
         if t_max > 0.0:
             axs[0, 0].set_xlim(-0.02 * t_max, t_max * (1.0 + _XLIM_LEGEND_EXTEND))
+
+
+# ---------------------------------------------------------------------------
+# Overview figures: every evaluation at once
+# ---------------------------------------------------------------------------
+
+def _iteration_colors(sorted_its):
+    '''Evaluation index -> color on a perceptually ordered map, plus the mappable for a colorbar.'''
+    import matplotlib.cm as cm
+    norm = Normalize(vmin=min(sorted_its), vmax=max(sorted_its) if max(sorted_its) > min(sorted_its) else min(sorted_its) + 1)
+    sm = cm.ScalarMappable(norm=norm, cmap='viridis')
+    return (lambda it: sm.to_rgba(it)), sm
+
+
+def _target_for(targets_per_iter, it, var, r_idx):
+    '''Turbulence-only target (target - neoclassical, GB) of one iteration/channel/radius, or None.'''
+    gb_key = _CHANNEL_TO_GB.get(var)
+    if not targets_per_iter or gb_key is None:
+        return None
+    arr = (targets_per_iter.get(it) or {}).get(gb_key)
+    if arr is None or r_idx >= len(arr):
+        return None
+    val = float(arr[r_idx])
+    return val if np.isfinite(val) else None
+
+
+def _robust_ylim(ax, means, stds, targets, pad=0.25):
+    '''
+    Frame the saturated windows, not the startup transients: the limits come from the window
+    means +/- 2 sigma (and the targets), so one iteration's initial overshoot cannot flatten
+    every other trace.
+    '''
+    vals = [m + 2.0 * s for m, s in zip(means, stds)] + [m - 2.0 * s for m, s in zip(means, stds)] + list(targets)
+    vals = [v for v in vals if np.isfinite(v)]
+    if len(vals) < 2:
+        return
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or (abs(hi) or 1.0)
+    ax.set_ylim(min(lo - pad * span, 0.0) if lo >= 0 else lo - pad * span, hi + pad * span)
+
+
+def plot_time_traces_overview(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    sources_per_iter=None,
+    base_iter=0,
+    title_prefix="CGYRO time traces",
+    targets_per_iter=None,
+    chained_time=True,
+):
+    '''
+    One figure with everything: rows = channels (Qe, Qi, Ge), columns = radii, every evaluation
+    drawn in the same cell and colored by evaluation index (colorbar on the right).
+
+    With `chained_time` (default) the x axis is the warm-start time: each evaluation is offset by
+    the simulated time its restart parent had already accumulated (restart_sources.json), so a
+    trace continues where its parent stopped and the axis reads as the total time invested at that
+    radius. The window mean of every evaluation is drawn as a short horizontal bar, and the
+    turbulence-only target of the last evaluation as a dashed line, so the approach to flux match
+    is visible across the whole run.
+    '''
+    if not tools_by_iteration:
+        return
+    sources_per_iter = sources_per_iter or {}
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO traces (all)", tab_color=fn_color_start)
+    # No shared y across columns: the flux scale changes by an order of magnitude between the
+    # inner and outer radii, so a shared axis would flatten every inner-radius cell
+    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True)
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 8.0)
+    fig.suptitle(
+        f"{title_prefix} — all {len(sorted_its)} evaluations"
+        f" ({'warm-start (chained) time' if chained_time else 'per-evaluation time'};"
+        f" restart_mode={_restart_label_from_sources(sources_per_iter) or 'none'})",
+        fontsize=11,
+    )
+
+    for r_idx, rho in enumerate(rhos):
+        offsets = _compute_offsets_for_rho(rho, r_idx, sources_per_iter, cache, sorted_its) if chained_time else {}
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            means, stds, targets = [], [], []
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                if out is None or not hasattr(out, 't') or getattr(out, var, None) is None:
+                    continue
+                off = float(offsets.get(it, 0.0))
+                c = color_for(it)
+                ax.plot(out.t + off, getattr(out, var), color=c, lw=0.5, alpha=0.75,
+                        zorder=2 + (it == sorted_its[-1]) * 3)
+                m, s, tmin = getattr(out, f"{var}_mean", None), getattr(out, f"{var}_std", None), getattr(out, 'tmin', None)
+                if m is not None and tmin is not None:
+                    ax.hlines(float(m), float(tmin) + off, float(out.t[-1]) + off, colors=c, lw=1.6, zorder=6)
+                    means.append(float(m)); stds.append(float(s) if s is not None else 0.0)
+                tval = _target_for(targets_per_iter, it, var, r_idx)
+                if tval is not None:
+                    targets.append(tval)
+            if targets:
+                ax.axhline(targets[-1], color='k', ls='--', lw=1.0, alpha=0.8, zorder=7)
+            _robust_ylim(ax, means, stds, targets)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            if row_idx == len(_CHANNELS) - 1:
+                ax.set_xlabel("$t \\, c_s/a$" + (" (chained)" if chained_time else ""))
+            GRAPHICStools.addDenseAxis(ax)
+
+    cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), fraction=0.02, pad=0.01)
+    cbar.set_label("evaluation")
+    axs[0, 0].plot([], [], color='k', ls='--', lw=1.0, label='target $-$ neoclassical (last)')
+    axs[0, 0].plot([], [], color='gray', lw=1.6, label='mean over window')
+    axs[0, 0].legend(loc='upper right', fontsize=7, framealpha=0.9)
+
+
+def _tail_fraction(ky, spectrum, tail_start):
+    '''
+    Share of the flux carried by the high-ky end of the grid: sum|spectrum| over ky >= tail_start*ky_max
+    divided by sum|spectrum| over all ky. Absolute values because a particle-flux spectrum changes sign,
+    and a signed sum would hide a large tail behind cancellation. A resolved run keeps this small: the
+    flux is carried by the modes the box resolves, not by the last bins.
+    '''
+    ky, spectrum = np.asarray(ky, dtype=float), np.abs(np.asarray(spectrum, dtype=float))
+    if ky.size == 0 or spectrum.size != ky.size:
+        return None
+    total = spectrum.sum()
+    if not np.isfinite(total) or total <= 0:
+        return None
+    return float(spectrum[ky >= tail_start * ky.max()].sum() / total)
+
+
+def plot_flux_spectra(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    tail_start=0.75,
+    title_prefix="CGYRO flux spectra",
+    live_iteration=None,
+):
+    '''
+    Is the grid resolving the flux? Rows = channels (Qe, Qi, Ge) as spectra against k_theta*rho_s,
+    columns = radii, one line per evaluation (color = evaluation, colorbar on the right). Each
+    spectrum is the time average over that evaluation's own saturated window (<q>_ky_mean), with
+    +/- sigma shaded for the last evaluation only. The dotted vertical line marks where the
+    high-ky tail starts (tail_start*ky_max).
+
+    The bottom row is the tail share per channel against evaluation: the fraction of |flux| carried
+    by ky >= tail_start*ky_max. A few percent means the resolved modes carry the flux; a share that
+    is large, or that grows as the profiles steepen, means the answer is set by the grid and the run
+    needs more ky (or a smaller ky_min) before its fluxes mean anything.
+    '''
+    if not tools_by_iteration:
+        return
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO spectra", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=len(_CHANNELS) + 1, ncols=len(rhos), squeeze=False, sharex="row",
+                       gridspec_kw={"hspace": 0.45, "wspace": 0.3})
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 9.5)
+    live_note = f" — evaluation {live_iteration} still running (its window is not final)" if live_iteration is not None else ""
+    fig.suptitle(f"{title_prefix} — window-averaged, tail = ky >= {tail_start:.2f} $ky_{{max}}${live_note}", fontsize=11)
+
+    for r_idx, rho in enumerate(rhos):
+        tails = {var: ([], []) for var, _ in _CHANNELS}
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            ky_max = None
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                ky, mean = getattr(out, "ky", None), getattr(out, f"{var}_ky_mean", None)
+                if out is None or ky is None or mean is None:
+                    continue
+                ky, mean = np.asarray(ky, dtype=float), np.asarray(mean, dtype=float)
+                ky_max = ky.max()
+                c = color_for(it)
+                ax.plot(ky, mean, color=c, lw=1.0, marker='o', ms=2.0, alpha=0.9)
+                if it == sorted_its[-1]:
+                    std = getattr(out, f"{var}_ky_std", None)
+                    if std is not None:
+                        std = np.asarray(std, dtype=float)
+                        ax.fill_between(ky, mean - std, mean + std, color=c, alpha=0.2, lw=0)
+                frac = _tail_fraction(ky, mean, tail_start)
+                if frac is not None:
+                    tails[var][0].append(it)
+                    tails[var][1].append(100.0 * frac)
+            if ky_max is not None:
+                ax.axvline(tail_start * ky_max, color='k', ls=':', lw=1.0, alpha=0.7)
+            ax.axhline(0.0, color='k', lw=0.5, alpha=0.4)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[-1, r_idx]
+        for (var, _), c in zip(_CHANNELS, ("b", "r", "g")):
+            its, vals = tails[var]
+            if its:
+                ax.plot(its, vals, color=c, marker='o', ms=3.0, lw=1.0, label=var)
+        ax.set_ylim(bottom=0)
+        ax.set_xticks(sorted_its)
+        ax.set_xlim(min(sorted_its) - 0.5, max(sorted_its) + 0.5)
+        ax.set_xlabel("evaluation")
+        if r_idx == 0:
+            ax.set_ylabel(f"tail share [%]")
+            ax.legend(loc="best", fontsize=7, framealpha=0.9)
+        GRAPHICStools.addDenseAxis(ax)
+
+    for r_idx in range(len(rhos)):
+        axs[len(_CHANNELS) - 1, r_idx].set_xlabel("$k_\\theta \\rho_s$")
+
+    if len(sorted_its) > 1:
+        cbar = fig.colorbar(sm, ax=axs.ravel().tolist(), fraction=0.02, pad=0.01)
+        cbar.set_label("evaluation")
+
+
+def plot_flux_convergence(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    base_iter=0,
+    title_prefix="CGYRO fluxes",
+    targets_per_iter=None,
+):
+    '''
+    The question the traces are a diagnostic for: does each channel approach its target as the
+    optimizer iterates? Rows = channels, columns = radii; per evaluation the window mean with
+    +/- 2 sigma error bars against the evaluation index, over the turbulence-only target (line
+    per evaluation, since the target moves with the profiles).
+    '''
+    if not tools_by_iteration:
+        return
+    cache = tools_by_iteration
+    sorted_its = sorted(cache.keys())
+    color_for, sm = _iteration_colors(sorted_its)
+
+    fig = fn.add_figure(label="CGYRO flux convergence", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex=True)
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 8.0)
+    fig.suptitle(f"{title_prefix} — window mean $\\pm 2\\sigma$ vs evaluation, and the target it chases", fontsize=11)
+
+    for r_idx, rho in enumerate(rhos):
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            its, means, stds, tgts, tgt_its = [], [], [], [], []
+            for it in sorted_its:
+                out = pick_output_for_rho(cache[it], rho, r_idx)
+                m = getattr(out, f"{var}_mean", None) if out is not None else None
+                if m is not None:
+                    its.append(it); means.append(float(m))
+                    s = getattr(out, f"{var}_std", None)
+                    stds.append(float(s) if s is not None else 0.0)
+                tval = _target_for(targets_per_iter, it, var, r_idx)
+                if tval is not None:
+                    tgts.append(tval); tgt_its.append(it)
+            if its:
+                ax.errorbar(its, means, yerr=[2.0 * s for s in stds], fmt='o-', ms=3.5, lw=1.0,
+                            color='tab:blue', ecolor='tab:blue', elinewidth=0.8, capsize=2, label='CGYRO')
+            if tgts:
+                ax.plot(tgt_its, tgts, 's--', ms=3.5, lw=1.0, color='k', alpha=0.8, label='target $-$ neoc')
+            _robust_ylim(ax, means, stds, tgts)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            if row_idx == 0:
+                ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10)
+            if row_idx == len(_CHANNELS) - 1:
+                ax.set_xlabel("evaluation")
+            GRAPHICStools.addDenseAxis(ax)
+    axs[0, 0].legend(loc='best', fontsize=7, framealpha=0.9)
+
+
+# ---------------------------------------------------------------------------
+# Evaluations near an anchor (best / last): concatenated traces vs gradients
+# ---------------------------------------------------------------------------
+
+_GRADIENT_MARKERS = ('o', 's', '^', 'D', 'v')
+
+
+def select_near_evaluations(gradients_per_iter, anchor, rel_tol=0.10, min_evals=3, max_evals=8):
+    '''
+    Evaluations whose gradients are close to those of `anchor`. The distance of evaluation i is
+    max over gradients k and radii r of |g_i[k][r] - g_anchor[k][r]| / rms_r(g_anchor[k]): the
+    per-gradient rms over radii normalizes, so a gradient crossing zero at one radius (a/Lne at the
+    axis) does not blow the distance up. Keeps every evaluation within `rel_tol`, at least the
+    `min_evals` nearest (anchor included) and at most the `max_evals` nearest. Returns
+    (evaluations sorted by index, {evaluation: distance}).
+    '''
+    ga = gradients_per_iter[anchor]
+    norms = {k: float(np.sqrt(np.mean(np.asarray(v, dtype=float) ** 2))) or 1.0 for k, v in ga.items()}
+    dist = {
+        it: max(float(np.max(np.abs(np.asarray(g[k], dtype=float) - np.asarray(ga[k], dtype=float)))) / norms[k] for k in ga)
+        for it, g in gradients_per_iter.items()
+    }
+    ranked = sorted(dist, key=lambda it: (dist[it], abs(it - anchor)))
+    n = min(max(min_evals, sum(dist[it] <= rel_tol for it in ranked)), max_evals)
+    return sorted(ranked[:n]), dist
+
+
+def plot_time_traces_near(
+    fn,
+    fn_color_start,
+    rhos,
+    tools_by_iteration,
+    gradients_per_iter,
+    anchor,
+    anchor_label="best",
+    targets_per_iter=None,
+    rel_tol=0.10,
+    min_evals=3,
+    max_evals=8,
+):
+    '''
+    Do the evaluations that barely moved the gradients agree with each other? Picks the evaluations
+    whose gradients sit within `rel_tol` of `anchor` (select_near_evaluations) and draws, per radius
+    (columns), their CGYRO traces back to back in evaluation order: the x axis is the cumulative
+    simulated time of the evaluations shown, not the warm-start time. Top row: change of each
+    gradient from the anchor's, g - g_anchor (absolute, not relative: a/Lne can sit near zero), at
+    the middle of each evaluation's segment. Flux rows: raw trace, window mean and +/- 2 sigma box
+    as in the per-radius trace tabs, and the anchor's turbulence-only target (target - neoclassical)
+    as the red dashed line.
+
+    `gradients_per_iter` = {evaluation: {label: per-rho array}}, e.g. {"$a/L_{Te}$": ...}.
+    '''
+    cache = tools_by_iteration
+    grads = {it: g for it, g in gradients_per_iter.items() if it in cache}
+    if anchor not in grads:
+        print(f"\t- CGYRO traces near {anchor_label}: evaluation {anchor} has no CGYRO outputs or gradients; skipping", typeMsg='w')
+        return
+    selected, dist = select_near_evaluations(grads, anchor, rel_tol=rel_tol, min_evals=min_evals, max_evals=max_evals)
+    color_for = _make_column_color_fn(selected)
+    ga = grads[anchor]
+
+    fig = fn.add_figure(label=f"CGYRO near {anchor_label}", tab_color=fn_color_start)
+    axs = fig.subplots(nrows=1 + len(_CHANNELS), ncols=len(rhos), squeeze=False, sharex='col',
+                       gridspec_kw={"hspace": 0.12, "wspace": 0.28})
+    fig.set_size_inches(max(9.0, 3.4 * len(rhos)), 10.0)
+    fig.suptitle(
+        f"CGYRO near {anchor_label} (ev{anchor}): ev{', ev'.join(str(it) for it in selected)} back to back — "
+        f"gradients within {100.0 * max(dist[it] for it in selected):.1f}% of ev{anchor}",
+        fontsize=11,
+    )
+
+    for r_idx, rho in enumerate(rhos):
+        # Cumulative x: each evaluation starts where the previous one shown ended
+        offsets, spans, x = {}, {}, 0.0
+        for it in selected:
+            out = pick_output_for_rho(cache[it], rho, r_idx)
+            if out is None or not hasattr(out, "t") or len(out.t) == 0:
+                continue
+            t0, t1 = float(out.t[0]), float(out.t[-1])
+            offsets[it], spans[it] = x - t0, (x, x + t1 - t0)
+            x += t1 - t0
+        present = [it for it in selected if it in offsets]
+        if not present:
+            continue
+        x_end = x
+
+        ax = axs[0, r_idx]
+        mids = [0.5 * sum(spans[it]) for it in present]
+        for (k, g0), marker in zip(ga.items(), _GRADIENT_MARKERS):
+            delta = [float(grads[it][k][r_idx]) - float(g0[r_idx]) for it in present]
+            ax.plot(mids, delta, '-', color='k', lw=0.8, alpha=0.6, zorder=2)
+            ax.scatter(mids, delta, marker=marker, s=[55 if it == anchor else 30 for it in present],
+                       c=[color_for(it) for it in present], edgecolors='k', linewidths=0.5, zorder=3)
+        ax.axhline(0.0, color='k', lw=0.5, alpha=0.5)
+        ax.set_title(f"$\\rho={float(rho):.3f}$", fontsize=10, pad=16)
+        top = ax.secondary_xaxis('top')
+        top.set_ticks(mids, labels=[f"ev{it}" + ("*" if it == anchor else "") for it in present], fontsize=7)
+        if r_idx == 0:
+            ax.set_ylabel(f"gradient $-$ ev{anchor}")
+
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS, start=1):
+            ax = axs[row_idx, r_idx]
+            _, trace_stats, _ = _draw_chunk_cell(ax, var, rho, r_idx, present, cache, None, offsets, color_for, None,
+                                                 trace_lw=0.4)
+            tval = _target_for(targets_per_iter, anchor, var, r_idx)
+            if tval is not None:
+                ax.axhline(tval, color='red', ls='--', lw=1.2, zorder=9)
+            _robust_ylim(ax, [ms[0] for ms in trace_stats], [ms[1] for ms in trace_stats], [tval] if tval is not None else [])
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            GRAPHICStools.addDenseAxis(ax)
+
+        for row_idx in range(1 + len(_CHANNELS)):
+            for x0, _ in spans.values():
+                if x0 > 0.0:
+                    axs[row_idx, r_idx].axvline(x0, color='gray', ls=':', lw=0.8, zorder=1)
+        axs[0, r_idx].set_xlim(-0.02 * x_end, x_end * 1.02)
+        axs[-1, r_idx].set_xlabel("cumulative $t \\, c_s/a$ (evaluations shown)")
+        GRAPHICStools.addDenseAxis(axs[0, r_idx])
+
+    # One legend strip under the title: every column carries the same symbols
+    fig.legend(
+        [Line2D([0], [0], marker=m, color='k', ls='-', lw=0.8, mfc='w') for _, m in zip(ga, _GRADIENT_MARKERS)]
+        + [Line2D([0], [0], color='red', ls='--', lw=1.2),
+           Patch(facecolor='gray', alpha=0.3, edgecolor='none')],
+        list(ga) + [f"target$-$neo (ev{anchor})", "window $\\times 2\\sigma$"],
+        loc='upper center', bbox_to_anchor=(0.5, 0.965), ncol=len(ga) + 2, fontsize=8, frameon=False,
+    )
+    fig.subplots_adjust(top=0.86)
+
+
+# ---------------------------------------------------------------------------
+# Live status of a running CGYRO job
+# ---------------------------------------------------------------------------
+
+# The minimal read set, plus input.cgyro (PRINT_STEP, MAX_TIME) and .mitim_t0 (simulated time at
+# launch). out.cgyro.time goes LAST: copied after bin.cgyro.ky_flux it can only be longer, which
+# CGYROoutput._reconcile_time_vector trims.
+_LIVE_FILES = [
+    "input.cgyro", "input.cgyro.gen", ".mitim_t0",
+    "bin.cgyro.geo", "out.cgyro.egrid", "out.cgyro.equilibrium", "out.cgyro.grids", "out.cgyro.hosts",
+    "out.cgyro.memory", "out.cgyro.mpi", "out.cgyro.prec", "out.cgyro.rotation", "out.cgyro.startups",
+    "out.cgyro.version", "out.cgyro.info", "out.cgyro.timing",
+    "bin.cgyro.freq", "bin.cgyro.ky_cflux", "bin.cgyro.ky_flux", "out.cgyro.time",
+]
+
+
+def live_source_from_submission(submission_json):
+    '''Where a submitted (run_type submit) CGYRO job runs, from its cgyro_submission.json:
+    (machineSettings, scratch folder, [(subfolder, rho), ...]).'''
+    meta = json.loads(Path(submission_json).read_text())
+    pairs = [(sub, float(rho)) for sub, rhos in meta["kwargs_organize"]["code_executor"].items() for rho in rhos]
+    return meta["job"]["machineSettings"], meta["job"]["folderExecution"], pairs
+
+
+def live_source_from_bash(tmp_folder):
+    '''
+    Where a run_type normal (bash) CGYRO job runs, when no submission JSON exists: the scratch folder
+    is the first `cd` of the execution script staged in tmp_<code>, and the radii are the staged
+    <subfolder>/rho_* folders. Only LOCAL scratch is supported this way (the machine is not recorded),
+    so this returns None when the folder is not on this filesystem.
+    '''
+    tmp_folder = Path(tmp_folder)
+    for script in sorted(tmp_folder.glob("mitim_bash*.src")) + sorted(tmp_folder.glob("mitim_shell_executor*.sh")):
+        for line in script.read_text().splitlines():
+            if line.strip().startswith("cd "):
+                folder_execution = shlex.split(line.strip())[1]
+                if not Path(folder_execution).is_dir():
+                    return None
+                pairs = sorted((d.parent.name, float(d.name.split("rho_")[-1])) for d in tmp_folder.glob("*/rho_*") if d.is_dir())
+                return {"machine": "local"}, folder_execution, pairs
+    return None
+
+
+def fetch_live_outputs(machine_settings, folder_execution, pairs, local_folder, files=None):
+    '''
+    Copy the in-progress outputs of every radius from the scratch folder (local copy, or SFTP get from a
+    remote machine) into local_folder as <file>_<rho:.4f>, the layout of retrieved results, so the
+    standard reader applies. Read-only on the scratch side: no tarball, no renames, the job is untouched.
+    Returns {rho: {'mtime': last write of out.cgyro.time (epoch s) or None, 'machine': name}}.
+    '''
+    local_folder = Path(local_folder)
+    local_folder.mkdir(parents=True, exist_ok=True)
+    job = FARMINGtools.mitim_job(local_folder)
+    job.machineSettings = machine_settings
+    job.connect()
+    info = {}
+    try:
+        for sub, rho in pairs:
+            info[rho] = {"machine": machine_settings["machine"], "mtime": None}
+            remote = f"{folder_execution}/{sub}/{SIMtools.rho_folder(rho)}"
+            for name in (files or _LIVE_FILES):
+                src, dst = f"{remote}/{name}", local_folder / f"{name}_{rho:.4f}"
+                try:
+                    if job.sftp is None:
+                        shutil.copyfile(src, dst)
+                        mtime = os.stat(src).st_mtime
+                    else:
+                        job.sftp.get(src, str(dst))
+                        mtime = job.sftp.stat(src).st_mtime
+                except OSError:
+                    continue
+                if name == "out.cgyro.time":
+                    info[rho]["mtime"] = mtime
+    finally:
+        job.close()
+    return info
+
+
+# Enough to tell, per radius, how far it got and whether it already ended (EXIT line, watchdog tags)
+_STOP_STATUS_FILES = ["input.cgyro", ".mitim_t0", "out.cgyro.info", "mitim_budget.tag", "mitim_discard.tag", "mitim_stop", "out.cgyro.time"]
+
+
+def live_radii_state(machine_settings, folder_execution, pairs, local_folder):
+    '''
+    Per-radius state of a running CGYRO job, read from its scratch without touching it:
+    {(subfolder, rho): {'t', 't0', 'MAX_TIME', 'exit', 'budget', 'discard', 'stop_requested', 'mtime'}}.
+    't' is the last simulated time in out.cgyro.time; 'mtime' its last write (epoch s).
+    '''
+    local_folder = Path(local_folder)
+    state = {}
+    for sub, rho in pairs:
+        dst = local_folder / sub
+        info = fetch_live_outputs(machine_settings, folder_execution, [(sub, rho)], dst, files=_STOP_STATUS_FILES)[rho]
+        scal = _read_live_scalars(dst, rho)
+        try:
+            t = float((dst / f"out.cgyro.time_{rho:.4f}").read_text().split("\n")[-2].split()[0])
+        except (OSError, IndexError, ValueError):
+            t = None
+        state[(sub, rho)] = {
+            "t": t, "t0": scal.get("t0"), "MAX_TIME": scal.get("MAX_TIME"), "exit": scal.get("exit"),
+            "budget": (dst / f"mitim_budget.tag_{rho:.4f}").exists(),
+            "discard": (dst / f"mitim_discard.tag_{rho:.4f}").exists(),
+            "stop_requested": (dst / f"mitim_stop_{rho:.4f}").exists(),
+            "mtime": info["mtime"],
+        }
+    return state
+
+
+def request_stop(machine_settings, folder_execution, pairs, note="mitim_kill_cgyro"):
+    '''
+    Drop a mitim_stop file in the scratch folder of each (subfolder, rho) in pairs. The watchdog
+    around the running launch (CGYRO._wall_budget_wrap) picks it up within ~20 s, waits for the next
+    restart write, leaves mitim_budget.tag and stops CGYRO; the radius is then read as finished,
+    with its fluxes averaged over what it simulated. Launches started before the watchdog wrapped
+    main radii (MITIM older than this function) ignore the file.
+    '''
+    job = FARMINGtools.mitim_job(Path.cwd())
+    job.machineSettings = machine_settings
+    job.connect()
+    try:
+        for sub, rho in pairs:
+            path = f"{folder_execution}/{sub}/{SIMtools.rho_folder(rho)}/mitim_stop"
+            text = f"{note} {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            if job.sftp is None:
+                Path(path).write_text(text)
+            else:
+                with job.sftp.open(path, "w") as f:
+                    f.write(text)
+            print(f"\t- Stop requested for {sub}/rho_{rho:.4f} ({machine_settings['machine']}:{path})")
+    finally:
+        job.close()
+
+
+def _read_live_scalars(folder, rho):
+    '''PRINT_STEP, DELTA_T and MAX_TIME from input.cgyro, simulated time at launch (.mitim_t0) and the EXIT line of out.cgyro.info.'''
+    out = {}
+    try:
+        for line in (folder / f"input.cgyro_{rho:.4f}").read_text().splitlines():
+            key, _, val = line.partition("=")
+            if key.strip() in ("PRINT_STEP", "DELTA_T", "MAX_TIME") and val.split():
+                out[key.strip()] = float(val.split()[0])
+    except (OSError, ValueError):
+        pass
+    try:
+        out["t0"] = float((folder / f".mitim_t0_{rho:.4f}").read_text().strip() or 0.0)
+    except (OSError, ValueError):
+        pass
+    try:
+        out["exit"] = next((l.strip() for l in (folder / f"out.cgyro.info_{rho:.4f}").read_text().splitlines() if "EXIT" in l), None)
+    except OSError:
+        pass
+    return out
+
+
+def _fmt_duration(seconds):
+    if seconds is None or not np.isfinite(seconds):
+        return "?"
+    if seconds < 90:
+        return f"{seconds:.0f} s"
+    if seconds < 5400:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
+
+
+def plot_live_status(fn, fn_color, rhos, tool, info, folder, label="CGYRO live", targets_per_iter=None, it=None):
+    '''
+    Status of a CGYRO job still running: rows = channels (Qe, Qi, Ge) + wall-clock timing, columns = radii.
+
+    Flux rows: trace vs simulated time with the current window mean +/- std (the run's own averaging
+    settings) and the turbulence-only target (dashed) when the evaluation already wrote it.
+    Timing row: wall seconds per time step = TOTAL of each out.cgyro.timing row / PRINT_STEP (CGYRO
+    writes one row per print interval and zeroes its timers after it), and the two sections that cost
+    the most over the run. Its title gives the latest s/step and the wall time left to reach MAX_TIME,
+    counted from .mitim_t0 (MAX_TIME is additional on warm starts). The column title gives the last
+    simulated time and how long ago out.cgyro.time was written (a stall shows up there).
+    '''
+    fig = fn.add_figure(label=label, tab_color=fn_color)
+    axs = fig.subplots(nrows=len(_CHANNELS) + 1, ncols=len(rhos), squeeze=False, sharex="col")
+    fig.set_size_inches(max(9.0, 3.2 * len(rhos)), 9.5)
+    now = time.time()
+    etas = {}
+    wall_peaks = []   # last row is wall s per a/cs: comparable across radii, so it shares one y axis
+
+    for r_idx, rho in enumerate(rhos):
+        out = pick_output_for_rho(tool, rho, r_idx) if tool is not None else None
+        live = {**info.get(rho, {}), **_read_live_scalars(folder, rho)}
+        has_t = out is not None and getattr(out, "t", None) is not None and len(out.t) > 0
+
+        age = now - live["mtime"] if live.get("mtime") is not None else None
+        status = "exited" if live.get("exit") else (f"{_fmt_duration(age)} ago" if age is not None else "no output yet")
+        axs[0, r_idx].set_title(f"$\\rho={float(rho):.3f}$" + (f"  t={out.t[-1]:.1f} $a/c_s$" if has_t else "") + f"\n(last output {status})", fontsize=9)
+
+        for row_idx, (var, ylabel) in enumerate(_CHANNELS):
+            ax = axs[row_idx, r_idx]
+            if has_t and getattr(out, var, None) is not None:
+                ax.plot(out.t, getattr(out, var), color="b", lw=0.6)
+                m, sd, tmin = getattr(out, f"{var}_mean", None), getattr(out, f"{var}_std", None), getattr(out, "tmin", None)
+                if m is not None and tmin is not None:
+                    ax.hlines(float(m), float(tmin), float(out.t[-1]), colors="r", lw=1.6, zorder=6)
+                    if sd is not None:
+                        ax.fill_between([float(tmin), float(out.t[-1])], float(m) - float(sd), float(m) + float(sd), color="r", alpha=0.15, lw=0)
+            tval = _target_for(targets_per_iter, it, var, r_idx)
+            if tval is not None:
+                ax.axhline(tval, color="k", ls="--", lw=1.0, alpha=0.8, zorder=7)
+            if r_idx == 0:
+                ax.set_ylabel(ylabel)
+            GRAPHICStools.addDenseAxis(ax)
+
+        ax = axs[-1, r_idx]
+        timing = getattr(out, "timing", None) if out is not None else None
+        if has_t and timing is not None and len(timing):
+            # A timing row covers one output interval: PRINT_STEP time steps = PRINT_STEP*DELTA_T of
+            # simulated time (1 a/cs the way MITIM sets it), so the raw row divided by that span is the
+            # wall cost of 1 a/cs and reads directly against MAX_TIME.
+            dt_out = live["PRINT_STEP"] * live["DELTA_T"] if live.get("PRINT_STEP") and live.get("DELTA_T") else 1.0
+            total = out.timing_total
+            x = out.t[-len(total):] if len(out.t) >= len(total) else np.arange(len(total))
+            ax.plot(x, total / dt_out, color="k", lw=1.0, label="TOTAL")
+            share = timing.sum(axis=0)
+            for i, c in zip(np.argsort(share)[::-1][:2], ("tab:red", "tab:orange")):
+                ax.plot(x, timing[:, i] / dt_out, color=c, lw=0.8, label=f"{out.timing_names[i]} ({100 * share[i] / share.sum():.0f}%)")
+            wall_peaks.append(float(np.max(total / dt_out)))
+            ax.legend(loc="upper center", ncol=3, fontsize=7, framealpha=0.9, handlelength=1.2, columnspacing=0.8)
+            eta = None
+            if live.get("MAX_TIME") is not None:
+                eta = max(live.get("t0", 0.0) + live["MAX_TIME"] - out.t[-1], 0.0) * total[-1] / dt_out
+            etas[rho] = 0.0 if live.get("exit") else eta
+            state = "done" if live.get("exit") else _fmt_duration(eta)
+            ax.set_title(f"{total[-1] / dt_out:.4g} wall s / 1 $a/c_s$  \u00b7  to MAX_TIME: {state}", fontsize=8)
+        if r_idx == 0:
+            ax.set_ylabel("wall s / 1 $a/c_s$")
+        ax.set_xlabel("$t \\, c_s/a$")
+        GRAPHICStools.addDenseAxis(ax)
+
+        # x out to where this radius stops (MAX_TIME is additional to the warm-start time in
+        # .mitim_t0), so every column shows how much of its run is already done. Shared per column.
+        if live.get("MAX_TIME") is not None:
+            ax.set_xlim(0.0, live.get("t0", 0.0) + live["MAX_TIME"])
+
+    # One shared y axis for the timing row: the cost per a/cs is the quantity being compared between
+    # radii. Headroom above the curves holds the one-row legend.
+    if wall_peaks:
+        for c, ax in enumerate(axs[-1]):
+            ax.set_ylim(0, 1.45 * max(wall_peaks))
+            if c > 0:
+                ax.tick_params(labelleft=False)
+
+    # The radii of one evaluation run concurrently, so the evaluation ends with the slowest of them
+    known = {r: e for r, e in etas.items() if e is not None}
+    if known:
+        slowest = max(known, key=known.get)
+        left = known[slowest]
+        text = "all radii done" if left == 0 else f"evaluation done in {_fmt_duration(left)} (slowest $\\rho$={slowest:.3f})"
+        missing = len(rhos) - len(known)
+        if missing:
+            text += f" + {missing} radius/radii with no timing yet"
+        fig.suptitle(f"{label}: {text}", fontsize=11)
+
+    axs[0, 0].plot([], [], color="r", lw=1.6, label="window mean $\\pm\\sigma$")
+    if targets_per_iter:
+        axs[0, 0].plot([], [], color="k", ls="--", lw=1.0, label="target $-$ neoclassical")
+    axs[0, 0].legend(loc="best", fontsize=7, framealpha=0.9)
+

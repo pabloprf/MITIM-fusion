@@ -227,17 +227,19 @@ maestro:
   # `keep_all_files: true/false` is still accepted as a DEPRECATED alias of prune_level 0/3.
 
   # Stop the chain (skip the remaining beats, still finalize) once this many PORTALS beats have
-  # ended without meeting their convergence criteria; null = never stop on unconvergence
+  # ended without meeting their convergence criteria; null = never stop on unconvergence.
+  # Beats with `count_unconverged: false` (portals_soft by default) are not counted.
   max_unconverged_portals_beats: null
 
   # Harvest: archive every TGLF/NEO/CGYRO/GX/QuaLiKiz evaluation of all PORTALS beats and every
   # full-EPED evaluation (EPED-NN is not harvested). All beats stage into <run>/Outputs/harvest/ as the run
   # goes (each record tagged with its maestro_beat; survives every prune level) and MAESTRO pushes ONCE
   # at finalize into the central per-user netCDF file;
-  # `mitim_harvest <folder>` pushes a run that died, `mitim_plot_harvest` inspects the file
+  # `mitim_harvester <folder>` pushes a run that died, `mitim_plot_harvest` inspects the file
+  # On by default: a run harvests whenever a file is set (below or in config_user.json), and does nothing otherwise
   harvest:
-    enabled: false
-    # null -> config_user.json preferences.harvest_file, else ~/mitim_harvest/mitim_harvest.nc
+    enabled: true
+    # null -> config_user.json preferences.harvest_file; if neither is set, the run is NOT harvested (one line at launch)
     file: null
     # Also record the perturbed members of the TGLF std scan trick (most of the volume); false keeps
     # only the base point of each PORTALS evaluation
@@ -259,6 +261,7 @@ maestro:
   #       preprocess_prepare:            [Optional] Function to pre-process rest of namelist to make some decisions on "parameters_prepare"
   #       preprocess_prepare_parameters: [Optional] Pareters that the "preprocess_prepare" function could use
   #       preprocess_run:                [Optional] Function to pre-process rest of namelist to make some decisions on the parameters for run() method
+  #       count_unconverged:             [Optional, PORTALS beats, default true] Whether an unconverged beat counts toward maestro.max_unconverged_portals_beats
   # ---------------------------------------------------------------------------
 
   eped:
@@ -610,6 +613,9 @@ maestro:
     beat_type: portals
 
     base_module: portals
+
+    # A soft beat runs with relaxed criteria by design; its unconvergence does not stop the chain
+    count_unconverged: false
 
     parameters_prepare:
 

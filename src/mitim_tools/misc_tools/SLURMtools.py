@@ -52,7 +52,7 @@ CODE_HINTS = {
                                      # rank scaling in _resolve_mpi_layout, resources_per_call=2
                                      # → mpi.n=4 / nomp=16 / numa=4 / mpinuma=1.
     "gx":    {"default_resources_per_call": 4,  "uses_gpu": True,  "full_node_mpi": False,
-              "fixed_mem": "100GB", "gpus_per_task": 1, "requires_gpu": True},
+              "fixed_mem": "100GB", "gpus_per_task": 1, "requires_gpu": True, "array_only": True},
     # Add others (tgyro, ...) here as they adopt the resolver.
 }
 
@@ -159,6 +159,10 @@ def resolve(
         submission_type = "bash"
     elif force_submission_type is not None:
         submission_type = force_submission_type
+    elif hints.get("array_only"):
+        # GX: concurrent radii in one allocation all land on GPU 0 (cudaSetDevice(iproc % nGPUs)
+        # with iproc = 0 in every run), so each radius gets its own array element.
+        submission_type = "slurm_array"
     else:
         # Heuristic: if all radii fit in one node's capacity, use standard;
         # otherwise use an array. For GPU codes the capacity is GPUs/node.
@@ -327,7 +331,11 @@ def _fill_sbatch_layout(sbatch, *, submission_type, hints, resources_per_call,
             sbatch["ntasks"] = resources_per_call * n_rhos * n_subfolders
         elif submission_type == "slurm_array":
             sbatch["ntasks"] = resources_per_call
+            if gpus_per_node and resources_per_call <= gpus_per_node:
+                sbatch["nodes"] = 1   # keep the ranks of one radius on one node
             sbatch["array"] = ",".join(array_list or [])
+            if max_concurrent_calls:
+                sbatch["array_limit"] = int(max_concurrent_calls)   # sbatch --array=...%N
 
     else:
         # CPU codes (TGLF / NEO / CPU-CGYRO). One resource == one CPU core.

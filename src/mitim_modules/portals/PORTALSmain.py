@@ -85,7 +85,7 @@ class portals(STRATEGYtools.opt_evaluator):
         self.portals_parameters = IOtools.read_mitim_yaml(self.portals_namelist)
 
         # Older user namelists predate the harvest block; MAESTRO also injects extra keys into it
-        self.portals_parameters.setdefault("harvest", {"enabled": False, "file": None})
+        self.portals_parameters.setdefault("harvest", {"enabled": True, "file": None})
 
         # Read optimization namelist (always the default, the values to be modified are in the portals one)
         if self.portals_parameters["optimization_namelist_location"] is not None:
@@ -477,7 +477,7 @@ class portals(STRATEGYtools.opt_evaluator):
             try:
                 HARVESTtools.harvest_database(harvest.get("file")).push([self.folder / "Outputs" / "harvest"])
             except Exception as e:
-                print(f"- harvest push failed ({type(e).__name__}: {e}); staging kept in Outputs/harvest, push later with `mitim_harvest {self.folder}`", typeMsg="w")
+                print(f"- harvest push failed ({type(e).__name__}: {e}); staging kept in Outputs/harvest, push later with `mitim_harvester {self.folder}`", typeMsg="w")
 
 def runModelEvaluator(
     self,

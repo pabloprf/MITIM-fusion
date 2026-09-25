@@ -5,25 +5,31 @@ every full-EPED evaluation of a PORTALS or MAESTRO run, so the data can be reuse
 
 A record is exactly an input -> output map of one code evaluation at one radius: the FULL input
 file (`in_<KEY>`), the scalar fluxes the code returned (`out_<name>`, in the code's own units: GB for
-TGLF/NEO/CGYRO/GX, SI for QuaLiKiz), plus two short keys: `run` (which run produced it) and `hash`
+TGLF/NEO/CGYRO/GX; QuaLiKiz: its SI and GB outputs plus out_Qe/Qi/Ge/Gi_k/Mt in MITIM GB units, as PORTALS
+uses them; its gradients Ate/Ane/Ati are normalized to Ro), plus two short keys: `run` (which run produced it) and `hash`
 (of the inputs, for deduplication). Who produced it (code version, machine, modules, MITIM commit,
 user, host, run folder) is stored ONCE per run and code in the `runs` table and joined on load.
 TGLF records are individual runs: the base point AND each perturbed member of the std scan trick
 (`scan_trick_members: false` drops the latter, which are most of the volume).
 
 Two tiers:
-    1. Staging, per run (opt-in via the `harvest:` namelist block): JSON-lines, one file per code,
-       `<run>/Outputs/harvest/<code>.jsonl` (+ run_meta.json with the provenance). A driver that
+    1. Staging, per run (opt-in via the `harvest:` namelist block): JSON-lines, one file per code and
+       writer process, `<run>/Outputs/harvest/<code>.<host>-<pid>.jsonl` (+ run_meta.json with the
+       provenance), so a file never has two writers (legacy runs: one shared `<code>.jsonl`, still read). A driver that
        chains several runs (MAESTRO) hands its own folder to each of them (`staging_folder`), so the
        whole chain stages in ONE place and each record carries its `maestro_beat`. Append-only and
        crash-safe, so a dead or preempted run keeps its records and can be pushed by hand
-       (`mitim_harvest <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
-       is compressed as one more gzip member of `<code>.jsonl.gz` (~20-30x smaller, since only a
+       (`mitim_harvester <folder>`). Plain JSON never accumulates: once the tail exceeds ROLL_BYTES it
+       is compressed as one more gzip member of `<stem>.jsonl.gz` (~20-30x smaller, since only a
        handful of inputs change between records), so a run holds a few MB at most. Pushed archives
-       are renamed `<code>.jsonl.pushed-<ts>.gz` and kept, so the central file can be rebuilt.
+       are renamed `<stem>.jsonl.pushed-<ts>.gz` and kept, so the central file can be rebuilt.
     2. Central store, per user: one netCDF-4 file, one group per code plus `runs`, unlimited `record`
        dimension, appended in place under an NFS-safe mkdir lock (IOtools.mkdir_lock). A variable
-       that later records introduce reads back as NaN for the earlier ones.
+       that later records introduce reads back as NaN for the earlier ones. A variable keeps the
+       type of its first appearance: later numbers into a string variable are stored as strings,
+       later strings into a numeric one as numbers when they parse, else as NaN with the string in
+       the sibling `<col>__str`. Every group is typed before anything is written, so a push
+       appends all its records or none.
 
 Objects:
     harvest_recorder : attached to a simulation object as `sim.harvest`; `record(sim, label)`
@@ -50,29 +56,44 @@ from mitim_tools import __version__ as mitim_version, __mitimroot__
 from mitim_tools.misc_tools import IOtools, CONFIGread, GRAPHICStools
 from mitim_tools.misc_tools.LOGtools import printMsg as print
 
-DEFAULT_FILE = "~/mitim_harvest/mitim_harvest.nc"
-SCHEMA_VERSION = 4   # 4: optional per-record `maestro_beat` (chained runs share one staging folder)
+SCHEMA_VERSION = 5   # 4: optional per-record `maestro_beat` (chained runs share one staging folder); 5: CGYRO in_ = input.cgyro keys (+ out_derived_*, run history), input type maps, `<col>__str` siblings
 ROLL_BYTES = 256 * 1024   # plain-JSON tail size that triggers compression into <code>.jsonl.gz (~60 TGLF records)
 CODES = ('tglf', 'neo', 'cgyro', 'gx', 'qualikiz', 'eped')
 RUNS_GROUP = 'runs'
 
 RECORD_KEYS = ['run', 'hash']
 # Provenance, once per run (run_meta.json) ...
-RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat']
+RUN_KEYS = ['run', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit', 'created', 'maestro_beat',
+            'recovered_by']   # '' for live runs; 'mitim_harvester <version>@<commit>' for records rebuilt from disk (HARVESTrecover)
 # ... and once per (run, code), captured from the first record of that code (`averaging`: how the
 # time-averaged fluxes and their std were computed, for CGYRO/GX; empty for single-value codes)
 RUN_CODE_KEYS = ['machine', 'modules', 'code_version', 'in_process', 'averaging']
+# ... plus `input_types` (see RECORD_TYPES), built at push time from the staged records
 
 # ------------------------------------------------------------------------------------------------
 # Options / central file resolution
 # ------------------------------------------------------------------------------------------------
 
+def central_file(file=None):
+    '''namelist `file` -> config_user.json preferences.harvest_file; None when neither is set (no default on purpose)'''
+    return file or CONFIGread.read_harvest_file()
+
 def resolve_central_file(file=None):
-    '''namelist `file` -> config_user.json preferences.harvest_file -> DEFAULT_FILE'''
-    file = file or CONFIGread.read_harvest_file() or DEFAULT_FILE
+    file = central_file(file)
+    if file is None:
+        raise ValueError("no harvest file: set `file` in the harvest namelist block (or --file) or preferences.harvest_file in config_user.json")
     file = IOtools.expandPath(file)
     file.parent.mkdir(parents=True, exist_ok=True)
     return file
+
+def checked_block(block):
+    '''A driver's `harvest:` block (enabled unless it says otherwise), switched off when no central file is set anywhere'''
+    block = dict(block or {})
+    if block.get('enabled', True) and block.get('push', True) and central_file(block.get('file')) is None:
+        print("\t- No harvest file set (harvest.file in the namelist or preferences.harvest_file "
+              "in config_user.json): this run will NOT be harvested", typeMsg='i')
+        block['enabled'] = False
+    return block
 
 def options_from_namelist(block, staging_folder, run_meta_extra=None):
     '''
@@ -89,7 +110,7 @@ def options_from_namelist(block, staging_folder, run_meta_extra=None):
     shared = bool(block.get('staging_folder'))
     staging_folder = block.get('staging_folder') or staging_folder
     opts = {
-        'enabled': bool(block.get('enabled', False)),
+        'enabled': bool(block.get('enabled', True)),
         'file': block.get('file', None),
         'push': bool(block.get('push', True)),
         'scan_trick_members': bool(block.get('scan_trick_members', True)),
@@ -202,7 +223,10 @@ def machine_info(job):
 # ------------------------------------------------------------------------------------------------
 
 def _open_text(file):
-    return gzip.open(file, 'rt') if str(file).endswith('.gz') else open(file, 'r')
+    '''gzip by content, not by name (a file claimed by a push is <name>.claim-<tag>)'''
+    with open(file, 'rb') as fi:
+        is_gz = fi.read(2) == b'\x1f\x8b'
+    return gzip.open(file, 'rt') if is_gz else open(file, 'r')
 
 def _read_jsonl(file):
     '''
@@ -225,9 +249,10 @@ def _read_jsonl(file):
 
 def _roll(plain):
     '''
-    Compress the plain <code>.jsonl tail as one more gzip member appended to <code>.jsonl.gz, then
+    Compress the plain <stem>.jsonl tail as one more gzip member appended to <stem>.jsonl.gz, then
     truncate the tail. Member first, truncate second: a kill in between duplicates lines, which the
-    hash dedup absorbs; the reverse order could lose them.
+    hash dedup absorbs; the reverse order could lose them. Only the process that owns the file (its
+    single writer) rolls it, so no line can be appended between the read and the truncation.
     '''
     plain = Path(plain)
     if not plain.exists() or plain.stat().st_size == 0:
@@ -239,14 +264,78 @@ def _roll(plain):
     with open(plain, 'wb'):
         pass
 
+# Staging file names. Each process writes its own <code>.<host>-<pid>.jsonl (+ its rolled .jsonl.gz),
+# so no file ever has two writers and no lock is needed (NFS-safe). Legacy runs staged one shared
+# <code>.jsonl per folder; those names are still read and pushed (the stem is then just <code>).
+# Pushed archives: <stem>.jsonl.pushed-<ts>.gz. Files claimed by a push in progress: <name>.claim-<tag>.
+_HOST = ''.join(c if c.isalnum() else '_' for c in socket.gethostname().split('.')[0]) or 'host'
+
+def _writer_stem(code):
+    return f"{code}.{_HOST}-{os.getpid()}"
+
 def _is_staged(file):
-    return '.jsonl' in file.name and not file.name.startswith('run_meta')
+    return '.jsonl' in file.name and not file.name.startswith('run_meta') and '.claim-' not in file.name
+
+def _stem_of(file):
+    return file.name.split('.jsonl')[0]
 
 def _code_of(file):
-    return file.name.split('.jsonl')[0]
+    return _stem_of(file).split('.')[0]
 
 def _is_pushed(file):
     return '.pushed-' in file.name
+
+def _gz_bytes(file):
+    '''Content of a staging file as gzip member(s): rolled archives as they are, plain tails compressed'''
+    data = Path(file).read_bytes()
+    return data if data[:2] == b'\x1f\x8b' or not data else gzip.compress(data)
+
+def _is_orphan_claim(file, stale_s):
+    '''A file claimed by a push that died before archiving or restoring it (claim older than stale_s)'''
+    if '.claim-' not in file.name:
+        return False
+    try:
+        t = datetime.datetime.strptime(file.name.rsplit('.claim-', 1)[1][:15], '%Y%m%d_%H%M%S')
+    except ValueError:
+        return False
+    return (datetime.datetime.now() - t).total_seconds() > stale_s
+
+def _claim(files):
+    '''Rename each unpushed file to <name>.claim-<tag> (pushed archives, re-pushed by rebuild, stay put); [(original, claimed)]'''
+    tag = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}-{_HOST}-{os.getpid()}"
+    claimed = []
+    for f in files:
+        f = Path(f)
+        if _is_pushed(f):
+            claimed.append((f, f))
+            continue
+        c = f.with_name(f"{f.name}.claim-{tag}")
+        try:
+            os.replace(f, c)
+        except FileNotFoundError:
+            continue
+        claimed.append((f, c))
+    return claimed
+
+def _fold(claimed, target_of):
+    '''Append every claimed (not pushed) file, as gzip members, to target_of(folder, stem), then drop it'''
+    for orig, c in claimed:
+        if c == orig and _is_pushed(c):
+            continue
+        data = _gz_bytes(c)
+        if data:
+            with open(target_of(c.parent, _stem_of(c)), 'ab') as fo:
+                fo.write(data)
+        c.unlink(missing_ok=True)
+
+def _archive(claimed):
+    '''Pushed: one <stem>.jsonl.pushed-<ts>.gz per (folder, writer), kept so the central file can be rebuilt'''
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    _fold(claimed, lambda folder, stem: folder / f"{stem}.jsonl.pushed-{ts}.gz")
+
+def _unclaim(claimed):
+    '''Failed push: back to staging as rolled, unpushed archives <stem>.jsonl.gz'''
+    _fold(claimed, lambda folder, stem: folder / f"{stem}.jsonl.gz")
 
 # ------------------------------------------------------------------------------------------------
 # Recorder (attached to simulation objects)
@@ -255,6 +344,7 @@ def _is_pushed(file):
 _SEEN = {}   # staging folder -> set of input hashes already staged (this process)
 
 def _seen(folder):
+    '''Hashes staged in the folder, seeded once per process from EVERY staging file there (all writers, legacy names, pushed archives)'''
     key = str(folder)
     if key not in _SEEN:
         seen = set()
@@ -343,7 +433,7 @@ class harvest_recorder:
             flat.update({f"in_{k}": v for k, v in inputs.items()})
             flat.update({f"out_{k}": v for k, v in outputs.items()})
 
-            plain = self.folder / f"{code}.jsonl"
+            plain = self.folder / f"{_writer_stem(code)}.jsonl"
             with open(plain, 'a') as fo:
                 fo.write(json.dumps(flat, default=_json_default) + '\n')
                 size = fo.tell()
@@ -451,7 +541,7 @@ def collect_eped(input_params, composition=None, eped_params_override=None, toq_
 # ------------------------------------------------------------------------------------------------
 
 _STRING_COLS = {'run', 'hash', 'code', 'run_folder', 'user', 'host', 'mitim_version', 'git_branch', 'git_commit',
-                'created', 'machine', 'modules', 'code_version', 'averaging'}
+                'created', 'machine', 'modules', 'code_version', 'averaging', 'input_types', 'input_types_record', 'recovered_by'}
 
 def _frame_from_rows(rows):
     '''DataFrame with the union of keys; a column is string if any value is a string, numeric (f8) otherwise'''
@@ -464,6 +554,102 @@ def _frame_from_rows(rows):
         else:
             df[col] = pd.to_numeric(s.map(lambda v: (float(v) if isinstance(v, (bool, np.bool_)) else v)), errors='coerce').astype('float64')
     return df
+
+STR_SUFFIX = '__str'
+
+def _parse_float(s):
+    if s == '':
+        return np.nan
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+def _reconcile_frame(df, existing):
+    '''
+    The columns of `df` as the arrays to append: (n_records, {column: (is_str, array)}). A variable
+    keeps the type it was created with (`existing`: {variable: is_str} already in the file; new
+    columns take their type from df). Numbers arriving into a string variable are written as
+    strings; strings arriving into a numeric variable are written as numbers when they parse, and
+    otherwise as NaN there with the string in the string sibling `<col>__str`. Nothing is dropped.
+    '''
+    cols = {}
+    for col in df.columns:
+        is_str = not pd.api.types.is_numeric_dtype(df[col])
+        vals = df[col].to_numpy()
+        as_str = existing.get(col, is_str)
+        if as_str and is_str:
+            cols[col] = (True, np.array([str(v) for v in vals], dtype=object))
+        elif as_str:
+            cols[col] = (True, np.array(['' if np.isnan(v) else str(v) for v in vals.astype('float64')], dtype=object))
+        elif not is_str:
+            cols[col] = (False, vals.astype('float64'))
+        else:
+            strs = [str(v) for v in vals]
+            parsed = [_parse_float(s) for s in strs]
+            cols[col] = (False, np.array([np.nan if p is None else p for p in parsed], dtype='float64'))
+            rest = [s if p is None else '' for s, p in zip(strs, parsed)]
+            if any(rest):
+                side = f"{col}{STR_SUFFIX}"
+                if not existing.get(side, True):
+                    raise TypeError(f"harvest: '{side}' exists as a numeric variable, cannot hold the strings of '{col}'")
+                cols[side] = (True, np.array(rest, dtype=object))
+    return len(df), cols
+
+# Input types, so an input file can be written back exactly (the netCDF stores every number as f8): per
+# (run, code) in the runs table, `input_types` = JSON {KEY: 'bool'|'int'|'float'|'str'} in the order of
+# the input file, each key typed as its FIRST record had it (never rewritten, later keys appended); a
+# record whose own types differ (e.g. KY = 3 in one input.cgyro, 8.0E-02 in another) carries just those
+# keys in its `input_types_record` (JSON, '' otherwise).
+RECORD_TYPES = 'input_types_record'
+
+def _input_types(row):
+    out = {}
+    for k, v in row.items():
+        if not k.startswith('in_'):
+            continue
+        if isinstance(v, bool):
+            out[k[3:]] = 'bool'
+        elif isinstance(v, int):
+            out[k[3:]] = 'int'
+        elif isinstance(v, float) and not np.isnan(v):
+            out[k[3:]] = 'float'
+        elif isinstance(v, str) and v != '':
+            out[k[3:]] = 'str'
+    return out
+
+def _type_overrides(run_types, row_types):
+    '''Add the keys run_types has not seen (first record wins) and return this record's deviations from it'''
+    for k, t in row_types.items():
+        run_types.setdefault(k, t)
+    return {k: t for k, t in row_types.items() if run_types[k] != t}
+
+# EPED record inputs that are MITIM settings, not eped.input keys (collect_eped)
+_EPED_MITIM_KEYS = ('toq_eq_choice', 'stability_rule', 'stability_threshold')
+
+def _typed_value(v, typ):
+    '''A stored value back as the Python type its input file held'''
+    if typ == 'bool':
+        return bool(v)
+    if typ == 'int' and float(v).is_integer():
+        return int(v)
+    if typ in ('int', 'float'):
+        return float(v)   # a non-integer never becomes an int
+    return str(v)
+
+def _format_input_value(v, typ):
+    '''One value as MITIM's GACODE writers emit it (bools as True/False, ints as ints); floats as the
+    shortest string that reads back to the same double, always with a '.' so buildDictFromInput keeps it a float'''
+    if typ == 'bool':
+        return "True" if bool(v) else "False"
+    if typ == 'int' and float(v).is_integer():
+        return str(int(v))
+    if typ in ('int', 'float'):   # a non-integer never becomes an int
+        s = repr(float(v))
+        if '.' not in s:
+            s = s.replace('e', '.0e') if 'e' in s else s + '.0'
+        return s
+    return str(v)
 
 class harvest_database:
 
@@ -514,6 +700,8 @@ class harvest_database:
         columns: subset of variable names to read (`run` and `hash` are always included);
         run: one run id or a list of ids to keep (filtered while reading, cheap on a big file);
         with_run_info: join the provenance from the `runs` group (machine, code_version, ...).
+        A `<col>__str` column holds the values of numeric `<col>` that arrived as non-numeric
+        strings (NaN in `<col>` for those records); it is returned as is, next to `<col>`.
         '''
         if columns is not None:
             columns = set(columns) | set(RECORD_KEYS)
@@ -525,7 +713,7 @@ class harvest_database:
         if with_run_info and len(df) and 'run' in df:
             runs = self.runs()
             if len(runs):
-                runs = runs[runs['code'] == code].drop(columns=['code'])
+                runs = runs[runs['code'] == code].drop(columns=['code', 'input_types'], errors='ignore')   # input_file() reads the type map itself
                 runs = runs.drop(columns=[c for c in runs.columns if c in df.columns and c != 'run'])   # per-record maestro_beat wins
                 df = df.merge(runs, on='run', how='left')
                 for c in RUN_KEYS + RUN_CODE_KEYS:
@@ -533,35 +721,189 @@ class harvest_database:
                         df[c] = df[c].fillna('')
         return df
 
+    # -------------------------------------------------------------------------- input files
+    _INPUT_FILES = {'tglf': 'input.tglf', 'neo': 'input.neo', 'cgyro': 'input.cgyro', 'eped': 'eped.input'}
+
+    def record(self, code, record):
+        '''One record as a pandas Series with its run's provenance (incl. the `input_types` map), from its input hash or a row of load()'''
+        if isinstance(record, str):
+            df = self._read_group(code, mask_fn=lambda read: read('hash') == record)
+            if len(df) == 0:
+                raise KeyError(f"harvest: no {code} record with hash {record} in {self.file}")
+            record = df.iloc[0]
+        row = pd.Series(record)
+        runs = self.runs()
+        if len(runs) and 'input_types' in runs:
+            prov = runs[(runs['run'] == row['run']) & (runs['code'] == code)]
+            if len(prov):
+                row = pd.concat([row, prov.iloc[0].drop(labels=[c for c in prov.columns if c in row.index or c == 'code'])])
+        return row
+
+    def input_file(self, code, record):
+        '''
+        Text of the input file (input.tglf / input.neo / input.cgyro / eped.input) of one record, `record` =
+        its input hash or a row of load(). Keys in the order of the original file, types restored from the
+        run's `input_types` map (bools True/False as MITIM writes them, ints as ints, floats exact), missing
+        values (NaN / '' fills of keys this record did not have) dropped, `<KEY>__str` siblings used. Runs
+        pushed before the per-run maps existed take the types the other runs of the same code recorded.
+        EPED: the eped.input namelist only; its eped.config is eped_config(record).
+        '''
+        if code not in self._INPUT_FILES:
+            raise ValueError(f"harvest: input files can be written for {list(self._INPUT_FILES)}, not '{code}'")
+        items = self._typed_inputs(code, record)
+        if code == 'eped':
+            import io
+            import f90nml
+            vals = {k: _typed_value(v, t) for k, v, t in items if not k.startswith('cfg_') and k not in _EPED_MITIM_KEYS}
+            buf = io.StringIO()
+            f90nml.Namelist({'eped_input': vals}).write(buf)
+            return buf.getvalue()
+        return "\n".join(f"{k.ljust(23)} = {_format_input_value(v, t)}" for k, v, t in items) + "\n"
+
+    def eped_config(self, record):
+        '''Text of the eped.config lines a full-EPED record carries (`cfg_<KEY>` inputs: NMODES, WIDTHS, TEPED_BOUND and every overridden key)'''
+        cfg = {}
+        for k, v, t in self._typed_inputs('eped', record):
+            if not k.startswith('cfg_'):
+                continue
+            base, _, idx = k[4:].rpartition('_')
+            if base and idx.isdigit():
+                cfg.setdefault(base, {})[int(idx)] = v
+            else:
+                cfg.setdefault(k[4:], {})[0] = v
+        token = lambda v: v if isinstance(v, str) else repr(float(v))   # read back as floats (_eped_config_values)
+        return "".join(f"{key} = {' '.join(token(v) for _, v in sorted(vals.items()))}\n" for key, vals in cfg.items())
+
+    def _typed_inputs(self, code, record):
+        '''[(key, value, type)] of the inputs of one record, in the order of its original input file'''
+        row = self.record(code, record)
+        n_species = row.get('in_N_SPECIES', np.nan)
+        if code == 'cgyro' and not (isinstance(n_species, (int, float, np.number)) and np.isfinite(n_species)):
+            # schema < 5 CGYRO records hold pygacode params1D (lowercase), not input.cgyro: refuse instead of writing a bogus file
+            raise ValueError("harvest: this CGYRO record predates schema 5 and does not contain its input.cgyro")
+        run_types = row.get('input_types', '')
+        types = json.loads(run_types) if isinstance(run_types, str) and run_types else {}
+        if not types:
+            types = dict(self._code_types(code))
+        deviations = row.get(RECORD_TYPES, '')
+        if isinstance(deviations, str) and deviations:
+            types.update(json.loads(deviations))
+        keys = [k[3:] for k in row.index if k.startswith('in_') and not k.endswith(STR_SUFFIX) and k not in RUN_CODE_KEYS]   # in_process is provenance
+        items = []
+        for key in [k for k in types if k in keys] + sorted(k for k in keys if k not in types):
+            v = row[f'in_{key}']
+            if isinstance(v, float) and np.isnan(v) or v is None or v == '':
+                v = row.get(f'in_{key}{STR_SUFFIX}', '')
+                if v is None or v == '' or (isinstance(v, float) and np.isnan(v)):
+                    continue
+            items.append((key, v, types.get(key, 'str' if isinstance(v, str) else 'float')))
+        return items
+
+    def _code_types(self, code):
+        '''
+        Input types of `code` over every run that has a map, for runs pushed without one. Only keys whose type
+        is the same in all runs (e.g. EPED's m/z/mi/zi are ints or floats depending on the composition source);
+        the others stay floats, which keeps their values exact
+        '''
+        cache = self.__dict__.setdefault('_code_types_cache', {})
+        if code not in cache:
+            runs, merged, conflicts = self.runs(), {}, set()
+            if len(runs) and 'input_types' in runs:
+                for js in runs.loc[runs['code'] == code, 'input_types']:
+                    if isinstance(js, str) and len(js) > 2:
+                        for k, t in json.loads(js).items():
+                            if merged.setdefault(k, t) != t:
+                                conflicts.add(k)
+            cache[code] = {k: t for k, t in merged.items() if k not in conflicts}
+        return cache[code]
+
+    def write_input_file(self, code, record, path):
+        '''Write input_file(code, record) to `path` (a folder gets <folder>/input.<code>, EPED also <folder>/eped.config); returns the path'''
+        path = Path(path)
+        if path.is_dir():
+            if code == 'eped':
+                (path / 'eped.config').write_text(self.eped_config(record))
+            path = path / self._INPUT_FILES[code]
+        path.write_text(self.input_file(code, record))
+        return path
+
+    def drop(self, code, hashes, run=None, timeout_s=600, stale_s=3600):
+        '''
+        Remove the `code` records whose hash is in `hashes` (only those of `run`, if given), e.g. records
+        superseded by a re-extraction. netCDF cannot shrink a dimension, so the whole file is rewritten under
+        the push lock; the previous file is kept as <file>.before-drop-<timestamp> (delete it once checked).
+        Returns the number of records removed.
+        '''
+        import netCDF4
+        hashes, removed = set(hashes), 0
+        stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        tmp, aside = self.file.with_name(f"{self.file.name}.drop-tmp"), self.file.with_name(f"{self.file.name}.before-drop-{stamp}")
+        with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
+            with netCDF4.Dataset(self.file, 'r') as src, netCDF4.Dataset(tmp, 'w', format='NETCDF4') as dst:
+                dst.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
+                for name, grp in src.groups.items():
+                    grp.set_auto_mask(False)
+                    n = len(grp.dimensions['record'])
+                    keep = np.ones(n, dtype=bool)
+                    if name == code:
+                        keep = ~np.isin(np.asarray(grp.variables['hash'][:], dtype=object), list(hashes))
+                        if run is not None:
+                            keep |= np.asarray(grp.variables['run'][:], dtype=object) != run
+                        removed = int((~keep).sum())
+                    out = dst.createGroup(name)
+                    out.setncatts({a: grp.getncattr(a) for a in grp.ncattrs()})
+                    out.createDimension('record', None)
+                    for vname, var in grp.variables.items():
+                        data = var[:][keep]
+                        if var.dtype == str:
+                            new = out.createVariable(vname, str, ('record',))
+                            if len(data):
+                                new[0:len(data)] = np.array(list(data), dtype=object)
+                        else:
+                            new = out.createVariable(vname, var.dtype, ('record',), fill_value=getattr(var, '_FillValue', np.nan),
+                                                     zlib=True, chunksizes=(4096,))
+                            new[0:len(data)] = data
+                        new.setncatts({a: var.getncattr(a) for a in var.ncattrs() if a != '_FillValue'})
+            os.replace(self.file, aside)
+            os.replace(tmp, self.file)
+        print(f"\t- harvest: dropped {removed} {code} record(s) from {IOtools.clipstr(self.file)}; previous file kept as {IOtools.clipstr(aside)}", typeMsg='w')
+        return removed
+
     # -------------------------------------------------------------------------- writing
     def push(self, staging_folders, timeout_s=600, stale_s=3600):
         '''
-        Append every unpushed staging file (<code>.jsonl tail + rolled <code>.jsonl.gz) of the given
-        folders to the central file, under the lock, then archive them as <code>.jsonl.pushed-<ts>.gz.
-        Records are deduplicated by (code, run, hash) within the call (MAESTRO may hand the
-        run_portals/ and beat_results/ twins). Returns {code: records_appended}.
+        Append every unpushed staging file of the given folders (plain tails and rolled .jsonl.gz of
+        every writer process, legacy <code>.jsonl names included) to the central file, under the
+        lock, then archive them as <stem>.jsonl.pushed-<ts>.gz. Records are deduplicated by
+        (code, run, hash) within the call (MAESTRO may hand the run_portals/ and beat_results/
+        twins). Returns {code: records_appended}. A push that fails (lock timeout, unreadable file,
+        ...) appends nothing and leaves its files in staging as rolled, unpushed archives.
         '''
         files = [f for folder in [Path(f) for f in staging_folders] if folder.is_dir()
-                 for f in sorted(folder.glob('*.jsonl*')) if _is_staged(f) and not _is_pushed(f)]
+                 for f in sorted(folder.glob('*.jsonl*')) if (_is_staged(f) and not _is_pushed(f)) or _is_orphan_claim(f, stale_s)]
         return self._push_files(files, timeout_s=timeout_s, stale_s=stale_s, archive=True)
 
     def _push_files(self, files, timeout_s=600, stale_s=3600, archive=True):
+        '''
+        archive=True claims each unpushed file by renaming it first (atomic, also on NFS): a writer
+        still alive simply starts a new tail, so nothing it appends or rolls later can be archived
+        without having been pushed. archive=False (peek) reads the files as they are and touches nothing.
+        '''
+        claimed = _claim(files) if archive else [(f, f) for f in files]
+        try:
+            appended = self._append_files([c for _, c in claimed], timeout_s=timeout_s, stale_s=stale_s)
+        except BaseException:
+            if archive:
+                _unclaim(claimed)
+            raise
+        if archive:
+            _archive(claimed)
+        return appended
+
+    def _append_files(self, files, timeout_s=600, stale_s=3600):
         import netCDF4
 
-        # Fold every plain tail into its rolled archive first, so each (folder, code) is one .gz.
-        # A peek (archive=False) reads the files as they are and touches nothing.
-        if archive:
-            rolled = []
-            for f in files:
-                if f.suffix == '.jsonl':
-                    _roll(f)
-                    f.unlink(missing_ok=True)
-                    f = f.with_name(f.name + '.gz')
-                if f.exists() and f not in rolled:
-                    rolled.append(f)
-            files = rolled
-
-        frames, runs_rows, seen = {}, {}, set()
+        frames, runs_rows, typed, seen = {}, {}, [], set()
         for f in files:
             code = _code_of(f)
             meta_file = f.parent / 'run_meta.json'
@@ -578,63 +920,106 @@ class harvest_database:
                     runs_rows[rkey] = {'run': rkey[0], 'code': code,
                                        **{k: run_meta.get(k, '') for k in RUN_KEYS if k != 'run'},
                                        **{k: per_code.get(k, 0 if k == 'in_process' else '') for k in RUN_CODE_KEYS}}
+                typed.append((rkey, row, _input_types(row)))
                 rows.append(row)
             if rows:
                 frames.setdefault(code, []).extend(rows)
 
         appended = {}
-        if frames:
-            with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
-                mode = 'a' if self.file.exists() else 'w'
-                with netCDF4.Dataset(self.file, mode, format='NETCDF4') as ds:
-                    for code, rows in frames.items():
-                        appended[code] = self._append_group(ds, code, _frame_from_rows(rows))
-                    self._upsert_runs(ds, list(runs_rows.values()))
-            print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
-
-        if archive:
-            ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            for f in files:
-                if not _is_pushed(f):
-                    os.replace(f, f.with_name(f"{_code_of(f)}.jsonl.pushed-{ts}.gz"))
-
+        if not frames:
+            return appended
+        with IOtools.mkdir_lock(self.file, timeout_s=timeout_s, stale_s=stale_s):
+            # 1. Type every column of every group against what the file already holds, writing
+            #    nothing yet: a type conflict can no longer abort a push halfway through the groups
+            schema, run_index = self._schema()
+            # input types: extend each run's map (a run pushed again, e.g. by hand while alive, keeps
+            # its map and only appends new keys), deviating records carry their own
+            run_types = {rkey: json.loads(run_index[rkey][1] or '{}') if rkey in run_index else {} for rkey in runs_rows}
+            for rkey, row, row_types in typed:
+                over = _type_overrides(run_types[rkey], row_types)
+                if over:
+                    row[RECORD_TYPES] = json.dumps(over)
+            for rkey, row in runs_rows.items():
+                row['input_types'] = json.dumps(run_types[rkey])
+            type_updates = {run_index[rkey][0]: row['input_types'] for rkey, row in runs_rows.items()
+                            if rkey in run_index and row['input_types'] != (run_index[rkey][1] or '{}')}
+            plan = {code: _reconcile_frame(_frame_from_rows(rows), schema.get(code, {})) for code, rows in frames.items()}
+            new_runs = [r for r in runs_rows.values() if (r['run'], r['code']) not in run_index]
+            if new_runs:
+                plan[RUNS_GROUP] = _reconcile_frame(_frame_from_rows(new_runs), schema.get(RUNS_GROUP, {}))
+            # 2. Write
+            with netCDF4.Dataset(self.file, 'a' if self.file.exists() else 'w', format='NETCDF4') as ds:
+                for name, (k, cols) in plan.items():
+                    self._write_group(ds, name, cols, k)
+                    if name != RUNS_GROUP:
+                        appended[name] = k
+                if type_updates:
+                    grp = ds.groups[RUNS_GROUP]
+                    if 'input_types' not in grp.variables:
+                        var = grp.createVariable('input_types', str, ('record',))
+                        n_runs = len(grp.dimensions['record'])
+                        if n_runs > 0:   # vlen strings have no fill value (see _write_group)
+                            var[0:n_runs] = np.array([''] * n_runs, dtype=object)
+                    for idx, js in type_updates.items():
+                        grp.variables['input_types'][idx] = js
+        print(f"\t- harvest: appended {sum(appended.values())} record(s) to {IOtools.clipstr(self.file)} ({', '.join(f'{k}: {v}' for k, v in appended.items())})", typeMsg='i')
         return appended
 
+    def _schema(self):
+        '''({group: {variable: is_string}}, {(run, code): (index, input_types)} of the runs group) of the central file'''
+        import netCDF4
+        schema, run_index = {}, {}
+        if not self.file.exists():
+            return schema, run_index
+        with netCDF4.Dataset(self.file, 'r') as ds:
+            for name, grp in ds.groups.items():
+                schema[name] = {v: grp.variables[v].dtype == str for v in grp.variables}
+            grp = ds.groups.get(RUNS_GROUP)
+            if grp is not None and 'record' in grp.dimensions and len(grp.dimensions['record']):
+                grp.set_auto_mask(False)
+                n = len(grp.dimensions['record'])
+                it = grp.variables['input_types'][:] if 'input_types' in grp.variables else [''] * n
+                for i, (r, c, js) in enumerate(zip(grp.variables['run'][:], grp.variables['code'][:], it)):
+                    run_index.setdefault((str(r), str(c)), (i, '' if js is None else str(js)))
+        return schema, run_index
+
     @staticmethod
-    def _append_group(ds, code, df):
-        grp = ds.groups[code] if code in ds.groups else ds.createGroup(code)
+    def _write_group(ds, name, cols, k):
+        '''
+        Append k rows to group `name`. vlen string columns have no fill value and their HDF5 storage only
+        grows when written: a string column a push does not carry would stay shorter than the record
+        dimension (reads still return '' past its end), and the next write to it would expose the never-
+        written rows ("NetCDF: HDF error" on every later read of that column). So every string column is
+        written for every appended row, and a group written by older code is repaired once (all its string
+        columns rewritten in full; attribute `strings_extended`).
+        '''
+        grp = ds.groups[name] if name in ds.groups else ds.createGroup(name)
         if 'record' not in grp.dimensions:
             grp.createDimension('record', None)
             grp.setncattr('schema_version', SCHEMA_VERSION)
-        n, k = len(grp.dimensions['record']), len(df)
-        for col in df.columns:
-            is_str = not pd.api.types.is_numeric_dtype(df[col])
+            grp.setncattr('strings_extended', 1)
+        n = len(grp.dimensions['record'])
+        if 'strings_extended' not in grp.ncattrs():
+            for var in grp.variables.values():
+                if var.dtype == str and n > 0:
+                    var[0:n] = np.array(list(var[0:n]), dtype=object)
+            grp.setncattr('strings_extended', 1)
+        for col, (is_str, arr) in cols.items():
             if col not in grp.variables:
                 if is_str:
-                    grp.createVariable(col, str, ('record',))
+                    var = grp.createVariable(col, str, ('record',))
+                    # vlen strings have no fill value: rows appended before this column existed must be written
+                    # explicitly, otherwise reading the variable fails with "NetCDF: HDF error"
+                    if n > 0:
+                        var[0:n] = np.array([''] * n, dtype=object)
                 else:
                     grp.createVariable(col, 'f8', ('record',), fill_value=np.nan, zlib=True, chunksizes=(4096,))
-            var = grp.variables[col]
-            if is_str:
-                var[n:n + k] = np.array([str(v) for v in df[col].to_numpy()], dtype=object)
-            else:
-                var[n:n + k] = df[col].to_numpy(dtype='float64')
+            grp.variables[col][n:n + k] = arr
+        for col, var in grp.variables.items():
+            if col not in cols and var.dtype == str:
+                var[n:n + k] = np.array([''] * k, dtype=object)
         grp.setncattr('last_push', datetime.datetime.now().isoformat(timespec='seconds'))
         return k
-
-    def _upsert_runs(self, ds, rows):
-        '''Append the (run, code) provenance rows not already present in the `runs` group'''
-        if not rows:
-            return 0
-        grp = ds.groups[RUNS_GROUP] if RUNS_GROUP in ds.groups else ds.createGroup(RUNS_GROUP)
-        existing = set()
-        if 'record' in grp.dimensions and len(grp.dimensions['record']):
-            grp.set_auto_mask(False)
-            existing = set(zip([str(v) for v in grp.variables['run'][:]], [str(v) for v in grp.variables['code'][:]]))
-        new = [r for r in rows if (r['run'], r['code']) not in existing]
-        if new:
-            self._append_group(ds, RUNS_GROUP, _frame_from_rows(new))
-        return len(new)
 
     @classmethod
     def from_staging(cls, folders, file=None):
@@ -665,7 +1050,7 @@ class harvest_database:
             os.replace(self.file, aside)
             print(f"\t- harvest: previous file moved to {IOtools.clipstr(aside)}", typeMsg='w')
         files = sorted({f for root in [Path(r) for r in roots] for f in root.rglob('*.jsonl*')
-                        if f.parent.name == 'harvest' and _is_staged(f)})
+                        if f.parent.name == 'harvest' and (_is_staged(f) or _is_orphan_claim(f, 3600))})
         return self._push_files(files, archive=True)
 
     # -------------------------------------------------------------------------- interpreting
@@ -684,6 +1069,15 @@ class harvest_database:
                 'first_run': ts.min(), 'last_run': ts.max(),
             })
         return pd.DataFrame(rows)
+
+    def statistics(self, code, run=None, **kw):
+        '''harvest_statistics for one code (Spearman, PRCC, local sensitivities); cached per (code, run)'''
+        from mitim_tools.harvest_tools.HARVESTstatistics import harvest_statistics
+        cache = self.__dict__.setdefault('_stats_cache', {})
+        key = (code, str(run), tuple(sorted(kw.items())))
+        if key not in cache:
+            cache[key] = harvest_statistics(self, code, run=run, **kw)
+        return cache[key]
 
     def interpret(self, code=None, max_rows=40):
         '''Printed text report of what the database holds (all codes, or one)'''
@@ -713,19 +1107,99 @@ class harvest_database:
                 lines.append("Fluxes:\n" + df[out_cols].describe().T[['mean', 'std', 'min', 'max']].to_string(float_format=lambda x: f"{x:.4g}"))
                 zero = (df[out_cols].fillna(0).abs().sum(axis=1) == 0).mean()
                 lines.append(f"Records with all-zero fluxes: {100*zero:.1f}%")
+            if c != 'eped':
+                stats = self.statistics(c)
+                if stats.enough:
+                    lines.append(stats.interpret())
         report = "\n".join(lines)
         print(report)
         return report
 
     # -------------------------------------------------------------------------- plotting
-    _DRIVES = {   # candidates for the "main drive" of each channel, first present wins
-        'tglf':     {'Te': ['RLTS_1'], 'Ti': ['RLTS_2'], 'ne': ['RLNS_1']},
-        'neo':      {'Te': ['DLNTDR_1'], 'Ti': ['DLNTDR_2'], 'ne': ['DLNNDR_1']},
-        'cgyro':    {'Te': ['DLNTDR_1', 'dlntdr_0'], 'Ti': ['DLNTDR_2', 'dlntdr_1'], 'ne': ['DLNNDR_1', 'dlnndr_0']},
+    # Fallback drive names for codes whose species are not resolved by charge (see _SPECIES)
+    _DRIVES = {
         'gx':       {'Te': ['tprim_1', 'tprim_0'], 'Ti': ['tprim_2', 'tprim_1'], 'ne': ['fprim_1', 'fprim_0']},
         'qualikiz': {'Te': ['Ate'], 'Ti': ['Ati_0', 'Ati'], 'ne': ['Ane']},
     }
     _FLUXES = {'Qe': ['Qe', 'Qe_mean', 'efe_SI'], 'Qi': ['Qi', 'Qi_mean', 'efi_SI_0'], 'Ge': ['Ge', 'Ge_mean', 'pfe_SI']}
+
+    # Species order differs between codes (TGLF: electrons first; NEO as MITIM writes it: electrons LAST;
+    # CGYRO: any order), so electrons (charge -1) and the main ion (first charge +1) are found by charge:
+    # (charge key, a/LT key, a/Ln key, first index); CGYRO records before schema 5 held pygacode's 0-indexed names
+    _SPECIES = {
+        'tglf':  ('ZS_{}', 'RLTS_{}', 'RLNS_{}', 1),
+        'neo':   ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
+        'cgyro': ('Z_{}', 'DLNTDR_{}', 'DLNNDR_{}', 1),
+        'gx':    ('z_{}', 'tprim_{}', 'fprim_{}', 1),   # MITIM writes GX ions first, electrons last
+    }
+    _SPECIES_LEGACY = {'cgyro': ('z_{}', 'dlntdr_{}', 'dlnndr_{}', 0)}
+
+    @classmethod
+    def _species_keys(cls, code, df):
+        keys = cls._SPECIES[code]
+        legacy = cls._SPECIES_LEGACY.get(code)
+        if legacy is not None and f"in_{keys[0].format(keys[3])}" not in df.columns and f"in_{legacy[0].format(legacy[3])}" in df.columns:
+            return legacy
+        return keys
+
+    # Collisionality used to color flux-vs-drive plots, as each code's own input (no conversion between
+    # normalizations): TGLF XNUE is the electron-ion collision frequency; NEO only takes NU_1, the collision
+    # frequency of ITS species 1 (the others are scaled from it internally)
+    _COLLISIONALITY = {
+        'tglf': ('XNUE', 'XNUE (e-i collision frequency, TGLF input)'),
+        'neo':  ('NU_1', 'NU_1 (collision frequency of NEO species 1, {species})'),
+        'cgyro': ('NU_EE', 'NU_EE (e-e collision frequency, CGYRO input)'),
+        'qualikiz': ('Nustar', 'Nustar (electron collisionality, QuaLiKiz input)'),
+    }
+
+    # Radial location of a record, r/a from its own input file (every code writes r/a, under its own name)
+    _RADIUS = {'tglf': ['RMIN_LOC'], 'neo': ['RMIN_OVER_A'], 'cgyro': ['RMIN', 'rmin'], 'gx': ['rhoc'], 'qualikiz': ['x']}
+
+    def radius(self, code, df):
+        '''r/a of each record of `df` (a frame of load(code)); NaN when the radial input is not stored'''
+        col = self._first(df, 'in_', self._RADIUS.get(code, []))
+        return df[col].astype(float) if col is not None else pd.Series(np.nan, index=df.index)
+
+    @staticmethod
+    def _radial_bins(roa, max_exact=8, dr=0.1):
+        '''
+        Radial groups for plotting: each distinct r/a when there are at most `max_exact` of them (one radial
+        grid), else bins [k*dr, (k+1)*dr) in r/a, so runs on slightly different grids (0.944 vs 0.95) fall
+        together. Returns (group label per record, {label: color} ordered inner (dark) to outer (bright)).
+        '''
+        import matplotlib.pyplot as plt
+        v = roa.to_numpy(dtype=float)
+        ok = np.isfinite(v)
+        distinct = np.unique(np.round(v[ok], 3))
+        if len(distinct) <= max_exact:
+            names = np.array([f'r/a={x:.3g}' for x in np.round(np.where(ok, v, 0), 3)], dtype=object)
+            order = [f'r/a={x:.3g}' for x in distinct]
+        else:
+            lo = np.floor(np.where(ok, v, 0) / dr + 1e-6) * dr
+            names = np.array([f'r/a {a:.2f}-{a + dr:.2f}' for a in lo], dtype=object)
+            order = [f'r/a {a:.2f}-{a + dr:.2f}' for a in np.unique(lo[ok])]
+        names[~ok] = 'r/a unknown'
+        cmap = plt.get_cmap('plasma')
+        colors = {k: cmap(0.85 * i / max(len(order) - 1, 1)) for i, k in enumerate(order)}
+        if not ok.all():
+            colors['r/a unknown'] = 'gray'
+        return pd.Series(names, index=roa.index), colors
+
+    @staticmethod
+    def _single_schema(code, df):
+        '''
+        CGYRO records before schema 5 hold pygacode params1D (lowercase names), not input.cgyro. When `df` mixes both
+        kinds, keep the schema-5 ones (and drop the columns only the others fill), so that every analysed column is
+        defined on every row; the two name sets are not merged, since that would assume they are the same quantities
+        '''
+        if code != 'cgyro' or 'in_N_SPECIES' not in df.columns:
+            return df
+        new = df['in_N_SPECIES'].notna()
+        if new.all() or not new.any():
+            return df
+        print(f"\t- harvest: {int((~new).sum())} CGYRO record(s) predate schema 5 (pygacode params1D, not input.cgyro) "
+              "and are left out of this analysis", typeMsg='w')
+        return df[new].dropna(axis=1, how='all')
 
     @staticmethod
     def _first(df, prefix, candidates):
@@ -734,18 +1208,51 @@ class harvest_database:
                 return f"{prefix}{c}"
         return None
 
-    @staticmethod
-    def _cgyro_drives(df):
-        '''CGYRO species are 0-indexed in params1D with no fixed order: find the electron (z=-1) and first main ion (z=1) by charge'''
-        z = {i: df[f'in_z_{i}'].dropna().iloc[0] for i in range(12) if f'in_z_{i}' in df.columns and df[f'in_z_{i}'].notna().any()}
+    @classmethod
+    def _species_index(cls, code, df):
+        '''(electron index, main-ion index) from the charges in the input file; None when not found'''
+        if code not in cls._SPECIES:
+            return None, None
+        zkey, _, _, i0 = cls._species_keys(code, df)
+        z = {i: df[f'in_{zkey.format(i)}'].dropna().iloc[0] for i in range(i0, i0 + 12)
+             if f'in_{zkey.format(i)}' in df.columns and df[f'in_{zkey.format(i)}'].notna().any()}
         ie = next((i for i, v in z.items() if v == -1), None)
         ii = next((i for i, v in z.items() if v == 1), None)
+        return ie, ii
+
+    @classmethod
+    def _species_drives(cls, code, df):
+        '''{'Te': [col], 'Ti': [col], 'ne': [col]} with the electron / main-ion gradient names of this code'''
+        if code not in cls._SPECIES:
+            return {}
+        _, tkey, nkey, _ = cls._species_keys(code, df)
+        ie, ii = cls._species_index(code, df)
         drives = {}
         if ie is not None:
-            drives['Te'], drives['ne'] = [f'dlntdr_{ie}'], [f'dlnndr_{ie}']
+            drives['Te'], drives['ne'] = [tkey.format(ie)], [nkey.format(ie)]
         if ii is not None:
-            drives['Ti'] = [f'dlntdr_{ii}']
+            drives['Ti'] = [tkey.format(ii)]
         return drives
+
+    @classmethod
+    def _cgyro_drives(cls, df):
+        return cls._species_drives('cgyro', df)
+
+    def _drives(self, code, df):
+        '''{'Te': col, 'Ti': col, 'ne': col} for this code (charge-resolved when possible, else the fallback names)'''
+        candidates = {**self._DRIVES.get(code, {}), **self._species_drives(code, df)}
+        return {k: self._first(df, 'in_', v) for k, v in candidates.items()}
+
+    def _collisionality(self, code, df):
+        '''(column, label) of the collisionality input of this code, or (None, None)'''
+        if code not in self._COLLISIONALITY or f'in_{self._COLLISIONALITY[code][0]}' not in df.columns:
+            return None, None
+        key, label = self._COLLISIONALITY[code]
+        if code == 'neo':
+            z1 = df['in_Z_1'].dropna().iloc[0] if 'in_Z_1' in df.columns and df['in_Z_1'].notna().any() else None
+            species = 'electrons' if z1 == -1 else (f'ion Z={z1:g}' if z1 is not None else 'unknown')
+            label = label.format(species=species)
+        return f'in_{key}', label
 
     def _color_by(self, df, key='run'):
         cols = GRAPHICStools.listColors()
@@ -791,7 +1298,11 @@ class harvest_database:
         return ax
 
     def plotDatabase(self, fn=None, codes=None):
-        '''FigureNotebook: an Overview tab, one tab per code present in the file, and a parity tab per pair of codes run on the same points'''
+        '''
+        FigureNotebook: an Overview tab; per transport code its fluxes vs drives (all radii, then one column
+        per radius), the averaging windows (CGYRO/GX), the effect of its settings, coverage and statistics;
+        EPED; and a parity tab per pair of codes run on the same points
+        '''
         from mitim_tools.misc_tools.GUItools import FigureNotebook
         if fn is None:
             fn = FigureNotebook("MITIM harvest", geometry="1700x900")
@@ -802,7 +1313,17 @@ class harvest_database:
             if code == 'eped':
                 self._plot_eped(fn)
             else:
-                self._plot_transport(fn, code)
+                self.plotFluxesVsDrives(code, fn=fn)
+                self.plotFluxesByRadius(code, fn=fn)
+                self.plotWindows(code, fn=fn)
+                self.plotSettings(code, fn=fn)
+            self.plotCoverage(code, fn=fn)
+            self.plotPairs(code, fn=fn)
+            if code != 'eped':
+                stats = self.statistics(code)
+                if stats.enough:
+                    stats.plotImportance(fn=fn)
+                    stats.plotSensitivities(fn=fn)
         for a, b in (('tglf', 'cgyro'), ('tglf', 'gx'), ('cgyro', 'gx')):
             if a in codes and b in codes:
                 self.plotParity(a, b, fn=fn)
@@ -813,7 +1334,7 @@ class harvest_database:
     # species resolved by charge for CGYRO; GX names are template dependent and left out)
     _COORDS = {
         'tglf':  {'roa': ['RMIN_LOC'], 'aLTe': ['RLTS_1'], 'aLne': ['RLNS_1'], 'q': ['Q_LOC']},
-        'cgyro': {'roa': ['rmin'], 'q': ['q']},   # + electron gradients from _cgyro_drives
+        'cgyro': {'roa': ['RMIN', 'rmin'], 'q': ['Q', 'q']},   # + electron gradients from _cgyro_drives
     }
     _FLUX_PAIRS = [('Qe', ['Qe', 'Qe_mean']), ('Qi', ['Qi', 'Qi_mean']), ('Ge', ['Ge', 'Ge_mean'])]
 
@@ -833,7 +1354,8 @@ class harvest_database:
         one row per pair with the coordinates (code_a's values), the fluxes of both codes (`<flux>_a`,
         `<flux>_b`) and the stds when stored (`<flux>_std_a/b`).
         '''
-        A, B = self.load(code_a, with_run_info=False), self.load(code_b, with_run_info=False)
+        A = self._single_schema(code_a, self.load(code_a, with_run_info=False))
+        B = self._single_schema(code_b, self.load(code_b, with_run_info=False))
         if len(A) == 0 or len(B) == 0:
             return pd.DataFrame()
         ca, cb = self._coords(code_a, A), self._coords(code_b, B)
@@ -934,67 +1456,729 @@ class harvest_database:
         fig = fn.add_figure(label='Overview')
         axs = fig.subplots(2, 2)
         frames = {c: self.load(c) for c in codes}
+        # Record counts span orders of magnitude between codes (thousands of TGLF runs vs a handful of EPED):
+        # every count axis is logarithmic and each bar carries its number
         ax = axs[0, 0]
-        ax.bar(list(frames), [len(d) for d in frames.values()])
-        ax.set_ylabel('records'); ax.set_title('Records per code')
+        bars = ax.bar(list(frames), [len(d) for d in frames.values()])
+        ax.bar_label(bars, fontsize=8)
+        ax.set_yscale('log'); ax.set_ylim(bottom=0.8)
+        ax.set_ylabel('records (log)'); ax.set_title('Records per code')
         ax = axs[0, 1]
         for c, df in frames.items():
             if 'created' in df and len(df):
                 per_run = df.groupby('run').agg(n=('hash', 'size'), t=('created', 'first'))
                 per_run['t'] = pd.to_datetime(per_run['t'], errors='coerce')
                 per_run = per_run.sort_values('t')
-                ax.step(per_run['t'], per_run['n'].cumsum(), where='post', label=c)
-        ax.set_ylabel('cumulative records'); ax.set_title('Records vs run start time'); ax.legend(fontsize=7)
+                ax.step(per_run['t'], per_run['n'].cumsum(), '-o', ms=4, where='post', label=c)
+        ax.set_yscale('log'); ax.set_ylim(bottom=0.8)
+        ax.set_ylabel('cumulative records (log)'); ax.set_title('Records vs run start time'); ax.legend(fontsize=7)
         ax.tick_params(axis='x', labelrotation=30)
         ax = axs[1, 0]
         runs = pd.concat([d[['run']].assign(code=c) for c, d in frames.items() if 'run' in d], ignore_index=True) if frames else pd.DataFrame()
         if len(runs):
             top = runs.groupby('run').size().sort_values(ascending=False).head(15)
-            ax.barh(list(top.index), top.values)
+            bars = ax.barh(list(top.index), top.values)
+            ax.bar_label(bars, fontsize=8, padding=2)
             ax.invert_yaxis()
-        ax.set_xlabel('records'); ax.set_title('Records per run (top 15)')
+        ax.set_xscale('log'); ax.set_xlim(left=0.8)
+        ax.set_xlabel('records (log)'); ax.set_title('Records per run (top 15)')
         ax = axs[1, 1]
         prov = pd.concat([d[['machine', 'code_version']].assign(code=c) for c, d in frames.items() if 'machine' in d], ignore_index=True) if frames else pd.DataFrame()
         if len(prov):
             prov['key'] = prov['code'] + ' @ ' + prov['machine'].replace('', '?') + ' / ' + prov['code_version'].map(lambda s: s.split('\n')[0][:20] if s else '?')
             cnt = prov.groupby('key').size().sort_values(ascending=False).head(12)
-            ax.barh(cnt.index, cnt.values, color='gray')
+            bars = ax.barh(cnt.index, cnt.values, color='gray')
+            ax.bar_label(bars, fontsize=8, padding=2)
             ax.invert_yaxis()
             ax.tick_params(axis='y', labelsize=6)
-        ax.set_xlabel('records'); ax.set_title('Machine / code version')
+        ax.set_xscale('log'); ax.set_xlim(left=0.8)
+        ax.set_xlabel('records (log)'); ax.set_title('Machine / code version')
         for a in axs.flatten():
-            GRAPHICStools.addDenseAxis(a)
+            a.grid(True, which='major', alpha=0.4)
         GRAPHICStools.adjust_figure_layout(fig)
 
-    def _plot_transport(self, fn, code):
-        df = self.load(code)
-        if len(df) == 0:
+    _DRIVE_LABELS = {'Te': 'a/LTe', 'Ti': 'a/LTi', 'ne': 'a/Lne'}
+    _DRIVE_LABELS_CODE = {'qualikiz': {'Te': 'R0/LTe', 'Ti': 'R0/LTi', 'ne': 'R0/Lne'}}   # QuaLiKiz gradients are normalized to Ro
+
+    def drive_label(self, code, d):
+        return self._DRIVE_LABELS_CODE.get(code, {}).get(d, self._DRIVE_LABELS[d])
+
+    @staticmethod
+    def _flux_axis(values, name, nbins=40):
+        '''Axis spec for a flux spanning orders of magnitude: log for heat fluxes, symlog for the particle flux'''
+        v = values[np.isfinite(values)]
+        if name == 'Ge' or len(v[v > 0]) == 0:
+            nz = np.abs(v[v != 0])
+            lin = float(np.median(nz)) if len(nz) else 1.0
+            m = float(np.max(np.abs(v))) * 1.3 if len(v) else 1.0
+            # bins uniform in the symlog-like coordinate t = sign(x) log10(1 + |x|/lin)
+            t = np.linspace(-np.log10(1 + m / lin), np.log10(1 + m / lin), nbins)
+            bins = np.sign(t) * lin * (10 ** np.abs(t) - 1)
+            return {'kind': 'symlog', 'linthresh': lin, 'lim': (-m, m), 'bins': bins, 'note': f'symlog, linear within +-{lin:.2g}'}
+        pos = v[v > 0]
+        lo, hi = float(pos.min()) / 1.5, float(pos.max()) * 1.5
+        n_np = int((v <= 0).sum())
+        return {'kind': 'log', 'lim': (lo, hi), 'bins': np.logspace(np.log10(lo), np.log10(hi), nbins),
+                'note': 'log' + (f', {n_np} non-positive not shown' if n_np else '')}
+
+    @staticmethod
+    def _apply_flux_axis(ax, spec):
+        if spec['kind'] == 'log':
+            ax.set_yscale('log')
+        else:
+            ax.set_yscale('symlog', linthresh=spec['linthresh'])
+            ax.axhline(0, color='k', lw=0.4)
+        ax.set_ylim(*spec['lim'])
+
+    def _color_spec(self, code, df, color_by):
+        '''
+        How to color the records of df: 'radius' (r/a groups), 'collisionality' (the code's own input, log
+        scale; falls back to radius when the code has none), 'run', or a Series of category labels (e.g. settings)
+        '''
+        if isinstance(color_by, pd.Series):
+            return {'kind': 'cat', 'labels': color_by, 'colors': self._color_by(color_by.to_frame('c'), 'c'), 'title': color_by.name or ''}
+        if color_by == 'collisionality':
+            from matplotlib.colors import LogNorm
+            ccol, clabel = self._collisionality(code, df)
+            vals = df[ccol].to_numpy(dtype=float) if ccol else np.array([])
+            if np.any(vals > 0):
+                pos = vals[vals > 0]
+                return {'kind': 'cont', 'values': vals, 'norm': LogNorm(vmin=pos.min(), vmax=max(pos.max(), pos.min() * 1.0001)), 'title': clabel}
+            color_by = 'radius'
+        if color_by == 'radius':
+            labels, colors = self._radial_bins(self.radius(code, df))
+            return {'kind': 'cat', 'labels': labels, 'colors': colors, 'title': 'radius'}
+        return {'kind': 'cat', 'labels': df[color_by].astype(str), 'colors': self._color_by(df.assign(_c=df[color_by].astype(str)), '_c'), 'title': color_by}
+
+    @staticmethod
+    def _scatter_spec(ax, x, y, spec, mask=None, s=6):
+        '''
+        Scatter y vs x colored by a _color_spec (mask restricts the records); returns the mappable of a continuous
+        spec. Categories are drawn in one call in shuffled order, so no category hides behind the last one drawn.
+        '''
+        mask = np.ones(len(x), dtype=bool) if mask is None else np.asarray(mask)
+        if spec['kind'] == 'cont':
+            return ax.scatter(x[mask], y[mask], c=spec['values'][mask], norm=spec['norm'], cmap='viridis', s=s, alpha=0.8, zorder=2)
+        idx = np.random.default_rng(0).permutation(np.flatnonzero(mask))
+        colors = spec['labels'].map(spec['colors']).to_numpy()[idx]
+        ax.scatter(x[idx], y[idx], s=s, c=list(colors), alpha=0.7, zorder=2)
+        return None
+
+    @staticmethod
+    def _color_key(fig, spec, sc):
+        '''Colorbar (continuous) or legend (categories) in the right margin that adjust_figure_layout leaves'''
+        if spec['kind'] == 'cont':
+            if sc is not None:
+                fig.colorbar(sc, cax=fig.add_axes([0.925, 0.1, 0.012, 0.8])).set_label(spec['title'])
             return
-        fig = fn.add_figure(label=code.upper())
-        axs = fig.subplots(2, 3)
-        colors = self._color_by(df)
+        from matplotlib.lines import Line2D
+        handles = [Line2D([], [], ls='', marker='o', color=c, label=k) for k, c in spec['colors'].items()][:25]
+        fig.legend(handles=handles, loc='center left', bbox_to_anchor=(0.905, 0.5), fontsize=7, title=spec['title'], title_fontsize=7, frameon=False)
+
+    def plotFluxesVsDrives(self, code, fn=None, run=None, color_by='radius'):
+        '''
+        Every flux against every drive: rows Qe, Qi, Ge; columns a/LTe, a/LTi, a/Lne (electron and main-ion
+        gradients resolved by charge), plus the distribution of each flux as a last column. Colored by radius
+        (r/a groups, see _radial_bins) by default: the same gradient drives very different fluxes at different
+        radii. color_by='collisionality' colors by the code's collisionality input (log), or 'run'.
+        1-sigma bars when the flux has a stored std. Fluxes span orders of magnitude: heat fluxes on a log axis
+        (non-positive values cannot be drawn and are counted in the label), particle flux on symlog (linear
+        within +-median|Ge|). Drives stay linear. `run` restricts to one run id or a list of them.
+        '''
+        import matplotlib.pyplot as plt
+        df = self.load(code, run=run)
+        if len(df) == 0:
+            return None
         fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
-        candidates = {**self._DRIVES.get(code, {}), **(self._cgyro_drives(df) if code == 'cgyro' else {})}
-        drives = {k: self._first(df, 'in_', v) for k, v in candidates.items()}
-        for ax, (name, col) in zip(axs[0, :], fluxes.items()):
-            if col is not None:
-                vals = df[col].dropna()
-                ax.hist(vals, bins=40, color='gray')
-                ax.set_xlabel(col)
-            ax.set_ylabel('records'); ax.set_title(f'{name} distribution')
-        pairs = [(drives.get('Ti'), fluxes['Qi']), (drives.get('Te'), fluxes['Qe']), (drives.get('ne'), fluxes['Ge'])]
-        for ax, (xcol, ycol) in zip(axs[1, :], pairs):
-            if xcol is None or ycol is None:
-                ax.text(0.5, 0.5, 'no drive/flux column found', ha='center', va='center', transform=ax.transAxes)
-                continue
-            stdcol = self._std_of(df, ycol)
-            for k, c in colors.items():
-                self._scatter(ax, df[df['run'] == k], xcol, ycol, stdcol, c)
-            ax.set_xlabel(xcol); ax.set_ylabel(ycol + (' (1-sigma bars)' if stdcol else ''))
-        axs[1, 0].set_title(f'{len(colors)} runs (colors)')
-        for a in axs.flatten():
-            GRAPHICStools.addDenseAxis(a)
+        drives = self._drives(code, df)
+        spec = self._color_spec(code, df, color_by)
+
+        if fn is not None:
+            fig = fn.add_figure(label=code.upper())
+        else:
+            fig = plt.figure(figsize=(18, 11))
+        axs = fig.subplots(3, 4, gridspec_kw={'width_ratios': [1, 1, 1, 0.55]})
+
+        sc = None
+        for irow, (fname, fcol) in enumerate(fluxes.items()):
+            stdcol = self._std_of(df, fcol)
+            yscale = self._flux_axis(df[fcol].to_numpy(dtype=float), fname) if fcol is not None else None
+            for icol, dname in enumerate(('Te', 'Ti', 'ne')):
+                ax, dcol = axs[irow, icol], drives.get(dname)
+                if fcol is None or dcol is None:
+                    ax.text(0.5, 0.5, f'no {fname} or {self.drive_label(code, dname)} column', ha='center', va='center', transform=ax.transAxes)
+                    continue
+                if stdcol is not None:
+                    ax.errorbar(df[dcol], df[fcol], yerr=df[stdcol], fmt='none', ecolor='gray', elinewidth=0.6, alpha=0.5, zorder=1)
+                sc = self._scatter_spec(ax, df[dcol].to_numpy(dtype=float), df[fcol].to_numpy(dtype=float), spec) or sc
+                if irow == 2:
+                    ax.set_xlabel(f'{self.drive_label(code, dname)}  ({dcol[3:]})')
+                if icol == 0:
+                    ax.set_ylabel(f'{fname}  ({fcol[4:]})\n{yscale["note"]}' + ('\n1-sigma bars' if stdcol else ''), fontsize=9)
+                self._apply_flux_axis(ax, yscale)
+                ax.grid(True, alpha=0.3)
+            # distribution of this flux on the same flux axis (log-spaced bins; log counts to show the tails)
+            axh = axs[irow, 3]
+            if fcol is not None:
+                vals = df[fcol].dropna().to_numpy(dtype=float)
+                if yscale['kind'] == 'log':
+                    vals = vals[vals > 0]
+                axh.hist(vals, bins=yscale['bins'], orientation='horizontal', color='gray')
+                self._apply_flux_axis(axh, yscale)
+                axh.set_xscale('log')
+            axh.set_xlabel('records (log)' if irow == 2 else '')
+            axh.tick_params(labelleft=False)
+            axh.grid(True, alpha=0.3)
+        axs[0, 1].set_title(f'{code.upper()}: {len(df)} records, {df["run"].nunique()} run(s)', fontsize=10)
+        axs[0, 3].set_title('distribution', fontsize=9)
+
         GRAPHICStools.adjust_figure_layout(fig)
+        self._color_key(fig, spec, sc)
+        return fig
+
+    # Each flux against the gradient that drives it
+    _OWN_DRIVE = {'Qe': 'Te', 'Qi': 'Ti', 'Ge': 'ne'}
+
+    def plotFluxesByRadius(self, code, fn=None, run=None, color_by='collisionality', label=None, fig=None):
+        '''
+        Trends at fixed radius: rows Qe, Qi, Ge against their own drive (a/LTe, a/LTi, a/Lne), one column per
+        radial group (_radial_bins). The flux axis is shared along a row, so stiffness and threshold can be
+        compared between radii. Colored by collisionality (log; by run when the code has no collisionality
+        input), or by any color_by accepted by _color_spec (plotSettings passes the settings of each record).
+        '''
+        import matplotlib.pyplot as plt
+        df = self.load(code, run=run)
+        if len(df) == 0:
+            return None
+        groups, gcolors = self._radial_bins(self.radius(code, df))
+        order = list(gcolors)
+        if isinstance(color_by, str) and color_by == 'collisionality' and self._collisionality(code, df)[0] is None:
+            color_by = 'run'
+        spec = self._color_spec(code, df, color_by)
+        fluxes = {k: self._first(df, 'out_', v) for k, v in self._FLUXES.items()}
+        drives = self._drives(code, df)
+
+        own = fig is None   # else a (sub)figure of the caller, which also draws the color key
+        if own:
+            fig = fn.add_figure(label=label or f'{code.upper()} by radius') if fn is not None else plt.figure(figsize=(18, 10))
+        axs = np.atleast_2d(fig.subplots(3, len(order), sharey='row', squeeze=False))
+        sc = None
+        for irow, (fname, fcol) in enumerate(fluxes.items()):
+            dcol = drives.get(self._OWN_DRIVE[fname])
+            if fcol is None or dcol is None:
+                axs[irow, 0].text(0.5, 0.5, f'no {fname} or its drive', ha='center', va='center', transform=axs[irow, 0].transAxes)
+                continue
+            stdcol = self._std_of(df, fcol)
+            yscale = self._flux_axis(df[fcol].to_numpy(dtype=float), fname)
+            x, y = df[dcol].to_numpy(dtype=float), df[fcol].to_numpy(dtype=float)
+            for icol, g in enumerate(order):
+                ax, m = axs[irow, icol], (groups == g).to_numpy()
+                if stdcol is not None:
+                    ax.errorbar(x[m], y[m], yerr=df[stdcol].to_numpy(dtype=float)[m], fmt='none', ecolor='gray', elinewidth=0.6, alpha=0.5, zorder=1)
+                sc = self._scatter_spec(ax, x, y, spec, mask=m) or sc
+                self._apply_flux_axis(ax, yscale)
+                ax.grid(True, alpha=0.3)
+                ax.tick_params(labelsize=7)
+                if irow == 0:
+                    ax.set_title(f'{g}  ({int(m.sum())})', fontsize=9)
+                ax.set_xlabel(f'{self.drive_label(code, self._OWN_DRIVE[fname])} ({dcol[3:]})', fontsize=8)
+            axs[irow, 0].set_ylabel(f'{fname}  ({fcol[4:]})\n{yscale["note"]}' + ('\n1-sigma bars' if stdcol else ''), fontsize=8)
+        if own:
+            GRAPHICStools.adjust_figure_layout(fig)
+            fig.subplots_adjust(wspace=0.08)
+            self._color_key(fig, spec, sc)
+        else:
+            fig.subplots_adjust(left=0.08, right=0.98, top=0.93, bottom=0.08, wspace=0.08, hspace=0.35)
+        return fig
+
+    # -------------------------------------------------------------------------- averaging windows (CGYRO, GX)
+    def plotWindows(self, code, fn=None, run=None):
+        '''
+        How long each time-averaged run was and which part of it the flux average used (codes that store
+        avg_tmin/avg_tmax: CGYRO, GX). Left, one line per record grouped by radius, on the total simulated time
+        (a/cs): time inherited from the restart chain (gray), this run (light), averaging window (dark, colored
+        by radius), MAX_TIME requested (|), and x where the run stopped before MAX_TIME. Right: window length vs
+        r/a (open = cold start), relative std of Qi/Qe vs window length, effective samples of Qi vs window
+        length, and cost per a/cs.
+        '''
+        import matplotlib.pyplot as plt
+        from matplotlib.collections import LineCollection
+        df = self.load(code, run=run)
+        if len(df) == 0 or 'out_avg_tmin' not in df:
+            return None
+        get = lambda c, fill=np.nan: df[c].to_numpy(dtype=float) if c in df else np.full(len(df), fill)
+        roa = self.radius(code, df)
+        groups, colors = self._radial_bins(roa)
+        t_inh, t_last = np.nan_to_num(get('out_restart_t_inherited', 0.0)), get('out_t_last')
+        tmin, tmax, max_time = get('out_avg_tmin'), get('out_avg_tmax'), get('out_max_time')
+        wlen = tmax - tmin
+        warm = get('out_restart_warm', 0.0) > 0
+        order = np.lexsort((np.arange(len(df)), roa.to_numpy(dtype=float)))
+
+        fig = fn.add_figure(label=f'{code.upper()} windows') if fn is not None else plt.figure(figsize=(18, 10))
+        gs = fig.add_gridspec(2, 3, width_ratios=[1.6, 1, 1])
+        ax = fig.add_subplot(gs[:, 0])
+        y = np.empty(len(df))
+        y[order] = np.arange(len(df))
+        segs = [[(0, yi), (ti, yi)] for yi, ti in zip(y, t_inh) if ti > 0]
+        ax.add_collection(LineCollection(segs, colors='gray', lw=2, alpha=0.5))
+        ax.add_collection(LineCollection([[(a, yi), (a + b, yi)] for yi, a, b in zip(y, t_inh, t_last)], colors='lightsteelblue', lw=2))
+        ax.add_collection(LineCollection([[(a + b, yi), (a + c, yi)] for yi, a, b, c in zip(y, t_inh, tmin, tmax)],
+                                         colors=[colors[g] for g in groups], lw=3.5))
+        ax.plot(t_inh + max_time, y, '|', color='k', ms=6)
+        short = get('out_reached_max_time', 1.0) == 0
+        ax.plot((t_inh + t_last)[short], y[short], 'x', color='r', ms=6, label=f'stopped before MAX_TIME ({int(short.sum())})')
+        ticks = [np.mean(y[(groups == g).to_numpy()]) for g in colors if (groups == g).any()]
+        ax.set_yticks(ticks, [g for g in colors if (groups == g).any()], fontsize=7)
+        for g in colors:
+            m = (groups == g).to_numpy()
+            if m.any():
+                ax.axhline(y[m].max() + 0.5, color='k', lw=0.3)
+        ax.set_ylim(len(df) - 0.5, -0.5)
+        ax.set_xlim(0, np.nanmax(np.concatenate([t_inh + t_last, t_inh + max_time])) * 1.02)
+        ax.set_xlabel('total simulated time (a/cs): inherited (gray) + this run (light), window (dark)')
+        ax.set_title(f'{code.upper()}: {len(df)} records; | = MAX_TIME requested', fontsize=9)
+        if short.any():
+            ax.legend(fontsize=7, loc='lower right')
+        ax.grid(True, axis='x', alpha=0.3)
+
+        ax = fig.add_subplot(gs[0, 1])
+        for g, c in colors.items():
+            m = (groups == g).to_numpy()
+            ax.scatter(roa[m & warm], wlen[m & warm], color=c, s=20)
+            ax.scatter(roa[m & ~warm], wlen[m & ~warm], facecolors='none', edgecolors=c, s=20)
+        ax.set_xlabel('r/a'); ax.set_ylabel('window length (a/cs)')
+        ax.set_title(f'median window {np.nanmedian(wlen):.0f} a/cs = {100 * np.nanmedian(wlen / t_last):.0f}% of the run; open = cold start', fontsize=8)
+
+        ax = fig.add_subplot(gs[0, 2])
+        for fname, mk in (('Qi', 'o'), ('Qe', 's')):
+            mcol, scol = self._first(df, 'out_', [f'{fname}_mean']), self._first(df, 'out_', [f'{fname}_std'])
+            if mcol and scol:
+                rel = get(scol) / np.abs(get(mcol))
+                ax.scatter(wlen, rel, c=[colors[g] for g in groups], marker=mk, s=16, label=fname)
+        ax.set_yscale('log'); ax.set_xlabel('window length (a/cs)'); ax.set_ylabel('std / |mean|')
+        ax.legend(fontsize=7, title='marker', title_fontsize=7)
+
+        ax = fig.add_subplot(gs[1, 1])
+        if 'out_Qi_ncorr' in df:
+            ax.scatter(wlen, get('out_Qi_ncorr'), c=[colors[g] for g in groups], s=16)
+            ax.set_ylabel('Qi effective samples (ncorr)')
+        ax.set_xlabel('window length (a/cs)')
+
+        ax = fig.add_subplot(gs[1, 2])
+        if 'out_cost_s_per_acs' in df:
+            ax.scatter(roa, get('out_cost_s_per_acs'), c=[colors[g] for g in groups], s=16)
+            wall = np.nansum(get('out_wall_s', 0.0) * np.nan_to_num(get('out_n_nodes', 1.0), nan=1.0)) / 3600
+            ax.set_title(f'total {wall:.0f} node-hours in this tab', fontsize=8)
+            ax.set_ylabel('wall s per a/cs (per run)')
+        ax.set_xlabel('r/a')
+        for a in fig.axes[1:]:
+            a.grid(True, alpha=0.3)
+        fig.subplots_adjust(left=0.08, right=0.98, top=0.95, bottom=0.07, wspace=0.3, hspace=0.3)
+        return fig
+
+    # -------------------------------------------------------------------------- code settings (numerics, model knobs)
+    # Input keys that are code settings rather than plasma physics: resolution, model choices and knobs.
+    # _RUN_CONTROL keys only steer the run (length, output cadence, parallelization, initial amplitude):
+    # left out of the settings and of the physics signature
+    _SETTINGS = {
+        'tglf': r'^(SAT_RULE|NBASIS_M(IN|AX)|NKY|KY$|KYGRID_MODEL|NXGRID|N?WIDTH(_MIN)?$|FIND_WIDTH|USE_[A-Z_]+|WDIA_TRAPPED|IBRANCH|'
+                r'NMODES|FILTER|THETA_TRAPPED|ETG_FACTOR|ALPHA_(ZF|QUENCH|E|P|MACH)$|XNU_(MODEL|FACTOR)|DEBYE_FACTOR|UNITS|'
+                r'ADIABATIC_ELEC|NEW_EIKONAL|DAMP_(PSI|SIG)|LINSKER_FACTOR|GRADB_FACTOR|WD_ZERO|PARK|G(C)?HAT|RLNP_CUTOFF|[BF]T?_MODEL_SA)',
+        'neo':  r'^(N_(RADIAL|THETA|ENERGY|XI)$|[A-Z0-9_]+_MODEL$)',
+        'cgyro': r'^(N_TOROIDAL|KY$|N_RADIAL|BOX_SIZE|N_THETA|N_XI|N_ENERGY|E_MAX|N_FIELD|NONLINEAR_FLAG|[A-Z_]+_MODEL$|'
+                 r'SHEAR_METHOD|N?UP_(THETA|RADIAL|ALPHA)|DELTA_T(_METHOD)?$|EXCH_FLAG|[A-Z_]+_SCALE$)',
+        'gx':   r'^(nx|ny|ntheta|nperiod|nhermite|nlaguerre|y0|x0|jtwist|boundary|nonlinear_mode|scheme|cfl|dt|closure_model|'
+                r'hypercollisions|hyper|HB_hyper|nu_hyper_[ml]|p_hyper(_[ml])?|D_hyper|D_H|p_HB|w_osc|ei_colls|fphi|fapar|fbpar|collisions_model)$',
+        'qualikiz': r'^(kthetarhos|numsols|relacc\d|maxruns|maxpts|timeout|ETGmult|collmult|coll_flag|rot_flag|phys_meth|'
+                    r'separateflux|typee|typei|verbose|el_type|set_qn_normni|set_qn_an|check_qn|x_eq_rho)',
+    }
+    _RUN_CONTROL = {
+        'cgyro': r'^(MAX_TIME|PRINT_STEP|RESTART_STEP|TOROIDALS_PER_PROC|MOMENT_PRINT_FLAG|FIELD_PRINT_FLAG|AMP0?|FREQ_TOL|SILENT_FLAG)$',
+        'neo':   r'^SILENT_FLAG$',
+        'tglf':  r'^(WRITE_WAVEFUNCTION_FLAG|NN_MAX_ERROR|NMODES)$',   # NMODES = NS+2 (MITIM), follows the species
+        'gx':    r'^(t_max|nstep|nwrite|nsave|debug|save_for_restart|restart|append_on_restart|omega|fluxes|fields|moments|'
+                 r'init_amp|init_field|gaussian_init|ikpar_init)$',
+    }
+
+    def _setting_columns(self, code, df):
+        '''(settings columns, run-control columns) of this code present in df'''
+        import re
+        ins = [c for c in df.columns if c.startswith('in_')]
+        rs, rc = self._SETTINGS.get(code), self._RUN_CONTROL.get(code)
+        run_control = [c for c in ins if rc and re.match(rc, c[3:])]
+        return [c for c in ins if rs and re.match(rs, c[3:]) and c not in run_control], run_control
+
+    def settings(self, code, run=None, df=None):
+        '''
+        Code settings of every record: returns (df, settings columns that vary, label per record). The label
+        names the values of the varying settings ('SAT_RULE=3, USE_BPER=1'); records with equal labels ran with
+        the same settings.
+        '''
+        df = self.load(code, run=run) if df is None else df
+        cols, _ = self._setting_columns(code, df)
+        varying = [c for c in cols if df[c].nunique(dropna=False) > 1]
+        fmt = lambda v: 'unset' if pd.isna(v) else (f'{v:g}' if isinstance(v, (int, float, np.number)) else str(v))
+        labels = df[varying].apply(lambda r: ', '.join(f'{c[3:]}={fmt(v)}' for c, v in r.items()), axis=1) if varying else pd.Series('', index=df.index)
+        return df, varying, labels.rename('settings')
+
+    def _physics_signature(self, code, df, digits=5):
+        '''Hash of every numeric input that is neither a setting nor run control, rounded to `digits` significant digits'''
+        settings, run_control = self._setting_columns(code, df)
+        cols = [c for c in df.columns if c.startswith('in_') and c not in settings + run_control and pd.api.types.is_numeric_dtype(df[c])]
+        v = df[cols].to_numpy(dtype=float)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mag = 10 ** (np.floor(np.log10(np.abs(v))) - digits + 1)
+            v = np.where(np.isfinite(mag) & (v != 0), np.round(v / mag) * mag, v)
+        return pd.util.hash_pandas_object(pd.DataFrame(v).round(12), index=False).to_numpy()
+
+    def match_settings(self, code, run=None):
+        '''
+        Records with the SAME physics inputs (every numeric input except settings and run control, to 5 significant
+        digits) run with different settings: one row per (reference record, other record), reference = the most
+        common settings. Columns: settings, r/a and the fluxes `<flux>_ref` / `<flux>` (+ stds when stored).
+        '''
+        df, varying, labels = self.settings(code, run=run)
+        if not varying:
+            return pd.DataFrame()
+        ref = labels.value_counts().index[0]
+        t = pd.DataFrame({'sig': self._physics_signature(code, df), 'settings': labels, 'roa': self.radius(code, df)})
+        for name, cands in self._FLUX_PAIRS:
+            col = self._first(df, 'out_', cands)
+            if col is not None:
+                t[name] = df[col]
+                if self._std_of(df, col):
+                    t[f'{name}_std'] = df[self._std_of(df, col)]
+        a, b = t[t['settings'] == ref].drop_duplicates('sig'), t[t['settings'] != ref]
+        m = b.merge(a.drop(columns=['settings', 'roa']), on='sig', suffixes=('', '_ref')).drop(columns='sig')
+        m.attrs['reference'] = ref
+        return m
+
+    def settings_names(self, code, df, varying, max_deviations=3):
+        '''
+        Short name per record for its settings combination: the closest preset of templates/input.<code>.models.yaml
+        (over the input.<code>.controls defaults) plus the keys that deviate from it, e.g. 'SAT3 + USE_BPER=1'.
+        When no preset is within `max_deviations` keys (or the code has no presets): 'A' for the most common
+        combination and 'A + KEY=value' for the others.
+        '''
+        cols = [c for c in varying]
+        combos = df[cols].drop_duplicates()
+        fmt = lambda v: 'unset' if pd.isna(v) else (f'{v:g}' if isinstance(v, (int, float, np.number)) else str(v))
+        norm = lambda v: None if v is None or (isinstance(v, float) and np.isnan(v)) else (
+            str(v).strip().upper() if isinstance(v, str) else float(v))
+        presets = self._presets(code)
+
+        def deviations(row, full):
+            return [(c, row[c]) for c in cols if norm(full.get(c[3:])) != norm(row[c])]
+
+        counts = df.groupby(cols, dropna=False).size().sort_values(ascending=False)
+        ref = dict(zip(cols, counts.index[0] if len(cols) > 1 else [counts.index[0]]))
+        named = []
+        for _, row in combos.iterrows():
+            best = min(((name, deviations(row, full)) for name, full in presets.items()), key=lambda t: len(t[1]), default=None)
+            if best is not None and len(best[1]) <= max_deviations:
+                name, dev = best
+            else:
+                name, dev = 'A', deviations(row, {c[3:]: v for c, v in ref.items()})
+            named.append(name + (' + ' + ', '.join(f'{c[3:]}={fmt(v)}' for c, v in dev) if dev else ''))
+        combos = combos.assign(settings=named)
+        out = df[cols].merge(combos, on=cols, how='left')['settings']   # NaN keys match NaN; left order kept
+        return pd.Series(out.to_numpy(), index=df.index, name='settings')
+
+    def _presets(self, code):
+        '''{preset: full settings (controls defaults + preset)} from templates/input.<code>.models.yaml; {} when the code has none'''
+        cache = self.__dict__.setdefault('_presets_cache', {})
+        if code not in cache:
+            from mitim_tools import __mitimroot__ as root
+            from mitim_tools.gacode_tools.utils import GACODEdefaults
+            controls, models = root / 'templates' / f'input.{code}.controls', root / 'templates' / f'input.{code}.models.yaml'
+            out = {}
+            if controls.exists() and models.exists():
+                defaults = IOtools.generateMITIMNamelist(controls, caseInsensitive=False)
+                for name in IOtools.read_mitim_yaml(models) or {}:
+                    entry = GACODEdefaults.resolve_preset(name, controls_file=controls.name) or {}
+                    out[name] = {**defaults, **(entry.get('controls') or {})}
+            cache[code] = out
+        return cache[code]
+
+    def plotSettings(self, code, fn=None, run=None):
+        '''
+        Effect of the code settings that vary in the database (e.g. TGLF SAT_RULE, CGYRO N_TOROIDAL/BOX_SIZE), each
+        combination named by its closest preset (settings_names). Tab 1: records per combination (bars, the color key)
+        and the flux-vs-drive trends per radius colored by combination (differences there mix settings with physics).
+        Tab 2, when some physics points were run with more than one combination: one row per combination against
+        the most common one, flux vs flux on the same plasma points (the clean comparison).
+        '''
+        import matplotlib.pyplot as plt
+        df, varying, _ = self.settings(code, run=run)
+        if not varying:
+            print(f"\t- harvest: {code} settings are the same in every record; no settings tab", typeMsg='i')
+            return None
+        names = self.settings_names(code, df, varying)
+        colors = self._color_by(names.to_frame('c'), 'c')   # the same map plotFluxesByRadius builds from `names`
+        counts = names.value_counts()
+        runs = df.groupby(names)['run'].nunique()
+
+        fig = fn.add_figure(label=f'{code.upper()} settings') if fn is not None else plt.figure(figsize=(18, 11))
+        sub = fig.subfigures(1, 2, width_ratios=[1.4, 4])
+        ax = sub[0].subplots()
+        y = np.arange(len(counts))[::-1]
+        ax.barh(y, counts.to_numpy(), height=0.7, color=[colors[k] for k in counts.index], alpha=0.85)
+        ax.set_yticks(y, [k.replace(' + ', '\n+ ') for k in counts.index], fontsize=7)
+        ax.set_ylim(len(counts) - 0.5 - max(len(counts), 12), len(counts) - 0.5)   # bars keep their size when there are few
+        ax.set_xscale('log')
+        ax.set_xlim(counts.min() / 3, counts.max() * 20)   # room for the run counts
+        ax.set_xlabel('records')
+        for yi, (k, n) in zip(y, counts.items()):
+            ax.text(n, yi, f' {runs[k]} runs', va='center', fontsize=6, color='dimgray')
+        ax.set_title(f'{code.upper()}: {len(counts)} settings combinations\n(closest preset + deviations)', fontsize=9)
+        ax.grid(True, axis='x', alpha=0.3)
+        sub[0].subplots_adjust(left=0.45, right=0.88, top=0.95, bottom=0.06)
+        self.plotFluxesByRadius(code, run=run, color_by=names, fig=sub[1])
+
+        pairs = self.match_settings(code, run=run)
+        if len(pairs) == 0:
+            groups, _ = self._radial_bins(self.radius(code, df))
+            per_radius = names.groupby(groups).nunique().max() <= 1
+            note = ('settings change only between radii (one combination per radial group)' if per_radius else
+                    'no physics point was run with two settings: the trends mix settings and physics')
+            ax.set_xlabel(f'records\n{note}', color='darkred')
+            return fig
+        self._plotSettingsParity(code, pairs, df, names, fn=fn)
+        return fig
+
+    def _plotSettingsParity(self, code, pairs, df, names, fn=None, max_rows=4):
+        '''Rows: the combinations with most matched points; columns Qe, Qi, Ge: flux with that combination vs with the most common one'''
+        import matplotlib.pyplot as plt
+        label = dict(zip(self.settings(code, df=df)[2], names))   # full settings string -> short name
+        pairs = pairs.assign(name=pairs['settings'].map(label))
+        ref = label[pairs.attrs['reference']]
+        order = pairs['name'].value_counts()
+        shown = order.index[:max_rows]
+        fluxes = [f for f, _ in self._FLUX_PAIRS if f in pairs]
+        fig = fn.add_figure(label=f'{code.upper()} settings parity') if fn is not None else plt.figure(figsize=(15, 4 * len(shown)))
+        axs = np.atleast_2d(fig.subplots(len(shown), len(fluxes), squeeze=False))
+        norm = plt.Normalize(np.nanmin(pairs['roa']), np.nanmax(pairs['roa']))
+        for i, k in enumerate(shown):
+            g = pairs[pairs['name'] == k]
+            for j, f in enumerate(fluxes):
+                ax = axs[i, j]
+                x, yv = g[f'{f}_ref'].to_numpy(dtype=float), g[f].to_numpy(dtype=float)
+                sc = ax.scatter(x, yv, c=g['roa'], cmap='viridis', norm=norm, s=8, alpha=0.8)
+                if f == 'Ge':   # particle flux changes sign: linear, symmetric
+                    lim = np.nanmax(np.abs(np.r_[x, yv])) * 1.1 if len(x) else 1
+                    ax.plot([-lim, lim], [-lim, lim], '--', color='gray', lw=1)
+                    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+                    stat = ''
+                else:
+                    pos = (x > 0) & (yv > 0)
+                    lo, hi = (np.nanmin(np.r_[x[pos], yv[pos]]) / 1.5, np.nanmax(np.r_[x[pos], yv[pos]]) * 1.5) if pos.any() else (1e-3, 1)
+                    for fac, ls in ((1, '--'), (2, ':'), (0.5, ':')):
+                        ax.plot([lo, hi], [lo * fac, hi * fac], ls, color='gray', lw=1)
+                    ax.set_xscale('log'); ax.set_yscale('log'); ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+                    r = yv[pos] / x[pos]
+                    stat = f', ratio median {np.median(r):.2f} [{np.percentile(r, 25):.2f}-{np.percentile(r, 75):.2f}]' if pos.any() else ''
+                    if (~pos).any():
+                        stat += f', {int((~pos).sum())} non-positive not shown'
+                ax.set_title(f'{f}: {len(g)} points{stat}', fontsize=8)
+                ax.set_xlabel(f'{f} with {ref}', fontsize=8)
+                ax.set_ylabel(f'{f} with {k}'.replace(' + ', '\n+ '), fontsize=8)
+                ax.grid(True, alpha=0.3)
+        if len(order) > len(shown):
+            fig.text(0.01, 0.005, f"not shown: {', '.join(f'{k} ({n})' for k, n in order.iloc[len(shown):].items())}", fontsize=7, color='dimgray')
+        fig.subplots_adjust(left=0.1, right=0.9, top=0.95, bottom=0.08, wspace=0.35, hspace=0.45)
+        fig.colorbar(sc, cax=fig.add_axes([0.925, 0.1, 0.01, 0.8])).set_label('r/a')
+        return fig
+
+    # -------------------------------------------------------------------------- input coverage
+    # Categories of input-file keys (regex on the key, first match wins; unmatched -> 'other')
+    _CATEGORIES = {
+        'eped': [('engineering', r'^(ip|bt|r|a)$'), ('shape', r'^(kappa|delta|zeta|s_three|s_four|toq)'),
+                 ('pedestal', r'^(neped|nesep|tesep|teped|betan|tewid|ptotwid)'), ('composition', r'^(zeffped|m|z|mi|zi)$'),
+                 ('EPED settings', r'^(cfg_|stability)')],
+        '_transport': [('drives', r'^(RLTS|RLNS|DLNTDR|DLNNDR|dlntdr|dlnndr|VEXB_SHEAR|VPAR_SHEAR|tprim|fprim|A[tn][ei])'),
+                       ('collisions & beta', r'^(XNU|NU_|nu_|BETA|beta|DEBYE|RHO_STAR|rho|ZEFF|z_eff)'),
+                       ('species', r'^(TAUS|AS_|ZS_|MASS|TEMP|DENS|Z_|temp|dens|z_|mass)'),
+                       ('geometry', r'^(RMIN|RMAJ|ZMAJ|ZMAG|S_ZMAG|DRMAJDX|DZMAJDX|SHIFT|Q_|Q$|SHEAR|KAPPA|S_KAPPA|DELTA|S_DELTA|ZETA|'
+                                    r'S_ZETA|SHAPE|P_PRIME|rmin|rmaj|q$|s$|kappa|delta|zeta|shift|shape)')],
+    }
+    # An input is flagged as discrete ("only a few values") when its distinct values are at most
+    # max(_FEW_VALUES, _FEW_FRACTION * distinct values of the most-varied input of the same code): e.g.
+    # geometry, which only changes between radii/evaluations while gradients change at every evaluation.
+    # (Relative to the most-varied input, not to the record count: TGLF has ~13 records per plasma point
+    # from the scan trick, NEO one.)
+    _FEW_VALUES, _FEW_FRACTION = 10, 0.1
+
+    def coverage(self, code, run=None):
+        '''
+        How much of each numeric input was explored: one row per input with its category, percentiles,
+        full range, number of distinct values and `width` = (p95 - p5) / max(|p5|, |p95|) (0 = never varied,
+        1 = spans from ~0 to its magnitude, 2 = symmetric about zero). Sorted by category, then width.
+        '''
+        import re
+        df = self.load(code, run=run, with_run_info=False)
+        rules = self._CATEGORIES.get(code, self._CATEGORIES['_transport'])
+        if code in self._SETTINGS:
+            rules = [('settings', self._SETTINGS[code])] + rules
+        rows = []
+        for c in df.columns:
+            if not c.startswith('in_') or not pd.api.types.is_numeric_dtype(df[c]):
+                continue
+            v = df[c].dropna().to_numpy(dtype=float)
+            if len(v) == 0:
+                continue
+            key = c[3:]
+            cat = next((name for name, rx in rules if re.match(rx, key)), 'other')
+            p5, p50, p95 = np.percentile(v, [5, 50, 95])
+            scale = max(abs(p5), abs(p95), abs(v.min()), abs(v.max()))
+            rows.append({'input': key, 'category': cat, 'min': v.min(), 'p5': p5, 'median': p50, 'p95': p95, 'max': v.max(),
+                         'n_distinct': len(np.unique(np.round(v, 12))), 'scale': scale,
+                         'width': (p95 - p5) / max(abs(p5), abs(p95)) if max(abs(p5), abs(p95)) > 0 else 0.0})
+        cov = pd.DataFrame(rows)
+        if len(cov) == 0:
+            return cov
+        cov.attrs['few'] = int(max(self._FEW_VALUES, self._FEW_FRACTION * cov['n_distinct'].max()))
+        cov['discrete'] = (cov['n_distinct'] > 1) & (cov['n_distinct'] <= cov.attrs['few'])
+        order = {name: i for i, (name, _) in enumerate(sorted(rules, key=lambda r: r[0] == 'settings'))}   # settings matched first, shown last
+        cov['_o'] = cov['category'].map(lambda c: order.get(c, len(order)))
+        return cov.sort_values(['_o', 'width'], ascending=[True, False]).drop(columns='_o').reset_index(drop=True)
+
+    _CATEGORY_COLORS = {'drives': 'tab:blue', 'collisions & beta': 'tab:green', 'species': 'tab:purple', 'geometry': 'tab:brown',
+                        'engineering': 'tab:blue', 'shape': 'tab:brown', 'pedestal': 'tab:green', 'composition': 'tab:purple',
+                        'EPED settings': 'gray', 'settings': 'tab:red', 'other': 'gray'}
+
+    def plotCoverage(self, code, fn=None, run=None, include_shape=False, ncols=6, max_panels=30):
+        '''
+        What was explored, in real units: one histogram per input that varies, titled with its [p5, p95] and
+        number of distinct values; color = category; shaded background = only a few distinct values (e.g.
+        geometry, which only changes between radii/evaluations). Inputs with identical values in every record
+        (e.g. RLNS_1..4 under quasineutrality) share one panel; SHAPE_* Fourier coefficients are hidden unless
+        include_shape=True. More than max_panels panels spill over into further tabs.
+        '''
+        import matplotlib.pyplot as plt
+        df = self.load(code, run=run, with_run_info=False)
+        cov = self.coverage(code, run=run)
+        if len(cov) == 0:
+            return []
+        varying = cov[cov['n_distinct'] > 1]
+        n_const = int((cov['n_distinct'] <= 1).sum())
+        is_shape = varying['input'].str.upper().str.startswith('SHAPE')
+        n_shape = int(is_shape.sum()) if not include_shape else 0
+        if not include_shape:
+            varying = varying[~is_shape]
+
+        # merge inputs whose values are identical in every record
+        panels, seen = [], {}
+        for _, r in varying.iterrows():
+            key = np.round(np.nan_to_num(df[f"in_{r['input']}"].to_numpy(dtype=float), nan=np.inf), 12).tobytes()
+            if key in seen:
+                seen[key]['aliases'].append(r['input'])
+            else:
+                seen[key] = {'row': r, 'aliases': []}
+                panels.append(seen[key])
+        few = cov.attrs['few']
+        header = (f"{code.upper()}, {len(df)} records: {len(varying) + n_shape} inputs vary, {n_const} constant (not shown)"
+                  + (f", {n_shape} SHAPE_* coefficients hidden (include_shape=True)" if n_shape else '')
+                  + f". Real units; gray band and title: [p5, p95]; shaded panel = at most {few} distinct values. Color: "
+                  + ", ".join(f"{c} ({self._CATEGORY_COLORS.get(c, 'gray').replace('tab:', '')})" for c in dict.fromkeys(p['row']['category'] for p in panels)))
+
+        figs = []
+        chunks = [panels[i:i + max_panels] for i in range(0, len(panels), max_panels)] or [[]]
+        for ichunk, chunk in enumerate(chunks):
+            label = f'{code.upper()} ranges' + (f' {ichunk + 1}/{len(chunks)}' if len(chunks) > 1 else '')
+            fig = fn.add_figure(label=label) if fn is not None else plt.figure(figsize=(18, 11))
+            figs.append(fig)
+            if not chunk:
+                ax = fig.add_subplot(111)
+                ax.text(0.5, 0.5, f'no input varies ({n_const} constant)', ha='center', va='center', transform=ax.transAxes)
+                continue
+            nrows = int(np.ceil(len(chunk) / ncols))
+            axs = np.atleast_1d(fig.subplots(nrows, ncols)).flatten()
+            for ax, p in zip(axs, chunk):
+                r = p['row']
+                v = df[f"in_{r['input']}"].dropna().to_numpy(dtype=float)
+                ax.axvspan(r['p5'], r['p95'], color='gray', alpha=0.15, lw=0)
+                ax.hist(v, bins=int(min(40, max(10, r['n_distinct']))), color=self._CATEGORY_COLORS.get(r['category'], 'gray'), alpha=0.85)
+                if r['discrete']:
+                    ax.set_facecolor('#fdf0dc')
+                name = r['input'] + (f" (= {', '.join(p['aliases'])})" if p['aliases'] else '')
+                ax.set_title(f"{name}\n[{r['p5']:.3g}, {r['p95']:.3g}]   {r['n_distinct']} values", fontsize=8)
+                ax.tick_params(labelsize=6)
+                ax.set_yticks([])
+                ax.grid(True, axis='x', alpha=0.3)
+            for ax in axs[len(chunk):]:
+                ax.axis('off')
+            fig.text(0.01, 0.99, header, fontsize=8, va='top', wrap=True)
+            fig.subplots_adjust(left=0.03, right=0.99, top=0.9, bottom=0.04, wspace=0.15, hspace=0.75)
+        return figs
+
+    # Key physics inputs for the pairwise coverage plot, in order ('Te'/'Ti'/'ne' = charge-resolved drives)
+    _PAIRS = {
+        'tglf':  ['Te', 'Ti', 'ne', 'TAUS_2', 'XNUE', 'BETAE', 'Q_LOC', 'RMIN_LOC'],
+        'neo':   ['Te', 'Ti', 'ne', 'NU_1', 'RHO_STAR', 'Q', 'SHEAR', 'RMIN_OVER_A'],
+        'cgyro': ['Te', 'Ti', 'ne', 'NU_EE', 'BETAE_UNIT', 'Q', 'S', 'RMIN', 'nu_ee', 'beta_star', 'q', 's', 'rmin'],
+        'eped':  ['ip', 'bt', 'r', 'a', 'kappa', 'delta', 'neped', 'betan', 'zeffped', 'nesep', 'tesep'],
+    }
+
+    def plotPairs(self, code, variables=None, fn=None, run=None, max_vars=8):
+        '''
+        Corner plot of joint coverage for key physics inputs (histograms on the diagonal): shows whether inputs
+        were varied together or only one at a time (the TGLF scan trick perturbs one input around each base point).
+        `variables`: input names (without in_), or 'Te'/'Ti'/'ne' for the charge-resolved gradients; constants dropped.
+        '''
+        import matplotlib.pyplot as plt
+        df = self.load(code, run=run, with_run_info=False)
+        if len(df) == 0:
+            return None
+        drives = self._drives(code, df)
+        names = variables or self._PAIRS.get(code)
+        if names is None:
+            cov = self.coverage(code, run=run)
+            names = list(cov[(cov['n_distinct'] > 1) & (~cov['input'].str.startswith('SHAPE')) & (cov['category'] != 'other')]
+                         .sort_values('width', ascending=False)['input'])
+        cols, labels = [], []
+        for n in names:
+            col = drives.get(n) if n in ('Te', 'Ti', 'ne') else (f'in_{n}' if f'in_{n}' in df.columns else None)
+            if col is None or col in cols or df[col].nunique() <= 1:
+                continue
+            cols.append(col)
+            labels.append(f'{self.drive_label(code, n)} ({col[3:]})' if n in ('Te', 'Ti', 'ne') else col[3:])
+        cols, labels = cols[:max_vars], labels[:max_vars]
+        if fn is not None:
+            fig = fn.add_figure(label=f'{code.upper()} pairs')
+        else:
+            fig = plt.figure(figsize=(15, 13))
+        n = len(cols)
+        if n < 2:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, 'fewer than two varying inputs', ha='center', va='center', transform=ax.transAxes)
+            return fig
+        axs = fig.subplots(n, n)
+        s, alpha = (2, 0.25) if len(df) > 2000 else (6, 0.6)
+        for i in range(n):
+            for j in range(n):
+                ax = axs[i, j]
+                if j > i:
+                    ax.axis('off')
+                    continue
+                if i == j:
+                    ax.hist(df[cols[i]].dropna(), bins=40, color='gray')
+                    ax.tick_params(labelleft=False)
+                else:
+                    ax.scatter(df[cols[j]], df[cols[i]], s=s, alpha=alpha, color='tab:blue', rasterized=True)
+                if i == n - 1:
+                    ax.set_xlabel(labels[j], fontsize=7)
+                else:
+                    ax.tick_params(labelbottom=False)
+                if j == 0 and i > 0:
+                    ax.set_ylabel(labels[i], fontsize=7)
+                elif j > 0:
+                    ax.tick_params(labelleft=False)
+                ax.tick_params(labelsize=6)
+                ax.grid(True, alpha=0.3)
+        axs[0, 0].set_title(f'{code.upper()}: {len(df)} records, joint coverage of {n} inputs', fontsize=9, loc='left')
+        fig.subplots_adjust(left=0.07, right=0.98, top=0.95, bottom=0.07, wspace=0.08, hspace=0.08)
+        return fig
 
     def _plot_eped(self, fn):
         df = self.load('eped')
@@ -1034,13 +2218,27 @@ def staging_folders_of(run_folder):
             folders += [beat / 'beat_results' / 'Outputs' / 'harvest', beat / 'run_portals' / 'Outputs' / 'harvest']
     return [f for f in folders if f.is_dir()]
 
-def main_push():
-    parser = argparse.ArgumentParser(description="Push the staged evaluations of PORTALS/MAESTRO runs into the central harvest file")
-    parser.add_argument("folders", type=str, nargs="+", help="run folders (PORTALS or MAESTRO) or harvest staging folders")
-    parser.add_argument("--file", type=str, default=None, help="central netCDF file (default: config preferences.harvest_file or ~/mitim_harvest/mitim_harvest.nc)")
-    parser.add_argument("--rebuild", action="store_true", help="move the central file aside and re-push everything (pushed or not) found under the folders")
-    parser.add_argument("--dry-run", action="store_true", help="only list what would be pushed")
+def main_harvester():
+    parser = argparse.ArgumentParser(description="Append the evaluations of PORTALS/MAESTRO runs to the central harvest file (deduplicated). "
+                                                 "Default: the records a harvest-enabled run staged in Outputs/harvest (e.g. a run that died "
+                                                 "before its end-of-run push). --from-disk: records rebuilt from the files of runs made WITHOUT harvest")
+    parser.add_argument("folders", type=str, nargs="+", help="run folders (PORTALS or MAESTRO) or harvest staging folders; with --from-disk, also parent folders of runs")
+    parser.add_argument("--file", type=str, default=None, help="central netCDF file (default: config preferences.harvest_file; required if that is not set)")
+    parser.add_argument("--from-disk", action="store_true", help="rebuild the TGLF/NEO/QuaLiKiz/full-EPED records of runs made WITHOUT harvest from what is left on disk")
+    parser.add_argument("--rebuild", action="store_true", help="move the central file aside and re-push everything staged (pushed or not) under the folders")
+    parser.add_argument("--dry-run", action="store_true", help="only report what would be pushed")
+    parser.add_argument("--stage", type=str, default=None, help="--from-disk: keep the staging folders under this directory (default: temporary, removed)")
+    parser.add_argument("--no-scan-members", action="store_true", help="--from-disk: skip the TGLF scan-trick members (turb_drives_*), keep base points only")
+    parser.add_argument("--batch", type=int, default=25, help="--from-disk: runs per push (bounds memory on large scans)")
     args = parser.parse_args()
+
+    if args.from_disk:
+        if args.rebuild:
+            parser.error("--rebuild re-pushes staged records; it does not combine with --from-disk")
+        from mitim_tools.harvest_tools import HARVESTrecover
+        HARVESTrecover.harvest_runs(args.folders, args.file, stage=args.stage, dry_run=args.dry_run,
+                                    scan_trick_members=not args.no_scan_members, batch=args.batch)
+        return
 
     db = harvest_database(args.file)
     if args.rebuild:
@@ -1057,7 +2255,7 @@ def main_plot():
     parser = argparse.ArgumentParser(description="Inspect a harvest database, or peek at the staging of a (running) run without pushing it")
     parser.add_argument("path", type=str, nargs="?", default=None,
                         help="central netCDF file (default: the configured one), or a run folder / harvest staging folder to peek at")
-    parser.add_argument("--code", type=str, default=None, help="restrict to one code")
+    parser.add_argument("--code", type=str, nargs="+", default=None, help="restrict to these codes, e.g. --code neo or --code tglf cgyro")
     parser.add_argument("--x", type=str, default=None, help="with --y: single scatter instead of the notebook")
     parser.add_argument("--y", type=str, default=None)
     parser.add_argument("--noplot", action="store_true", help="only print the interpretation report")
@@ -1067,23 +2265,37 @@ def main_plot():
         db = harvest_database.from_staging([IOtools.expandPath(args.path)])
     else:
         db = harvest_database(args.path)
-    db.interpret(code=args.code)
+    for code in args.code or [None]:
+        db.interpret(code=code)
     if args.noplot:
         return
     if args.x and args.y:
         import matplotlib.pyplot as plt
-        db.plot(args.code or db.codes()[0], args.x, args.y)
+        db.plot((args.code or db.codes())[0], args.x, args.y)
         plt.show()
-    else:
-        fn = db.plotDatabase(codes=[args.code] if args.code else None)
-        fn.show()
+        return
+
+    fn = db.plotDatabase(codes=args.code)
+    fn.show()
+
+    # Interactive session, like the other mitim_plot_* commands: the database and one DataFrame per code are in scope
+    frames = {c: db.load(c) for c in db.codes()}
+    runs = db.runs()
+    print("\n- Interactive session. In scope:", typeMsg='i')
+    print("\t db       harvest_database  (db.load(code, columns=, run=), db.summary(), db.interpret(code), db.match_records(a, b))")
+    print("\t          db.radius(code, frames[code]) r/a per record;  db.settings(code), db.match_settings(code) code settings per record")
+    print("\t frames   {code: DataFrame} ->", {c: f.shape for c, f in frames.items()})
+    print("\t runs     provenance table, one row per (run, code)")
+    print("\t fn       the notebook;  db.plot(code, x, y, ax=fn.add_figure(label='mine').add_subplot(111)); fn.show()  adds a tab")
+    from IPython import embed
+    embed()
 
 
 if __name__ == "__main__":
-    # `python -m mitim_tools.harvest_tools.HARVESTtools push|plot ...` when the console scripts are not installed
+    # `python -m mitim_tools.harvest_tools.HARVESTtools harvester|plot ...` when the console scripts are not installed
     import sys
-    if len(sys.argv) < 2 or sys.argv[1] not in ("push", "plot"):
-        print("usage: python -m mitim_tools.harvest_tools.HARVESTtools push <folders...> [--file F] | plot [file|folder] [--code C] [--x X --y Y] [--noplot]")
+    if len(sys.argv) < 2 or sys.argv[1] not in ("harvester", "plot"):
+        print("usage: python -m mitim_tools.harvest_tools.HARVESTtools harvester <folders...> [--file F] [--from-disk] [--rebuild] [--dry-run] | plot [file|folder] [--code C] [--x X --y Y] [--noplot]")
         sys.exit(2)
     cmd = sys.argv.pop(1)
-    main_push() if cmd == "push" else main_plot()
+    main_harvester() if cmd == "harvester" else main_plot()

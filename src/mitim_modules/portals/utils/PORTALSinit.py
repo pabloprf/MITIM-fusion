@@ -136,12 +136,12 @@ def initializeProblem(
     transport_parameters = portals_fun.portals_parameters["transport"]
     
     # Add folder and cold_start to the simulation options
-    from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist
+    from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist, checked_block
     transport_options = transport_parameters | {
         "folder": portals_fun.folder,
         "cold_start": False,
         # Plain dict (deep-copied/pickled with the powerstate); the backends attach a recorder per code object
-        "harvest": options_from_namelist(portals_fun.portals_parameters.get("harvest", {}),
+        "harvest": options_from_namelist(checked_block(portals_fun.portals_parameters.get("harvest", {})),
                                          staging_folder=portals_fun.folder / "Outputs" / "harvest",
                                          run_meta_extra={"run_folder": str(portals_fun.folder)}),
     }

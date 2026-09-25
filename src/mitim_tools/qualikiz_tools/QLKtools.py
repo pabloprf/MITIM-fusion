@@ -409,39 +409,54 @@ class QuaLiKiz:
         if self.harvest is not None:
             self.harvest.record(self, label, folder=folder)
 
-    # QuaLiKiz outputs (SI, per dimx) as read from its output folder; everything else 0-d and numeric
-    # in the per-radius dataset slice is an input of that radius
-    _harvest_output_names = ('efe_SI', 'pfe_SI', 'vfe_SI', 'dfe_SI', 'efi_SI', 'pfi_SI', 'vfi_SI', 'dfi_SI')
+    # Harvest: one record per dimx point (one radius of one case). Inputs are the coordinates of that dimx slice
+    # (the QuaLiKiz plan: geometry, species, gradients normalized to Ro, options); outputs are its SI and GB fluxes
+    # plus Qe/Qi/Ge/Gi_k/Mt in MITIM gyro-Bohm units, normalized exactly as transport_qualikiz hands them to PORTALS
+    _HARVEST_NOT_INPUTS = ('phi', 'ntheta', 'dimx', 'dimn', 'nions', 'numsols', 'ecoefs', 'numicoefs', 'case')
 
     def harvest_records(self, label, folder=None):
         from mitim_tools.harvest_tools.HARVESTtools import machine_info
         res = self.results[label]
         sim_folder = Path(folder).name if folder is not None else Path(getattr(self, 'FolderSimLast', '') or '').name
         machine = machine_info(getattr(self, 'simulation_job', None))
+        outputs = res['output']
+        slices = [s for case in outputs for s in case] if outputs and isinstance(outputs[0], list) else outputs   # read_cases: [case][rho]
         records = []
-        for irho, rho in enumerate(self.rhos):
-            out = res['output'][irho]
-            inputs, outputs = {}, {}
-            for name, da in out.data_vars.items():
-                is_output = name in self._harvest_output_names or name.endswith('_SI') or name.endswith('_GB')
-                if is_output:
-                    vals = np.atleast_1d(np.asarray(da.values, dtype=float))
-                    if da.ndim == 0:
-                        outputs[name] = float(vals[0])
-                    elif da.ndim == 1:
-                        for i, v in enumerate(vals):
-                            outputs[f"{name}_{i}"] = float(v)
-                elif da.ndim == 0 and np.issubdtype(da.dtype, np.number):
-                    inputs[name] = float(da.values)
-                elif da.ndim == 1 and np.issubdtype(da.dtype, np.number) and da.size <= 5:
-                    for i, v in enumerate(np.asarray(da.values)):
-                        inputs[f"{name}_{i}"] = float(v)
+        for out in slices:
+            rho = float(out['rho'].values)
+            inputs = _harvest_scalars({k: v for k, v in out.coords.items() if k not in self._HARVEST_NOT_INPUTS})
+            fluxes = _harvest_scalars({k: v for k, v in out.data_vars.items() if k.endswith('_SI') or k.endswith('_GB')})
             records.append({
-                'code': 'qualikiz', 'inputs': inputs, 'outputs': outputs, 'hash_extra': None,
-                'meta': {'label': label, 'sim_folder': sim_folder, 'rho': float(rho), 'roa': float(inputs.get('x', np.nan)),
+                'code': 'qualikiz', 'inputs': inputs, 'outputs': {**fluxes, **self._harvest_gb_fluxes(out, rho)}, 'hash_extra': None,
+                'meta': {'label': label, 'sim_folder': sim_folder, 'rho': rho, 'roa': float(inputs.get('x', np.nan)),
                          'code_version': '', 'in_process': False, **machine},
             })
         return records
+
+    def _harvest_gb_fluxes(self, out, rho):
+        '''Qe, Qi (all ions), Ge, Gi_k, Mt (all ions) in MITIM GB units: SI / (Qgb*1e6, Ggb*1e20, Pgb) with the powerstate's
+        gyroBohm factors (Te, ne, B_unit at this rho; a; deuterium reference mass), as transport_qualikiz does'''
+        from mitim_tools.misc_tools import PLASMAtools
+        p = getattr(self, 'profiles', None)
+        if p is None:
+            return {}
+        r = p.profiles['rho(-)']
+        Qgb, Ggb, Pgb, _, _ = PLASMAtools.gyrobohmUnits(np.interp(rho, r, p.profiles['te(keV)']),
+                                                        np.interp(rho, r, p.profiles['ne(10^19/m^3)']) * 1e-1,
+                                                        md_u, np.interp(rho, r, p.derived['B_unit']), p.derived['a'])
+        si = lambda k: np.atleast_1d(np.asarray(out[k].values, dtype=float)) if k in out else None
+        gb = {}
+        if si('efe_SI') is not None:
+            gb['Qe'] = float(si('efe_SI')[0] / (Qgb * 1e6))
+        if si('efi_SI') is not None:
+            gb['Qi'] = float(si('efi_SI').sum() / (Qgb * 1e6))
+        if si('pfe_SI') is not None:
+            gb['Ge'] = float(si('pfe_SI')[0] / (Ggb * 1e20))
+        if si('pfi_SI') is not None:
+            gb.update({f'Gi_{i}': float(v / (Ggb * 1e20)) for i, v in enumerate(si('pfi_SI'))})
+        if si('vfi_SI') is not None:
+            gb['Mt'] = float(si('vfi_SI').sum() / Pgb)
+        return gb
 
     def read_cases(
         self,
@@ -491,6 +506,9 @@ class QuaLiKiz:
             ],
         }
 
+        if self.harvest is not None:
+            self.harvest.record(self, label, folder=folder)
+
     # ------------------------------------------------------------------
     # Saving / restoring
     # ------------------------------------------------------------------
@@ -515,6 +533,20 @@ class QuaLiKiz:
             "output": [ds.isel(dimx=i) for i in range(len(rhos))],
         }
         return instance
+
+
+def _harvest_scalars(items):
+    '''{name: DataArray} -> JSON-friendly numbers: 0-d as name, 1-D with at most 16 values (per ion, ky) as name_i'''
+    out = {}
+    for name, da in items.items():
+        if not np.issubdtype(da.dtype, np.number):
+            continue
+        vals = np.atleast_1d(np.asarray(da.values, dtype=float))
+        if da.ndim == 0:
+            out[name] = float(vals[0])
+        elif da.ndim == 1 and vals.size <= 16:
+            out.update({f"{name}_{i}": float(v) for i, v in enumerate(vals)})
+    return out
 
 
 # ======================================================================================

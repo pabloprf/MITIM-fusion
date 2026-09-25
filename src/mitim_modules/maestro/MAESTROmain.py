@@ -154,8 +154,8 @@ class maestro:
 
         # Harvest options (maestro.harvest): plain dict; EPED and PORTALS beats all stage into Outputs/harvest/
         # with this run_id (each record carries its maestro_beat), and finalize() pushes everything once
-        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist
-        self.harvest = options_from_namelist(self.maestro_namelist.get('maestro', {}).get('harvest', {}),
+        from mitim_tools.harvest_tools.HARVESTtools import options_from_namelist, checked_block
+        self.harvest = options_from_namelist(checked_block(self.maestro_namelist.get('maestro', {}).get('harvest', {})),
                                              staging_folder=self.folder_output / 'harvest',
                                              run_meta_extra={'run_folder': str(self.folder)})
 
@@ -167,7 +167,7 @@ class maestro:
         # _plot_beats never hits an undefined attribute if called directly)
         self._plot_skips = []
 
-    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False):
+    def define_beat(self, beat, initializer = None, cold_start = False, prune_level = None, method = None, legacy = False, count_unconverged = True):
 
         timeBeginning = datetime.datetime.now()
 
@@ -208,6 +208,9 @@ class maestro:
         if prune_level is not None and prune_level not in PRUNE_LEVELS:
             raise ValueError(f'[MITIM] prune_level for beat "{beat}" must be one of {list(PRUNE_LEVELS)}, got {prune_level}')
         self.beat.prune_level_override = prune_level
+
+        # maestro.<beat>.count_unconverged: false keeps this beat out of max_unconverged_portals_beats
+        self.beat.count_unconverged = count_unconverged
 
         # Define initializer
         self.beat.define_initializer(initializer)
@@ -674,7 +677,7 @@ class maestro:
                 try:
                     HARVESTtools.harvest_database(self.harvest.get('file')).push([f for f in folders if f.is_dir()])
                 except Exception as e:
-                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvest {self.folder}`', typeMsg='w')
+                    print(f'\t\t- harvest push failed ({type(e).__name__}: {e}); push later with `mitim_harvester {self.folder}`', typeMsg='w')
 
             for beat_obj in self.beats.values():
                 beat_obj.optional_postprocessing()

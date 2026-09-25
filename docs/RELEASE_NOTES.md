@@ -4,8 +4,42 @@ DESCRIPTION
 
 ### New Features
 
+*   💥 **`mitim_kill_cgyro`: stop hopeless CGYRO radii of a running PORTALS evaluation and use what they
+    simulated.** `mitim_kill_cgyro <portals folder>` lists each radius of the evaluation in flight (time,
+    end time, last write, status); `--rho ...` or `--all` asks the chosen radii to stop. Each one ends
+    right after its next restart write (so later iterations can still warm-start from it), is accepted as
+    finished, and its fluxes are averaged over the simulated trace. Every CGYRO launch now runs inside the
+    stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
+    in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
+
+*   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
+    "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
+    radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only
+    target, plus a wall-clock row with the cost of 1 a/cs and the two most expensive CGYRO sections.
+    Titles carry the last simulated time, the age of the last output (stalls), the time left to
+    `MAX_TIME` per radius and, for the evaluation, when its slowest radius finishes; the time axis runs
+    out to `MAX_TIME`. The scratch folder comes from `cgyro_submission.json` (submitted runs) or the
+    staged execution script (bash runs, local scratch); remote scratch is pulled over SFTP into a
+    temporary folder, and neither the run folder nor the scratch is written to. Also rendered when no
+    evaluation has finished yet, which is when it is most useful. New "CGYRO near best" / "CGYRO near last" tabs
+    draw the evaluations whose gradients sit within 10% of the best (last) one back to back per radius, under
+    the gradient changes and against its target: do near-identical gradients give consistent fluxes?
+
+*   💥 **CGYRO `TOROIDALS_PER_PROC` is now chosen for communication locality on multi-node radial
+    calls.** CGYRO's grid is `n_proc = n_proc_1 x n_toroidal_procs`, and `n_toroidal_procs =
+    N_TOROIDAL/TOROIDALS_PER_PROC` is the size of the nonlinear all-to-all communicator, which
+    `MPI_RANK_ORDER=2` (CGYRO's default) lays out rank-contiguously. MITIM previously picked the
+    smallest valid value, maximizing that communicator and spreading the all-to-all across nodes.
+    It now picks the smallest valid value whose toroidal group count fits within one node's ranks,
+    guarded by CGYRO's requirement that `n_proc_1` divide `nv` and `nc`. Single-node radial calls
+    are provably unaffected (validity already forces the group count below the rank count there),
+    and an explicit `TOROIDALS_PER_PROC` in `extraOptions` is still respected. Measured on
+    Perlmutter (ARC V3A, `Nonlinear_reduced2`, 8 A100 over 2 nodes): `nl_comm` 37.2 -> 5.2 s and
+    total step time 129.1 -> 101.6 s at identical GPU memory and node count.
+
 *   💥 **Harvest: archive every code evaluation of PORTALS/MAESTRO runs into a per-user database**
-    (opt-in `harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`).
+    (`harvest: {enabled, file, scan_trick_members}` in the PORTALS namelist or `maestro.harvest`; `enabled` defaults
+    to true, so every run harvests as soon as a file is set).
     Every individual TGLF/NEO/CGYRO/GX/QuaLiKiz run (base points AND each TGLF std scan-trick member)
     and every full-EPED evaluation is stored as an input -> output record (full input file, scalar
     fluxes, for CGYRO/GX the averaging window and uncertainty diagnostics; for EPED the eped.input as
@@ -13,10 +47,17 @@ DESCRIPTION
     version, MITIM commit, averaging method) once per run and code. Staged per run with rolling gzip
     compression and pushed once at the end (MAESTRO: all beats share `Outputs/harvest`, records tagged
     with `maestro_beat`, one push at finalize) into a netCDF-4 file
-    (default `~/mitim_harvest/mitim_harvest.nc`, or `preferences.harvest_file`) under an NFS-safe lock.
-    `mitim_harvest <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
+    (`harvest.file` or `preferences.harvest_file`; with neither set the run is not harvested) under an NFS-safe lock.
+    `mitim_harvester <folder>` pushes a dead run or rebuilds the file; `mitim_plot_harvest` and
     `HARVESTtools.harvest_database` load, interpret and plot it. Capability tests
-    `portals_04_harvest.py` and `maestro_02_harvest.py`.
+    `portals_04_harvest.py` and `maestro_02_harvest.py`. Every TGLF/NEO/CGYRO/EPED record can be written back as its exact
+    input file (`harvest_database.input_file` / `write_input_file`, EPED as eped.input + eped.config, types from a
+    per-run map); `harvest_database.drop` removes superseded records; CGYRO
+    records also carry restart provenance (warm start, source iteration, inherited time), whether
+    `MAX_TIME` was reached, and cost per a/cs with MPI/OMP/nodes. Staging files are per process.
+    `mitim_harvester --from-disk <run(s) or parent folder> [--dry-run]` backfills runs made WITHOUT harvest:
+    it rebuilds their TGLF/NEO/CGYRO/QuaLiKiz/full-EPED records from whatever is left on disk (never EPED-NN), marks them
+    `recovered_by`, and skips records already in the file (capability test `maestro_03_harvester.py`).
 
 *   💥 **Selectable time-averaging of nonlinear CGYRO/GX fluxes**: new `read.averaging` block
     (`transport.options.{cgyro,gx}.read.averaging`) with `method: fixed | quends | howard_gkav` (classic
@@ -209,8 +250,78 @@ DESCRIPTION
     without meeting their convergence criteria (`null` = never). The verdict of every PORTALS
     beat is recorded in `parameters_trans_beat['portals_converged_history']` and in
     `beat_results/portals_converged.txt`, so a re-run of a stopped case stops at the same beat.
+    Beats with `count_unconverged: false` (set on the template's `portals_soft`) are not counted.
+
+*   💥 **PORTALS-GX runs end to end, on 1-N GPUs per radius.** GX as PORTALS turbulence model now completes
+    evaluations (flux collection, Qie from GX's electron turbulent heating, harvest), with presets
+    `Nonlinear_reduced2_analogue` / `Nonlinear_reduced3_analogue` matched to CGYRO's ky grid, box and kx range,
+    `restart_from_cases` warm starts (t_max is added time, as CGYRO's MAX_TIME), resume of preempted array
+    elements from their own checkpoint, and multi-GPU radii that scale ~ideally (2.06x/4.07x on 2/4 A100).
 
 ### Bug Fixes
+
+*   🐛 **PORTALS-CGYRO submission robustness fixes** (found by a code audit of the reattach / stall-rescue /
+    in-place-rescue paths): batched CGYRO evaluations no longer raise `TypeError` on the shipped namelist
+    (`run_over_plasmas` now accepts `rescue_interrupted` and `load_balance`); a status poll no longer drops
+    into an IPython prompt on SLURM states such as `REQUEUED` or `CONFIGURING` (they keep polling), no longer
+    runs the `bin.cgyro.restart.old` prune on the remote, and no longer re-queries `sacct` every poll for a
+    task already flagged `TERMINAL_NO_RESCUE`; a second `InteractiveTerminalError` in a run is re-raised
+    instead of being read as success; a file missing from a retrieval no longer deletes the previous good
+    result nor the staging folder; an interrupted run without a readable resume time is discarded instead
+    of silently running the full `MAX_TIME` on top of its checkpoint; the SLURM script builder no longer
+    writes defaults into the global machine config; the allocation counts every pending (subfolder, rho)
+    unit instead of only the last subfolder's. The status poll now also waits for auto-resubmit rescue
+    jobs (the parent array draining used to end the poll and fetch the rescued radius half-done), the
+    completion gate (`EXIT` in `out.cgyro.info` or `mitim_budget.tag`) now applies to the submit/fetch and
+    re-attach paths as it did to `run_type: normal`, and an in-place rescued radius re-derives
+    `RESTART_STEP` for its shortened run so it keeps writing checkpoints (before, a rescue with less time
+    left than one restart period never checkpointed, and `mitim_kill_cgyro` could not stop it). In bash mode,
+    several radial calls sharing one node (e.g. 1 GPU per radius on a 4-GPU node) now each own their GPU(s)
+    exclusively per srun step; before, every call landed on the node's first GPU. A radius whose CGYRO
+    crashed (e.g. disk quota exceeded) now ends with a non-zero exit code: gacode's `cgyro` script exits 0
+    regardless, so SLURM recorded such array elements as `COMPLETED 0:0`. A status poll or re-attach whose
+    remote scratch folder was deleted now reads the job as gone and resubmits, instead of polling it as
+    pending until the driver's wall time. With `load_balance: extra_points`,
+    a relaunch that re-runs only the unfinished radii now gives the nodes it leaves idle extras built from
+    the radii that already finished (before, only nodes freed during the job got one).
+    A radius that SLURM requeues (preemption) now runs only the time it had left, rounded up to whole
+    restart periods; before, CGYRO resumed from its checkpoint and ran the full `MAX_TIME` again.
+    The stall rescue no longer cancels a preempted radius right after SLURM restarts it (its
+    `out.cgyro.timing` still predated the preemption): a radius SLURM started less than the kill threshold
+    ago is left alone, and the node is excluded only when the radius hung there past the threshold.
+
+*   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
+    `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was
+    `Pcool(table species) - brems(all species)`, so an absent species turned its bremsstrahlung into negative
+    line radiation (ARC V3A with boron: -10 MW; with a lumped impurity: -12 MW). The subtraction now covers only
+    the species in the table; absent species radiate pure bremsstrahlung. Runs with every species in the table
+    are unchanged.
+
+*   🐛 **`load_balance: extra_points` no longer throws away extra cases that ran to `MAX_TIME`.** Only
+    extras stopped by the watchdog (`mitim_budget.tag`) were kept, so the ones that finished on their own,
+    the best converged, were discarded and never reached `Outputs/extra_points.csv`. An extra is now kept
+    if CGYRO wrote its `EXIT` line or it was stopped past `min_time`.
+
+*   🐛 **MITIM-launched CGYRO no longer dies at startup on OpenMPI 5 builds** (`MPI_FILE_WRITE_AT in
+    cgyro_write_hosts failed`, e.g. laptop pixi and Perlmutter CPU builds). The MPI-IO backend was forced
+    to `romio321`, which only OpenMPI 4 ships; it is now `OMPI_MCA_io=^ompio`, which keeps ROMIO (fast on
+    NFS) under any OpenMPI version and is ignored by MPICH.
+
+*   🐛 **Truncated CGYRO runs are no longer accepted as finished evaluations in bash/in-allocation mode.**
+    CGYRO writes all its output files from the first step, so a step killed mid-run (preemption, crash,
+    GPU OOM, node failure) passed the retrieval check, and the scheduler logged it as `rc=0` because the
+    call script's status was its trailing cleanup's. A run now raises unless every radius carries CGYRO's
+    completion marker (`EXIT` in `out.cgyro.info`, or the wall-budget watchdog's tag), and the call body
+    returns CGYRO's real exit status. Test: `tests/dev_tests/test_cgyro_completion_gate.py`.
+
+*   🐛 **POPCON initialization from a plasma state was silently wrong in three places**:
+    `MITIMpopcon.update_from_gacode` hardcoded `areal_elongation = 1.5` (so the popcon volume did
+    not follow the state), built the density-peaking offset with the wrong sign (cfspopcon forms
+    `nu_n = Angioni_scaling + offset`, so reproducing a state needs `ne_peaking - scaling`, not the
+    reverse — on an ARC case that alone made the peaking 44% too high and P_fus 47% too high), and
+    picked impurity species with `AtomicSpecies(int(Z))` although that enum is ordinal, mapping a
+    lumped Z = 5.3 impurity to Lithium. Species are now looked up by atomic number
+    (`closest_cfspopcon_species`) with the concentration rescaled to preserve n_z*Z.
 
 *   🐛 **NEO-VGEN ExB shear no longer spikes at the last predicted radius**: when
     `transport.options.neo.vgen_exb_shear` was active, VGEN ran on the full state whose
@@ -379,7 +490,23 @@ DESCRIPTION
     prompt in batch mode, and the analyzer/handoff degrade to the surrogate-data-only path when
     the stored powerstates are gone (previously `TypeError`/`AttributeError` killed the chain).
 
+*   🐛 **Blocking SLURM job arrays no longer lose their slowest tasks**: `sbatch --wait` on an array returns when
+    the last-started task ends (seen on engaging), after which MITIM retrieved and deleted the scratch folder
+    under the tasks still running. The execution script now waits until no task of the array is queued.
+    Multi-rank GX also writes its parallel-HDF5 output without Open MPI's NFS locks, which stalled it.
+
 ### Changes for developers (internal execution)
+
+*   🔎 **PORTALS-CGYRO submission stack reorganized into named objects (behaviour-preserving).**
+    `FARMINGtools`: `RetryPolicy`, `mitim_job.session()`, `RetrievalSpec`, `SlurmState`/`SqueueRecord`,
+    `SbatchScript`. `SIMtools`: `RadialCall`/`WorkPlan` (the one place the `rho_<r>` naming lives),
+    `CompletionSpec`, `JobScript` builders, `SubmissionRecord` (owns `cgyro_submission.json`, same schema),
+    `RunType`/`SubmissionType`/`JobStatus`, and `_run` as named steps. `CGYROtools`: `CgyroLaunchBody`,
+    `Watchdog` (bash in `templates/cgyro_watchdog.sh` / `cgyro_probe.sh`), `RadiusStatus`/`CgyroProbe`,
+    `StallRescuer`, `_ResolvedControls`. `transport_cgyro` (1970 → 700 lines) drives single-plasma, batched and
+    GX evaluations through one `GKSubmission` engine, with `RestartChain`, `PerIterOverrides` and
+    `ExtraPointHarvester` in `physics_models/utils/`. Generated scripts and resolved inputs are tested
+    byte-identical to the previous code.
 
 *   🔎 **NEW CHANGE**, description
 

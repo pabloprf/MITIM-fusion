@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import math
 import subprocess
@@ -190,6 +191,7 @@ class CGYROoutput(SIMtools.GACODEoutput):
         self._averaging_options = {'method': 'fixed', **(averaging or {})}
 
         self.folder = folder
+        self.suffix_read = suffix
         
         if isinstance(self.folder, str):
             self.folder = Path(self.folder)
@@ -350,9 +352,11 @@ class CGYROoutput(SIMtools.GACODEoutput):
         
         self.remove_symlinks()
 
-    # ---- harvest interface (SIMtools.GACODEoutput): inputs live in params1D, fluxes are time averages by self.averaging
+    # ---- harvest interface (SIMtools.GACODEoutput): inputs are the input.cgyro the trace ran with, fluxes are time averages by self.averaging
     def harvest_inputs(self):
-        return {k: (int(v) if isinstance(v, (bool, np.bool_)) else v) for k, v in self.params1D.items()}
+        '''Every key of the input.cgyro of this radius (as run: for an in-place continuation MAX_TIME is the remaining time), parsed like TGLF/NEO inputs'''
+        text = _read_run_file(getattr(self, 'folder', None), getattr(self, 'suffix_read', None), 'input.cgyro')
+        return SIMtools.buildDictFromInput(text) if text else None
 
     def harvest_outputs(self):
         out = {}
@@ -367,6 +371,9 @@ class CGYROoutput(SIMtools.GACODEoutput):
                 for i, v in enumerate(np.atleast_1d(vals)):
                     out[f'Gi_{i+1}_{name}'] = float(v)
         out.update(harvest_averaging_fields(self, ('Qe', 'Qi', 'Ge', 'Mt', 'Se')))
+        out.update(harvest_run_fields(self))
+        # Quantities CGYRO derived from the inputs (normalizations, box), never inputs themselves (0 = not computed, e.g. PROFILE_MODEL=1)
+        out.update({f'derived_{k}': float(self.params1D[k]) for k in _HARVEST_DERIVED if k in getattr(self, 'params1D', {})})
         out['tmax_fluct'] = float(getattr(self, 'tmax_fluct', np.nan))   # only set by the non-minimal read
         out['linear'] = int(bool(getattr(self, 'linear', False)))
         return out
@@ -1055,6 +1062,159 @@ def harvest_averaging_fields(obj, names):
             if ess is not None:
                 out[f'{k}_ess'] = float(ess)
     return out
+
+def harvest_run_fields(obj):
+    '''
+    Per-record history, completion and cost of a CGYRO trace (harvest). A field that cannot be
+    determined is NaN; this never raises.
+      restart_warm         1: the trace started from another run's bin.cgyro.restart without its tag
+                           (CGYRO restart_flag=2, cgyro_init_h.f90: t_current = 0), 0: cold start
+      restart_source_iter  iteration whose restart it started from (restart_sources.json of a PORTALS iteration)
+      restart_t_inherited  [a/cs] simulated time of the parent chain before this trace, summed along the
+                           chain exactly as the trace plotter aligns time (CGYROplot._compute_offsets_for_rho),
+                           so the total simulated time is restart_t_inherited + t_last (0 for a cold start)
+      max_time             [a/cs] MAX_TIME of input.cgyro: CGYRO runs MAX_TIME/DELTA_T steps FROM where the
+                           launch starts (additional time on a warm start or an in-place continuation)
+      t_start              [a/cs] time the last launch started from: .mitim_t0 when present; else 0 unless
+                           out.cgyro.info shows an in-place continuation (restart_flag=1), then NaN
+      reached_max_time     1: CGYRO wrote its EXIT line after the last launch (nonlinear: all steps done),
+                           0: truncated (killed, preempted, crashed, or stopped by the wall-budget watchdog)
+      budget_stop          1: stopped on purpose by MITIM's wall-budget watchdog (mitim_budget.tag present)
+      cost_s_per_acs       [s per a/cs] wall clock: median TOTAL of the out.cgyro.timing rows (one per
+                           output) divided by the output spacing of t
+      wall_s               [s] wall clock of the trace: setup + every TOTAL row of out.cgyro.timing
+      n_mpi, n_omp         MPI ranks and OpenMP threads per rank of the last launch (out.cgyro.info)
+      n_nodes              distinct hosts of the ranks (out.cgyro.hosts)
+      gpu                  1: GPU build (platform tag of out.cgyro.version or 'GPU-aware' in out.cgyro.info)
+    '''
+    out = {k: np.nan for k in ('restart_warm', 'restart_source_iter', 'restart_t_inherited', 'max_time', 't_start',
+                               'reached_max_time', 'budget_stop', 'cost_s_per_acs', 'wall_s', 'n_mpi', 'n_omp', 'n_nodes', 'gpu')}
+    folder, suffix = getattr(obj, 'folder', None), getattr(obj, 'suffix_read', None) or ''
+    read = lambda name: _read_run_file(folder, suffix, name)
+
+    info = read('out.cgyro.info') or ''
+    lines = info.splitlines()
+    continued = 'Restart data found' in info
+
+    try:
+        chain = _harvest_restart_chain(folder, suffix)
+        if chain is not None:
+            out['restart_warm'], out['restart_source_iter'], out['restart_t_inherited'] = 1, float(chain[0]), chain[1]
+        elif 'Initializing with restart data' in info:
+            out['restart_warm'] = 1   # e.g. restart_from_folder: warm, but the parent trace is unknown
+        elif info:
+            out['restart_warm'], out['restart_t_inherited'] = 0, 0.0
+    except Exception:
+        pass
+
+    try:
+        m = re.findall(r'^\s*MAX_TIME\s*=\s*(\S+)', read('input.cgyro') or '', flags=re.M)
+        if m:
+            out['max_time'] = float(m[-1])
+        t0 = read('.mitim_t0')
+        if t0 is not None:
+            out['t_start'] = float(t0.strip() or 0.0)
+        elif info:
+            out['t_start'] = np.nan if continued else 0.0
+    except Exception:
+        pass
+
+    try:
+        i_exit = max([i for i, l in enumerate(lines) if l.startswith('EXIT')], default=-1)
+        i_launch = max([i for i, l in enumerate(lines) if 'n_MPI' in l], default=-1)
+        if info:
+            out['reached_max_time'] = int(i_exit > i_launch)
+        if info or read('mitim_budget.tag') is not None:
+            out['budget_stop'] = int(read('mitim_budget.tag') is not None)
+        if i_launch >= 0 and i_launch + 1 < len(lines):
+            vals = dict(zip([s.strip() for s in lines[i_launch].split('|')], lines[i_launch + 1].split()))
+            out['n_mpi'], out['n_omp'] = float(vals.get('n_MPI', np.nan)), float(vals.get('n_OMP', np.nan))
+    except Exception:
+        pass
+
+    try:
+        hosts = {m for m in re.findall(r'host=(\S+)', read('out.cgyro.hosts') or '')}
+        out['n_nodes'] = float(len(hosts)) if hosts else np.nan
+        platform = re.findall(r'\]\[([^\]]*)\]', str(getattr(obj, 'cgyro_version', '') or ''))
+        if platform or info:
+            out['gpu'] = int(any('GPU' in p.upper() for p in platform) or 'GPU-aware' in info)
+    except Exception:
+        pass
+
+    try:
+        total, t = getattr(obj, 'timing_total', None), getattr(obj, 't', None)
+        if total is not None and len(total):
+            out['wall_s'] = float(np.sum(total) + sum((getattr(obj, 'timing_setup', None) or {}).values()))
+            if t is not None and len(t) > 1:
+                out['cost_s_per_acs'] = float(np.median(total) / np.median(np.diff(t)))
+    except Exception:
+        pass
+    return out
+
+# Scalars of pygacode's cgyrodata that CGYRO derives from the inputs (out.cgyro.info / grids), stored as out_derived_<name>
+_HARVEST_DERIVED = ('rho', 'length', 'n_global', 'beta_star', 'z_eff', 'b_gs2', 'a_meters', 'b_unit', 'dens_norm', 'temp_norm',
+                    'vth_norm', 'mass_norm', 'rho_star_norm', 'gamma_gb_norm', 'q_gb_norm', 'pi_gb_norm')
+
+def _read_run_file(folder, suffix, name):
+    '''Text of <folder>/<name><suffix> (job-array layout), else <folder>/<name>; None if neither exists (or no folder)'''
+    if not folder:
+        return None
+    folder, suffix = Path(folder), suffix or ''
+    for f in ([folder / f"{name}{suffix}"] if suffix else []) + [folder / name]:
+        if f.is_file():
+            return f.read_text(errors='ignore')
+    return None
+
+_ITERATION_FOLDER = re.compile(r'^(Evaluation\.|portals_sr_ev_)(\d+)$')
+
+def _harvest_restart_chain(folder, suffix):
+    '''
+    (source_iter, inherited_t) of this radius when its PORTALS iteration warm-started it (an entry in
+    <iteration>/transport_simulation_folder/<base>/restart_sources.json), None otherwise. The parent
+    map is read with CGYROplot.load_restart_sources_for_iterations and walked with the plotter's own
+    _compute_offsets_for_rho, fed the last time of each parent's out.cgyro.time (the plotter's
+    out.t[-1]); inherited_t is NaN if a parent of the chain is missing on disk (never undercounted).
+    Batched runs (<base>_plasma<p>) read the JSON of <base> and take the parents' plasma 0, as the
+    restart resolver does.
+    '''
+    from types import SimpleNamespace
+    from mitim_tools.gacode_tools.utils import CGYROplot
+
+    if not folder or not suffix:
+        return None
+    folder = Path(folder)
+    m = _ITERATION_FOLDER.match(folder.parent.parent.name)
+    if m is None or folder.parent.name != 'transport_simulation_folder':
+        return None
+    rho = float(suffix.lstrip('_'))
+    prefix, it = m.group(1), int(m.group(2))
+    base = re.sub(r'_plasma\d+$', '', folder.name)
+    parent_sub = f"{base}_plasma0" if base != folder.name else base
+    root = folder.parent.parent.parent
+    iterations = [(int(f.name[len(prefix):]), f / 'transport_simulation_folder') for f in root.glob(f"{prefix}*")
+                  if _ITERATION_FOLDER.match(f.name) and f.name.startswith(prefix)]
+    sources = CGYROplot.load_restart_sources_for_iterations(iterations, base_subfolder=base)
+    source = sources.get(it, {}).get('parents', {}).get(f"{rho:.4f}")
+    if source is None:
+        return None
+
+    missing = []
+
+    class _TraceEnds(dict):
+        '''Lazy {iteration: tool-like object carrying only t[-1]} for the plotter's walker'''
+        def __contains__(self, i):
+            if not dict.__contains__(self, i):
+                try:
+                    row = (root / f"{prefix}{i}" / 'transport_simulation_folder' / parent_sub / f"out.cgyro.time{suffix}").read_text().split('\n')
+                    t_last = float(next(l for l in reversed(row) if l.strip()).split()[0])
+                except (OSError, StopIteration, ValueError, IndexError):
+                    missing.append(i)
+                    return False
+                self[i] = SimpleNamespace(rhos=[rho], results={'base_cgyro': {'output': [SimpleNamespace(t=np.array([t_last]))]}})
+            return True
+
+    inherited = CGYROplot._compute_offsets_for_rho(rho, 0, sources, _TraceEnds(), [it])[it]
+    return source, (np.nan if missing else float(inherited))
 
 def harvest_averaging_provenance(obj):
     '''One string per (run, code) for the harvest runs table: averaging method, uncertainty estimator and their parameters'''

@@ -98,6 +98,7 @@ mitim_plot_tglf = "mitim_tools.gacode_tools.scripts.read_tglf:main"      # [--su
 mitim_plot_neo = "mitim_tools.gacode_tools.scripts.read_neo:main"        # [--suffixes _0.55] [--gacode input.gacode]
 mitim_plot_vgen = "mitim_tools.gacode_tools.scripts.read_vgen:main"      # <folder> [--gacode input.gacode]
 mitim_plot_cgyro = "mitim_tools.gacode_tools.scripts.read_cgyro:main"
+mitim_kill_cgyro = "mitim_tools.gacode_tools.scripts.kill_cgyro:main"
 mitim_plot_gx = "mitim_tools.simulation_tools.scripts.read_gx:main"
 mitim_plot_eq = "mitim_tools.gs_tools.scripts.read_eq:main"
 mitim_plot_minuet = "mitim_tools.gs_tools.scripts.plot_minuet:main"       # <file.minuet> [file2.minuet ...] [--save] [--title ...]
@@ -118,8 +119,8 @@ mitim_scp = "mitim_tools.misc_tools.scripts.retrieve_files:main"    # e.g. mitim
 mitim_check_maestro = "mitim_modules.maestro.scripts.check_maestro:main"
 mitim_clean_maestro = "mitim_modules.maestro.scripts.clean_maestro:main" # e.g. mitim_clean_maestro FOLDER1 FOLDER2
 mitim_prune_maestro = "mitim_modules.maestro.scripts.prune_maestro:main" # replicate keep_all_files:false on a finished run; e.g. mitim_prune_maestro FOLDER1 --apply
-mitim_harvest = "mitim_tools.harvest_tools.HARVESTtools:main_push"        # push staged evaluations of (dead) PORTALS/MAESTRO runs into the central harvest file; --rebuild
 mitim_plot_harvest = "mitim_tools.harvest_tools.HARVESTtools:main_plot"   # [file] [--code tglf] [--x RLTS_2 --y Qi] [--noplot]
+mitim_harvester = "mitim_tools.harvest_tools.HARVESTtools:main_harvester" # push the staged records of (dead) runs [--rebuild]; --from-disk: rebuild those of runs made WITHOUT harvest
 
 # TRANSP
 mitim_trcheck = "mitim_tools.transp_tools.scripts.run_check:main"	        # e.g. mitim_trcheck pablorf
