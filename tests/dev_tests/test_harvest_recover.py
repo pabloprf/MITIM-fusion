@@ -7,6 +7,9 @@ folder built from tests/data/input.tglf: TGLF records rebuilt from a PORTALS eva
 `recovered_by`, --dry-run pushes nothing, a second run appends nothing (dedup against the file), a
 parent folder is searched for runs, renamed copies (Beat_14old) are skipped, and eped.input /
 eped.config rebuilt from an EPED output .nc give the same EPED record inputs as the originals.
+CGYRO: a retrieved PORTALS-CGYRO run (portals_cgyro_reduced2_slurm, ~280 MB, too big for the repo) is
+re-harvested from disk and must give the live records (hashes and fluxes); skipped when that local copy
+is absent. Needs pygacode importable.
 
 Everything runs in a temporary folder -- no transport code, no cluster.
 
@@ -14,6 +17,7 @@ Everything runs in a temporary folder -- no transport code, no cluster.
 """
 
 import sys
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -51,10 +55,10 @@ def test_tglf_records_and_dedup(tmp):
     file = tmp / 'recovered.nc'
 
     assert R.find_runs([tmp]) == [run], "parent folder searched for runs"
-    assert R.harvest_runs([run], file, dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
+    assert R.harvest_runs([run], file, dry_run=True) == {'tglf': 2, 'neo': 0, 'cgyro': 0, 'eped': 0, 'qualikiz': 0}
     assert not file.exists(), "--dry-run pushes nothing"
 
-    assert R.harvest_runs([tmp / 'scan'], file, stage=tmp / 'stage') == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
+    assert R.harvest_runs([tmp / 'scan'], file, stage=tmp / 'stage') == {'tglf': 2, 'neo': 0, 'cgyro': 0, 'eped': 0, 'qualikiz': 0}
     db = H.harvest_database(file)
     df = db.load('tglf')
     assert len(df) == 2 and set(df['maestro_beat']) == {2.0}
@@ -64,8 +68,8 @@ def test_tglf_records_and_dedup(tmp):
     assert runs['recovered_by'].iloc[0].startswith('mitim_harvester') and runs['run_folder'].iloc[0] == str(run)
     assert runs['run'].iloc[0] == R.run_id_of(run), "stable run id"
 
-    assert R.harvest_runs([run], file, stage=tmp / 'stage') == {'tglf': 0, 'neo': 0, 'eped': 0, 'qualikiz': 0}, "same staging: nothing new"
-    assert R.harvest_runs([run], file) == {'tglf': 0, 'neo': 0, 'eped': 0, 'qualikiz': 0}, "fresh staging: known (run, hash) skipped"
+    assert R.harvest_runs([run], file, stage=tmp / 'stage') == {'tglf': 0, 'neo': 0, 'cgyro': 0, 'eped': 0, 'qualikiz': 0}, "same staging: nothing new"
+    assert R.harvest_runs([run], file) == {'tglf': 0, 'neo': 0, 'cgyro': 0, 'eped': 0, 'qualikiz': 0}, "fresh staging: known (run, hash) skipped"
     assert len(H.harvest_database(file).load('tglf')) == 2
     assert R.harvest_runs([run], file, scan_trick_members=False, dry_run=True)['tglf'] == 0
     print("PASS TGLF records from disk, maestro_beat, provenance, dry run, dedup on re-run")
@@ -80,7 +84,7 @@ def test_renamed_copies_skipped(tmp):
     h = R.harvester(run)
     assert [b.name for b in h._beats()] == ['Beat_2'], "Beat_2old skipped"
     assert [f.parent.name for f in h.transport_folders(sr.parents[1])] == ['portals_sr_ev_0'], "portals_sr_ev_0bak skipped"
-    assert R.harvest_runs([run], tmp / 'renamed.nc', dry_run=True) == {'tglf': 2, 'neo': 0, 'eped': 0, 'qualikiz': 0}
+    assert R.harvest_runs([run], tmp / 'renamed.nc', dry_run=True) == {'tglf': 2, 'neo': 0, 'cgyro': 0, 'eped': 0, 'qualikiz': 0}
     print("PASS renamed Beat_<n>old / <evaluation>bak copies skipped instead of crashing the run")
 
 
@@ -98,6 +102,40 @@ def test_cli(tmp):
     finally:
         sys.argv = argv
     print("PASS mitim_harvester --from-disk (dry run, then push)")
+
+
+# Local copy of an engaging PORTALS-CGYRO run that staged its records live (run 3bbf765d6508, Outputs/harvest kept)
+CGYRO_RUN = Path('/Users/pablorf/PROJECTS/project_2026_Development/development_harvest/tests/backfill_cgyro_schema5/local_copy_R2')
+
+
+def _symlink_tree(src, dst):
+    '''src rebuilt under dst with every file a symlink: the CGYRO reader's private temp folders never touch src'''
+    for d in [src] + [p for p in src.rglob('*') if p.is_dir()]:
+        (dst / d.relative_to(src)).mkdir(parents=True, exist_ok=True)
+    for f in (p for p in src.rglob('*') if p.is_file()):
+        (dst / f.relative_to(src)).symlink_to(f)
+
+
+def test_cgyro_records_match_live(tmp):
+    if not CGYRO_RUN.is_dir():
+        print(f"SKIP CGYRO records from disk ({CGYRO_RUN} not here)")
+        return
+    run = tmp / 'cgyro_run'
+    _symlink_tree(CGYRO_RUN, run)
+    live = {r['hash']: r for f in (run / 'Outputs' / 'harvest').glob('cgyro.*.jsonl.pushed-*') for r in H._read_jsonl(f)}
+    file = tmp / 'cgyro.nc'
+
+    # 18 evaluations x 5 radii on disk; portals_sr_ev_0-4 and Evaluation.0-4 are the same runs (same hash)
+    assert R.harvest_runs([run], file, stage=tmp / 'stage_cgyro')['cgyro'] == len(live) == 65
+    db = H.harvest_database(file)
+    df = db.load('cgyro')
+    assert set(df['run']) == {R.run_id_of(run)} == {'3bbf765d6508'} and set(df['hash']) == set(live), "live run id and hashes"
+    for _, row in df.iterrows():
+        for k in ('out_Qi_mean', 'out_Qe_mean', 'out_Ge_mean', 'out_Qi_std', 'out_avg_tmin', 'out_restart_t_inherited'):
+            assert np.isclose(row[k], live[row['hash']][k], rtol=1e-12, equal_nan=True), f"{k} of {row['hash']}"
+    assert json.loads(db.runs().query("code == 'cgyro'")['averaging'].iloc[0])['method'] == 'howard_gkav', "the run's own read options"
+    assert R.harvest_runs([run], file)['cgyro'] == 0, "known (run, hash) skipped"
+    print("PASS CGYRO records from disk equal the live ones (hash, averaged fluxes, restart chain); dedup on re-run")
 
 
 def test_eped_files_from_nc(tmp):
@@ -165,6 +203,7 @@ def main():
         test_tglf_records_and_dedup(tmp)
         test_renamed_copies_skipped(tmp)
         test_cli(tmp)
+        test_cgyro_records_match_live(tmp)
         test_eped_files_from_nc(tmp)
         test_new_string_column_after_many_rows(tmp)
         test_short_string_column_repaired(tmp)
