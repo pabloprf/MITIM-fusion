@@ -21,7 +21,7 @@ Key teaching points:
        documentation) and modify a copy — here done in-situ with
        read_mitim_yaml/write_mitim_yaml, like the PORTALS dictionaries.
     2. Profiles initialization is split into the equilibrium method
-       (initialization_type: freegs here) and the profile creator
+       (initialization_type: minuet, the template default) and the profile creator
        (creator_type): 'eped_initializer' runs EPED for the pedestal, while
        'fixed_bc' (used here) pins Te/Ti at a chosen location x_bc and still
        matches BetaN and density peaking by adjusting the gradients — no

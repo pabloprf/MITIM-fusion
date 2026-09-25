@@ -24,7 +24,8 @@ plasma:
     #       profiles:   use an input.gacode file to initialize both equilibrium and profiles
     # NOTE: the "separatrix" internal-equilibrium correction and the TRANSP machine-initialization morph
     #       automatically PREFER MINUET over FREEGS when the minuet package is installed (FREEGS is the fallback)
-    initialization_type: freegs      
+    # NOTE: minuet is the default; without the optional minuet package installed, use freegs instead
+    initialization_type: minuet
 
     # How to initialize the profiles. Options:
     #       eped_initializer: use EPED-based profile initializer (must exist as beat namelist below)
@@ -88,10 +89,12 @@ plasma:
       internal_flux_file: null
       # (With internal_flux_file, the file's poloidal flux is kept and q is re-derived from it, so q and psi stay one equilibrium)
 
-      # [Optional] q shape of every MINUET-built initialization equilibrium (initialization_type minuet / separatrix,
-      # and the TRANSP t=0 machine slice): q(x) = 1 + q_shape_lambda * x^q_shape_exponent, scaled to match Ip.
-      # null -> GEQtools.minuet_millerized defaults {q_shape_lambda: 3.5, q_shape_exponent: 4.0}, calibrated to reproduce
-      # the FREEGS q0 and q(psiN=0.5) within ~5% on C-Mod- and ARC-like shapes (a parabola cannot match both)
+      # [Optional] Current profile of every MINUET-built initialization equilibrium (initialization_type minuet / separatrix,
+      # and the TRANSP t=0 machine slice).
+      # null -> FREEGS's own ConstrainPaxisIp ansatz (p', FF' ~ (1-psiN^2)^2, constrained by p0 and Ip): positive current
+      #         everywhere, q is an output (within ~10% of FREEGS's q0 and q(psiN=0.5) on ARC/SPARC-like shapes)
+      # {q_shape_lambda: L, q_shape_exponent: n} -> legacy q-constrained solve with q(x) = 1 + L*x^n scaled to Ip. Not
+      #         recommended: its edge current reverses on shaped boundaries and the traced LCFS loses the requested shaping
       minuet_q_shape: null
 
       # If initialization_type = geqdsk, freegs, separatrix: Number of MXH coefficients used in TWO places:

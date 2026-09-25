@@ -60,10 +60,11 @@ torch.set_num_threads(8)
 
 nml = IOtools.read_mitim_yaml(__mitimroot__ / "templates" / "namelist.maestro.yaml")
 
-# Initialize from ENGINEERING PARAMETERS only: FreeGS equilibrium (template default) +
+# Initialize from ENGINEERING PARAMETERS only: FreeGS equilibrium (not the template default: an X-point seed) +
 # 'fixed_bc' creator (Te pinned at x_bc; ne from neped_20; BetaN/nu_ne matched by the
 # core gradients). All engineering values (R, a, Bt, Ip, neped_20, separatrix shaping)
 # come from the template's plasma.parameters block.
+nml["plasma"]["profiles_initialization"]["initialization_type"] = "freegs"   # X-point seed: exercises the beat's fold trim
 nml["plasma"]["profiles_initialization"]["creator_type"] = "fixed_bc"
 nml["plasma"]["profiles_initialization"]["parameters"]["x_bc"] = 0.95
 nml["plasma"]["profiles_initialization"]["parameters"]["Te_bc"] = 3.0  # keV (Ti_bc: null -> same as Te_bc)

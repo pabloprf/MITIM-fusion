@@ -128,9 +128,12 @@ class minuet_beat(beat):
         (their FSA metrics carry a 1/|J2| pole -- e.g. the near-X-point separatrix of a
         FreeGS-initialized MAESTRO state). The remedy is the minuet analog of the transp
         beat's boundary_surface_psin backoff: cut the state at the last NON-FOLDED surface
-        and run MINUET with that (slightly interior, rounder) boundary. The export is then
-        grafted onto the trimmed grid and merge_parameters() re-grids back to the frozen
-        resolution (MITIM extrapolates the thin cut band of equilibrium columns).
+        and run MINUET with that (slightly interior, rounder) boundary. MINUET puts x = 1 at the
+        last point of the file, so the trimmed state is RELABELLED exactly like MINUET's own
+        interior boundary cut (Settings.boundary): rho -> rho/rho_cut, torfluxa -> torfluxa*rho_cut^2
+        (without it, MINUET extrapolates the kinetics from rho_cut out to x = 1 -- negative n, T
+        across a pedestal). merge_parameters() undoes the relabel and re-grids back to the frozen
+        resolution, restoring the frozen equilibrium beyond the cut.
 
         Returns the file to hand to MINUET (the original when nothing folds).
         '''
@@ -167,9 +170,11 @@ class minuet_beat(beat):
 
         profiles_trimmed = copy.deepcopy(self.profiles_current)
         profiles_trimmed.changeResolution(rho_new = rho_new)
+        self._trim_rho = float(rho_new[-1])   # merge_parameters undoes the relabel and restores the frozen band beyond this
+        profiles_trimmed.profiles['rho(-)'] = profiles_trimmed.profiles['rho(-)'] / self._trim_rho
+        profiles_trimmed.profiles['torfluxa(Wb/radian)'] = profiles_trimmed.profiles['torfluxa(Wb/radian)'] * self._trim_rho**2
         trimmed_file = self.folder / 'input.gacode_trimmed'
         profiles_trimmed.write_state(file = trimmed_file)
-        self._trim_rho = float(rho_new[-1])   # merge_parameters restores the frozen band beyond this
         return trimmed_file
 
     def run(self, **kwargs):
@@ -193,7 +198,12 @@ class minuet_beat(beat):
         diffusion_kwargs = dict(n_cells = cfg['n_cells'], n_save = cfg['n_save'])
         if cfg['rtol'] is not None:
             diffusion_kwargs['rtol'] = cfg['rtol']
-        if cfg['Ip_from_frozen']:
+        if cfg['Ip_from_frozen'] and getattr(self, '_trim_rho', None) is not None:
+            # The trimmed boundary encloses LESS than the engineering Ip: let MINUET take the
+            # current the incoming state carries inside the cut (its geometry's own Ip)
+            print(f'\t- Not commanding the frozen Ip: MINUET boundary is the trimmed surface (rho = {self._trim_rho:.4f}), '
+                  'using the current the incoming state encloses there')
+        elif cfg['Ip_from_frozen']:
             # Command Ip to the frozen engineering current (the CUR-ufile analog); MINUET
             # distributes the initial commanded-vs-state mismatch over its edge buffer
             Ip_MA = float(self.maestro_instance.profiles_with_engineering_parameters.profiles['current(MA)'][0])
@@ -244,6 +254,7 @@ class minuet_beat(beat):
             'q0_initial': float(m.result.q0[0]),
             'q0_final': float(m.result.q0[-1]),
             'evolve_equilibrium': cfg['evolve_equilibrium'],
+            'trim_rho': getattr(self, '_trim_rho', None),   # input.gacode_minuet is on the relabelled grid when set
             'models': {
                 'resistivity': cfg['resistivity_model'],
                 'bootstrap': cfg['bootstrap_model'],
@@ -274,6 +285,9 @@ class minuet_beat(beat):
             self._persist(self.folder / 'minuet_results.npy', self.folder_output / 'minuet_results.npy')
             if (self.folder / 'run.minuet').exists():
                 self._persist(self.folder / 'run.minuet', self.folder_output / 'run.minuet')
+
+            # A re-invocation (new process) must know whether the export is on the trimmed, relabelled grid
+            self._trim_rho = np.load(self.folder_output / 'minuet_results.npy', allow_pickle=True).item().get('trim_rho')
 
             # Write profiles to output folder
             self.profiles_output = PROFILEStools.gacode_state(self.folder / 'input.gacode_minuet')
@@ -317,6 +331,12 @@ class minuet_beat(beat):
             if rmin_exp[i] <= rmin_exp[i-1]:
                 i_clamp = i
         rho_lo = rho_exp[i_clamp + 1] if i_clamp > 0 else None
+
+        # Undo the trimmed-state relabel (see _trim_folded_surfaces): back to the full-plasma rho
+        if getattr(self, '_trim_rho', None) is not None:
+            self.profiles_output.profiles['rho(-)'] = self.profiles_output.profiles['rho(-)'] * self._trim_rho
+            self.profiles_output.profiles['torfluxa(Wb/radian)'] = self.profiles_output.profiles['torfluxa(Wb/radian)'] / self._trim_rho**2
+            rho_lo = rho_lo * self._trim_rho if rho_lo is not None else None
 
         # Re-grid to the frozen resolution: a no-op when keep_kinetics preserved the grid
         # exactly; real work when the incoming state was trimmed (folded-surface backoff)

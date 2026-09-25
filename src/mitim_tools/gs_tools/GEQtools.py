@@ -1265,6 +1265,7 @@ def _import_minuet():
             '(or an editable install of the minuet repo)') from e
     return minuet_pkg
 
+
 class minuet_millerized:
     '''
     Drop-in replacement of freegs_millerized based on the MINUET fixed-boundary Grad-Shafranov
@@ -1272,15 +1273,18 @@ class minuet_millerized:
     needed and the separatrix is honored exactly.
 
     Differences in physics inputs w.r.t. FREEGS worth flagging:
-        - FREEGS's ConstrainPaxisIp derives q from a (1-psiN^alpha_m)^alpha_n current ansatz.
-          MINUET instead takes q(x) as INPUT (it is q-constrained), so the q SHAPE here is a
-          modeling choice: q(x) = 1 + q_shape_lambda * x^q_shape_exponent, uniformly scaled until
-          the solved Ip matches the requested one. The defaults (3.5, 4) reproduce the FREEGS q0 and
-          q(psiN=0.5) within ~5% on C-Mod- and ARC-like shapes; a parabola (exponent 2) cannot match
-          both at any lambda (q(0.5) 1.6-2x too high), and a too-broad current profile seeds TRANSP
-          with a state whose first NUBEAM call can fail.
-        - The pressure DOES reproduce FREEGS's convention exactly:
-          p(psiN) = p0 * (1 - psiN**alpha_m)**alpha_n, labelled in psi_N (not in x).
+        - Default: the SAME current ansatz as FREEGS's ConstrainPaxisIp,
+          j_phi = L*(beta0*R/Raxis + (1-beta0)*Raxis/R)*(1-psiN^alpha_m)^alpha_n, i.e. p' and FF' both
+          proportional to (1-psiN^alpha_m)^alpha_n, with L and beta0 iterated until the solved axis pressure
+          and Ip match p0 and the requested Ip. The pressure is p(psiN) = integral of that p' (FREEGS's
+          own p), and q is an OUTPUT, positive current everywhere, vanishing at the boundary.
+        - Legacy alternative (q_shape_lambda / q_shape_exponent given): MINUET's q-constrained solve with
+          q(x) = 1 + lambda*x^exponent (scaled to Ip) and p = p0*(1-psiN^alpha_m)^alpha_n. Beware: the
+          q-constrained solve continues the reconstructed <J.B> as a constant beyond psiN = 0.95, which on
+          shaped boundaries turns into a REVERSED edge current (~ -2..-5 MA/m^2 on a SPARC-like shape):
+          psi then overshoots the boundary value inside the plasma near the triangularity corners, the
+          geqdsk contour tracer cuts the corner (delta_sep 0.57 read back as 0.45) and the MXH edge
+          surfaces fold.
     '''
 
     def __init__(self, R, a, kappa_sep, delta_sep, zeta_sep, z0):
@@ -1304,9 +1308,9 @@ class minuet_millerized:
         self.R_sep, self.Z_sep = self.mitim_separatrix.R[0,:], self.mitim_separatrix.Z[0,:]
 
     def prep(self, p0_MPa, Ip_MA, B_T,
-            beta_pol = None, q_shape_lambda = 3.5, q_shape_exponent = 4.0,
+            beta_pol = None, q_shape_lambda = None, q_shape_exponent = None,
             gs_ns = 128, gs_ntheta = 256, n_surfaces = 80, n_theta_trace = 384,
-            n_passes = 3, n_outer = 3,
+            n_passes = None, n_outer = 3,
             parameters_profiles = {'alpha_m':2.0, 'alpha_n':2.0, 'Raxis':1.0},
             **kwargs_freegs_only):
 
@@ -1325,13 +1329,16 @@ class minuet_millerized:
         self.beta_pol = beta_pol
         self.parameters_profiles = parameters_profiles
 
-        self.q_shape_lambda = q_shape_lambda
-        self.q_shape_exponent = q_shape_exponent
+        # Legacy q family only when explicitly requested (either knob given)
+        self.q_legacy = (q_shape_lambda is not None) or (q_shape_exponent is not None)
+        self.q_shape_lambda = q_shape_lambda if q_shape_lambda is not None else 3.5
+        self.q_shape_exponent = q_shape_exponent if q_shape_exponent is not None else 4.0
         self.gs_ns = gs_ns
         self.gs_ntheta = gs_ntheta
         self.n_surfaces = n_surfaces
         self.n_theta_trace = n_theta_trace
-        self.n_passes = n_passes
+        # Ip (legacy) or (p0, Ip) (current ansatz) outer passes
+        self.n_passes = n_passes if n_passes is not None else (3 if self.q_legacy else 12)
         self.n_outer = n_outer
 
         # Requested current [A] and vacuum R*Bt [m*T], which are what MINUET is anchored to
@@ -1339,8 +1346,11 @@ class minuet_millerized:
         self.F_b = self.B_T * self.R0
 
         print(f"\t- Preparing equilibrium with MINUET, fixed-boundary GS on a {gs_ns}x{gs_ntheta} (s,theta) grid")
-        print(f"\t\t* q shape (modeling choice): q(x) = 1 + {self.q_shape_lambda}*x^{self.q_shape_exponent}, scaled to match Ip")
-        print(f"\t\t* p(psiN) = p0*(1-psiN^{parameters_profiles['alpha_m']})^{parameters_profiles['alpha_n']} (FREEGS ConstrainPaxisIp convention)")
+        if self.q_legacy:
+            print(f"\t\t* q shape (modeling choice): q(x) = 1 + {self.q_shape_lambda}*x^{self.q_shape_exponent}, scaled to match Ip")
+            print(f"\t\t* p(psiN) = p0*(1-psiN^{parameters_profiles['alpha_m']})^{parameters_profiles['alpha_n']}")
+        else:
+            print(f"\t\t* Current ansatz (FREEGS ConstrainPaxisIp): p', FF' ~ (1-psiN^{parameters_profiles['alpha_m']})^{parameters_profiles['alpha_n']}, constrained by p0 and Ip")
 
     def _q_shape(self, x):
 
@@ -1364,6 +1374,61 @@ class minuet_millerized:
             return p0_Pa * (1.0 - psin**alpha_m)**alpha_n
 
         return p_of_x
+
+    def _solve_current_ansatz(self, gs, sol):
+        '''
+        FREEGS ConstrainPaxisIp on the MINUET fixed-boundary solver. With g = (1-psiN^alpha_m)^alpha_n:
+            p'  = a_p * g            [Pa/(Wb/rad)],   a_p = L*beta0/Raxis
+            FF' = a_f * g            [T^2 m^2/(Wb/rad)], a_f = mu0*L*(1-beta0)*Raxis
+        p(axis) = a_p * depth * int_0^1 g dpsiN = p0 fixes a_p on the current field, and
+        Ip = a_p * int R g dA + a_f/mu0 * int g/R dA fixes a_f (same cell quadrature as MINUET's Ip).
+        Each pass re-solves (warm start) with the updated amplitudes until both match.
+        '''
+
+        from minuet.constants import MU0
+
+        alpha_m = self.parameters_profiles['alpha_m']
+        alpha_n = self.parameters_profiles['alpha_n']
+        g_of = lambda pn: (1.0 - np.clip(np.asarray(pn, dtype=float), 0.0, 1.0)**alpha_m)**alpha_n
+        psin_int = np.linspace(0.0, 1.0, 2001)
+        int_g = np.trapezoid(g_of(psin_int), psin_int)
+        p0_Pa = self.p0_MPa * 1E6
+
+        for i in range(self.n_passes):
+            psin_c = np.clip(1.0 - sol.u / sol.u_ax, 0.0, 1.0)
+            gc = g_of(psin_c)
+            A = float(np.sum(gs.Rcell * gc * gs.Jcell) * gs.ds * gs.dt)
+            B = float(np.sum(gc / (MU0 * gs.Rcell) * gs.Jcell) * gs.ds * gs.dt)
+
+            a_p = p0_Pa / (sol.u_ax * int_g)
+            # a_f < 0 (diamagnetic FF', beta0 > 1) is allowed, as in FREEGS; it can also appear transiently on the seed field
+            a_f = (self.Ip_A_requested - a_p * A) / B
+
+            sol = gs.solve(lambda pn, a=a_p: a * g_of(pn), lambda pn, a=a_f: a * g_of(pn), self.F_b, u_guess = sol.u)
+
+            p_ax = a_p * sol.u_ax * int_g
+            err_p, err_I = p_ax / p0_Pa - 1.0, sol.Ip / self.Ip_A_requested - 1.0
+            print(f"\t\t* Pass {i+1}/{self.n_passes}: Ip = {sol.Ip*1E-6:.5f} MA ({100*err_I:+.3f}%), p0 = {p_ax*1E-6:.5f} MPa ({100*err_p:+.3f}%), "
+                  f"beta0 = {a_p * self.parameters_profiles['Raxis'] / (a_p * self.parameters_profiles['Raxis'] + a_f / (MU0 * self.parameters_profiles['Raxis'])):.3f}")
+            if max(abs(err_p), abs(err_I)) < 1E-5:
+                break
+
+        if not sol.converged:
+            print(f"\t- MINUET GS Picard did not converge (residual {sol.residual:.2e})", typeMsg = 'w')
+
+        # FREEGS's own pressure: the integral of p' from the boundary, labelled onto x through the traced geometry
+        geom = sol.geometry(n_surfaces = self.n_surfaces, n_theta = self.n_theta_trace)
+        from scipy.integrate import cumulative_trapezoid
+        g_int = g_of(psin_int)
+        p_psin = np.maximum(a_p * sol.u_ax * (int_g - cumulative_trapezoid(g_int, psin_int, initial = 0.0)), 0.0)   # exact 0 at psiN = 1 (not -1E-10)
+        x_g = np.concatenate(([0.0], geom.x))
+        psin_g = np.concatenate(([0.0], geom.psin))
+        self.p_of_x = lambda x: np.interp(np.clip(np.interp(np.asarray(x, dtype=float), x_g, psin_g), 0.0, 1.0), psin_int, p_psin)
+
+        self.eq = None
+        self.gs_solution = sol
+        self.geom = geom
+        self.Ip_A = float(geom.Ip)
 
     def solve(self):
 
@@ -1389,6 +1454,11 @@ class minuet_millerized:
                 lambda pn: np.zeros_like(np.asarray(pn, dtype=float)),
                 lambda pn: c_ff * np.ones_like(np.asarray(pn, dtype=float)),
                 self.F_b)
+            if not self.q_legacy:
+                self._solve_current_ansatz(gs, sol_seed)
+                print("\t\t * Done!")
+                return
+
             g0 = sol_seed.geometry(n_surfaces = self.n_surfaces, n_theta = self.n_theta_trace)
 
             # q-constrained equilibrium, with the q amplitude iterated until Ip matches
