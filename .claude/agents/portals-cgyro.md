@@ -183,6 +183,7 @@ echo "JOBS ${q:-none} bad=$bad"; [ -z "$q" ] && [ "$conv" = 0 ] && echo "ALERT N
 gb=$(df -Pk "$RUN" | awk 'NR==2{printf "%d",$4/1048576}'); [ -n "$S" ] && gbs=$(df -Pk "$S" | awk 'NR==2{printf "%d",$4/1048576}')
 echo "DISK run=${gb}GB scratch=${gbs:-?}GB"; [ "$gb" -lt "$DISK" ] && echo "ALERT DISK run filesystem ${gb} GB free"
 echo "SIG sr=$nsr ev=$nev fin=$nfin tb=$tb conv=$conv jobs=${q:-none} bad=$bad cur=$(basename $(dirname ${cur:-x/x}))"
+exit 0   # keep last: a trailing `[ test ] && echo ALERT` that fails would make `bash -s` exit 1 and look like an ssh failure
 ```
 - **Starting values.** WATCH_T = 200 a/cs; SLOW = 100 s per a/cs, or 5x the evaluation's median, whichever is lower; STALL = 45 min or 3x the slowest healthy radius' time per restart interval, whichever is larger; DISK = 2x the run's GB per evaluation (§6).
 - **Site quotas.** `df` on a quota-managed pool may show the whole filesystem. If the site has a quota tool, use it instead.
@@ -200,7 +201,8 @@ echo "SIG sr=$nsr ev=$nev fin=$nfin tb=$tb conv=$conv jobs=${q:-none} bad=$bad c
 # watch.sh <dir> <interval_s> <digest_h>; run with Bash run_in_background. Exits on the first event.
 D=$1; INT=${2:-1800}; DIG=${3:-6}; t0=$(date +%s); fails=0; last=$(cat $D/last.sig 2>/dev/null); touch $D/ack
 while true; do
-  if ssh -o BatchMode=yes -o ConnectTimeout=30 __ALIAS__ 'bash -s' < $D/probe.sh > $D/snap.tmp 2> $D/ssh.err; then
+  ssh -o BatchMode=yes -o ConnectTimeout=30 __ALIAS__ 'bash -s' < $D/probe.sh > $D/snap.tmp 2> $D/ssh.err; rc=$?
+  if [ $rc -ne 255 ] && grep -q '^SIG' $D/snap.tmp; then   # a poll fails only on ssh's own 255 or a probe that printed no SIG line
     fails=0; mv $D/snap.tmp $D/snap.txt; sig=$(grep '^SIG ' $D/snap.txt)
     al=$(grep '^ALERT' $D/snap.txt | { if [ -s $D/ack ]; then grep -v -F -f $D/ack; else cat; fi; })
     echo "$(date '+%F %T %Z') ${sig#SIG } alerts=$(echo -n "$al" | grep -c ALERT)" >> $D/polls.log
@@ -215,6 +217,8 @@ while true; do
 done
 ```
 - For a driver on this same machine, replace the ssh line with `bash $D/probe.sh`.
+- **Test the probe's exit code, not only its output**, after every site edit (`ssh <alias> 'bash -s' < probe.sh; echo rc=$?`). A watcher
+  that treats a non-zero probe exit as an ssh failure went blind for an hour on a probe whose last line was a failed `[ ] && echo`.
 - `ack` holds one pattern per line, e.g. `ALERT SLOW rho_0.7688 `, for alerts you decided to live with; the watcher matches them as fixed strings (`grep -F`), so end the pattern with a space to avoid matching `rho_0.76885`. Remove the pattern when the reason expires.
 - **Cadence.**
   - Default 30 min, never below 20 min, except that a 2-5 min watch is fine while waiting for a known boundary: an evaluation finishing, or a stop taking effect.
