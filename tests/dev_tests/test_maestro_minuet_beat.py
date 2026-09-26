@@ -204,4 +204,10 @@ P_ohm = p_out.derived["qOhm_MW"][-1] if "qOhm_MW" in p_out.derived else np.nan
 print(f"\t- ohmic power at beat output: {P_ohm:.3f} MW (MINUET: {d['P_ohm_MW']:.3f} MW)")
 assert d["P_ohm_MW"] > 0 and abs(P_ohm / d["P_ohm_MW"] - 1) < 0.05, "qohme does not carry MINUET's ohmic power"
 
+# 7) No transp beat upstream: the minuet beat composes the ions from plasma.species (D-T fuel -> fusion) and
+#    fills the fusion/radiation columns the initializer left at zero
+names = list(p_out.profiles["name"])
+print(f"\t- ions at beat output: {names}, Pfus = {p_out.derived['Pfus']:.1f} MW, Prad = {p_out.derived['Prad']:.2f} MW")
+assert "T" in names and p_out.derived["Pfus"] > 0 and p_out.derived["Prad"] > 0, "plasma.species not applied by the minuet beat"
+
 print("\nPASS: MAESTRO [minuet, portals] chain completed with evolved q, frozen kinetics and gaussian sources")

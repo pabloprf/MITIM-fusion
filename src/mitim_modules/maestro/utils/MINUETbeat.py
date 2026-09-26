@@ -12,9 +12,11 @@ MINUET beat: in-process substitute for the transp_soft beat.
 
 Runs current diffusion + sawteeth at FIXED kinetic profiles and fixed-boundary
 equilibrium using the standalone MINUET package (current diffusion coupled to a
-fixed-boundary Grad-Shafranov solver). The kinetics, species and source columns
-of the incoming state pass through VERBATIM; only the equilibrium blocks and the
-q/johm/jbs columns are evolved.
+fixed-boundary Grad-Shafranov solver). The kinetics and auxiliary source columns
+of the incoming state pass through VERBATIM; the equilibrium blocks and the
+q/johm/jbs/qohme columns are evolved. When no transp beat ran upstream, the beat also
+does the transp beat's other job: it composes the ions from plasma.species and
+recomputes the fusion/radiation/exchange columns (analytic targets).
 
 MINUET is an optional MITIM dependency (pip install "mitim-fusion[minuet]"), so
 it is imported lazily and only when a minuet beat actually runs or plots.
@@ -443,6 +445,14 @@ class minuet_beat(beat):
 
         self.profiles_output.derive_quantities()
 
+        # Without a transp beat upstream nobody has applied plasma.species, and the fusion/radiation/exchange
+        # columns are the initializer's zeros (portals_soft, which evolves only qie, would read them as they are)
+        if not self._transp_upstream():
+            apply_species_composition(self.profiles_output, self.maestro_instance.maestro_namelist)
+            self.profiles_output.recompute_targets(targets = ["qie", "qrad", "qfus"])
+            print(f'\t\t\t* Targets recomputed on the composed plasma: Pfus = {self.profiles_output.derived["Pfus"]:.1f} MW, '
+                  f'Prad = {self.profiles_output.derived["Prad"]:.1f} MW')
+
         # Gaussian-source injection (heating.type = gaussian_sources): MINUET does not run
         # a heating model, so -- like the transp beat -- the prescribed Pe/Pi gaussians are
         # written straight into qrfe/qrfi at beat output (wired by preprocess_run_minuet;
@@ -456,6 +466,14 @@ class minuet_beat(beat):
 
         # Write to final input.gacode
         self.profiles_output.write_state(file = self.folder_output / 'input.gacode')
+
+    def _transp_upstream(self):
+        '''
+        Did a transp beat run before this one in the chain? (then the ions and the fusion/radiation columns are
+        TRANSP's, which the minuet beat passes through)
+        '''
+        counter = int(self.folder_beat.name.split('_')[-1])
+        return any(isinstance(b, transp_beat) for k, b in self.maestro_instance.beats.items() if k < counter)
 
     # -----------------------------------------------------------------------------------------------------------------------
     # MAESTRO interface
@@ -654,3 +672,66 @@ def preprocess_run_minuet(run_namelist, maestro_namelist, cpus, cold_start):
             }
 
     return run_namelist
+
+
+def apply_species_composition(profiles, maestro_namelist):
+    '''
+    Rebuild the thermal ions of `profiles` from plasma.species (+ the ICRH minority), the job the transp beat does
+    through its zlump/DTplasma namelist (TRANSPbeat.preprocess_prepare_transp). Chains without a transp beat need it
+    here: the initializers only lay down a placeholder main ion plus one Z = 9 impurity at the target Zeff, which
+    has no tritium (no fusion) and radiates as fluorine.
+
+    Same recipe as the transp beat: fuel fraction fmain (split evenly among the fuel species), high-Z impurity
+    at fhighZ with charge CShighZ_estimate, the minority [Z, A] at fmini when present, and ONE low-Z impurity whose
+    (integer) Z makes Zeff and quasineutrality close (PLASMAtools.estimateLowZ; A = 2Z). The minority is laid down
+    as a THERMAL ion (dilution only; there is no ICRF physics without TRANSP). ne, Te and Ti are untouched; every ion
+    gets the main-ion Ti.
+    '''
+    import periodictable as pt
+
+    species = maestro_namelist["plasma"]["species"]
+    mix = species["mix"]
+    heating_type = maestro_namelist["plasma"]["heating"]["type"]
+    heating = maestro_namelist["plasma"]["heating"]["parameters"]
+    Zmini, Amini = heating.get("minority", [1, 1])
+    # Minority as in the transp beat: ICRH with power, or gaussian_sources with fmini > 0 (dilution accounting)
+    fmini = heating.get("fmini", 0.0) or 0.0
+    if not ((heating_type == 'ICRH' and heating.get('P_icrh', 0.0) > 0.0) or heating_type == 'gaussian_sources'):
+        fmini = 0.0
+
+    high = pt.elements.symbol(mix["highZ"])
+    Zhigh = float(mix["CShighZ_estimate"])
+    fhigh = float(mix["fhighZ"])
+    fmain = float(mix["fmain"])
+
+    Zlow, _ = PLASMAtools.estimateLowZ(fmain, species["Zeff"], Zmini, fmini, Zhigh, fhigh)
+    flow = (1.0 - (fmain + Zmini * fmini + Zhigh * fhigh)) / Zlow    # quasineutrality closes exactly with the integer Z
+    if flow < 0:
+        raise ValueError(f'[MITIM] plasma.species cannot be closed: fmain={fmain}, fmini={fmini}, fhighZ={fhigh} leave no room for a low-Z impurity')
+    low = pt.elements[int(Zlow)]
+
+    fuel_mass = {'H': 1.0, 'D': 2.0, 'T': 3.0}
+    ions = [(f, 1.0, fuel_mass[f], fmain / len(species["fuel"])) for f in species["fuel"]]
+    if fmini > 0:
+        ions.append((pt.elements[int(Zmini)].symbol if Zmini > 1 or Amini != 1 else 'H', float(Zmini), float(Amini), fmini))
+    ions.append((high.symbol, Zhigh, float(high.mass), fhigh))
+    ions.append((low.symbol, float(Zlow), 2.0 * Zlow, flow))
+
+    P = profiles.profiles
+    ne, ti = P["ne(10^19/m^3)"], P["ti(keV)"][:, 0]
+    P["nion"] = np.array([f"{len(ions)}"])
+    P["name"] = np.array([i[0] for i in ions])
+    P["z"] = np.array([i[1] for i in ions])
+    P["mass"] = np.array([i[2] for i in ions])
+    P["type"] = np.array(["[therm]"] * len(ions))
+    P["ni(10^19/m^3)"] = np.column_stack([i[3] * ne for i in ions])
+    P["ti(keV)"] = np.column_stack([ti] * len(ions))
+    if "vtor(m/s)" in P:
+        P["vtor(m/s)"] = np.column_stack([P["vtor(m/s)"][:, 0]] * len(ions))
+
+    profiles.readSpecies()
+    profiles.derive_quantities(rederiveGeometry=False)
+
+    zeff_vol = float(np.mean(profiles.profiles["z_eff(-)"]))
+    print(f'\t\t\t* Ion composition from plasma.species: ' + ', '.join(f'{n} {f:.2e}' for n, _, _, f in ions) +
+          f' (n_i/n_e); Zeff ~ {zeff_vol:.3f} (target {species["Zeff"]})')
