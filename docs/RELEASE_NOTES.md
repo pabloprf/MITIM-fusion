@@ -12,6 +12,12 @@ DESCRIPTION
     stop watchdog, which also waits for every MPI rank to exit before returning (OpenMPI launchers put ranks
     in their own process groups). Works for bash/in-allocation and submitted runs, local or over SFTP.
 
+*   💥 **Claude Code agent `portals-cgyro` shipped in `.claude/agents/`: an operator for live PORTALS-CGYRO
+    runs.** It checks each radius' cost per a/cs, time step and saturation, stops hopeless radii with
+    `mitim_kill_cgyro` only under a written rule, and holds chains whose links keep failing. It never changes
+    physics or grids and never deletes data, and it writes one line per action to `Outputs/agent_actions.log`.
+    For a watch lasting days: `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.
+
 *   💥 **Live view of the CGYRO evaluation still running, in `mitim_plot_portals --complete`.** A new
     "CGYRO live" tab reads the in-progress outputs of the evaluation in flight and plots one column per
     radius: Qe/Qi/Ge traces with the run's own averaging window (mean +/- sigma) and turbulence-only

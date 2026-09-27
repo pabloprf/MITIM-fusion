@@ -257,6 +257,10 @@ pa.plotPORTALS(...)        # full FigureNotebook with all tabs
 - **fluxes_turb.json / fluxes_neoc.json**: per-iteration JSON blobs with the
   GB-normalized turbulent and neoclassical fluxes per channel/rho. These are
   what `restart_from_cases: "best"` uses to pick parents.
+- **Babysitting a live PORTALS-CGYRO run: the shipped agent `.claude/agents/portals-cgyro.md` (per-radius cost and
+  saturation, graceful `mitim_kill_cgyro` stops under a written rule, holds of failing chains, one line per action in
+  `Outputs/agent_actions.log`). For a days-long watch run it as the main session:
+  `claude --bg --agent portals-cgyro "Watch <run folder> on <ssh alias>"`.**
 
 ---
 
