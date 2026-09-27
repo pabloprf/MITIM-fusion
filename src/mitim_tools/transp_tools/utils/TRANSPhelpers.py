@@ -358,7 +358,7 @@ class transp_run:
             seps = [g for g in (self.geometry[time] for time in self.times if time in self.geometry) if 'R_sep' in g]
             if len(seps) > 0:
                 self.geometry_select = dict(self.geometry_select)
-                self._set_structures(*enclosing_wall([g['R_sep'] for g in seps], [g['Z_sep'] for g in seps]), geometry = self.geometry_select)
+                set_wall_structures(*enclosing_wall([g['R_sep'] for g in seps], [g['Z_sep'] for g in seps]), geometry = self.geometry_select)
 
             self.namelist_variables['VVRmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVRmom']])
             self.namelist_variables['VVZmom'] = ', '.join([f'{x:.8e}' for x in self.geometry_select['VVZmom']])
@@ -836,21 +836,7 @@ class transp_input_time:
         # Wall around THIS slice's plasma (the ufile writer replaces it by a wall enclosing every slice)
         lcfs = GEQtools.mitim_flux_surfaces()
         lcfs.reconstruct_from_miller(R, a, kappa, z0, delta, zeta)
-        self._set_structures(*enclosing_wall([lcfs.R[0,:]], [lcfs.Z[0,:]]), geometry = self.geometry)
-
-    @staticmethod
-    def _set_structures(rvv, zvv, geometry):
-        '''
-        VV moments (namelist, used by TORIC) and limiter contour (LIM ufile) from one wall contour [m]
-        '''
-
-        Rc, A = 0.5 * (rvv.max() + rvv.min()), 0.5 * (rvv.max() - rvv.min())
-        Zc, B = 0.5 * (zvv.max() + zvv.min()), 0.5 * (zvv.max() - zvv.min())
-        geometry['VVRmom'], geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = decomposeMoments(
-            rvv*100.0 , zvv*100.0,
-            r_ini = [Rc*100.0, A*100.0, 3.0], z_ini = [Zc*100.0, B*100.0, -3.0], verbose_level =5)
-
-        geometry['R_lim'], geometry['Z_lim'] = rvv, zvv
+        set_wall_structures(*enclosing_wall([lcfs.R[0,:]], [lcfs.Z[0,:]]), geometry = self.geometry)
 
     def from_freegs(self, time, R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 3.3, Vsurf = 0.0, Zeff = 1.5, Paux_MW = 11.0):
 
@@ -1349,6 +1335,19 @@ def enclosing_wall(Rs, Zs, margin_fraction = 0.3, exponent = 4.0, n_points = 200
     zvv = 0.5 * (Zhi + Zlo) + 0.5 * (Zhi - Zlo) * np.sign(s) * np.abs(s) ** (2.0 / exponent)
 
     return rvv, zvv
+
+def set_wall_structures(rvv, zvv, geometry):
+    '''
+    VV moments (namelist, used by TORIC) and limiter contour (LIM ufile) from one wall contour [m], into `geometry`
+    '''
+
+    Rc, A = 0.5 * (rvv.max() + rvv.min()), 0.5 * (rvv.max() - rvv.min())
+    Zc, B = 0.5 * (zvv.max() + zvv.min()), 0.5 * (zvv.max() - zvv.min())
+    geometry['VVRmom'], geometry['VVZmom'], rvv_fit_cm, zvv_fit_cm = decomposeMoments(
+        rvv*100.0 , zvv*100.0,
+        r_ini = [Rc*100.0, A*100.0, 3.0], z_ini = [Zc*100.0, B*100.0, -3.0], verbose_level =5)
+
+    geometry['R_lim'], geometry['Z_lim'] = rvv, zvv
 
 def addLimiters_UF(UFilePath, rs, zs, ax=None, numLim=100):
     # ----- ----- ----- ----- -----
