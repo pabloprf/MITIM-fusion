@@ -621,6 +621,22 @@ def jacobian_margin(R, Z, x, theta):
     return J, float(J.min()), float((J / J.mean(axis=1, keepdims=True)).min())
 
 
+def _back_off_folded_edge(x, theta, R, Z, x_cut_min = 0.95):
+    '''
+    Drop outermost surfaces while the spline det(J) of the map folds (see jacobian_margin), relabelling the remaining
+    x so that x = 1 at the new boundary. Stops (and leaves the fold for the caller to report) before cutting below
+    x_cut_min: a fold deeper than that is not an edge artefact.
+    '''
+    x_cut, k = 1.0, len(x)
+    while jacobian_margin(R[:k], Z[:k], x[:k] / x[k-1], theta)[1] <= 0.0 and x[k-2] >= x_cut_min:
+        k -= 1
+    if k < len(x):
+        x_cut = x[k-1]
+        print(f'\t\t- Prescribed equilibrium: the {len(x) - k} outermost surface(s) fold (MXH edge); using the surface at '
+              f'x = {x_cut:.4f} as the plasma boundary, relabelled to x = 1', typeMsg='w')
+    return x[:k] / x_cut, R[:k], Z[:k]
+
+
 def resample_closed_curve(R, Z, n_theta):
     '''
     Resample one closed flux surface onto n_theta points spanning [0, 2*pi] with the closing
@@ -1109,8 +1125,13 @@ class transp_input_time:
                 self.p.profiles['rho(-)'],
                 )
 
-            # xplasma splines RFS/ZFS and rejects a map whose det(J) changes sign. Fail HERE,
-            # loudly and locally, rather than after submission with a Jacobian abort at t=0.
+            # xplasma splines RFS/ZFS and rejects a map whose det(J) changes sign. States whose
+            # OUTERMOST surfaces fold (MXH fits of a near-X-point edge, e.g. FREEGS seeds with few
+            # moments) are backed off to the last surface that keeps det(J) single-signed and
+            # relabelled x -> x/x_cut (the boundary_surface_psin analog). The profile ufiles keep the
+            # state's rho labels, a (1 - x_cut) ~ 1-2% edge relabel mismatch. An interior fold still fails
+            # HERE, loudly and locally, rather than after submission with a Jacobian abort at t=0.
+            x, R, Z = _back_off_folded_edge(x, theta, R, Z)
             _, detJ_min, detJ_margin = jacobian_margin(R, Z, x, theta)
             print(f'\t\t- Prescribed equilibrium: {len(x)} surfaces x {len(theta)} poloidal points, '
                   f'det(J) min/row-mean = {detJ_margin:.4f}', typeMsg='i')

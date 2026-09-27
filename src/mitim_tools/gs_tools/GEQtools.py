@@ -1,5 +1,6 @@
 import os
 import copy
+import contextlib
 import numpy as np
 import matplotlib.pyplot as plt
 from mitim_tools.misc_tools import GRAPHICStools, IOtools, PLASMAtools
@@ -20,6 +21,30 @@ Note that this module relies on megpy to intrepret the content of g-eqdsk files.
 Modifications are made in MITIM for visualizations and a few extra derivations.
 """
 
+@contextlib.contextmanager
+def _single_o_point(R_axis, Z_axis):
+    '''
+    Within the context, megpy's O-point search returns only the O-point closest to (R_axis, Z_axis) [m], the geqdsk's
+    magnetic axis, instead of every O-point of the grid (megpy uses that set as the tracing reference point)
+    '''
+    from megpy import tracer
+
+    original = tracer.find_o_points
+
+    def closest(*args, **kwargs):
+        points, values = original(*args, **kwargs)
+        points, values = np.atleast_2d(points), np.atleast_1d(values)
+        if len(points) > 1:
+            i = int(np.argmin(np.hypot(points[:, 0] - R_axis, points[:, 1] - Z_axis)))
+            points, values = points[i:i+1], values[i:i+1]
+        return points, values
+
+    tracer.find_o_points = closest
+    try:
+        yield
+    finally:
+        tracer.find_o_points = original
+
 class MITIMgeqdsk:
     def __init__(self, filename, refine=1, shaping_psin=0.995):
 
@@ -30,6 +55,12 @@ class MITIMgeqdsk:
             raise ValueError("-> MITIMgeqdsk: Problem reading g-eqdsk file ", filename)
         try:
             self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
+        except ValueError:
+            # megpy traces every flux surface around ALL the O-points it finds in PSIRZ; a free-boundary grid (e.g. FreeGS
+            # with its coils inside the box) can carry spurious vacuum O-points, and the tracer then fails to broadcast
+            print('> Reading geqdsk derived quantities failed, retrying with the magnetic axis as the only O-point', typeMsg='w')
+            with _single_o_point(self.g.raw['rmaxis'], self.g.raw['zmaxis']):
+                self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine)
         except:
             print('> Reading geqdsk derived quantities failed, trying increasing refine parameter', typeMsg='w')
             self.g.add_derived(incl_fluxsurfaces=True, analytic_shape=True, incl_B=True, refine=refine+1)
