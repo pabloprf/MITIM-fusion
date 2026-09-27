@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import copy
 import datetime
@@ -541,7 +542,14 @@ def interpretRun(infoSLURM, log_file):
         # InfiniBand/RDMA container-launch failure (mlx5 UD QP denied -> mpirun segfault).
         # Ordered ahead of hard_failure so it is labelled as the infra failure it is, rather
         # than swallowed by the generic "*** End of error message ***" that OpenMPI also prints.
-        rdma_failure = any(err in log_str for err in TRANSPdebug.RDMA_LAUNCH_ERRORS)
+        # The same strings are ALSO benign OpenMPI startup noise on some nodes (e.g. "error initializing an
+        # OpenFabrics device" on every log of node2603), so they only mean a LAUNCH failure while TRANSP has not
+        # advanced in simulated time (same guard as TRANSPdebug.diagnose_transp_failure). Without it, a late crash
+        # (e.g. an out-of-memory kill at TA = 2 s) was relabelled as RDMA and relaunched twice.
+        rdma_failure = any(err in log_str for err in TRANSPdebug.RDMA_LAUNCH_ERRORS) and not re.search(r"TA\s*=\s*-?[0-9]", log_str)
+
+        # A rank SIGKILLed mid-run (cgroup out-of-memory kill) prints no TRANSP abort signature
+        killed = "exited on signal 9 (Killed)" in log_str
 
         if normal_exit:
             status = 1
@@ -551,6 +559,10 @@ def interpretRun(infoSLURM, log_file):
             info["info"]["status"] = "stopped"
             info["info"]["rdma_failure"] = True   # enables the bounded relaunch in checkUntilFinished
             print("\t- TRANSP's MPI layer failed to bring up the InfiniBand device (mlx5); the container was denied the RDMA queue-pair and mpirun segfaulted. Flagging run as stopped (infrastructure, not physics)",typeMsg="w",)
+        elif killed:
+            status = -1
+            info["info"]["status"] = "stopped"
+            print("\t- A TRANSP MPI rank was killed (signal 9) mid-run, typically the job's out-of-memory kill: flagging run as stopped. Check sacct MaxRSS against --mem",typeMsg="w",)
         elif hard_failure:
             status = -1
             info["info"]["status"] = "stopped"

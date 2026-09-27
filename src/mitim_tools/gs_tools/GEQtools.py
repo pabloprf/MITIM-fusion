@@ -414,6 +414,16 @@ class MITIMgeqdsk:
         sn = np.array(sn)
         cn = np.array(cn)
 
+        # A one-point "surface" (the magnetic axis) has no shape of its own: give it the shape of the nearest real
+        # surface (the axis limit of the family). A 1e-7 placeholder makes the interpolated near-axis surfaces oblate
+        # (kappa -> 0 as rho -> 0), so <|grad rho|^2/R^2> diverges like 1/rho^2 there (TRANSP geoint rejects it)
+        degenerate = np.array([np.asarray(self.g.fluxsurfaces["R"][i]).shape[0] == 1 if i < len(flux_surfaces)-1 else False
+                               for i in range(len(flux_surfaces))])
+        if degenerate.any() and (~degenerate).any():
+            for i in np.where(degenerate)[0]:
+                j = np.where(~degenerate)[0][np.argmin(np.abs(np.where(~degenerate)[0] - i))]
+                kappa[i], sn[i], cn[i] = kappa[j], sn[j], cn[j]
+
         if plotYN:
             fig, ax = plt.subplots()
             ax.plot(self.Rb, self.Yb, 'o-', c = 'b')
