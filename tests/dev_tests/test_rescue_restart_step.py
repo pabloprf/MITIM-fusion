@@ -112,7 +112,7 @@ class FakeJob:
         self._md5, self._progress = md5, progress
 
     def probe_interrupted_runs(self, folders_red, required, checksum_file, **kwargs):
-        return {rel: (self._md5, self._progress, "out.cgyro.tag=26") for rel in folders_red}
+        return {rel: (self._md5, self._progress, "out.cgyro.tag=26", False) for rel in folders_red}
 
 
 def test_end_to_end_rescue_rewrites_both_keys():

@@ -278,6 +278,9 @@ DESCRIPTION
     The stall rescue no longer cancels a preempted radius right after SLURM restarts it (its
     `out.cgyro.timing` still predated the preemption): a radius SLURM started less than the kill threshold
     ago is left alone, and the node is excluded only when the radius hung there past the threshold.
+    **A re-run evaluation no longer relaunches radii that already finished in the scratch folder (EXIT or
+    `mitim_budget.tag`): they are collected as they are and their nodes go to extras; before, each was
+    continued for ~1 a/cs, and a radius stopped by `mitim_kill_cgyro` was continued for its remaining time.**
 
 *   🐛 **PORTALS radiation target: a thermal species missing from `radiation_chebyshev.csv` (e.g. `B`, or a
     `LUMPED` ion) no longer removes its own bremsstrahlung from the total.** The line term was

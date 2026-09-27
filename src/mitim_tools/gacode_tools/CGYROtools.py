@@ -1224,7 +1224,9 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         Each is made to look like a radius that just finished in scratch: its stored `<file>_<rho>`
         outputs are symlinked into the scratch folder under their plain names (skipped when the
         folder is still there), which is all _launch_extra_point, _estimate_to_accept and the
-        builder read. Radii whose extra is already done locally are left out.
+        builder read. Radii that finished in scratch before this run (SIMtools._rescue_interrupted_runs
+        keeps them there and does not relaunch them) are sources as they are. Radii whose extra is
+        already done locally are left out.
         '''
         spec = SIMtools.CompletionSpec.from_run_specifications(self.run_specifications)
         extra_done = SIMtools.CompletionSpec.coerce(spec, alt_file="mitim_budget.tag")
@@ -1241,6 +1243,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                     continue
                 self._stage_finished_radius(local, rho, self._scratch(rel))
                 sources.append(rel)
+        for rel in getattr(self, "_finished_in_scratch", []):
+            rho = float(rel.rsplit("rho_", 1)[-1])
+            if rel in main or rel in sources or extra_done.finished(Path(self.FolderGACODE) / "extra_cgyro" / SIMtools.rho_folder(rho))[0]:
+                continue
+            sources.append(rel)
         return sources
 
     @staticmethod

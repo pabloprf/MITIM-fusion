@@ -1502,16 +1502,20 @@ class mitim_job:
 
         return output, error
 
-    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None):
+    def probe_interrupted_runs(self, rel_folders, required_files, checksum_file, progress_file=None, progress_line=None, checksum_ignore_prefix=None, report_files=None, completion=None):
         '''
         Look inside the (possibly remote) scratch folder for sub-folders left by an
         interrupted execution. For each entry of `rel_folders` (relative to
-        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report)}
-        when every file in `required_files` exists there, and nothing otherwise.
-        `progress_token` is the first column of line `progress_line` (1-based; None =
-        last line) of `progress_file` (e.g. the time the code will resume from), or
-        None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
-        (forensics for the log; missing files are skipped). Lines of `checksum_file`
+        folderExecution) returns {rel: (md5_of_checksum_file, progress_token, report, finished)}
+        when every file in `required_files` exists there or the run there already ended, and
+        nothing otherwise. `progress_token` is the first column of line `progress_line`
+        (1-based; None = last line) of `progress_file` (e.g. the time the code will resume
+        from), or None. `report` is a 'name=bytes ...' string with the sizes of `report_files`
+        (forensics for the log; missing files are skipped). `finished` is True when the
+        sub-folder satisfies `completion` = (marker_file, marker_text, alt_file): marker_file
+        contains marker_text, or alt_file exists (e.g. CGYRO's EXIT line in out.cgyro.info, or
+        mitim_budget.tag); such a run counts even without the required files (CGYRO can end
+        cleanly without a restart write at MAX_TIME). Lines of `checksum_file`
         starting with `checksum_ignore_prefix` (a prefix or a list of them, e.g.
         ['MAX_TIME', 'RESTART_STEP']) are excluded from the md5, so values the caller
         rewrites on rescue do not defeat the identity check. One shell round-trip in total.
@@ -1525,13 +1529,18 @@ class mitim_job:
         report = ' '.join(f'$([ -f "$d/{f}" ] && echo "{f}=$(wc -c < "$d/{f}" | tr -d " ")")' for f in (report_files or []))
         prefixes = [checksum_ignore_prefix] if isinstance(checksum_ignore_prefix, str) else list(checksum_ignore_prefix or [])
         filt = ''.join(f" | grep -v '^{p}'" for p in prefixes)
+        marker_file, marker_text, alt_file = completion or (None, None, None)
+        ended = [f'grep -qsF {shlex.quote(marker_text)} "$d/{marker_file}"'] if marker_file else []
+        ended += [f'[ -f "$d/{alt_file}" ]'] if alt_file else []
+        fin = f'$( {{ {" || ".join(ended)}; }} && echo 1 || echo 0 )' if ended else '0'
         lines = []
         for rel in rel_folders:
             d = f'{fe}/{rel}'
+            # The finished flag goes before the md5: the progress token may be empty and must stay last
             lines.append(
-                f'd={shlex.quote(d)}; if {checks}; then '
+                f'd={shlex.quote(d)}; f={fin}; if [ -f "$d/{checksum_file}" ] && {{ [ "$f" = 1 ] || {{ {checks}; }}; }}; then '
                 f'h=$( cat "$d/{checksum_file}"{filt} | (md5sum 2>/dev/null || md5 -q) | cut -d" " -f1 ); '
-                f'echo "MITIM_RESCUE {rel} $h {prog} | {report}"; fi'
+                f'echo "MITIM_RESCUE {rel} $f $h {prog} | {report}"; fi'
             )
         with self.session(log_file=self.folder_local / 'paramiko.log'):
             output, _ = self.execute('; '.join(lines))
@@ -1539,8 +1548,8 @@ class mitim_job:
         for line in (output or b'').decode('utf-8', errors='ignore').splitlines():
             head, _, report_str = line.partition('|')
             parts = head.split()
-            if len(parts) >= 3 and parts[0] == 'MITIM_RESCUE':
-                found[parts[1]] = (parts[2], parts[3] if len(parts) > 3 else None, report_str.strip())
+            if len(parts) >= 4 and parts[0] == 'MITIM_RESCUE':
+                found[parts[1]] = (parts[3], parts[4] if len(parts) > 4 else None, report_str.strip(), parts[2] == '1')
         return found
 
     def close(self, *args, **kwargs):

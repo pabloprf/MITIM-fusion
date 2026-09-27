@@ -6,7 +6,7 @@ import os
 import copy
 import numpy as np
 import dill as pickle_dill
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, IntEnum
 from pathlib import Path
 from mitim_tools import __version__ as mitim_version
@@ -978,35 +978,54 @@ class mitim_simulation:
         printed time: the restart blob predates the last output by up to one restart
         interval, and counting from the wrong point over- or under-shoots the target.
         Everything else is staged and run as usual.
+
+        A sub-folder whose run already ENDED there (the code's completion marker, e.g. CGYRO's
+        EXIT line or mitim_budget.tag) passes the same identity check but is not run again: in
+        bash mode results come back only when the whole evaluation ends, so a driver killed
+        after some radii finished leaves them finished in scratch only. Such folders are kept
+        across the wipe like the rescued ones and returned, so `_run` launches the others and
+        retrieves them all.
+        Returns the scratch-relative folders that ended.
         '''
         spec = self.run_specifications.get("rescue_spec")
         self.simulation_job.preserve_subfolders = []
+        self._finished_in_scratch = []
         if not (kwargs_run.get("rescue_interrupted", False) and spec):
-            return
+            return []
         if getattr(self.simulation_job, "run_in_place", False):
             print("\t- rescue_interrupted requested but the run is in-place (no scratch folder): nothing to rescue", typeMsg="i")
-            return
+            return []
 
         time_key = spec.get("time_key")
         ignore_prefixes = list(spec.get("checksum_ignore") or ([time_key] if time_key else []))
+        completion = CompletionSpec.from_run_specifications(self.run_specifications)
         found = self.simulation_job.probe_interrupted_runs(
             folders_red, spec.get("required", []), input_file,
             progress_file=spec.get("progress_file"), progress_line=spec.get("progress_line"),
             checksum_ignore_prefix=ignore_prefixes, report_files=spec.get("report_files"),
+            completion=None if completion is None else (completion.marker_file, completion.marker_text, completion.alt_file),
         )
         if not found:
-            return
+            return []
 
         import hashlib, re
-        rescued = []
+        rescued, finished = [], []
         for folder_sim_this, rel in zip(folders, folders_red):
             if rel not in found:
                 continue
-            md5_remote, progress, report = found[rel]
+            md5_remote, progress, report, ended = found[rel]
             text = (folder_sim_this / input_file).read_text()
             kept = "".join(l for l in text.splitlines(keepends=True) if not any(l.startswith(p) for p in ignore_prefixes))
             if hashlib.md5(kept.encode()).hexdigest() != md5_remote:
-                print(f"\t- [rescue] {rel}: interrupted run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                print(f"\t- [rescue] {rel}: {'finished' if ended else 'interrupted'} run found but its {input_file} differs from the new one; discarding it", typeMsg="w")
+                continue
+            if ended:
+                # Staged restarts would overwrite the finished run's own files on extraction
+                for f in folder_sim_this.iterdir():
+                    if f.name != input_file:
+                        f.unlink()
+                finished.append(rel)
+                print(f"\t- [rescue] {rel}: run already finished in scratch (t={progress}); not relaunched, collected with the others [{report}]", typeMsg="i")
                 continue
             # Without a resume time the trim below cannot happen and the radius would run
             # the full time_key again on top of the restart point, so it is not rescued
@@ -1036,7 +1055,9 @@ class mitim_simulation:
             rescued.append(rel)
             print(f"\t- [rescue] {rel}: continuing interrupted run in place (resuming from t={progress}{remaining_msg}) [{report}]", typeMsg="i")
 
-        self.simulation_job.preserve_subfolders = rescued
+        self.simulation_job.preserve_subfolders = rescued + finished
+        self._finished_in_scratch = finished
+        return finished
 
     def _run(
         self,
@@ -1061,13 +1082,24 @@ class mitim_simulation:
         print(f"\t- {settings.code.upper()} needs to run because not all results files found",typeMsg="i")
 
         folders, folders_red = self._stage_inputs(plan, settings)
-        self._rescue_interrupted_runs(kwargs_run, folders, folders_red, settings.input_file)
-        resolved = self._resolve_allocation(folders_red, settings)
-        script = self._build_script(folders_red, resolved, settings)
+        # Radii that already finished in scratch are retrieved with the rest but not launched
+        finished = self._rescue_interrupted_runs(kwargs_run, folders, folders_red, settings.input_file)
+        to_launch = [rel for rel in folders_red if rel not in finished]
+        retrieve_now = not to_launch and settings.run_type is RunType.SUBMIT
+        if not to_launch:
+            # Nothing left to run: an empty bash script, then the usual retrieval. A slurm job
+            # with no calls would not be accepted, and a detached run would have nothing to poll
+            print(f"\t- Every {settings.code.upper()} radius already finished in scratch; retrieving them without launching anything", typeMsg="i")
+            settings = replace(settings, launch_slurm=False, run_type=RunType.NORMAL if retrieve_now else settings.run_type)
+        resolved = self._resolve_allocation(to_launch, settings)
+        script = self._build_script(to_launch, resolved, settings)
         self._prepare_job(folders, folders_red, script, resolved, settings)
 
         if settings.run_type.blocking:
             self._dispatch_blocking(code_executor, folders, settings)
+            if retrieve_now:
+                # Results are local already: check()/fetch() see "not run" and return
+                self.simulation_job = None
         elif settings.run_type is RunType.SUBMIT:
             self._dispatch_detached(code_executor, script, settings)
 
@@ -1254,7 +1286,7 @@ class mitim_simulation:
         that gives the nodes freed by early calls to extra cases. The bash script is still
         written for reference but not executed.
         '''
-        hooks = self._extra_point_hooks(settings.resources_per_call) if script.hosts else None
+        hooks = self._extra_point_hooks(settings.resources_per_call) if (script.hosts and script.folders) else None
         if hooks is None:
             return
         from mitim_tools.simulation_tools.utils import SCHEDULERtools
