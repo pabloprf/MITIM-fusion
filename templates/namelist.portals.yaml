@@ -524,10 +524,19 @@ transport:
 
         # Slurm allocation (optional; each field falls back to per-code defaults +
         # machine config if omitted).
-        #   resources_per_call : GPUs per radial call on the CGYRO GPU path. Drives
-        #                        both the cgyro MPI layout (1 rank + 1 NUMA per GPU,
-        #                        mpinuma=1, nomp = cores_per_mpi hint) and the sbatch
-        #                        --gpus-per-node / --ntasks-per-node counts
+        #   resources_per_call : GPU machines: GPUs per radial call. Drives both the
+        #                        cgyro MPI layout (1 rank + 1 NUMA per GPU, mpinuma=1,
+        #                        nomp = cores_per_mpi hint) and the sbatch
+        #                        --gpus-per-node / --ntasks-per-node counts.
+        #                        CPU-only machines (gpus_per_node 0): CPU cores per
+        #                        radial call, split into resources_per_call/omp_threads_cpu
+        #                        MPI ranks (cgyro -n, sbatch ntasks) x omp_threads_cpu
+        #                        threads (cgyro -nomp, sbatch --cpus-per-task). Above one
+        #                        node it must be a whole number of nodes (e.g. 128 = 2
+        #                        engaging nodes of 64 cores, 2048 = 16 Perlmutter CPU nodes).
+        #   omp_threads_cpu    : (CPU-only machines) OMP threads per MPI rank; must divide
+        #                        resources_per_call (and cores_per_node for multi-node calls).
+        #                        Default 1 (pure MPI). Ignored on GPU machines.
         #   minutes            : slurm --time in minutes of every submitted element. REQUIRED
         #                        when run_type is "submit" (MITIM refuses to submit without it;
         #                        it used to fall back to 5 minutes and time every radius out);
@@ -536,9 +545,9 @@ transport:
         #                        enclosing job's wall clock applies and this is ignored.
         #   mem                : per-node memory string passed to sbatch --mem
         #                        (e.g. "500GB" ≈ whole node on engaging GPU nodes).
-        #   submission_type    : "slurm_array" (default on GPU machines: one array
-        #                        element per rho, whole node per element on
-        #                        OverSubscribe=NO partitions) or "slurm_standard"
+        #   submission_type    : "slurm_array" (default for CGYRO on any SLURM machine,
+        #                        GPU or CPU: one array element per rho, whole node per
+        #                        element on OverSubscribe=NO partitions) or "slurm_standard"
         #                        (single allocation, parallel '&' body).
         #   max_concurrent_calls : (slurm_array only) at most N radii running at once
         #                        (sbatch --array=...%N); the rest queue behind them.

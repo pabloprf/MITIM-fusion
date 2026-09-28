@@ -1242,7 +1242,8 @@ class mitim_simulation:
         return SLURMtools.resolve(
             code=settings.code,
             allocation={"resources_per_call": settings.resources_per_call, "minutes": settings.minutes,
-                        "mem": settings.allocation.get("mem"), "max_concurrent_calls": settings.allocation.get("max_concurrent_calls")},
+                        "mem": settings.allocation.get("mem"), "max_concurrent_calls": settings.allocation.get("max_concurrent_calls"),
+                        "omp_threads_cpu": settings.allocation.get("omp_threads_cpu")},
             n_rhos=n_calls, n_subfolders=1,
             machine_settings=self._machine_limits(settings),
             launch_slurm=settings.launch_slurm,

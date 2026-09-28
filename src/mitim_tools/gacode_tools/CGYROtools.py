@@ -131,7 +131,7 @@ class CgyroLaunchBody:
     assembles them into the body SIMtools' JobScript builders stage.
     '''
 
-    def __init__(self, folder, p, n=1, additional_command="", resolved=None, cpus_per_node=1):
+    def __init__(self, folder, p, n=1, additional_command="", resolved=None, cpus_per_node=1, omp_threads_cpu=None):
         from mitim_tools.misc_tools import SLURMtools
 
         self.folder = folder
@@ -141,9 +141,14 @@ class CgyroLaunchBody:
         self.machine = CONFIGread.machineSettings(code='cgyro')
 
         # MPI layout is resolved centrally in SLURMtools so the invented knobs (full-node MPI on GPU
-        # machines, MPS sharing) live in one place instead of here and in code_slurm_settings
+        # machines, MPS sharing) live in one place instead of here and in code_slurm_settings.
+        # omp_threads_cpu (allocation knob, CPU-only machines) must reach this resolve too: it sets
+        # the -n/-nomp written below, while SIMtools' own resolve only sizes the sbatch
+        allocation = {'resources_per_call': int(n)}
+        if omp_threads_cpu is not None:
+            allocation['omp_threads_cpu'] = omp_threads_cpu
         self.resolved = resolved if resolved is not None else SLURMtools.resolve(
-            code='cgyro', allocation={'resources_per_call': int(n)}, verbose=False)
+            code='cgyro', allocation=allocation, verbose=False)
         self.mpi = self.resolved.mpi
         self.nodes = self.mpi.get("nodes", 1)   # >1 for multi-node radial calls (resources_per_call > gpus_per_node)
 
@@ -1009,9 +1014,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         self._preprocess_options = None
         self._extra_point_n = None
 
-        # On GPU machines, always use a job array so each radius gets its own GPU allocation.
-        _cgyro_machine_settings = CONFIGread.machineSettings(code='cgyro')
-        _force_submission_type = 'slurm_array' if (_cgyro_machine_settings.get('gpus_per_node') or 0) > 0 else None
+        # On SLURM machines, always use a job array so each radius gets its own allocation: its GPUs on
+        # GPU machines, its whole nodes on CPU-only machines (a nonlinear CPU radius takes one or more
+        # full nodes). allocation['submission_type'] still overrides it, and machines without SLURM
+        # run bash regardless (SLURMtools.resolve).
+        _force_submission_type = 'slurm_array'
 
         self.run_specifications = {
             'code': 'cgyro',
@@ -1136,12 +1143,15 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         '''
         self._preprocess_options = preprocess_options
         self._load_balance = load_balance
+        # code_call reads allocation['omp_threads_cpu'] from here (SIMtools' JobScript passes only n)
+        self._allocation = kwargs.get("allocation")
         try:
             return super().run(*args, **kwargs)
         finally:
             self._preprocess_options = None
             self._load_balance = None
             self._extra_point_n = None
+            self._allocation = None
 
     def code_call(self, folder, p, n=1, additional_command="", watchdog=None, resolved=None):
         '''
@@ -1151,7 +1161,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         resolved: an already-resolved SLURMtools allocation, when the caller has one.
         '''
         body = CgyroLaunchBody(folder, p, n=n, additional_command=additional_command,
-                               resolved=resolved, cpus_per_node=self._allocation_cpus_per_node())
+                               resolved=resolved, cpus_per_node=self._allocation_cpus_per_node(),
+                               omp_threads_cpu=(getattr(self, "_allocation", None) or {}).get("omp_threads_cpu"))
         return body.build(Watchdog.from_load_balance(
             f"{p}/{folder}", getattr(self, "_load_balance", None), mode=watchdog, template=self._WALL_BUDGET_WATCHDOG))
 
@@ -1363,10 +1374,13 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
 
     def _enforce_toroidals_per_proc(self, extraOptions, allocation, code_settings=None):
         """
-        CGYRO distributes N_TOROIDAL across MPI ranks (= resources_per_call GPUs).
+        CGYRO distributes N_TOROIDAL across MPI ranks (= resources_per_call GPUs on GPU
+        machines; resources_per_call / omp_threads_cpu on CPU-only machines).
         Each rank holds N_TOROIDAL/resources toroidal modes, so TOROIDALS_PER_PROC
         must be a multiple of that ratio. If the user's value is incompatible (or
-        missing), coerce it to the preferred valid value and warn.
+        missing), coerce it to the preferred valid value and warn. On CPU-only machines
+        a rank count that no TOROIDALS_PER_PROC can fit to the velocity/configuration grid
+        raises instead (on GPU the smallest valid value is kept, as before).
         """
         from mitim_tools.misc_tools import SLURMtools
 
@@ -1380,10 +1394,24 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # all-to-all on-node; if the machine block cannot be read we fall back to a value
         # that makes the locality preference a no-op.
         try:
-            gpus_per_node = int(CONFIGread.machineSettings(code='cgyro').get("gpus_per_node") or 0)
+            machine = CONFIGread.machineSettings(code='cgyro')
+            gpus_per_node = int(machine.get("gpus_per_node") or 0)
+            cores_per_node = int(machine.get("cores_per_node") or 0)
+            on_cpu = gpus_per_node == 0
         except Exception:
-            gpus_per_node = 0
-        ranks_per_node = min(resources_per_call, gpus_per_node) if gpus_per_node > 0 else resources_per_call
+            gpus_per_node, cores_per_node, on_cpu = 0, 0, False
+        if on_cpu:
+            # CPU-only machine: resources_per_call is cores, split into ranks x omp_threads_cpu threads
+            nomp = max(1, int(allocation.get("omp_threads_cpu") or 1))
+            n_ranks = resources_per_call // nomp
+            if n_ranks <= 0:
+                return extraOptions   # SLURMtools.resolve rejects this layout with its own error
+            ranks_per_node = min(n_ranks, cores_per_node // nomp) if cores_per_node >= nomp else n_ranks
+            ranks_txt = f"resources_per_call={resources_per_call} / omp_threads_cpu={nomp} = {n_ranks} MPI ranks"
+        else:
+            n_ranks = resources_per_call
+            ranks_per_node = min(resources_per_call, gpus_per_node) if gpus_per_node > 0 else resources_per_call
+            ranks_txt = f"resources_per_call={resources_per_call}"
 
         resolved = _ResolvedControls(self, extraOptions, code_settings)
         n_tor_src = resolved.get('N_TOROIDAL', 1)
@@ -1411,8 +1439,8 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # TOROIDALS_PER_PROC maximizes toroidal parallelism (leftover rank multiplicity
         # goes to the velocity/radial decomposition); TOROIDALS_PER_PROC=N_TOROIDAL (a
         # single group) is always valid, so a solution always exists.
-        def _is_valid(nt, tpp):
-            return tpp > 0 and nt % tpp == 0 and resources_per_call % (nt // tpp) == 0
+        def _is_valid(nt, tpp, ranks=n_ranks):
+            return tpp > 0 and nt % tpp == 0 and ranks % (nt // tpp) == 0
 
         # CGYRO's process grid is n_proc = n_proc_1 x n_toroidal_procs, where
         # n_toroidal_procs = N_TOROIDAL/TOROIDALS_PER_PROC and n_proc_1 splits nc and nv
@@ -1423,11 +1451,11 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
         # instead. This only ever bites on multi-node radial calls: when the call fits in one
         # node, validity already forces n_toroidal_procs <= resources_per_call, so every valid
         # value is on-node and this rule reduces to taking the smallest valid one.
-        def _grid_allows(nt, tpp, n_radial):
+        def _grid_allows(nt, tpp, n_radial, ranks=n_ranks):
             # n_proc_1 > 1 additionally requires n_proc_1 to divide nv and nc, or CGYRO aborts
             # (cgyro_mpi_grid.F90:240-248). N_SPECIES is not resolved at this point, so require
             # n_proc_1 | N_ENERGY*N_XI, which is sufficient for nv = N_ENERGY*N_XI*N_SPECIES.
-            n_proc_1 = resources_per_call // (nt // tpp)
+            n_proc_1 = ranks // (nt // tpp)
             if n_proc_1 == 1:
                 return True
             if None in (n_energy, n_xi, n_theta, n_radial):
@@ -1438,7 +1466,35 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             valid = [tpp for tpp in range(1, nt + 1) if _is_valid(nt, tpp)]
             on_node = [tpp for tpp in valid
                        if (nt // tpp) <= ranks_per_node and _grid_allows(nt, tpp, n_radial)]
-            return min(on_node) if on_node else min(valid)
+            if on_node:
+                return min(on_node)
+            if on_cpu:
+                return _cpu_fallback(nt, n_radial, valid)
+            return min(valid)
+
+        def _cpu_fallback(nt, n_radial, valid):
+            # No on-node candidate. On CPU a candidate that passes the grid rule off-node is still
+            # fine; one that fails it makes CGYRO abort at startup, so refuse instead of guessing
+            grid_ok = [tpp for tpp in valid if _grid_allows(nt, tpp, n_radial)]
+            if grid_ok:
+                return min(grid_ok)
+            if None in (n_energy, n_xi, n_theta, n_radial):
+                print(
+                    f"\t- [preprocess] N_ENERGY/N_XI/N_THETA/N_RADIAL not all resolved; cannot check the CGYRO "
+                    f"grid rule for {ranks_txt}, keeping the smallest valid TOROIDALS_PER_PROC={min(valid)}",
+                    typeMsg="w",
+                )
+                return min(valid)
+            nv, nc = n_energy * n_xi, n_radial * n_theta
+            fits = [r for r in range(1, 2 * n_ranks + 1)
+                    if any(_is_valid(nt, t, ranks=r) and _grid_allows(nt, t, n_radial, ranks=r) for t in range(1, nt + 1))]
+            raise ValueError(
+                f"[MITIM] CGYRO cannot run N_TOROIDAL={nt} on {ranks_txt} (n_proc): for every TOROIDALS_PER_PROC, "
+                f"n_proc_1 = n_proc / (N_TOROIDAL/TOROIDALS_PER_PROC) fails to divide nv = N_ENERGY*N_XI = {n_energy}*{n_xi} = {nv} "
+                f"(N_SPECIES not counted) or nc = N_RADIAL*N_THETA = {n_radial}*{n_theta} = {nc}, and CGYRO aborts at startup. "
+                f"Rank counts that fit this grid up to {2 * n_ranks}: {fits} "
+                f"(resources_per_call = ranks x omp_threads_cpu). Set TOROIDALS_PER_PROC in extraOptions to bypass this check."
+            )
 
         def _as_int(v):
             try:
@@ -1466,7 +1522,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
                 if not _is_valid(nt, tpp):
                     print(
                         f"\t- [preprocess] User-supplied TOROIDALS_PER_PROC={tpp} is incompatible with "
-                        f"N_TOROIDAL={nt} and resources_per_call={resources_per_call} "
+                        f"N_TOROIDAL={nt} and {ranks_txt} "
                         f"(MPI ranks must be a multiple of N_TOROIDAL/TOROIDALS_PER_PROC); CGYRO may abort",
                         typeMsg="w",
                     )
@@ -1507,7 +1563,7 @@ class CGYRO(SIMtools.mitim_simulation, SIMplot.GKplotting):
             n_groups = [nt // tpp for nt, tpp in zip(n_tor_list, coerced)]
             print(
                 f"\t- [preprocess] TOROIDALS_PER_PROC {tpp_list} -> {coerced} "
-                f"(MPI ranks {resources_per_call}, {ranks_per_node} per node; toroidal groups "
+                f"(MPI ranks {n_ranks}, {ranks_per_node} per node; toroidal groups "
                 f"{n_groups}, which sets the size of the nonlinear all-to-all)",
                 typeMsg="i",
             )
