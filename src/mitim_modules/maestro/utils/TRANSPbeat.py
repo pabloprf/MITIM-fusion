@@ -1094,6 +1094,18 @@ class transp_beat(beat):
             # ARC-class designs, rather than a ~7x morph from CMOD).
             R, a, kappa_sep, delta_sep, zeta_sep, z0,  p0_MPa, Ip_MA, B_T, ne0_20 = 6.2, 2.0, 1.85, 0.485, 0.0, 0.0, 0.3, 10.0, 5.3, 1.0
 
+        # TEQ's fixed-boundary inverse solve follows growing morphs (CMOD seed -> ARC-class targets, 6-7x) and mild
+        # shrinking ones (ITER seed -> ARC-class, ~1.6-1.8x), but not a strong shrink: an ITER seed -> SPARC target
+        # (3.5x smaller) breaks at ~2/3 of the morph whatever the transition window or geometry time step
+        # (flux-coordinate cells collapse in teq_inv/polar1). Refuse it up front; the 2x limit sits between those cases
+        a_target = float(self.profiles_current.derived['a'])
+        if a > 2.0 * a_target:
+            seeds = {'CMOD': 0.22, 'D3D': 0.6, 'ITER': 2.0}
+            smaller = [k for k, v in sorted(seeds.items(), key = lambda kv: -kv[1]) if v <= 2.0 * a_target]
+            raise ValueError(f'[MITIM] machine_initialization = {machine_initialization} (a = {a:.2f} m) is {a/a_target:.1f}x larger than the target '
+                             f'(a = {a_target:.2f} m): TEQ cannot follow such a shrinking morph. Use a seed no larger than ~2x the target'
+                             + (f', e.g. {smaller[0]}' if smaller else ''))
+
         if modify_Ip_to_match_qstar is not None:
             qstar_now = PLASMAtools.evaluate_qstar(
                 Ip_MA,

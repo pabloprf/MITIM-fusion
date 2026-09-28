@@ -630,7 +630,9 @@ maestro:
       # Equilibrium treatment (full mechanics and caveats documented in TRANSPbeat.py):
       #   A registered machine (CMOD, D3D, NSTX, ITER): TEQ (levgeo=11) solves Grad-Shafranov
       #     every step, warm-started from that machine's stored equilibrium -- pick the one
-      #     nearest the target in size/shape and let transition_window morph it
+      #     nearest the target in size/shape and let transition_window morph it. Growing morphs work (CMOD seed
+      #     for ARC-class targets); a seed more than 2x the target's minor radius is refused (TEQ cannot follow
+      #     a strong shrinking morph: ITER seed -> SPARC fails, ITER -> ARC-class works)
       #   null: PRESCRIBED EQUILIBRIUM (levgeo=8) -- the state's own flux surfaces handed to
       #     TRANSP as data, no GS solve, ANY shape works at t=0; transition_window and
       #     currentheating_window are INERT; the geometry stays FROZEN in time
